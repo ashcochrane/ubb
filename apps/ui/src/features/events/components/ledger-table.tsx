@@ -78,9 +78,6 @@ export function LedgerTable({
           <TableHead className="text-[11px] text-text-muted">Event type</TableHead>
           <TableHead className="text-[11px] text-text-muted">Provider</TableHead>
           <TableHead className="text-right text-[11px] text-text-muted">
-            Units
-          </TableHead>
-          <TableHead className="text-right text-[11px] text-text-muted">
             Billed
           </TableHead>
           <TableHead className="text-right text-[11px] text-text-muted">
@@ -116,9 +113,6 @@ export function LedgerTable({
               ) : (
                 row.provider
               )}
-            </TableCell>
-            <TableCell className="text-right text-[13px] tabular-nums">
-              {row.units ?? "—"}
             </TableCell>
             <TableCell className="text-right text-[13px] tabular-nums">
               {money(row.billed_cost_micros, currency)}

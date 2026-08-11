@@ -77,7 +77,7 @@ class PricingService:
 
     @staticmethod
     def _compute(*, tenant, usage_metrics, caller_provider_cost, caller_billed,
-                 units, resolve_card, apply_markup):
+                 resolve_card, apply_markup):
         """The ONE compute spine (#112): coverage → cost → price → markup
         fallback. ``price`` is this spine under one card resolver —
         ``resolve_card(card_type, metric)`` and the matching
@@ -107,13 +107,19 @@ class PricingService:
         else:
             provider_cost = 0
             uncosted = []
-            # Strict mode: units > 0 with no usage_metrics means cost is unknowable —
-            # no metric name to resolve a rate card against.  Caller-supplied
-            # provider_cost_micros is still accepted (cost is explicitly known).
-            if (units or 0) > 0 and not usage_metrics and getattr(tenant, "require_cost_card_coverage", False):
-                raise PricingError(
-                    "strict cost coverage: units > 0 with no usage_metrics — no cost rate "
-                    "card can match; pass usage_metrics or provider_cost_micros")
+            # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
+            # It rejected an event that declared a nameless magnitude with no
+            # metric name to resolve a rate card against — "you told us there
+            # was volume, but not of what". That magnitude was the posting's
+            # inline unit total, and a caller can no longer state it at all, so
+            # the condition is not weakened here, it has become unexpressible.
+            #
+            # NO REQUEST CHANGES VERDICT. The refusal only ever fired above
+            # zero; an event with no quantities and no caller cost was already
+            # accepted as a marker at zero or omitted, and that is exactly what
+            # every such request now is. The coverage guarantee for events that
+            # DO name their quantities is untouched — it is the `uncosted`
+            # branch below and the caller-cost branch above, both unchanged.
             for metric, units_val in usage_metrics.items():
                 card = resolve_card("cost", metric)
                 if card is None:
@@ -159,7 +165,7 @@ class PricingService:
 
     @staticmethod
     def price(*, tenant, customer, selectors, usage_metrics, currency,
-              caller_provider_cost, caller_billed, units=None, as_of=None):
+              caller_provider_cost, caller_billed, as_of=None):
         """Exact pricing: the compute spine over as_of-exact ORM card
         resolution (the full provenance receipt is persisted with the event)
         and live-ORM markup. ``selectors`` is the full {provider, event_type,
@@ -178,5 +184,5 @@ class PricingService:
         return PricingService._compute(
             tenant=tenant, usage_metrics=usage_metrics,
             caller_provider_cost=caller_provider_cost,
-            caller_billed=caller_billed, units=units,
+            caller_billed=caller_billed,
             resolve_card=resolve_card, apply_markup=apply_markup)

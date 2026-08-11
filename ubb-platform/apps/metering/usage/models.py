@@ -26,7 +26,17 @@ class Posting(BaseModel):
     metadata = models.JSONField(default=dict)
 
     # Pricing breakdown (populated when platform prices the event)
-    units = models.BigIntegerField(null=True, blank=True)
+    #
+    # The nameless inline quantity that used to sit here died in #272. One
+    # integer per posting could only ever describe one thing, which is what
+    # made an event carrying both an input and an output amount inexpressible
+    # — and under the split it would have acquired a SHORTER LIFE than the
+    # billed total beside it on the same response, while the read contract's
+    # `or 0` coalescing went on rendering its absence as a currency zero on the
+    # end customer's own view. The measured quantities live on the child
+    # record, keyed by a declared measurement; the Event Type rollup is the
+    # honest replacement for "one comparable magnitude".
+    #
     # CUR-1: lowercase, matching the seven other currency columns and the
     # payment rail's own casing (#269, spec §K2). No CHECK constraint —
     # see the module note in `tests/test_posting_rename.py` for why the one

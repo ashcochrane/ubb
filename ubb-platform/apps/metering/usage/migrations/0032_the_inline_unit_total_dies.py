@@ -1,0 +1,42 @@
+"""The posting's inline unit total is dropped (#272).
+
+A RETIREMENT, NOT A MOVE, and the distinction is the whole ruling. #270 gave the
+posting a child record for what was measured, and this slice had to settle
+whether that child carries one column or two. The answer is **one**: the nameless
+inline total does not follow the quantities across, it dies.
+
+Under the split it would have acquired a SHORTER LIFE than the billed total
+sitting beside it on the same response — the child is prunable and the money is
+not — while the read contract's `or 0` coalescing went on rendering its absence
+as a currency zero on the end customer's own view. Retiring it deletes that
+failure mode instead of instrumenting it.
+
+ADR-0007 §1 is about a column that MOVES: such a migration must carry its data.
+This one has nowhere to carry it to, so the reverse below restores the column's
+SHAPE and not its contents — every restored row reads NULL, which is a value the
+column always allowed and which the query layer already coalesced. That is the
+honest reverse for a deletion, and it is exercised against a real database in
+``tests/test_the_inline_unit_total_dies.py`` rather than asserted to exist.
+
+Nothing reads the column by the time this runs: the same commit clears the model,
+metering's read contract, the recording path, both recording routes, six public
+schemas, the customer-facing usage summary, the SDK and the console. You cannot
+drop a column while a reader survives, and `tests/contracts/
+test_the_inline_unit_total_is_gone.py` is what proves none does.
+"""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('usage', '0031_the_measurements_become_a_child_record'),
+    ]
+
+    operations = [
+        migrations.RemoveField(
+            model_name='posting',
+            name='units',
+        ),
+    ]

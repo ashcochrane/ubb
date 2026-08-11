@@ -1,4 +1,16 @@
-"""get_customer_usage_summary — the /me usage-summary read contract (F5.1)."""
+"""get_customer_usage_summary — the /me usage-summary read contract (F5.1).
+
+The rollup lost its quantity half in #272: the posting's inline unit total, the
+`Sum` that aggregated it, the `or 0` that rendered a null of it as a zero, and
+the grand total it fed are all gone. What is left is the money and the count,
+per Event Type — which is what the ruling calls the honest replacement for "one
+comparable magnitude", since a single sum stops being comparable the moment two
+Event Types measure at different granularities.
+
+`test_a_row_carries_no_quantity_of_its_own` is the one assertion here that would
+have been pointless before: it pins the shape of a row so that a later slice
+re-introducing a quantity has to come past a test that says this was decided.
+"""
 import datetime
 
 from django.test import TestCase
@@ -22,37 +34,54 @@ class GetCustomerUsageSummaryTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.start, self.end = _month_window()
 
-    def _event(self, customer, key, *, event_type="", units=None, billed=0):
+    def _event(self, customer, key, *, event_type="", billed=0):
         return Posting.objects.create(
             tenant=self.tenant, customer=customer,
             request_id=f"r-{key}", idempotency_key=f"i-{key}",
-            event_type=event_type, units=units, billed_cost_micros=billed,
+            event_type=event_type, billed_cost_micros=billed,
         )
 
     def test_groups_by_event_type_and_totals_equal_sum_of_rows(self):
-        self._event(self.customer, "1", event_type="tokens", units=100, billed=1_000_000)
-        self._event(self.customer, "2", event_type="tokens", units=50, billed=500_000)
-        self._event(self.customer, "3", event_type="images", units=2, billed=2_000_000)
+        self._event(self.customer, "1", event_type="tokens", billed=1_000_000)
+        self._event(self.customer, "2", event_type="tokens", billed=500_000)
+        self._event(self.customer, "3", event_type="images", billed=2_000_000)
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
         self.assertEqual(s["event_count"], 3)
-        self.assertEqual(s["total_units"], 152)
         self.assertEqual(s["total_billed_micros"], 3_500_000)
         # Largest-billed first.
         self.assertEqual([m["event_type"] for m in s["metrics"]], ["images", "tokens"])
-        self.assertEqual(s["total_units"], sum(m["units"] for m in s["metrics"]))
         self.assertEqual(s["total_billed_micros"],
                          sum(m["billed_cost_micros"] for m in s["metrics"]))
         self.assertEqual(s["event_count"], sum(m["event_count"] for m in s["metrics"]))
 
-    def test_null_units_sum_as_zero(self):
-        self._event(self.customer, "1", event_type="calls", units=None, billed=300_000)
+    def test_a_row_carries_no_quantity_of_its_own(self):
+        """The retirement, stated where a reader of this module would look.
+
+        A row is an Event Type, its money and how many postings made it. The
+        nameless integer that used to ride beside them died with the column, and
+        a summary field derived from nothing is exactly the shape that let a
+        null read as a zero to an end customer.
+        """
+        self._event(self.customer, "1", event_type="calls", billed=300_000)
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
-        self.assertEqual(s["metrics"][0]["units"], 0)
-        self.assertEqual(s["total_units"], 0)
+        self.assertEqual(set(s), {"total_billed_micros", "event_count", "metrics"})
+        self.assertEqual(set(s["metrics"][0]),
+                         {"event_type", "billed_cost_micros", "event_count"})
+
+    def test_a_zero_billed_row_still_counts_its_events(self):
+        """The other half of what the coalescing used to hide.
+
+        A row that cost nothing is still a row: the count is the surviving
+        evidence that something happened, now that no quantity rides beside it.
+        """
+        self._event(self.customer, "1", event_type="calls", billed=0)
+        s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
+        self.assertEqual(s["metrics"][0]["billed_cost_micros"], 0)
+        self.assertEqual(s["metrics"][0]["event_count"], 1)
         self.assertEqual(s["event_count"], 1)
 
     def test_excludes_events_outside_the_window(self):
-        e = self._event(self.customer, "old", event_type="tokens", units=9, billed=900_000)
+        e = self._event(self.customer, "old", event_type="tokens", billed=900_000)
         Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=70))
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
@@ -61,7 +90,7 @@ class GetCustomerUsageSummaryTest(TestCase):
 
     def test_excludes_other_customers(self):
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
-        self._event(other, "x", event_type="tokens", units=7, billed=700_000)
+        self._event(other, "x", event_type="tokens", billed=700_000)
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
         self.assertEqual(s["event_count"], 0)
 
@@ -73,24 +102,23 @@ class GetCustomerUsageSummaryTest(TestCase):
             tenant=self.tenant, external_id="s-a", account_type="seat", parent=business)
         seat_b = Customer.objects.create(
             tenant=self.tenant, external_id="s-b", account_type="seat", parent=business)
-        self._event(seat_a, "a1", event_type="tokens", units=10, billed=100_000)
-        self._event(seat_b, "b1", event_type="tokens", units=20, billed=200_000)
-        self._event(seat_b, "b2", event_type="images", units=1, billed=1_000_000)
+        self._event(seat_a, "a1", event_type="tokens", billed=100_000)
+        self._event(seat_b, "b1", event_type="tokens", billed=200_000)
+        self._event(seat_b, "b2", event_type="images", billed=1_000_000)
         # An unrelated individual must never leak into the business rollup.
-        self._event(self.customer, "z", event_type="tokens", units=99, billed=9_000_000)
+        self._event(self.customer, "z", event_type="tokens", billed=9_000_000)
         s = get_customer_usage_summary(self.tenant.id, business.id, self.start, self.end)
         self.assertEqual(s["event_count"], 3)
-        self.assertEqual(s["total_units"], 31)
         self.assertEqual(s["total_billed_micros"], 1_300_000)
         rows = {m["event_type"]: m for m in s["metrics"]}
-        self.assertEqual(rows["tokens"]["units"], 30)
         self.assertEqual(rows["tokens"]["billed_cost_micros"], 300_000)
+        self.assertEqual(rows["tokens"]["event_count"], 2)
 
     def test_business_with_no_seats_returns_zeros(self):
         business = Customer.objects.create(
             tenant=self.tenant, external_id="biz0", account_type="business")
         s = get_customer_usage_summary(self.tenant.id, business.id, self.start, self.end)
-        self.assertEqual(s, {"total_units": 0, "total_billed_micros": 0,
+        self.assertEqual(s, {"total_billed_micros": 0,
                              "event_count": 0, "metrics": []})
 
     def test_seat_sees_only_its_own_usage(self):
@@ -101,8 +129,8 @@ class GetCustomerUsageSummaryTest(TestCase):
             tenant=self.tenant, external_id="s-a2", account_type="seat", parent=business)
         seat_b = Customer.objects.create(
             tenant=self.tenant, external_id="s-b2", account_type="seat", parent=business)
-        self._event(seat_a, "a1", event_type="tokens", units=10, billed=100_000)
-        self._event(seat_b, "b1", event_type="tokens", units=20, billed=200_000)
+        self._event(seat_a, "a1", event_type="tokens", billed=100_000)
+        self._event(seat_b, "b1", event_type="tokens", billed=200_000)
         s = get_customer_usage_summary(self.tenant.id, seat_a.id, self.start, self.end)
         self.assertEqual(s["event_count"], 1)
         self.assertEqual(s["total_billed_micros"], 100_000)

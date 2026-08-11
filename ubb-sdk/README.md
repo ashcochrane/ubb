@@ -67,9 +67,9 @@ print(res.uncosted_metrics)       # list of metric names with no matching cost c
 > metrics had **no matching cost rate-card and priced to $0** — your COGS is understated for them.
 > Either add a cost card for the metric, or enable `require_cost_card_coverage` on the tenant to
 > **hard-reject (422)** instead of silently pricing $0.
-> In strict mode, events with `units > 0` but **no `usage_metrics`** are also rejected (no metric
-> name means no rate card can be matched); pass `provider_cost_micros` directly if the cost is
-> known, or set `units=0` for zero-cost marker events.
+> An event that names no metrics at all is a marker event and is accepted in either mode — there
+> is nothing to resolve a rate card against, and nothing was claimed to have been consumed. Pass
+> `provider_cost_micros` directly whenever the cost is known but the metrics are not.
 
 `res.uncosted_metrics` is your signal that a metric was recorded but has no cost card — add a
 card for any metric you want tracked.
@@ -355,7 +355,7 @@ client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
 
 # record_usage  → RecordUsageResponse
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
-    provider_cost_micros=None, billed_cost_micros=None, units=None,
+    provider_cost_micros=None, billed_cost_micros=None,
     provider="", event_type="", currency=None, tags=None,
     product_id="", metadata=None, run_id=None, usage_metrics=None,
     recorded_at=None)

@@ -214,3 +214,35 @@ POST /api/v1/metering/usage/ingest api path removed without deprecation
 # it, correctly: a server promising FEWER values than before cannot break a
 # reader. Do not go looking for a second line to pair with this one.
 PATCH /api/v1/tenant/config request property `products/anyOf[subschema #1]/items/` was restricted to a list of enum values
+
+# THE INLINE UNIT TOTAL, RETIRED — the column and every reader (#272, slice 2).
+# Five endpoints, seven findings, split across two levels: read this block with
+# the five WARN-level lines in the sibling file. Same retirement, same commit;
+# these two are ERR only because the properties were REQUIRED on the
+# customer-facing summary and the other five were optional.
+#
+# WHY IT DIES RATHER THAN MOVING. #270 gave the posting a child record for what
+# was measured, and slice 2 had to settle whether that child carries one column
+# or two. One. Under the split this total would have acquired a SHORTER LIFE
+# than the billed total sitting beside it on the same response — the child is
+# prunable and the money is not — while the read contract's `or 0` coalescing
+# went on rendering its absence as a currency zero on the end customer's own
+# view. Retiring it deletes that failure mode instead of instrumenting it.
+#
+# WHAT REPLACES IT ON THIS ENDPOINT. The per-Event-Type rollup, which is still
+# here: each `metrics[]` row keeps its `billed_cost_micros` and `event_count`.
+# A merged decision separately warns that one summed magnitude stops being
+# comparable across Event Types of differing granularity anyway, so the rollup
+# is not a lesser answer to the same question — it is the honest one.
+#
+# WHY THIS BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5):
+# the launch tag is not what binds. A field dropped here costs a reviewed entry;
+# the same drop after platform admission costs a 90-day deprecation cycle under
+# ADR-0003 §4.
+#
+# FLAGGED FOR SLICE 7. This endpoint may fall inside that slice's five-endpoint
+# collapse and would then inherit its final shape. The column and its last
+# reader died here regardless — you cannot drop a column while a reader
+# survives, and slice 7 cannot inherit a shape nobody has cut.
+GET /api/v1/me/usage-summary removed the required property `metrics/items/units` from the response with the `200` status
+GET /api/v1/me/usage-summary removed the required property `total_units` from the response with the `200` status

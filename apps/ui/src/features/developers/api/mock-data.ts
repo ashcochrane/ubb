@@ -95,9 +95,6 @@ export const MOCK_METRIC_RATE_MICROS: Record<string, number> = {
   requests: 50_000,
 };
 
-/** Micros billed per `units` unit when no explicit cost is supplied. */
-export const MOCK_UNIT_RATE_MICROS = 15_000;
-
 const KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
 
 function randomChunk(length: number): string {

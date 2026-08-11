@@ -460,10 +460,17 @@ class TheReverseIsExercisedTest(TestCase):
     """Forward and back, against a real database, with a real row.
 
     The fold's callables run against the state they see inside the migration:
-    the child created, the posting's column not yet dropped. The live table no
-    longer has that column, so the test puts it back for its own duration —
-    PostgreSQL runs DDL inside the transaction this `TestCase` rolls back, so
-    the column leaves with everything else and no other test can see it.
+    the child created, the posting's own column not yet dropped. The live table
+    has moved on since — that column went in this migration and another went in
+    #272 — so `setUp` restores whatever the historical model has and the table
+    does not, for the test's own duration. PostgreSQL runs DDL inside the
+    transaction this `TestCase` rolls back, so the columns leave with everything
+    else and no other test ever sees them.
+
+    RECONCILED BY COMPARISON RATHER THAN BY NAME. Naming the columns would make
+    this fixture go red on the next commit that drops one — which is what
+    happened the first time, and the failure read as a broken reverse rather
+    than as a stale fixture.
     """
 
     def setUp(self):
@@ -477,9 +484,14 @@ class TheReverseIsExercisedTest(TestCase):
         self.Posting = self.historical.get_model(APP_LABEL, "Posting")
         self.Measurement = self.historical.get_model(
             APP_LABEL, "PostingMeasurement")
+        with connection.cursor() as cursor:
+            live = {column.name for column in
+                    connection.introspection.get_table_description(
+                        cursor, self.Posting._meta.db_table)}
         with connection.schema_editor() as editor:
-            editor.add_field(self.Posting,
-                             self.Posting._meta.get_field("usage_metrics"))
+            for field in self.Posting._meta.local_fields:
+                if field.column not in live:
+                    editor.add_field(self.Posting, field)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
 

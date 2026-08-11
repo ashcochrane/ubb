@@ -49,7 +49,6 @@ interface DetailSeed {
   dim3?: string;
   billed_cost_micros: number;
   provider_cost_micros: number;
-  units?: number | null;
   usage_metrics?: Record<string, number>;
   tags?: Record<string, string> | null;
   metadata?: Record<string, unknown>;
@@ -84,7 +83,6 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     dim1: seed.dim1 ?? "",
     dim2: seed.dim2 ?? "",
     dim3: seed.dim3 ?? "",
-    units: seed.units ?? null,
     usage_metrics: seed.usage_metrics ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},
@@ -125,7 +123,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim3: "agent-7",
       billed_cost_micros: 187_500,
       provider_cost_micros: 142_300,
-      units: 1,
       usage_metrics: { input_tokens: 4200, output_tokens: 1730 },
       tags: { env: "prod", team: "search", model: "gpt-5" },
       metadata: {
@@ -169,7 +166,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:02:12Z",
       billed_cost_micros: 96_000,
       provider_cost_micros: 75_000,
-      units: 1,
       usage_metrics: { input_tokens: 2100, output_tokens: 940 },
       tags: { env: "prod", team: "assist" },
       metadata: { region: "us-east-1" },
@@ -195,7 +191,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:03:28Z",
       billed_cost_micros: 54_000,
       provider_cost_micros: 42_000,
-      units: 1,
       usage_metrics: { input_tokens: 1200, output_tokens: 480 },
       tags: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(42_000),
@@ -222,7 +217,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       event_type: "messages.create",
       billed_cost_micros: 31_000,
       provider_cost_micros: 24_000,
-      units: 1,
       usage_metrics: { input_tokens: 800, output_tokens: 260 },
       tags: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(24_000),
@@ -249,7 +243,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim2: "batch-worker",
       billed_cost_micros: 64_000,
       provider_cost_micros: 50_000,
-      units: 1,
       usage_metrics: { input_tokens: 1500, output_tokens: 620 },
       tags: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
@@ -277,7 +270,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim1: "search-api",
       billed_cost_micros: 22_400,
       provider_cost_micros: 17_500,
-      units: 4,
       usage_metrics: { embedding_tokens: 5200 },
       tags: { env: "prod", team: "search" },
       metadata: { backfill_batch: "2026-07-20-recovery" },
@@ -314,7 +306,6 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       dim3: index % 5 === 0 ? "agent-7" : "",
       billed_cost_micros: billed,
       provider_cost_micros: providerCost,
-      units: 1,
       usage_metrics: {
         input_tokens: 900 + (index % 23) * 240,
         output_tokens: 260 + (index % 11) * 145,

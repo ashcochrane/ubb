@@ -198,7 +198,6 @@ class PaginatedSubscriptionInvoices(Paginated[MeSubscriptionInvoiceOut]):
 
 class UsageMetricOut(Schema):
     event_type: str
-    units: int
     billed_cost_micros: int
     event_count: int
 
@@ -206,7 +205,6 @@ class UsageMetricOut(Schema):
 class UsageSummaryResponse(Schema):
     period_start: str
     period_end: str
-    total_units: int
     total_billed_micros: int
     currency: str
     metrics: list[UsageMetricOut]
@@ -356,6 +354,13 @@ def get_usage_summary(request):
     Metering-scoped, not billing-scoped: a meter-only tenant's customers can
     still see what they consumed.
     """
+    # THE PER-EVENT-TYPE ROWS ARE THE MAGNITUDE HERE (#272), and this comment is
+    # a comment rather than docstring prose because this docstring IS the
+    # published description. The posting's inline unit total used to ride beside
+    # the money on this very response; under the measurement split it would have
+    # been the one field on it with a shorter life than everything around it,
+    # while the query layer's coalescing went on rendering its absence as a zero
+    # to the end customer rather than as an absence.
     _check_metering_product(request)
     customer = request.widget_customer
     from apps.metering.queries import get_customer_usage_summary
@@ -368,7 +373,6 @@ def get_usage_summary(request):
     return {
         "period_start": period_start.isoformat(),
         "period_end": period_end.isoformat(),
-        "total_units": summary["total_units"],
         "total_billed_micros": summary["total_billed_micros"],
         "currency": request.widget_tenant.default_currency or "usd",
         "metrics": summary["metrics"],

@@ -180,7 +180,6 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
         "billed_cost_micros": event.billed_cost_micros,
-        "units": event.units,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
         "task_id": str(event.task_id) if event.task_id else None,
         "parent_task_id": str(parent_task_id) if parent_task_id else None,
@@ -255,7 +254,6 @@ class RecordingInput:
     # in hand — no extra query).
     owner_row: object
     effective_at: datetime | None
-    units: int | None
     caller_provider_cost: int | None
     caller_billed: int | None
     now: datetime
@@ -263,7 +261,7 @@ class RecordingInput:
     @classmethod
     def gather(cls, *, tenant, customer, request_id, idempotency_key,
                metadata, event_type, provider, usage_metrics, tags,
-               task_id, units, caller_provider_cost,
+               task_id, caller_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, dimension_slots=None):
         """The normalization the recording path runs: tenant-currency stamp,
@@ -298,7 +296,7 @@ class RecordingInput:
             usage_metrics=usage_metrics or {}, tags=tags,
             **dims,
             task_id=task_id, billing_owner_id=billing_owner_id,
-            owner_row=owner_row, effective_at=effective_at, units=units,
+            owner_row=owner_row, effective_at=effective_at,
             caller_provider_cost=caller_provider_cost,
             caller_billed=caller_billed, now=now)
 
@@ -381,7 +379,7 @@ class UsageService:
                     usage_metrics=inp.usage_metrics,
                     currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
-                    caller_billed=inp.caller_billed, units=inp.units,
+                    caller_billed=inp.caller_billed,
                     as_of=inp.effective_at)
                 create_kwargs = {}
                 if inp.effective_at is not None:
@@ -392,7 +390,7 @@ class UsageService:
                     event_type=inp.event_type, provider=inp.provider,
                     provider_cost_micros=provider_cost_micros,
                     billed_cost_micros=billed_cost_micros,
-                    units=inp.units, currency=inp.currency,
+                    currency=inp.currency,
                     pricing_provenance=provenance,
                     tags=inp.tags, task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
@@ -485,14 +483,14 @@ class UsageService:
     @staticmethod
     @transaction.atomic
     def record_usage(tenant, customer, request_id, idempotency_key, *,
-                     provider_cost_micros=None, billed_cost_micros=None, units=None,
+                     provider_cost_micros=None, billed_cost_micros=None,
                      provider="", event_type="", currency=None, tags=None,
                      metadata=None, task_id=None, usage_metrics=None,
                      effective_at=None, dimension_slots=None):
         """The recording path (#112): validation + replay + owner resolve,
-        then the recording core. The 15-param keyword surface is kept verbatim
-        — this is the input adapter every service-level call site and both
-        recording endpoints already speak.
+        then the recording core. The keyword surface is the input adapter every
+        service-level call site and both recording endpoints already speak; it
+        lost the nameless inline quantity in #272 and is otherwise verbatim.
 
         ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
         — the caller (endpoint / record_sync_item) runs DimensionService.admit
@@ -536,7 +534,7 @@ class UsageService:
             idempotency_key=idempotency_key, metadata=metadata,
             event_type=event_type, provider=provider,
             usage_metrics=usage_metrics, tags=tags,
-            task_id=task_id, units=units,
+            task_id=task_id,
             caller_provider_cost=provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,

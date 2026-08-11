@@ -20,12 +20,6 @@ export const testEventFormSchema = z.object({
   event_type: z.string().trim().max(100, "Max 100 characters"),
   provider: z.string().trim().max(100, "Max 100 characters"),
   product_id: z.string().trim().max(100, "Max 100 characters"),
-  units: z
-    .string()
-    .trim()
-    .refine((value) => value === "" || INT_RE.test(value), {
-      message: "Whole number, 0 or more",
-    }),
   provider_cost: z
     .string()
     .trim()
@@ -103,7 +97,6 @@ export function buildTestEventRequest(
     ...(values.event_type !== "" && { event_type: values.event_type }),
     ...(values.provider !== "" && { provider: values.provider }),
     ...(values.product_id !== "" && { product_id: values.product_id }),
-    ...(values.units !== "" && { units: Number(values.units) }),
     ...(values.provider_cost !== "" && {
       provider_cost_micros: toMicros(values.provider_cost),
     }),

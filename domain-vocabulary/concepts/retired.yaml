@@ -45,10 +45,11 @@ measurement_key:
     # unrelated senses carry it, and one of them cannot be removed by any
     # commit at all:
     #
-    #   * THE RETIRED FIELD — the usage row's own column for the metered
+    #   * THE RETIRED FIELD — the posting's own column for the metered
     #     quantity, its request and response fields, the summary query's sums,
-    #     and the SDK and console code that reads them. This one dies in slice
-    #     2, and it dies whatever this entry says.
+    #     and the SDK and console code that read them. **DEAD as of #272**,
+    #     which is what the count below just moved for. It died whatever this
+    #     entry said; the entry only ever decided how the death was PROVED.
     #   * CURRENCY MINOR UNITS — `core/money.py`, the billing services, and the
     #     console's money inputs. That is `amount_representation`'s own
     #     English, and its values `minor_units` / `major_units_decimal` are not
@@ -74,48 +75,51 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,532 of 1,882 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,534 of 1,885 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    75 files, 325 occurrences
+    #     units    50 files, 122 occurrences
     #
-    # THE DENOMINATOR MOVES AND THE COUNT DOES NOT, which is the whole reason
-    # this is re-taken rather than inherited. #267 published the Event Type
-    # catalogue — a router, its tests and 43 generated SDK modules — so the
-    # swept set grew from 1,483/1,831, and the substantive claim above did not
-    # move by a single occurrence. #269 renamed the usage row to the Posting and
-    # added two tracked files, one of them a migration the sweep excludes, so
-    # the denominator moved unevenly (1,527/1,875 → 1,528/1,877) and the count
-    # again did not. #270 moved the measured quantities off the posting onto a
-    # child record, adding four tracked files (one a migration the sweep
-    # excludes) and deleting one, so both halves moved and by different amounts
-    # (1,528/1,877 → 1,530/1,880) — and the count again did not. #271 served
-    # the derived measurement status, adding two tracked files the sweep reads
-    # (the serialiser's derivation module and one generated SDK model), so both
-    # halves moved together (1,530/1,880 → 1,532/1,882) — and the count still
-    # did not, which is the fourth consecutive re-take to say so.
-    # Expect the denominator to move on any commit
-    # that adds a tracked file; that half is mechanical. If `75 files, 325
-    # occurrences` ever moves, somebody WROTE the word — find it before
-    # rewriting the number, because rewriting it is how the sentence this
-    # entry defends quietly stops being true.
+    # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
+    # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
+    # only the denominator and left `75 files, 325 occurrences` untouched, which
+    # is what those re-takes existed to demonstrate. #272 executed the other
+    # half of this ruling — the column and every named reader — and 25 files and
+    # 203 occurrences left the tree with it (1,532/1,882 → 1,534/1,885 swept,
+    # 75/325 → 50/122 counted). That is the retired sense being paid, not the
+    # claim eroding, and it is the only reason this number may fall.
+    #
+    # THE RULE FOR THE NEXT READER IS UNCHANGED AND NOW HAS TWO HALVES. If the
+    # count RISES, somebody WROTE the word — find it and read it before
+    # rewriting the number, because rewriting it is how the sentence this entry
+    # defends quietly stops being true. If it FALLS, a commit removed occurrences
+    # of one of the surviving senses; say which sense and why, here. The
+    # denominator moves on any commit that adds a tracked file and needs no
+    # story at all.
+    #
+    # AND #272 SPELLS THE WORD IN TWO NEW FILES, DELIBERATELY. Both are the
+    # targeted proof named below, and they name the retired sense as the subject
+    # of its own absence — a quotation, not a fifth sense. A test that proves a
+    # word is gone must be allowed to say the word; the alternative is sourcing
+    # the token from this registry at runtime, which reads as cleverness and
+    # hides what the test is about.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
-    # one falls in a sense above; there is no fifth. The column and every
-    # reader of it still die in this slice — that half of the ruling is
-    # untouched — but the deletion is proved by a targeted test rather than by
+    # one falls in a surviving sense above; there is no fifth. The column and
+    # every reader of it died in this slice — that half of the ruling was never
+    # in doubt — but the deletion is proved by a targeted test rather than by
     # the sweep, because the sweep can never reach zero on this word.
     - term: units
       retired_as: >-
-        the usage row's own field for the metered quantity. One nameless
-        integer per event could only ever describe one thing, which is what
-        made an event carrying both input and output amounts inexpressible; a
-        declared Measurement replaces it, keyed by this concept and carrying
-        its own `unit`.
+        the posting's own field for the metered quantity — dropped, with every
+        reader, in #272. One nameless integer per posting could only ever
+        describe one thing, which is what made an event carrying both input and
+        output amounts inexpressible; a declared Measurement replaces it, keyed
+        by this concept and carrying its own `unit`.
       survives_as: >-
         three live senses UBB depends on. Currency MINOR units, which is
         `amount_representation`'s own English in the money module, the billing

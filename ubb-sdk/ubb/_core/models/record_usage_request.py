@@ -44,7 +44,6 @@ class RecordUsageRequest:
             provider_cost_micros (int | None | Unset):
             tags (None | RecordUsageRequestTagsType0 | Unset):
             task_id (None | Unset | UUID):
-            units (int | None | Unset):
             usage_metrics (None | RecordUsageRequestUsageMetricsType0 | Unset):
      """
 
@@ -61,7 +60,6 @@ class RecordUsageRequest:
     provider_cost_micros: int | None | Unset = UNSET
     tags: None | RecordUsageRequestTagsType0 | Unset = UNSET
     task_id: None | Unset | UUID = UNSET
-    units: int | None | Unset = UNSET
     usage_metrics: None | RecordUsageRequestUsageMetricsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -142,12 +140,6 @@ class RecordUsageRequest:
         else:
             task_id = self.task_id
 
-        units: int | None | Unset
-        if isinstance(self.units, Unset):
-            units = UNSET
-        else:
-            units = self.units
-
         usage_metrics: dict[str, Any] | None | Unset
         if isinstance(self.usage_metrics, Unset):
             usage_metrics = UNSET
@@ -184,8 +176,6 @@ class RecordUsageRequest:
             field_dict["tags"] = tags
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
-        if units is not UNSET:
-            field_dict["units"] = units
         if usage_metrics is not UNSET:
             field_dict["usage_metrics"] = usage_metrics
 
@@ -339,16 +329,6 @@ class RecordUsageRequest:
         task_id = _parse_task_id(d.pop("task_id", UNSET))
 
 
-        def _parse_units(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        units = _parse_units(d.pop("units", UNSET))
-
-
         def _parse_usage_metrics(data: object) -> None | RecordUsageRequestUsageMetricsType0 | Unset:
             if data is None:
                 return data
@@ -383,7 +363,6 @@ class RecordUsageRequest:
             provider_cost_micros=provider_cost_micros,
             tags=tags,
             task_id=task_id,
-            units=units,
             usage_metrics=usage_metrics,
         )
 

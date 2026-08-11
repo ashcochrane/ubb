@@ -96,7 +96,6 @@ class RecordUsageRequest(Schema):
     provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     usage_metrics: Optional[dict[str, int]] = None
-    units: Optional[int] = Field(default=None, ge=0)
 
     @field_validator("usage_metrics")
     @classmethod
@@ -147,7 +146,6 @@ class RecordUsageResponse(Schema):
     suspended: bool
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
-    units: Optional[int] = None
     task_id: Optional[str] = None
     # Set when the named unit is a subtask — its parent task (#38).
     parent_task_id: Optional[str] = None
@@ -212,7 +210,6 @@ class UsageEventOut(Schema):
     provider: str = ""
     provider_cost_micros: Optional[int] = None
     billed_cost_micros: Optional[int] = None
-    units: Optional[int] = None
     metadata: dict
     effective_at: str
     # #41: the immutable past-limit context array (see RecordUsageResponse).
@@ -229,7 +226,6 @@ def usage_event_out(e):
         "provider": e.provider,
         "provider_cost_micros": e.provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
-        "units": e.units,
         "metadata": e.metadata,
         "effective_at": e.effective_at.isoformat(),
         "stop_context": e.stop_context,
@@ -261,7 +257,6 @@ class UsageEventDetailOut(Schema):
     dim1: str = ""
     dim2: str = ""
     dim3: str = ""
-    units: Optional[int] = None
     currency: str = "usd"
     provider_cost_micros: int
     billed_cost_micros: int

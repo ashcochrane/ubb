@@ -1,0 +1,261 @@
+"""The inline unit total died — the column and every named reader (#272).
+
+Slice 2 retired the usage row's own nameless quantity. It is the one retirement
+in the slice **the forbidden-term sweep can never prove**, and this module is
+what stands in for it.
+
+WHY THE SWEEP CANNOT DO IT. The plural word is registered as a retired *sense*
+on `measurement_key`, not as a retired alias, because seventy-odd files carry
+the bare token in four unrelated senses and one of them is ordinary English
+inside three GENERATED modules whose text is rendered from concept summaries in
+`domain-vocabulary/` — a permanent sweep exclusion. `retired_senses` is not
+sweep input, so there is no "sweep finds zero" to reach and no ledger entry to
+delete. The registry entry records that reasoning and its evidence; this module
+records the half of the ruling the entry hands off: **the column and every
+reader of it still die, and the deletion is proved by a targeted test.**
+
+SO THIS GATE IS SENSE-SCOPED, NOT A WORD BAN, and both halves of that are put
+under test below. It reads a NAMED list of readers rather than the tree, and it
+matches the word only where it is shaped like a field — a declaration, a keyword
+argument, a JSON key, a quoted key or an attribute read. Currency minor units,
+rate arithmetic and ordinary English are all left alone, deliberately and
+visibly: `test_the_control_the_surviving_sense_is_untouched` fires the same
+matcher at a file that still carries the word field-shaped, in a sense slice 4
+owns, and requires it to be found.
+
+The strongest assertion here is not textual at all. The two published documents
+are walked structurally for a schema property of that name, which is what
+actually proves the field left the contract, the console's snapshot and every
+client generated from either.
+"""
+
+import json
+import re
+
+import pytest
+
+from _helpers import REAL_REGISTRY, REPO_ROOT
+from tools.vocabulary import load_registry
+
+#: The readers the ruling names, and what each one read. A path per entry, and a
+#: sentence per path, because an absence list nobody can read is one that gets
+#: extended by whoever is next inconvenienced by it.
+READERS = {
+    "ubb-platform/apps/metering/usage/models.py":
+        "the column itself",
+    "ubb-platform/apps/metering/queries.py":
+        "metering's read contract — the summing aggregate, the null-to-zero "
+        "coalescing that rendered it as a currency zero, and the summary field "
+        "they fed",
+    "ubb-platform/api/v1/schemas.py":
+        "four public request/response schemas",
+    "ubb-platform/api/v1/me_endpoints.py":
+        "the customer-facing usage-summary endpoint, and the two schemas it "
+        "answered with",
+    "ubb-platform/api/v1/metering_endpoints.py":
+        "the single/batch keyword map, and the detail serialiser",
+    "ubb-platform/apps/metering/usage/services/usage_service.py":
+        "the recording path that carried it from the door to the column",
+    "ubb-sdk/ubb/client.py":
+        "the SDK's hand-written recording call",
+    "ubb-sdk/ubb/metering.py":
+        "the SDK's metering client, which put it on the wire",
+    "apps/ui/src/features/developers/api/mock.ts":
+        "the console's mock recorder, which priced it",
+    "apps/ui/src/features/developers/api/mock-data.ts":
+        "the mock rate the line above multiplied it by",
+    "apps/ui/src/features/developers/components/test-event-console.tsx":
+        "the test-event form field",
+    "apps/ui/src/features/developers/components/test-event-response.tsx":
+        "the response stat beside it",
+    "apps/ui/src/features/developers/lib/test-event.ts":
+        "the form-values to request-body builder",
+    "apps/ui/src/features/events/api/mock-data.ts":
+        "the console's event fixtures",
+    "apps/ui/src/features/events/api/mock.ts":
+        "the mock detail lookup",
+    "apps/ui/src/features/events/components/event-detail-page.tsx":
+        "the detail page's stat row",
+    "apps/ui/src/features/events/components/ledger-table.tsx":
+        "the ledger column",
+}
+
+#: The two published documents, walked structurally rather than textually.
+DOCUMENTS = ("openapi/v1.json", "apps/ui/src/api/schema.json")
+
+#: The retired field's own names. The summary's grand total is the same field
+#: one aggregate up and dies with it, so both are the subject here.
+NAMES = ("units", "total_units")
+
+#: The retired sense AS IT ACTUALLY APPEARED: a declaration, a keyword argument,
+#: a JSON or object key, or an attribute read. Never the bare English word —
+#: three senses of it survive (`measurement_key.retired_senses`), and a gate
+#: that condemned those would be suppressed rather than obeyed.
+FIELD = re.compile(
+    r"""(?<![0-9A-Za-z_])(?:total_)?units(?![0-9A-Za-z_])[ \t]*[:=](?!=)
+      | \.(?:total_)?units(?![0-9A-Za-z_])
+      | ["'`](?:total_)?units["'`]
+    """, re.VERBOSE)
+
+#: A file that still carries the word field-shaped, in a sense that survives:
+#: the quantity a rate card was fed, recorded per measured key inside a pricing
+#: receipt. That is rate arithmetic, and slice 4's to rename. It is NOT in
+#: READERS, and the control below requires the matcher to find it there — which
+#: is what makes "sense-scoped" a fact about this module rather than a claim in
+#: its docstring.
+SURVIVING_SENSE = ("ubb-platform/apps/metering/pricing/services/"
+                   "pricing_service.py")
+
+#: The singular. Slice 2's own canonical concept, and the reason the plural
+#: could be retired as a sense at all — the sweep matches whole tokens, and `_`
+#: is an identifier character.
+SINGULAR = "unit"
+
+
+def _read(relative):
+    return (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+
+def _schema_properties(node, path=""):
+    """Every `properties` key in a JSON Schema document, by JSON pointer."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "properties" and isinstance(value, dict):
+                for name in value:
+                    yield f"{path}/properties/{name}"
+            yield from _schema_properties(value, f"{path}/{key}")
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            yield from _schema_properties(value, f"{path}/{index}")
+
+
+@pytest.mark.parametrize("relative", sorted(READERS))
+def test_no_named_reader_still_reads_the_inline_total(relative):
+    """THE GATE, one reader at a time.
+
+    Parametrized rather than accumulated so a survivor names itself in the test
+    id: this list is long enough that a single failure listing seventeen paths
+    would be read as "the gate is broken" rather than "this file is".
+    """
+    hits = [f"{number}: {line.strip()}"
+            for number, line in enumerate(_read(relative).splitlines(), 1)
+            if FIELD.search(line)]
+
+    assert not hits, (
+        f"`{relative}` still reads the retired inline total ({READERS[relative]}"
+        f"). The column is gone, so this cannot be resolving against anything:\n"
+        + "\n".join(f"  {hit}" for hit in hits))
+
+
+@pytest.mark.parametrize("relative", DOCUMENTS)
+def test_no_published_schema_still_carries_the_field(relative):
+    """The structural half, and the one that actually binds.
+
+    A property of this name in either document is a field a generated client
+    still exposes — which is the whole failure mode, and the reason dropping it
+    needed a reviewed break block of its own. Walked rather than grepped: the
+    question is about the document's shape, and there is exactly one way to ask
+    it that a reformatted file cannot answer differently.
+    """
+    document = json.loads(_read(relative))
+    carried = [pointer for pointer in _schema_properties(document)
+               if pointer.rsplit("/", 1)[-1] in NAMES]
+
+    assert not carried, (
+        f"`{relative}` still publishes the retired inline total:\n"
+        + "\n".join(f"  {pointer}" for pointer in carried))
+
+
+def test_the_column_is_gone_from_the_posting():
+    """The column itself, stated separately from the file it lived in.
+
+    The reader gate above would pass on a file that had merely stopped spelling
+    it field-shaped. This asks the narrower question the migration answers: is
+    there a model field of that name at all?
+    """
+    source = _read("ubb-platform/apps/metering/usage/models.py")
+    declarations = [line.strip() for line in source.splitlines()
+                    if re.match(r"\s*(total_)?units\s*=\s*models\.", line)]
+
+    assert not declarations, (
+        "the Posting still declares the retired inline total as a column: "
+        + "; ".join(declarations))
+
+
+def test_the_singular_survives_and_still_resolves():
+    """The other half of the ruling, and the half a reader will doubt.
+
+    The plural was retired as a sense precisely BECAUSE the singular is this
+    slice's own canonical concept, serving a declared measurement's unit. If it
+    had gone too, this whole module would be proving a demolition nobody
+    ordered.
+    """
+    registry = load_registry(REAL_REGISTRY, REPO_ROOT)
+
+    assert SINGULAR in registry.concepts, (
+        "the singular concept is gone from the registry, so the plural was not "
+        "retired in favour of anything")
+    assert registry.concepts[SINGULAR].kind == "open"
+
+
+def test_the_singular_is_still_served_on_the_contract():
+    """And it still reaches a tenant.
+
+    A concept that resolves in the registry but appears on no published schema
+    would satisfy the test above while the surface it names had quietly gone —
+    which is the shape of every absence check this repository has had to repair.
+    """
+    document = json.loads(_read("openapi/v1.json"))
+    marked = json.dumps(document).count(f'"x-ubb-concept": "{SINGULAR}"')
+
+    assert marked, ("no published schema advertises the singular concept, so "
+                    "nothing serves what replaced the retired field")
+
+
+@pytest.mark.parametrize("relative", sorted(READERS) + list(DOCUMENTS))
+def test_each_named_reader_was_actually_read(relative):
+    """The vacuity guard, per path.
+
+    An absence proved over a file that no longer exists is no proof at all, and
+    a renamed module would give exactly that — green, forever, about nothing.
+    """
+    path = REPO_ROOT / relative
+    assert path.is_file(), f"{relative} does not exist"
+    assert path.stat().st_size, f"{relative} is empty"
+
+
+def test_the_control_the_surviving_sense_is_untouched():
+    """The positive control, and the statement of scope in one assertion.
+
+    The same matcher, fired at a file that still carries the word field-shaped
+    in the rate-arithmetic sense. It must FIND it. That proves two things at
+    once: the matcher is not silently matching nothing (without which every
+    assertion above is vacuous), and this gate is scoped to a sense rather than
+    banning a word the registry says survives in three of them.
+    """
+    assert FIELD.search(_read(SURVIVING_SENSE)), (
+        f"the matcher found nothing in {SURVIVING_SENSE}, where the surviving "
+        f"rate-arithmetic sense still spells the word as a receipt key — so it "
+        f"would not have found the retired sense either")
+    assert SURVIVING_SENSE not in READERS, (
+        "the surviving sense's own file was added to the reader list, which "
+        "would condemn a spelling slice 4 owns")
+
+
+def test_the_control_the_match_is_field_shaped():
+    """What the matcher decided, pinned.
+
+    An absence check that over-fires gets suppressed rather than obeyed, and
+    this one is aimed at a word with three live senses — so the near misses are
+    the point, not a formality. Every string below appears in the tree today.
+    """
+    for field_shaped in ('units = models.BigIntegerField(null=True)',
+                         'units=item.units', '"units": e.units',
+                         'total_units: int', '{row.units ?? "—"}',
+                         'summary["total_units"]', 'the `units` unit'):
+        assert FIELD.search(field_shaped), field_shaped
+
+    for near_miss in ("minor_units", "major_units_decimal", "whole_minor_units",
+                      "units_val", "units_sum", "top-level units of work",
+                      "per 1K units", "different units, so each ceiling"):
+        assert not FIELD.search(near_miss), near_miss
