@@ -1148,14 +1148,29 @@ class TenantInvoiceListResponse(Paginated[TenantInvoiceOut]):
 # placeholder is the cost that rule exists to refuse. Internal scaffolding is
 # permitted; public scaffolding is not.
 #
-# THE THREE MARKERS BELOW ARE THE FIRST CLOSED CONCEPTS THIS CONTRACT
-# ADVERTISES BEYOND THE TENANT'S PRODUCT LIST. Each renders as a real `enum`
-# rather than an `x-ubb-known-values` block, because all three are `closed` —
-# `tools/known_values/document.py::_representation` chooses on exactly that,
-# and the open kind's first appearance is #268's. The order that got them here
-# is not a matter of taste: the backend consumer was converted first (#262,
-# #263, #266), and marking a field before its consumer serves the concept is a
-# RED export naming the field's JSON pointer, never a silent no-op.
+# THE MARKERS BELOW ARE THE CONCEPTS THIS CONTRACT ADVERTISES BEYOND THE
+# TENANT'S PRODUCT LIST, and they come in BOTH KINDS. The kind is the whole
+# difference in what a client sees:
+#
+#   closed (#267)  a real `enum`. UBB owns the whole value set, so the schema
+#                  says so and a client may switch on it exhaustively.
+#   open   (#268)  an `x-ubb-known-values` block beside an untouched
+#                  `type: string`. The values are what UBB has MET, never what
+#                  it will accept — so UBB meeting a new one is not a change to
+#                  this document, which is exactly what an `enum` here would
+#                  make it (ADR-0003).
+#
+# Nothing in this file chooses between them: the field names a concept and
+# `tools/known_values/document.py::_representation` reads the kind off the
+# registry. A field cannot agree with the registry by coincidence, because it
+# spells nothing the registry could disagree with.
+#
+# The order that got them here is not a matter of taste either: the backend
+# consumer was converted first — #262 for `costing_method` and
+# `source_shape_id`, #263 for `source_kind` and `unit`, #266 for
+# `amount_representation` — and marking a field before its consumer serves the
+# concept is a RED export naming the field's JSON pointer, never a silent
+# no-op.
 
 #: How an Event Type's supplier COGS is derived. `closed` — UBB owns both
 #: values — so the export writes a real `enum` here from
@@ -1180,6 +1195,23 @@ SourceKind = Annotated[
 #: hand-written in a repository UBB never sees.
 AmountRepresentation = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "amount_representation"})]
+
+#: What one declared quantity is counted in. `open`, so the export writes an
+#: `x-ubb-known-values` block here and NOT an `enum`: the five spellings UBB
+#: holds are what it has met, and a tenant declaring a sixth is a normal
+#: declaration rather than a refusal. UBB says a spelling looks like a near
+#: miss and changes nothing — advice, at the model, never a constraint on the
+#: wire (#193 §C5).
+Unit = Annotated[str, Field(json_schema_extra={"x-ubb-concept": "unit"})]
+
+#: Which provider response shape a tenant's declared paths are written against.
+#: `open` for the reason a closed one would cost: every new supplier SDK, and
+#: every materially changed response shape, would need a schema migration and a
+#: re-generated client. UBB checks a path against a shape it recognises and
+#: warns; a shape it does not recognise is a tenant's own wrapper, named by
+#: `source_shape_label` beside it, and is supported rather than blocked.
+SourceShapeId = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "source_shape_id"})]
 
 
 class ProviderIn(Schema):
@@ -1248,7 +1280,10 @@ class MeasurementIn(Schema):
     """
     display_name: str = Field(default="", max_length=200)
     value_type: str = Field(max_length=16)
-    unit: str = Field(max_length=64)
+    #: `max_length` bounds how LONG a unit may be, which the column behind it
+    #: already does. It says nothing about which spellings UBB knows, and the
+    #: block beside it says nothing about which ones it accepts.
+    unit: Unit = Field(max_length=64)
     required_for_costing: bool = False
     source_kind: SourceKind
     #: Canonical segments — `["usage_metadata", "prompt_token_count"]` — never
@@ -1261,7 +1296,7 @@ class MeasurementOut(Schema):
     code: str
     display_name: str
     value_type: str
-    unit: str
+    unit: Unit
     required_for_costing: bool
     source_kind: SourceKind
     source_path: List[str]
@@ -1350,7 +1385,11 @@ class EventTypeIn(Schema):
     #: fictitious Provider is a defect, not a workaround.
     provider_key: Optional[str] = Field(default=None, max_length=64)
     category_key: Optional[str] = Field(default=None, max_length=64)
-    source_shape_id: str = Field(default="", max_length=100)
+    source_shape_id: SourceShapeId = Field(default="", max_length=100)
+    #: Deliberately UNMARKED, and it is the pair with the field above that
+    #: makes the point: this is prose a human typed for a wrapper of their own,
+    #: registered `free_text`, and a concept with no values contributes nothing
+    #: to the contract. A block here would advertise a set that does not exist.
     source_shape_label: str = Field(default="", max_length=200)
 
 
@@ -1373,7 +1412,8 @@ class EventTypeUpdateIn(Schema):
     costing_method: Optional[CostingMethod] = None
     provider_key: Optional[str] = Field(default=None, max_length=64)
     category_key: Optional[str] = Field(default=None, max_length=64)
-    source_shape_id: Optional[str] = Field(default=None, max_length=100)
+    source_shape_id: Optional[SourceShapeId] = Field(default=None,
+                                                     max_length=100)
     source_shape_label: Optional[str] = Field(default=None, max_length=200)
 
 
@@ -1382,14 +1422,15 @@ class EventTypeOut(Schema):
     costing_method: CostingMethod
     provider_key: Optional[str] = None
     category_key: Optional[str] = None
-    source_shape_id: str
+    source_shape_id: SourceShapeId
     source_shape_label: str
     #: `draft` or `published`. Deliberately UNMARKED: `declaration_status`
     #: declares no `openapi` consumer in the registry, and the applier refuses
     #: a marker for a concept that contributes nothing rather than emitting an
-    #: empty one. This ticket owns three concepts by name and no more. The
-    #: FIELD is still final under ADR-0007 §3 — gaining an `enum` later is
-    #: additive, and its values are already the registry's.
+    #: empty one. A field is marked by the ticket that declares its concept's
+    #: contract consumer, never by one passing nearby. The FIELD is still final
+    #: under ADR-0007 §3 — gaining an `enum` later is additive, and its values
+    #: are already the registry's.
     declaration_status: str
     #: Bumped by each publication that pins something different. A tenant's
     #: generated code was generated against a revision, so the revision is what

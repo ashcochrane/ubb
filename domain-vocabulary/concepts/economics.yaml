@@ -471,15 +471,31 @@ unit:
     - byte
   allow_unknown: true
   label_key_prefix: unit
-  # The backend consumer arrives with the field (#263). It holds the five by
+  # The backend consumer arrived with the field (#263). It holds the five by
   # reference in order to notice a NEAR MISS — `Tokens` where UBB spells
   # `token` — and to say so and change nothing: one noun spelled two ways
   # across two declarations reads as two different things on one invoice. It
   # never refuses a spelling, because the set does not bound what a tenant may
-  # measure. The contract consumer arrives with the field it marks (#268).
+  # measure.
+  #
+  # THE CONTRACT CONSUMER ARRIVED WITH THE FIELD IT MARKS (#268), on the same
+  # rule the three closed sets above followed and for the same mechanical
+  # reason: `known_values.document.decide` reads "advertised" from the CENSUS
+  # alone, so a declared contract consumer plus a serving backend requires a
+  # marked field in the committed contract NOW. `MeasurementIn.unit` and
+  # `MeasurementOut.unit` are the fields.
+  #
+  # WHAT IT RENDERS IS THE DIFFERENCE. Being `open`, this reaches the contract
+  # as an `x-ubb-known-values` block beside an untouched `type: string` — the
+  # first of that kind the published document has ever carried, and never an
+  # `enum`. Which is the whole point of the ruling above: an enum would make
+  # UBB meeting a sixth unit a breaking change to every generated client, for a
+  # set that was never meant to bound anything.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
+    - surface: openapi
+      path: openapi/v1.json
 
 declaration_status:
   kind: closed
@@ -576,9 +592,25 @@ source_shape_id:
     - custom
   allow_unknown: true
   label_key_prefix: source_shape_id
+  # THE CONTRACT CONSUMER ARRIVED WITH THE FIELD IT MARKS (#268), beside `unit`
+  # above and for the reason stated there. It marks THREE fields — the Event
+  # Type's declaration, its update and its representation — and that count is
+  # the ruling: the shape is declared ONCE at the Event Type, so a marker on a
+  # Measurement would say on the published contract that two quantities beneath
+  # one declaration may disagree about which client they are mapped to.
+  #
+  # It renders an `x-ubb-known-values` block rather than an `enum`, which is
+  # what makes the paragraph above expressible on the wire: the four shapes are
+  # the ones UBB can check a path against, and a fifth — a tenant's own wrapper,
+  # accompanied by `source_shape_label` — is a supported declaration rather than
+  # a value the contract refuses. A closed enumeration here would need a schema
+  # migration for every new supplier SDK, which is precisely the trade the kind
+  # was chosen to avoid.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
+    - surface: openapi
+      path: openapi/v1.json
 
 source_shape_label:
   kind: free_text
