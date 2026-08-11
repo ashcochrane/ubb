@@ -184,6 +184,39 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         self.assertEqual(PostingMeasurement.objects.count(), 1)
 
 
+class TheNullabilityAsymmetryTest(TestCase):
+    """The measurements go optional here; the two cost columns do not.
+
+    It reads like an inconsistency and it is the rule: **each field goes
+    nullable in the slice that owns its meaning.** Slice 2 owns whether a
+    posting has measurements, so the measurements become optional now. Slices 3
+    and 4 own whether a cost is *resolved*, and until then a cost column that
+    went nullable would be saying something no slice has decided — `NULL` for
+    "not resolved" is exactly the distinction `RESOLVE_ONCE` is being built to
+    carry, and pre-announcing it here would be a second break to repair the
+    first (ADR-0007 §3).
+    """
+
+    def test_the_measurements_are_optional(self):
+        tenant, customer = _tenant_and_customer()
+        posting = Posting.objects.create(
+            tenant=tenant, customer=customer, request_id="r",
+            idempotency_key="i")
+        # 0..1, and the zero is reachable: the row commits and reads back with
+        # no child, which is what "optional" means for a record whose
+        # optionality is carried by the relation rather than by a NULL.
+        self.assertEqual(Posting.objects.filter(pk=posting.pk).count(), 1)
+        self.assertFalse(
+            PostingMeasurement.objects.filter(posting=posting).exists())
+
+    def test_the_two_cost_columns_are_untouched_and_still_non_nullable(self):
+        for name in ("provider_cost_micros", "billed_cost_micros"):
+            with self.subTest(column=name):
+                field = Posting._meta.get_field(name)
+                self.assertFalse(field.null)
+                self.assertEqual(field.default, 0)
+
+
 class TheHorizonHasNoClockBehindItTest(TestCase):
     """`prunable_at` is a column. There is no policy anywhere behind it."""
 

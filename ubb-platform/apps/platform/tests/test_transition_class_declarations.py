@@ -27,10 +27,16 @@ green either way.
 from django.apps import apps
 from django.test import SimpleTestCase
 
-from apps.metering.usage.models import PostingMeasurement
 from core.transitions import (
     DATABASE_DEFENDED, FROZEN, RECORD_RULE, RESOLVE_ONCE,
     columns_declared_into_defended_classes)
+
+#: The first record to declare anything, named as a STRING and reached through
+#: the app registry. `apps/platform/**` never imports a product
+#: (`docs/conventions/coding-standards.md`), and a kernel-side gate whose
+#: subject is a product model is exactly where that rule gets bent quietly —
+#: the boundary walker skips `tests/`, so nothing would catch it.
+FIRST_DECLARER = "PostingMeasurement"
 
 
 def _declaring_models():
@@ -54,7 +60,7 @@ class TransitionClassDeclarationsTest(SimpleTestCase):
         for a tree it never looked at.
         """
         declaring = _declaring_models()
-        self.assertIn(PostingMeasurement, declaring)
+        self.assertIn(FIRST_DECLARER, {model.__name__ for model in declaring})
         columns = {column for model in declaring
                    for column in model.transition_classes}
         self.assertGreaterEqual(len(columns), 4)
@@ -78,7 +84,8 @@ class TransitionClassDeclarationsTest(SimpleTestCase):
             [("Protected", "currency", FROZEN),
              ("Protected", "provider_cost_micros", RESOLVE_ONCE)])
 
-    def test_every_declared_class_is_one_of_the_known_ones(self):
+    def test_every_declaration_is_one_of_the_known_answers(self):
+        """The four classes, or the record rule that is not one of them."""
         known = DATABASE_DEFENDED | {RECORD_RULE}
         for model in _declaring_models():
             with self.subTest(model=model.__name__):

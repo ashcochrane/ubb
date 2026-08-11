@@ -499,7 +499,11 @@ class UsageService:
         BEFORE calling this, so a DimensionError is the whole-request/whole-
         item rejection and never reaches here."""
         validate_tags(tags)
-        existing = Posting.objects.filter(
+        # select_related on the measurement child (#270): a replay's response
+        # carries the ORIGINAL quantities, which the posting now reads through
+        # the child — and the replay path is the hot one, so it pays for that
+        # read here rather than a second query per retry.
+        existing = Posting.objects.select_related("measurement").filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
             # Replay wins BEFORE effective_at validation: a whole-batch retry
@@ -544,7 +548,7 @@ class UsageService:
             # IntegrityError propagates as the hard failure it is (it cannot
             # be a replay: our own row exists), exactly as on main.
             try:
-                existing = Posting.objects.get(
+                existing = Posting.objects.select_related("measurement").get(
                     tenant=tenant, customer=customer, idempotency_key=idempotency_key)
             except Posting.DoesNotExist:
                 # Not the idempotency duplicate — some other insert inside the

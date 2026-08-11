@@ -9,6 +9,21 @@ it claims to move, and Django emits them in exactly that order if you let it.
 The reverse carries the data back the same way, and is exercised against a real
 database in ``tests/test_posting_measurement.py`` rather than being asserted to
 exist. A reverse nobody has run is a ``noop`` with better manners.
+
+**EVERY POSTING THE FOLD SEES GETS A CHILD, AND THAT IS NOT THE EMPTY RECORD THE
+SPLIT FORBIDS.** The rule is that a *synthetic charge* posting — a Task sold at
+one agreed price — has no measurement record, so that absence is expressed by
+absence. No such posting exists: the `kind` discriminator is a declared concept
+in `core/vocabulary.py` and not yet a column, and nothing in this repository
+projects a Charge into a posting. Every row this migration can see is therefore
+a metered one, whose child is correct, and `{}` is what those rows already
+stored inline.
+
+Skipping rows with an empty bag would be the wrong repair: it would invent a
+discriminator out of "the caller sent no quantities", which is a different fact
+and one the split exists to keep separable. **The slice that adds `kind` owns
+whatever backfill its own rows need** — recorded here rather than left for
+someone to rediscover from the absence of a filter.
 """
 
 import uuid
@@ -40,15 +55,23 @@ def fold_the_measurements_into_the_child(apps, schema_editor):
 def unfold_the_measurements_onto_the_posting(apps, schema_editor):
     """The bags go back inline, and the child records go away.
 
-    ``QuerySet.update`` rather than ``save()``: the posting's own save guard
-    refuses any non-adding write, and a historical model would not carry it
-    anyway. Reversing a move must not be the one path that loses the data.
+    ``bulk_update`` rather than ``save()``: the posting's own save guard refuses
+    any non-adding write, and a historical model would not carry it anyway.
+    Batched rather than row-at-a-time because this is the highest-volume table
+    in the system — one statement per thousand rows, not one per row.
+    Reversing a move must not be the one path that loses the data.
     """
     Posting = apps.get_model("usage", "Posting")
     PostingMeasurement = apps.get_model("usage", "PostingMeasurement")
+    batch = []
     for measurement in PostingMeasurement.objects.iterator(chunk_size=1000):
-        Posting.objects.filter(pk=measurement.posting_id).update(
-            usage_metrics=measurement.usage_metrics)
+        batch.append(Posting(pk=measurement.posting_id,
+                             usage_metrics=measurement.usage_metrics))
+        if len(batch) == 1000:
+            Posting.objects.bulk_update(batch, ["usage_metrics"])
+            batch = []
+    if batch:
+        Posting.objects.bulk_update(batch, ["usage_metrics"])
     PostingMeasurement.objects.all().delete()
 
 

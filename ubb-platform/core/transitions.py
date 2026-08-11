@@ -15,10 +15,17 @@ it must read lands in slice 3 and the other in slice 4. Nothing in this module
 installs a trigger, a rule or a ``CHECK``; it lets a column say what it is so
 that the gate which will hold it to that has a subject when it arrives.
 
-``DATABASE_DEFENDED`` is therefore the load-bearing name here. It is the set of
-classes G19 will defend, and while G19's manifest row still reads *"No column is
-declared into a transition class yet"*, no column may be declared into one of
-them — see ``RECORD_RULE`` for the alternative a whole-record lifecycle takes.
+**There are four transition classes and this module adds none.** ADR-0007 §2
+enumerates them and they are the whole vocabulary; `RECORD_RULE` below is not a
+fifth, and nothing here should be read as amending that ADR. It is what a column
+declares when it has *no* class — so that "declared into none, and here is what
+governs it instead" is written down rather than merely absent.
+
+That distinction is load-bearing for more than tidiness. G19's manifest row
+reads *"No column is declared into a transition class yet"*, and that sentence
+is still true with this module in the tree: `DATABASE_DEFENDED` is empty of
+declarers, and a `RECORD_RULE` column is one that declined a class rather than
+took one. Slice 3 is still the first slice with a protected column.
 """
 
 #: The four classes of ADR-0007 §2, in the order that document states them.
@@ -28,11 +35,11 @@ RESOLVE_ONCE = "resolve_once"    #: unresolved/NULL -> one terminal value, once
 SET_ONCE = "set_once"            #: NULL -> value, once
 PRUNABLE = "prunable"            #: populated -> pruned, after the horizon only
 
-#: What G19 defends. A column declared into any of these is a protected column,
-#: and slice 3 ships the first one.
+#: What G19 defends — the four, and only the four. A column declared into any of
+#: these is a protected column, and slice 3 ships the first one.
 DATABASE_DEFENDED = frozenset({FROZEN, RESOLVE_ONCE, SET_ONCE, PRUNABLE})
 
-#: Not one of the four, and deliberately outside ``DATABASE_DEFENDED``.
+#: **Not a class — the absence of one, said out loud.**
 #:
 #: A record whose *whole lifecycle* is a single rule — inserted once, never
 #: updated, deleted only under a stated condition — has no per-column
@@ -40,16 +47,15 @@ DATABASE_DEFENDED = frozenset({FROZEN, RESOLVE_ONCE, SET_ONCE, PRUNABLE})
 #: measurement split decision (§4) rules exactly this for the measurement child:
 #: *"the child needs no transition classes, because it has no lifecycle"*, and
 #: *"``UPDATE`` being categorically prohibited is a simpler rule to enforce and
-#: to test than any per-column scheme"*.
+#: to test than any per-column scheme"*. Its own amended table is *"three
+#: classes on the posting and one whole-record rule on the child"* — the rule
+#: sits beside the classes rather than among them, and so does this constant.
 #:
-#: So its columns are declared, as ADR-0007 §2 requires every column to be, and
-#: what they are declared into is the record's own rule rather than a class of
-#: their own. The record states that rule in its docstring; this constant is how
-#: each column points at it.
+#: A column carrying it has still answered ADR-0007 §2's question, which is what
+#: the ADR asks for: *what is allowed to happen to this?* The answer is "nothing
+#: this column decides — read the record's rule", and the record states that
+#: rule in its docstring.
 RECORD_RULE = "record_rule"
-
-#: Every class a column may be declared into.
-TRANSITION_CLASSES = DATABASE_DEFENDED | {RECORD_RULE}
 
 
 def columns_declared_into_defended_classes(models):

@@ -67,10 +67,28 @@ The HTTP layer is **Django Ninja** under `api/v1` and per-product `apps/*/api` �
 composition layer, so it may import any product. Keep business logic in product services; endpoints
 wire and validate.
 
+## Declared transition classes
+
+- **A model holding economic facts declares, per column, what may happen to it** — ADR-0007 §2's
+  four classes (`FROZEN`, `RESOLVE_ONCE`, `SET_ONCE`, `PRUNABLE`), spelled from `core/transitions.py`
+  in a `transition_classes = {field_name: CLASS}` mapping beside the fields. The point is answering
+  "what is allowed to happen to this?" before the column ships.
+- **A record whose whole lifecycle is one rule declares `RECORD_RULE` instead**, which is *not* a
+  fifth class — it is the absence of a per-column one, said out loud, with the rule itself written in
+  the model's docstring. `PostingMeasurement` is the first (insert once, never update, delete only at
+  or after its horizon).
+- **Declaring is not enforcing.** The database enforcement is gate G19, `owned_by_slice_3`; until it
+  lands, a `DATABASE_DEFENDED` class would be a promise nothing keeps.
+  `apps/platform/tests/test_transition_class_declarations.py` is what holds that line.
+
 ## Migrations
 
 - `makemigrations` for every model change; commit the migration with the change. CI runs against a
   fresh DB, so a missing migration fails there.
+- **A column that moves to another table carries its data** (ADR-0007 §1). The autodetector emits the
+  `RemoveField` *before* the `CreateModel`, which is an add-plus-remove that empties what it claims to
+  move — hand-order it create → `RunPython` → remove, and give the `RunPython` a real reverse that a
+  test actually runs. See `usage/migrations/0031_the_measurements_become_a_child_record.py`.
 - **Migration numbers must not collide.** ADR-001 records a fork whose rival pricing schema carried
   colliding migration numbers on top of the live RateCard engine — never merge migrations that
   renumber onto shipped ones; rebase them to follow the current head.
