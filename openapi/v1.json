@@ -12290,7 +12290,7 @@
     },
     "/api/v1/metering/tasks/{task_id}": {
       "get": {
-        "description": "One unit's cost receipt plus its subtask tree.\n\nReads the rollups `TaskService.accumulate_cost` maintains \u2014 including\nevents that landed after a kill \u2014 so this never aggregates\nubb_usage_event. One indexed row read plus its children.",
+        "description": "One unit's cost receipt plus its subtask tree.\n\nReads the rollups `TaskService.accumulate_cost` maintains \u2014 including\nevents that landed after a kill \u2014 so this never aggregates\nubb_posting. One indexed row read plus its children.",
         "operationId": "api_v1_metering_endpoints_get_task",
         "parameters": [
           {

@@ -176,7 +176,7 @@ class SandboxResetTest(TestCase):
         """Customers (business + pooled seat + soft-deleted seat), wallet money,
         usage, an outbox event — the rows a reset must wipe."""
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
 
         biz = Customer.objects.create(
             tenant=tenant, external_id=f"{ext_prefix}biz",
@@ -195,7 +195,7 @@ class SandboxResetTest(TestCase):
         WalletTransaction.objects.create(
             wallet=wallet, transaction_type="TOP_UP", amount_micros=5_000_000,
             balance_after_micros=5_000_000, idempotency_key=f"{ext_prefix}seed")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=tenant, customer=seat, request_id=f"{ext_prefix}r1",
             idempotency_key=f"{ext_prefix}k1", provider_cost_micros=100,
             billed_cost_micros=120)
@@ -216,14 +216,14 @@ class SandboxResetTest(TestCase):
 
     def _live_counts(self):
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
 
         return {
             "customers": Customer.all_objects.filter(tenant=self.live).count(),
             "wallets": Wallet.all_objects.filter(customer__tenant=self.live).count(),
             "txns": WalletTransaction.objects.filter(
                 wallet__customer__tenant=self.live).count(),
-            "usage": UsageEvent.objects.filter(tenant=self.live).count(),
+            "usage": Posting.objects.filter(tenant=self.live).count(),
             "outbox": OutboxEvent.objects.filter(tenant_id=self.live.id).count(),
         }
 
@@ -231,7 +231,7 @@ class SandboxResetTest(TestCase):
         from apps.billing.gating.models import BudgetConfig
         from apps.billing.wallets.models import Wallet, WalletTransaction
         from apps.metering.pricing.models import Rate
-        from apps.metering.usage.models import UsageEvent
+        from apps.metering.usage.models import Posting
 
         self._seed_domain_rows(self.sandbox, "sb-")
         self._seed_config_rows(self.sandbox)
@@ -249,7 +249,7 @@ class SandboxResetTest(TestCase):
             Wallet.all_objects.filter(customer__tenant=self.sandbox).count(), 0)
         self.assertEqual(WalletTransaction.objects.filter(
             wallet__customer__tenant=self.sandbox).count(), 0)
-        self.assertEqual(UsageEvent.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(Posting.objects.filter(tenant=self.sandbox).count(), 0)
 
         # Config preserved
         self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 1)

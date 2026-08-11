@@ -15,7 +15,7 @@ from django.core.cache import cache
 from django.test import Client, TestCase
 
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -73,7 +73,7 @@ class BrokerDownAtAcceptTest(TestCase):
                 )
         self.assertEqual(resp.status_code, 200)
         event_id = resp.json()["event_id"]
-        self.assertTrue(UsageEvent.objects.filter(id=event_id).exists())
+        self.assertTrue(Posting.objects.filter(id=event_id).exists())
         row = OutboxEvent.objects.get(
             event_type="usage.recorded", payload__event_id=event_id)
         self.assertEqual(row.status, "pending")

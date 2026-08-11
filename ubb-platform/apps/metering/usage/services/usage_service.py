@@ -9,7 +9,7 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
-from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
+from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 
@@ -205,7 +205,7 @@ def _tag_stop_context(event, **builder_kwargs):
     from apps.metering.usage.services.stop_context import build_stop_context
     ctx = build_stop_context(**builder_kwargs)
     if ctx is not None:
-        UsageEvent.objects.filter(id=event.id).update(stop_context=ctx)
+        Posting.objects.filter(id=event.id).update(stop_context=ctx)
         event.stop_context = ctx
 
 
@@ -385,7 +385,7 @@ class UsageService:
                 create_kwargs = {}
                 if inp.effective_at is not None:
                     create_kwargs["effective_at"] = inp.effective_at
-                event = UsageEvent.objects.create(
+                event = Posting.objects.create(
                     tenant=tenant, customer=customer, request_id=inp.request_id,
                     idempotency_key=inp.idempotency_key, metadata=inp.metadata,
                     event_type=inp.event_type, provider=inp.provider,
@@ -485,7 +485,7 @@ class UsageService:
         BEFORE calling this, so a DimensionError is the whole-request/whole-
         item rejection and never reaches here."""
         validate_tags(tags)
-        existing = UsageEvent.objects.filter(
+        existing = Posting.objects.filter(
             tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
         if existing:
             # Replay wins BEFORE effective_at validation: a whole-batch retry
@@ -530,9 +530,9 @@ class UsageService:
             # IntegrityError propagates as the hard failure it is (it cannot
             # be a replay: our own row exists), exactly as on main.
             try:
-                existing = UsageEvent.objects.get(
+                existing = Posting.objects.get(
                     tenant=tenant, customer=customer, idempotency_key=idempotency_key)
-            except UsageEvent.DoesNotExist:
+            except Posting.DoesNotExist:
                 # Not the idempotency duplicate — some other insert inside the
                 # savepoint failed (counter/task machinery). Surface the original
                 # IntegrityError attributably instead of masking it as a replay

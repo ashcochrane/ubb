@@ -40,7 +40,7 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
     from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
 
     # Task 7: pin the billing owner at creation, exactly like
-    # Task.billing_owner_id / UsageEvent.billing_owner_id — `customer` stays
+    # Task.billing_owner_id / Posting.billing_owner_id — `customer` stays
     # the SEAT that initiated (both the tenant-admin and widget callers), but
     # the credit this attempt eventually produces (apply_topup_credit / the
     # checkout webhook) must land on the owner's wallet, not the seat's.

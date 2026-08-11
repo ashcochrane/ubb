@@ -45,7 +45,7 @@ class TopUpAttempt(BaseModel):
     )
     # Task 7 (billing-surface-correctness): the billing owner PINNED at
     # attempt creation (resolve_billing_owner), exactly like
-    # Task.billing_owner_id / UsageEvent.billing_owner_id. `customer` above
+    # Task.billing_owner_id / Posting.billing_owner_id. `customer` above
     # stays the SEAT that initiated the top-up (mirrors the audit decision
     # in Task 3: seat is the subject, owner is whose wallet moves) — both
     # credit_top_up call sites (apply_topup_credit and the Stripe checkout

@@ -3,18 +3,18 @@ import pytest
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.wallets.tasks import reconcile_usage_drawdowns
 
 
 def _old_event(t, c, owner_id, billed, key_suffix, *, effective_at=None):
-    e = UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key=key_suffix,
+    e = Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key=key_suffix,
                                   billed_cost_micros=billed, billing_owner_id=owner_id)
     # F4.2: the repair scan is ARRIVAL-basis (created_at) — age the arrival
     # time past GRACE; effective_at is irrelevant to eligibility.
     aged = timezone.now() - datetime.timedelta(hours=8)
-    UsageEvent.objects.filter(id=e.id).update(
+    Posting.objects.filter(id=e.id).update(
         created_at=aged, effective_at=effective_at if effective_at else aged)
     return e
 
@@ -53,7 +53,7 @@ class TestReconcileDrawdowns:
         t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i1",
+        Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i1",
                                   billed_cost_micros=2_000_000, billing_owner_id=c.id)  # created_at = now
         reconcile_usage_drawdowns()
         w.refresh_from_db()
@@ -85,9 +85,9 @@ class TestReconcileDrawdowns:
         t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        e = UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i1",
+        e = Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i1",
                                       billed_cost_micros=2_000_000, billing_owner_id=c.id)
-        UsageEvent.objects.filter(id=e.id).update(
+        Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=30))  # created_at stays now
         reconcile_usage_drawdowns()
         w.refresh_from_db()

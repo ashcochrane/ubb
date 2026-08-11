@@ -34,7 +34,7 @@ from django.test import TestCase, Client
 from apps.billing.gating.models import RiskConfig
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
@@ -96,7 +96,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         # recorded + billed — never rolled back.
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        event = UsageEvent.objects.get(id=body["event_id"])
+        event = Posting.objects.get(id=body["event_id"])
         self.assertEqual(event.billed_cost_micros, 15_000_000)
         self.assertEqual(event.provider_cost_micros, 11_000_000)
         self.assertEqual(event.task_id, task.id)
@@ -148,7 +148,7 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
         # Everything the deferred lane made the caller wait for is already
         # true by the time this response is readable: the exact provider cost
         # is recorded and counted, the task is killed, the event has fired.
-        event = UsageEvent.objects.get(id=resp.json()["event_id"])
+        event = Posting.objects.get(id=resp.json()["event_id"])
         self.assertEqual(event.task_id, task.id)
         self.assertEqual(event.provider_cost_micros, 12_000_000)
         task.refresh_from_db()
@@ -183,7 +183,7 @@ class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
         self.assertEqual(body["stop_scope"], "task")
 
         # The late event landed, billed, and counted into BOTH totals.
-        self.assertEqual(UsageEvent.objects.count(), 2)
+        self.assertEqual(Posting.objects.count(), 2)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
         self.assertEqual(task.total_provider_cost_micros, 13_000_000)
@@ -241,7 +241,7 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
             self.assertEqual(item["stop_reason"], "task_not_active")
 
         # Every report recorded: 3 singles + 2 batch items.
-        self.assertEqual(UsageEvent.objects.count(), 5)
+        self.assertEqual(Posting.objects.count(), 5)
         task.refresh_from_db()
         self.assertEqual(task.event_count, 5)
 
@@ -339,7 +339,7 @@ class Pin16TagFallbackRemovedTest(OneRulePinTestBase):
         self.assertIsNone(body["task_total_provider_cost_micros"])
         self.assertFalse(body["stop"])
 
-        event = UsageEvent.objects.get(id=body["event_id"])
+        event = Posting.objects.get(id=body["event_id"])
         self.assertIsNone(event.task_id)
         self.assertEqual(event.tags, {"task": str(task.id)})  # analytics only
         task.refresh_from_db()

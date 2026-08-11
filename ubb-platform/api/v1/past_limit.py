@@ -30,7 +30,7 @@ them); the report is per-seat, matching the per-customer usage surfaces.
 from django.utils.dateparse import parse_datetime
 
 from apps.billing.queries import get_stop_signal_state
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
@@ -53,7 +53,7 @@ def _bucket_events(customer, since, until):
     per episode key. Totals are NOT accumulated here — they are derived from
     the episodes the report actually includes, so a window can never show
     totals with no corresponding episode."""
-    qs = UsageEvent.objects.filter(customer=customer, stop_context__isnull=False)
+    qs = Posting.objects.filter(customer=customer, stop_context__isnull=False)
     if since is not None:
         qs = qs.filter(effective_at__gte=since)
     if until is not None:

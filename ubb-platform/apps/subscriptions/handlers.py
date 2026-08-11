@@ -26,7 +26,7 @@ def _current_period_bounds():
 def handle_usage_recorded_subscriptions(event_id, payload):
     """Accumulate provider + billed usage cost for margin. Atomic F() increment.
 
-    Buckets by the UsageEvent's effective_at so backdated / late-retry events
+    Buckets by the Posting's effective_at so backdated / late-retry events
     land in the correct month. Fast path: the payload carries effective_at
     (F4.2); legacy queued payloads without it fall back to the metering read
     contract, then to now() when event_id is absent or not a valid UUID row

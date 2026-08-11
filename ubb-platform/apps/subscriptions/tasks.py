@@ -49,7 +49,7 @@ def calculate_all_economics_task():
 @shared_task(queue="ubb_economics")
 def reconcile_cost_accumulators():
     """Source-of-truth repair: recompute each open-period CustomerCostAccumulator
-    from SUM(UsageEvent) by effective_at (mirrors reconcile_usage_drawdowns).
+    from SUM(Posting) by effective_at (mirrors reconcile_usage_drawdowns).
 
     Covers current + TWO previous calendar months: the backfill window
     (Tenant.backfill_window_days, max 60 days) can span 3 calendar months, so a

@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
-from apps.metering.usage.models import BackfillDirtyPeriod, UsageEvent
+from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService, validate_effective_at,
 )
@@ -43,7 +43,7 @@ class TestEffectiveAtBounds:
         eff = timezone.now() + timedelta(minutes=4)
         r = UsageService.record_usage(t, c, "r1", "k1",
                                       provider_cost_micros=10, effective_at=eff)
-        event = UsageEvent.objects.get(id=r["event_id"])
+        event = Posting.objects.get(id=r["event_id"])
         assert event.effective_at == eff
 
     def test_six_minutes_ahead_rejected(self):
@@ -52,13 +52,13 @@ class TestEffectiveAtBounds:
             UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
                                       effective_at=timezone.now() + timedelta(minutes=6))
         assert exc.value.code == "effective_at_in_future"
-        assert UsageEvent.objects.count() == 0
+        assert Posting.objects.count() == 0
 
     def test_default_window_33_days_accepted_35_rejected(self):
         t, c = _setup()
         ok = UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
                                        effective_at=timezone.now() - timedelta(days=33))
-        assert UsageEvent.objects.filter(id=ok["event_id"]).exists()
+        assert Posting.objects.filter(id=ok["event_id"]).exists()
         with pytest.raises(EffectiveAtError) as exc:
             UsageService.record_usage(t, c, "r2", "k2", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(days=35))
@@ -72,7 +72,7 @@ class TestEffectiveAtBounds:
         assert exc.value.code == "effective_at_too_old"
         r = UsageService.record_usage(t, c, "r2", "k2", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(days=6))
-        assert UsageEvent.objects.filter(id=r["event_id"]).exists()
+        assert Posting.objects.filter(id=r["event_id"]).exists()
 
     def test_window_zero_rejects_any_backdated(self):
         t, c = _setup(backfill_window_days=0)
@@ -94,7 +94,7 @@ class TestEffectiveAtBounds:
         t, c = _setup()
         before = timezone.now()
         r = UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10)
-        event = UsageEvent.objects.get(id=r["event_id"])
+        event = Posting.objects.get(id=r["event_id"])
         assert before <= event.effective_at <= timezone.now()
         assert abs((event.effective_at - event.created_at).total_seconds()) < 5
 
@@ -112,7 +112,7 @@ class TestEffectiveAtBounds:
         r2 = UsageService.record_usage(t, c, "r1", "dup", provider_cost_micros=10,
                                        effective_at=timezone.now() - timedelta(days=300))
         assert r2["event_id"] == r1["event_id"]
-        assert UsageEvent.objects.count() == 1
+        assert Posting.objects.count() == 1
 
 
 @pytest.mark.django_db
@@ -220,7 +220,7 @@ class TestClosedPeriodGuard:
             UsageService.record_usage(t, c, "r1", "k1",
                                       provider_cost_micros=10, effective_at=eff)
         assert exc.value.code == "billing_period_closed"
-        assert UsageEvent.objects.count() == 0
+        assert Posting.objects.count() == 0
 
     def test_genuinely_fresh_pending_empty_snapshot_accepts(self):
         """A pending row with NO frozen snapshot (and no phase/pointer) is the
@@ -233,7 +233,7 @@ class TestClosedPeriodGuard:
             status="pending")  # line_snapshot defaults to []
         r = UsageService.record_usage(t, c, "r1", "k1",
                                       provider_cost_micros=10, effective_at=eff)
-        assert UsageEvent.objects.filter(id=r["event_id"]).exists()
+        assert Posting.objects.filter(id=r["event_id"]).exists()
 
     def test_untouched_pending_row_accepts_and_push_reaggregates(self):
         """A pending row that never touched Stripe does NOT close the period,
@@ -247,7 +247,7 @@ class TestClosedPeriodGuard:
             status="pending")
         r = UsageService.record_usage(t, c, "r1", "k1",
                                       billed_cost_micros=7_000_000, effective_at=eff)
-        assert UsageEvent.objects.filter(id=r["event_id"]).exists()
+        assert Posting.objects.filter(id=r["event_id"]).exists()
         # No stripe_customer_id: Phase 1 aggregates (proving the re-aggregation
         # picks the backfill up) then skips before any Stripe call.
         result = PostpaidUsageService.push_customer_period(
@@ -331,7 +331,7 @@ class TestUsageRecordedPayload:
         payload_eff = dt.datetime.fromisoformat(evt.payload["effective_at"])
         assert payload_eff.utcoffset() == dt.timedelta(0)
         assert payload_eff == eff  # same instant
-        event = UsageEvent.objects.get(id=r["event_id"])
+        event = Posting.objects.get(id=r["event_id"])
         assert event.effective_at == eff
 
     def test_payload_present_on_default_path_too(self):

@@ -20,7 +20,7 @@ import pytest
 from django.core.cache import cache
 from django.test import Client
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -62,7 +62,7 @@ class TestEnforcementSeam:
         r2 = record("k2", 8_000_000, task_id).json()
         assert r2["stop"] is True
         assert r2["stop_reason"] == "customer_wide_stop"
-        assert UsageEvent.objects.filter(tenant=t, customer=c, idempotency_key="k2").exists()
+        assert Posting.objects.filter(tenant=t, customer=c, idempotency_key="k2").exists()
 
         # 4. Start-gate now BLOCKS a new task. #39: the winning stop transition
         #    durably suspends AT the crossing (the suspension fold), so the

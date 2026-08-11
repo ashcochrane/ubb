@@ -455,7 +455,7 @@ def test_the_walk_actually_saw_the_declaration():
                      "event_types.EventCategory", "event_types.Measurement",
                      "event_types.MeasurementConcept",
                      "event_types.ReportedCostMapping",
-                     "grouping_fields.GroupingField", "usage.UsageEvent"):
+                     "grouping_fields.GroupingField", "usage.Posting"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
     assert _FIELDS_SEEN > 300, f"only classified {_FIELDS_SEEN} fields"
     assert len(_local_fields(EventType)) >= 11, (

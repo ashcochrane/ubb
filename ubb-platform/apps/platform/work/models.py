@@ -52,10 +52,10 @@ class TaskType(BaseModel):
 
 
 class Task(BaseModel):
-    """The registered unit of agent work — groups multiple UsageEvents into a
+    """The registered unit of agent work — groups multiple Postings into a
     single logical workflow execution.
 
-    Lives in platform because both metering (UsageEvent FK) and billing
+    Lives in platform because both metering (Posting FK) and billing
     (start-gate creation, cost tracking) need to reference it without
     cross-product imports.
 
@@ -128,7 +128,7 @@ class Task(BaseModel):
     provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
 
     # Tier-2 (D4/I6): the billing owner PINNED at task creation
-    # (resolve_billing_owner), exactly like UsageEvent.billing_owner_id. The
+    # (resolve_billing_owner), exactly like Posting.billing_owner_id. The
     # concurrency-slot acquire/release and both reapers read this — they MUST
     # NOT re-resolve the owner (re-parenting would otherwise split the counter
     # or leak the slot). Nullable for back-compat with pre-Tier-2 rows.

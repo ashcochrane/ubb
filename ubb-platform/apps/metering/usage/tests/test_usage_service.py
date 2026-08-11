@@ -4,7 +4,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.services.usage_service import UsageService, _result
 
@@ -112,7 +112,7 @@ class UsageServiceCoreTest(TestCase):
         self.assertIsNone(result["new_balance_micros"])
         self.assertFalse(result["suspended"])
         # Verify event was created
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertEqual(event.billed_cost_micros, 1_000_000)
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -149,7 +149,7 @@ class UsageServiceCoreTest(TestCase):
         self.assertEqual(result1["event_id"], result2["event_id"])
         # Only one event created
         self.assertEqual(
-            UsageEvent.objects.filter(
+            Posting.objects.filter(
                 tenant=self.tenant, customer=self.customer, idempotency_key="idem_2"
             ).count(),
             1,
@@ -308,7 +308,7 @@ class UsageServiceTaskTest(TestCase):
             provider_cost_micros=1_000_000,
             task_id=task.id,
         )
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertEqual(event.task_id, task.id)
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -326,7 +326,7 @@ class UsageServiceTaskTest(TestCase):
         self.assertIsNone(result["task_id"])
         self.assertNotIn("hard_stop", result)
 
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertIsNone(event.task_id)
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -361,7 +361,7 @@ class UsageServiceTaskTest(TestCase):
 
         # The tipping event WAS created and both totals include it.
         self.assertEqual(
-            UsageEvent.objects.filter(tenant=self.tenant, customer=self.customer).count(),
+            Posting.objects.filter(tenant=self.tenant, customer=self.customer).count(),
             2,
         )
         self.assertEqual(result["task_total_billed_cost_micros"], 11_000_000)
@@ -391,7 +391,7 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(result["stop_scope"], "task")
 
         # The event still landed, billed, and counted into both totals.
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertEqual(event.task_id, task.id)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
@@ -469,18 +469,18 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(task.total_billed_cost_micros, 5_000_000)
         self.assertEqual(task.total_provider_cost_micros, 5_000_000)
         self.assertEqual(task.event_count, 1)
-        orig_filter = UsageEvent.objects.filter
+        orig_filter = Posting.objects.filter
         class _MissingFirst:
             def first(self): return None
         def _fake_filter(*args, **kwargs):
             if "idempotency_key" in kwargs:
                 return _MissingFirst()
             return orig_filter(*args, **kwargs)
-        with patch.object(UsageEvent.objects, "filter", side_effect=_fake_filter):
+        with patch.object(Posting.objects, "filter", side_effect=_fake_filter):
             UsageService.record_usage(tenant=self.tenant, customer=self.customer,
                 request_id="req_dup", idempotency_key="idem_dup",
                 provider_cost_micros=5_000_000, task_id=task.id)
-        self.assertEqual(UsageEvent.objects.filter(tenant=self.tenant, customer=self.customer,
+        self.assertEqual(Posting.objects.filter(tenant=self.tenant, customer=self.customer,
             idempotency_key="idem_dup").count(), 1)
         task.refresh_from_db()
         self.assertEqual(task.event_count, 1)

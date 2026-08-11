@@ -22,7 +22,7 @@ from django.test.utils import CaptureQueriesContext
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering import queries
 from core.time_windows import utc_day_start
 
@@ -32,13 +32,13 @@ def _utc(y, mo, d, h=0, mi=0, s=0, us=0):
 
 
 def _pin(event, effective_at):
-    """effective_at is auto_now_add and UsageEvent.save() is insert-only — a
+    """effective_at is auto_now_add and Posting.save() is insert-only — a
     queryset update bypasses both and pins the timestamp."""
-    UsageEvent.objects.filter(id=event.id).update(effective_at=effective_at)
+    Posting.objects.filter(id=event.id).update(effective_at=effective_at)
 
 
 def _seed(tenant, customer, n, effective_at, billed=1_000_000, provider_cost=600_000, **extra):
-    ev = UsageEvent.objects.create(
+    ev = Posting.objects.create(
         tenant=tenant, customer=customer,
         request_id=f"req_f21_{n}", idempotency_key=f"idem_f21_{n}",
         billed_cost_micros=billed, provider_cost_micros=provider_cost, **extra)
@@ -196,15 +196,15 @@ class PlannerIndexProofTest(TestCase):
         # Enough rows that the composite indexes win on cost by a decisive
         # multiple (single-column paths must fetch 6-8x the tuples), not a
         # coin-flip that cross-suite heap/index bloat could tip.
-        rows = [UsageEvent(tenant=self.tenant, customer=self.customers[i % 8],
+        rows = [Posting(tenant=self.tenant, customer=self.customers[i % 8],
                            request_id=f"req_pl_{i}", idempotency_key=f"idem_pl_{i}",
                            billed_cost_micros=1_000)
                 for i in range(1000)]
-        rows += [UsageEvent(tenant=self.other, customer=other_customer,
+        rows += [Posting(tenant=self.other, customer=other_customer,
                             request_id=f"req_plo_{i}", idempotency_key=f"idem_plo_{i}",
                             billed_cost_micros=1_000)
                  for i in range(1000)]
-        UsageEvent.objects.bulk_create(rows, batch_size=500)
+        Posting.objects.bulk_create(rows, batch_size=500)
         with connection.cursor() as cur:
             # Scatter effective_at (deterministically) across Jan-Jun in ONE
             # pass: heap order stays insert order, so effective_at has ~zero
@@ -214,14 +214,14 @@ class PlannerIndexProofTest(TestCase):
             # composites. The June window then selects ~17% of rows.
             cur.execute("SELECT setseed(0.42)")
             cur.execute(
-                "UPDATE ubb_usage_event SET effective_at = "
+                "UPDATE ubb_posting SET effective_at = "
                 "timestamptz '2026-01-01 00:00:00+00' "
                 "+ make_interval(days => (random() * 180)::int)")
             # F4.2: give created_at the same scatter so the arrival-basis
             # (tenant, created_at) range proof below sees a realistic
             # distribution too (bulk_create stamped every row "now").
-            cur.execute("UPDATE ubb_usage_event SET created_at = effective_at")
-            cur.execute("ANALYZE ubb_usage_event")
+            cur.execute("UPDATE ubb_posting SET created_at = effective_at")
+            cur.execute("ANALYZE ubb_posting")
             # LOCAL: scoped to the test transaction, reverted on rollback.
             # Bitmap scans are also disabled so the choice between the
             # composite btree and the single-column FK btree is decided by
@@ -246,14 +246,14 @@ class PlannerIndexProofTest(TestCase):
     # rather than tying within bloat noise on a whole-month window.
 
     def test_period_totals_window_served_by_tenant_effective_index(self):
-        qs = UsageEvent.objects.filter(
+        qs = Posting.objects.filter(
             tenant_id=self.tenant.id,
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
         self._assert_range_served_by(qs, "idx_usage_tenant_effective")
 
     def test_customer_cost_totals_window_served_by_customer_effective_index(self):
-        qs = UsageEvent.objects.filter(
+        qs = Posting.objects.filter(
             tenant_id=self.tenant.id, customer_id=self.customers[0].id,
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
@@ -264,7 +264,7 @@ class PlannerIndexProofTest(TestCase):
         (drawdown repair scans by ARRIVAL time) must be served by the
         (tenant, created_at) composite — the index added alongside the
         caller-timestamp work — with the created_at bounds as an Index Cond."""
-        qs = UsageEvent.objects.filter(
+        qs = Posting.objects.filter(
             tenant_id=self.tenant.id, billed_cost_micros__gt=0,
             created_at__gte=utc_day_start(date(2026, 6, 1)),
             created_at__lt=utc_day_start(date(2026, 6, 4)))
@@ -297,7 +297,7 @@ class TagsGinSchemaTest(TestCase):
             cur.execute("""
                 SELECT indexname, indexdef
                 FROM pg_indexes
-                WHERE tablename = 'ubb_usage_event'
+                WHERE tablename = 'ubb_posting'
                   AND indexname = 'idx_usage_event_tags_ops';
             """)
             row = cur.fetchone()
@@ -313,7 +313,7 @@ class TagsGinSchemaTest(TestCase):
             cur.execute("""
                 SELECT indexname
                 FROM pg_indexes
-                WHERE tablename = 'ubb_usage_event'
+                WHERE tablename = 'ubb_posting'
                   AND indexname = 'idx_usage_event_tags';
             """)
             row = cur.fetchone()
@@ -326,7 +326,7 @@ class TagsGinSchemaTest(TestCase):
             cur.execute("""
                 SELECT indexname
                 FROM pg_indexes
-                WHERE tablename = 'ubb_usage_event'
+                WHERE tablename = 'ubb_posting'
                   AND indexname LIKE '%tags%';
             """)
             rows = cur.fetchall()
@@ -363,15 +363,15 @@ class TagsGinPlannerProofTest(TestCase):
             tenant=self.tenant, external_id="c_f22_gin")
 
         # Haystack: 1000 rows with common tag so the rare-value needle is selective.
-        haystack = [UsageEvent(
+        haystack = [Posting(
             tenant=self.tenant, customer=self.customer,
             request_id=f"req_f22_h{i}", idempotency_key=f"idem_f22_h{i}",
             billed_cost_micros=500, tags={"env": "prod", "team": "common"})
             for i in range(1000)]
-        UsageEvent.objects.bulk_create(haystack, batch_size=500)
+        Posting.objects.bulk_create(haystack, batch_size=500)
 
         # Needle: 1 row with a rare unique tag value, plus a common key for @>.
-        self.needle = UsageEvent.objects.create(
+        self.needle = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="req_f22_needle", idempotency_key="idem_f22_needle",
             billed_cost_micros=1_000,
@@ -380,11 +380,11 @@ class TagsGinPlannerProofTest(TestCase):
         with connection.cursor() as cur:
             cur.execute("SELECT setseed(0.22)")
             cur.execute(
-                "UPDATE ubb_usage_event "
+                "UPDATE ubb_posting "
                 "SET effective_at = timestamptz '2026-01-01 00:00:00+00' "
                 "+ make_interval(days => (random() * 180)::int) "
                 "WHERE tenant_id = %s", [self.tenant.id])
-            cur.execute("ANALYZE ubb_usage_event")
+            cur.execute("ANALYZE ubb_posting")
             # Disable seqscan only; bitmapscan must stay ON because GIN indexes
             # are only accessible via Bitmap Index Scan in Postgres.
             cur.execute("SET LOCAL enable_seqscan = off")
@@ -395,7 +395,7 @@ class TagsGinPlannerProofTest(TestCase):
     def test_has_key_served_by_gin_index(self):
         """tags__has_key('rare_key') compiles to the ? operator — rare key
         means the GIN bitmap path is cheap vs. FK btree + heap filter."""
-        qs = UsageEvent.objects.filter(tags__has_key="rare_key")
+        qs = Posting.objects.filter(tags__has_key="rare_key")
         plan = self._explain(qs)
         self.assertIn(self.GIN_INDEX, plan,
                       f"GIN index not used for has_key.  Plan:\n{plan}")
@@ -403,7 +403,7 @@ class TagsGinPlannerProofTest(TestCase):
     def test_containment_served_by_same_gin_index(self):
         """tags__contains({'rare_key': ...}) compiles to @> — jsonb_ops serves
         both ? and @>, proving the swap lost nothing for containment queries."""
-        qs = UsageEvent.objects.filter(
+        qs = Posting.objects.filter(
             tags__contains={"rare_key": "unique_val_xyz"})
         plan = self._explain(qs)
         self.assertIn(self.GIN_INDEX, plan,
@@ -445,7 +445,7 @@ class TagGroupByPushdownTest(TestCase):
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="f23")
 
         def _create(n, tags, billed, provider, ts):
-            ev = UsageEvent.objects.create(
+            ev = Posting.objects.create(
                 tenant=self.tenant, customer=self.customer,
                 request_id=f"req_f23_{n}", idempotency_key=f"idem_f23_{n}",
                 billed_cost_micros=billed, provider_cost_micros=provider,
@@ -467,7 +467,7 @@ class TagGroupByPushdownTest(TestCase):
     def _old_get_dimensional_margin_tag(tenant_id, tag_key):
         """Inline replica of the pre-rewrite tag_key branch."""
         from collections import defaultdict
-        from apps.metering.usage.models import UsageEvent as UE
+        from apps.metering.usage.models import Posting as UE
 
         def _row(dim, provider, billed, count):
             return {"dimension": dim, "provider_cost_micros": provider or 0,
@@ -490,7 +490,7 @@ class TagGroupByPushdownTest(TestCase):
     def _old_by_tag(tenant_id, tag_key):
         """Inline replica of the pre-rewrite by_tag block."""
         from collections import defaultdict
-        from apps.metering.usage.models import UsageEvent as UE
+        from apps.metering.usage.models import Posting as UE
 
         agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
                                    "total_provider_cost_micros": 0})
@@ -618,7 +618,7 @@ class TagGroupByPushdownTest(TestCase):
             _, key = TenantApiKey.create_key(t, label="f23s")
             evs = []
             for i in range(n):
-                evs.append(UsageEvent(
+                evs.append(Posting(
                     tenant=t, customer=c,
                     request_id=f"req_f23s_{n}_{i}",
                     idempotency_key=f"idem_f23s_{n}_{i}",
@@ -626,7 +626,7 @@ class TagGroupByPushdownTest(TestCase):
                     provider_cost_micros=500,
                     tags={"env": "prod" if i % 2 == 0 else "staging"},
                 ))
-            UsageEvent.objects.bulk_create(evs, batch_size=200)
+            Posting.objects.bulk_create(evs, batch_size=200)
             client = Client()
             with CaptureQueriesContext(connection) as ctx:
                 resp = client.get(

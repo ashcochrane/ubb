@@ -133,7 +133,7 @@ Mutations whose replay would move money or write usage carry a **required
 `idempotency_key` body field backed by database uniqueness** (no
 `Idempotency-Key` header in v1): debit, credit, withdraw, refund, grants
 (create/void), top-ups (tenant + widget — `uq_topup_attempt_idempotency`),
-and all usage ingestion (UsageEvent uniqueness at record/settle). A replay
+and all usage ingestion (Posting uniqueness at record/settle). A replay
 is a no-op returning the original outcome, never a double effect. Entity
 creates dedupe on natural identity or answer 409 `conflict` (customers,
 plans, rate-card books, rates, webhook configs, referral attribution).

@@ -4,7 +4,7 @@ from django.db import connection
 from django.test import TestCase, Client, skipUnlessDBFeature
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 
 
@@ -27,7 +27,7 @@ class TagsValidationTest(TestCase):
             provider_cost_micros=1_000_000,
             tags={"department": "sales", "workflow_run": "wf_123"},
         )
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertEqual(event.tags, {"department": "sales", "workflow_run": "wf_123"})
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -39,7 +39,7 @@ class TagsValidationTest(TestCase):
             idempotency_key="idem_gk2",
             provider_cost_micros=1_000_000,
         )
-        event = UsageEvent.objects.get(id=result["event_id"])
+        event = Posting.objects.get(id=result["event_id"])
         self.assertIsNone(event.tags)
 
     def test_tags_max_50_keys(self):
@@ -115,7 +115,7 @@ class TagsEndpointTest(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
-        event = UsageEvent.objects.get(idempotency_key="idem_gk_ep1")
+        event = Posting.objects.get(idempotency_key="idem_gk_ep1")
         self.assertEqual(event.tags, {"department": "engineering"})
 
     @skipUnlessDBFeature("supports_json_field_contains")

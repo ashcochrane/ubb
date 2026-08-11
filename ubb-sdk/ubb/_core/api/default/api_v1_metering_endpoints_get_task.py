@@ -77,7 +77,7 @@ def sync_detailed(
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
-    ubb_usage_event. One indexed row read plus its children.
+    ubb_posting. One indexed row read plus its children.
 
     Args:
         task_id (UUID):
@@ -114,7 +114,7 @@ def sync(
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
-    ubb_usage_event. One indexed row read plus its children.
+    ubb_posting. One indexed row read plus its children.
 
     Args:
         task_id (UUID):
@@ -146,7 +146,7 @@ async def asyncio_detailed(
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
-    ubb_usage_event. One indexed row read plus its children.
+    ubb_posting. One indexed row read plus its children.
 
     Args:
         task_id (UUID):
@@ -183,7 +183,7 @@ async def asyncio(
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
-    ubb_usage_event. One indexed row read plus its children.
+    ubb_posting. One indexed row read plus its children.
 
     Args:
         task_id (UUID):

@@ -803,7 +803,7 @@ class LiveCounter:
     def budget_incr(tenant_id, customer_id, amount_micros, *, now=None):
         """INCRBY the seat's period counter; returns (old, new, label).
         Missing key: in the production drawdown path this runs AFTER the
-        UsageEvent is committed, so the durable total already INCLUDES this
+        Posting is committed, so the durable total already INCLUDES this
         event — rebuild to that total (do NOT add amount again, or we
         double-count). Redis errors propagate: the caller
         (BudgetService.record_usage_spend) is fully fail-open."""

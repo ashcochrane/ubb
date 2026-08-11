@@ -5,7 +5,7 @@ from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import RefundRequested
-from apps.metering.usage.models import UsageEvent, Refund
+from apps.metering.usage.models import Posting, Refund
 from apps.metering.handlers import handle_refund_requested
 
 
@@ -13,7 +13,7 @@ class HandleRefundRequestedTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
-        self.event = UsageEvent.objects.create(
+        self.event = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
@@ -26,14 +26,14 @@ class HandleRefundRequestedTest(TestCase):
             refund_amount_micros=1_000_000,
             reason="mistake",
         )))
-        refund = Refund.objects.get(usage_event=self.event)
+        refund = Refund.objects.get(posting=self.event)
         self.assertEqual(refund.amount_micros, 1_000_000)
         self.assertEqual(refund.reason, "mistake")
         self.assertEqual(refund.tenant_id, self.tenant.id)
         self.assertEqual(refund.customer_id, self.customer.id)
 
     def test_idempotent_on_duplicate(self):
-        """Second call for same usage_event is silently ignored."""
+        """Second call for same posting is silently ignored."""
         handle_refund_requested("evt_1", asdict(RefundRequested(
             tenant_id=self.tenant.id,
             customer_id=self.customer.id,
@@ -47,9 +47,9 @@ class HandleRefundRequestedTest(TestCase):
             usage_event_id=self.event.id,
             refund_amount_micros=1_000_000,
         )))
-        self.assertEqual(Refund.objects.filter(usage_event=self.event).count(), 1)
+        self.assertEqual(Refund.objects.filter(posting=self.event).count(), 1)
 
-    def test_missing_usage_event_is_skipped(self):
+    def test_missing_posting_is_skipped(self):
         import uuid
         handle_refund_requested("evt_1", asdict(RefundRequested(
             tenant_id=self.tenant.id,
@@ -66,10 +66,10 @@ class HandleRefundRequestedTest(TestCase):
             usage_event_id=self.event.id,
             refund_amount_micros=500_000,
         )))
-        refund = Refund.objects.get(usage_event=self.event)
+        refund = Refund.objects.get(posting=self.event)
         self.assertEqual(refund.reason, "")
 
-    def test_refund_rejects_cross_tenant_usage_event(self):
+    def test_refund_rejects_cross_tenant_posting(self):
         """Refund handler must not allow cross-tenant event access."""
         other_tenant = Tenant.objects.create(name="Other")
         handle_refund_requested("evt_cross", asdict(RefundRequested(

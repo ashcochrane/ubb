@@ -55,14 +55,14 @@ existing architecture walkers, which need the app registry loaded.
 
 A test that checks a **hardcoded date window** (e.g. `PS, PE = date(2026, 6, 1), date(2026, 7, 1)`)
 must stamp the data it expects inside that window with **explicit dates inside the window** — never
-rely on "now". `UsageEvent.effective_at` defaults to `timezone.now`, so an event created without it
+rely on "now". `Posting.effective_at` defaults to `timezone.now`, so an event created without it
 lands wherever today happens to be: the test is green all June, then goes red on July 1 when the
 clock leaves the window (this exact bomb took 27 tests red — issue #20). The idiom:
 
 ```python
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 MID = timezone.make_aware(timezone.datetime(2026, 6, 15))  # explicit, inside [PS, PE)
-UsageEvent.objects.create(..., effective_at=MID)
+Posting.objects.create(..., effective_at=MID)
 ```
 
 No freezegun/time-machine — pin the data, not the clock. There is no mechanical checker because the

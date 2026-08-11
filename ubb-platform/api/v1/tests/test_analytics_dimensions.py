@@ -9,7 +9,7 @@ from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.models import Task
 
@@ -42,7 +42,7 @@ class TestAnalyticsDimensions:
         for i, (task, dim1, cost) in enumerate([
                 (parent, "eu-west-1", 1_000), (sub, "eu-west-1", 2_000),
                 (sub, "us-east-1", 4_000)]):
-            UsageEvent.objects.create(
+            Posting.objects.create(
                 tenant=self.tenant, customer=self.customer, request_id=f"r{i}",
                 idempotency_key=f"k{i}", provider="aws_textract",
                 event_type="ocr_page", task_id=task.id,

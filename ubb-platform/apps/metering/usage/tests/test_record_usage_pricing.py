@@ -7,7 +7,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.pricing.tests._helpers import rate_in_default_book
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 
 
@@ -25,7 +25,7 @@ class TestRecordUsagePricing:
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", usage_metrics={"input_tokens": 1000})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
-        e = UsageEvent.objects.get(id=r["event_id"])
+        e = Posting.objects.get(id=r["event_id"])
         assert e.usage_metrics == {"input_tokens": 1000}
         assert e.pricing_provenance["cost_source"] == "rate_card"
 
@@ -121,7 +121,7 @@ class TestStrictCoverageUnitsOnly:
         assert resp.json()["code"] == "pricing_error"
 
     def test_strict_422_fires_before_usageevent_creation_idempotency_retry_succeeds(self):
-        """F2.4 idempotency: strict 422 fires before UsageEvent row exists.
+        """F2.4 idempotency: strict 422 fires before Posting row exists.
         A corrected retry with the same idempotency_key must succeed (no row to replay).
         """
         t, c, http, auth = self._setup(strict=True)
@@ -131,9 +131,9 @@ class TestStrictCoverageUnitsOnly:
             "units": 5,
         })
         assert resp1.status_code == 422
-        assert not UsageEvent.objects.filter(
+        assert not Posting.objects.filter(
             tenant=t, customer=c, idempotency_key="ik7").exists(), (
-            "UsageEvent must NOT exist after a strict-mode 422")
+            "Posting must NOT exist after a strict-mode 422")
 
         # Corrected retry with SAME idempotency_key: provide provider_cost_micros.
         resp2 = self._post(http, auth, c, {
@@ -143,5 +143,5 @@ class TestStrictCoverageUnitsOnly:
         assert resp2.status_code == 200, (
             f"Corrected retry must succeed (got {resp2.status_code}): {resp2.json()}")
         assert resp2.json()["provider_cost_micros"] == 500
-        assert UsageEvent.objects.filter(
+        assert Posting.objects.filter(
             tenant=t, customer=c, idempotency_key="ik7").count() == 1

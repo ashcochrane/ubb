@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from core.widget_auth import create_widget_token
 
 
@@ -31,7 +31,7 @@ class WidgetUsageSummaryTest(TestCase):
         )
 
     def _event(self, customer, key, *, event_type="", units=None, billed=0):
-        return UsageEvent.objects.create(
+        return Posting.objects.create(
             tenant=self.tenant, customer=customer,
             request_id=f"r-{key}", idempotency_key=f"i-{key}",
             event_type=event_type, units=units, billed_cost_micros=billed,
@@ -71,7 +71,7 @@ class WidgetUsageSummaryTest(TestCase):
         self._event(self.seat_a, "now", event_type="tokens", units=5, billed=50_000)
         old = self._event(self.seat_a, "old", event_type="tokens", units=99, billed=990_000)
         first_of_month = timezone.now().date().replace(day=1)
-        UsageEvent.objects.filter(id=old.id).update(
+        Posting.objects.filter(id=old.id).update(
             effective_at=timezone.now().replace(
                 year=first_of_month.year, month=first_of_month.month, day=1)
             - datetime.timedelta(days=2))
@@ -96,7 +96,7 @@ class WidgetUsageSummaryTest(TestCase):
         billing-scoped — a meter-only tenant's customers still see usage."""
         tenant = Tenant.objects.create(name="MeterOnly", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="m1")
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=tenant, customer=customer, request_id="r", idempotency_key="i",
             event_type="tokens", units=3, billed_cost_micros=30_000)
         token = create_widget_token(

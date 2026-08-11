@@ -101,7 +101,7 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
 
     # 1. Customers: seats BEFORE parents (Customer.parent is PROTECT), via the
     #    unfiltered manager (soft-deleted seats would otherwise block their
-    #    business). Queryset .delete() bypasses the insert-only UsageEvent
+    #    business). Queryset .delete() bypasses the insert-only Posting
     #    save guard; cascades take wallets, transactions, grants, usage
     #    events, runs, invoices, subscriptions, referrals etc. with them.
     Customer = django_apps.get_model("customers", "Customer")

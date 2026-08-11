@@ -2,7 +2,7 @@
 Billing-specific lock helpers.
 
 See core/locking.py for canonical lock ordering:
-    Run -> Wallet -> Customer -> TopUpAttempt -> Invoice -> UsageEvent
+    Run -> Wallet -> Customer -> TopUpAttempt -> Invoice -> Posting
 
 These helpers enforce the ordering for billing operations.
 

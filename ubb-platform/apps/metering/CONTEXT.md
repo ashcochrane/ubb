@@ -9,7 +9,7 @@ cost, and what it's billed at*. Present on every tenant. Code anchors are relati
 **Usage event**:
 The immutable, append-only record of one metered occurrence for a (tenant, customer), carrying its
 priced provider and billed cost; never updated or deleted once written.
-(`apps/metering/usage/models.py:UsageEvent`)
+(`apps/metering/usage/models.py:Posting`)
 _Avoid_: treating a usage event as a mutable row.
 
 **Recording core**:
@@ -76,7 +76,7 @@ _Avoid_: "group_keys" — renamed to `tags`; "dimensional tags" — dimensions a
 separate mechanisms, not one.
 
 **Recording**:
-Turning one reported use into a durable priced `UsageEvent` — price, create, accumulate the task's
+Turning one reported use into a durable priced `Posting` — price, create, accumulate the task's
 totals, debit the live counter, emit `usage.recorded`. There is exactly **one** way in:
 `POST /api/v1/metering/usage` and its batch sibling, both of which adapt a request item onto
 `UsageService.record_usage`. (`apps/metering/usage/services/usage_service.py:UsageService`)
@@ -122,7 +122,7 @@ ranks across every book — it only ranks within the one book a resolution tier 
 
 **Selector**:
 One of the ten indexed columns (`provider`, `event_type`, `task_type`, `subtask_type`,
-`dim1`..`dim6`) that both `UsageEvent` and `Rate` carry — the single vocabulary a `Dimension` is
+`dim1`..`dim6`) that both `Posting` and `Rate` carry — the single vocabulary a `Dimension` is
 declared into and a `Rate` is matched against. `""` means "not set" on an event and "matches
 anything" on a Rate. (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
 

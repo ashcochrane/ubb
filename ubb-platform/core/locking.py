@@ -2,7 +2,7 @@
 Canonical lock ordering for the UBB platform.
 
 Lock order: Task -> Wallet -> Customer -> StopSignalState -> TopUpAttempt
-            -> Invoice -> UsageEvent
+            -> Invoice -> Posting
 
 StopSignalState (#39) locks AFTER Customer: the stop-signal transition guard
 (apps/billing/gating/services/stop_signal_service.py) locks the owner row

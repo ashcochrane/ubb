@@ -381,7 +381,7 @@ def test_the_registry_walk_actually_saw_the_models():
     for expected in ("event_types.EventType", "event_types.Provider",
                      "event_types.EventCategory",
                      "grouping_fields.GroupingField", "work.TaskType",
-                     "tenants.Tenant", "usage.UsageEvent"):
+                     "tenants.Tenant", "usage.Posting"):
         assert expected in _MODELS_SEEN, f"the walk did not visit {expected}"
 
 

@@ -3,7 +3,7 @@ import pytest
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from apps.subscriptions.economics.services import MarginService
 
@@ -14,7 +14,7 @@ MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 def _usage(t, c, provider, billed):
-    UsageEvent.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
+    Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
                               provider_cost_micros=provider, billed_cost_micros=billed,
                               effective_at=MID)
 

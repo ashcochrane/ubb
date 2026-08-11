@@ -54,7 +54,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                         group_by="task_type") -> list[dict]:
     """Unit economics per KIND of job — the number that sets a price.
 
-    Aggregates ubb_task rows, never ubb_usage_event: per-unit costs are already
+    Aggregates ubb_task rows, never ubb_posting: per-unit costs are already
     materialized by the accumulate primitive, with subtask spend rolled into its
     parent. Top-level units only, so run_count counts JOBS not steps.
     """

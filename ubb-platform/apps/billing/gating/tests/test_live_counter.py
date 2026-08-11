@@ -22,7 +22,7 @@ from apps.billing.gating.services.live_counter import (Door, LiveCounter,
                                                        stop_channel)
 from apps.billing.wallets.models import Wallet
 from apps.metering.queries import get_billing_owner_billed_total
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -136,7 +136,7 @@ class TestLiveCounterPostpaid:
         assert s1.resolve_billing_owner().id == biz.id  # pooled -> business
         # Durable events for both seats pin the business as billing owner.
         for i, seat in enumerate((s1, s2)):
-            UsageEvent.objects.create(
+            Posting.objects.create(
                 tenant=t, customer=seat, request_id=f"r{i}", idempotency_key=f"i{i}",
                 provider_cost_micros=5_000_000, billed_cost_micros=5_000_000,
                 billing_owner_id=biz.id)
@@ -240,7 +240,7 @@ class TestStopFlag:
             billed_cost_micros=6_000_000)
         # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
-        assert UsageEvent.objects.filter(id=res["event_id"]).exists()
+        assert Posting.objects.filter(id=res["event_id"]).exists()
         # I4: the idempotent replay return ALSO carries the stop verdict
         replay = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
@@ -287,7 +287,7 @@ class TestStopFlag:
         # The one rule: record_usage returned normally; the tipping event
         # landed and billed.
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
-        assert UsageEvent.objects.get(id=res["event_id"]).billed_cost_micros == 6_000_000
+        assert Posting.objects.get(id=res["event_id"]).billed_cost_micros == 6_000_000
         # The ambient transaction stayed usable: the UsageRecorded outbox row
         # (written AFTER the failed StopFired insert) still landed.
         assert OutboxEvent.objects.filter(

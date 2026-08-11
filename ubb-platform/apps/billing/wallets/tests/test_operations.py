@@ -249,7 +249,7 @@ class TestRefusals:
         assert not GrantAllocation.objects.filter(
             allocation_type="withdrawal").exists()
 
-    def test_refund_refuses_unknown_usage_event(self):
+    def test_refund_refuses_unknown_posting(self):
         t = _tenant()
         c = _customer(t)
         _wallet(c, balance=1_000_000)

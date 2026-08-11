@@ -2,7 +2,7 @@
 
 Reads the materialized rollups the accumulate primitive maintains
 (total_billed_cost_micros, total_provider_cost_micros, event_count) —
-never aggregates ubb_usage_event. GET /metering/tasks lists top-level units
+never aggregates ubb_posting. GET /metering/tasks lists top-level units
 only (parent__isnull=True); a subtask's numbers surface in its parent's
 detail view via `subtasks`.
 """

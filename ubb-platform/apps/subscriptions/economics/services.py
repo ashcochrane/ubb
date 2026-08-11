@@ -16,7 +16,7 @@ def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
 class MarginService:
     @staticmethod
     def compute_live(tenant_id, customer_id, start_date, end_date) -> dict:
-        """Live margin for any window from UsageEvent + revenue. No persistence."""
+        """Live margin for any window from Posting + revenue. No persistence."""
         from apps.metering.queries import get_customer_cost_totals
         from apps.platform.tenants.models import Tenant
         from apps.platform.customers.models import Customer

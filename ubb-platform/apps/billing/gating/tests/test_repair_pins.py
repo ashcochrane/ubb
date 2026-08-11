@@ -65,7 +65,7 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.billing.gating.tasks import reconcile_live_ledgers
 from apps.billing.queries import get_patrol_stats
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -124,7 +124,7 @@ def _strand_via_the_recording_path(raw_key, customer, billed_micros):
     already moved. Mechanism and ruling: ``test_recording_drift_pins.py``.
     """
     durable_before = Wallet.objects.get(customer=customer).balance_micros
-    events_before = UsageEvent.objects.count()
+    events_before = Posting.objects.count()
     payload = {"customer_id": str(customer.id),
                "provider_cost_micros": 10_000_000,
                "billed_cost_micros": int(billed_micros),
@@ -137,7 +137,7 @@ def _strand_via_the_recording_path(raw_key, customer, billed_micros):
             HTTP_AUTHORIZATION=f"Bearer {raw_key}")
     # The three properties that make this a strand rather than a spend.
     assert resp.status_code == 500
-    assert UsageEvent.objects.count() == events_before
+    assert Posting.objects.count() == events_before
     assert Wallet.objects.get(customer=customer).balance_micros == durable_before
 
 

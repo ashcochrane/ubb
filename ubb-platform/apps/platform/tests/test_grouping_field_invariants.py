@@ -57,14 +57,28 @@ class TestGroupingFieldInvariants:
             retired_at=timezone.now())
         assert slot_map(t.id)["region"] == "dim1"
 
-    def test_usage_event_and_rate_share_one_selector_vocabulary(self):
-        """The unification (design D3): one word list, both sides."""
+    def test_posting_and_rate_share_one_selector_vocabulary(self):
+        """The unification (design D3): one word list, both sides.
+
+        **Re-pointed at the Posting by #269, not retired with the old noun.**
+        ADR-0005's design was declared superseded, but the agreement this pins
+        is still live: `Rate.SELECTORS` and the specificity ranking built on it
+        both survive to **slice 4**, which is where the rate entity, the rate
+        book and the selector list are rebuilt. Until then a rate resolves
+        against columns on this table, and a slice that renamed the vocabulary
+        underneath the test while deleting the test would have removed the only
+        thing checking the two lists still agree.
+
+        **Dissolving the agreement is slice 4's business**, and deleting this
+        test belongs to whoever does it — with the replacement in the same
+        change, not before it.
+        """
         from apps.metering.pricing.models import Rate
-        from apps.metering.usage.models import UsageEvent
-        event_cols = {f.name for f in UsageEvent._meta.get_fields()}
+        from apps.metering.usage.models import Posting
+        posting_cols = {f.name for f in Posting._meta.get_fields()}
         for selector in Rate.SELECTORS:
-            assert selector in event_cols, (
-                f"Rate selects on {selector!r} but UsageEvent has no such column")
+            assert selector in posting_cols, (
+                f"Rate selects on {selector!r} but Posting has no such column")
 
     def test_book_tier_dominates_rate_specificity(self):
         """The composite ranking rule (surfaced late in review, documented in

@@ -5,13 +5,19 @@ from django.utils import timezone
 from core.models import BaseModel
 
 
-class UsageEvent(BaseModel):
-    """Immutable usage event record."""
+class Posting(BaseModel):
+    """One immutable economic posting — the row that says work was billed for.
+
+    Renamed from the usage-event noun in #269 (slice 2), with its table, so the
+    database stops preserving obsolete terminology (ADR-0006 §9, gate G9). The
+    record of WHAT WAS MEASURED splits off into a child of its own in #270; this
+    row keeps the money, the attribution and the identity.
+    """
     tenant = models.ForeignKey(
-        "tenants.Tenant", on_delete=models.CASCADE, related_name="usage_events"
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="postings"
     )
     customer = models.ForeignKey(
-        "customers.Customer", on_delete=models.CASCADE, related_name="usage_events"
+        "customers.Customer", on_delete=models.CASCADE, related_name="postings"
     )
     request_id = models.CharField(max_length=255, db_index=True)
     idempotency_key = models.CharField(max_length=500, db_index=True)
@@ -20,6 +26,10 @@ class UsageEvent(BaseModel):
 
     # Pricing breakdown (populated when platform prices the event)
     units = models.BigIntegerField(null=True, blank=True)
+    # CUR-1: lowercase, matching the seven other currency columns and the
+    # payment rail's own casing (#269, spec §K2). No CHECK constraint —
+    # see the module note in `tests/test_posting_rename.py` for why the one
+    # slice 2 was handed cannot be written truthfully today.
     currency = models.CharField(max_length=3, default="usd")
     # --- The ten selector columns (design D2/D3) ---
     # One vocabulary for analytics grouping AND rate selection. Four reserved
@@ -47,7 +57,7 @@ class UsageEvent(BaseModel):
     # — tags are free-form analytics labels and never silently become a
     # limited thing (no tag-fallback inference).
     task = models.ForeignKey(
-        "work.Task", on_delete=models.CASCADE, related_name="usage_events",
+        "work.Task", on_delete=models.CASCADE, related_name="postings",
         null=True, blank=True,
     )
     # When the usage economically HAPPENED (caller-suppliable, bounded by
@@ -72,7 +82,14 @@ class UsageEvent(BaseModel):
     stop_context = models.JSONField(null=True, blank=True)
 
     class Meta:
-        db_table = "ubb_usage_event"
+        db_table = "ubb_posting"
+        # The constraint and index names below still spell the retired noun,
+        # deliberately and for the same reason #259 left its own alone: there is
+        # no rename operation for a constraint or a Postgres-named index that
+        # Django will emit — it can only drop and re-create, which is the
+        # add-plus-remove ADR-0007 §1 refuses, on a unique index that is
+        # load-bearing while it is gone. ADR-0006 §9's rule is about the TABLE
+        # name, and this table now tracks its model.
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "customer", "idempotency_key"],
@@ -98,20 +115,20 @@ class UsageEvent(BaseModel):
         ordering = ["-effective_at"]
 
     def __str__(self):
-        return f"UsageEvent({self.request_id}: {self.billed_cost_micros})"
+        return f"Posting({self.request_id}: {self.billed_cost_micros})"
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
-            raise ValueError("UsageEvent records are immutable and cannot be updated.")
+            raise ValueError("Posting records are immutable and cannot be updated.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValueError("UsageEvent records are immutable and cannot be deleted.")
+        raise ValueError("Posting records are immutable and cannot be deleted.")
 
 
 class BackfillDirtyPeriod(BaseModel):
-    """Marker: a usage event was backfilled into a PRIOR calendar month for this
-    (tenant, customer). Written in the same transaction as the UsageEvent insert
+    """Marker: a posting was backfilled into a PRIOR calendar month for this
+    (tenant, customer). Written in the same transaction as the Posting insert
     (savepoint-IntegrityError-swallow on the unique constraint), consumed by the
     hourly ``resnapshot_dirty_periods`` task via the apps.metering.queries
     contract — the consumer re-snapshots the period's margin then deletes the
@@ -138,15 +155,15 @@ class BackfillDirtyPeriod(BaseModel):
 
 
 class Refund(BaseModel):
-    """Refund linked to a usage event."""
+    """Refund linked to a posting."""
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="refunds"
     )
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="refunds"
     )
-    usage_event = models.OneToOneField(
-        UsageEvent, on_delete=models.CASCADE, related_name="refund"
+    posting = models.OneToOneField(
+        Posting, on_delete=models.CASCADE, related_name="refund"
     )
     amount_micros = models.BigIntegerField()
     reason = models.TextField(blank=True, default="")
@@ -158,4 +175,4 @@ class Refund(BaseModel):
         db_table = "ubb_refund"
 
     def __str__(self):
-        return f"Refund({self.usage_event.request_id}: {self.amount_micros})"
+        return f"Refund({self.posting.request_id}: {self.amount_micros})"

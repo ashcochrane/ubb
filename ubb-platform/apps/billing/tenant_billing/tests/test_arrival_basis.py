@@ -7,7 +7,7 @@ import pytest
 from django.utils import timezone
 
 from apps.billing.tenant_billing.services import TenantBillingService
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 
@@ -28,14 +28,14 @@ class TestPlatformFeeArrivalBasis:
 
         # One event is effective THIS month, the other is a backfill into the
         # PRIOR month — but both arrived (created_at) this month.
-        UsageEvent.objects.create(
+        Posting.objects.create(
             tenant=t, customer=c, request_id="r1", idempotency_key="i1",
             billed_cost_micros=100)
-        e2 = UsageEvent.objects.create(
+        e2 = Posting.objects.create(
             tenant=t, customer=c, request_id="r2", idempotency_key="i2",
             billed_cost_micros=100)
         prior = timezone.now().replace(day=1) - datetime.timedelta(days=2)
-        UsageEvent.objects.filter(id=e2.id).update(effective_at=prior)
+        Posting.objects.filter(id=e2.id).update(effective_at=prior)
 
         TenantBillingService.reconcile_period(period)
         period.refresh_from_db()

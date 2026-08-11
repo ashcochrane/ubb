@@ -62,7 +62,7 @@ class Rate(BaseModel):
                                  related_name="rate_cards", null=True, blank=True)
     card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
     # --- The ten selector columns (design D3) ---
-    # "" means WILDCARD here (it means "not set" on a UsageEvent). Among rates
+    # "" means WILDCARD here (it means "not set" on a Posting). Among rates
     # matching an event, the winner has the most non-empty selectors. This is
     # the ONE matching semantic — the old JSONB `dimensions` subset match and
     # the exact-equality provider/event_type match were two different rules on

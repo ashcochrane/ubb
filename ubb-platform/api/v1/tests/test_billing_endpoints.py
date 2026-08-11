@@ -1209,8 +1209,8 @@ class PooledSeatBillingSurfaceTest(TestCase):
     # ---------- refund_usage ----------
 
     def _usage_event(self, customer, amount=1_000_000, request_id="r1"):
-        from apps.metering.usage.models import UsageEvent
-        return UsageEvent.objects.create(
+        from apps.metering.usage.models import Posting
+        return Posting.objects.create(
             tenant=self.tenant, customer=customer, request_id=request_id,
             idempotency_key=f"idem_{request_id}",
             provider_cost_micros=amount, billed_cost_micros=amount)

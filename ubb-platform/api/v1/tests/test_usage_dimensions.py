@@ -1,7 +1,7 @@
 import pytest
 from django.test import Client
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
@@ -37,7 +37,7 @@ class TestUsageDimensions:
         self._declare()
         r = self._post(dimensions={"model": "gpt-4"})
         assert r.status_code == 200
-        assert UsageEvent.objects.get(id=r.json()["event_id"]).dim2 == "gpt-4"
+        assert Posting.objects.get(id=r.json()["event_id"]).dim2 == "gpt-4"
 
     def test_unknown_dimension_is_422(self):
         self._declare()
@@ -72,7 +72,7 @@ class TestUsageDimensions:
         self._declare()
         r = self._post(tags={"service": "extract", "agent": "textract-v2"})
         assert r.status_code == 200
-        e = UsageEvent.objects.get(id=r.json()["event_id"])
+        e = Posting.objects.get(id=r.json()["event_id"])
         assert e.dim1 == "" and e.dim2 == ""
         # ...and reserved-NAMED tags still reach storage unchanged. Nothing else
         # asserts this: test_tags.py only covers non-reserved keys.
@@ -90,5 +90,5 @@ class TestUsageDimensions:
         self._declare()
         r = self._post(product_id="search")
         assert r.status_code == 200
-        e = UsageEvent.objects.get(id=r.json()["event_id"])
+        e = Posting.objects.get(id=r.json()["event_id"])
         assert e.dim1 == ""

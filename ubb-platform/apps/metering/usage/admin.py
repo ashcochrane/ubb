@@ -1,10 +1,10 @@
 from django.contrib import admin
 
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 
 
-@admin.register(UsageEvent)
-class UsageEventAdmin(admin.ModelAdmin):
+@admin.register(Posting)
+class PostingAdmin(admin.ModelAdmin):
     list_display = (
         "request_id",
         "tenant",

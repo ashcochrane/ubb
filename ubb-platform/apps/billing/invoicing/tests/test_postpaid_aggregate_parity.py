@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 from apps.billing.invoicing.models import PostpaidUsageConfig, PostpaidResidualLedger
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 from core.time_windows import utc_day_start
@@ -36,7 +36,7 @@ def _old_business_lines(tenant, customer, period_start, period_end):
     seats = {s.id: s.external_id for s in Customer.all_objects.filter(parent=customer)}
     if not seats:
         return 0, []
-    qs = UsageEvent.objects.filter(
+    qs = Posting.objects.filter(
         tenant=tenant, customer_id__in=list(seats.keys()),
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end))
@@ -48,7 +48,7 @@ def _old_business_lines(tenant, customer, period_start, period_end):
 
 
 def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
-    qs = UsageEvent.objects.filter(
+    qs = Posting.objects.filter(
         tenant=tenant, customer=customer,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end))
@@ -67,7 +67,7 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
 
 def _ev(t, c, key, billed, **kw):
     kw.setdefault("effective_at", MID)
-    return UsageEvent.objects.create(
+    return Posting.objects.create(
         tenant=t, customer=c, request_id=f"r-{key}", idempotency_key=key,
         provider_cost_micros=1, billed_cost_micros=billed, **kw)
 
@@ -89,7 +89,7 @@ class TestBusinessBranchParity:
         _ev(t, carol, "c1", 300_000)           # ties with bob -> label tiebreak
         _ev(t, solo, "s1", 999_999)            # excluded: not a seat of biz
         out = _ev(t, alice, "a3", 777_777)     # excluded: outside the window
-        UsageEvent.objects.filter(id=out.id).update(
+        Posting.objects.filter(id=out.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 5, 31, 23, 59)))
 
         old_total, old_lines = _old_business_lines(t, biz, PS, PE)
@@ -173,7 +173,7 @@ class TestResidualCarryAcrossPeriods:
 
         # July: chat 26_000 (2.6c) + carry 3_300 = 29_300 -> 2 cents, residual 9_300
         ev = _ev(t, c, "y1", 26_000, dim1="chat")
-        UsageEvent.objects.filter(id=ev.id).update(
+        Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 7, 15)))
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
              patch("apps.platform.events.tasks.process_single_event"):

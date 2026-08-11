@@ -246,7 +246,7 @@ class TenantBillingService:
 
     @staticmethod
     def reconcile_period(period):
-        """Recompute a billing period's totals from actual UsageEvent records.
+        """Recompute a billing period's totals from actual Posting records.
 
         Used as a belt-and-suspenders reconciliation for any accumulate_usage
         failures. Safe to run on open or closed periods.

@@ -16,7 +16,7 @@ from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.budget_service import BudgetService
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.handlers import handle_usage_recorded_billing
-from apps.metering.usage.models import UsageEvent
+from apps.metering.usage.models import Posting
 
 
 @pytest.mark.django_db
@@ -25,8 +25,8 @@ class TestBudgetEndToEnd:
         cache.clear()
 
     def _draw(self, tenant, customer, billed, n):
-        # Mirror production: the UsageEvent is durably committed before the drawdown handler runs.
-        UsageEvent.objects.create(
+        # Mirror production: the Posting is durably committed before the drawdown handler runs.
+        Posting.objects.create(
             tenant=tenant, customer=customer, request_id=f"r{n}", idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
         event = OutboxEvent.objects.create(
