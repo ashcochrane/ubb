@@ -106,11 +106,9 @@ export function EventsPage({
         customerId={customerId}
         groupBy={search.group_by}
         onGroupByChange={(groupBy) =>
-          // Narrow the picker's string back into the schema's dimension enum.
+          // Narrow the picker's string back into the schema's grouping enum.
           update({
-            group_by: TIMESERIES_GROUP_BY.find(
-              (dimension) => dimension === groupBy,
-            ),
+            group_by: TIMESERIES_GROUP_BY.find((option) => option === groupBy),
           })
         }
       />

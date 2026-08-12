@@ -35,17 +35,17 @@ export function useMarginSummary(window: Window): UseQueryResult<MarginSummary> 
 }
 
 /**
- * Windowed usage analytics with one breakdown dimension. The totals are
- * dimension-independent, so `placeholderData` keeps the stat row and bars
- * stable while a dimension switch refetches.
+ * Windowed usage analytics with one breakdown axis. The totals do not depend on
+ * the axis, so `placeholderData` keeps the stat row and bars stable while an
+ * axis switch refetches.
  */
 export function useWindowAnalytics(
   window: Window,
-  dimension: BreakdownDimension,
+  groupBy: BreakdownDimension,
 ): UseQueryResult<UsageAnalytics> {
   return useQuery({
-    queryKey: ["metering", "analytics", "usage", { ...window, dimension }] as const,
-    queryFn: () => dashboardApi.getWindowAnalytics(window, dimension),
+    queryKey: ["metering", "analytics", "usage", { ...window, groupBy }] as const,
+    queryFn: () => dashboardApi.getWindowAnalytics(window, groupBy),
     placeholderData: keepPreviousData,
   });
 }

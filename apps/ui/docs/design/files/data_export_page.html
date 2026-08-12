@@ -213,7 +213,7 @@ button { cursor: pointer; }
 <div class="pv-bar"><div class="pv-t">Data preview</div><div class="pv-n">First 5 of <span id="pv-ct">247,614</span> rows</div></div>
 <div class="pvt-w">
 <table class="pvt" id="pvt">
-<thead id="pvt-h"><tr><th>event_time</th><th>customer</th><th>product</th><th>pricing_card</th><th>card_version</th><th>dimension</th><th>quantity</th><th>unit_price</th><th>cost</th><th>event_total</th></tr></thead>
+<thead id="pvt-h"><tr><th>event_time</th><th>customer</th><th>product</th><th>pricing_card</th><th>card_version</th><th>measurement</th><th>quantity</th><th>unit_price</th><th>cost</th><th>event_total</th></tr></thead>
 <tbody id="pvt-b">
 <tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td class="dm">input_tokens</td><td>1,842</td><td>0.0000001500</td><td class="ct">0.000276</td><td class="ct">0.035847</td></tr>
 <tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td class="dm">output_tokens</td><td>623</td><td>0.0000004000</td><td class="ct">0.000249</td><td class="ct">0.035847</td></tr>
@@ -229,7 +229,7 @@ button { cursor: pointer; }
 <div class="dlz">
 <div class="dl-l">
 <div><div style="font-size:12px;font-weight:500;margin-bottom:4px">Format</div><div class="dl-g" id="dg-fmt"><span class="sel" onclick="setTog(this)">CSV</span><span onclick="setTog(this)">JSON</span></div></div>
-<div><div style="font-size:12px;font-weight:500;margin-bottom:4px">Granularity</div><div class="dl-g" id="dg-gran"><span class="sel" onclick="setGran(this,'dim')">By dimension</span><span onclick="setGran(this,'evt')">By event</span></div></div>
+<div><div style="font-size:12px;font-weight:500;margin-bottom:4px">Granularity</div><div class="dl-g" id="dg-gran"><span class="sel" onclick="setGran(this,'dim')">By measurement</span><span onclick="setGran(this,'evt')">By event</span></div></div>
 </div>
 <button class="dl-btn" id="dl-btn" onclick="doDL()">Download export</button>
 </div>
@@ -283,7 +283,7 @@ function setGran(el,g){
     h.innerHTML='<tr><th>event_time</th><th>customer</th><th>product</th><th>pricing_card</th><th>card_version</th><th>input_tokens</th><th>output_tokens</th><th>grounding_reqs</th><th>requests</th><th>total_cost</th></tr>';
     b.innerHTML='<tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td>1,842</td><td>623</td><td>1</td><td class="dm">\u2014</td><td class="ct">0.035847</td></tr><tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>google_places</td><td>v1</td><td class="dm">\u2014</td><td class="dm">\u2014</td><td class="dm">\u2014</td><td>1</td><td class="ct">0.032000</td></tr><tr><td>2026-03-20 14:22:58</td><td>brightpath</td><td>doc_summariser</td><td>claude_35_sonnet</td><td>v2</td><td>4,210</td><td>1,847</td><td class="dm">\u2014</td><td class="dm">\u2014</td><td class="ct">0.040335</td></tr><tr><td>2026-03-20 14:22:55</td><td>novatech</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td>986</td><td>412</td><td>1</td><td class="dm">\u2014</td><td class="ct">0.035321</td></tr><tr><td>2026-03-20 14:22:51</td><td>helios</td><td>content_gen</td><td>gpt_4o</td><td>v1</td><td>2,105</td><td>3,241</td><td class="dm">\u2014</td><td class="dm">\u2014</td><td class="ct">0.037685</td></tr>';
   } else {
-    h.innerHTML='<tr><th>event_time</th><th>customer</th><th>product</th><th>pricing_card</th><th>card_version</th><th>dimension</th><th>quantity</th><th>unit_price</th><th>cost</th><th>event_total</th></tr>';
+    h.innerHTML='<tr><th>event_time</th><th>customer</th><th>product</th><th>pricing_card</th><th>card_version</th><th>measurement</th><th>quantity</th><th>unit_price</th><th>cost</th><th>event_total</th></tr>';
     b.innerHTML='<tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td class="dm">input_tokens</td><td>1,842</td><td>0.0000001500</td><td class="ct">0.000276</td><td class="ct">0.035847</td></tr><tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td class="dm">output_tokens</td><td>623</td><td>0.0000004000</td><td class="ct">0.000249</td><td class="ct">0.035847</td></tr><tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>gemini_2_flash</td><td>v3</td><td class="dm">grounding_requests</td><td>1</td><td>0.0350000000</td><td class="ct">0.035000</td><td class="ct">0.035847</td></tr><tr><td>2026-03-20 14:23:01</td><td>acme_corp</td><td>property_search</td><td>google_places</td><td>v1</td><td class="dm">requests</td><td>1</td><td>0.0320000000</td><td class="ct">0.032000</td><td class="ct">0.032000</td></tr><tr><td>2026-03-20 14:22:58</td><td>brightpath</td><td>doc_summariser</td><td>claude_35_sonnet</td><td>v2</td><td class="dm">input_tokens</td><td>4,210</td><td>0.0000030000</td><td class="ct">0.012630</td><td class="ct">0.040335</td></tr>';
   }
   upd();

@@ -31,7 +31,7 @@ import { useTenantCurrency } from "@/hooks/use-tenant-config";
 
 import { useMarginCustomers, useSendTestEvent } from "../api/queries";
 import {
-  EMPTY_METRIC_ROW,
+  EMPTY_MEASUREMENT_ROW,
   buildTestEventRequest,
   shortenUuid,
   testEventFormSchema,
@@ -60,10 +60,13 @@ export function TestEventConsole() {
       billed_cost: "",
       effective_at: "",
       idempotency_key: crypto.randomUUID(),
-      metrics: [{ ...EMPTY_METRIC_ROW }],
+      measurements: [{ ...EMPTY_MEASUREMENT_ROW }],
     },
   });
-  const metricRows = useFieldArray({ control: form.control, name: "metrics" });
+  const measurementRows = useFieldArray({
+    control: form.control,
+    name: "measurements",
+  });
   const errors = form.formState.errors;
 
   const submit = form.handleSubmit((values) => {
@@ -173,33 +176,33 @@ export function TestEventConsole() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Usage metrics</Label>
-              {metricRows.fields.map((field, index) => (
+              <Label>Usage measurements</Label>
+              {measurementRows.fields.map((field, index) => (
                 <div key={field.id} className="flex items-start gap-1.5">
                   <div className="flex-1">
                     <Input
-                      aria-label={`Metric ${index + 1} name`}
+                      aria-label={`Measurement ${index + 1} name`}
                       placeholder="tokens_in"
                       className="font-mono text-[12px]"
-                      {...form.register(`metrics.${index}.key`)}
+                      {...form.register(`measurements.${index}.key`)}
                     />
-                    {errors.metrics?.[index]?.key && (
+                    {errors.measurements?.[index]?.key && (
                       <p className="mt-1 text-xs text-destructive">
-                        {errors.metrics[index]?.key?.message}
+                        {errors.measurements[index]?.key?.message}
                       </p>
                     )}
                   </div>
                   <div className="flex-1">
                     <Input
-                      aria-label={`Metric ${index + 1} quantity`}
+                      aria-label={`Measurement ${index + 1} quantity`}
                       inputMode="numeric"
                       placeholder="1200"
                       className="font-mono text-[12px]"
-                      {...form.register(`metrics.${index}.value`)}
+                      {...form.register(`measurements.${index}.value`)}
                     />
-                    {errors.metrics?.[index]?.value && (
+                    {errors.measurements?.[index]?.value && (
                       <p className="mt-1 text-xs text-destructive">
-                        {errors.metrics[index]?.value?.message}
+                        {errors.measurements[index]?.value?.message}
                       </p>
                     )}
                   </div>
@@ -207,9 +210,9 @@ export function TestEventConsole() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={`Remove metric ${index + 1}`}
-                    onClick={() => metricRows.remove(index)}
-                    disabled={metricRows.fields.length === 1}
+                    aria-label={`Remove measurement ${index + 1}`}
+                    onClick={() => measurementRows.remove(index)}
+                    disabled={measurementRows.fields.length === 1}
                   >
                     <X />
                   </Button>
@@ -219,14 +222,17 @@ export function TestEventConsole() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => metricRows.append({ ...EMPTY_METRIC_ROW })}
+                onClick={() =>
+                  measurementRows.append({ ...EMPTY_MEASUREMENT_ROW })
+                }
               >
                 <Plus data-icon="inline-start" />
-                Add metric
+                Add measurement
               </Button>
               <p className="text-xs text-muted-foreground">
-                Metric name → whole-number quantity, priced by your rate cards.
-                Metrics without a cost card come back flagged as uncosted.
+                Measurement name → whole-number quantity, priced by your rate
+                cards. Measurements without a cost card come back flagged as
+                uncosted.
               </p>
             </div>
 

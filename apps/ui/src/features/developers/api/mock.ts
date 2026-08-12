@@ -10,9 +10,9 @@ import { mockDelay } from "@/lib/api-provider";
 
 import {
   MOCK_API_KEYS,
-  MOCK_COSTED_METRICS,
+  MOCK_COSTED_MEASUREMENTS,
   MOCK_MARGIN_CUSTOMERS,
-  MOCK_METRIC_RATE_MICROS,
+  MOCK_MEASUREMENT_RATE_MICROS,
   MOCK_SANDBOX,
   MOCK_SANDBOX_TENANT_ID,
   MOCK_LIVE_TENANT_ID,
@@ -166,16 +166,16 @@ export async function sendTestEvent(
   await mockDelay();
   eventCounter += 1;
 
-  const metrics = body.measurements ?? {};
-  const uncosted = Object.keys(metrics).filter(
-    (name) => !MOCK_COSTED_METRICS.has(name),
+  const measurements = body.measurements ?? {};
+  const uncosted = Object.keys(measurements).filter(
+    (name) => !MOCK_COSTED_MEASUREMENTS.has(name),
   );
-  let metricCost = 0;
-  for (const [name, quantity] of Object.entries(metrics)) {
-    metricCost += (MOCK_METRIC_RATE_MICROS[name] ?? 0) * quantity;
+  let measuredCost = 0;
+  for (const [name, quantity] of Object.entries(measurements)) {
+    measuredCost += (MOCK_MEASUREMENT_RATE_MICROS[name] ?? 0) * quantity;
   }
 
-  const billed = body.billed_cost_micros ?? metricCost;
+  const billed = body.billed_cost_micros ?? measuredCost;
   const provider = body.provider_cost_micros ?? Math.round(billed * 0.62);
 
   balanceMicros -= billed;

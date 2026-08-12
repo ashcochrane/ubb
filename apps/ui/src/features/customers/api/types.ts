@@ -76,14 +76,20 @@ export type SubscribeIn = SubscriptionSchemas["SubscribeIn"];
 // Local interfaces for the contract's UNTYPED bodies.
 // [backend-verified shape — see discovery spec]
 
-/** One bucket of GET /metering/analytics/usage/timeseries `series[]`. */
+/**
+ * One bucket of GET /metering/analytics/usage/timeseries `series[]`.
+ *
+ * No grouped-value field: this feature never sends `group_by` (see
+ * `usage-tab.tsx`), so the backend never emits one, and the chart plots only
+ * bucket and the two costs. The optional field this carried was narrowed but
+ * read by nothing.
+ */
 export interface TimeseriesPoint {
   bucket: string;
   provider_cost_micros: number;
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
-  dimension?: string;
 }
 
 /** One itemized event inside a past-limit episode. */
@@ -165,7 +171,6 @@ export function narrowTimeseriesPoints(
     billed_cost_micros: num(row.billed_cost_micros),
     markup_micros: num(row.markup_micros),
     event_count: num(row.event_count),
-    ...(typeof row.dimension === "string" ? { dimension: row.dimension } : {}),
   }));
 }
 

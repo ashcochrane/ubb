@@ -160,7 +160,7 @@ const FEATURE_EVENTS: MockEvent[] = [
         },
         cost_source: "cost_card",
         cost_card: { book_key: "openai-cogs", version: 3 },
-        per_metric: {
+        per_measurement: {
           input_tokens: {
             rate_per_unit_micros: 30_000,
             unit_quantity: 1000,

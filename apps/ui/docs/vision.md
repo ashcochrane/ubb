@@ -22,7 +22,7 @@ UBB (Usage-Based Billing) is a platform that enables SaaS companies to implement
 
 The UBB UI is the admin dashboard for the platform. It provides:
 
-1. **Metering** — Define rate cards with pricing dimensions, monitor costs and usage events
+1. **Metering** — Define rate cards with priced measurements, monitor costs and usage events
 2. **Billing** — Manage customer wallets, view transactions, generate invoices, handle top-ups
 3. **Customers** — View and manage tenant customers, their usage, and billing status
 4. **Settings** — Configure the tenant: API keys, team members, webhooks, Stripe connection

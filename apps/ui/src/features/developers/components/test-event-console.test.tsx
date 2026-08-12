@@ -22,7 +22,7 @@ function renderConsole() {
 
 async function sendEvent(fields: {
   billedCost?: string;
-  metricKey?: string;
+  measurementKey?: string;
   eventType?: string;
 }) {
   const customerInput = screen.getByPlaceholderText("…or paste a customer UUID");
@@ -37,11 +37,11 @@ async function sendEvent(fields: {
       target: { value: fields.billedCost },
     });
   }
-  if (fields.metricKey !== undefined) {
-    fireEvent.change(screen.getByLabelText("Metric 1 name"), {
-      target: { value: fields.metricKey },
+  if (fields.measurementKey !== undefined) {
+    fireEvent.change(screen.getByLabelText("Measurement 1 name"), {
+      target: { value: fields.measurementKey },
     });
-    fireEvent.change(screen.getByLabelText("Metric 1 quantity"), {
+    fireEvent.change(screen.getByLabelText("Measurement 1 quantity"), {
       target: { value: "100" },
     });
   }
@@ -82,11 +82,11 @@ describe("TestEventConsole", () => {
     expect(heading.textContent).toBe("anthropic.messages_CREATE recorded");
   });
 
-  it("flags metrics without a cost card as uncosted", async () => {
+  it("flags measurements without a cost card as uncosted", async () => {
     renderConsole();
-    await sendEvent({ metricKey: "gpu_seconds" });
+    await sendEvent({ measurementKey: "gpu_seconds" });
     expect(
-      await screen.findByText("Metrics without a cost card"),
+      await screen.findByText("Measurements without a cost card"),
     ).toBeInTheDocument();
     expect(screen.getByText("gpu_seconds")).toBeInTheDocument();
   });

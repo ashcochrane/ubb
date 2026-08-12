@@ -146,7 +146,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   <div class="steps" id="steps">
     <div class="step-item" onclick="goStep(0)"><div class="step-dot active" id="sd0">1</div><div class="step-label active" id="sl0">Source</div><div class="step-line" id="ln0"></div></div>
     <div class="step-item" onclick="goStep(1)"><div class="step-dot" id="sd1">2</div><div class="step-label" id="sl1">Details</div><div class="step-line" id="ln1"></div></div>
-    <div class="step-item" onclick="goStep(2)"><div class="step-dot" id="sd2">3</div><div class="step-label" id="sl2">Dimensions</div><div class="step-line" id="ln2"></div></div>
+    <div class="step-item" onclick="goStep(2)"><div class="step-dot" id="sd2">3</div><div class="step-label" id="sl2">Measurements</div><div class="step-line" id="ln2"></div></div>
     <div class="step-item" onclick="goStep(3)"><div class="step-dot" id="sd3">4</div><div class="step-label" id="sl3">Review & test</div></div>
   </div>
 
@@ -167,9 +167,9 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
     <div id="tmpl-list">
       <div class="field"><label>Choose a template</label></div>
       <div class="tmpl-pick" style="grid-template-columns:1fr 1fr 1fr">
-        <div class="tmpl-opt selected" id="t-gem" onclick="pickTmpl('gem')"><div class="tmpl-opt-name">Gemini 2.0 Flash</div><div class="tmpl-opt-sub">3 dimensions</div></div>
-        <div class="tmpl-opt" id="t-gpt" onclick="pickTmpl('gpt')"><div class="tmpl-opt-name">GPT-4o</div><div class="tmpl-opt-sub">2 dimensions</div></div>
-        <div class="tmpl-opt" id="t-claude" onclick="pickTmpl('claude')"><div class="tmpl-opt-name">Claude Sonnet</div><div class="tmpl-opt-sub">2 dimensions</div></div>
+        <div class="tmpl-opt selected" id="t-gem" onclick="pickTmpl('gem')"><div class="tmpl-opt-name">Gemini 2.0 Flash</div><div class="tmpl-opt-sub">3 measurements</div></div>
+        <div class="tmpl-opt" id="t-gpt" onclick="pickTmpl('gpt')"><div class="tmpl-opt-name">GPT-4o</div><div class="tmpl-opt-sub">2 measurements</div></div>
+        <div class="tmpl-opt" id="t-claude" onclick="pickTmpl('claude')"><div class="tmpl-opt-name">Claude Sonnet</div><div class="tmpl-opt-sub">2 measurements</div></div>
       </div>
     </div>
     <div class="nav-row"><div></div><button class="btn-next" onclick="goStep(1)">Continue</button></div>
@@ -198,17 +198,17 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
     <div class="nav-row"><button class="btn-back" onclick="goStep(0)">Back</button><button class="btn-next" onclick="goStep(2)">Continue</button></div>
   </div>
 
-  <!-- STEP 2: Dimensions -->
+  <!-- STEP 2: Measurements -->
   <div class="panel" id="p2">
-    <div class="panel-title">Cost dimensions</div>
-    <div class="panel-sub">Each dimension is one measurable cost line. For token-based APIs, add separate dimensions for input and output. For flat-rate APIs, one dimension is enough.</div>
+    <div class="panel-title">Cost measurements</div>
+    <div class="panel-sub">Each measurement is one measurable cost line. For token-based APIs, add separate measurements for input and output. For flat-rate APIs, one measurement is enough.</div>
 
     <div id="dims-list">
       <div class="dim-card" id="dim0">
-        <div class="dim-num">Dimension 1</div>
+        <div class="dim-num">Measurement 1</div>
         <button class="dim-remove" onclick="removeDim(0)" title="Remove">x</button>
         <div class="row3">
-          <div class="field"><label>Metric key</label><input type="text" value="input_tokens" placeholder="e.g. input_tokens" /></div>
+          <div class="field"><label>Measurement key</label><input type="text" value="input_tokens" placeholder="e.g. input_tokens" /></div>
           <div class="field">
             <label>Type</label>
             <div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div>
@@ -222,10 +222,10 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       </div>
 
       <div class="dim-card" id="dim1">
-        <div class="dim-num">Dimension 2</div>
+        <div class="dim-num">Measurement 2</div>
         <button class="dim-remove" onclick="removeDim(1)" title="Remove">x</button>
         <div class="row3">
-          <div class="field"><label>Metric key</label><input type="text" value="output_tokens" /></div>
+          <div class="field"><label>Measurement key</label><input type="text" value="output_tokens" /></div>
           <div class="field">
             <label>Type</label>
             <div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div>
@@ -239,10 +239,10 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       </div>
 
       <div class="dim-card" id="dim2">
-        <div class="dim-num">Dimension 3</div>
+        <div class="dim-num">Measurement 3</div>
         <button class="dim-remove" onclick="removeDim(2)" title="Remove">x</button>
         <div class="row3">
-          <div class="field"><label>Metric key</label><input type="text" value="grounding_requests" /></div>
+          <div class="field"><label>Measurement key</label><input type="text" value="grounding_requests" /></div>
           <div class="field">
             <label>Type</label>
             <div class="pricing-toggle"><span>Per unit</span><span class="sel">Flat</span></div>
@@ -256,7 +256,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       </div>
     </div>
 
-    <div class="add-dim" onclick="addDim()">+ Add another dimension</div>
+    <div class="add-dim" onclick="addDim()">+ Add another measurement</div>
 
     <div class="nav-row"><button class="btn-back" onclick="goStep(1)">Back</button><button class="btn-next" onclick="goStep(3)">Review & test</button></div>
   </div>
@@ -364,7 +364,7 @@ function addDim(){
   const d=document.createElement('div');
   d.className='dim-card';
   d.id='dim'+(dimCount-1);
-  d.innerHTML='<div class="dim-num">Dimension '+dimCount+'</div><button class="dim-remove" onclick="this.parentElement.remove()" title="Remove">x</button><div class="row3"><div class="field"><label>Metric key</label><input type="text" placeholder="e.g. cached_tokens" /></div><div class="field"><label>Type</label><div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div></div><div class="field"><label>Unit price</label><input type="number" step="any" placeholder="0.00" /><div class="hint">$ per unit</div></div></div><div class="row2" style="margin-top:6px"><div class="field"><label>Display label</label><input type="text" placeholder="e.g. Cached tokens" /></div><div class="field"><label>Display unit</label><input type="text" placeholder="e.g. per 1M tokens" /></div></div>';
+  d.innerHTML='<div class="dim-num">Measurement '+dimCount+'</div><button class="dim-remove" onclick="this.parentElement.remove()" title="Remove">x</button><div class="row3"><div class="field"><label>Measurement key</label><input type="text" placeholder="e.g. cached_tokens" /></div><div class="field"><label>Type</label><div class="pricing-toggle"><span class="sel">Per unit</span><span>Flat</span></div></div><div class="field"><label>Unit price</label><input type="number" step="any" placeholder="0.00" /><div class="hint">$ per unit</div></div></div><div class="row2" style="margin-top:6px"><div class="field"><label>Display label</label><input type="text" placeholder="e.g. Cached tokens" /></div><div class="field"><label>Display unit</label><input type="text" placeholder="e.g. per 1M tokens" /></div></div>';
   document.getElementById('dims-list').appendChild(d);
 }
 function removeDim(i){document.getElementById('dim'+i)?.remove()}

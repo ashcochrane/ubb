@@ -1,5 +1,5 @@
-// Daily cost chart with an optional group-by dimension. Painted series are
-// capped at 3 (monochrome discipline) — extra dimensions fold into "Other".
+// Daily cost chart with an optional group-by axis. Painted series are
+// capped at 3 (monochrome discipline) — extra groups fold into "Other".
 
 import { lazy, Suspense, useMemo } from "react";
 
@@ -85,9 +85,9 @@ export function TimeseriesCard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_GROUPING}>No grouping</SelectItem>
-            {TIMESERIES_GROUP_BY.map((dimension) => (
-              <SelectItem key={dimension} value={dimension}>
-                By {dimensionLabel(dimension).toLowerCase()}
+            {TIMESERIES_GROUP_BY.map((option) => (
+              <SelectItem key={option} value={option}>
+                By {dimensionLabel(option).toLowerCase()}
               </SelectItem>
             ))}
           </SelectContent>

@@ -85,11 +85,15 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
  */
 export const MOCK_STARTING_BALANCE_MICROS = 12_500_000;
 
-/** Metric names the mock "cost cards" cover; anything else is uncosted. */
-export const MOCK_COSTED_METRICS = new Set(["tokens_in", "tokens_out", "requests"]);
+/** Measurement keys the mock "cost cards" cover; anything else is uncosted. */
+export const MOCK_COSTED_MEASUREMENTS = new Set([
+  "tokens_in",
+  "tokens_out",
+  "requests",
+]);
 
-/** Per-metric mock prices (micros per unit). */
-export const MOCK_METRIC_RATE_MICROS: Record<string, number> = {
+/** Per-measurement mock prices (micros per unit). */
+export const MOCK_MEASUREMENT_RATE_MICROS: Record<string, number> = {
   tokens_in: 2,
   tokens_out: 6,
   requests: 50_000,

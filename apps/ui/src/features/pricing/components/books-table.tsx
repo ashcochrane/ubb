@@ -82,7 +82,7 @@ export function BooksTable({ onOpenBook }: { onOpenBook: (bookId: string) => voi
           description={
             cardType === "price"
               ? "Price books set what customers are billed. Until one exists, billed cost falls back to your default markup."
-              : "Books hold your rates — create one, then add rates for each usage metric."
+              : "Books hold your rates — create one, then add rates for each usage measurement."
           }
           action={
             isAdmin ? { label: "Create a book", onClick: () => setCreateOpen(true) } : undefined

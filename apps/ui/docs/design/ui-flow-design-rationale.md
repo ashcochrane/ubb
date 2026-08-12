@@ -98,7 +98,7 @@ After activation, the next steps are correctly sequenced: create a pricing card 
 
 ### What a pricing card is
 
-A pricing card is a versioned bundle of cost dimensions that represents one API or cost source. For example, "Gemini 2.0 Flash" is a pricing card with three dimensions: input tokens, output tokens, and grounding requests. Each dimension has a pricing type (per unit or flat) and a unit price. When the SDK sends a usage event tagged with this card's key, the platform multiplies each dimension's quantity by its unit price and sums them to get the total event cost.
+A pricing card is a versioned bundle of measurements that represents one API or cost source. For example, "Gemini 2.0 Flash" is a pricing card with three measurements: input tokens, output tokens, and grounding requests. Each measurement has a pricing type (per unit or flat) and a unit price. When the SDK sends a usage event tagged with this card's key, the platform multiplies each measurement's quantity by its unit price and sums them to get the total event cost.
 
 ### The 4-step wizard
 
@@ -106,25 +106,25 @@ The wizard is in four files: `pricing_card_creation_flow.html` (Step 1 + overvie
 
 **Step 1 — Source selection.** Choose between creating from a template (pre-configured cards for common APIs like Gemini, GPT-4, Claude) or creating a custom card from scratch.
 
-Why templates? Because the "fast" design goal means a customer tracking Gemini should be able to set up the card in under 60 seconds. A template pre-fills the card name, provider, key, all dimensions, pricing types, and unit prices. The customer reviews and activates — no manual configuration needed. Templates also serve as education: a customer who's never set up a pricing card can see a well-configured example before building their own.
+Why templates? Because the "fast" design goal means a customer tracking Gemini should be able to set up the card in under 60 seconds. A template pre-fills the card name, provider, key, all measurements, pricing types, and unit prices. The customer reviews and activates — no manual configuration needed. Templates also serve as education: a customer who's never set up a pricing card can see a well-configured example before building their own.
 
-Why custom? Because the platform tracks any API, not just the ones we have templates for. A customer using a niche geocoding API or a custom ML model needs to define their own dimensions.
+Why custom? Because the platform tracks any API, not just the ones we have templates for. A customer using a niche geocoding API or a custom ML model needs to define their own measurements.
 
 **Step 2 — Card details.** Name the card, pick the provider, and select a pricing pattern (token-based, per-request, or mixed). The card key (`gemini_2_flash`) is auto-generated from the name using slugification. A live preview card on the right updates as the user types, showing exactly how the card will appear on the dashboard.
 
 Why auto-generate the card key? Because developers will type this key in their SDK calls (`meter.track({ pricing_card: "gemini_2_flash" })`), so it needs to be a valid slug. Auto-generating from the name prevents typos and enforces consistent formatting. The key is editable if the customer wants something different.
 
-Why a pricing pattern selector? Because the pattern pre-seeds Step 3 with the right dimensions. Selecting "token-based" pre-fills input_tokens and output_tokens. Selecting "per-request" pre-fills a single flat-rate requests dimension. Selecting "mixed" pre-fills tokens plus a flat grounding/search fee. This is faster than starting from zero and teaches the customer what dimensions to expect.
+Why a pricing pattern selector? Because the pattern pre-seeds Step 3 with the right measurements. Selecting "token-based" pre-fills input_tokens and output_tokens. Selecting "per-request" pre-fills a single flat-rate requests measurement. Selecting "mixed" pre-fills tokens plus a flat grounding/search fee. This is faster than starting from zero and teaches the customer what measurements to expect.
 
-**Step 3 — Dimensions.** Configure each cost dimension: metric key, pricing type (per unit or flat), unit price, display label, and display unit. Dimensions can be added, removed, duplicated, and collapsed. A live cost tester at the bottom lets the customer enter sample quantities and see the calculated cost in real-time.
+**Step 3 — Measurements.** Configure each measurement: its key, pricing type (per unit or flat), unit price, display label, and display unit. Measurements can be added, removed, duplicated, and collapsed. A live cost tester at the bottom lets the customer enter sample quantities and see the calculated cost in real-time.
 
 Why per-unit vs flat as the only two types? Because every API cost in existence decomposes into one of these two formulas: `quantity × price_per_unit` (per unit) or `fixed_cost_if_event_fires` (flat). Token pricing is per-unit. Per-request pricing is flat. There is no third type needed — even tiered pricing can be modelled by creating multiple cards for different tiers.
 
-Why a live cost tester? Because unit prices at the scale of `$0.0000001` are impossible for humans to reason about. The tester translates abstract prices into concrete costs: "1,500 input tokens × $0.0000001 = $0.000150." It also shows sanity warnings when one dimension dominates (e.g., "grounding requests account for 98.7% of total cost — is this expected?").
+Why a live cost tester? Because unit prices at the scale of `$0.0000001` are impossible for humans to reason about. The tester translates abstract prices into concrete costs: "1,500 input tokens × $0.0000001 = $0.000150." It also shows sanity warnings when one measurement dominates (e.g., "grounding requests account for 98.7% of total cost — is this expected?").
 
-Why quick-add chips? Common dimension names (cached_tokens, search_queries, images) appear as one-click chips below the dimensions list. This is faster than typing and reduces the chance of typos in metric keys, which must match what the SDK sends.
+Why quick-add chips? Common measurement names (cached_tokens, search_queries, images) appear as one-click chips below the measurements list. This is faster than typing and reduces the chance of typos in measurement keys, which must match what the SDK sends.
 
-**Step 4 — Review and test.** A read-only summary of the card with a dry-run simulator. The simulator shows line-by-line arithmetic for a sample event: quantity × unit price = line cost for each dimension, then the sum. A cost distribution bar shows what percentage each dimension contributes. A sanity checklist validates: non-zero prices, no duplicate keys, prices within expected ranges, unique card ID.
+**Step 4 — Review and test.** A read-only summary of the card with a dry-run simulator. The simulator shows line-by-line arithmetic for a sample event: quantity × unit price = line cost for each measurement, then the sum. A cost distribution bar shows what percentage each measurement contributes. A sanity checklist validates: non-zero prices, no duplicate keys, prices within expected ranges, unique card ID.
 
 Below the simulator: product assignment (group this card under a product for dashboard aggregation) and the SDK integration snippet that updates live when a product is assigned (adding the `product: "property_search"` line). The snippet is copy-pasteable — the customer puts it in their app wherever the API call happens.
 
@@ -148,15 +148,15 @@ The page has two main zones:
 
 **Zone 1 — Timeline.** A visual bar showing all versions of a pricing card over time. Two bars are shown: the "originally tracked" timeline (what costs looked like before any corrections) and the "reconciled" timeline (what costs look like after corrections). The difference between these two bars is the net adjustment.
 
-Each version segment is clickable. Clicking one shows a detail card with the version's date range, event count, total cost, and a table of all dimensions with their unit prices.
+Each version segment is clickable. Clicking one shows a detail card with the version's date range, event count, total cost, and a table of all measurements with their unit prices.
 
 Three actions are available on each version:
 
-1. **Edit prices** — Change the unit prices for a historical version. All events in that period are recalculated at the corrected prices. Use case: "We configured $0.10/1M input tokens but Google actually charged us $0.15/1M." The UI shows old price → new price for each dimension, requires a reason, and offers a preview before applying.
+1. **Edit prices** — Change the unit prices for a historical version. All events in that period are recalculated at the corrected prices. Use case: "We configured $0.10/1M input tokens but Google actually charged us $0.15/1M." The UI shows old price → new price for each measurement, requires a reason, and offers a preview before applying.
 
 2. **Adjust boundaries** — Move the dividing line between two adjacent versions. Events that cross the new boundary are repriced under the version they now fall into. Use case: "The price change was effective end of day 5 Feb, not 3 Feb as we originally configured." The UI shows a before/after card for the two affected versions with a date/time picker for the new boundary.
 
-3. **Insert period** — Split an existing version at a date and apply different prices for the second half. This creates a new "retroactive" version (shown in blue on the timeline). Use case: "Google increased input token pricing effective 10 Feb, but we didn't update the card until 18 Mar. We need to retroactively apply the higher price from 10 Feb to 18 Mar." The UI shows the selected version, a split date, and price inputs for the new period — pre-filled with the current prices so only changed dimensions need updating.
+3. **Insert period** — Split an existing version at a date and apply different prices for the second half. This creates a new "retroactive" version (shown in blue on the timeline). Use case: "Google increased input token pricing effective 10 Feb, but we didn't update the card until 18 Mar. We need to retroactively apply the higher price from 10 Feb to 18 Mar." The UI shows the selected version, a split date, and price inputs for the new period — pre-filled with the current prices so only changed measurements need updating.
 
 **Zone 2 — Adjustments.** For costs that exist outside the event pipeline — refunds, credits, missed data, invoice reconciliation. An adjustment is a dollar amount attributed to a product and distributed across a date range.
 
@@ -234,10 +234,10 @@ Every filter change updates the row estimate and preview table live. The custome
 **Data preview table.** Shows the first 5 rows of what the export will contain. This serves two purposes: it confirms the data shape is what the customer expects (right columns, right granularity), and it lets them verify the filters are working correctly before generating a potentially large file.
 
 **Granularity toggle.** Two modes:
-- "By dimension" — one row per dimension per event. A single Gemini API call produces 3 rows (input_tokens, output_tokens, grounding_requests). Columns: event_time, customer, product, pricing_card, card_version, dimension, quantity, unit_price, cost, event_total.
-- "By event" — one row per event. Dimensions become columns. The same Gemini call produces 1 row with input_tokens, output_tokens, and grounding_reqs as separate columns. This is a wider but shorter format.
+- "By measurement" — one row per measurement per event. A single Gemini API call produces 3 rows (input_tokens, output_tokens, grounding_requests). Columns: event_time, customer, product, pricing_card, card_version, measurement, quantity, unit_price, cost, event_total.
+- "By event" — one row per event. Measurements become columns. The same Gemini call produces 1 row with input_tokens, output_tokens, and grounding_reqs as separate columns. This is a wider but shorter format.
 
-Why two granularity modes? Because "by dimension" is normalised and works well in SQL/databases, while "by event" is denormalised and works better in spreadsheets. Different analysis tools have different preferences.
+Why two granularity modes? Because "by measurement" is normalised and works well in SQL/databases, while "by event" is denormalised and works better in spreadsheets. Different analysis tools have different preferences.
 
 **Format toggle.** CSV or JSON. CSV for spreadsheets, JSON for programmatic consumption.
 
@@ -342,7 +342,7 @@ Every page should feel consistent with these principles:
 | `step_3_confirm_and_activate.html` | Review and activate for revenue+costs mode | Onboarding Step 3 |
 | `pricing_card_creation_flow.html` | 4-step wizard overview with source selection | Pricing card creation |
 | `custom_card_details_step.html` | Step 2: card name, provider, pattern, live preview | Pricing card creation |
-| `custom_card_dimensions_step.html` | Step 3: dimension config, cost tester | Pricing card creation |
+| `custom_card_dimensions_step.html` | Step 3: measurement config, cost tester | Pricing card creation |
 | `custom_card_review_test_step.html` | Step 4: dry-run simulator, product assignment, activation | Pricing card creation |
 | `unified_reconciliation_v3.html` | Dual timeline, version editing, adjustments, audit trail | Card editing / reconciliation |
 | `customer_mapping_management.html` | Ongoing mapping dashboard with orphaned events | Customer mapping |

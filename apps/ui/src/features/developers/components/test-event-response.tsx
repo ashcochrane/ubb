@@ -1,7 +1,7 @@
 // One priced response from the test console — the teaching moment. Shows the
-// event id, both cost denominations, the balance after debit, uncosted-metric
-// warnings, and the STOP VERDICT block when stop=true (HTTP was still 200 —
-// the one-rule contract).
+// event id, both cost denominations, the balance after debit, warnings for the
+// measurements nothing priced, and the STOP VERDICT block when stop=true (HTTP
+// was still 200 — the one-rule contract).
 //
 // The Event Type key in the heading is the TENANT'S, and #279 renders it
 // exactly as they declared it. This card used to title-case it, which is the
@@ -89,18 +89,18 @@ export function TestEventResponseCard({
         <div className="space-y-1.5 rounded-md border border-dashed border-border p-2.5">
           <p className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-primary">
             <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Metrics without a cost card
+            Measurements without a cost card
           </p>
           <div className="flex flex-wrap gap-1">
-            {(response.uncosted_metrics ?? []).map((metric) => (
-              <Badge key={metric} variant="outline" className="font-mono">
-                {metric}
+            {(response.uncosted_metrics ?? []).map((key) => (
+              <Badge key={key} variant="outline" className="font-mono">
+                {key}
               </Badge>
             ))}
           </div>
           <p className="text-[11px] text-text-secondary">
-            These metrics were recorded but contributed nothing to cost. Add a
-            rate for them to a cost card to price them.
+            These measurements were recorded but contributed nothing to cost.
+            Add a rate for them to a cost card to price them.
           </p>
         </div>
       )}

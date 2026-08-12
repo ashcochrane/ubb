@@ -151,20 +151,20 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   <div class="steps">
     <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
     <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Details</div><div class="step-line done"></div></div>
-    <div class="step-item"><div class="step-dot active">3</div><div class="step-label active">Dimensions</div><div class="step-line"></div></div>
+    <div class="step-item"><div class="step-dot active">3</div><div class="step-label active">Measurements</div><div class="step-line"></div></div>
     <div class="step-item"><div class="step-dot">4</div><div class="step-label">Review & test</div></div>
   </div>
 
   <span class="badge badge-custom">Custom card</span><span class="badge badge-seed">Pre-seeded: token-based</span>
 
-  <div class="panel-title">Define cost dimensions</div>
-  <div class="panel-sub">Each dimension is one line item on your cost breakdown. We've pre-added input and output tokens based on your selection — adjust the prices and add more as needed.</div>
+  <div class="panel-title">Define cost measurements</div>
+  <div class="panel-sub">Each measurement is one line item on your cost breakdown. We've pre-added input and output tokens based on your selection — adjust the prices and add more as needed.</div>
 
   <div id="dims-container">
 
     <div class="dim-card" id="dim-0" data-type="per_unit" data-price="0">
       <div class="dim-head">
-        <div class="dim-num">Dimension 1</div>
+        <div class="dim-num">Measurement 1</div>
         <div class="dim-actions">
           <button class="dim-btn" onclick="toggleCollapse(0)">Collapse</button>
           <button class="dim-btn" onclick="dupDim(0)">Duplicate</button>
@@ -175,7 +175,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       <div class="collapse-body" id="body-0">
         <div class="dim-grid-top">
           <div class="field">
-            <label>Metric key <span class="key-status" id="ks-0"></span></label>
+            <label>Measurement key <span class="key-status" id="ks-0"></span></label>
             <input type="text" class="mono" id="mk-0" value="input_tokens" placeholder="e.g. input_tokens" oninput="syncKey(0)" />
             <div class="hint">Must match the key your SDK sends in the usage object.</div>
           </div>
@@ -216,7 +216,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
 
     <div class="dim-card" id="dim-1" data-type="per_unit" data-price="0">
       <div class="dim-head">
-        <div class="dim-num">Dimension 2</div>
+        <div class="dim-num">Measurement 2</div>
         <div class="dim-actions">
           <button class="dim-btn" onclick="toggleCollapse(1)">Collapse</button>
           <button class="dim-btn" onclick="dupDim(1)">Duplicate</button>
@@ -227,7 +227,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       <div class="collapse-body" id="body-1">
         <div class="dim-grid-top">
           <div class="field">
-            <label>Metric key <span class="key-status" id="ks-1"></span></label>
+            <label>Measurement key <span class="key-status" id="ks-1"></span></label>
             <input type="text" class="mono" id="mk-1" value="output_tokens" placeholder="e.g. output_tokens" oninput="syncKey(1)" />
             <div class="hint">Must match the key your SDK sends in the usage object.</div>
           </div>
@@ -268,7 +268,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   </div>
 
   <div class="add-dim" onclick="addDim()">
-    + Add dimension
+    + Add measurement
     <div class="quick-add">
       <span class="quick-chip" onclick="event.stopPropagation();addPreset('grounding_requests','Grounding requests','per request','flat')">+ grounding</span>
       <span class="quick-chip" onclick="event.stopPropagation();addPreset('cached_tokens','Cached tokens','per 1M tokens','per_unit')">+ cached tokens</span>
@@ -395,7 +395,7 @@ function dupDim(id){
 }
 function renumber(){
   const cards=document.querySelectorAll('.dim-card');
-  cards.forEach((c,i)=>{c.querySelector('.dim-num').textContent='Dimension '+(i+1)});
+  cards.forEach((c,i)=>{c.querySelector('.dim-num').textContent='Measurement '+(i+1)});
 }
 function addPreset(key,label,unit,type){
   addDimFull(key,type,label,unit);
@@ -410,7 +410,7 @@ function addDimFull(key,type,label,unit){
   d.setAttribute('data-type',type);
   d.setAttribute('data-price','0');
   const isSel=type==='per_unit';
-  d.innerHTML='<div class="dim-head"><div class="dim-num">Dimension</div><div class="dim-actions"><button class="dim-btn" onclick="toggleCollapse('+id+')">Collapse</button><button class="dim-btn" onclick="dupDim('+id+')">Duplicate</button><button class="dim-btn remove" onclick="removeDim('+id+')">Remove</button></div></div><div class="dim-summary"><span>'+key+'</span><span>'+type.replace('_',' ')+' — set price below</span></div><div class="collapse-body" id="body-'+id+'"><div class="dim-grid-top"><div class="field"><label>Metric key <span class="key-status" id="ks-'+id+'"></span></label><input type="text" class="mono" id="mk-'+id+'" value="'+key+'" oninput="syncKey('+id+')" /><div class="hint">Must match the key your SDK sends in the usage object.</div></div><div class="field"><label>Pricing type</label><div class="toggle-track" id="tt-'+id+'"><span class="'+(isSel?'sel':'')+'" onclick="setType('+id+',\'per_unit\')">Per unit</span><span class="'+(isSel?'':'sel')+'" onclick="setType('+id+',\'flat\')">Flat</span></div></div><div class="field"><label>Unit price ($)</label><div class="price-group"><span class="price-prefix">$</span><input type="number" id="up-'+id+'" step="any" placeholder="0.00" oninput="syncPrice('+id+')" /></div><div class="hint" id="ph-'+id+'">'+(type==='flat'?'Fixed cost each time this event fires':'Price per single unit')+'</div><div class="warn-inline" id="warn-'+id+'"></div></div></div><div class="dim-grid-bot"><div class="field"><label>Display label</label><input type="text" id="dl-'+id+'" value="'+label+'" /></div><div class="field"><label>Display unit</label><input type="text" id="du-'+id+'" value="'+unit+'" /></div><div class="field"><label>Display price</label><input type="text" id="dp-'+id+'" placeholder="e.g. $0.035" /><div class="hint">Shown on dashboard.</div></div></div></div>';
+  d.innerHTML='<div class="dim-head"><div class="dim-num">Measurement</div><div class="dim-actions"><button class="dim-btn" onclick="toggleCollapse('+id+')">Collapse</button><button class="dim-btn" onclick="dupDim('+id+')">Duplicate</button><button class="dim-btn remove" onclick="removeDim('+id+')">Remove</button></div></div><div class="dim-summary"><span>'+key+'</span><span>'+type.replace('_',' ')+' — set price below</span></div><div class="collapse-body" id="body-'+id+'"><div class="dim-grid-top"><div class="field"><label>Measurement key <span class="key-status" id="ks-'+id+'"></span></label><input type="text" class="mono" id="mk-'+id+'" value="'+key+'" oninput="syncKey('+id+')" /><div class="hint">Must match the key your SDK sends in the usage object.</div></div><div class="field"><label>Pricing type</label><div class="toggle-track" id="tt-'+id+'"><span class="'+(isSel?'sel':'')+'" onclick="setType('+id+',\'per_unit\')">Per unit</span><span class="'+(isSel?'':'sel')+'" onclick="setType('+id+',\'flat\')">Flat</span></div></div><div class="field"><label>Unit price ($)</label><div class="price-group"><span class="price-prefix">$</span><input type="number" id="up-'+id+'" step="any" placeholder="0.00" oninput="syncPrice('+id+')" /></div><div class="hint" id="ph-'+id+'">'+(type==='flat'?'Fixed cost each time this event fires':'Price per single unit')+'</div><div class="warn-inline" id="warn-'+id+'"></div></div></div><div class="dim-grid-bot"><div class="field"><label>Display label</label><input type="text" id="dl-'+id+'" value="'+label+'" /></div><div class="field"><label>Display unit</label><input type="text" id="du-'+id+'" value="'+unit+'" /></div><div class="field"><label>Display price</label><input type="text" id="dp-'+id+'" placeholder="e.g. $0.035" /><div class="hint">Shown on dashboard.</div></div></div></div>';
   document.getElementById('dims-container').appendChild(d);
   renumber();
   rebuildTester();

@@ -34,10 +34,10 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
   const hasBilling = config ? hasProduct(config, "billing") : false;
   const currency = useTenantCurrency();
 
-  // One windowed analytics query powers both the events stat and the
-  // cost-by-dimension card (totals are dimension-independent).
-  const [dimension, setDimension] = React.useState<BreakdownDimension>("provider");
-  const analytics = useWindowAnalytics(window, dimension);
+  // One windowed analytics query powers both the events stat and the cost
+  // breakdown card (the totals do not depend on the axis).
+  const [groupBy, setGroupBy] = React.useState<BreakdownDimension>("provider");
+  const analytics = useWindowAnalytics(window, groupBy);
 
   // All-time totals decide whether this workspace still looks brand new —
   // deliberately not windowed, so changing the date range never resurrects
@@ -72,8 +72,8 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
         <DimensionBreakdown
           className="lg:col-span-2"
           query={analytics}
-          dimension={dimension}
-          onDimensionChange={setDimension}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
           currency={currency}
         />
         <CustomerEconomicsTable

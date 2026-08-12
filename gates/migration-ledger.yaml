@@ -938,22 +938,61 @@ entries:
     gate: G7
     site: console::dimension
     expected: grouping_field_value
-    found: 28 files
+    found: 6 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
+      #280 cleared twenty-two of the twenty-eight — the dashboard, events,
+      developers and pricing features, their mock data, types, libraries
+      and tests, plus the design exports, the flow rationale, the roadmap
+      and the two mockups. The six left are NOT console vocabulary, and
+      none is payable by this surface alone. They are three pairs:
+      TWO are the import specifier of the breakdown component, whose file
+      NAME is `owned_by_slice_7` because the console importer ratchet pins
+      that exact path (`g7-repo-dimension`). Renaming the file means
+      editing the pin, which is slice 7's.
+      TWO are one named constant each, in the two feature modules that
+      narrow the analytics rows the contract leaves untyped — the
+      dashboard's `breakdowns` and the events timeseries' `series`. The key
+      is what the BACKEND still emits (`api/v1/metering_endpoints.py` and
+      `apps/metering/queries.py` respectively, written independently of
+      each other); the console's own word for it is now `group_value`.
+      Renaming the read alone would silently render every bar and every
+      series "(unattributed)" against a live server, so each moves when
+      `g7-backend-dimension` does. `docs/conventions/coding-standards.md`
+      is explicit that a literal whose canonical name is not yet the string
+      in flight is left alone for the slice that owns it.
+      TWO are a verbatim backend response each — `economics.test.ts` and
+      `timeseries.test.ts` — one per constant, because each feature's mock
+      EMITS the key through the same constant its narrowing READS and so
+      cannot contradict a mistake in it. They are the pairing's only proof:
+      the rows are `additionalProperties: true`, so no generated type can
+      hold the name and no type-checked fixture can either.
+      A third narrowing, in the customers feature, was DELETED rather than
+      converted: that feature never sends `group_by`, so the key never
+      arrives, and its chart read no such field.
 
   - id: g7-console-dimensions
     gate: G7
     site: console::dimensions
     expected: analytics_grouping_kind
-    found: 16 files
+    found: 5 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
+      #280 paid eleven of the sixteen early, and the eleven were never
+      this entry's subject: in the console's design exports, flow
+      rationale, vision note and mockups the plural named a pricing card's
+      cost lines — the same thing the singular named in the same
+      sentences — so the two could not be separated, and the ticket's own
+      acceptance list names the vision note, whose ONLY occurrence was a
+      plural. Two more were comments describing identifiers #280 renamed.
+      The five left are the genuine grouping axis: the committed schema
+      mirror, the analytics query parameter and its picker, the rate
+      identity message and the label module's own list.
 
   - id: g7-console-markup.deleted
     gate: G7
@@ -990,24 +1029,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-console-metric
-    gate: G7
-    site: console::metric
-    expected: measurement_key
-    found: 13 files
-    owner_slice: slice_2
-    reason: >-
-      The industry uses this word for the metered ENTITY rather than for
-      the quantity inside it, so keeping it would have guaranteed mis-
-      translation at every integration boundary (#145 §10). Slice 2
-      declares measurements and the word goes with the model.
-      #275 cleared four: the generated schema mirror, and the three
-      pricing files whose prose names the very property it renamed. The
-      thirteen left are the developers and events features, the books
-      table's empty state, two design exports, a flow rationale, an
-      architecture note and two mockups — none of them forced by the
-      rename, all of them ticket 23's.
 
   - id: g7-console-price_card
     gate: G7

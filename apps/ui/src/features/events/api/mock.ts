@@ -20,6 +20,7 @@ import {
 } from "./mock-data";
 import {
   asStopContextEntries,
+  WIRE_GROUP_VALUE_KEY,
   type AnalyticsParams,
   type CloseTaskResult,
   type CustomerMargin,
@@ -250,7 +251,7 @@ export async function getUsageTimeseries(
   const series = [...buckets.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, totals]) => {
-      const [bucket = "", dimension] = key.split("|");
+      const [bucket = "", groupValue] = key.split("|");
       const row: Record<string, unknown> = {
         bucket,
         provider_cost_micros: totals.provider,
@@ -258,7 +259,9 @@ export async function getUsageTimeseries(
         markup_micros: totals.billed - totals.provider,
         event_count: totals.count,
       };
-      if (dimension !== undefined) row.dimension = dimension;
+      // Emitted under the key the backend still uses, taken by reference from
+      // the narrowing module rather than re-spelled here.
+      if (groupValue !== undefined) row[WIRE_GROUP_VALUE_KEY] = groupValue;
       return row;
     });
   return {

@@ -11,7 +11,8 @@ import type { Book, Rate, TenantMarkup } from "./types";
 /**
  * A rate fixture, written with only the selectors this feature's story
  * actually uses (`model` maps onto `dim1`, the tenant's registered slot for
- * that dimension) — the other nine selector columns default to "" (wildcard).
+ * that grouping field) — the other nine selector columns default to ""
+ * (wildcard).
  */
 type RateSeed = Omit<
   Rate,

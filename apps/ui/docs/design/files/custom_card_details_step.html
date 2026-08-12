@@ -136,13 +136,13 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   <div class="steps">
     <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
     <div class="step-item"><div class="step-dot active">2</div><div class="step-label active">Details</div><div class="step-line"></div></div>
-    <div class="step-item"><div class="step-dot">3</div><div class="step-label">Dimensions</div><div class="step-line"></div></div>
+    <div class="step-item"><div class="step-dot">3</div><div class="step-label">Measurements</div><div class="step-line"></div></div>
     <div class="step-item"><div class="step-dot">4</div><div class="step-label">Review & test</div></div>
   </div>
 
   <span class="badge-custom">Custom card</span>
   <div class="panel-title">Describe this API</div>
-  <div class="panel-sub">Tell us what you're tracking. This information helps us suggest the right dimension structure in the next step and organises your dashboard.</div>
+  <div class="panel-sub">Tell us what you're tracking. This information helps us suggest the right measurement structure in the next step and organises your dashboard.</div>
 
   <div class="section-label">Identity</div>
   <div class="section-sub">How this card appears across your account.</div>
@@ -187,7 +187,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   <hr class="section-break" />
 
   <div class="section-label">Pricing pattern</div>
-  <div class="section-sub">How does this API charge? This helps us pre-configure the right dimensions on the next step.</div>
+  <div class="section-sub">How does this API charge? This helps us pre-configure the right measurements on the next step.</div>
 
   <div class="type-grid">
     <div class="type-opt" id="tp-token" onclick="pickType('token')">
@@ -203,9 +203,9 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       <div class="type-opt-sub">Combination of unit-based and flat charges, or something unique.</div>
     </div>
   </div>
-  <div class="type-hint" id="hint-token">We'll pre-add <span style="font-family:var(--font-mono)">input_tokens</span> and <span style="font-family:var(--font-mono)">output_tokens</span> dimensions. You can adjust, rename, or add more on the next step.</div>
-  <div class="type-hint" id="hint-request">We'll pre-add a single <span style="font-family:var(--font-mono)">requests</span> dimension with flat pricing. You can add more dimensions if needed.</div>
-  <div class="type-hint" id="hint-mixed">We'll start you with a blank dimension list. Add as many cost lines as you need — per-unit, flat, or a mix of both.</div>
+  <div class="type-hint" id="hint-token">We'll pre-add <span style="font-family:var(--font-mono)">input_tokens</span> and <span style="font-family:var(--font-mono)">output_tokens</span> measurements. You can adjust, rename, or add more on the next step.</div>
+  <div class="type-hint" id="hint-request">We'll pre-add a single <span style="font-family:var(--font-mono)">requests</span> measurement with flat pricing. You can add more measurements if needed.</div>
+  <div class="type-hint" id="hint-mixed">We'll start you with a blank measurement list. Add as many cost lines as you need — per-unit, flat, or a mix of both.</div>
 
   <hr class="section-break" />
 
@@ -240,7 +240,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
 
   <div class="nav-row">
     <button class="btn-back" onclick="sendPrompt('Show me the source selection step for custom card')">Back</button>
-    <button class="btn-next" id="btn-continue" onclick="sendPrompt('Show me the custom dimensions step pre-filled for a token-based API')">Continue to dimensions</button>
+    <button class="btn-next" id="btn-continue" onclick="sendPrompt('Show me the custom measurements step pre-filled for a token-based API')">Continue to measurements</button>
   </div>
 </div>
 

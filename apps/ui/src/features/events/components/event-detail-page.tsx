@@ -1,4 +1,4 @@
-// The full receipt for one usage event: identity, timing, money, metrics,
+// The full receipt for one usage event: identity, timing, money, measurements,
 // stop context, the open metadata bag, and the pricing-provenance "why this
 // amount".
 //
@@ -58,9 +58,9 @@ function idItem(label: string, value: string): DetailItem {
   };
 }
 
-function metricRows(detail: UsageEventDetail): Array<[string, string]> {
-  return Object.entries(detail.measurements).map(([metric, quantity]) => [
-    metric,
+function measurementRows(detail: UsageEventDetail): Array<[string, string]> {
+  return Object.entries(detail.measurements).map(([key, quantity]) => [
+    key,
     typeof quantity === "number" ? quantity.toLocaleString() : String(quantity),
   ]);
 }
@@ -102,7 +102,7 @@ export function EventDetailPage({
   const detail = event.data;
   const stopEntries = asStopContextEntries(detail.stop_context);
   const margin = detail.billed_cost_micros - detail.provider_cost_micros;
-  const metrics = metricRows(detail);
+  const measurements = measurementRows(detail);
   const hasMetadata = Object.keys(detail.metadata).length > 0;
   const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
   const backfilled =
@@ -175,14 +175,14 @@ export function EventDetailPage({
             <DetailList items={moneyItems} />
           </Section>
 
-          {metrics.length > 0 && (
+          {measurements.length > 0 && (
             <Section
-              title="Usage metrics"
+              title="Usage measurements"
               description="The measured quantities this event was priced on."
             >
               <DetailList
-                items={metrics.map(([metric, quantity]) => ({
-                  label: metric,
+                items={measurements.map(([key, quantity]) => ({
+                  label: key,
                   value: quantity,
                 }))}
               />

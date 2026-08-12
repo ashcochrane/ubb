@@ -15,6 +15,7 @@
 // COGS and no recognised revenue). Every breakdown below sums exactly to
 // those totals so the page reads as one consistent business.
 
+import { WIRE_GROUP_VALUE_KEY } from "./types";
 import type {
   ApiKeyList,
   ConnectStatus,
@@ -124,8 +125,8 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
 };
 
 // ---------------------------------------------------------------------------
-// Analytics — totals + per-dimension rows (uniform `breakdowns` shape).
-// Each dimension sums exactly to the same window totals.
+// Analytics — totals + per-axis rows (uniform `breakdowns` shape).
+// Each axis sums exactly to the same window totals.
 
 const WINDOW_TOTALS = {
   total_events: 93_558,
@@ -181,9 +182,11 @@ const DIMENSION_ROWS = {
   customer: BY_CUSTOMER,
 } as const;
 
+// The uniform rows are emitted under the key the backend still uses, taken by
+// reference from the narrowing module rather than re-spelled here.
 function breakdownRows(rows: Row[]): Record<string, unknown>[] {
   return rows.map(([name, billed, provider, events]) => ({
-    dimension: name,
+    [WIRE_GROUP_VALUE_KEY]: name,
     event_count: events,
     total_provider_cost_micros: provider,
     total_billed_cost_micros: billed,
@@ -202,7 +205,7 @@ function legacyRows(rows: Row[], valueKey: string): Record<string, unknown>[] {
 }
 
 export function mockWindowAnalytics(
-  dimension: keyof typeof DIMENSION_ROWS,
+  groupBy: keyof typeof DIMENSION_ROWS,
 ): UsageAnalytics {
   return {
     ...WINDOW_TOTALS,
@@ -211,7 +214,7 @@ export function mockWindowAnalytics(
     by_task_type: legacyRows(BY_TASK_TYPE, "task_type"),
     by_customer: legacyRows(BY_CUSTOMER, "customer__external_id"),
     by_tag: [],
-    breakdowns: { [dimension]: breakdownRows(DIMENSION_ROWS[dimension]) },
+    breakdowns: { [groupBy]: breakdownRows(DIMENSION_ROWS[groupBy]) },
   };
 }
 
