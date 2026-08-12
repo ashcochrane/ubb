@@ -120,9 +120,10 @@ class TestUsageDimensions:
 
     def test_the_record_response_shows_what_the_posting_inherited(self):
         """A task-scoped value is set at the start gate and never sent with the
-        event (D6), so this response is the only place a caller learns what its
-        posting was actually attributed to. The old per-slot pair could show
-        that only when the value happened to land in slot two or three."""
+        event (D6), so the record response is where a caller learns what its
+        posting was attributed to WITHOUT a second call. The old per-slot pair
+        could show that only when the value happened to land in slot two or
+        three."""
         self._declare()
         task = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                    balance_snapshot_micros=0,

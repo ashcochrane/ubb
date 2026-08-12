@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,539 of 1,897 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,541 of 1,899 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -143,15 +143,22 @@ measurement_key:
     # the RATE ARITHMETIC caution #275 raised applies here too: #276 changed
     # `Rate`'s selector columns and did not go near `compute(units)`.
     #
-    # #277 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,536 → 1,539 swept, 1,894
-    # → 1,897 tracked, 51/127 unchanged) — three new modules, all three in the
-    # swept set and therefore moving both counts by the same three. NO
-    # MIGRATION: #277 changes what a posting's grouping values look like on the
-    # published contract and touches no column, which is why the two counts move
-    # together here and moved apart in #276. Nothing about this concept is in
-    # that commit either; the numerator being untouched is what says so, and
-    # #275's RATE ARITHMETIC caution holds again — #277 went nowhere near
-    # `compute(units)`.
+    # #277 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,536 → 1,541 swept, 1,894
+    # → 1,899 tracked, 51/127 unchanged) — FIVE new modules, all five in the
+    # swept set and therefore moving both counts by the same five. NO MIGRATION:
+    # #277 changes what a posting's grouping values look like on the published
+    # contract and touches no column, which is why the two counts move together
+    # here and moved apart in #276. Nothing about this concept is in that commit
+    # either; the numerator being untouched is what says so, and #275's RATE
+    # ARITHMETIC caution holds again — #277 went nowhere near `compute(units)`.
+    #
+    # THREE OF THE FIVE ARE HAND-WRITTEN AND TWO ARE GENERATED, and the first
+    # re-take of this number missed the generated pair. A published property
+    # whose type is an object mints a model file per schema carrying it, so
+    # `generate_core.py` added two. They are invisible to a count taken BEFORE
+    # the regeneration is staged, because the sweep's file set comes from
+    # `git ls-files` — so re-take this number AFTER the last generated artifact
+    # is staged, not after the last hand edit.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

@@ -19,14 +19,8 @@ not a contract change either.
 shape; the projection is computed at the serialiser, from the row's own columns
 and the registry that already owns the binding.
 """
-from apps.platform.grouping_fields.models import SLOT_CHOICES
+from apps.platform.grouping_fields.models import SLOTS
 from apps.platform.grouping_fields.queries import keys_by_slot
-
-#: Read off the registry's vocabulary rather than restated as a range, for the
-#: reason `usage_service.SLOTS` gives: a literal here would be a second
-#: declaration of how many slots exist, and #276 would have had one more place
-#: to fix.
-SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 def grouping_fields_for(posting) -> dict:

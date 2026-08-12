@@ -181,9 +181,10 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 "product": product, "service": service, "agent": agent}
             _force_day(res.event_id, day)
 
-        # ---- 3b. One extra event for C1 with NO service dimension -> dim2="" ----
-        # This event MUST appear as "(unattributed)" in the dim2 breakdown
-        # so that the breakdown reconciles to the new grand total.
+        # ---- 3b. One extra event for C1 with NO service dimension ----
+        # Nothing declared on it, so it carries an EMPTY grouping-field object
+        # and must appear as "(unattributed)" in the "service" breakdown, so
+        # that the breakdown reconciles to the new grand total.
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
             provider_cost_micros=COST_UNATTR,

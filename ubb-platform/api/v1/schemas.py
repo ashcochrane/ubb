@@ -203,9 +203,10 @@ class RecordUsageResponse(Schema):
     uncosted_metrics: list[str] = []
     # The posting's grouping values, keyed by the tenant's own declared key
     # (#277) — see `UsageEventDetailOut.grouping_fields`, which is the same
-    # object. On THIS response it is also the only place a caller learns what
-    # its posting inherited: task- and subtask-scoped values are set at the
-    # start gate and never travel with the event (D6).
+    # object. Inherited values are included: task- and subtask-scoped values are
+    # set at the start gate and never travel with the event (D6), so this is
+    # where a caller sees what its posting was attributed to without a second
+    # call.
     grouping_fields: dict[str, str] = {}
 
 

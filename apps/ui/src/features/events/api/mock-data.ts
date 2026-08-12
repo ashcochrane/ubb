@@ -69,9 +69,16 @@ interface DetailSeed {
 
 function makeDetail(seed: DetailSeed): UsageEventDetail {
   // Keyed by the declared key with unset slots omitted, exactly as the API now
-  // answers (#277). The seed fields stay named for the slots because that is
-  // what this mock tenant happens to have DECLARED its keys as — the analytics
-  // breakdowns in `mock.ts` group on the same three names.
+  // answers (#277).
+  //
+  // The keys stay spelled for the slots, and that is FORCED rather than lazy:
+  // this mock tenant's declared keys have to match `TIMESERIES_GROUP_BY` in
+  // `@/lib/labels`, which the group-by picker offers and which still lists
+  // `dim1`/`dim2`/`dim3`. That list and the `dimensionLabel` map beside it are
+  // the analytics grouping vocabulary, and both are recorded in the migration
+  // ledger as slice 7's. Renaming the keys here without it would leave the
+  // picker asking for an axis no posting carries, and every bar would read
+  // "(unattributed)".
   const groupingFields: Record<string, string> = {};
   for (const [key, value] of [
     ["dim1", seed.dim1],

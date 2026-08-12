@@ -10,10 +10,14 @@ values arrive keyed by the tenant's own declared key is proved end to end in
 `test_usage_dimensions.py`, beside the write path they are declared through, and
 the projection behind them in
 `apps/metering/usage/tests/test_grouping_values_are_keyed_by_the_tenants_own_key.py`.
-Both spell request fields whose words are retired under other slices' ledger
-entries, and a NEW file spelling them would push those recorded extents wider —
-which the sweep refuses, correctly: a debt is a finite migration plan, not a
-licence for the word to reach further while it stands.
+
+The round trip lives in an EXISTING file rather than a new one because posting
+usage through the API means naming the declared-values request field and the
+caller correlation identifier, whose words are both retired under other slices'
+ledger entries. A new file naming them would push those recorded extents wider,
+which the sweep refuses — a debt is a finite migration plan, not a licence for
+the word to reach further while it stands. The projection file is new and
+therefore names neither.
 """
 import json
 import re
@@ -59,11 +63,32 @@ SLICE_4_RATE_SELECTORS = frozenset(
 
 
 def _slot_named_properties(document) -> set:
-    """Every (schema name, property name) in a document naming a slot."""
-    return {(name, prop)
-            for name, schema in document["components"]["schemas"].items()
-            for prop in schema.get("properties", {})
-            if SLOT_NAMED.fullmatch(prop)}
+    """Every (schema name, property name) in a document naming a slot.
+
+    The walk RECURSES, and that is not defensive programming. A schema's
+    properties are not all at its top level: a nested object, an `anyOf` branch,
+    an array's `items` all carry `properties` of their own, and a check that read
+    only the outermost level would answer "no slot is exposed" about a document
+    that exposed one inside a list. The pair is reported against the named
+    component schema the property is reachable from, which is the thing a reader
+    can act on.
+    """
+    found = set()
+
+    def walk(name, node):
+        if isinstance(node, dict):
+            for prop in node.get("properties", {}):
+                if SLOT_NAMED.fullmatch(prop):
+                    found.add((name, prop))
+            for value in node.values():
+                walk(name, value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(name, value)
+
+    for name, schema in document["components"]["schemas"].items():
+        walk(name, schema)
+    return found
 
 
 class NoPhysicalSlotIsPublishedTest(TestCase):
@@ -73,6 +98,14 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         cls.document = json.loads(COMMITTED.read_text(encoding="utf-8"))
 
     def test_no_physical_slot_field_is_exposed_beyond_the_declared_residue(self):
+        """Equality, so the residue is exact in BOTH directions.
+
+        A superset means a slot property was published — the thing this ticket
+        removed. A subset means a declared exemption no longer describes a real
+        exposure, which overstates the debt; the ledger's rule for that is to
+        delete the entry rather than let it stand, so slice 4 cannot half-pay
+        this and leave the set claiming the whole of it.
+        """
         self.assertEqual(_slot_named_properties(self.document),
                          set(SLICE_4_RATE_SELECTORS))
 
@@ -105,16 +138,15 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         self.assertEqual(_slot_named_properties(planted),
                          {("SomeOut", "grouping_field_4"), ("SomeIn", "dim1")})
 
-    def test_every_exemption_is_still_a_real_exposure(self):
-        """The residue is recorded to the exact truth, in both directions.
+    def test_the_walk_reaches_a_slot_nested_below_the_top_level(self):
+        """The vacuity guard, half three — the recursion is load-bearing.
 
-        A declared exemption that no longer describes a published property
-        overstates the debt, and the ledger's rule for that is to delete it
-        rather than let it stand — so slice 4 cannot half-pay this and leave the
-        set claiming the whole of it.
+        `PublishIn.changes` carries `RateChangeIn` by reference, but nothing
+        stops a future schema from inlining an object instead, and a slot
+        property inside one would be invisible to a top-level-only walk while
+        the absence above still reported clean.
         """
-        self.assertEqual(
-            SLICE_4_RATE_SELECTORS & _slot_named_properties(self.document),
-            set(SLICE_4_RATE_SELECTORS),
-            "an exemption names a property the contract no longer publishes — "
-            "delete it from SLICE_4_RATE_SELECTORS")
+        planted = {"components": {"schemas": {"SomeOut": {"properties": {
+            "rows": {"items": {"properties": {"dim5": {"type": "string"}}}},
+        }}}}}
+        self.assertEqual(_slot_named_properties(planted), {("SomeOut", "dim5")})

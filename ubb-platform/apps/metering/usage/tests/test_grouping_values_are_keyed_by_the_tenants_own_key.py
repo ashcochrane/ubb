@@ -2,10 +2,11 @@
 
 `grouping_fields_for` is the only thing that turns a posting's ten physical slot
 columns into the object a caller reads. The endpoint tests in
-`api/v1/tests/test_grouping_values_on_the_contract.py` prove the two responses
-carry it; this file proves the projection itself, including the three cases no
-response test reaches — the tenant with nothing declared, the slot holding a
-value no declaration names, and the query count.
+`api/v1/tests/test_usage_dimensions.py` prove the two responses carry it, and
+`api/v1/tests/test_grouping_values_on_the_contract.py` proves no schema names a
+slot; this file proves the projection itself, including the three cases no
+response test reaches — the slot holding a value no declaration names, the
+retired declaration that still names its slot, and the query count.
 """
 import pytest
 from django.test.utils import CaptureQueriesContext
