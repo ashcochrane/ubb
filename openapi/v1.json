@@ -1289,7 +1289,7 @@
             "type": "string"
           },
           "slot": {
-            "maxLength": 8,
+            "maxLength": 17,
             "title": "Slot",
             "type": "string"
           }
@@ -1379,7 +1379,7 @@
             "items": {
               "$ref": "#/components/schemas/DimensionDefIn"
             },
-            "maxItems": 6,
+            "maxItems": 10,
             "minItems": 1,
             "title": "Dimensions",
             "type": "array"
@@ -4283,7 +4283,7 @@
         "type": "object"
       },
       "RateChangeIn": {
-        "description": "One reprice in a publish. Match keys (measurement_key plus the ten\nselector columns \u2014 provider/event_type/task_type/subtask_type/dim1..\ndim6) locate the active rate; the remaining (nullable) fields, when\npresent, override it in the new version.",
+        "description": "One reprice in a publish. Match keys (measurement_key plus the ten\nselectors below \u2014 provider/event_type/task_type/subtask_type/dim1..dim6)\nlocate the active rate; the remaining (nullable) fields, when present,\noverride it in the new version.\n\nThese ten are not the whole selector set a rate can pin. A rate may also be\npinned on four further grouping-field slots that this body cannot name, and\nsuch a rate cannot be matched here \u2014 a publish naming it fails to find an\nactive rate. Reaching them is not yet possible through the API.",
         "properties": {
           "dim1": {
             "default": "",

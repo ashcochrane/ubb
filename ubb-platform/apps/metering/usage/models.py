@@ -50,9 +50,9 @@ class Posting(BaseModel):
     # see the module note in `tests/test_posting_rename.py` for why the one
     # slice 2 was handed cannot be written truthfully today.
     currency = models.CharField(max_length=3, default="usd")
-    # --- The ten selector columns (design D2/D3) ---
+    # --- The fourteen selector columns (design D2/D3) ---
     # One vocabulary for analytics grouping AND rate selection. Four reserved
-    # keys plus six tenant slots bound by the GroupingField registry. "" means
+    # keys plus ten tenant slots bound by the GroupingField registry. "" means
     # "not set" on an event and "matches anything" on a Rate; specificity =
     # the count of non-empty selectors.
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
@@ -61,12 +61,39 @@ class Posting(BaseModel):
     # Inherited from the event's task chain, never sent by the caller (D6).
     task_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
     subtask_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
-    dim1 = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    dim2 = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    dim3 = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    dim4 = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    dim5 = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    dim6 = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    # THE TEN TENANT SLOTS, AND NOT ONE OF THEM CARRIES AN INDEX (#276).
+    #
+    # Six of these used to be individually indexed, on top of a composite that
+    # led with two of them — seven index writes per row on the hottest insert
+    # path in the system. Widening to ten under that arrangement would have
+    # taxed every insert for capacity nobody is using yet, which is why the
+    # widening and this cleanup are one change and not two.
+    #
+    # The per-column indexes went because a cardinality-capped column is around
+    # one percent selective, at which the planner reaches for a sequential scan
+    # or a composite anyway. The composite went for a sharper reason: NO QUERY
+    # SELECTS ROWS BY A SLOT. Every read of one is a `GROUP BY` of a single slot
+    # inside a tenant (sometimes a customer) and an `effective_at` window —
+    # `apps.metering.queries.get_dimensional_margin`, `get_usage_timeseries`,
+    # `get_customer_billed_breakdown`, and the `/analytics/usage` breakdowns.
+    # The single predicate on a slot in the tree is `get_dimensional_margin`'s
+    # `.exclude(<slot>="")`, a negation on a column whose commonest value is ""
+    # — which no btree index would serve. So the columns that select the rows
+    # are `tenant`/`customer` and `effective_at`, and those are exactly what
+    # `idx_usage_tenant_effective` and `idx_usage_customer_effective` lead with.
+    # A composite led by two slots could only ever be scanned whole, and "the
+    # first two of ten" is arbitrary in a way "the first two of six" merely
+    # looked like it wasn't.
+    grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_4 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_5 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_6 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_7 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
     provider_cost_micros = models.BigIntegerField(default=0)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
@@ -118,8 +145,6 @@ class Posting(BaseModel):
             models.Index(fields=["tenant", "-effective_at"], name="idx_usage_tenant_effective"),
             models.Index(fields=["tenant", "task_type", "subtask_type", "-effective_at"],
                          name="idx_usage_work_attribution"),
-            models.Index(fields=["tenant", "dim1", "dim2", "-effective_at"],
-                         name="idx_usage_dim_attribution"),
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
             models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
             # Past-limit report + query filters (#41): JSONB containment on

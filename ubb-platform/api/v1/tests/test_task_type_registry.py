@@ -18,7 +18,7 @@ class TestTaskTypeRegistry:
         # registry (slot_map) — "region" must exist before a task type can
         # require it.
         GroupingField.objects.create(tenant=self.tenant, key="region",
-                                    slot="dim1", scope="task")
+                                    slot="grouping_field_1", scope="task")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

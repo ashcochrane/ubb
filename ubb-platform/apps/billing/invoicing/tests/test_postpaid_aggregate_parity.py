@@ -62,7 +62,7 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
             label = (bag or {}).get(tag_key) or "(other)"
             agg[label] += billed or 0
     else:  # "dim1"
-        for pid, billed in qs.values_list("dim1", "billed_cost_micros"):
+        for pid, billed in qs.values_list("grouping_field_1", "billed_cost_micros"):
             agg[pid or "(other)"] += billed or 0
     lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
     return sum(a for _, a in lines), lines
@@ -136,10 +136,10 @@ class TestGroupByBranchParity:
                                   products=["metering", "billing"])
         c = Customer.objects.create(tenant=t, external_id="c1")
         PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
-        _ev(t, c, "i1", 800_000, dim1="chat")
-        _ev(t, c, "i2", 150_000, dim1="")           # EMPTY dim1 -> (other)
-        _ev(t, c, "i3", 50_000, dim1="")            # merges into (other)
-        _ev(t, c, "i4", 200_000, dim1="api")        # ties with (other) -> label tiebreak
+        _ev(t, c, "i1", 800_000, grouping_field_1="chat")
+        _ev(t, c, "i2", 150_000, grouping_field_1="")           # EMPTY dim1 -> (other)
+        _ev(t, c, "i3", 50_000, grouping_field_1="")            # merges into (other)
+        _ev(t, c, "i4", 200_000, grouping_field_1="api")        # ties with (other) -> label tiebreak
 
         old_total, old_lines = _old_grouped_lines(t, c, PS, PE, "dim1")
         new_total, new_lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
@@ -161,8 +161,8 @@ class TestResidualCarryAcrossPeriods:
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
         # June: chat 15_500 (1.55c), "" 7_800 (0.78c)
-        _ev(t, c, "j1", 15_500, dim1="chat")
-        _ev(t, c, "j2", 7_800, dim1="")
+        _ev(t, c, "j1", 15_500, grouping_field_1="chat")
+        _ev(t, c, "j2", 7_800, grouping_field_1="")
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
              patch("apps.platform.events.tasks.process_single_event"):
             mock_sc.return_value = MagicMock(id="obj_1")
@@ -175,7 +175,7 @@ class TestResidualCarryAcrossPeriods:
         assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 3_300
 
         # July: chat 26_000 (2.6c) + carry 3_300 = 29_300 -> 2 cents, residual 9_300
-        ev = _ev(t, c, "y1", 26_000, dim1="chat")
+        ev = _ev(t, c, "y1", 26_000, grouping_field_1="chat")
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 7, 15)))
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \

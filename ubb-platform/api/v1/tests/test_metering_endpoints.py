@@ -566,13 +566,13 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # dimensions= now resolves through the registry (#128 rework); an
         # identity declaration (key == slot) is the porting move for tests
         # that grouped by a raw column name before the rework.
-        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="grouping_field_1", scope="event")
         other = Customer.objects.create(tenant=self.tenant, external_id="c_other")
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
             request_id="req_dim_1", idempotency_key="idem_dim_1",
             provider_cost_micros=2_000_000, metadata={"model": "gpt-4"},
-            dimension_slots={"dim1": "chat"},
+            dimension_slots={"grouping_field_1": "chat"},
         )
         response = self.http_client.get(
             "/api/v1/metering/analytics/usage?tag_key=model&dimensions=dim1", **self._auth(),
@@ -609,14 +609,14 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # dimensions= now resolves through the registry (#128 rework); the
         # tag:region escape hatch is gone (the open bag is not groupable), so
         # this ports "region" to a declared dimension bound to dim4.
-        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
-        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
-        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim4", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="grouping_field_1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="grouping_field_2", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_4", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
         Posting.objects.create(
             tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
-            provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
-            dim2="svcA", dim3="ag1", dim4="us",
+            provider_cost_micros=300_000, billed_cost_micros=500_000, grouping_field_1="search",
+            grouping_field_2="svcA", grouping_field_3="ag1", grouping_field_4="us",
         )
         resp = self.http_client.get(
             f"/api/v1/metering/analytics/usage?customer_id={c.id}"
@@ -650,11 +650,11 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
     def test_usage_analytics_breakdowns_include_provider_cost(self):
         from apps.metering.usage.models import Posting
-        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="dim1", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="grouping_field_1", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         Posting.objects.create(
             tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=300_000, billed_cost_micros=500_000, dim1="search",
+            provider_cost_micros=300_000, billed_cost_micros=500_000, grouping_field_1="search",
         )
         resp = self.http_client.get(
             f"/api/v1/metering/analytics/usage?customer_id={c.id}&dimensions=dim1",
@@ -826,23 +826,23 @@ class DimensionBreakdownReconciliationTest(TestCase):
             name="Reconcile Tenant", products=["metering"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="dim2", scope="event")
+        GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="grouping_field_2", scope="event")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_reconcile"
         )
-        # Event 1: has a service tag -> dim2 = "svcA"
+        # Event 1: has a service tag -> grouping_field_2 = "svcA"
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_1", idempotency_key="i_rec_1",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
-            dim2="svcA",
+            grouping_field_2="svcA",
         )
         # Event 2: NO service tag -> dim2 is empty string (the default)
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             request_id="r_rec_2", idempotency_key="i_rec_2",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
-            dim2="",
+            grouping_field_2="",
         )
 
     def _auth(self):

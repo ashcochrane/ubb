@@ -4,7 +4,7 @@ Products (metering pricing/analytics, billing start-gate) call these instead of
 importing the ORM models, so the registry can be reshaped without touching
 product code. Returns plain data only — never ORM objects.
 """
-from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.grouping_fields.models import SLOT_CHOICES, GroupingField
 
 
 def slot_map(tenant_id) -> dict:
@@ -18,12 +18,24 @@ def slot_map(tenant_id) -> dict:
 
 
 def declared_dimensions(tenant_id) -> list[dict]:
-    """Full registry as plain dicts, ordered by slot."""
-    return [
+    """Full registry as plain dicts, in slot order.
+
+    SLOT ORDER IS NOT ALPHABETICAL ORDER, and it became possible for the two to
+    disagree the moment #276 took the slot count into double figures: sorted as
+    text, slot ten falls between slot one and slot two. Sorting by the declared
+    vocabulary's own order is exact and stays exact whatever the identifiers are
+    spelled like next. The registry is capped at one row per slot, so this sorts
+    at most ten rows in Python rather than in the database.
+    """
+    order = {slot: position for position, (slot, _) in enumerate(SLOT_CHOICES)}
+    rows = [
         {"key": d["key"], "slot": d["slot"], "scope": d["scope"],
          "max_cardinality": d["max_cardinality"],
          "retired": d["retired_at"] is not None}
         for d in GroupingField.objects.filter(tenant_id=tenant_id)
-        .order_by("slot")
         .values("key", "slot", "scope", "max_cardinality", "retired_at")
     ]
+    # A slot the vocabulary does not contain sorts last rather than raising: a
+    # read contract that refuses to answer is a worse way to surface bad data
+    # than one that answers and puts it where a reader will notice.
+    return sorted(rows, key=lambda r: (order.get(r["slot"], len(order)), r["slot"]))

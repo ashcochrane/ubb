@@ -92,16 +92,23 @@ class Task(BaseModel):
     # Set instead of task_type when `parent` is set. Same immutability.
     subtask_type = models.CharField(max_length=64, blank=True, default="",
                                     db_index=True)
-    # Task-scoped dimension values (design D6), bound to slots by the tenant's
-    # GroupingField registry. Inherited by EVERY event in this task's tree,
-    # including events on its subtasks, so a caller sets them once per job
-    # instead of on every metered call. Immutable with the task.
-    dim1 = models.CharField(max_length=100, blank=True, default="")
-    dim2 = models.CharField(max_length=100, blank=True, default="")
-    dim3 = models.CharField(max_length=100, blank=True, default="")
-    dim4 = models.CharField(max_length=100, blank=True, default="")
-    dim5 = models.CharField(max_length=100, blank=True, default="")
-    dim6 = models.CharField(max_length=100, blank=True, default="")
+    # Task-scoped declared values (design D6), bound to slots by the tenant's
+    # GroupingField registry and named for it since #276. Inherited by EVERY
+    # event in this task's tree, including events on its subtasks, so a caller
+    # sets them once per job instead of on every metered call. Immutable with
+    # the task. Ten of them, matching the registry — a slot a tenant can
+    # declare but not attribute at task scope would be a slot that works
+    # differently depending on where its value came from.
+    grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_4 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_5 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_6 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_7 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
     status = models.CharField(
         max_length=20,
         choices=TASK_STATUS_CHOICES,

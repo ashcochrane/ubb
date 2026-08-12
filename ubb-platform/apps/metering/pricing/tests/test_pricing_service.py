@@ -23,11 +23,12 @@ class TestPricing:
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            measurement_key="input_tokens", dim1="gpt-4",
+            measurement_key="input_tokens", grouping_field_1="gpt-4",
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c,
-            selectors={"event_type": "chat", "provider": "openai", "dim1": "gpt-4"},
+            selectors={"event_type": "chat", "provider": "openai",
+                       "grouping_field_1": "gpt-4"},
             measurements={"input_tokens": 1000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 5 and billed == 5
@@ -49,16 +50,18 @@ class TestPricing:
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
             measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            measurement_key="tok", dim1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
+            measurement_key="tok", grouping_field_1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         prov, _, _ = PricingService.price(
             tenant=t, customer=c,
-            selectors={"event_type": "e", "provider": "o", "dim1": "gpt-4"},
+            selectors={"event_type": "e", "provider": "o",
+                       "grouping_field_1": "gpt-4"},
             measurements={"tok": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov == 9_000
         prov2, _, _ = PricingService.price(
             tenant=t, customer=c,
-            selectors={"event_type": "e", "provider": "o", "dim1": "other"},
+            selectors={"event_type": "e", "provider": "o",
+                       "grouping_field_1": "other"},
             measurements={"tok": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert prov2 == 1_000

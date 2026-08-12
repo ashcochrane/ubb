@@ -334,12 +334,12 @@ class TestItConsumesNoSlot:
         events.
         """
         tenant = _tenant()
-        GroupingField.objects.create(tenant=tenant, key="region", slot="dim1")
+        GroupingField.objects.create(tenant=tenant, key="region", slot="grouping_field_1")
         before = slot_map(tenant.id)
 
         _concept(tenant, key="tokens")
 
-        assert slot_map(tenant.id) == before == {"region": "dim1"}
+        assert slot_map(tenant.id) == before == {"region": "grouping_field_1"}
         assert GroupingField.objects.filter(tenant=tenant).count() == 1
 
     def test_the_two_registries_may_share_a_spelling_without_meeting(self):
@@ -350,10 +350,10 @@ class TestItConsumesNoSlot:
         finite slots and the opt-in are wrong.
         """
         tenant = _tenant()
-        GroupingField.objects.create(tenant=tenant, key="region", slot="dim2")
+        GroupingField.objects.create(tenant=tenant, key="region", slot="grouping_field_2")
         concept = _concept(tenant, key="region")
 
-        assert slot_map(tenant.id) == {"region": "dim2"}
+        assert slot_map(tenant.id) == {"region": "grouping_field_2"}
         assert "slot" not in {field.name for field
                               in MeasurementConcept._meta.get_fields()}
         assert MeasurementConcept.objects.filter(key="region").count() == 1

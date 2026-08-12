@@ -2,9 +2,9 @@
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
 cache) per resolution key for TTL_SECONDS — one entry per (tenant, customer,
-card_type, measurement_key, currency, full ten-selector tuple from
+card_type, measurement_key, currency, full fourteen-selector tuple from
 ``Rate.SELECTORS``:
-provider, event_type, task_type, subtask_type, dim1..dim6) — not a set of
+provider, event_type, task_type, subtask_type and the ten slots) — not a set of
 candidate rows to re-match. Dimensions are declared and cardinality-capped
 (design D4), so the selector tuple is a bounded, safe cache key: unlike the
 old free-text open-bag keyspace it once bypassed L1 for, two different
@@ -74,11 +74,14 @@ class CardCache:
         """Resolve with PricingService._resolve_card semantics, always via L1.
 
         The old implementation bypassed the cache whenever a
-        task_type/subtask_type/dim1..dim6 selector was pinned, because an
+        task_type/subtask_type/slot selector was pinned, because an
         unbounded tag keyspace would poison a dimension-less key — which
         meant every dimension-bearing event hit Postgres. Dimensions are now
-        declared and cardinality-capped (design D4), so the full ten-selector
-        tuple is a bounded, safe cache key and the bypass is gone.
+        declared and cardinality-capped (design D4), so the full
+        fourteen-selector tuple is a bounded, safe cache key and the bypass is
+        gone. Widening the slots to ten (#276) widened the tuple and changed
+        nothing about that argument: the bound is the cardinality cap per slot,
+        not the slot count.
 
         Returned Rate instances are shared cache objects — callers must NOT
         mutate them."""

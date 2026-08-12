@@ -134,9 +134,12 @@ or priced on that was not declared. Unlike a `metadata` value, a dimension's key
 write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
 
 **Slot**:
-The physical column (`dim1`..`dim6`) a declared dimension key is bound to on both `Posting`
-and `Rate` — immutable once set, since re-slotting would silently change the meaning of every
-historical row in that column. (ADR-0005)
+The physical column (`grouping_field_1`..`grouping_field_10`) a declared dimension key is bound to
+on `Posting`, `Task` and `Rate` — immutable once set, since re-slotting would silently change the
+meaning of every historical row in that column. Ten since #276, widened because #273 closed the
+free-form grouping escape hatch and the demand has to arrive declared or not at all. The stored
+identifier IS the column name, which is why rewriting it is a data migration and not a relabelling.
+(ADR-0005)
 
 **Scope**:
 The level at which a dimension's value is constant — `task`, `subtask`, or `event` — governing

@@ -46,7 +46,7 @@ class ResultSignatureTest(TestCase):
         event = MagicMock(
             id="e1", provider_cost_micros=1, billed_cost_micros=1,
             task_id=None, measurements={}, pricing_provenance={},
-            dim2="", dim3="", stop_context=None,
+            grouping_field_2="", grouping_field_3="", stop_context=None,
         )
         out = _result(event)
         # The EXACT new key set — retired keys (hard_stop,

@@ -29,7 +29,8 @@ from api.v1.schemas import (
     TaskAnalyticsOut,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
-    book_out, rate_out, usage_event_out,
+    book_out, rate_change_body, rate_out, usage_event_out,
+    SLOT_PROPERTY_COLUMNS,
     DimensionRegistryIn, DimensionRegistryOut, DimensionValuesOut,
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
@@ -46,6 +47,7 @@ from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
+from apps.platform.grouping_fields.models import SLOT_CHOICES
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
@@ -290,9 +292,14 @@ def get_usage_event(request, event_id: UUID):
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,
-        "dim1": e.dim1,
-        "dim2": e.dim2,
-        "dim3": e.dim3,
+        # Published property names on the left, columns on the right (#276).
+        # Three of the ten slots reach this response and that is not a choice
+        # anyone made recently — it is the shape ticket 20 replaces wholesale
+        # with one object keyed by the tenant's own declared key, at which point
+        # no physical slot is exposed at all.
+        "dim1": e.grouping_field_1,
+        "dim2": e.grouping_field_2,
+        "dim3": e.grouping_field_3,
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
@@ -528,6 +535,16 @@ def delete_customer_markup(request, customer_id: UUID):
 _RESERVED_ANALYTICS_DIMS = ("provider", "event_type", "task_type", "subtask_type",
                             "customer")
 
+#: How many breakdowns one analytics call may ask for. The tenant slot count,
+#: read off the registry rather than restated — six was the slot count too, and
+#: #276 made a hard-coded six disagree with it.
+#:
+#: NOT "one per requestable axis": the four reserved axes plus `customer` are
+#: also requestable, so fifteen names can be asked for and ten of them can be
+#: served in one call. The cap is a bound on work per request, and the slot
+#: count is what it has always been pinned to.
+_MAX_BREAKDOWNS = len(SLOT_CHOICES)
+
 
 def _resolve_dimension(tenant, dim):
     """Map a requested dimension name to the column to GROUP BY.
@@ -653,8 +670,9 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 
     breakdowns: dict = {}
     if dimensions:
-        if len(dimensions) > 6:
-            raise Problem("validation_error", "at most 6 dimensions")
+        if len(dimensions) > _MAX_BREAKDOWNS:
+            raise Problem("validation_error",
+                          f"at most {_MAX_BREAKDOWNS} dimensions")
         for dim in dimensions:
             col = _resolve_dimension(tenant, dim)
             # Run over the FULL qs (no exclusion) so every event is counted.
@@ -849,8 +867,10 @@ def add_rate(request, book_id: UUID, payload: RateIn):
                 measurement_key=payload.measurement_key, provider=payload.provider,
                 event_type=payload.event_type, task_type=payload.task_type,
                 subtask_type=payload.subtask_type,
-                dim1=payload.dim1, dim2=payload.dim2, dim3=payload.dim3,
-                dim4=payload.dim4, dim5=payload.dim5, dim6=payload.dim6,
+                # Six published properties onto six of the ten columns (#276);
+                # `SLOT_PROPERTY_COLUMNS` states why there are only six.
+                **{column: getattr(payload, name)
+                   for name, column in SLOT_PROPERTY_COLUMNS.items()},
                 pricing_model=payload.pricing_model,
                 rate_per_unit_micros=payload.rate_per_unit_micros,
                 unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
@@ -894,7 +914,8 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
     try:
-        BookService.publish(book, [c.dict(exclude_none=True) for c in payload.changes])
+        BookService.publish(book, [rate_change_body(c.dict(exclude_none=True))
+                                   for c in payload.changes])
     except ValueError as e:
         raise Problem("validation_error", str(e))
     book.refresh_from_db()

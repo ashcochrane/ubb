@@ -186,7 +186,12 @@ NAMED_EXTENSION = ("a sparse mapping profile beneath the Event Type, never a "
 #: A grouping axis, by name. The relation forms are caught by their target
 #: model instead, so a rename on the far side cannot slip past this list.
 GROUPING_FIELD_NAMES = frozenset(
-    {f"dim{slot}" for slot in range(1, 11)}
+    # The canonical slot names (#276) AND the abbreviation they replaced. The
+    # retired spelling stays listed precisely because it is retired: this is a
+    # guard against a shape someone reaches for, and the shape someone reaches
+    # for is whatever the tree looked like when they last read it.
+    {f"grouping_field_{slot}" for slot in range(1, 11)}
+    | {f"dim{slot}" for slot in range(1, 11)}
     | {"grouping_field", "grouping_field_key", "grouping_field_value",
        "grouping_key", "grouping_value", "axis", "axes", "grouping_axis",
        "grouping_axes", "slot", "slots"}
@@ -538,12 +543,13 @@ def test_negative_control_a_bare_axis_column_is_flagged_by_its_name():
     reach for first.
     """
     class EventType(models.Model):
-        dim1 = models.CharField(max_length=64)
+        grouping_field_1 = models.CharField(max_length=64)
 
         class Meta:
             app_label = CATALOGUE_LABEL
 
-    hit = classify_grouping_axis(EventType, EventType._meta.get_field("dim1"))
+    hit = classify_grouping_axis(
+        EventType, EventType._meta.get_field("grouping_field_1"))
     assert hit is not None and hit[0] == RULE_GROUPING
 
 

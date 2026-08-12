@@ -220,11 +220,11 @@ class GetCostTotalsTest(TestCase):
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r1", idempotency_key="i1",
             provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai",
-            dim1="chat", metadata={"model": "gpt-4"})
+            grouping_field_1="chat", metadata={"model": "gpt-4"})
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer, request_id="r2", idempotency_key="i2",
             provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai",
-            dim1="chat", metadata={"model": "gpt-4"})
+            grouping_field_1="chat", metadata={"model": "gpt-4"})
 
     def test_customer_cost_totals(self):
         from apps.metering.queries import get_customer_cost_totals
@@ -328,10 +328,10 @@ class CrossProductReadContractTest(TestCase):
         from apps.metering.queries import get_customer_billed_breakdown
         Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r1", idempotency_key="i1",
-                                  billed_cost_micros=100, dim1="chat")
+                                  billed_cost_micros=100, grouping_field_1="chat")
         Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   request_id="r2", idempotency_key="i2",
-                                  billed_cost_micros=20, dim1="")
+                                  billed_cost_micros=20, grouping_field_1="")
         pairs = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, self.start, self.end, "dim1")
         self.assertEqual(dict(pairs), {"chat": 100, "(other)": 20})

@@ -12,7 +12,7 @@ class TestDimensionInheritance:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         parent = Task.objects.create(tenant=t, customer=c, balance_snapshot_micros=0,
-                                    task_type="invoice_batch", dim1="eu-west-1")
+                                    task_type="invoice_batch", grouping_field_1="eu-west-1")
         sub = Task.objects.create(tenant=t, customer=c, parent=parent,
                                   balance_snapshot_micros=0, subtask_type="ocr")
         return t, c, parent, sub
@@ -39,12 +39,12 @@ class TestDimensionInheritance:
 
     def test_event_inherits_task_scoped_slot_through_the_parent(self):
         t, c, parent, sub = self._fixture()
-        assert self._record(t, c, sub).dim1 == "eu-west-1"
+        assert self._record(t, c, sub).grouping_field_1 == "eu-west-1"
 
     def test_event_scoped_value_overrides_inheritance(self):
         t, c, parent, sub = self._fixture()
-        e = self._record(t, c, sub, dimension_slots={"dim1": "us-east-1"})
-        assert e.dim1 == "us-east-1"
+        e = self._record(t, c, sub, dimension_slots={"grouping_field_1": "us-east-1"})
+        assert e.grouping_field_1 == "us-east-1"
 
     def test_top_level_task_event_has_no_subtask_type(self):
         t, c, parent, sub = self._fixture()
@@ -57,7 +57,7 @@ class TestDimensionInheritance:
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1)
         e = Posting.objects.get(id=r["event_id"])
-        assert e.task_type == "" and e.dim1 == ""
+        assert e.task_type == "" and e.grouping_field_1 == ""
 
     def test_product_id_is_gone_from_the_record_usage_surface(self):
         """The legacy `product_id` wire field (and its fold onto dim1) was
@@ -84,11 +84,11 @@ class TestDimensionInheritance:
         t = Tenant.objects.create(name="T3")
         c = Customer.objects.create(tenant=t, external_id="c3")
         parent = Task.objects.create(tenant=t, customer=c, balance_snapshot_micros=0,
-                                    task_type="job", dim1="task-scoped-value")
+                                    task_type="job", grouping_field_1="task-scoped-value")
         r = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1,
             task_id=parent.id,
-            dimension_slots={"dim1": "declared-value"})
+            dimension_slots={"grouping_field_1": "declared-value"})
         e = Posting.objects.get(id=r["event_id"])
-        assert e.dim1 == "declared-value"
+        assert e.grouping_field_1 == "declared-value"

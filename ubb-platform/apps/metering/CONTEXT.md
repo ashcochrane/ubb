@@ -125,13 +125,16 @@ _Avoid_: calling a Rate a "rate card" — that name belongs to the container; as
 ranks across every book — it only ranks within the one book a resolution tier selected (ADR-0005).
 
 **Selector**:
-One of the ten indexed columns (`provider`, `event_type`, `task_type`, `subtask_type`,
-`dim1`..`dim6`) that both `Posting` and `Rate` carry — the single vocabulary a `Dimension` is
-declared into and a `Rate` is matched against. `""` means "not set" on an event and "matches
-anything" on a Rate. (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
+One of the fourteen columns (`provider`, `event_type`, `task_type`, `subtask_type`,
+`grouping_field_1`..`grouping_field_10`) that both `Posting` and `Rate` carry — the single
+vocabulary a `Dimension` is declared into and a `Rate` is matched against. `""` means "not set" on
+an event and "matches anything" on a Rate. Only the four reserved axes are indexed: the ten slots
+carry no index of their own, because no query selects rows by one — every read of a slot groups by
+it inside a tenant and time window (#276).
+(ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
 
 **Specificity**:
-How many of a Rate's ten selectors are non-empty (pinned) — the tie-breaker among rates matching
+How many of a Rate's fourteen selectors are non-empty (pinned) — the tie-breaker among rates matching
 the same event *within one book*: most-pinned wins, ties broken by latest `valid_from`. Does not
 rank across books — book tier is resolved first (ADR-0005). (`apps/metering/pricing/models.py:Rate.specificity`)
 

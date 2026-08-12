@@ -33,7 +33,7 @@ class TestPreCheckTaskType:
     def _declare(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch", kind="task",
                                 default_provider_cost_limit_micros=5_000_000)
-        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task", max_cardinality=20)
 
     def test_ceiling_comes_from_the_task_type(self):
@@ -47,7 +47,7 @@ class TestPreCheckTaskType:
         assert body["allowed"] is True
         assert body["provider_cost_limit_micros"] == 5_000_000
         task = Task.objects.get(id=body["task_id"])
-        assert task.task_type == "invoice_batch" and task.dim1 == "eu-west-1"
+        assert task.task_type == "invoice_batch" and task.grouping_field_1 == "eu-west-1"
 
     def test_caller_may_request_lower(self):
         self._declare()
@@ -79,7 +79,7 @@ class TestPreCheckTaskType:
     def test_missing_required_dimension_is_422(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch", kind="task",
                                 required_dimensions=["region"])
-        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task")
         r = self._post("/api/v1/billing/pre-check",
                         {"customer_id": str(self.customer.id), "start_task": True,

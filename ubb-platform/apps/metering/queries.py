@@ -30,6 +30,12 @@ from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate
 
 from core.time_windows import utc_day_start, utc_next_day_start
+from apps.platform.grouping_fields.models import SLOT_CHOICES
+
+#: The slot columns a caller may group by, read off the registry that owns the
+#: vocabulary. Restating it as a literal range here is how the two come to
+#: disagree.
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 class PeriodTotals(TypedDict):
@@ -299,7 +305,7 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
     valid_group_by = ("provider", "event_type", "task_type", "subtask_type",
-                      "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+                      *SLOTS)
     cols = ["bucket"]
     if group_by in valid_group_by:
         cols.append(group_by)
@@ -343,8 +349,9 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     """Usage-only margin (billed - provider) grouped by a column or a tag key.
 
     group_by in {"provider", "event_type", "task_type", "subtask_type",
-    "dim1".."dim6"} (a resolved column, not a tenant-facing key — the caller
-    resolves the tenant's declared name via the dimension registry first);
+    "grouping_field_1".."grouping_field_10"} (a resolved column, not a
+    tenant-facing key — the caller resolves the tenant's declared name via the
+    dimension registry first);
     OR tag_key for a key read out of the open bag.
     Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
     """
@@ -377,8 +384,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
-    valid = ("provider", "event_type", "task_type", "subtask_type",
-             "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+    valid = ("provider", "event_type", "task_type", "subtask_type", *SLOTS)
     if group_by not in valid:
         raise ValueError(f"group_by must be one of {valid}")
     grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(
@@ -445,15 +451,21 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
 
 def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
                                   period_end: date, group_by: str) -> list[tuple]:
-    """Billed totals for ONE customer grouped by "tag:<key>" or "dim1".
+    """Billed totals for ONE customer grouped by "tag:<key>" or the first slot.
 
     Returns UNSORTED, aggregated [(label, billed_micros), ...] pairs (the
     caller owns presentation order). Postpaid invoice-line label semantics:
     a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
-    an empty dim1 ALL collapse into "(other)" — unlike the analytics
+    an empty slot value ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
     distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
     into "(other)" post-query.
+
+    ``group_by`` IS ONLY READ FOR ITS "tag:" PREFIX. Anything else means the
+    first slot, whatever the stored configuration spells — which is why #276
+    renaming that column changed no stored value and needed no rewrite of
+    ``PostpaidUsageConfig``. A tenant configured against the old spelling still
+    gets the first slot, exactly as before.
     """
     from apps.metering.usage.models import Posting
 
@@ -468,10 +480,10 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
         rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "metadata"))
                 .values("label").annotate(total=Sum("billed_cost_micros")).order_by())
         raw_key = "label"
-    else:  # "dim1"
-        rows = (qs.values("dim1")
+    else:  # the first slot
+        rows = (qs.values("grouping_field_1")
                 .annotate(total=Sum("billed_cost_micros")).order_by())
-        raw_key = "dim1"
+        raw_key = "grouping_field_1"
     merged: dict = {}
     for r in rows:
         label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge

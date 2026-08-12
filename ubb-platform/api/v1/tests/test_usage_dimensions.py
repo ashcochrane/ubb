@@ -20,9 +20,9 @@ class TestUsageDimensions:
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
     def _declare(self):
-        GroupingField.objects.create(tenant=self.tenant, key="model", slot="dim2",
+        GroupingField.objects.create(tenant=self.tenant, key="model", slot="grouping_field_2",
                                     scope="event", max_cardinality=2)
-        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task")
 
     def _post(self, **extra):
@@ -37,7 +37,7 @@ class TestUsageDimensions:
         self._declare()
         r = self._post(dimensions={"model": "gpt-4"})
         assert r.status_code == 200
-        assert Posting.objects.get(id=r.json()["event_id"]).dim2 == "gpt-4"
+        assert Posting.objects.get(id=r.json()["event_id"]).grouping_field_2 == "gpt-4"
 
     def test_unknown_dimension_is_422(self):
         self._declare()
@@ -73,7 +73,7 @@ class TestUsageDimensions:
         r = self._post(metadata={"service": "extract", "agent": "textract-v2"})
         assert r.status_code == 200
         e = Posting.objects.get(id=r.json()["event_id"])
-        assert e.dim1 == "" and e.dim2 == ""
+        assert e.grouping_field_1 == "" and e.grouping_field_2 == ""
         # ...and reserved-NAMED keys still reach storage unchanged. Nothing
         # else asserts this: `test_the_open_bag.py` only covers non-reserved
         # keys.
@@ -92,4 +92,4 @@ class TestUsageDimensions:
         r = self._post(product_id="search")
         assert r.status_code == 200
         e = Posting.objects.get(id=r.json()["event_id"])
-        assert e.dim1 == ""
+        assert e.grouping_field_1 == ""

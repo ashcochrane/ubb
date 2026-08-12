@@ -9,9 +9,10 @@ class TestRateCard:
         t = Tenant.objects.create(name="T")
         c = Rate.objects.create(
             tenant=t, card_type="cost", provider="openai", event_type="chat",
-            measurement_key="input_tokens", dim1="gpt-4",
+            measurement_key="input_tokens", grouping_field_1="gpt-4",
             pricing_model="per_unit", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        assert c.dim1 == "gpt-4" and c.specificity == 3  # provider, event_type, dim1
+        # provider, event_type and the first slot.
+        assert c.grouping_field_1 == "gpt-4" and c.specificity == 3
         assert c.compute(1000) == 5  # (1000*5000 + 500000)//1000000 = 5
         c2 = Rate.objects.create(tenant=t, card_type="cost", measurement_key="m",
                                      rate_per_unit_micros=1, unit_quantity=2)

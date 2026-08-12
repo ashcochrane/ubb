@@ -117,9 +117,9 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # route, matching this test's style for every route the SDK doesn't
         # wrap yet. ----
         _put(api, "/api/v1/metering/dimensions", {"dimensions": [
-            {"key": "product", "slot": "dim1", "scope": "event"},
-            {"key": "service", "slot": "dim2", "scope": "event"},
-            {"key": "agent", "slot": "dim3", "scope": "event"},
+            {"key": "product", "slot": "grouping_field_1", "scope": "event"},
+            {"key": "service", "slot": "grouping_field_2", "scope": "event"},
+            {"key": "agent", "slot": "grouping_field_3", "scope": "event"},
         ]})
 
         # ---- 2. create a default cost BOOK, then add TWO dimensional rates for
@@ -174,6 +174,9 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             assert res.uncosted_metrics == []   # tokens HAS a matching card
             # dim2/dim3 are declared fields on RecordUsageResponse post-Task-17
             # SDK regeneration — attribute access, not additional_properties.
+            # PUBLISHED PROPERTY NAMES, so #276 left them where they were even
+            # though the columns behind them took the canonical noun; ticket 20
+            # stops exposing per-slot properties at all.
             assert res.dim2 == service
             assert res.dim3 == agent
             _force_day(res.event_id, day)
@@ -259,7 +262,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Capture a timestamp strictly BEFORE the reprice (old rate active then).
         before_update = timezone.now()
 
-        # Reprice the {"service":"alpha"} rate (dim2="alpha") to 99 via
+        # Reprice the {"service":"alpha"} rate (grouping_field_2="alpha") to 99 via
         # publish (supersedes v1, opens v2, bumps the book version) — the
         # book-scoped reprice path.
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
