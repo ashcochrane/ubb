@@ -81,9 +81,10 @@ hasn't happened yet is consistent with the rule; refusing to record work that ha
   refused at the start-gate, and a `soft_floor.crossed`/`soft_floor.cleared` webhook pair
   tells you which side of the line the customer is on. It never touches event acks — work
   completing past the soft line is permitted by design — and it never marks events with stop
-  context. *(Pin 12: `apps/billing/gating/tests/test_soft_floor_pins.py` covers the start-gate, the
-  pair firing once, events still landing and billing, and acks never changing; the stop-context
-  half is `apps/metering/usage/services/stop_context.py`, which writes no soft-floor entry.)*
+  context. *(Pin 12: `apps/billing/gating/tests/test_soft_floor_pins.py` covers the start-gate,
+  the pair firing once, events still landing and billing, and acks never changing; the
+  stop-context half is `apps/metering/usage/services/stop_context.py`, which writes no
+  soft-floor entry.)*
 
 **Past-limit accounting.** Every event that lands after a trip carries stop context — which
 limit, tripped when, arrived after — and a dedicated report returns the itemized "exactly
@@ -93,8 +94,8 @@ schema, the end-to-end episode report, `negative_since` set and cleared.)*
 
 **The worst case, accepted knowingly.** If every signal fails on a broken client, we keep
 accepting, billing, and showing the truth — an unboundedly negative balance, visible with a
-`negative_since` timestamp and an aged-negatives count on the ops surface. The protection is a robust
-signal suite plus total visibility, not a wall. We state this because you should hear the
+`negative_since` timestamp and an aged-negatives count on the ops surface. The protection is a
+robust signal suite plus total visibility, not a wall. We state this because you should hear the
 worst case from us, with the mitigations, rather than discover an unstated one.
 
 ### How you receive the signals
