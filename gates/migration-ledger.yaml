@@ -1848,7 +1848,7 @@ entries:
     gate: G7
     site: sdk::dimension
     expected: grouping_field_value
-    found: 3 files
+    found: 2 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
@@ -1860,9 +1860,20 @@ entries:
       the generated mirrors because a published PATH spelled it, and no hand
       edit could have removed it. Recording them here rather than excluding
       them is what made the payment measurable.
-      The three that remain are all HAND-WRITTEN — the README, the metering
-      client and its test — and they are #282's, which is the ticket for
-      everything in this SDK a human typed.
+      #282 took the third: the metering client's own prose, which described the
+      registry's values in the retired word while the route beside it already
+      named the canonical one.
+      THE TWO THAT REMAIN ARE NOT PROSE AND ARE NOT THIS SURFACE'S TO PAY. Both
+      hold the row key `/analytics/usage` and its timeseries sibling actually
+      put on the wire — the README documents it and one test fixture
+      reproduces it. Those two routes return an open dict and this SDK returns
+      it untouched, so there is no client-side name to change: renaming either
+      one would make a document and a test disagree with a running server while
+      both still passed, which is what `docs/conventions/coding-standards.md`
+      (§Vocabulary, final paragraph) refuses. The key is written by
+      `apps/metering/queries.py` and `api/v1/metering_endpoints.py`, both of
+      which are inside `backend::dimension` — so this entry's last two files
+      fall out of the commit that pays that one, and not before.
 
   - id: g7-sdk-dimensions
     gate: G7
@@ -1912,23 +1923,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-sdk-metric
-    gate: G7
-    site: sdk::metric
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The industry uses this word for the metered ENTITY rather than for
-      the quantity inside it, so keeping it would have guaranteed mis-
-      translation at every integration boundary (#145 §10). Slice 2
-      declares measurements and the word goes with the model.
-      #275 cleared the generated half: the word reached the SDK's core
-      only through an endpoint description it copies, and rewording that
-      description regenerated it away. What is left is the README's own
-      prose about uncosted quantities, which nothing generates and which
-      ticket 25 takes.
 
   - id: g7-sdk-pre_check
     gate: G7

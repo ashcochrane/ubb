@@ -31,7 +31,7 @@ client = MeteringClient(api_key="ubb_live_...", base_url="http://localhost:8001"
 
 ### 1. Create a cost rate card
 
-Tell the engine what each metric costs you (COGS). `rate_per_unit_micros=2, unit_quantity=1`
+Tell the engine what each measurement costs you (COGS). `rate_per_unit_micros=2, unit_quantity=1`
 means 2 micros per token ($0.000002/token).
 
 ```python
@@ -55,24 +55,26 @@ res = client.record_usage(
     customer_id="cust-uuid-here",
     request_id="req-abc-123",
     idempotency_key="idem-abc-123",
-    product_id="search",
+    dimensions={"product_id": "search"},
     measurements={"input_tokens": 1000},
 )
 
 print(res.provider_cost_micros)   # computed COGS in micros (e.g. 2000 = $0.002)
-print(res.uncosted_metrics)       # list of metric names with no matching cost card
+print(res.uncosted_metrics)       # measurement keys with no matching cost card
 ```
 
-> **⚠️ Uncosted metrics:** if `record_usage(...)` returns a non-empty `uncosted_metrics`, those
-> metrics had **no matching cost rate-card and priced to $0** — your COGS is understated for them.
-> Either add a cost card for the metric, or enable `require_cost_card_coverage` on the tenant to
-> **hard-reject (422)** instead of silently pricing $0.
-> An event that names no metrics at all is a marker event and is accepted in either mode — there
+> **⚠️ Uncosted measurements:** if `record_usage(...)` returns a non-empty `uncosted_metrics`,
+> those measurements had **no matching cost rate-card and priced to $0** — your COGS is
+> understated for them. Either add a cost card for the measurement key, or enable
+> `require_cost_card_coverage` on the tenant to **hard-reject (422)** instead of silently
+> pricing $0.
+> An event that measures nothing at all is a marker event and is accepted in either mode — there
 > is nothing to resolve a rate card against, and nothing was claimed to have been consumed. Pass
-> `provider_cost_micros` directly whenever the cost is known but the metrics are not.
+> `provider_cost_micros` directly whenever the cost is known but the measurements are not.
 
-`res.uncosted_metrics` is your signal that a metric was recorded but has no cost card — add a
-card for any metric you want tracked.
+`res.uncosted_metrics` is your signal that a measurement was recorded but has no cost card — add a
+card for any measurement key you want tracked. The response field itself keeps its published
+spelling; the field, not this prose, is the thing a caller reads.
 
 ### 2b. Caller timestamps (backfill) and batch ingestion
 
@@ -140,13 +142,22 @@ for row in analytics["by_tag"]:
     print(row)
 ```
 
-### 4. Multi-dimension cost breakdown
+### 4. Cost breakdown across several grouping fields
 
 Pass `dimensions` as a list to slice COGS by any combination of `product_id`,
 `service_id`, `agent_id`, or any `tag:key` you tag events with. The response
-includes a `breakdowns` dict keyed by dimension name — each value is a list of
-per-value rows. An `(unattributed)` bucket collects events that have no value
-for that dimension, so the rows always reconcile to `total_provider_cost_micros`.
+includes a `breakdowns` dict keyed by grouping field, each value a list of
+per-value rows. An `(unattributed)` bucket collects events with no value for
+that field, so the rows always reconcile to `total_provider_cost_micros`.
+
+> **The row's value key is `"dimension"` on the wire, and that is not a typo
+> here.** The analytics routes return an open dict, and this SDK hands it to
+> you as it arrives rather than renaming keys in flight. The engine still
+> writes that key under its retired name; it is tracked as backend debt and
+> moves on the server side, at which point the samples below change with it.
+> The request keyword `dimensions` is the same story — the registry route is
+> already `/grouping-fields`, and the request property follows in the slice
+> that owns it.
 
 ```python
 analytics = client.usage_analytics(
@@ -162,6 +173,11 @@ for dim, rows in analytics["breakdowns"].items():
 ```
 
 ### 5. Time-series spend rollup
+
+When you pass `group_by`, each bucket carries the grouped value under the same
+wire key §4 describes, for the same reason — this is the second of the two open
+analytics payloads. Omit `group_by` and the key is simply absent, which is why
+the sample below reads it with `.get`.
 
 ```python
 series = client.usage_timeseries(
@@ -357,8 +373,8 @@ client.create_rate_card(*, card_type, measurement_key, provider="", event_type="
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
     provider_cost_micros=None, billed_cost_micros=None,
     provider="", event_type="", currency=None,
-    product_id="", metadata=None, run_id=None, measurements=None,
-    recorded_at=None)
+    dimensions=None, metadata=None, task_id=None, measurements=None,
+    recorded_at=None, raise_on_stop=False)
 
 # record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected)
 client.record_batch(events: list[dict])
@@ -378,7 +394,7 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
 |---|---|
 | `event_id` | Unique ID for this event |
 | `provider_cost_micros` | COGS computed from rate cards |
-| `uncosted_metrics` | Metrics with no matching cost card |
+| `uncosted_metrics` | Measurements with no matching cost card |
 | `billed_cost_micros` | Amount charged to the customer wallet |
 | `new_balance_micros` | Customer wallet balance after this event |
 | `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response) |

@@ -466,7 +466,15 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.get")
     def test_usage_analytics_dimensions_sent_as_repeated_params(self, mock_get):
-        """dimensions list is forwarded as-is so httpx encodes repeated params."""
+        """dimensions list is forwarded as-is so httpx encodes repeated params.
+
+        THE ROW KEY BELOW IS THE ENGINE'S, SPELLED AS THE ENGINE SPELLS IT.
+        `/analytics/usage` returns an open dict and this client returns it
+        untouched, so the fixture is a transcript rather than a shape the SDK
+        chose. Renaming it here would make the test disagree with the server
+        while passing, which is the one thing a fixture must never do — the
+        key moves when the engine moves it, and this file follows.
+        """
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "total_events": 1,
             "breakdowns": {"product_id": [{"dimension": "search", "event_count": 1,

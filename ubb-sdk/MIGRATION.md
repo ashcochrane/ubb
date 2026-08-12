@@ -200,7 +200,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
 | `get_customer_margin` | `CustomerMarginOut` (full body — adds `revenue_mode`, `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
-| `get_margin_by_dimension` | `list[GroupingFieldMarginRow]` |
+| `get_margin_by_grouping_field` (was `get_margin_by_dimension` — see §8) | `list[GroupingFieldMarginRow]` |
 | `get_margin_trend` | `list[MarginTrendPointOut]` |
 
 Attribute names are unchanged, so `result.checkout_url`-style call sites keep
@@ -263,7 +263,7 @@ against a v3.0 server and will be deleted in the launch sweep (#86). Use
 
 ## 8. Pooled-seat billing + the retired per-task floor (folded into v3.0, pre-live)
 
-Three more breaking edges landed on the same pre-live `openapi/v1.json` contract
+Further breaking edges landed on the same pre-live `openapi/v1.json` contract
 v3.0 is cut from — since v3.0 hasn't shipped, these are **part of the one coordinated
 cut**, not a second release. If you're integrating against v3.0 for the first time,
 just read them as more of the same guide; if you already adapted to an earlier
@@ -330,6 +330,41 @@ it already returns the effective (owner-resolved) profile.
 There is no dedicated SDK wrapper for `GET`/`PUT .../billing-profile` in either
 version — drop to the generated core (`ubb._core.models.CustomerBillingProfileOut`/
 `In`) if you call it today.
+
+### The margin breakdown takes a named axis, and the method is renamed with it
+
+The margin breakdown route moved to **`GET /api/v1/margin/by-grouping-field`**, and
+the two wrappers follow it: `MeteringClient.get_margin_by_dimension` and
+`UBBClient.get_margin_by_dimension` are now
+**`get_margin_by_grouping_field`**. Grep your integration for the old method
+name — it is gone, not aliased, so the failure is an `AttributeError` at the
+call site rather than a wrong answer.
+
+The signature changes too, and this one is worth reading even if you only ever
+passed `provider=True`:
+
+| v2.x / earlier v3.0 pre-tag | v3.0 |
+|---|---|
+| `get_margin_by_dimension(provider=True)` | `get_margin_by_grouping_field()` — `provider` is the default |
+| `get_margin_by_dimension(product=True)` | **no equivalent, because it never grouped by product** — name the axis you actually wanted, e.g. `get_margin_by_grouping_field(group_by="event_type")` |
+
+**`product=True` never worked.** The boolean pseudo-flags were removed from the
+route long before v3.0, and Django Ninja drops an unknown query parameter rather
+than refusing it — so the call answered `200` with rows grouped by the axis
+parameter's default, `provider`, whatever you passed. `provider=True` looked
+correct for exactly the same reason it was doing nothing.
+
+`group_by` now names the axis directly: the built-in `provider`, `event_type`,
+`task_type`, `subtask_type`, or **any key you have declared in your Grouping
+Field registry** — which is the reach the flags never had. An undeclared key
+answers `422` `validation_error` naming the key, rather than silently grouping
+by something else. The open-bag grouping parameter beside it is unchanged —
+same keyword, same meaning — and still takes precedence over the axis when
+both arrive.
+
+Each row's value property is **`grouping_field_value`** on
+`GroupingFieldMarginRow` — the value that was reported, a provider name or a
+region. The axis is not repeated per row, because your request already named it.
 
 ---
 

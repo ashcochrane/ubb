@@ -52,9 +52,9 @@ disagree with the shipped bytes.
   transactions / auto-top-up and the margin surface now return generated
   models (`TopUpCheckoutResponse`, `WithdrawResponse`, `RefundResponse`,
   `WalletTransactionOut`, `StatusResponse`, `CustomerMarginOut`,
-  `DimensionMarginRow`, `MarginTrendPointOut`); the corresponding hand result
-  types are retired. `WalletTransactionOut.id` is `uuid.UUID` (was `str`).
-  See MIGRATION.md §4.
+  `GroupingFieldMarginRow`, `MarginTrendPointOut`); the corresponding hand
+  result types are retired. `WalletTransactionOut.id` is `uuid.UUID` (was
+  `str`). See MIGRATION.md §4.
 - **`idempotency_key` now required on top-ups** (tenant + widget). See
   MIGRATION.md §5.
 - **Single versioned API.** All routes under `/api/v1/…`; per-mount

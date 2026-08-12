@@ -29,13 +29,15 @@ class MarginClientTest(unittest.TestCase):
         self.assertEqual(m.gross_margin_micros, 500_300_000)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
 
+    ROWS = {"period": {}, "rows": [
+        {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
+         "billed_cost_micros": 1_300_000, "margin_micros": 300_000,
+         "event_count": 2}]}
+
     @patch("ubb.metering.httpx.Client.get")
-    def test_get_margin_by_dimension(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "period": {}, "rows": [
-                {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
-                 "billed_cost_micros": 1_300_000, "margin_micros": 300_000, "event_count": 2}]})
-        rows = self.client.get_margin_by_dimension(provider=True)
+    def test_get_margin_by_grouping_field(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
+        rows = self.client.get_margin_by_grouping_field()
         self.assertIsInstance(rows[0], GroupingFieldMarginRow)
         self.assertEqual(rows[0].margin_micros, 300_000)
         # Asserted explicitly because the generated model keeps an unrecognised
@@ -44,19 +46,59 @@ class MarginClientTest(unittest.TestCase):
         # attribute would be UNSET, and every other assertion here would still
         # pass — a test whose mock agrees with the mistake.
         self.assertEqual(rows[0].grouping_field_value, "openai")
-        # DEFECT, PRE-DATING #278 AND LEFT FOR #282, WHICH OWNS THIS METHOD.
-        # The line below asserts that the client sends `provider=1`, and the
-        # route does not accept it: the breakdown publishes four query
-        # parameters — the axis, the open-bag key, and the two date bounds —
-        # and the boolean pseudo-flags were deleted long enough ago that #278
-        # found their accepted-break entries INERT. Django Ninja ignores an
-        # unknown query parameter, so the call returns 200 grouped by the
-        # axis parameter's default, which is "provider" — and that is why
-        # `provider=True` has always looked correct. `product=True` has not
-        # been: it also returns provider-grouped rows, silently.
-        # The assertion stays until the method is rebuilt, because deleting it
-        # now would remove the only place the wrong request is written down.
-        self.assertEqual(mock_get.call_args.kwargs["params"]["provider"], 1)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_the_request_carries_the_axis_and_nothing_the_route_would_drop(
+            self, mock_get):
+        """The whole params dict, not one key of it — and this is the point.
+
+        THE DEFECT THIS REPLACES, recorded by #278 and left for the ticket that
+        owns this method. The method used to take `provider: bool` and
+        `product: bool` and send them as `provider=1` / `product=1`. The route
+        publishes no such parameters — its four are the axis, the open-bag key
+        and the two date bounds — and Django Ninja DROPS an unknown query
+        parameter rather than refusing it. So `product=True` returned rows
+        grouped by the axis parameter's default, which is `provider`, and had
+        always done so: a wrong request that answered 200 with plausible,
+        wrong data. `provider=True` looked right for the same reason it was
+        never doing anything.
+
+        Asserting the dict WHOLE is what makes that unrepeatable. A per-key
+        assertion passes while a pseudo-flag rides along beside it, which is
+        exactly how the old one stayed green.
+        """
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
+        self.client.get_margin_by_grouping_field(group_by="event_type")
+        self.assertEqual(mock_get.call_args.kwargs["params"],
+                         {"group_by": "event_type"})
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_a_declared_grouping_field_key_is_an_axis_like_any_other(self, mock_get):
+        """A tenant's own declared key goes on the wire unchanged.
+
+        The route resolves the four built-in axes itself and looks anything
+        else up in the tenant's declared slots, answering 422 for a key it
+        does not know. The client does not second-guess that: a client holding
+        its own list of valid axes would refuse a key the tenant declared
+        after the client was pinned.
+        """
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
+        self.client.get_margin_by_grouping_field(group_by="model",
+                                                 start_date="2026-06-01",
+                                                 end_date="2026-06-30")
+        self.assertEqual(mock_get.call_args.kwargs["params"],
+                         {"group_by": "model", "start_date": "2026-06-01",
+                          "end_date": "2026-06-30"})
+
+    # THE OPEN-BAG GROUPING PARAMETER IS DELIBERATELY NOT EXERCISED HERE, and
+    # the reason is a gate rather than an oversight. Its name is a retired term
+    # whose ledger entry belongs to a later slice and records the exact set of
+    # files it may appear in; this file is not one of them, and a test written
+    # to cover it fails the sweep with `term_spread` — the word reaching
+    # further while the debt stands. The parameter is unchanged by this ticket
+    # (it took the same keyword before the rebuild and still does), so nothing
+    # this commit alters goes uncovered. It joins these assertions in the
+    # commit that renames it.
 
     @patch("ubb.metering.httpx.Client.get")
     def test_get_margin_trend(self, mock_get):
