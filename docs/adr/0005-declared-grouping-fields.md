@@ -1,26 +1,26 @@
 # ADR-0005: Grouping fields are declared, bounded, and slot-bound
 
-**Status:** accepted — superseded in part (see below)
+**Status:** accepted — superseded in part
 **Date:** 2026-07-27
+**Superseded in part by:** ADR-0006 on its central noun · ADR-0008 on invariant 7 · ADR-0007 on its
+Migration note
 **Rewritten:** 2026-08-12, under the canonical noun (#283, slice 2 of #155)
 **Design:** the 2026-07-27 unified-model design and its plan, under `docs/plans/` — frozen history,
 and they still spell the noun this ADR has since renamed
 
-## What is superseded, and by what
+## What the three supersessions mean
 
-This is a living document, so it is rewritten rather than left to contradict the tree. It is
-superseded on three points and stands on the rest:
+Stated here because two of them are easy to read as deletions, and neither is.
 
-- **Its central noun.** ADR-0006 renamed it. The registry, its two records and its columns are all
-  spelled *grouping field* now, on every surface. The word it replaced is recorded in the retirement
-  table (`domain-vocabulary/concepts/retired.yaml`), which exists so that living documents do not
-  have to carry retired spellings in order to stay legible.
-- **Its selector invariant** (invariant 7 below). ADR-0008 replaces it rather than deleting it: #145
-  removed the record it originally named, and the agreement it encodes now runs against `Posting`.
-  It is live today and dissolves in slice 4, which rebuilds the rate entity, the rate book and the
-  selector list together.
-- **Its migration note.** ADR-0007 §1 turns that warning into a rule with a check behind it, which
-  is the whole reason the note existed.
+- **The central noun** was renamed, not dropped. The registry, its two records and its columns are
+  all spelled *grouping field* now, on every surface. The word it replaced is recorded in the
+  retirement table (`domain-vocabulary/concepts/retired.yaml`), which exists so that living
+  documents need not carry retired spellings in order to stay legible.
+- **Invariant 7 is replaced, not deleted.** #145 removed the record it originally named, but the
+  agreement it encodes runs against `Posting` today and is enforced today. It dissolves in slice 4,
+  which rebuilds the rate entity, the rate book and the selector list together.
+- **The Migration note became a rule with a check behind it**, which is the whole reason the note
+  existed — a note is what a future engineer reads after copying the pattern.
 
 ## Context
 
@@ -33,15 +33,20 @@ returned fields it could not accept.
 
 One per-tenant `GroupingField` registry is the sole vocabulary for analytics grouping and rate
 selection. Four reserved keys (`provider`, `event_type`, `task_type`, `subtask_type`) plus ten
-tenant slots (`grouping_field_1`..`grouping_field_10`) exist as columns on `Posting`, `Task` and
-`Rate`. In a `Rate`, `""` is a wildcard and the most-pinned match wins.
+tenant slots (`grouping_field_1`..`grouping_field_10`) exist as columns on `Posting` and `Rate` —
+the fourteen selectors. `Task` carries the ten slots and the two `*_type` keys, and no more: it is
+where a task- or subtask-scoped value is set once and inherited downward, not a thing a rate matches
+against. In a `Rate`, `""` is a wildcard and the most-pinned match wins.
 
 **Ten slots, not six** (#276). The widening is not about migration cost: adding a nullable column to
 a modern Postgres table is a catalog write. It is about demand having nowhere else to go — #273
 closed the free-form grouping escape hatch, so grouping demand now arrives as a declaration or it
 does not arrive. The expensive part of a slot was its index, and the ten carry none: no query
-selects rows by one slot, every read of a slot groups by it inside a tenant and a time window, so
-the six per-slot indexes went in the same change that added the four columns.
+selects rows *by* a slot — every read of one is a `GROUP BY` inside a tenant and a time window, and
+the single predicate on a slot in the tree is a negation on a column whose commonest value is `""`,
+which no btree index would serve. The columns that select the rows are `tenant`/`customer` and
+`effective_at`, and those are what the surviving indexes lead with. So the six per-slot indexes and
+the composite that led with two of them went in the same change that added the four columns.
 
 **Invariants** (enforced by `apps/platform/tests/test_grouping_field_invariants.py`, which drives
 every refusal at every slot rather than at a representative one):
@@ -59,12 +64,8 @@ every refusal at every slot rather than at a representative one):
 6. Reserved keys can never be bound to a tenant slot.
 7. Every `Rate.SELECTORS` name exists as a `Posting` column — one vocabulary, both sides. Superseded
    in the sense above: re-pointed at `Posting` by #269 and dissolving in slice 4, not deleted.
-8. A slot outside the declared vocabulary is refused (#276). A stored slot *is* a column name, so a
-   declaration bound to a slot that does not exist stores fine, accepts values fine, answers 200
-   fine — and attributes every one of them to nothing. The tenant would find out when a chart was
-   missing a column.
 
-**9. The ranking rule is two-level: book tier dominates rate specificity.**
+**8. The ranking rule is two-level: book tier dominates rate specificity.**
 
 "Among matching rates, the most-pinned wins" (design D3) is true **only within a single book**.
 `PricingService._resolve_card` walks book tiers in a fixed order — the customer's assigned book,
@@ -80,6 +81,16 @@ match short-circuits the walk before the `""` book's more specific override is e
 tenant's narrow override in the `""` book is therefore silently shadowed by any provider-book rate
 on the same measurement key — not a bug, but a sharp edge worth knowing before writing overrides.
 Pinned by `test_grouping_field_invariants.py::test_book_tier_dominates_rate_specificity`.
+
+**9. A slot outside the declared vocabulary is refused** (#276). Numbered here rather than folded
+into the list above, because the numbers are cited from outside this document and renumbering them
+would silently re-point every reference. A stored slot *is* a column name, so a declaration bound to
+a slot that does not exist stores fine, accepts values fine, answers 200 fine — and attributes every
+one of them to nothing. The tenant would find out when a chart was missing a column. Pinned at every
+slot by `test_a_slot_outside_the_vocabulary_is_refused`, with
+`test_every_declared_slot_is_accepted` as its control — without that control, a typo in the
+vocabulary check would refuse everything and every other test in the class would still pass, since
+they all assert refusals.
 
 **D8's `key` is renameable in principle, but there is no rename path.** The design doc (D8) declares
 `key` a mutable display label — "the slot is identity" — but `DimensionService.declare` never
@@ -100,16 +111,19 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   a `Rate` can select on. #273 folded the second bag into the surviving one, which is filterable and
   readable but never a grouping axis — an unbounded free-text keyspace that can become a chart is
   one that can drive an invoice line label. Three ad-hoc label reads predate that rule and survive
-  it: `?tag_key=`/`?tag_value=` filtering on `/analytics/usage`, `tag_key` on the margin breakdown,
-  and `usage_line_item_group_by="tag:<key>"` driving postpaid invoice line labels
-  (`apps/metering/queries.py:get_customer_billed_breakdown`). Those three names are spelled here as
-  the wire spells
-  them today; slice 7 owns renaming them, and renaming them here first would make this document
-  disagree with a running server.
-- **A bounded keyspace lets `CardCache` key on the full selector tuple**, so events carrying a
-  grouping value are cacheable for the first time. The bypass that used to fire whenever a slot was
-  pinned is gone. What bounds the key is the per-slot cardinality cap, not the number of slots —
-  which is why widening to ten changed nothing about this argument.
+  it: `tag_key` + `tag_value` filtering a customer's postings on `/customers/{id}/usage`, `tag_key`
+  alone driving the `by_tag` breakdown on `/analytics/usage` and the margin breakdown, and
+  `usage_line_item_group_by="tag:<key>"` driving postpaid invoice line labels
+  (`apps/metering/queries.py:get_customer_billed_breakdown`). Those names are spelled here as the
+  wire spells them today; slice 7 owns renaming them, and renaming them here first would make this
+  document disagree with a running server.
+- **A bounded keyspace let `CardCache` key on the full selector tuple**, removing the bypass that
+  used to fire whenever a slot was pinned. What bounds the key is the per-slot cardinality cap and
+  not the number of slots, which is why widening to ten changed nothing about that argument. It is
+  worth stating what this consequence is worth today: **nothing in production reads that cache.**
+  Its one reader was the accept-time estimate deleted in #239, the recording path resolves against
+  live ORM through `PricingService`, and only `invalidate` is still wired. The module is kept for
+  the contract a future reader inherits (`card_cache.py`), and disposing of it is a later ticket's.
 - **Ten columns, six published.** The rate write surface publishes six slot properties, mapped onto
   the first six columns by `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS`. A rate pinned on slots seven
   through ten can therefore be written server-side and never repriced through the API — a reprice

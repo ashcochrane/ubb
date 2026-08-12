@@ -79,9 +79,11 @@ hasn't happened yet is consistent with the rule; refusing to record work that ha
 - **The soft floor refuses new starts, and that is all it does.** A second, higher tenant-set
   line per customer wallet: past it, running tasks may complete but new top-level tasks are
   refused at the start-gate, and a `soft_floor.crossed`/`soft_floor.cleared` webhook pair
-  tells you which side of the line the customer is on. It never touches event acks and never
-  marks events with stop context — work completing past the soft line is permitted by design. *(Pin 12:
-  `apps/billing/gating/tests/test_soft_floor_pins.py`.)*
+  tells you which side of the line the customer is on. It never touches event acks — work
+  completing past the soft line is permitted by design — and it never marks events with stop
+  context. *(Pin 12: `apps/billing/gating/tests/test_soft_floor_pins.py` covers the start-gate, the
+  pair firing once, events still landing and billing, and acks never changing; the stop-context
+  half is `apps/metering/usage/services/stop_context.py`, which writes no soft-floor entry.)*
 
 **Past-limit accounting.** Every event that lands after a trip carries stop context — which
 limit, tripped when, arrived after — and a dedicated report returns the itemized "exactly

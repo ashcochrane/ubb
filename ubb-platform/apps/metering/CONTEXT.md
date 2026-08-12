@@ -16,23 +16,20 @@ older noun; that is a contract surface a later slice moves, not a second concept
 
 **Posting measurement**:
 What was measured on a posting — the child record, one-to-one with its parent, holding the detail
-that may legitimately expire. It is a separate row rather than four more columns because two merged
-retention promises disagree by years: the economic record is kept six years, bulky measurement
-detail prunes sooner. As one row, honouring both would mean a housekeeping job running `UPDATE`
-against the highest-volume six-year table in the system; as two it is a `DELETE` from here, and the
-posting is never written to at all. **Absence is expressed by absence** — where a posting is a
-synthetic charge there is no record here, not an empty one.
-(`apps/metering/usage/models.py:PostingMeasurement`)
+that may legitimately expire. Separate from the posting because two retention promises disagree by
+years: the economic record is kept six years, bulky measurement detail prunes sooner, and as two
+rows honouring both is a `DELETE` from here rather than a scheduled `UPDATE` against the system's
+highest-volume table. **Absence is expressed by absence** — where a posting is a synthetic charge
+there is no record here, not an empty one. (`apps/metering/usage/models.py:PostingMeasurement`)
 _Avoid_: defaulting a child into being so that every posting can have one.
 
 **Measurements status**:
 Whether a posting's measurements are `available`, `pruned`, or `not_applicable` — **derived on read,
-never stored**. It exists because a posting whose detail has been pruned otherwise reads exactly
-like one that never had any: both answer an empty bag, so a consumer defaulting on emptiness renders
-a payload that expired on schedule as a confident "no usage". The rule is the registry's, declared
-as `value_semantics` in `domain-vocabulary/concepts/economics.yaml` and evaluated in one place; the
-absence of a writable column of this name is gate G10, not good intentions.
-(`apps/metering/usage/measurements.py:measurements_status_for`)
+never stored**. It exists because a pruned posting otherwise reads exactly like one that never had
+any: both answer an empty bag, so a consumer defaulting on emptiness renders a payload that expired
+on schedule as a confident "no usage". The rule is the registry's, declared as `value_semantics` in
+`domain-vocabulary/concepts/economics.yaml`; that no writable column of this name exists is gate
+G10. (`apps/metering/usage/measurements.py:measurements_status_for`)
 _Avoid_: reading it as analytics' `measure_status`. The near miss is accepted, not overlooked
 (`economics.yaml` argues it against ADR-0006 §§2–3): `measure_status` says whether a NUMBER is
 knowable at the grain asked for, this one whether the RECORD of what was measured is still there to
@@ -54,7 +51,7 @@ _Avoid_: conflating "effective" (when it happened) with "arrival"/"created" (whe
 queries take an explicit `basis`.
 
 **Stop context**:
-The immutable, system-owned array a usage event carries when it landed past a stop — one entry per
+The immutable, system-owned array a posting carries when it landed past a stop — one entry per
 limit (`task_limit` / `subtask_limit` / `customer_wide_stop` / `suspended` / `task_not_active`),
 each naming the scope, the trip time, the stop episode (customer scope), and whether the event
 *tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record, inside the
@@ -120,7 +117,7 @@ may map a request item onto the service and classify its errors, never grow pric
 ledger logic of its own.
 
 **Refund**:
-A record linked one-to-one to a usage event, created only when billing emits `refund.requested`.
+A record linked one-to-one to a posting, created only when billing emits `refund.requested`.
 (`apps/metering/usage/models.py:Refund`)
 
 ## Cost & margin
@@ -187,11 +184,13 @@ The audit trail stamped on each event — engine version, cost/price source, and
 
 **queries.py**:
 Metering's plain-data read contract (period totals, revenue analytics, margin grouped by a declared
-field, billing-owner billed total, backfill markers) — never returns ORM objects.
+field via `get_dimensional_margin`, billing-owner billed total, backfill markers) — never returns
+ORM objects. The function names still carry the pre-#155 noun; the rename is slice 7's, with the
+row keys it serves.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
 **usage.recorded**:
-The event emitted on every recorded usage event — the backbone consumed by billing drawdown,
+The event emitted on every recorded posting — the backbone consumed by billing drawdown,
 subscriptions economics, and referrals rewards.
 
 **usage.refunded**:

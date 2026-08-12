@@ -5,13 +5,18 @@ changelog commits and searched `docs/` — neither turned up anything). This
 file starts a per-surface changelog for the `/api/v1/metering/pricing/*`
 routes; follow-on breaking changes to this surface should be appended here.
 
-**Names in dated entries are the ones in force now.** The #155 re-model renames
-parts of this surface slice by slice, and an entry left spelling its own day's
-names would send a reader to a field that no longer exists — which is the one
-thing a changelog must not do. So where a name has moved, the entry carries the
-current one, and `domain-vocabulary/concepts/retired.yaml` — the retirement
-table — records what each replaced. An entry's *facts* are never rewritten:
-what changed, on what date, and why it changed stay exactly as recorded.
+**On the names in dated entries.** The #155 re-model renames parts of this
+surface slice by slice. Where a name has been RETIRED AND REPLACED, the entry
+below carries the current one, so a reader is not sent to a spelling that
+resolves to nothing; `domain-vocabulary/concepts/retired.yaml` — the retirement
+table — records what each one replaced.
+
+That is the whole of the claim, and it is narrower than it may read. An entry
+may still name a field that a later change **deleted outright** rather than
+renamed, and may still name one whose rename belongs to a slice that has not
+run yet — in both cases the entry is recording what the surface was on its
+date, which is what it is for. An entry's *facts* are never rewritten: what
+changed, when, and why stay exactly as recorded.
 
 ## 2026-07-15 — Tiered pricing removed (BREAKING, ADR-0003)
 

@@ -127,25 +127,22 @@ API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
 
 ## Event Type catalogue
 
-The tenant's declaration surface for *what it meters*, added in slice 2 of #155. It lives in the
-kernel because metering rates against it, billing reads what it declared, and the Code Builder
-generates an integration from it — no one product owns it. (`apps/platform/event_types/`)
-
 **Event Type**:
 A tenant-declared metered call, and the aggregate root the catalogue hangs off: its key, one
 optional supplier, one optional category, how its supplier COGS is derived (`costing_method`),
 which provider response shape its declared paths are written against, and a declaration lifecycle
-(`declaration_status`, with a published revision). The declared quantities and the reported-cost
-mapping arrive beneath it. It carries **no grouping axes, no cost amount, and no account record
-below the supplier** — three absences held to the tree by
+(`declaration_status`, with a published revision). It lives in the kernel because metering rates
+against it, billing reads what it declared and the Code Builder generates an integration from it —
+no one product owns it. It carries **no grouping axes, no cost amount, and no account record below
+the supplier** — three absences held to the tree by
 `apps/platform/tests/test_event_type_declaration_invariants.py` rather than asserted here.
 Operational variants (a batch endpoint versus a standard one) are separate Event Types, because
 averaging two genuinely different supplier costs produces a number wrong for both.
 (`apps/platform/event_types/models.py:EventType`)
-_Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised one
-is quarantined, not silently declared.
+_Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised
+string is quarantined for later resolution, not silently declared.
 
-**Supplier (Provider)**:
+**Provider**:
 The supplier behind a call — a per-tenant record, optional on an Event Type. It is a record and not
 a string because supplier cost resolution keys on its identity: a tenant may correct `key` without
 re-attributing historical cost, which parsing the supplier out of an Event Type key would have made
@@ -169,8 +166,8 @@ and told nobody. Only a declared quantity may participate in monetary calculatio
 **Event-Type-local** — the same code on two Event Types is two independent records that happen to
 share a spelling, which is the correctness boundary, not a duplication to be cleaned up.
 (`apps/platform/event_types/models.py:Measurement`)
-_Avoid_: giving this record an amount or a currency — a reported supplier cost is a *sibling* of
-these, not one of them (`ReportedCostMapping`).
+_Avoid_: giving this record an amount or a currency — a reported supplier cost is money with a
+currency and is declared as a *sibling* of these, not as one of them.
 
 **Measurement concept (analytics grouping)**:
 Two quantities a tenant has **said** mean the same thing, so one chart may add a supplier's
@@ -225,7 +222,7 @@ The `Subtask`-kind counterpart to task type — a declared kind of step work, wi
 ## Tasks
 
 **Task**:
-The registered unit of agent work — a tenant+customer-scoped grouping of many usage events into
+The registered unit of agent work — a tenant+customer-scoped grouping of many postings into
 one logical workflow execution, registered at the start-gate; lives in the kernel so metering and
 billing can both reference it without crossing a product boundary. Carries both running totals
 (billed + provider, denominationally explicit) and its signal points. Status

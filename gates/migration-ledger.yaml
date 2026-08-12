@@ -515,9 +515,9 @@ entries:
       #283 cleared one — the kernel glossary's own entries for the axis,
       which is the ratchet reaching the document that defines the word.
       THE REST HAS NO TICKET IN SLICE 2's CHAIN THAT NAMES IT, flagged on
-      PRs #308 and #310 and again here: the remaining thirty-two are
-      service, endpoint and test modules, and ticket 28 cannot declare the
-      slice landed while a slice-2 entry is still standing.
+      PRs #308 and #310 and again here: what is left is service, endpoint
+      and test modules, and ticket 28 cannot declare the slice landed
+      while a slice-2 entry is still standing.
 
   - id: g7-backend-dimensions
     gate: G7
@@ -1240,10 +1240,16 @@ entries:
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
-      The OWNER does not move — slice 7 still owes what is left — but
       ADR-0005 stopped violating in #283, which rewrote it under the
       canonical noun, and a recorded extent that overstates is an excuse
-      with no upper bound. The one left is a dated prototype, ticket 27's.
+      with no upper bound, so the number comes down in the commit that
+      cleared it. The OWNER does not move, and what that now means is
+      worth saying plainly rather than leaving to arithmetic: the single
+      remaining file is a dated prototype, which ticket 27 removes from
+      the swept set by exclusion rather than by rewriting. This entry
+      therefore reaches zero and is DELETED IN SLICE 2, and slice 7 —
+      still the owner of the word itself on every other surface — never
+      pays anything here.
 
   - id: g7-docs-limit_reached
     gate: G7
@@ -1768,18 +1774,19 @@ entries:
     gate: G7
     site: repo::tags
     expected: metadata_key
-    found: 1 files
+    found: 2 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
       surviving one deliberately does not have. Slice 2 folds `tags`
       into `metadata` (#145 §8), and the capability retires with the
       name.
-      #283 cleared the context map's own summary of metering. The one
-      left is the CI workflow's `fetch-tags` input to `actions/checkout`
-      — a foreign system's parameter name at an integration boundary
-      (ADR-0006 §8) that no slice will ever rename, which is why ticket
-      27 rules on it with a counted exclusion naming that one exact path
+      BOTH FILES ARE TICKET 27'S, and #283 deliberately left them. The
+      context map's domain prose is that ticket's own named site, and
+      the CI workflow's `fetch-tags` input to `actions/checkout` is a
+      foreign system's parameter name at an integration boundary
+      (ADR-0006 §8) that no slice will ever rename — which is why it is
+      ruled on with a counted exclusion naming that one exact path
       rather than by rewording something that cannot be reworded.
 
   - id: g7-sdk-budget
