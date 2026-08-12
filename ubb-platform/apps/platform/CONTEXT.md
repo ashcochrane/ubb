@@ -125,31 +125,98 @@ A Clerk session JWT presented as a bearer token, verified server-side and offlin
 a pending Member. Unconfigured Clerk => member auth is off and the API is
 API-key-only, byte-for-byte. (`core/clerk_auth.py:verify_member_token`)
 
-## Dimensions
+## Event Type catalogue
 
-**Dimension**:
+The tenant's declaration surface for *what it meters*, added in slice 2 of #155. It lives in the
+kernel because metering rates against it, billing reads what it declared, and the Code Builder
+generates an integration from it — no one product owns it. (`apps/platform/event_types/`)
+
+**Event Type**:
+A tenant-declared metered call, and the aggregate root the catalogue hangs off: its key, one
+optional supplier, one optional category, how its supplier COGS is derived (`costing_method`),
+which provider response shape its declared paths are written against, and a declaration lifecycle
+(`declaration_status`, with a published revision). The declared quantities and the reported-cost
+mapping arrive beneath it. It carries **no grouping axes, no cost amount, and no account record
+below the supplier** — three absences held to the tree by
+`apps/platform/tests/test_event_type_declaration_invariants.py` rather than asserted here.
+Operational variants (a batch endpoint versus a standard one) are separate Event Types, because
+averaging two genuinely different supplier costs produces a number wrong for both.
+(`apps/platform/event_types/models.py:EventType`)
+_Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised one
+is quarantined, not silently declared.
+
+**Supplier (Provider)**:
+The supplier behind a call — a per-tenant record, optional on an Event Type. It is a record and not
+a string because supplier cost resolution keys on its identity: a tenant may correct `key` without
+re-attributing historical cost, which parsing the supplier out of an Event Type key would have made
+impossible. Retired, never deleted — `retired_at` stops new use and leaves the past readable.
+(`apps/platform/event_types/models.py:Provider`)
+
+**Event category**:
+An optional, tenant-defined grouping for Event Types. One level, current rather than
+effective-dated, and **never a monetary input** — it cannot reach a cost or a price by any path,
+which is what makes the absence of dating safe rather than merely cheap. It carries no `retired_at`,
+deliberately: retirement earns its place on a supplier because a supplier is load-bearing for
+historical money attribution, and nothing here is. An Event Type with no category is a normal one.
+(`apps/platform/event_types/models.py:EventCategory`)
+
+**Measurement (declared quantity)**:
+One declared quantity beneath an Event Type — a code and display name, a value type, a unit, whether
+its absence blocks a complete cost (`required_for_costing`), and where the number comes from (a
+source kind plus a structured `source_path`). Before it, measured quantities travelled in a bare
+JSON bag and **a misspelled quantity was silently free**: it hit a `continue`, contributed nothing,
+and told nobody. Only a declared quantity may participate in monetary calculation. Declarations are
+**Event-Type-local** — the same code on two Event Types is two independent records that happen to
+share a spelling, which is the correctness boundary, not a duplication to be cleaned up.
+(`apps/platform/event_types/models.py:Measurement`)
+_Avoid_: giving this record an amount or a currency — a reported supplier cost is a *sibling* of
+these, not one of them (`ReportedCostMapping`).
+
+**Measurement concept (analytics grouping)**:
+Two quantities a tenant has **said** mean the same thing, so one chart may add a supplier's
+`prompt_tokens` to another's `input_tokens`. **Opt-in and analytics-only**: it carries no amount, no
+currency and no rate, and no rating, cost-resolution or spend-ceiling module can see it. Both fences
+are about what a *name* may not decide — a matching spelling never automatically proves equivalence
+(UBB cannot tell a genuine duplicate from a collision, and a wrong guess silently merges two
+unrelated quantities on someone's chart), and a differing spelling never prevents aggregation.
+(`apps/platform/event_types/models.py:MeasurementConcept`)
+_Avoid_: confusing it with a grouping field — that binds a tenant key to a physical slot and reaches
+rate selection; this one relates two declared quantities and reaches nothing but analytics.
+
+## Grouping fields
+
+**Grouping field**:
 A bounded, declared slicing axis usable for both analytics grouping and rate selection — the
 tenant's `GroupingField` registry is the single vocabulary for both, so nothing may be grouped by
-or priced on that was not declared. Unlike a `metadata` value, a dimension's keyspace is capped on
-write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
+or priced on that was not declared. Unlike a `metadata` value, a grouping field's keyspace is capped
+on write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
+_Avoid_: the pre-#155 noun for this axis — the registry, its records and its columns all carry this
+one now.
+
+**Grouping field value**:
+One distinct value ever admitted under a declared key, one row per (tenant, key, value). It is what
+backs the cardinality cap and what the values route serves into a filter dropdown; retiring a key
+never sweeps it, so a historical row stays groupable *and* still resolves.
+(`apps/platform/grouping_fields/models.py:GroupingFieldValue`)
 
 **Slot**:
-The physical column (`grouping_field_1`..`grouping_field_10`) a declared dimension key is bound to
-on `Posting`, `Task` and `Rate` — immutable once set, since re-slotting would silently change the
+The physical column (`grouping_field_1`..`grouping_field_10`) a declared key is bound to on
+`Posting`, `Task` and `Rate` — immutable once set, since re-slotting would silently change the
 meaning of every historical row in that column. Ten since #276, widened because #273 closed the
 free-form grouping escape hatch and the demand has to arrive declared or not at all. The stored
-identifier IS the column name, which is why rewriting it is a data migration and not a relabelling.
-(ADR-0005)
+identifier IS the column name, which is why rewriting it is a data migration and not a relabelling,
+and why a declaration bound to a slot outside the declared ten is refused rather than stored.
+The rate write surface publishes six of the ten; slice 4 closes that gap. (ADR-0005)
 
 **Scope**:
-The level at which a dimension's value is constant — `task`, `subtask`, or `event` — governing
+The level at which a grouping field's value is constant — `task`, `subtask`, or `event` — governing
 inheritance down the task tree; immutable once declared, since re-scoping would make old and new
 rows disagree about where a value came from. (ADR-0005)
 
 **Task type**:
-A tenant's declared kind of top-level work, carrying server-side policy (a COGS ceiling, required
-dimensions) rather than being a bare label; immutable on a `Task` once created. (ADR-0005;
-`apps/platform/work/models.py:TaskType`)
+A tenant's declared kind of top-level work, carrying server-side policy (a COGS ceiling,
+`required_dimensions`) rather than being a bare label; immutable on a `Task` once created.
+(ADR-0005; `apps/platform/work/models.py:TaskType`)
 
 **Subtask type**:
 The `Subtask`-kind counterpart to task type — a declared kind of step work, with its own policy.

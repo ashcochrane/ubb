@@ -507,17 +507,23 @@ entries:
     gate: G7
     site: backend::dimension
     expected: grouping_field_value
-    found: 33 files
+    found: 32 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
+      #283 cleared one — the kernel glossary's own entries for the axis,
+      which is the ratchet reaching the document that defines the word.
+      THE REST HAS NO TICKET IN SLICE 2's CHAIN THAT NAMES IT, flagged on
+      PRs #308 and #310 and again here: the remaining thirty-two are
+      service, endpoint and test modules, and ticket 28 cannot declare the
+      slice landed while a slice-2 entry is still standing.
 
   - id: g7-backend-dimensions
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 18 files
+    found: 16 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -532,6 +538,10 @@ entries:
       Two more went the same way in #278, which renamed the registry route
       family: both were comments in tests naming the old path, and the path
       was the plural's last use in either file.
+      Two more in #283, and they are the last of the glossaries: the kernel
+      and metering `CONTEXT.md` files each used the plural once, in prose
+      about what the registry is, and both now name the declared field or
+      the real published `required_dimensions` instead.
 
   - id: g7-backend-markup.deleted
     gate: G7
@@ -568,40 +578,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-backend-metric
-    gate: G7
-    site: backend::metric
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The industry uses this word for the metered ENTITY rather than for
-      the quantity inside it, so keeping it would have guaranteed mis-
-      translation at every integration boundary (#145 §10). Slice 2
-      declares measurements and the word goes with the model.
-      #275 cleared seventeen of the eighteen — the pricing spine and its
-      receipt, the resolved-rate cache, both read contracts, the published
-      endpoint description and the pricing tests. The one left is the
-      pricing changelog, a LIVING document that ticket 26 rewrites whole;
-      splitting it across two commits would leave a half-rewritten record
-      of what the API used to be.
-
-  - id: g7-backend-metric_name
-    gate: G7
-    site: backend::metric_name
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The declared measurement's key. Slice 2's `value_type` / `unit` /
-      `source_path` declaration is where the field is rebuilt (#145).
-      #275 renamed the rate's column to it by `RenameField` and cleared
-      every backend reader. The remaining file is the pricing changelog —
-      ticket 26's, for the reason recorded on `g7-backend-metric` above.
-      The name is FINAL and the implementation is not: it is still free
-      text, and slice 3 replaces it with a reference to the declared
-      record (ADR-0007 §3, spec §F3).
 
   - id: g7-backend-pre_check
     gate: G7
@@ -1244,22 +1220,30 @@ entries:
     gate: G7
     site: docs::dimension
     expected: grouping_field_value
-    found: 3 files
+    found: 2 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
+      #283 rewrote ADR-0005 whole under the canonical noun and moved its
+      filename with it. The two left are dated prototypes, which ticket 27
+      settles by joining them to the frozen-documents exclusion rather than
+      by rewriting a paper model to satisfy a sweep.
 
   - id: g7-docs-dimensions
     gate: G7
     site: docs::dimensions
     expected: analytics_grouping_kind
-    found: 2 files
+    found: 1 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
+      The OWNER does not move — slice 7 still owes what is left — but
+      ADR-0005 stopped violating in #283, which rewrote it under the
+      canonical noun, and a recorded extent that overstates is an excuse
+      with no upper bound. The one left is a dated prototype, ticket 27's.
 
   - id: g7-docs-limit_reached
     gate: G7
@@ -1286,18 +1270,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-docs-metric
-    gate: G7
-    site: docs::metric
-    expected: measurement_key
-    found: 2 files
-    owner_slice: slice_2
-    reason: >-
-      The industry uses this word for the metered ENTITY rather than for
-      the quantity inside it, so keeping it would have guaranteed mis-
-      translation at every integration boundary (#145 §10). Slice 2
-      declares measurements and the word goes with the model.
 
   - id: g7-docs-pre_check
     gate: G7
@@ -1420,13 +1392,18 @@ entries:
     gate: G7
     site: docs::tags
     expected: metadata_key
-    found: 5 files
+    found: 1 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
       surviving one deliberately does not have. Slice 2 folds `tags`
       into `metadata` (#145 §8), and the capability retires with the
       name.
+      #283 cleared four of the five: ADR-0005, the positioning note and
+      both spend-control guides. Two of those four used the word as
+      ordinary English — one as a VERB about marking events — which is
+      payable by rewording and was reworded. The one left is a dated
+      prototype, ticket 27's.
 
   - id: g7-docs-task.limit_exceeded
     gate: G7
@@ -1772,17 +1749,6 @@ entries:
       #145 renames the concept to Grouping Field and slice 7 rebuilds the
       analytics surface that displays it.
 
-  - id: g7-repo-dimensions
-    gate: G7
-    site: repo::dimensions
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
-
   - id: g7-repo-meter_only
     gate: G7
     site: repo::meter_only
@@ -1802,13 +1768,19 @@ entries:
     gate: G7
     site: repo::tags
     expected: metadata_key
-    found: 2 files
+    found: 1 files
     owner_slice: slice_2
     reason: >-
       A second open bag whose name implied the grouping capability the
       surviving one deliberately does not have. Slice 2 folds `tags`
       into `metadata` (#145 §8), and the capability retires with the
       name.
+      #283 cleared the context map's own summary of metering. The one
+      left is the CI workflow's `fetch-tags` input to `actions/checkout`
+      — a foreign system's parameter name at an integration boundary
+      (ADR-0006 §8) that no slice will ever rename, which is why ticket
+      27 rules on it with a counted exclusion naming that one exact path
+      rather than by rewording something that cannot be reworded.
 
   - id: g7-sdk-budget
     gate: G7

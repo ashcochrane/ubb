@@ -6,11 +6,37 @@ cost, and what it's billed at*. Present on every tenant. Code anchors are relati
 
 ## Usage
 
-**Usage event**:
+**Posting**:
 The immutable, append-only record of one metered occurrence for a (tenant, customer), carrying its
-priced provider and billed cost; never updated or deleted once written.
-(`apps/metering/usage/models.py:Posting`)
-_Avoid_: treating a usage event as a mutable row.
+priced provider and billed cost; never updated or deleted once written. Renamed from the usage-event
+noun with its table in #269 — it is an entry in the durable economic record, and it is what the
+whole slice's vocabulary now hangs off. (`apps/metering/usage/models.py:Posting`)
+_Avoid_: treating a posting as a mutable row. The published detail and list schemas still carry the
+older noun; that is a contract surface a later slice moves, not a second concept.
+
+**Posting measurement**:
+What was measured on a posting — the child record, one-to-one with its parent, holding the detail
+that may legitimately expire. It is a separate row rather than four more columns because two merged
+retention promises disagree by years: the economic record is kept six years, bulky measurement
+detail prunes sooner. As one row, honouring both would mean a housekeeping job running `UPDATE`
+against the highest-volume six-year table in the system; as two it is a `DELETE` from here, and the
+posting is never written to at all. **Absence is expressed by absence** — where a posting is a
+synthetic charge there is no record here, not an empty one.
+(`apps/metering/usage/models.py:PostingMeasurement`)
+_Avoid_: defaulting a child into being so that every posting can have one.
+
+**Measurements status**:
+Whether a posting's measurements are `available`, `pruned`, or `not_applicable` — **derived on read,
+never stored**. It exists because a posting whose detail has been pruned otherwise reads exactly
+like one that never had any: both answer an empty bag, so a consumer defaulting on emptiness renders
+a payload that expired on schedule as a confident "no usage". The rule is the registry's, declared
+as `value_semantics` in `domain-vocabulary/concepts/economics.yaml` and evaluated in one place; the
+absence of a writable column of this name is gate G10, not good intentions.
+(`apps/metering/usage/measurements.py:measurements_status_for`)
+_Avoid_: reading it as analytics' `measure_status`. The near miss is accepted, not overlooked
+(`economics.yaml` argues it against ADR-0006 §§2–3): `measure_status` says whether a NUMBER is
+knowable at the grain asked for, this one whether the RECORD of what was measured is still there to
+read a number from.
 
 **Recording core**:
 The recording body (price → create → accumulate → stop-context tag → dirty marker →
@@ -76,8 +102,9 @@ can become a chart is one that can drive an invoice line label. Its keys are the
 are stored and returned exactly as authored, never reworded into English nobody chose.
 (`apps/metering/usage/models.py:Posting.metadata`)
 _Avoid_: "group_keys" and the second bag's name, both retired — the second bag folded into this one
-in #273 (slice 2) and its name went with the capability it advertised. "dimensional labels" —
-dimensions and this bag are two separate mechanisms, not one.
+in #273 (slice 2) and its name went with the capability it advertised. Any phrasing that makes this
+bag sound like a grouping axis: the declared registry and this bag are two separate mechanisms, and
+only one of them can become a chart.
 
 **Recording**:
 Turning one reported use into a durable priced `Posting` — price, create, accumulate the task's
@@ -127,8 +154,8 @@ ranks across every book — it only ranks within the one book a resolution tier 
 **Selector**:
 One of the fourteen columns (`provider`, `event_type`, `task_type`, `subtask_type`,
 `grouping_field_1`..`grouping_field_10`) that both `Posting` and `Rate` carry — the single
-vocabulary a `Dimension` is declared into and a `Rate` is matched against. `""` means "not set" on
-an event and "matches anything" on a Rate. Only the four reserved axes are indexed: the ten slots
+vocabulary a `GroupingField` is declared into and a `Rate` is matched against. `""` means "not set"
+on an event and "matches anything" on a Rate. Only the four reserved axes are indexed: the ten slots
 carry no index of their own, because no query selects rows by one — every read of a slot groups by
 it inside a tenant and time window (#276).
 (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
@@ -159,8 +186,8 @@ The audit trail stamped on each event — engine version, cost/price source, and
 ## Read contract & events
 
 **queries.py**:
-Metering's plain-data read contract (period totals, revenue analytics, dimensional margin,
-billing-owner billed total, backfill markers) — never returns ORM objects.
+Metering's plain-data read contract (period totals, revenue analytics, margin grouped by a declared
+field, billing-owner billed total, backfill markers) — never returns ORM objects.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
 **usage.recorded**:

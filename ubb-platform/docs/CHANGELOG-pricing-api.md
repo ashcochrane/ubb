@@ -5,6 +5,14 @@ changelog commits and searched `docs/` — neither turned up anything). This
 file starts a per-surface changelog for the `/api/v1/metering/pricing/*`
 routes; follow-on breaking changes to this surface should be appended here.
 
+**Names in dated entries are the ones in force now.** The #155 re-model renames
+parts of this surface slice by slice, and an entry left spelling its own day's
+names would send a reader to a field that no longer exists — which is the one
+thing a changelog must not do. So where a name has moved, the entry carries the
+current one, and `domain-vocabulary/concepts/retired.yaml` — the retirement
+table — records what each replaced. An entry's *facts* are never rewritten:
+what changed, on what date, and why it changed stay exactly as recorded.
+
 ## 2026-07-15 — Tiered pricing removed (BREAKING, ADR-0003)
 
 The `graduated` and `package` pricing models are **deleted end to end** — not
@@ -42,11 +50,11 @@ Implementation plan: `ubb-platform/docs/plans/2026-07-03-rate-card-container-pla
 
 ### Summary
 
-`/pricing/rate-cards` used to manage flat, per-metric rate cards directly.
-It now manages **books** (`RateCard` containers) that group many per-metric
+`/pricing/rate-cards` used to manage flat, per-measurement rate cards directly.
+It now manages **books** (`RateCard` containers) that group many per-measurement
 **rates** (`Rate`, the renamed old `RateCard` model). This is a deliberate
 breaking change with no compatibility shim (per design §2.4 / §9 "Breaking
-API" risk note) — it enables atomic multi-metric repricing and per-customer
+API" risk note) — it enables atomic multi-measurement repricing and per-customer
 book assignment, which a flat per-rate model could not express safely.
 
 ### What changed
@@ -58,7 +66,7 @@ book assignment, which a flat per-rate model could not express safely.
     `name`, `currency`, `version`, `is_default`) — **`RateCardOut` is gone**,
     replaced by `BookOut` for books and a repurposed `RateOut` for rates.
 - **Rates now live under a book**, created via:
-  - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`metric_name`,
+  - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`measurement_key`,
     `provider`, `event_type`, `dimensions`, `pricing_model`,
     `rate_per_unit_micros`, `unit_quantity`, `fixed_micros`, `tiers`,
     `product_id`). `card_type` and `currency` are no longer accepted here —
@@ -68,9 +76,10 @@ book assignment, which a flat per-rate model could not express safely.
     (superseded rows carry `valid_to`); `?as_of=<datetime>` returns the
     version active at that instant. Response is `list[RateOut]`, where
     `RateOut` now includes `rate_card_id` and drops the old `customer_id`.
-- **New: `POST /pricing/rate-cards/{book_id}/publish`** — atomic multi-metric
-  reprice. Body `PublishIn` (`changes: list[RateChangeIn]`), one entry per
-  metric to reprice, matched by `(metric_name, provider, event_type,
+- **New: `POST /pricing/rate-cards/{book_id}/publish`** — atomic
+  multi-measurement reprice. Body `PublishIn` (`changes: list[RateChangeIn]`),
+  one entry per measurement key to reprice, matched by
+  `(measurement_key, provider, event_type,
   dimensions)`. Each change supersedes the matching active rate
   (`valid_to` stamped, `book_version_to = old book version`) and opens a new
   version (same `lineage_id` — required for tiered/marginal continuity via
@@ -85,15 +94,15 @@ book assignment, which a flat per-rate model could not express safely.
   books are assignable — cost books are not customer-scoped). Resolution
   (`PricingService._resolve_card`) now consults the customer's assigned book
   first, falling back to the tenant's per-provider default book
-  (`RateCard.is_default=True`) for any metric the assigned book lacks.
+  (`RateCard.is_default=True`) for any measurement key the assigned book lacks.
 - **Removed endpoints:**
   - The old flat `POST /pricing/rate-cards` create-a-rate-directly semantics
     (superseded by book create + `add_rate`).
   - `PUT /pricing/rate-cards/{id}` (flat update/soft-version) — no
     replacement; use `publish` for atomic repricing.
   - `POST /pricing/rate-cards/batch` (bulk create) — no direct replacement;
-    call `add_rate` per metric under a book, or use `publish` to change many
-    metrics in one book atomically.
+    call `add_rate` per measurement key under a book, or use `publish` to
+    change many of them in one book atomically.
   - `GET /pricing/rate-cards/{lineage_id}/history` (flat per-lineage
     history) — replaced by `GET /pricing/rate-cards/{book_id}/rates
     ?include_history=true` (scoped to a book, not a lineage).
@@ -134,11 +143,11 @@ book assignment, which a flat per-rate model could not express safely.
 - `0013_rate_book_unique_constraint.py` — replaces `Rate`'s old
   tenant/customer-scoped active-rate uniqueness constraints with a single
   book-scoped constraint, `uq_rate_active_in_book` on
-  `(rate_card, provider, event_type, metric_name, dimensions_hash,
+  `(rate_card, provider, event_type, measurement_key, dimensions_hash,
   currency)` where `valid_to IS NULL`. This is what makes the "assigned book
-  shadows the default book for the same metric" behavior legal at the DB
-  level — the old constraints would have collided on two `customer=NULL`
-  rows for the same metric in different books.
+  shadows the default book for the same measurement key" behavior legal at the
+  DB level — the old constraints would have collided on two `customer=NULL`
+  rows for the same measurement key in different books.
 
 **Prod backfill parity probe (from the design doc's Task 3 ops note, §10.1):**
 before applying `0012` to staging/prod, run:

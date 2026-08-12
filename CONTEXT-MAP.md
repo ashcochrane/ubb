@@ -13,12 +13,16 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
 - [Platform kernel](./ubb-platform/apps/platform/CONTEXT.md) — tenants, customers, the
   events/outbox, runs, auth, locking, and the plan catalog (`apps/platform/plans/`). The shared
   kernel; anything may depend on it. (`core/` is its plumbing.)
-  - [`apps/platform/grouping_fields`](./ubb-platform/apps/platform/CONTEXT.md#dimensions) — the
+  - [`apps/platform/event_types`](./ubb-platform/apps/platform/CONTEXT.md#event-type-catalogue) —
+    the tenant's declaration surface for what it meters: the Event Type and its supplier, category,
+    declared quantities and reported-cost mapping. In the kernel because metering rates against it,
+    billing reads it, and the Code Builder generates from it.
+  - [`apps/platform/grouping_fields`](./ubb-platform/apps/platform/CONTEXT.md#grouping-fields) — the
     per-tenant `GroupingField`/`GroupingFieldValue` registry: the single declared vocabulary for
     analytics grouping and rate selection, read by metering via `grouping_fields/queries.py`
     (ADR-0005).
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
-  dimensional tags, customer margin, and the RateCard pricing engine.
+  declared grouping fields, customer margin, and the RateCard pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,
   auto-top-up, period-close Stripe line-item push, and the Stripe connector kit.
 - [Subscriptions](./ubb-platform/apps/subscriptions/CONTEXT.md) — seat / subscription unit
