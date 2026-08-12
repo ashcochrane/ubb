@@ -2388,19 +2388,6 @@ entries:
       #210 splits the two. #150's four families replace one word that named
       all of them at once. Slice 6 is where they become real.
 
-  - id: g2-console-costing_method
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::costing_method
-    expected: costing_method
-    found: 0 of 2 values
-    owner_slice: slice_2
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #146 declares the costing mode on the Event Type —
-      the only shape under which a ceiling can know in advance that the events
-      it governs are costable. Slice 2 rebuilds the Event Type.
-
   - id: g2-console-costing_status
     gate: G2
     site: apps/ui/src/lib/labels.ts::costing_status
@@ -3496,17 +3483,6 @@ entries:
       `usage-invoices-section.tsx` the same `skip_reason` tooltip, on the
       customer page.
 
-  - id: g6-humanises-test-event-response
-    gate: G6
-    site: apps/ui/src/features/developers/components/test-event-response.tsx::humanize
-    expected: event_type_key
-    owner_slice: slice_2
-    reason: >-
-      `test-event-response.tsx` humanises the tenant's own Event Type key.
-      ADR-0008 §4.4 is explicit that a `tenant_defined` value renders as the
-      tenant declared it — title-casing someone else's identifier is the same
-      defect as inventing UBB's own.
-
   - id: g6-humanises-attribute-referral-dialog
     gate: G6
     site: apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx::humanize
@@ -3540,16 +3516,6 @@ entries:
     owner_slice: slice_8
     reason: >-
       `audit-log-page.tsx` humanises an audited record's resource type.
-
-  - id: g6-humanises-metadata-tree
-    gate: G6
-    site: apps/ui/src/features/settings/components/metadata-tree.tsx::humanize
-    expected: metadata_key
-    owner_slice: slice_2
-    reason: >-
-      `metadata-tree.tsx` humanises tenant-authored metadata keys into tree
-      labels. Slice 2 is where `tags` folds into `metadata`, and where the rule
-      that UBB never rewords a key the tenant chose has to land.
 
   - id: g6-humanises-settings
     gate: G6

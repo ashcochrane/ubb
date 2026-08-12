@@ -26,10 +26,22 @@ describe("AuditLogPage", () => {
     expect(toggles.length).toBeGreaterThan(0);
     fireEvent.click(toggles[0] as HTMLElement);
 
-    // config.updated → changes → enforcement_mode → from/to, humanized keys.
-    expect(await screen.findByText("Changes")).toBeInTheDocument();
-    expect(screen.getByText("Enforcement mode")).toBeInTheDocument();
+    // config.updated → changes → enforcement_mode → from/to.
+    //
+    // The keys render AS THE TENANT WROTE THEM (#279, ADR-0008 §4.4). They used
+    // to arrive title-cased — "Changes", "Enforcement mode" — which is UBB
+    // manufacturing user-facing English out of somebody else's identifier, and
+    // it made two keys differing only in case or punctuation read as one word.
+    expect(await screen.findByText("changes")).toBeInTheDocument();
+    expect(screen.getByText("enforcement_mode")).toBeInTheDocument();
     expect(screen.getByText("enforcing")).toBeInTheDocument();
+
+    // The old rendering must be gone rather than merely unasserted: the tree
+    // walks nested objects through one node component, so a humaniser left on
+    // either the leaf branch or the group branch would still title-case half of
+    // what a reader sees while the assertions above passed.
+    expect(screen.queryByText("Changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Enforcement mode")).not.toBeInTheDocument();
   });
 
   it("honors deep-linked filters and offers to clear them when nothing matches", async () => {

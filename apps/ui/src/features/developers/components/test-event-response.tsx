@@ -2,13 +2,20 @@
 // event id, both cost denominations, the balance after debit, uncosted-metric
 // warnings, and the STOP VERDICT block when stop=true (HTTP was still 200 —
 // the one-rule contract).
+//
+// The Event Type key in the heading is the TENANT'S, and it renders exactly as
+// they declared it (ADR-0008 §4.4, #279). This card used to title-case it,
+// which is the worst place in the console to do so: an integrator reads it to
+// learn what UBB recorded, and a key UBB reworded is one they cannot find
+// again on any other surface.
 
 import { AlertTriangle, OctagonAlert } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatMicros } from "@/lib/format";
-import { humanize, stopReasonLabel, stopScopeLabel } from "@/lib/labels";
+import { stopReasonLabel, stopScopeLabel } from "@/lib/labels";
+import { tenantDefinedLabel } from "@/lib/localisation";
 
 import type { RecordUsageResponse } from "../api/types";
 import { formatEventMicros } from "../lib/money";
@@ -34,7 +41,8 @@ export function TestEventResponseCard({
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-[13px] font-medium text-text-primary">
-            {entry.eventType ? humanize(entry.eventType) : "Usage event"} recorded
+            {entry.eventType ? tenantDefinedLabel(entry.eventType) : "Usage event"}{" "}
+            recorded
           </p>
           <p className="text-[11px] text-text-muted">{formatDate(entry.at)}</p>
         </div>

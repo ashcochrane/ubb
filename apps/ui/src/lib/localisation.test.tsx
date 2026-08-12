@@ -18,7 +18,9 @@ import {
   ABSENT_LABEL,
   labelMap,
   missingLabel,
+  NO_DECLARED_VALUES,
   resolveLabel,
+  tenantDefinedLabel,
 } from "./localisation";
 import { catalogue, DEFAULT_LOCALE, LOCALES } from "@/locales";
 import * as vocabulary from "./vocabulary";
@@ -118,6 +120,66 @@ describe("strict lookup", () => {
     expect(taskStatusLabel("cancelled")).toBe("Cancelled");
     expect(taskStatusLabel(null)).toBe(ABSENT_LABEL);
     expect(taskStatusLabel(UNFAMILIAR)).toBe(UNFAMILIAR);
+  });
+});
+
+describe("a value whose vocabulary the tenant owns", () => {
+  // ADR-0008 §4.4: a `tenant_defined` value renders AS THE TENANT DECLARED IT.
+  // The registry never enumerates one — map #137 constraint 5 forbids UBB to
+  // ship a catalogue of its tenants' event types — so the generator emits no
+  // `<CONCEPT>_LABEL_KEYS` for such a concept, and `NO_DECLARED_VALUES` is that
+  // absence spelled once rather than an empty object literal at each call site.
+
+  it("declares no values, which is what makes every tenant key unfamiliar", () => {
+    // Vacuity guard the other way up: every assertion below depends on this map
+    // being EMPTY. One that gained an entry would start wording somebody else's
+    // identifier, which is the defect the constant exists to prevent.
+    expect(Object.keys(NO_DECLARED_VALUES)).toEqual([]);
+
+    // And the registry really does generate nothing for these two concepts —
+    // asserted rather than assumed, because a future generator that emitted an
+    // empty map per `tenant_defined` concept would make the constant redundant
+    // and this whole path a copy of one.
+    const generated = Object.keys(vocabulary);
+    expect(generated).not.toContain("EVENT_TYPE_KEY_LABEL_KEYS");
+    expect(generated).not.toContain("METADATA_KEY_LABEL_KEYS");
+  });
+
+  it("renders the tenant's own key verbatim, never title-cased", () => {
+    // The exact inputs the two converted sites used to hand the humaniser: an
+    // Event Type key from `test-event-response.tsx` and a metadata key from
+    // `metadata-tree.tsx`. It turned these into "Chat completion" and
+    // "Enforcement mode" — English UBB wrote for a token its tenant chose.
+    expect(tenantDefinedLabel("chat_completion")).toBe("chat_completion");
+    expect(tenantDefinedLabel("enforcement_mode")).toBe("enforcement_mode");
+
+    // Punctuation and case survive too. The humaniser lower-cased and stripped
+    // both, so a key that differed from another only by them arrived at the
+    // reader as the same word.
+    expect(tenantDefinedLabel("anthropic.messages.CREATE")).toBe(
+      "anthropic.messages.CREATE",
+    );
+  });
+
+  it("still renders an absence as an absence", () => {
+    // The one thing the strict lookup does for a concept with no declared
+    // values, and the reason this goes through `resolveLabel` rather than
+    // returning the string: an empty key is not a name, and rendering it as one
+    // would put a blank where a reader expects a field.
+    for (const empty of [null, undefined, ""]) {
+      expect(tenantDefinedLabel(empty)).toBe(ABSENT_LABEL);
+    }
+  });
+
+  it("classifies the tenant's key as unfamiliar, so a caller can mark it", () => {
+    // `kind` is the seam the console styles on. A tenant key resolving to
+    // anything else would mean the registry had started enumerating them.
+    const resolved = resolveLabel(NO_DECLARED_VALUES, "chat_completion");
+    expect(resolved).toEqual({
+      kind: "unfamiliar",
+      value: "chat_completion",
+      text: "chat_completion",
+    });
   });
 });
 
