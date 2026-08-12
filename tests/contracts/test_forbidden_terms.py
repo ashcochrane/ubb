@@ -31,6 +31,7 @@ This module is itself excluded from the sweep, by name, in
 """
 
 import subprocess
+from dataclasses import replace
 
 import pytest
 import yaml
@@ -211,12 +212,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
     declared = {rule.id: (rule.permanence, rule.files, len(rule.paths))
                 for rule in plan.exclusions}
     assert declared == {
-        "frozen-dated-documents": ("permanent", 121, 5),
+        "frozen-dated-documents": ("permanent", 133, 6),
         "historical-migrations": (UNTIL_SLICE_8, 204, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
         "checks-whose-subject-is-a-retired-word": ("permanent", 14, 14),
+        "the-workflows-foreign-input-names": ("permanent", 1, 1),
     }
 
 
@@ -536,6 +538,117 @@ def test_negative_control_a_widened_exclusion_fails(tmp_path):
     assert codes.RULE_HIDES_ANCHOR in _codes(faults), (
         "widening over a living surface must fail on the anchor too, not only "
         "on the arithmetic")
+
+
+# ---------------------------------------------------------------------------
+# #284's two rulings, driven as the REAL rules over a synthetic tree
+#
+# A counted exclusion that is never shown to fail is a widening nobody checked.
+# The controls above establish the MECHANISM on rules invented for them; these
+# four take the rules the repository actually ships — out of the loaded plan,
+# not restated — and put them through `run` and `gate_faults`, so an edit to
+# either declaration changes what these tests do rather than leaving them
+# describing a rule that no longer exists.
+# ---------------------------------------------------------------------------
+
+#: The docs area's real anchor, used as an anchor in the controls below so that
+#: a frozen rule reaching past its own directories fails on the anchor as well
+#: as on the arithmetic — the two ways a widening is caught, both exercised.
+DOCS_ANCHOR = "docs/conventions/api-contract.md"
+
+
+def test_negative_control_the_prototypes_are_excused_and_neighbours_are_not(
+        plan, tmp_path):
+    """#284 widened the frozen rule over `docs/prototypes/`. This is the cost.
+
+    A dated paper model is excused, including anything nested under it — and a
+    LIVING convention document in a sibling directory is still swept, still
+    finds its planted retired word, and still fails the gate. Only `files` is
+    replaced, to the synthetic tree's own size: the count is the subject of the
+    control below, and pinning it here too would make this test fail for the
+    other one's reason.
+    """
+    rule = _rule(plan, "frozen-dated-documents")
+    registry = _registry(tmp_path / "reg")
+    paths = _tree(tmp_path, {
+        "code/live.py": "# anchor\n",
+        "docs/prototypes/2026-08-04-model.md": "drawn against 'rate_card'\n",
+        "docs/prototypes/output/example.py": "CARD = 'rate_card'\n",
+        DOCS_ANCHOR: "CARD = 'rate_card'\n"})
+    anchors = ("code/live.py", DOCS_ANCHOR)
+
+    result = run(tmp_path, registry,
+                 _plan([replace(rule, files=2)], anchors=anchors), paths=paths)
+
+    assert not result.faults, result.faults
+    assert set(result.excluded[rule.id]) == {
+        "docs/prototypes/2026-08-04-model.md",
+        "docs/prototypes/output/example.py"}
+    assert [o.files for o in result.occurrences] == [(DOCS_ANCHOR,)]
+    assert _codes(gate_faults(result, {})) == {codes.TERM_ON_LIVING_SURFACE}
+
+
+def test_negative_control_widening_the_frozen_rule_past_its_directories_fails(
+        plan, tmp_path):
+    """The count moved in #284, so the count has to be shown to bite.
+
+    Honest first, then the same rule reaching one directory further. Nothing
+    about the tree changes between the two runs, so the faults are caused by
+    the widening and by nothing else.
+    """
+    rule = _rule(plan, "frozen-dated-documents")
+    registry = _registry(tmp_path / "reg")
+    paths = _tree(tmp_path, {
+        "code/live.py": "# anchor\n",
+        "docs/prototypes/2026-08-04-model.md": "drawn against 'rate_card'\n",
+        DOCS_ANCHOR: "CARD = 'rate_card'\n"})
+    anchors = ("code/live.py", DOCS_ANCHOR)
+
+    honest = replace(rule, files=1)
+    assert not run(tmp_path, registry, _plan([honest], anchors=anchors),
+                   paths=paths).faults
+
+    widened = replace(honest, paths=("docs/**",))
+    faults = run(tmp_path, registry, _plan([widened], anchors=anchors),
+                 paths=paths).faults
+    assert codes.RULE_COUNT_WRONG in _codes(faults)
+    assert codes.RULE_HIDES_ANCHOR in _codes(faults)
+
+
+def test_negative_control_the_workflow_rule_does_not_excuse_a_second_workflow(
+        plan, tmp_path):
+    """#284's second ruling names ONE EXACT PATH, and that is the whole point.
+
+    The residual it accepts is that the named file leaves the sweep entirely.
+    What it must NOT do is reach the file beside it, so a second workflow
+    carrying a planted retired word has to fail. Honest first with the rule's
+    own declared count untouched, then the same rule reaching its directory:
+    both halves share one tree, so the second run's faults are caused by the
+    widening and by nothing else.
+
+    A synthetic second workflow is not decoration. `ci.yml` is the only tracked
+    workflow, so `.github/workflows/**` excuses exactly what the exact path does
+    in the real tree — this widening changes no count there and would be caught
+    nowhere but here.
+    """
+    rule = _rule(plan, "the-workflows-foreign-input-names")
+    registry = _registry(tmp_path / "reg")
+    paths = _tree(tmp_path, {
+        "code/live.py": "# anchor\n",
+        ".github/workflows/ci.yml": "with: {name: 'rate_card'}\n",
+        ".github/workflows/release.yml": "with: {name: 'rate_card'}\n"})
+
+    result = run(tmp_path, registry, _plan([rule]), paths=paths)
+
+    assert not result.faults, result.faults
+    assert result.excluded[rule.id] == (".github/workflows/ci.yml",)
+    assert [o.files for o in result.occurrences] == [
+        (".github/workflows/release.yml",)]
+    assert _codes(gate_faults(result, {})) == {codes.TERM_ON_LIVING_SURFACE}
+
+    widened = replace(rule, paths=(".github/workflows/**",))
+    faults = run(tmp_path, registry, _plan([widened]), paths=paths).faults
+    assert codes.RULE_COUNT_WRONG in _codes(faults)
 
 
 def test_negative_control_an_inert_exclusion_fails(tmp_path):

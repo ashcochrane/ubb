@@ -23,7 +23,7 @@ and **inert**, a committed entry that covers no finding at its own level — whi
 means it silently does nothing, the defect this repo has already shipped once.
 
 openapi/README.md carries the full reasoning, including why the suppression files
-cannot reach zero until slice 8 tags a new baseline, and why that makes them the
+cannot reach zero until slice 8 cuts a new baseline, and why that makes them the
 opposite of the implementation-rule migration ledgers rather than another one.
 """
 from __future__ import annotations
@@ -192,8 +192,11 @@ def _baseline_spec(baseline: str, into: Path) -> Path:
     if result.returncode != 0:
         _fail(f"cannot read {SPEC_PATH} at {baseline!r}: "
               f"{result.stderr.decode(errors='replace').strip()}. "
-              f"In CI this means the tag was not fetched (`fetch-tags: true`); "
-              f"the gate must never be skipped for a missing baseline.")
+              f"In CI this means the tag was not fetched: the "
+              f"`actions/checkout` step in the `contract` job that runs this "
+              f"gate (.github/workflows/ci.yml) needs `fetch-depth: 0` and its "
+              f"tag-fetching input turned on. The gate must never be skipped "
+              f"for a missing baseline.")
     path = into / "baseline-v1.json"
     path.write_bytes(result.stdout)
     return path

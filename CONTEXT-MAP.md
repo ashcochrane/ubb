@@ -21,7 +21,7 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
     analytics grouping and rate selection, read by metering via `grouping_fields/queries.py`
     (ADR-0005).
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
-  dimensional tags, customer margin, and the RateCard pricing engine.
+  posting metadata, customer margin, and the RateCard pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,
   auto-top-up, period-close Stripe line-item push, and the Stripe connector kit.
 - [Subscriptions](./ubb-platform/apps/subscriptions/CONTEXT.md) — seat / subscription unit

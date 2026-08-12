@@ -92,9 +92,10 @@ exclusions:
 
   - id: frozen-dated-documents
     permanence: permanent
-    files: 121
+    files: 133
     paths:
       - docs/plans/**
+      - docs/prototypes/**
       - docs/reviews/**
       - ubb-platform/docs/plans/**
       - apps/ui/docs/superpowers/plans/**
@@ -107,6 +108,39 @@ exclusions:
       PERMANENT and has no end date, because the documents have no end either —
       editing one to remove a word it correctly used would be falsifying the
       record to satisfy a gate.
+      THE DATED PROTOTYPES ARE THE SAME ARTIFACT UNDER ANOTHER NAME, and #284
+      admitted them on that ground rather than on convenience. A
+      `wayfinder:prototype` ticket asks for "a cheap, rough artifact that makes
+      the shape concrete enough to react to. Do not build the real surface".
+      WHAT IS TRUE OF ALL TWELVE is that each sits under a dated path and none
+      is living source. What is true of SOME is stated as such rather than
+      rounded up: the two top-level notes name the commit they were written
+      against — `main` @ `0cf00b5` and `main` @ `d60d86f`, both long behind —
+      and four of the twelve say in their own words that they are not a
+      specification. Contradicting `main` at every call site is what a paper
+      model is FOR. The argument above reaches them unchanged, and reaches them
+      harder: rewriting one to remove a word it correctly used on the day would
+      falsify the record to satisfy a gate.
+      HALF OF THEM ARE NOT PROSE, and a rule with "documents" in its name has to
+      say so rather than let a reader discover `.py` and `.sh` files inside it.
+      Six of the twelve are the code-builder prototype's worked example, whose
+      own README opens "This is not a specification, and it is not real
+      generated code … It renders a PAPER MODEL. None of the endpoints, request
+      fields or response fields used here exist on `main` today." Nothing
+      imports them, no suite collects them and no workflow runs them; they are
+      an artifact produced on a day to be reacted to, which is what every file
+      under this rule is. The category is DATED AND FROZEN, not prose.
+      WHAT THE WIDENING COSTS IS STATED RATHER THAN GLOSSED. Three of the
+      twelve files carry a retired word, and between them they carry TEN,
+      owed by slices 2, 5, 6 and 7. So this widening moves ten ledger extents at
+      once — EIGHT of them another slice's, three of those eight to zero, where
+      the entry is deleted because an entry cannot outlive its debt whoever owns
+      it. Slice 5 and slice 6 therefore never pay a word they were recorded as
+      owing. That is the trade the plans and the reviews already make, taken
+      once more for the same reason; it is written down because the arithmetic
+      is otherwise invisible, and a reader of slice 6's ledger would otherwise
+      find one file fewer than the debt they were told about, with nothing to
+      explain it.
 
   - id: historical-migrations
     permanence: until_slice_8
@@ -231,3 +265,53 @@ exclusions:
       nobody re-measured. It is `git ls-files tests/contracts | grep '\.py$'`.)
       Permanent, and each file is small enough that a reviewer can check the
       claim by opening it.
+
+  - id: the-workflows-foreign-input-names
+    permanence: permanent
+    files: 1
+    paths:
+      - .github/workflows/ci.yml
+    reason: >-
+      ADR-0006 §8 — foreign vocabulary survives at integration boundaries — and
+      a GitHub Actions input name is as foreign as a Stripe object name. The
+      workflow hands `actions/checkout` the input that makes it fetch tags, and
+      that input is spelled the way the action spells it or the step silently
+      does nothing. UBB does not own the name, so no slice renames it — which is
+      the test stated above for an exclusion rather than a ledger entry: not
+      "this file is inconvenient" but "no slice will ever remove this word from
+      this file, because naming it is what the file is for". A debt needs
+      somebody who will pay it, and nobody will pay this one.
+      §8 IS CITED WITH ITS OWN CAVEAT, NOT AGAINST IT. That section says in bold
+      that "frozen" means stable WHILE THE CORRESPONDENCE HOLDS, not permanent,
+      and names four things that would end it: the provider renaming its
+      canonical object, the integration being redesigned, the mapping turning
+      out wrong, or the field moving behind a typed adapter. `permanence:
+      permanent` is this plan's own word for "no declared end date", and it is
+      the only honest value available — `until_slice_8` would claim the cutover
+      squash deletes this workflow, which it does not.
+      SO THERE IS A SECOND RESIDUAL, and it is the sharper of the two. If the
+      correspondence does end, NOTHING HERE NOTICES. This rule excuses the FILE,
+      not the word, so it would go on excusing it after the word left and no
+      count would move — an exclusion cannot go stale the way a ledger entry
+      does, which is the whole difference between excusing and owing. That is
+      the price of the ruling, and it is why the rule names one path a reviewer
+      can open in ten seconds rather than a directory nobody re-reads.
+      THE PERMANENT-EXCEPTIONS FILE COULD NOT HAVE DONE THIS, which is worth
+      stating because its shape makes it look like the obvious home — a stated
+      reason, no owner, no rename coming. THE SWEEP DOES NOT READ IT.
+      `tools/gates/compiler.py` loads and validates it; `tools/forbidden_terms/`
+      reads the registry, this plan, and the G7 ledger entries, and nothing
+      else. An exception filed there naming G7 would parse, would pass the check
+      that it names an installed gate, and would then excuse nothing whatsoever.
+      The sweep's only excuse mechanism is a ledger entry's recorded extent, and
+      an extent is a debt somebody pays — which this is not.
+      STATED RESIDUAL: the whole file leaves the sweep, so a retired word
+      arriving anywhere else in it goes unseen. That is exactly why this rule
+      names ONE EXACT PATH rather than `.github/workflows/**`. It is the trade
+      `checks-whose-subject-is-a-retired-word` already makes fourteen times, and
+      it means a second workflow has to be admitted here deliberately, in a
+      diff, carrying its own count.
+      EXPLICITLY REJECTED: moving the word into the registry's `retired_senses`.
+      That removes it from the sweep over every surface at once, disarming the
+      gate across UBB's own code on the very slice that retires the word — the
+      opposite of a rule that costs one declared file.
