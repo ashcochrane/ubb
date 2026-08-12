@@ -13,7 +13,10 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
 - [Platform kernel](./ubb-platform/apps/platform/CONTEXT.md) — tenants, customers, the
   events/outbox, runs, auth, locking, and the plan catalog (`apps/platform/plans/`). The shared
   kernel; anything may depend on it. (`core/` is its plumbing.)
-  - [`apps/platform/grouping_fields`](./ubb-platform/apps/platform/CONTEXT.md#dimensions) — the
+  - [`apps/platform/event_types`](./ubb-platform/apps/platform/CONTEXT.md#event-type-catalogue) —
+    the tenant's declaration surface for what it meters: the Event Type and its supplier, category,
+    declared quantities and reported-cost mapping.
+  - [`apps/platform/grouping_fields`](./ubb-platform/apps/platform/CONTEXT.md#grouping-fields) — the
     per-tenant `GroupingField`/`GroupingFieldValue` registry: the single declared vocabulary for
     analytics grouping and rate selection, read by metering via `grouping_fields/queries.py`
     (ADR-0005).

@@ -43,7 +43,7 @@ Back-out is instant (set `off`).
    (`require_cost_card_coverage`) so uncovered events can never silently
    count as zero burn.
 2. **Attribute usage.** Pass that `task_id` on **every** `record_usage(...)`
-   for the task. `tags` are analytics-only labels — they never attach a limit.
+   for the task. `metadata` is an analytics-only label bag — it never attaches a limit.
 3. **Honor the stop.** Check `result.stop` on **every** ack and stop sending
    work for the named scope: `stop_scope="task"` (or `"subtask"`) → stop that
    task (`stop_reason ∈ {task_limit, subtask_limit, task_not_active}`; the

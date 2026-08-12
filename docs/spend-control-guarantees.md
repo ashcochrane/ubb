@@ -79,9 +79,12 @@ hasn't happened yet is consistent with the rule; refusing to record work that ha
 - **The soft floor refuses new starts, and that is all it does.** A second, higher tenant-set
   line per customer wallet: past it, running tasks may complete but new top-level tasks are
   refused at the start-gate, and a `soft_floor.crossed`/`soft_floor.cleared` webhook pair
-  tells you which side of the line the customer is on. It never touches event acks and never
-  tags events — work completing past the soft line is permitted by design. *(Pin 12:
-  `apps/billing/gating/tests/test_soft_floor_pins.py`.)*
+  tells you which side of the line the customer is on. It never touches event acks — work
+  completing past the soft line is permitted by design — and it never marks events with stop
+  context. *(Pin 12: `apps/billing/gating/tests/test_soft_floor_pins.py` covers the start-gate,
+  the pair firing once, events still landing and billing, and acks never changing; the
+  stop-context half is `apps/metering/usage/services/stop_context.py`, which writes no
+  soft-floor entry.)*
 
 **Past-limit accounting.** Every event that lands after a trip carries stop context — which
 limit, tripped when, arrived after — and a dedicated report returns the itemized "exactly
@@ -91,8 +94,8 @@ schema, the end-to-end episode report, `negative_since` set and cleared.)*
 
 **The worst case, accepted knowingly.** If every signal fails on a broken client, we keep
 accepting, billing, and showing the truth — an unboundedly negative balance, visible with a
-`negative_since` timestamp and an aged-negatives ops metric. The protection is a robust
-signal suite plus total visibility, not a wall. We state this because you should hear the
+`negative_since` timestamp and an aged-negatives count on the ops surface. The protection is a
+robust signal suite plus total visibility, not a wall. We state this because you should hear the
 worst case from us, with the mitigations, rather than discover an unstated one.
 
 ### How you receive the signals
@@ -360,13 +363,13 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 7 | Every recorded event answers 200; no 429/409 for a usage report | `test_one_rule_pins.py::Pin7TwoHundredAlwaysTest` |
 | 8 | `advisory` migrated to `off`; two-position mode; `off` is Tier-1 byte-for-byte | `apps/billing/gating/tests/test_mode_pins.py` (all six tests) |
 | 9 | The past-limit report reconstructs an episode end-to-end | `test_past_limit_pins.py::Pin9PastLimitReportTest` |
-| 10 | `negative_since` set on ≥0→<0, cleared on recovery; aged-negatives ops metric | `test_past_limit_pins.py::Pin10NegativeSinceTest` |
+| 10 | `negative_since` set on ≥0→<0, cleared on recovery; aged-negatives count on the ops surface | `test_past_limit_pins.py::Pin10NegativeSinceTest` |
 | 11 | Zero-crossing `balance_overage` early warning unaffected | `test_stop_resume_pins.py::TestPin11EarlyWarningUnaffected` |
 | 12 | Soft floor refuses new top-level starts only; subtask pass-through; crossed/cleared exactly once; acks never change | `apps/billing/gating/tests/test_soft_floor_pins.py::TestPin12StartGate`, `::TestPin12PairExactlyOnce` |
 | 13 | Subtask killed alone — parent keeps running; parent trip cascades | `api/v1/tests/test_subtask_pins.py::Pin13ContainmentTest` |
 | 14 | Only the provider (COGS) total races a limit; both totals on record and response | `test_one_rule_pins.py::Pin14DenominationTest`; `test_subtask_pins.py::Pin14SubtaskDenominationTest` |
 | 15 | Coverage gate: a resolvable limit without cost coverage is refused `cost_coverage_required` | `test_one_rule_pins.py::Pin15CoverageGateTest` |
-| 16 | Tag fallback removed — tags are analytics only | `test_one_rule_pins.py::Pin16LabelFallbackRemovedTest` |
+| 16 | Label fallback removed — a `metadata` label never attaches a limit | `test_one_rule_pins.py::Pin16LabelFallbackRemovedTest` |
 | 17 | The clean cut holds: no run-era name on any surface | `test_one_rule_pins.py::Pin17CleanCutSweepTest` |
 
 **Guaranteed-delivery + auto-repair spec**
