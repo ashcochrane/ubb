@@ -127,8 +127,22 @@ export interface TimeseriesPoint {
   markup_micros: number;
   event_count: number;
   /** Present only when group_by was requested; "(unattributed)" for empties. */
-  dimension?: string;
+  group_value?: string;
 }
+
+/**
+ * The key the backend still puts a grouped value under on an untyped
+ * timeseries row. It is NOT this console's word for it — `group_value` is —
+ * and it is spelled here, once, because the backend has not yet renamed what
+ * it emits (`apps/metering/queries.py`). That rename is its own ledger entry;
+ * when it lands, this constant is the only site in this feature that moves.
+ *
+ * Exported so this feature's mock emits the same key the narrowing reads —
+ * which also means the mock cannot contradict a mistake here. For that reason
+ * `lib/timeseries.test.ts` pins it against a verbatim backend response, all
+ * the way through to a painted series.
+ */
+export const WIRE_GROUP_VALUE_KEY = "dimension";
 
 export function asTimeseriesPoints(
   series: Array<Record<string, unknown>>,
@@ -144,8 +158,8 @@ export function asTimeseriesPoints(
       markup_micros: num(row.markup_micros),
       event_count: num(row.event_count),
     };
-    const dimension = str(row.dimension);
-    if (dimension !== null) point.dimension = dimension;
+    const groupValue = str(row[WIRE_GROUP_VALUE_KEY]);
+    if (groupValue !== null) point.group_value = groupValue;
     points.push(point);
   }
   return points;

@@ -54,7 +54,7 @@ Build the metering section — the core value of the UBB platform.
 - [x] 4-step wizard with stepper component
 - [x] Step 1: Source selection (template vs custom)
 - [x] Step 2: Card details (name, provider, pricing pattern)
-- [x] Step 3: Dimension configuration with live cost tester
+- [x] Step 3: Measurement configuration with live cost tester
 - [x] Step 4: Review with dry-run simulator and sanity checks
 - [x] Form state management across steps (React Hook Form + Zod)
 
@@ -63,7 +63,7 @@ Build the metering section — the core value of the UBB platform.
 - [x] Summary stats row
 - [x] Cost-over-time area chart (Recharts)
 - [x] Cost breakdowns by product and card
-- [x] Cost-by-dimension table
+- [x] Cost breakdown table
 - [x] Recent usage events table
 
 **Exit criteria:** All metering screens functional with mock data. Formatting utilities tested.

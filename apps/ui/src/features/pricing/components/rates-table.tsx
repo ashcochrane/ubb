@@ -120,7 +120,7 @@ export function RatesTable({
           <EmptyState
             icon={Layers}
             title="No rates yet"
-            description="Add the first rate so events carrying this book's metrics get priced."
+            description="Add the first rate so events carrying this book's measurements get priced."
             action={isAdmin ? { label: "Add rate", onClick: onAddRate } : undefined}
           />
         )

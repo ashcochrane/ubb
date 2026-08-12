@@ -65,7 +65,7 @@ export async function getUsageAnalytics(
   );
 }
 
-/** Daily spend timeseries, optionally grouped by one dimension. */
+/** Daily spend timeseries, optionally grouped by one axis. */
 export async function getUsageTimeseries(
   params: TimeseriesParams,
 ): Promise<UsageTimeseries> {

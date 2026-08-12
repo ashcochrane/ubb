@@ -34,7 +34,7 @@ export const testEventFormSchema = z.object({
     }),
   effective_at: z.string(),
   idempotency_key: z.string().trim().min(1, "Required — regenerate one"),
-  metrics: z
+  measurements: z
     .array(z.object({ key: z.string().trim(), value: z.string().trim() }))
     .superRefine((rows, ctx) => {
       const seen = new Set<string>();
@@ -44,13 +44,13 @@ export const testEventFormSchema = z.object({
           ctx.addIssue({
             code: "custom",
             path: [index, "key"],
-            message: "Metric name required",
+            message: "Measurement name required",
           });
         } else if (seen.has(row.key)) {
           ctx.addIssue({
             code: "custom",
             path: [index, "key"],
-            message: "Duplicate metric name",
+            message: "Duplicate measurement name",
           });
         }
         seen.add(row.key);
@@ -67,7 +67,7 @@ export const testEventFormSchema = z.object({
 
 export type TestEventFormValues = z.infer<typeof testEventFormSchema>;
 
-export const EMPTY_METRIC_ROW = { key: "", value: "" };
+export const EMPTY_MEASUREMENT_ROW = { key: "", value: "" };
 
 /** Currency units entered as a string → integer micros. Never float math beyond this. */
 export function toMicros(value: string): number {
@@ -84,10 +84,10 @@ export function buildTestEventRequest(
   values: TestEventFormValues,
   requestId: string,
 ): RecordUsageRequest {
-  const metrics: Record<string, number> = {};
-  for (const row of values.metrics) {
+  const measurements: Record<string, number> = {};
+  for (const row of values.measurements) {
     if (row.key !== "" && INT_RE.test(row.value)) {
-      metrics[row.key] = Number(row.value);
+      measurements[row.key] = Number(row.value);
     }
   }
   return {
@@ -103,7 +103,7 @@ export function buildTestEventRequest(
     ...(values.billed_cost !== "" && {
       billed_cost_micros: toMicros(values.billed_cost),
     }),
-    ...(Object.keys(metrics).length > 0 && { measurements: metrics }),
+    ...(Object.keys(measurements).length > 0 && { measurements }),
     ...(values.effective_at !== "" && {
       effective_at: new Date(values.effective_at).toISOString(),
     }),

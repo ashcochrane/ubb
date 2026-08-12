@@ -26,34 +26,34 @@ export interface AnalyticsQueryLike {
 
 export interface DimensionBreakdownProps {
   query: AnalyticsQueryLike;
-  dimension: BreakdownDimension;
-  onDimensionChange: (dimension: BreakdownDimension) => void;
+  groupBy: BreakdownDimension;
+  onGroupByChange: (groupBy: BreakdownDimension) => void;
   currency: string;
   className?: string;
 }
 
 export function DimensionBreakdown({
   query,
-  dimension,
-  onDimensionChange,
+  groupBy,
+  onGroupByChange,
   currency,
   className,
 }: DimensionBreakdownProps) {
   return (
     <ChartCard
-      title="Cost by dimension"
+      title="Cost breakdown"
       className={className}
       actions={
-        <div className="flex items-center gap-1" role="group" aria-label="Breakdown dimension">
+        <div className="flex items-center gap-1" role="group" aria-label="Group cost by">
           {BREAKDOWN_DIMENSIONS.map((option) => (
             <button
               key={option}
               type="button"
-              aria-pressed={option === dimension}
-              onClick={() => onDimensionChange(option)}
+              aria-pressed={option === groupBy}
+              onClick={() => onGroupByChange(option)}
               className={cn(
                 "h-6 rounded-md px-2 text-[11px] transition-colors",
-                option === dimension
+                option === groupBy
                   ? "bg-primary text-primary-foreground"
                   : "text-text-muted hover:bg-bg-subtle hover:text-text-primary",
               )}
@@ -64,18 +64,18 @@ export function DimensionBreakdown({
         </div>
       }
     >
-      <BreakdownBody query={query} dimension={dimension} currency={currency} />
+      <BreakdownBody query={query} groupBy={groupBy} currency={currency} />
     </ChartCard>
   );
 }
 
 function BreakdownBody({
   query,
-  dimension,
+  groupBy,
   currency,
 }: {
   query: AnalyticsQueryLike;
-  dimension: BreakdownDimension;
+  groupBy: BreakdownDimension;
   currency: string;
 }) {
   if (query.isPending) {
@@ -98,7 +98,7 @@ function BreakdownBody({
   }
   if (!query.data) return null;
 
-  const bars = topWithOther(toBreakdownRows(query.data, dimension), 8);
+  const bars = topWithOther(toBreakdownRows(query.data, groupBy), 8);
   if (bars.length === 0) {
     return (
       <SectionEmpty
@@ -145,7 +145,7 @@ function BreakdownBody({
         </div>
       ))}
       <p className="pt-1 text-[11px] text-text-muted">
-        Billed cost by {dimensionLabel(dimension).toLowerCase()}, top 8 shown.
+        Billed cost by {dimensionLabel(groupBy).toLowerCase()}, top 8 shown.
       </p>
     </div>
   );

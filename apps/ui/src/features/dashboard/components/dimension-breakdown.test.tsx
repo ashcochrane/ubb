@@ -38,21 +38,21 @@ const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
 /** Stateful harness mirroring how the page wires picker + query together. */
 function Harness() {
-  const [dimension, setDimension] =
+  const [groupBy, setGroupBy] =
     React.useState<BreakdownDimension>("provider");
-  const query = useWindowAnalytics(WINDOW, dimension);
+  const query = useWindowAnalytics(WINDOW, groupBy);
   return (
     <DimensionBreakdown
       query={query}
-      dimension={dimension}
-      onDimensionChange={setDimension}
+      groupBy={groupBy}
+      onGroupByChange={setGroupBy}
       currency="usd"
     />
   );
 }
 
 describe("DimensionBreakdown", () => {
-  it("switches the breakdown when a different dimension is picked", async () => {
+  it("switches the breakdown when a different axis is picked", async () => {
     renderWithClient(<Harness />);
 
     expect(await screen.findByText("openai")).toBeInTheDocument();
@@ -89,8 +89,8 @@ describe("DimensionBreakdown", () => {
           error: null,
           refetch: () => {},
         }}
-        dimension="provider"
-        onDimensionChange={() => {}}
+        groupBy="provider"
+        onGroupByChange={() => {}}
         currency="usd"
       />,
     );

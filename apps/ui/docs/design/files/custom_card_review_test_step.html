@@ -179,7 +179,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
   <div class="steps">
     <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Source</div><div class="step-line done"></div></div>
     <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Details</div><div class="step-line done"></div></div>
-    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Dimensions</div><div class="step-line done"></div></div>
+    <div class="step-item"><div class="step-dot done">&#10003;</div><div class="step-label">Measurements</div><div class="step-line done"></div></div>
     <div class="step-item"><div class="step-dot active">4</div><div class="step-label active">Review & test</div></div>
   </div>
 
@@ -201,8 +201,8 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
       </div>
       <hr class="rc-divider" />
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary)">Cost dimensions (3)</div>
-        <button class="edit-link" onclick="sendPrompt('Go back to the dimensions step for my custom card')">Edit dimensions</button>
+        <div style="font-size:12px;font-weight:500;color:var(--color-text-secondary)">Cost measurements (3)</div>
+        <button class="edit-link" onclick="sendPrompt('Go back to the measurements step for my custom card')">Edit measurements</button>
       </div>
       <div class="dim-review">
         <div class="dim-review-key">input_tokens</div>
@@ -280,14 +280,14 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
 
       <div class="sanity" id="sanity">
         <div class="sanity-title">Sanity check</div>
-        <div class="sanity-msg" id="sanity-msg">Grounding requests account for 98.7% of total cost. This is typical for Gemini with grounding enabled — the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts. If this doesn't look right, edit your dimensions.</div>
+        <div class="sanity-msg" id="sanity-msg">Grounding requests account for 98.7% of total cost. This is typical for Gemini with grounding enabled — the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts. If this doesn't look right, edit your measurements.</div>
       </div>
 
       <div class="checklist" id="checklist">
-        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">All 3 dimensions have non-zero prices</span></div>
-        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">No duplicate metric keys</span></div>
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">All 3 measurements have non-zero prices</span></div>
+        <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">No duplicate measurement keys</span></div>
         <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">Unit prices are within expected ranges</span></div>
-        <div class="check-row"><div class="check-icon check-warn"><svg viewBox="0 0 16 16" fill="var(--color-text-warning)" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--color-text-warning)" stroke-width="1.5"/><text x="8" y="11.5" font-size="10" text-anchor="middle" fill="var(--color-text-warning)" font-weight="600">!</text></svg></div><span class="check-text" style="color:var(--color-text-warning)">Cost dominated by one dimension (see sanity check above)</span></div>
+        <div class="check-row"><div class="check-icon check-warn"><svg viewBox="0 0 16 16" fill="var(--color-text-warning)" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" fill="none" stroke="var(--color-text-warning)" stroke-width="1.5"/><text x="8" y="11.5" font-size="10" text-anchor="middle" fill="var(--color-text-warning)" font-weight="600">!</text></svg></div><span class="check-text" style="color:var(--color-text-warning)">Cost dominated by one measurement (see sanity check above)</span></div>
         <div class="check-row"><div class="check-icon check-pass"><svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-success)" stroke-width="2.5" stroke-linecap="round"><path d="M5 13l4 4L19 7"/></svg></div><span class="check-text">Card ID is valid and unique</span></div>
       </div>
     </div>
@@ -323,7 +323,7 @@ body{font-family:var(--font-sans);color:var(--color-text-primary);line-height:1.
 
     <!-- Navigation -->
     <div class="nav-row">
-      <button class="btn-back" onclick="sendPrompt('Go back to the dimensions step for my custom card')">Back to dimensions</button>
+      <button class="btn-back" onclick="sendPrompt('Go back to the measurements step for my custom card')">Back to measurements</button>
       <div style="display:flex;gap:8px">
         <button class="btn-back" id="btn-draft">Save as draft</button>
         <button class="btn-activate" id="btn-activate" onclick="showConfirm()">Activate card</button>
@@ -426,7 +426,7 @@ function calcDryRun(){
   if(maxPct>90&&total>0){
     s.style.display='block';
     const dom=costs.indexOf(Math.max(...costs));
-    document.getElementById('sanity-msg').textContent=labels[dom]+' accounts for '+maxPct.toFixed(1)+'% of total cost. '+(dom===2?'This is typical for Gemini with grounding enabled \u2014 the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts.':'This might indicate a pricing misconfiguration. Double-check your unit prices.')+' If this doesn\'t look right, edit your dimensions.';
+    document.getElementById('sanity-msg').textContent=labels[dom]+' accounts for '+maxPct.toFixed(1)+'% of total cost. '+(dom===2?'This is typical for Gemini with grounding enabled \u2014 the per-request fee dominates at low token volumes. At higher token volumes (10k+), the ratio shifts.':'This might indicate a pricing misconfiguration. Double-check your unit prices.')+' If this doesn\'t look right, edit your measurements.';
   } else {
     s.style.display='none';
   }

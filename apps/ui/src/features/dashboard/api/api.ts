@@ -33,17 +33,17 @@ export async function getMarginSummary(window: Window): Promise<MarginSummary> {
 }
 
 /**
- * Usage analytics for the window, with one requested breakdown dimension.
- * The totals (events / billed / provider) are dimension-independent, so this
- * single call powers both the stat row and the cost-by-dimension card.
+ * Usage analytics for the window, with one requested breakdown axis.
+ * The totals (events / billed / provider) do not depend on the axis, so this
+ * single call powers both the stat row and the cost breakdown card.
  */
 export async function getWindowAnalytics(
   window: Window,
-  dimension: BreakdownDimension,
+  groupBy: BreakdownDimension,
 ): Promise<UsageAnalytics> {
   return unwrap(
     await meteringApi.GET("/analytics/usage", {
-      params: { query: { ...window, dimensions: [dimension] } },
+      params: { query: { ...window, dimensions: [groupBy] } },
     }),
   );
 }

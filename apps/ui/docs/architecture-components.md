@@ -103,7 +103,7 @@ Located in `src/components/shared/`:
 
 | Component | Purpose |
 |-----------|---------|
-| `stat-card.tsx` | Reusable metric card with label, value, trend |
+| `stat-card.tsx` | Reusable stat card with label, value, trend |
 | `stepper.tsx` | Multi-step wizard progress indicator |
 
 ## Layout Components

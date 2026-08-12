@@ -126,7 +126,7 @@ export function timeseriesPoints(response: UsageTimeseries): RevenueCostPoint[] 
 }
 
 // ---------------------------------------------------------------------------
-// Cost-by-dimension bars
+// Cost breakdown bars
 
 export interface BreakdownBar {
   name: string;
@@ -138,14 +138,14 @@ export interface BreakdownBar {
 
 /**
  * Top N rows by billed cost, remainder folded into a single "Other" bar.
- * Null/empty dimension values render as "(unattributed)".
+ * Null/empty group values render as "(unattributed)".
  */
 export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
   const sorted = [...rows].sort(
     (a, b) => b.total_billed_cost_micros - a.total_billed_cost_micros,
   );
   const top = sorted.slice(0, limit).map((row) => ({
-    name: row.dimension || "(unattributed)",
+    name: row.group_value || "(unattributed)",
     billed_micros: row.total_billed_cost_micros,
     provider_micros: row.total_provider_cost_micros,
     event_count: row.event_count,

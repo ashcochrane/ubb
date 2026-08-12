@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { TimeseriesPoint } from "../api/types";
+import { asTimeseriesPoints, type TimeseriesPoint } from "../api/types";
 import { OTHER_LABEL, pivotTimeseries } from "./timeseries";
 
 function point(
   bucket: string,
   billed: number,
-  dimension?: string,
+  groupValue?: string,
 ): TimeseriesPoint {
   const base: TimeseriesPoint = {
     bucket,
@@ -15,7 +15,7 @@ function point(
     markup_micros: Math.round(billed * 0.2),
     event_count: 1,
   };
-  if (dimension !== undefined) base.dimension = dimension;
+  if (groupValue !== undefined) base.group_value = groupValue;
   return base;
 }
 
@@ -33,7 +33,7 @@ describe("pivotTimeseries", () => {
     expect(pivot.data[0]).toMatchObject({ billed: 100, provider: 80 });
   });
 
-  it("paints every dimension when there are three or fewer", () => {
+  it("paints every group when there are three or fewer", () => {
     const pivot = pivotTimeseries(
       [
         point("2026-07-01T00:00:00Z", 300, "openai"),
@@ -65,7 +65,7 @@ describe("pivotTimeseries", () => {
       "anthropic",
       OTHER_LABEL,
     ]);
-    // Other aggregates the folded dimensions' billed cost.
+    // Other aggregates the folded groups' billed cost.
     const row = pivot.data[0];
     expect(row).toBeDefined();
     expect(row?.["d:__other__"]).toBe(80);
@@ -81,5 +81,37 @@ describe("pivotTimeseries", () => {
     );
     expect(pivot.data[0]?.["d:anthropic"]).toBe(0);
     expect(pivot.data[1]?.["d:openai"]).toBe(0);
+  });
+
+  // The grouped value arrives inside a row the contract types as
+  // `additionalProperties: true`, under a key the BACKEND owns and still
+  // spells with the retired word. `asTimeseriesPoints` reads it through
+  // `WIRE_GROUP_VALUE_KEY`, and this feature's mock EMITS it through the same
+  // constant — so every other fixture here would still pass if that constant
+  // were changed on the console side alone, and the chart would silently paint
+  // one "(unattributed)" series over the whole window.
+  //
+  // This fixture is a literal transcript of a backend response instead. It
+  // fails the moment the console's read stops matching what the server writes,
+  // and it is what must be updated — deliberately, in the same commit — when
+  // the backend's own rename lands.
+  it("paints a verbatim backend response by its grouped value", () => {
+    const fromBackend = [
+      {
+        bucket: "2026-07-01T00:00:00Z",
+        provider_cost_micros: 80,
+        billed_cost_micros: 100,
+        markup_micros: 20,
+        event_count: 1,
+        dimension: "openai",
+      },
+    ];
+
+    const points = asTimeseriesPoints(fromBackend);
+    expect(points[0]?.group_value).toBe("openai");
+
+    const pivot = pivotTimeseries(points, true);
+    expect(pivot.series.map((s) => s.label)).toEqual(["openai"]);
+    expect(pivot.data[0]?.["d:openai"]).toBe(100);
   });
 });

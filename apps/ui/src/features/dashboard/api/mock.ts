@@ -35,10 +35,10 @@ export async function getMarginSummary(window: Window): Promise<MarginSummary> {
 
 export async function getWindowAnalytics(
   _window: Window,
-  dimension: BreakdownDimension,
+  groupBy: BreakdownDimension,
 ): Promise<UsageAnalytics> {
   await mockDelay();
-  return mockWindowAnalytics(dimension);
+  return mockWindowAnalytics(groupBy);
 }
 
 export async function getLifetimeAnalytics(): Promise<UsageAnalytics> {

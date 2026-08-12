@@ -18,7 +18,7 @@ const BASE_VALUES: TestEventFormValues = {
   billed_cost: "",
   effective_at: "",
   idempotency_key: "idem-1",
-  metrics: [{ key: "", value: "" }],
+  measurements: [{ key: "", value: "" }],
 };
 
 describe("toMicros", () => {
@@ -48,7 +48,7 @@ describe("buildTestEventRequest", () => {
         event_type: "chat_completion",
         provider_cost: "0.42",
         billed_cost: "0.6",
-        metrics: [
+        measurements: [
           { key: "tokens_in", value: "1200" },
           { key: "", value: "" },
         ],
@@ -76,18 +76,18 @@ describe("buildTestEventRequest", () => {
 });
 
 describe("testEventFormSchema", () => {
-  it("rejects a non-UUID customer id and a fractional metric quantity", () => {
+  it("rejects a non-UUID customer id and a fractional measurement quantity", () => {
     const result = testEventFormSchema.safeParse({
       ...BASE_VALUES,
       customer_id: "not-a-uuid",
-      metrics: [{ key: "tokens_in", value: "1.5" }],
+      measurements: [{ key: "tokens_in", value: "1.5" }],
     });
     expect(result.success).toBe(false);
     const paths = result.success
       ? []
       : result.error.issues.map((issue) => issue.path.join("."));
     expect(paths).toContain("customer_id");
-    expect(paths).toContain("metrics.0.value");
+    expect(paths).toContain("measurements.0.value");
   });
 
   it("accepts a fully-empty optional surface", () => {

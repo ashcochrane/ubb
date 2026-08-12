@@ -60,13 +60,31 @@ export interface TimeseriesRow {
   event_count: number;
 }
 
-/** One row of `UsageAnalyticsResponse.breakdowns[<dimension>]`. */
+/** One row of a `UsageAnalyticsResponse.breakdowns` entry. */
 export interface BreakdownRow {
-  dimension: string | null;
+  /** The value of the axis this row is grouped by, or null when unset. */
+  group_value: string | null;
   event_count: number;
   total_provider_cost_micros: number;
   total_billed_cost_micros: number;
 }
+
+/**
+ * The key the backend still puts a grouped value under on an untyped breakdown
+ * row. It is NOT this console's word for it — `BreakdownRow.group_value` is —
+ * and it is spelled here, once, because the backend has not yet renamed what it
+ * emits. That rename is its own ledger entry, owned by this same slice; when it
+ * lands, this constant is the only console site that moves.
+ *
+ * The rows are `additionalProperties: true` in the contract, so the generated
+ * types cannot carry the name and a fixture cannot be type-checked into
+ * matching it. `economics.test.ts` pins the pairing with a representative
+ * payload instead.
+ *
+ * Exported so this feature's mock emits the same key the narrowing reads —
+ * a mock that spelled it separately could drift from the backend silently.
+ */
+export const WIRE_GROUP_VALUE_KEY = "dimension";
 
 /**
  * GET /connect/status — untyped `dict` in the schema.
@@ -110,25 +128,26 @@ export function toTimeseriesRows(response: UsageTimeseries): TimeseriesRow[] {
 }
 
 /**
- * Narrow the breakdown rows for one dimension. Prefers the uniform
- * `breakdowns` map (present when the `dimensions` param was sent); falls back
- * to the legacy `by_*` arrays, which have two sharp edges: `by_customer` rows
- * key the value as the literal Django lookup `customer__external_id`, and all
- * `by_*` rows call billed cost `total_cost_micros` (the name drops "billed").
+ * Narrow the breakdown rows for one axis. Prefers the uniform `breakdowns` map
+ * (present when the grouping param was sent); falls back to the legacy `by_*`
+ * arrays, which have two sharp edges: `by_customer` rows key the value as the
+ * literal Django lookup `customer__external_id`, and all `by_*` rows call
+ * billed cost `total_cost_micros` (the name drops "billed").
  */
 export function toBreakdownRows(
   analytics: UsageAnalytics,
-  dimension: BreakdownDimension,
+  groupBy: BreakdownDimension,
 ): BreakdownRow[] {
-  const fromBreakdowns = analytics.breakdowns[dimension];
+  const fromBreakdowns = analytics.breakdowns[groupBy];
   if (Array.isArray(fromBreakdowns)) {
     return fromBreakdowns.map((raw) => {
       const row = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
         string,
         unknown
       >;
+      const value = row[WIRE_GROUP_VALUE_KEY];
       return {
-        dimension: typeof row["dimension"] === "string" ? row["dimension"] : null,
+        group_value: typeof value === "string" ? value : null,
         event_count: num(row["event_count"]),
         total_provider_cost_micros: num(row["total_provider_cost_micros"]),
         total_billed_cost_micros: num(row["total_billed_cost_micros"]),
@@ -137,19 +156,18 @@ export function toBreakdownRows(
   }
 
   const legacyRows: Array<Record<string, unknown>> =
-    dimension === "provider"
+    groupBy === "provider"
       ? analytics.by_provider
-      : dimension === "event_type"
+      : groupBy === "event_type"
         ? analytics.by_event_type
-        : dimension === "task_type"
+        : groupBy === "task_type"
           ? analytics.by_task_type
           : analytics.by_customer;
-  const valueKey =
-    dimension === "customer" ? "customer__external_id" : dimension;
+  const valueKey = groupBy === "customer" ? "customer__external_id" : groupBy;
   return legacyRows.map((row) => {
     const value = row[valueKey];
     return {
-      dimension: typeof value === "string" ? value : null,
+      group_value: typeof value === "string" ? value : null,
       event_count: num(row["event_count"]),
       total_provider_cost_micros: num(row["total_provider_cost_micros"]),
       // Legacy rows name billed cost `total_cost_micros`.
