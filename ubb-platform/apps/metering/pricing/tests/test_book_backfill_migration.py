@@ -18,10 +18,10 @@ def _backfill():
 def test_default_rates_grouped_into_per_provider_default_book():
     t = Tenant.objects.create(name="T", default_currency="usd")
     r1 = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                             metric_name="input_tokens", currency="usd",
+                             measurement_key="input_tokens", currency="usd",
                              rate_per_unit_micros=10)
     r2 = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                             metric_name="output_tokens", currency="usd",
+                             measurement_key="output_tokens", currency="usd",
                              rate_per_unit_micros=30)
     _backfill()
     r1.refresh_from_db(); r2.refresh_from_db()
@@ -36,7 +36,7 @@ def test_customer_scoped_price_rate_gets_book_and_assignment():
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                            metric_name="input_tokens", currency="usd",
+                            measurement_key="input_tokens", currency="usd",
                             customer=c, rate_per_unit_micros=5)
     _backfill()
     r.refresh_from_db()
@@ -48,10 +48,10 @@ def test_customer_scoped_price_rate_gets_book_and_assignment():
 def test_same_provider_two_currencies_get_separate_books():
     t = Tenant.objects.create(name="T", default_currency="usd")
     usd = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                              metric_name="input_tokens", currency="usd",
+                              measurement_key="input_tokens", currency="usd",
                               rate_per_unit_micros=10)
     eur = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                              metric_name="input_tokens", currency="eur",
+                              measurement_key="input_tokens", currency="eur",
                               rate_per_unit_micros=9)
     _backfill()
     usd.refresh_from_db(); eur.refresh_from_db()
@@ -64,7 +64,7 @@ def test_backfill_raises_on_orphaned_customer_cost_rate():
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
     Rate.objects.create(tenant=t, card_type="cost", provider="gemini",
-                        metric_name="input_tokens", currency="usd",
+                        measurement_key="input_tokens", currency="usd",
                         customer=c, rate_per_unit_micros=3)
     with pytest.raises(RuntimeError, match="customer-scoped cost"):
         _backfill()
@@ -74,10 +74,10 @@ def test_multi_provider_customer_shares_one_book_and_assignment():
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
     g = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                            metric_name="input_tokens", currency="usd",
+                            measurement_key="input_tokens", currency="usd",
                             customer=c, rate_per_unit_micros=5)
     o = Rate.objects.create(tenant=t, card_type="price", provider="openai",
-                            metric_name="input_tokens", currency="usd",
+                            measurement_key="input_tokens", currency="usd",
                             customer=c, rate_per_unit_micros=6)
     _backfill()
     g.refresh_from_db(); o.refresh_from_db()

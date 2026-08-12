@@ -15,7 +15,7 @@ PRICE_BOOK = {"card_type": "price", "key": "openai-price", "provider_key": "open
 
 # A rate under the book. card_type + currency are inherited from the book.
 COST_RATE = {
-    "metric_name": "input_tokens",
+    "measurement_key": "input_tokens",
     "provider": "openai",
     "event_type": "chat",
     "dim1": "gpt-4",
@@ -25,7 +25,7 @@ COST_RATE = {
 }
 
 # The publish change that re-prices COST_RATE (must carry its match keys).
-_RATE_MATCH = {"metric_name": "input_tokens", "provider": "openai",
+_RATE_MATCH = {"measurement_key": "input_tokens", "provider": "openai",
                "event_type": "chat", "dim1": "gpt-4"}
 
 
@@ -78,7 +78,7 @@ class RateCardCRUDTest(TestCase):
         rate = rate_resp.json()
         self.assertIn("id", rate)
         self.assertEqual(rate["card_type"], "cost")
-        self.assertEqual(rate["metric_name"], "input_tokens")
+        self.assertEqual(rate["measurement_key"], "input_tokens")
         self.assertEqual(rate["rate_card_id"], book["id"])
 
     def test_list_after_create_returns_one(self):
@@ -88,7 +88,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         data = resp.json()["data"]
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["metric_name"], "input_tokens")
+        self.assertEqual(data[0]["measurement_key"], "input_tokens")
         # And exactly one book is listed.
         books = self.http_client.get("/api/v1/metering/pricing/rate-cards", **self._auth())
         self.assertEqual(len(books.json()["data"]), 1)

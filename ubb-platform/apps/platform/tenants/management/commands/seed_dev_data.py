@@ -167,7 +167,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
-            f'-d \'{{"metric_name": "input_tokens", "pricing_model": "per_unit", '
+            f'-d \'{{"measurement_key": "input_tokens", "pricing_model": "per_unit", '
             f'"rate_per_unit_micros": 2, "unit_quantity": 1}}\' '
             f'http://localhost:8001/api/v1/metering/pricing/rate-cards/$BOOK_ID/rates\n')
         self.stdout.write(f'# Record a usage event (engine computes COGS from rate card)')

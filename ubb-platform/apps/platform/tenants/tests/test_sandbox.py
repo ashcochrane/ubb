@@ -208,7 +208,7 @@ class SandboxResetTest(TestCase):
         from apps.metering.pricing.models import Rate
 
         Rate.objects.create(
-            tenant=tenant, card_type="cost", metric_name="tokens",
+            tenant=tenant, card_type="cost", measurement_key="tokens",
             rate_per_unit_micros=10)
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(

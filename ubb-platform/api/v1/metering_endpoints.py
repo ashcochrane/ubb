@@ -268,8 +268,9 @@ def get_usage_event(request, event_id: UUID):
     """Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
     Returns every priced field plus pricing_provenance — the recorded
-    "why this amount" (engine version, price source, per-metric card, and
-    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    "why this amount" (engine version, price source, the card that priced each
+    named quantity, and tier-by-tier breakdown). The usage list omits
+    provenance to stay lean;
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id."""
     _product_check(request)
@@ -845,7 +846,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
         with transaction.atomic():
             rate = Rate.objects.create(
                 tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
-                metric_name=payload.metric_name, provider=payload.provider,
+                measurement_key=payload.measurement_key, provider=payload.provider,
                 event_type=payload.event_type, task_type=payload.task_type,
                 subtask_type=payload.subtask_type,
                 dim1=payload.dim1, dim2=payload.dim2, dim3=payload.dim3,
@@ -860,9 +861,16 @@ def add_rate(request, book_id: UUID, payload: RateIn):
                 tenant_id=request.auth.tenant.id,
                 resource_type="rate",
                 resource_id=rate.id,
+                # This key moved with the column (#275) and audit records
+                # already written are NOT rewritten, on the same ground as the
+                # pricing receipt: an audit row states what was done on a day,
+                # and back-dating it to a vocabulary that did not exist then
+                # would make it a worse record. Nothing queries this key — the
+                # audit read path filters on `action` and `resource_type`, both
+                # unchanged — so the split costs no reader a lookup.
                 metadata={
                     "book_id": str(book.id),
-                    "metric_name": rate.metric_name,
+                    "measurement_key": rate.measurement_key,
                     "pricing_model": rate.pricing_model,
                     "rate_per_unit_micros": rate.rate_per_unit_micros,
                     "currency": rate.currency,

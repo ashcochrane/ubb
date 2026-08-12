@@ -517,7 +517,7 @@ class TenantConfigCurrencyTest(TestCase):
         every card from matching and collapse COGS to the markup fallback."""
         from apps.metering.pricing.models import Rate
         Rate.objects.create(
-            tenant=self.tenant, card_type="cost", metric_name="tokens",
+            tenant=self.tenant, card_type="cost", measurement_key="tokens",
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency)
         self._assert_locked()
@@ -526,7 +526,7 @@ class TenantConfigCurrencyTest(TestCase):
         from django.utils import timezone
         from apps.metering.pricing.models import Rate
         Rate.objects.create(
-            tenant=self.tenant, card_type="cost", metric_name="tokens",
+            tenant=self.tenant, card_type="cost", measurement_key="tokens",
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency, valid_to=timezone.now())
         resp = self._patch({"default_currency": "eur"})

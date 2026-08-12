@@ -130,7 +130,7 @@ export function RatesTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Metric</TableHead>
+                  <TableHead>Measurement</TableHead>
                   <TableHead>Matchers</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Rate</TableHead>
@@ -178,7 +178,7 @@ export function RatesTable({
         title="Retire this rate?"
         description={
           retireTarget
-            ? `"${retireTarget.metric_name}" stops pricing new events immediately. Nothing is deleted — this version stays in the book's history, and past events keep their recorded price.`
+            ? `"${retireTarget.measurement_key}" stops pricing new events immediately. Nothing is deleted — this version stays in the book's history, and past events keep their recorded price.`
             : ""
         }
         confirmLabel="Retire rate"
@@ -220,8 +220,8 @@ function RateRow({
     .filter(([, value]) => value !== "");
   return (
     <TableRow className={cn(superseded && "opacity-55")}>
-      <TableCell className="font-mono text-[12px]" title={rate.metric_name}>
-        {rate.metric_name}
+      <TableCell className="font-mono text-[12px]" title={rate.measurement_key}>
+        {rate.measurement_key}
       </TableCell>
       <TableCell>
         <div className="flex max-w-[260px] flex-wrap items-center gap-1">

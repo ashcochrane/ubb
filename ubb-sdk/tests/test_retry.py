@@ -301,15 +301,15 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {
                 "id": "rc_1", "lineage_id": "lin_1", "card_type": "cost",
-                "metric_name": "tokens", "pricing_model": "per_unit",
+                "measurement_key": "tokens", "pricing_model": "per_unit",
                 "rate_per_unit_micros": 10, "unit_quantity": 1_000_000,
             }
             mock_post.side_effect = [resp_fail, resp_ok]
-            card = client.create_rate_card(card_type="cost", metric_name="tokens",
+            card = client.create_rate_card(card_type="cost", measurement_key="tokens",
                                            rate_per_unit_micros=10)
             self.assertEqual(mock_post.call_count, 2)
             self.assertEqual(card.id, "rc_1")
-            self.assertEqual(card.metric_name, "tokens")
+            self.assertEqual(card.measurement_key, "tokens")
         client.close()
 
     @patch("ubb.retry.time.sleep")

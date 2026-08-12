@@ -5,7 +5,7 @@ from ubb.types import RateCard
 
 
 RATE_CARD_FIXTURE = {
-    "id": "rc1", "lineage_id": "lin1", "card_type": "cost", "metric_name": "input_tokens",
+    "id": "rc1", "lineage_id": "lin1", "card_type": "cost", "measurement_key": "input_tokens",
     "provider": "openai", "event_type": "chat", "dimensions": {}, "pricing_model": "per_unit",
     "rate_per_unit_micros": 5000, "unit_quantity": 1000000, "fixed_micros": 0,
     "currency": "usd", "product_id": "", "customer_id": None,
@@ -24,7 +24,7 @@ class RateCardClientTest(unittest.TestCase):
     def test_create_rate_card(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: RATE_CARD_FIXTURE)
         card = self.client.create_rate_card(
-            card_type="cost", metric_name="input_tokens",
+            card_type="cost", measurement_key="input_tokens",
             provider="openai", event_type="chat", rate_per_unit_micros=5000,
         )
         self.assertIsInstance(card, RateCard)
@@ -37,13 +37,13 @@ class RateCardClientTest(unittest.TestCase):
     def test_create_rate_card_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: RATE_CARD_FIXTURE)
         self.client.create_rate_card(
-            card_type="cost", metric_name="input_tokens",
+            card_type="cost", measurement_key="input_tokens",
             provider="openai", event_type="chat",
             rate_per_unit_micros=5000, product_id="prod1",
         )
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["card_type"], "cost")
-        self.assertEqual(body["metric_name"], "input_tokens")
+        self.assertEqual(body["measurement_key"], "input_tokens")
         self.assertEqual(body["rate_per_unit_micros"], 5000)
         self.assertEqual(body["product_id"], "prod1")
         self.assertEqual(body["dimensions"], {})
@@ -54,7 +54,7 @@ class RateCardClientTest(unittest.TestCase):
         cards = self.client.list_rate_cards()
         self.assertEqual(len(cards), 1)
         self.assertIsInstance(cards[0], RateCard)
-        self.assertEqual(cards[0].metric_name, "input_tokens")
+        self.assertEqual(cards[0].measurement_key, "input_tokens")
         self.assertEqual(cards[0].lineage_id, "lin1")
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/metering/pricing/rate-cards")
 
@@ -96,7 +96,7 @@ class RateCardClientTest(unittest.TestCase):
         # server adds a field the dataclass doesn't know about -> no crash
         mock_post.return_value = MagicMock(
             status_code=200, json=lambda: {**RATE_CARD_FIXTURE, "future_field": "x"})
-        card = self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        card = self.client.create_rate_card(card_type="cost", measurement_key="input_tokens")
         self.assertEqual(card.id, "rc1")
 
     @patch("ubb.metering.httpx.Client.get")
@@ -127,9 +127,9 @@ class RateCardClientTest(unittest.TestCase):
         batch_response = {"created": ["rc-a", "rc-b"], "count": 2}
         mock_post.return_value = MagicMock(status_code=200, json=lambda: batch_response)
         cards = [
-            {"card_type": "cost", "metric_name": "tokens", "pricing_model": "per_unit",
+            {"card_type": "cost", "measurement_key": "tokens", "pricing_model": "per_unit",
              "rate_per_unit_micros": 2, "unit_quantity": 1},
-            {"card_type": "cost", "metric_name": "images", "pricing_model": "flat",
+            {"card_type": "cost", "measurement_key": "images", "pricing_model": "flat",
              "fixed_micros": 500},
         ]
         result = self.client.bulk_create_rate_cards(cards)
@@ -142,7 +142,7 @@ class RateCardClientTest(unittest.TestCase):
         body = mock_post.call_args.kwargs["json"]
         self.assertIn("cards", body)
         self.assertEqual(len(body["cards"]), 2)
-        self.assertEqual(body["cards"][0]["metric_name"], "tokens")
+        self.assertEqual(body["cards"][0]["measurement_key"], "tokens")
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ export function AddRateDialog({
   const currency = useTenantCurrency();
   const addRate = useAddRate(book.id);
   const defaults: RateFormValues = {
-    metric_name: "",
+    measurement_key: "",
     provider: book.provider_key,
     event_type: "",
     task_type: "",
@@ -84,7 +84,7 @@ export function AddRateDialog({
     }
     addRate.mutate(
       {
-        metric_name: formValues.metric_name,
+        measurement_key: formValues.measurement_key,
         provider: formValues.provider,
         event_type: formValues.event_type,
         task_type: formValues.task_type,
@@ -104,7 +104,7 @@ export function AddRateDialog({
       },
       {
         onSuccess: (rate) => {
-          toastSuccess("Rate added", `${rate.metric_name} is pricing events now.`);
+          toastSuccess("Rate added", `${rate.measurement_key} is pricing events now.`);
           onOpenChange(false);
         },
       },
@@ -113,7 +113,7 @@ export function AddRateDialog({
 
   const errorMessage = addRate.isError
     ? addRate.error instanceof ApiProblem && addRate.error.code === "conflict"
-      ? "An active rate with this exact identity (metric, provider, event type, dimensions) already exists in this book. Retire it first or change the matchers."
+      ? "An active rate with this exact identity (measurement key, provider, event type, dimensions) already exists in this book. Retire it first or change the matchers."
       : problemMessage(addRate.error)
     : null;
 
@@ -123,7 +123,7 @@ export function AddRateDialog({
         <DialogHeader>
           <DialogTitle>Add rate</DialogTitle>
           <DialogDescription>
-            Rates go live immediately — new events matching this metric are
+            Rates go live immediately — new events matching this measurement key are
             priced with it. Currency and card type come from the book.
           </DialogDescription>
         </DialogHeader>
@@ -132,8 +132,8 @@ export function AddRateDialog({
           className="space-y-4"
         >
           <FormField
-            label="Metric name"
-            error={form.formState.errors.metric_name?.message}
+            label="Measurement key"
+            error={form.formState.errors.measurement_key?.message}
             hint="The measurement key this rate prices, e.g. gpt4o_input_tokens."
           >
             {(id) => (
@@ -141,7 +141,7 @@ export function AddRateDialog({
                 id={id}
                 className="font-mono"
                 placeholder="gpt4o_input_tokens"
-                {...form.register("metric_name")}
+                {...form.register("measurement_key")}
               />
             )}
           </FormField>

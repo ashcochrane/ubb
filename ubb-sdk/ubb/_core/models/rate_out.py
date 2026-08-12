@@ -36,7 +36,7 @@ class RateOut:
             fixed_micros (int):
             id (str):
             lineage_id (str):
-            metric_name (str):
+            measurement_key (str):
             pricing_model (str):
             provider (str):
             rate_card_id (str):
@@ -60,7 +60,7 @@ class RateOut:
     fixed_micros: int
     id: str
     lineage_id: str
-    metric_name: str
+    measurement_key: str
     pricing_model: str
     provider: str
     rate_card_id: str
@@ -101,7 +101,7 @@ class RateOut:
 
         lineage_id = self.lineage_id
 
-        metric_name = self.metric_name
+        measurement_key = self.measurement_key
 
         pricing_model = self.pricing_model
 
@@ -141,7 +141,7 @@ class RateOut:
             "fixed_micros": fixed_micros,
             "id": id,
             "lineage_id": lineage_id,
-            "metric_name": metric_name,
+            "measurement_key": measurement_key,
             "pricing_model": pricing_model,
             "provider": provider,
             "rate_card_id": rate_card_id,
@@ -185,7 +185,7 @@ class RateOut:
 
         lineage_id = d.pop("lineage_id")
 
-        metric_name = d.pop("metric_name")
+        measurement_key = d.pop("measurement_key")
 
         pricing_model = d.pop("pricing_model")
 
@@ -226,7 +226,7 @@ class RateOut:
             fixed_micros=fixed_micros,
             id=id,
             lineage_id=lineage_id,
-            metric_name=metric_name,
+            measurement_key=measurement_key,
             pricing_model=pricing_model,
             provider=provider,
             rate_card_id=rate_card_id,

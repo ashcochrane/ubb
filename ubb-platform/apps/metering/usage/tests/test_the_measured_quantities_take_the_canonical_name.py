@@ -10,7 +10,7 @@ container; the new one names a lookup.
 `continue` on the price side and still contributes nothing, silently. Naming the
 field for the declaration it keys into is what makes that mismatch *describable*;
 slice 3 is what makes it *visible*. This module is deliberately quiet about it —
-what a caller may still send is `test_negative_metric_rejection.py`'s subject,
+what a caller may still send is `test_negative_quantity_rejection.py`'s subject,
 and that module now records both halves of it.
 
 **ADR-0007 §1 governs the move:** `RenameField`, never add-plus-remove. The

@@ -253,11 +253,14 @@ class UsageEventDetailEndpointTest(TestCase):
             provider_cost_micros=300_000, billed_cost_micros=450_000,
             event_type="chat", provider="openai", currency="usd",
             # The quantity in the RECEIPT survives #272 — it is what a rate card
-            # was fed, per named metric, and slice 4 renames it. Only the
-            # posting's own nameless inline total died.
+            # was fed, per named quantity, and slice 4 renames it. Only the
+            # posting's own nameless inline total died. The name key here is
+            # the one #275 moved: a receipt written by today's engine. Receipts
+            # written before it keep the retired spelling and are not rewritten.
             pricing_provenance={
                 "engine_version": "2.1.0",
-                "metrics": [{"metric": "input_tokens", "price_card_id": "abc",
+                "metrics": [{"measurement_key": "input_tokens",
+                             "price_card_id": "abc",
                              "units": 35_000, "micros": 450_000}]})
 
     def test_get_event_returns_full_receipt(self):
@@ -699,30 +702,30 @@ class RateCardValidationTest(TestCase):
         # graduated was deleted end to end (ADR-0003) — not a valid model -> 422.
         book_id = self._cost_book()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-                          {"metric_name": "input_tokens", "pricing_model": "graduated"})
+                          {"measurement_key": "input_tokens", "pricing_model": "graduated"})
         assert resp.status_code == 422
 
     def test_record_usage_surfaces_uncosted_metrics(self):
-        # A metric with NO matching cost card -> the response lists it as uncosted.
+        # A quantity with NO matching cost card -> the response lists it as uncosted.
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
             data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
-                  "measurements": {"unknown_metric": 100}}),
+                  "measurements": {"undeclared_quantity": 100}}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
-        assert "unknown_metric" in resp.json().get("uncosted_metrics", [])
+        assert "undeclared_quantity" in resp.json().get("uncosted_metrics", [])
 
     def test_publish_keeps_lineage_and_versions_history(self):
         # create a cost book + a rate (rate 2)
         book_id = self._cost_book()
         r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"metric_name": "tokens", "pricing_model": "per_unit",
+            {"measurement_key": "tokens", "pricing_model": "per_unit",
              "rate_per_unit_micros": 2, "unit_quantity": 1})
         assert r1.status_code == 200, r1.content
         rate1 = r1.json(); rid = rate1["id"]; lineage = rate1["lineage_id"]
         # reprice the rate via publish -> new version supersedes the old
         pub = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish",
-            {"changes": [{"metric_name": "tokens", "rate_per_unit_micros": 9}]})
+            {"changes": [{"measurement_key": "tokens", "rate_per_unit_micros": 9}]})
         assert pub.status_code == 200, pub.content
         assert pub.json()["version"] == 2
         # history: both versions, newest first
@@ -759,10 +762,10 @@ class RateCardBatchCreateTest(TestCase):
         from apps.metering.pricing.models import Rate
         book_id = self._cost_book()
         r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"metric_name": "tokens", "pricing_model": "per_unit",
+            {"measurement_key": "tokens", "pricing_model": "per_unit",
              "rate_per_unit_micros": 2, "unit_quantity": 1})
         r2 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"metric_name": "images", "pricing_model": "flat", "fixed_micros": 500})
+            {"measurement_key": "images", "pricing_model": "flat", "fixed_micros": 500})
         assert r1.status_code == 200 and r2.status_code == 200
         assert Rate.objects.filter(tenant=self.tenant, rate_card_id=book_id).count() == 2
 
@@ -771,7 +774,7 @@ class RateCardBatchCreateTest(TestCase):
         book_id = self._cost_book()
         before = Rate.objects.filter(tenant=self.tenant).count()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"metric_name": "bad", "pricing_model": "package"})  # retired model (ADR-0003)
+            {"measurement_key": "bad", "pricing_model": "package"})  # retired model (ADR-0003)
         assert resp.status_code == 422
         assert Rate.objects.filter(tenant=self.tenant).count() == before  # zero created
 

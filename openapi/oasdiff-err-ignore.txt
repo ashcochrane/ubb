@@ -246,3 +246,59 @@ PATCH /api/v1/tenant/config request property `products/anyOf[subschema #1]/items
 # survives, and slice 7 cannot inherit a shape nobody has cut.
 GET /api/v1/me/usage-summary removed the required property `metrics/items/units` from the response with the `200` status
 GET /api/v1/me/usage-summary removed the required property `total_units` from the response with the `200` status
+
+# 2026-08-12 THE RATE'S QUANTITY NAME TAKES THE CANONICAL MEASUREMENT NAME
+# (#275, slice 2; PR #303). Decision reference: ADR-0007 §1 and §3, and the
+# slice spec's §F3. The four lines below were EMITTED by the gate itself
+# (`python openapi/contract_gate.py --baseline origin/main --emit`, oasdiff
+# v1.23.0) and pasted unedited, per ADR-0007 §4 — everything above them is the
+# human metadata that section permits. Read this block together with the two
+# WARN-level lines in the sibling file: same rename, same commit, split only by
+# level.
+#
+# THIS ONE REFUSES A STALE CALLER INSTEAD OF IGNORING IT, and that is the whole
+# reason to read the block rather than skim it. The three retirements before it
+# (#272, #273, #274) all dropped OPTIONAL properties, so django-ninja's
+# `extra="ignore"` left a stale caller with a 200 and quietly missing data — the
+# expensive, quiet failure their blocks argue about at length. The property
+# renamed here is REQUIRED on both write endpoints. The retired key is thrown
+# away, the canonical one is then absent, and the request is refused at
+# validation with **nothing written**. That is why two of these four findings are
+# `added the new required request property` — a shape oasdiff has not reported
+# for any earlier slice-2 break.
+#
+# So the migration cost lands loudly, at the caller's first attempt, on a
+# management surface a human drives. Nothing is mis-priced in the meantime: a
+# rate that fails to write does not exist, and events are priced by the rates
+# that do. `test_the_rates_quantity_name_takes_the_canonical_name.py` pins the
+# refusal AND its control, so "refused for the right reason" is distinguishable
+# from "refused for any reason".
+#
+# WHY THE NAME. This column names WHICH declared quantity a rate prices, and the
+# retired word named the metered entity rather than the quantity inside it —
+# #145 §10's mis-translation, at the integration boundary where it costs most.
+# The canonical word is already the tree's name for a free-text quantity key
+# (the quarantine record has carried it since #265) and already the word the
+# declarations publish (`GET /event-types/{key}/measurements`).
+#
+# THE NAME IS FINAL; THE IMPLEMENTATION IS NOT. It is still free text after this
+# commit, and slice 3 replaces it with a reference to the declared record. That
+# is ADR-0007 §3 exactly — final name, final contract, implementation partly
+# built — and it is what stops this published property being renamed a SECOND
+# time when the reference arrives. Slice 3 changes what the value must satisfy,
+# not what it is called, so no further break is owed for it.
+#
+# WHY THE BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5 —
+# the launch tag is not what binds). The same rename after platform admission
+# costs a 90-day deprecation cycle under ADR-0003 §4, and the caller's migration
+# is one line.
+#
+# FLAGGED FOR SLICE 4. The rate entity itself is rebuilt there, and its own
+# retired vocabulary — the cost/price discriminator, the book reference and the
+# shape-of-charge column, all still visible in these findings' neighbours — is
+# that slice's to pay. Renaming this column at slice 2 anyway is not an
+# oversight: the ledger owns it here, and an owner may move earlier, never later.
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/metric_name` from the response with the `200` status
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish added the new required request property `changes/items/measurement_key`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates added the new required request property `measurement_key`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `metric_name` from the response with the `200` status

@@ -197,7 +197,7 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
                                period_end: date) -> CustomerUsageSummary:
     """Per-event_type usage rollup for ONE customer over [period_start, period_end).
 
-    Each metric row: {event_type, billed_cost_micros, event_count}; the grand
+    Each row: {event_type, billed_cost_micros, event_count}; the grand
     totals equal the sum of the rows by construction. A BUSINESS customer
     aggregates across its seats — the same seat basis as the postpaid business
     branch (aggregate_lines): ALL seats incl. soft-deleted via all_objects, ONE

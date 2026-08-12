@@ -57,7 +57,7 @@ export function PublishDialog({
 
   const onConfirm = () => {
     const changes: RateChangeIn[] = changedRows.map(({ rate, next }) => ({
-      metric_name: rate.metric_name,
+      measurement_key: rate.measurement_key,
       provider: rate.provider,
       event_type: rate.event_type,
       task_type: rate.task_type,

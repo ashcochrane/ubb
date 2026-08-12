@@ -50,7 +50,7 @@ class BookApiTest(TestCase):
 
         # 2. add a rate to it -> the rate reports its book membership.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "gemini",
+            "measurement_key": "input_tokens", "provider": "gemini",
             "pricing_model": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 200, r.content)
         rate = r.json()
@@ -61,7 +61,7 @@ class BookApiTest(TestCase):
 
         # 3. publish a reprice -> book version bumps to 2, old rate superseded.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"metric_name": "input_tokens", "provider": "gemini",
+            "changes": [{"measurement_key": "input_tokens", "provider": "gemini",
                          "rate_per_unit_micros": 12}]})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["version"], 2)
@@ -80,7 +80,7 @@ class BookApiTest(TestCase):
         book_id = r.json()["id"]
         self.assertEqual(r.json()["currency"], "usd")  # tenant default
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "openai",
+            "measurement_key": "input_tokens", "provider": "openai",
             "pricing_model": "per_unit", "rate_per_unit_micros": 5})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["currency"], "usd")
@@ -94,13 +94,13 @@ class BookApiTest(TestCase):
 
         # Mismatched provider on a default book -> 422, unresolvable rate rejected.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "openai",
+            "measurement_key": "input_tokens", "provider": "openai",
             "pricing_model": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 422, r.content)
 
         # Matching provider -> 200.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "gemini",
+            "measurement_key": "input_tokens", "provider": "gemini",
             "pricing_model": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 200, r.content)
 
@@ -111,10 +111,10 @@ class BookApiTest(TestCase):
             "card_type": "cost", "key": "openai", "provider_key": "openai"})
         book_id = r.json()["id"]
         self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "openai",
+            "measurement_key": "input_tokens", "provider": "openai",
             "rate_per_unit_micros": 5})
         self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "output_tokens", "provider": "openai",
+            "measurement_key": "output_tokens", "provider": "openai",
             "rate_per_unit_micros": 15})
 
         books = self._get("/api/v1/metering/pricing/rate-cards").json()["data"]
@@ -123,7 +123,7 @@ class BookApiTest(TestCase):
 
         rates = self._get(
             f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
-        self.assertEqual({x["metric_name"] for x in rates},
+        self.assertEqual({x["measurement_key"] for x in rates},
                          {"input_tokens", "output_tokens"})
 
     def test_list_rates_include_history_shows_superseded(self):
@@ -132,10 +132,10 @@ class BookApiTest(TestCase):
             "is_default": True})
         book_id = r.json()["id"]
         self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "input_tokens", "provider": "gemini",
+            "measurement_key": "input_tokens", "provider": "gemini",
             "rate_per_unit_micros": 10})
         self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"metric_name": "input_tokens", "provider": "gemini",
+            "changes": [{"measurement_key": "input_tokens", "provider": "gemini",
                          "rate_per_unit_micros": 12}]})
 
         active = self._get(

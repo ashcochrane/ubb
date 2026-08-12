@@ -23,7 +23,7 @@ class TestPricing:
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", dim1="gpt-4",
+            measurement_key="input_tokens", dim1="gpt-4",
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c,
@@ -35,9 +35,9 @@ class TestPricing:
     def test_price_card_charges_on_different_metric(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+            measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="price", provider="openai", event_type="chat",
-            metric_name="seats", pricing_model="flat", fixed_micros=9_000_000)
+            measurement_key="seats", pricing_model="flat", fixed_micros=9_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
             measurements={"input_tokens": 1000, "seats": 3}, currency="usd",
@@ -47,9 +47,9 @@ class TestPricing:
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
+            measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            metric_name="tok", dim1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
+            measurement_key="tok", dim1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         prov, _, _ = PricingService.price(
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o", "dim1": "gpt-4"},
@@ -78,7 +78,7 @@ class TestPricing:
                 caller_provider_cost=None, caller_billed=None)
 
     def test_caller_cost_path_respects_coverage_when_strict(self):
-        # Strict flag ON + metric with no cost card + caller-supplied provider cost
+        # Strict flag ON + quantity with no cost card + caller-supplied provider cost
         # must still raise PricingError (the bypass was silently skipping the coverage check).
         t = self._t()
         t.require_cost_card_coverage = True
@@ -109,7 +109,7 @@ class TestPricing:
         t.save(update_fields=["require_cost_card_coverage"])
         c = Customer.objects.create(tenant=t, external_id="c4")
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
-            metric_name="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
+            measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         prov, billed, p = PricingService.price(
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             measurements={"tok": 100}, currency="usd",
@@ -120,7 +120,7 @@ class TestPricing:
     # ---- Strict coverage, after F2.4's second refusal retired with its input ----
     #
     # That refusal rejected an event which declared a nameless magnitude and no
-    # metric name to resolve a rate card against. #272 deleted the magnitude, so
+    # quantity name to resolve a rate card against. #272 deleted the magnitude, so
     # the refusal is not relaxed here — it has become unexpressible, and the
     # tests that drove it went with it. What remains is proved below: an event
     # with nothing to price is a marker and is accepted in either mode, and an
@@ -184,7 +184,7 @@ def test_unassigned_customer_uses_provider_default_book(db):
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True)
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                            metric_name="input_tokens", currency="usd",
+                            measurement_key="input_tokens", currency="usd",
                             rate_per_unit_micros=10, rate_card=book)
     got = PricingService._resolve_card(t, c, "price", {"provider": "gemini"},
                                        "input_tokens", "usd", timezone.now())
@@ -206,16 +206,16 @@ def test_assigned_book_wins_then_falls_back_to_default(db):
     RateCardAssignment.objects.create(tenant=t, customer=c, rate_card=ent, currency="usd")
     # Enterprise overrides input_tokens; output_tokens only exists in default.
     ent_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                 metric_name="input_tokens", currency="usd",
+                                 measurement_key="input_tokens", currency="usd",
                                  rate_per_unit_micros=5, rate_card=ent)
     def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                  metric_name="output_tokens", currency="usd",
+                                  measurement_key="output_tokens", currency="usd",
                                   rate_per_unit_micros=30, rate_card=default)
-    # Conflicting default-book rate for the SAME metric as ent_in — proves the
+    # Conflicting default-book rate for the SAME quantity as ent_in — proves the
     # assigned book shadows the default book rather than resolving by
     # elimination (only possible because Rate uniqueness is now per-book).
     def_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                 metric_name="input_tokens", currency="usd",
+                                 measurement_key="input_tokens", currency="usd",
                                  rate_per_unit_micros=99, rate_card=default)
     now = timezone.now()
     selectors = {"provider": "gemini"}

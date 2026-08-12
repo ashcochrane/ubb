@@ -76,8 +76,9 @@ def sync_detailed(
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
     Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, per-metric card, and
-    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    \"why this amount\" (engine version, price source, the card that priced each
+    named quantity, and tier-by-tier breakdown). The usage list omits
+    provenance to stay lean;
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id.
 
@@ -115,8 +116,9 @@ def sync(
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
     Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, per-metric card, and
-    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    \"why this amount\" (engine version, price source, the card that priced each
+    named quantity, and tier-by-tier breakdown). The usage list omits
+    provenance to stay lean;
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id.
 
@@ -149,8 +151,9 @@ async def asyncio_detailed(
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
     Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, per-metric card, and
-    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    \"why this amount\" (engine version, price source, the card that priced each
+    named quantity, and tier-by-tier breakdown). The usage list omits
+    provenance to stay lean;
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id.
 
@@ -188,8 +191,9 @@ async def asyncio(
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
     Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, per-metric card, and
-    tier-by-tier breakdown). The usage list omits provenance to stay lean;
+    \"why this amount\" (engine version, price source, the card that priced each
+    named quantity, and tier-by-tier breakdown). The usage list omits
+    provenance to stay lean;
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id.
 

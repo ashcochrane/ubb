@@ -45,11 +45,11 @@ def _post(http, auth, customer, payload):
 class TestNegativeMetricSchemaRejection:
     """Endpoint returns 422 for any negative measurements value."""
 
-    def test_negative_metric_returns_422(self):
-        """Schema rejects the negative metric before pricing runs."""
+    def test_negative_quantity_returns_422(self):
+        """Schema rejects the negative quantity before pricing runs."""
         tenant, customer, http, auth = _setup_http()
         Rate.objects.create(
-            tenant=tenant, card_type="price", metric_name="calls",
+            tenant=tenant, card_type="price", measurement_key="calls",
             pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )
         resp = _post(http, auth, customer, {
@@ -58,14 +58,14 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 422
 
-    def test_negative_metric_strict_mode_returns_422(self):
+    def test_negative_quantity_strict_mode_returns_422(self):
         """Strict mode does not change the rejection — negative is always invalid."""
         tenant = Tenant.objects.create(
             name="Strict", products=["metering"], require_cost_card_coverage=True)
         _, raw_key = TenantApiKey.create_key(tenant, label="test")
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         Rate.objects.create(
-            tenant=tenant, card_type="cost", metric_name="tok",
+            tenant=tenant, card_type="cost", measurement_key="tok",
             pricing_model="per_unit", rate_per_unit_micros=1, unit_quantity=1,
         )
         http = Client()
@@ -76,7 +76,7 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 422
 
-    def test_zero_metric_accepted(self):
+    def test_zero_quantity_accepted(self):
         """Zero is valid (boundary check — ge=0)."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
@@ -85,7 +85,7 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 200
 
-    def test_positive_metric_accepted(self):
+    def test_positive_quantity_accepted(self):
         """Positive value passes validation."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
@@ -94,8 +94,8 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 200
 
-    def test_one_negative_among_many_metrics_returns_422(self):
-        """Even if only one metric is negative the whole request is rejected."""
+    def test_one_negative_among_many_quantities_returns_422(self):
+        """Even if only one quantity is negative the whole request is rejected."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
             "request_id": "r6", "idempotency_key": "k6",

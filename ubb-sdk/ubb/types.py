@@ -55,7 +55,7 @@ class RateCard:
     id: str | None = None
     lineage_id: str | None = None
     card_type: str | None = None
-    metric_name: str | None = None
+    measurement_key: str | None = None
     provider: str | None = None
     event_type: str | None = None
     dimensions: dict | None = None

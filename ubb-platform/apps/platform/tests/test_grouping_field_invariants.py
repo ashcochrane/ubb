@@ -103,11 +103,11 @@ class TestGroupingFieldInvariants:
         # "" (provider-agnostic) default book: narrow, highly-pinned override.
         rate_in_default_book(
             t, card_type="cost", provider="", task_type="invoice_batch",
-            dim1="eu-west-1", metric_name="input_tokens",
+            dim1="eu-west-1", measurement_key="input_tokens",
             rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         # "openai" provider-specific default book: broad, single-selector rate.
         rate_in_default_book(
-            t, card_type="cost", provider="openai", metric_name="input_tokens",
+            t, card_type="cost", provider="openai", measurement_key="input_tokens",
             rate_per_unit_micros=9_000, unit_quantity=1_000_000)
 
         selectors = {"provider": "openai", "event_type": "", "task_type": "invoice_batch",

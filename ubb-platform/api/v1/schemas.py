@@ -116,7 +116,7 @@ class RecordUsageRequest(Schema):
         Not tightened, deliberately: refusing a key no declaration matches is
         slice 3's, which owns every behaviour a declaration selects. Anything
         this refused before it was renamed it still refuses, and nothing more —
-        `usage/tests/test_negative_metric_rejection.py` states both halves.
+        `usage/tests/test_negative_quantity_rejection.py` states both halves.
 
         The PREDICATE is what moved unchanged. The message had to be rewritten
         because it names the field, and its second noun moved with it rather
@@ -268,8 +268,9 @@ MeasurementsStatus = Annotated[
 
 class UsageEventDetailOut(Schema):
     # Full pricing receipt for one event — the audit lookup. pricing_provenance
-    # is the recorded "why this amount" (engine version, price source, per-metric
-    # card id, tier-by-tier breakdown) omitted from the lean list view.
+    # is the recorded "why this amount" (engine version, price source, the card
+    # id that priced each named quantity, tier-by-tier breakdown) omitted from
+    # the lean list view.
     id: UUID
     request_id: str
     idempotency_key: str
@@ -793,7 +794,7 @@ class PostpaidConfigOut(Schema):
 class RateIn(Schema):
     """A single Rate added under a book. card_type and currency are inherited
     from the book, so they are NOT accepted here (the book owns them)."""
-    metric_name: str = Field(min_length=1, max_length=100)
+    measurement_key: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
     event_type: str = Field(default="", max_length=100)
     task_type: str = Field(default="", max_length=64)
@@ -847,11 +848,11 @@ def book_out(b):
 
 
 class RateChangeIn(Schema):
-    """One reprice in a publish. Match keys (metric_name plus the ten
+    """One reprice in a publish. Match keys (measurement_key plus the ten
     selector columns — provider/event_type/task_type/subtask_type/dim1..
     dim6) locate the active rate; the remaining (nullable) fields, when
     present, override it in the new version."""
-    metric_name: str
+    measurement_key: str
     provider: str = ""
     event_type: str = ""
     task_type: str = ""
@@ -881,7 +882,7 @@ class RateOut(Schema):
     rate_card_id: str
     lineage_id: str
     card_type: str
-    metric_name: str
+    measurement_key: str
     provider: str
     event_type: str
     task_type: str
@@ -908,7 +909,7 @@ def rate_out(r):
         "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
         "lineage_id": str(r.lineage_id),
         "card_type": r.card_type,
-        "metric_name": r.metric_name,
+        "measurement_key": r.measurement_key,
         "provider": r.provider,
         "event_type": r.event_type,
         "task_type": r.task_type,

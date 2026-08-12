@@ -34,11 +34,11 @@ export type BookFormValues = z.infer<typeof bookFormSchema>;
 
 export const rateFormSchema = z
   .object({
-    metric_name: z
+    measurement_key: z
       .string()
       .trim()
       .min(1, "Required")
-      .max(100, "Keep the metric name under 100 characters"),
+      .max(100, "Keep the measurement key under 100 characters"),
     provider: z.string().trim().max(100, "Keep the provider under 100 characters"),
     event_type: z.string().trim().max(100, "Keep the event type under 100 characters"),
     task_type: z.string().trim().max(64, "Keep the task type under 64 characters"),

@@ -25,7 +25,7 @@ class RateIn:
     from the book, so they are NOT accepted here (the book owns them).
 
         Attributes:
-            metric_name (str):
+            measurement_key (str):
             dim1 (str | Unset):  Default: ''.
             dim2 (str | Unset):  Default: ''.
             dim3 (str | Unset):  Default: ''.
@@ -42,7 +42,7 @@ class RateIn:
             unit_quantity (int | Unset):  Default: 1000000.
      """
 
-    metric_name: str
+    measurement_key: str
     dim1: str | Unset = ''
     dim2: str | Unset = ''
     dim3: str | Unset = ''
@@ -64,7 +64,7 @@ class RateIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        metric_name = self.metric_name
+        measurement_key = self.measurement_key
 
         dim1 = self.dim1
 
@@ -98,7 +98,7 @@ class RateIn:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "metric_name": metric_name,
+            "measurement_key": measurement_key,
         })
         if dim1 is not UNSET:
             field_dict["dim1"] = dim1
@@ -136,7 +136,7 @@ class RateIn:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        metric_name = d.pop("metric_name")
+        measurement_key = d.pop("measurement_key")
 
         dim1 = d.pop("dim1", UNSET)
 
@@ -167,7 +167,7 @@ class RateIn:
         unit_quantity = d.pop("unit_quantity", UNSET)
 
         rate_in = cls(
-            metric_name=metric_name,
+            measurement_key=measurement_key,
             dim1=dim1,
             dim2=dim2,
             dim3=dim3,

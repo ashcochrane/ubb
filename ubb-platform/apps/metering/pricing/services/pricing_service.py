@@ -12,17 +12,18 @@ class PricingError(Exception):
 
 class PricingService:
     @staticmethod
-    def _resolve_rate_within(book, selectors, metric_name, currency, as_of):
+    def _resolve_rate_within(book, selectors, measurement_key, currency, as_of):
         """One matching semantic for all ten selectors (design D3).
 
         A rate's "" selector is a WILDCARD; a pinned selector must equal the
         event's value. Among matches the most-pinned rate wins, tie-broken by
-        latest valid_from. `metric_name` alone keeps exact-match semantics —
-        pricing is per-metric and a metric wildcard would be meaningless."""
+        latest valid_from. `measurement_key` alone keeps exact-match semantics —
+        a rate prices one named quantity, and a rate that wildcarded WHICH
+        quantity it priced would charge the same for all of them."""
         if book is None:
             return None
         qs = Rate.objects.filter(
-            rate_card=book, metric_name=metric_name, currency=currency,
+            rate_card=book, measurement_key=measurement_key, currency=currency,
             valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
         for name in Rate.SELECTORS:
@@ -49,18 +50,18 @@ class PricingService:
             currency=currency, is_default=True).first()
 
     @staticmethod
-    def _resolve_card(tenant, customer, card_type, selectors, metric_name, currency, as_of):
+    def _resolve_card(tenant, customer, card_type, selectors, measurement_key, currency, as_of):
         book = PricingService._assigned_book(tenant, customer, card_type, currency)
         if book is not None:
             rate = PricingService._resolve_rate_within(
-                book, selectors, metric_name, currency, as_of)
+                book, selectors, measurement_key, currency, as_of)
             if rate is not None:
                 return rate
         provider = selectors.get("provider") or ""
         default_book = PricingService._default_book(tenant, card_type, provider, currency)
         if default_book is not None:
             rate = PricingService._resolve_rate_within(
-                default_book, selectors, metric_name, currency, as_of)
+                default_book, selectors, measurement_key, currency, as_of)
             if rate is not None:
                 return rate
         # Book-selection (provider_key) is a separate layer from the Rate-level
@@ -73,14 +74,14 @@ class PricingService:
             return None
         wildcard_book = PricingService._default_book(tenant, card_type, "", currency)
         return PricingService._resolve_rate_within(
-            wildcard_book, selectors, metric_name, currency, as_of)
+            wildcard_book, selectors, measurement_key, currency, as_of)
 
     @staticmethod
     def _compute(*, tenant, measurements, caller_provider_cost, caller_billed,
                  resolve_card, apply_markup):
         """The ONE compute spine (#112): coverage → cost → price → markup
         fallback. ``price`` is this spine under one card resolver —
-        ``resolve_card(card_type, metric)`` and the matching
+        ``resolve_card(card_type, measurement_key)`` and the matching
         ``apply_markup(provider_cost)`` are the parameters — and it is the
         only rider left since #239 deleted the accept-time estimate that was
         the second. The parameterisation stays: it is what kept the two in
@@ -89,15 +90,36 @@ class PricingService:
         strict cost coverage fails; always returns
         (provider_cost, billed, provenance)."""
         measurements = measurements or {}
+        # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
+        # receipts already written are NOT rewritten. A receipt records what the
+        # engine did on a day, so back-dating one to a vocabulary that did not
+        # exist when it was written would make it a worse record, not a better
+        # one.
+        #
+        # `engine_version` DOES NOT SEPARATE THE TWO SHAPES and is deliberately
+        # not bumped for this: it describes what the engine COMPUTED, and the
+        # arithmetic, the resolution order and every amount are identical either
+        # side of the rename. Moving it for a spelling would spend the one signal
+        # that means "the numbers were produced differently" on a change where
+        # they were not. A reader tells the shapes apart by which key the line
+        # carries, which is the honest discriminator because it is the only thing
+        # that actually differs.
+        #
+        # That costs nobody a lookup, because nothing in the tree reads this key.
+        # What IS read off the receipt is `uncosted_metrics` — by the endpoint
+        # below and by the console's test-event panel — and that key is
+        # untouched here, as is the list key on the next line: neither is the
+        # retired word.
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
         # ---- COST ----
         if caller_provider_cost is not None:
             provider_cost = caller_provider_cost
             prov["cost_source"] = "caller"
-            # When the strict coverage flag is on, every metric in measurements must have
-            # a matching cost card even when the caller supplies the aggregate cost.
-            # Without this check the caller-cost path silently bypasses the guarantee.
+            # When the strict coverage flag is on, every quantity in
+            # measurements must have a matching cost card even when the caller
+            # supplies the aggregate cost. Without this check the caller-cost
+            # path silently bypasses the guarantee.
             if measurements and getattr(tenant, "require_cost_card_coverage", False):
                 uncosted = [m for m in measurements
                             if resolve_card("cost", m) is None]
@@ -109,7 +131,7 @@ class PricingService:
             uncosted = []
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
             # It rejected an event that declared a nameless magnitude with no
-            # metric name to resolve a rate card against — "you told us there
+            # quantity name to resolve a rate card against — "you told us there
             # was volume, but not of what". That magnitude was the posting's
             # inline unit total, and a caller can no longer state it at all, so
             # the condition is not weakened here, it has become unexpressible.
@@ -130,14 +152,15 @@ class PricingService:
             # for a caller that has not migrated. That is the cost of the
             # removal rather than an oversight in it, and it is why the drop is
             # recorded as a reviewed break on the request side too.
-            for metric, units_val in measurements.items():
-                card = resolve_card("cost", metric)
+            for measurement_key, units_val in measurements.items():
+                card = resolve_card("cost", measurement_key)
                 if card is None:
-                    uncosted.append(metric)
+                    uncosted.append(measurement_key)
                     continue
                 amt = card.compute(units_val)
                 provider_cost += amt
-                prov["metrics"].append({"metric": metric, "units": units_val, "card_type": "cost",
+                prov["metrics"].append({"measurement_key": measurement_key,
+                    "units": units_val, "card_type": "cost",
                     "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
             prov["cost_source"] = "rate_card"
             if uncosted:
@@ -151,12 +174,13 @@ class PricingService:
             prov["price_source"] = "caller"
         else:
             price_total, matched = 0, False
-            for metric, units_val in sorted(measurements.items()):
-                card = resolve_card("price", metric)
+            for measurement_key, units_val in sorted(measurements.items()):
+                card = resolve_card("price", measurement_key)
                 if card is None:
                     continue
                 matched = True
-                entry = {"metric": metric, "units": units_val, "card_type": "price",
+                entry = {"measurement_key": measurement_key, "units": units_val,
+                         "card_type": "price",
                          "rate_card_id": str(card.id), "pricing_model": card.pricing_model}
                 amt = card.compute(units_val)
                 entry["micros"] = amt
@@ -183,9 +207,10 @@ class PricingService:
         absent/"" value wildcards against a rate that leaves it unpinned."""
         as_of = as_of or timezone.now()
 
-        def resolve_card(card_type, metric):
+        def resolve_card(card_type, measurement_key):
             return PricingService._resolve_card(
-                tenant, customer, card_type, selectors, metric, currency, as_of)
+                tenant, customer, card_type, selectors, measurement_key,
+                currency, as_of)
 
         def apply_markup(provider_cost):
             from apps.metering.pricing.services.markup_service import MarkupService

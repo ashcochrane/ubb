@@ -12,10 +12,10 @@ def _book_with_two_rates():
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True, version=1)
     ri = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                             metric_name="input_tokens", currency="usd",
+                             measurement_key="input_tokens", currency="usd",
                              rate_per_unit_micros=10, rate_card=book, book_version_from=1)
     ro = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                             metric_name="output_tokens", currency="usd",
+                             measurement_key="output_tokens", currency="usd",
                              rate_per_unit_micros=30, rate_card=book, book_version_from=1)
     return t, book, ri, ro
 
@@ -23,9 +23,9 @@ def _book_with_two_rates():
 def test_publish_supersedes_and_bumps_version_atomically():
     t, book, ri, ro = _book_with_two_rates()
     BookService.publish(book, changes=[
-        {"metric_name": "input_tokens", "provider": "gemini", "event_type": "",
+        {"measurement_key": "input_tokens", "provider": "gemini", "event_type": "",
          "rate_per_unit_micros": 12},
-        {"metric_name": "output_tokens", "provider": "gemini", "event_type": "",
+        {"measurement_key": "output_tokens", "provider": "gemini", "event_type": "",
          "rate_per_unit_micros": 33},
     ])
     book.refresh_from_db(); ri.refresh_from_db(); ro.refresh_from_db()
@@ -33,7 +33,7 @@ def test_publish_supersedes_and_bumps_version_atomically():
     # Old rows closed at v1, new active rows opened at v2.
     assert ri.valid_to is not None and ri.book_version_to == 1
     assert ro.valid_to is not None and ro.book_version_to == 1
-    active = list(Rate.objects.filter(rate_card=book, valid_to__isnull=True).order_by("metric_name"))
+    active = list(Rate.objects.filter(rate_card=book, valid_to__isnull=True).order_by("measurement_key"))
     assert [a.rate_per_unit_micros for a in active] == [12, 33]
     assert all(a.book_version_from == 2 for a in active)
     # lineage preserved (links each rate's whole price history).
@@ -44,9 +44,9 @@ def test_publish_is_all_or_nothing_on_error():
     t, book, ri, ro = _book_with_two_rates()
     with pytest.raises(Exception):
         BookService.publish(book, changes=[
-            {"metric_name": "input_tokens", "provider": "gemini", "event_type": "",
+            {"measurement_key": "input_tokens", "provider": "gemini", "event_type": "",
              "rate_per_unit_micros": 12},
-            {"metric_name": "MISSING", "provider": "gemini", "event_type": "",
+            {"measurement_key": "MISSING", "provider": "gemini", "event_type": "",
              "rate_per_unit_micros": 1},  # no active rate -> error
         ])
     book.refresh_from_db()
@@ -64,12 +64,12 @@ def test_publish_preserves_lineage_across_reprice():
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True, version=1)
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                            metric_name="input_tokens", currency="usd",
+                            measurement_key="input_tokens", currency="usd",
                             pricing_model="per_unit", rate_per_unit_micros=10,
                             rate_card=book, book_version_from=1)
     old_lineage = r.lineage_id
     BookService.publish(book, changes=[{
-        "metric_name": "input_tokens", "provider": "gemini", "event_type": "",
+        "measurement_key": "input_tokens", "provider": "gemini", "event_type": "",
         "pricing_model": "per_unit",
         "rate_per_unit_micros": 12}])
     new = Rate.objects.get(rate_card=book, valid_to__isnull=True)

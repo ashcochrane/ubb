@@ -2,7 +2,8 @@
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
 cache) per resolution key for TTL_SECONDS — one entry per (tenant, customer,
-card_type, metric, currency, full ten-selector tuple from ``Rate.SELECTORS``:
+card_type, measurement_key, currency, full ten-selector tuple from
+``Rate.SELECTORS``:
 provider, event_type, task_type, subtask_type, dim1..dim6) — not a set of
 candidate rows to re-match. Dimensions are declared and cardinality-capped
 (design D4), so the selector tuple is a bounded, safe cache key: unlike the
@@ -68,7 +69,8 @@ class CardCache:
             pass  # TTL bounds staleness
 
     @staticmethod
-    def resolve(tenant, customer, card_type, selectors, metric, currency):
+    def resolve(tenant, customer, card_type, selectors, measurement_key,
+                currency):
         """Resolve with PricingService._resolve_card semantics, always via L1.
 
         The old implementation bypassed the cache whenever a
@@ -86,12 +88,12 @@ class CardCache:
         sel_tuple = tuple(selectors.get(name) or "" for name in Rate.SELECTORS)
         ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "",
-               card_type, metric, currency, sel_tuple)
+               card_type, measurement_key, currency, sel_tuple)
         hit = _l1.get(key)
         if hit and hit[0] == ver and hit[1] > time.monotonic():
             return hit[2]
         rate = PricingService._resolve_card(
-            tenant, customer, card_type, selectors, metric,
+            tenant, customer, card_type, selectors, measurement_key,
             currency, timezone.now())
         if len(_l1) >= _L1_MAX:
             _l1.clear()  # crude bound; entries repopulate within one TTL
