@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,542 of 1,900 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,546 of 1,904 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -169,6 +169,25 @@ measurement_key:
     # module pinning the family's published identity. Nothing about this concept
     # is in the commit — the numerator says so — and #275's RATE ARITHMETIC
     # caution holds once more: a route rename went nowhere near `compute(units)`.
+    #
+    # #281 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,542 → 1,546 swept, 1,900
+    # → 1,904 tracked, 51/127 unchanged) — FOUR new files, and both counts move
+    # by the same four because none of them is a migration. Four files but TWO
+    # modules, each with its test: the console's canonical economic scenario
+    # module and the events feature's measurement-status wording. The file is
+    # the unit the sweep counts, which is why the looser word is not used here.
+    # NO SDK REGENERATION was
+    # involved, so unlike #278 there is no create-and-delete churn to take the
+    # count in the middle of. #279 and #280 sit between #278 and this entry and
+    # appear nowhere in this block, which is correct rather than an omission:
+    # both were console-only edits that added no file at all.
+    #
+    # AND #275'S RATE ARITHMETIC CAUTION IS THE ONE THAT EARNED ITS KEEP HERE.
+    # This commit renders a per-posting measurement panel, so it works squarely
+    # inside the sense #272 retired — and it still writes the word nowhere,
+    # because a Measurement is keyed by `measurement_key` and carries its own
+    # `unit`. The numerator staying flat across a commit that touches this
+    # subject is the strongest reading the entry has had since #272 paid it.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

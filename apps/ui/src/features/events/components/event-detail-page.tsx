@@ -18,6 +18,11 @@ import { formatDate } from "@/lib/format";
 
 import { useUsageEvent } from "../api/queries";
 import { asStopContextEntries, type UsageEventDetail } from "../api/types";
+import {
+  MEASUREMENTS_STATUS_EXPLANATIONS,
+  NO_QUANTITIES_RECORDED,
+  measurementsStatusLabel,
+} from "../lib/measurements";
 import { formatEventMicros, formatSignedEventMicros } from "../lib/money";
 import { shortId } from "../lib/search";
 import { KeyValueTree } from "./key-value-tree";
@@ -65,6 +70,46 @@ function measurementRows(detail: UsageEventDetail): Array<[string, string]> {
   ]);
 }
 
+/**
+ * The measured quantities, or why there are none.
+ *
+ * READ THE STATUS FIRST, and read it before the bag — the same order the
+ * registry's own decision rule is written in. This section used to render only
+ * when the bag had entries, which meant the two states with an empty bag
+ * disappeared off the page: a customer whose measurement detail was removed at
+ * its retention horizon saw a receipt that looked exactly like one for a Task
+ * that was never measured, and both looked like nothing had happened. The
+ * quantities are the answer for one of the three states, not the subject of the
+ * section.
+ */
+function Measurements({ detail }: { detail: UsageEventDetail }) {
+  const status = detail.measurements_status;
+  const rows = measurementRows(detail);
+  return (
+    <Section
+      title="Usage measurements"
+      description={MEASUREMENTS_STATUS_EXPLANATIONS[status]}
+    >
+      {status !== "available" ? (
+        <p className="text-[12px] text-text-muted">
+          {measurementsStatusLabel(status)}
+        </p>
+      ) : rows.length > 0 ? (
+        <DetailList
+          items={rows.map(([key, quantity]) => ({
+            label: key,
+            value: quantity,
+          }))}
+        />
+      ) : (
+        // Only reachable with the record present and holding nothing, which is
+        // the one state this sentence is true of.
+        <p className="text-[12px] text-text-muted">{NO_QUANTITIES_RECORDED}</p>
+      )}
+    </Section>
+  );
+}
+
 export function EventDetailPage({
   eventId,
   customerId,
@@ -102,7 +147,6 @@ export function EventDetailPage({
   const detail = event.data;
   const stopEntries = asStopContextEntries(detail.stop_context);
   const margin = detail.billed_cost_micros - detail.provider_cost_micros;
-  const measurements = measurementRows(detail);
   const hasMetadata = Object.keys(detail.metadata).length > 0;
   const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
   const backfilled =
@@ -175,20 +219,7 @@ export function EventDetailPage({
             <DetailList items={moneyItems} />
           </Section>
 
-          {measurements.length > 0 && (
-            <Section
-              title="Usage measurements"
-              description="The measured quantities this event was priced on."
-            >
-              <DetailList
-                items={measurements.map(([key, quantity]) => ({
-                  label: key,
-                  value: quantity,
-                }))}
-              />
-            </Section>
-          )}
-
+          <Measurements detail={detail} />
         </div>
 
         {stopEntries.length > 0 && (

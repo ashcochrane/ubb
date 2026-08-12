@@ -80,6 +80,22 @@ contract's untyped responses only), `api.ts` (real calls via the namespace clien
 fixtures, module-level state for coherent mutations), `provider.ts` (`selectProvider`),
 `queries.ts` (ALL query keys + invalidation). `VITE_API_PROVIDER=mock|api` switches.
 
+**An ECONOMIC STATE is composed from `src/lib/economic-scenarios.ts`** (#155 §9.4). Money and
+measurement have states beyond "a number": unknown, waived, not applicable, incomplete,
+indeterminate, pruned — and the types prove only that the console can *receive* one. Each scenario
+returns the ambiguous fact together with the fact that disambiguates it, so a fixture cannot take
+half and let a default supply the rest; `prunedMeasurements()` is the worked example. §9.2 is the
+obligation with teeth: a slice that introduces or changes an economic state owes a scenario here
+**and** a rendering assertion that the state renders as itself. A slice that renames a table owes
+nothing.
+
+This does **not** yet reach the fixtures that were already correct. `events/api/mock-data.ts` still
+hand-builds most of its measurement bags and lets `?? "available"` complete them — true for every
+one of those seeds, and the reason #281 could seed the module without rewriting them. Composing
+them and deleting the default would design the hazard out rather than guard it; until some slice
+does, **a NON-`available` state that skips this module is a defect**, because that default is
+silently wrong for exactly the two states whose bag is empty.
+
 **Query keys**: first segment = backend namespace (`['margin', 'customers', …]`), so mutations can
 invalidate every affected prefix (over-invalidate rather than miss). **Same key ⇒ same cached
 shape**: shared keys cache the RAW response; projections add a tail (`['margin','customers','picker']`).

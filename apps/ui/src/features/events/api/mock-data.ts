@@ -6,6 +6,12 @@
 //   - globex-dev (customer B): light traffic, nothing past-limit.
 //   - initech-ai (customer C): no events yet (empty-ledger state).
 
+import {
+  availableMeasurements,
+  measurementsNotApplicable,
+  prunedMeasurements,
+} from "@/lib/economic-scenarios";
+
 import type {
   CustomerMargin,
   MarginCustomerRow,
@@ -25,6 +31,14 @@ export const CUSTOMER_C_EXTERNAL = "initech-ai";
 export const TASK_KILLED_ID = "9a7b3c1d-2e4f-46a8-b950-7c3d1e8f2a64";
 /** Still-active task — closing it completes it. */
 export const TASK_OPEN_ID = "5e2f8a9c-7b1d-4d36-a284-9f6c0b3e7d51";
+/**
+ * The Task sold for one agreed price (#281). Its OWN id rather than a share of
+ * one of the two above, because `closeTask` rolls up every event carrying the
+ * id it is given: attributing this posting to the killed task would have
+ * silently added an event and $2.50 to that task's closing totals, and no test
+ * asserts those numbers today, so it would have gone unnoticed.
+ */
+export const TASK_FIXED_PRICE_ID = "8c1d6f24-9e37-4b05-a6d8-3f2b7c40e195";
 
 export const EVENT_RICH_ID = "d41f7a92-5c3e-48b6-9a70-1e8f2c6b3d54";
 export const EVENT_TIPPING_ID = "a97c3e51-8d2b-4f60-b813-5c4a9e7f1d20";
@@ -32,6 +46,10 @@ export const EVENT_LATE_ID = "b28e4f63-9a1c-4d75-8e02-6d5b0f8a2c31";
 export const EVENT_LATE_2_ID = "e50a6b85-1c3e-4097-a124-8f7d2b0c4e63";
 export const EVENT_TASK_KILL_ID = "c39f5a74-0b2d-4e86-9f13-7e6c1a9b3d42";
 export const EVENT_BACKFILL_ID = "f61b7c96-2d4f-41a8-b235-9a8e3c1d5f74";
+/** May traffic whose measurement detail passed its retention horizon (#281). */
+export const EVENT_PRUNED_ID = "3d8c1e47-6f52-4a93-b70e-2c9a5f8d1b06";
+/** A Task sold for one agreed price, so never measured at all (#281). */
+export const EVENT_TASK_CHARGE_ID = "7a4e9d15-3b60-4c28-8f91-0d6b3e7a2c58";
 
 export interface MockEvent {
   customer_id: string;
@@ -57,12 +75,17 @@ interface DetailSeed {
   request_id?: string;
   idempotency_key?: string;
   /**
-   * Whether the measured quantities can still be read (#271). Every seed below
-   * is a metered posting whose measurement record is present, so the default
+   * Whether the measured quantities can still be read (#271). Most seeds below
+   * are metered postings whose measurement record is present, so the default
    * says so explicitly rather than being inferred from `measurements` being
-   * empty — inferring it is exactly the mistake the field exists to end. The
-   * pruned and not-applicable scenarios arrive with the canonical scenario
-   * module in #281.
+   * empty — inferring it is exactly the mistake the field exists to end.
+   *
+   * THE DEFAULT IS ALSO THE HAZARD, which is why the two scenarios that are not
+   * `available` set this pair through `@/lib/economic-scenarios` rather than by
+   * hand. `?? "available"` over an empty bag is a confident "no usage" for a
+   * payload that expired on schedule (#155 §9.1's `amount ?? 0`, in this
+   * feature's clothes). A scenario returns the bag and the status as one
+   * object, so a seed cannot take the bag and leave the status to the default.
    */
   measurements_status?: UsageEventDetail["measurements_status"];
 }
@@ -138,7 +161,12 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim3: "agent-7",
       billed_cost_micros: 187_500,
       provider_cost_micros: 142_300,
-      measurements: { input_tokens: 4200, output_tokens: 1730 },
+      // Composed rather than hand-built, because this is the event the
+      // `available` rendering assertion runs against — so all three states the
+      // receipt distinguishes come from the same module. The payload is
+      // unchanged; what changes is that the status is stated here instead of
+      // being supplied by the default below.
+      ...availableMeasurements({ input_tokens: 4200, output_tokens: 1730 }),
       metadata: {
         env: "prod",
         team: "search",
@@ -293,6 +321,50 @@ const FEATURE_EVENTS: MockEvent[] = [
         backfill_batch: "2026-07-20-recovery",
       },
       pricing_provenance: markupProvenance(17_500),
+    }),
+  },
+  // The two events whose measurement record is NOT simply present — #155 §9.2's
+  // owed fixtures for the state slice 2 introduces. Both are dated outside the
+  // July window the analytics surfaces and the margin period cover, so the
+  // coherent July story above keeps its totals and its counts.
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // May traffic. The retention horizon has passed and the measurement
+      // detail is gone; the charge it produced is not, and that is the whole
+      // reason the receipt must say which of the two happened.
+      id: EVENT_PRUNED_ID,
+      effective_at: "2026-05-02T11:27:53Z",
+      created_at: "2026-05-02T11:27:54Z",
+      dim1: "copilot",
+      billed_cost_micros: 94_000,
+      provider_cost_micros: 73_000,
+      metadata: { env: "prod", team: "search" },
+      pricing_provenance: markupProvenance(73_000),
+      ...prunedMeasurements(),
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // A Task sold for one agreed price. Nothing was ever measured, so there
+      // is nothing a retention horizon could have removed — the empty bag here
+      // and the empty bag above are the same object and different facts.
+      id: EVENT_TASK_CHARGE_ID,
+      effective_at: "2026-06-11T08:14:02Z",
+      created_at: "2026-06-11T08:14:03Z",
+      event_type: "task.charge",
+      dim1: "batch",
+      billed_cost_micros: 2_500_000,
+      provider_cost_micros: 1_840_000,
+      metadata: { env: "prod", team: "assist" },
+      task_id: TASK_FIXED_PRICE_ID,
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "fixed_price",
+        cost_source: "caller_reported",
+      },
+      ...measurementsNotApplicable(),
     }),
   },
 ];
