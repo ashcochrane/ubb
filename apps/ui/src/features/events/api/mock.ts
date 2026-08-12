@@ -199,25 +199,26 @@ export async function getUsageAnalytics(
     by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
     by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),
     by_customer: [],
-    by_task_type: legacyRows(groupBy(events, (d) => d.dim1), "task_type"),
+    by_task_type: legacyRows(
+      groupBy(events, (d) => d.grouping_fields["dim1"] ?? ""),
+      "task_type",
+    ),
     by_tag: [],
     breakdowns: {},
   };
 }
 
 function dimensionValue(detail: UsageEventDetail, groupKey: string): string {
+  // The two always-present axes are their own properties; everything else is a
+  // declared grouping field, looked up by the tenant's own key (#277). The
+  // chain of slot comparisons this replaces could only ever reach three of the
+  // ten slots that exist, and had to be extended by hand for each one.
   const value =
     groupKey === "provider"
       ? detail.provider
       : groupKey === "event_type"
         ? detail.event_type
-        : groupKey === "dim1"
-          ? detail.dim1
-          : groupKey === "dim2"
-            ? detail.dim2
-            : groupKey === "dim3"
-              ? detail.dim3
-              : "";
+        : (detail.grouping_fields[groupKey] ?? "");
   return value === "" ? "(unattributed)" : value;
 }
 

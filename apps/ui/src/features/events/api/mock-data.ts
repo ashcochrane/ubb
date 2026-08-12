@@ -68,6 +68,25 @@ interface DetailSeed {
 }
 
 function makeDetail(seed: DetailSeed): UsageEventDetail {
+  // Keyed by the declared key with unset slots omitted, exactly as the API now
+  // answers (#277).
+  //
+  // The keys stay spelled for the slots, and that is FORCED rather than lazy:
+  // this mock tenant's declared keys have to match `TIMESERIES_GROUP_BY` in
+  // `@/lib/labels`, which the group-by picker offers and which still lists
+  // `dim1`/`dim2`/`dim3`. That list and the `dimensionLabel` map beside it are
+  // the analytics grouping vocabulary, and both are recorded in the migration
+  // ledger as slice 7's. Renaming the keys here without it would leave the
+  // picker asking for an axis no posting carries, and every bar would read
+  // "(unattributed)".
+  const groupingFields: Record<string, string> = {};
+  for (const [key, value] of [
+    ["dim1", seed.dim1],
+    ["dim2", seed.dim2],
+    ["dim3", seed.dim3],
+  ] as const) {
+    if (value !== undefined && value !== "") groupingFields[key] = value;
+  }
   return {
     id: seed.id,
     request_id: seed.request_id ?? `req_${seed.id.slice(0, 8)}`,
@@ -79,9 +98,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     currency: "usd",
     event_type: seed.event_type ?? "chat.completion",
     provider: seed.provider ?? "openai",
-    dim1: seed.dim1 ?? "",
-    dim2: seed.dim2 ?? "",
-    dim3: seed.dim3 ?? "",
+    grouping_fields: groupingFields,
     measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},

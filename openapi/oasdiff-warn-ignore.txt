@@ -248,3 +248,35 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/usa
 # the break; neither line is.
 POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/metric_name`
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `metric_name`
+
+# 2026-08-12 A POSTING'S GROUPING VALUES ARE KEYED BY THE TENANT'S OWN KEY
+# (#277, slice 2) — RAN THE TOOL, AND IT ADDS NO ENTRY. Recorded here because
+# the next reader will reach the same place by the same route and should not
+# have to re-derive why the file did not grow.
+#
+# The change replaces five published slot properties — `dim1..dim3` on the usage
+# detail response, `dim2`/`dim3` on the record response — with one
+# `grouping_fields` object keyed by the key the tenant itself declared. The
+# AUTHORING comparison (`--baseline origin/main --emit`, oasdiff v1.23.0) emits
+# five WARN-level removal lines for exactly that.
+#
+# THE CUMULATIVE GATE REPORTS ALL FIVE INERT, AND IT IS RIGHT. At `api-v1-launch`
+# those properties were spelled `product_id`, `service_id` and `agent_id`; they
+# were renamed to the slot spelling AFTER the tag, so the published contract
+# never promised the names being removed now. This is precisely the case
+# `openapi/README.md` describes under "What a cumulative comparison stops
+# flagging" — a surface added after the baseline and removed before the next one.
+# Pasting the emitted lines in fails the gate as five entries suppressing
+# nothing, which is the same lie as deleting a live one.
+#
+# THE BREAK IS REAL FOR IN-REPO CONSUMERS EVEN SO, and the console's event detail
+# page is migrated in the same commit. The pre-live window is what makes that
+# free (ADR-0007 §5 — the launch tag is not what binds); the same change after
+# platform admission costs a 90-day cycle under ADR-0003 §4.
+#
+# THE RATE'S SIX SLOT PROPERTIES SURVIVE, AND NOT BY OVERSIGHT. `RateIn`,
+# `RateChangeIn` and `RateOut` still publish `dim1..dim6`. #193 §L puts the rate
+# selector list in slice 4 expressly "so that no ticket quietly widens", and
+# slice 4 rebuilds those three schemas. The residue is pinned in
+# `api/v1/tests/test_grouping_values_on_the_contract.py`, which fails if it ever
+# overstates what the contract actually publishes.

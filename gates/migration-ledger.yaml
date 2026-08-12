@@ -513,16 +513,6 @@ entries:
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
 
-  - id: g7-backend-dimension.declared
-    gate: G7
-    site: backend::dimension.declared
-    expected: audit_action
-    found: 3 files
-    owner_slice: slice_2
-    reason: >-
-      The audit action for declaring one. It is renamed with the thing
-      it records, in the slice that replaces the declaration itself.
-
   - id: g7-backend-dimensions
     gate: G7
     site: backend::dimensions

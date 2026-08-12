@@ -8,11 +8,12 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
+from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
-from apps.platform.grouping_fields.models import SLOT_CHOICES
+from apps.platform.grouping_fields.models import SLOTS
 
 logger = logging.getLogger(__name__)
 
@@ -114,13 +115,6 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
             "been invoiced; backfills into it are rejected")
 
 
-#: The slot columns, read off the registry that owns the vocabulary rather than
-#: restated as a range. A literal here would be a second declaration of how many
-#: slots exist, and the two would disagree the first time one moved — which is
-#: exactly what #276 would have had to fix in five places instead of one.
-SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
-
-
 def _inherit_dimensions(task_id, dimension_slots):
     """Resolve the twelve INHERITABLE selector values for one event (design D6).
 
@@ -208,14 +202,17 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "stop_context": event.stop_context,
         "measurements": event.measurements,
         "pricing_provenance": event.pricing_provenance,
-        # THE KEYS ARE PUBLISHED PROPERTY NAMES; THE ATTRIBUTES ARE COLUMNS,
-        # and #276 moved only the second of the two. What a caller reads back
-        # is `RecordUsageResponse`, whose shape this ticket leaves alone — the
-        # slot values stop being exposed under any per-slot name at all in
-        # ticket 20, which is where the mismatch below is resolved by the
-        # properties going away rather than by either side being re-spelled.
-        "dim2": event.grouping_field_2,
-        "dim3": event.grouping_field_3,
+        # The grouping values under the tenant's OWN keys (#277). #276 left a
+        # published-name/column mismatch here and ticket 20 resolved it by the
+        # per-slot properties going away rather than by either side being
+        # re-spelled: the second and third slots used to be published and the
+        # rest were not, which is a pair no reader could have predicted.
+        #
+        # Inherited values are in here too: task- and subtask-scoped values are
+        # set at the start gate and never travel with the event (D6), so this is
+        # where a caller sees them WITHOUT a second call. The detail response
+        # serves the same object off the same row.
+        "grouping_fields": grouping_fields_for(event),
     }
 
 

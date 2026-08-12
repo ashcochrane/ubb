@@ -14,6 +14,7 @@ from typing import cast
 from uuid import UUID
 
 if TYPE_CHECKING:
+  from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
   from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
   from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
   from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
@@ -39,10 +40,8 @@ class UsageEventDetailOut:
             provider_cost_micros (int):
             request_id (str):
             currency (str | Unset):  Default: 'usd'.
-            dim1 (str | Unset):  Default: ''.
-            dim2 (str | Unset):  Default: ''.
-            dim3 (str | Unset):  Default: ''.
             event_type (str | Unset):  Default: ''.
+            grouping_fields (UsageEventDetailOutGroupingFields | Unset):
             measurements (UsageEventDetailOutMeasurements | Unset):
             metadata (UsageEventDetailOutMetadata | Unset):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset):
@@ -60,10 +59,8 @@ class UsageEventDetailOut:
     provider_cost_micros: int
     request_id: str
     currency: str | Unset = 'usd'
-    dim1: str | Unset = ''
-    dim2: str | Unset = ''
-    dim3: str | Unset = ''
     event_type: str | Unset = ''
+    grouping_fields: UsageEventDetailOutGroupingFields | Unset = UNSET
     measurements: UsageEventDetailOutMeasurements | Unset = UNSET
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
@@ -77,6 +74,7 @@ class UsageEventDetailOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
         from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
@@ -98,13 +96,11 @@ class UsageEventDetailOut:
 
         currency = self.currency
 
-        dim1 = self.dim1
-
-        dim2 = self.dim2
-
-        dim3 = self.dim3
-
         event_type = self.event_type
+
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         measurements: dict[str, Any] | Unset = UNSET
         if not isinstance(self.measurements, Unset):
@@ -151,14 +147,10 @@ class UsageEventDetailOut:
         })
         if currency is not UNSET:
             field_dict["currency"] = currency
-        if dim1 is not UNSET:
-            field_dict["dim1"] = dim1
-        if dim2 is not UNSET:
-            field_dict["dim2"] = dim2
-        if dim3 is not UNSET:
-            field_dict["dim3"] = dim3
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if measurements is not UNSET:
             field_dict["measurements"] = measurements
         if metadata is not UNSET:
@@ -178,6 +170,7 @@ class UsageEventDetailOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
         from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
@@ -206,13 +199,17 @@ class UsageEventDetailOut:
 
         currency = d.pop("currency", UNSET)
 
-        dim1 = d.pop("dim1", UNSET)
-
-        dim2 = d.pop("dim2", UNSET)
-
-        dim3 = d.pop("dim3", UNSET)
-
         event_type = d.pop("event_type", UNSET)
+
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: UsageEventDetailOutGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
+        else:
+            grouping_fields = UsageEventDetailOutGroupingFields.from_dict(_grouping_fields)
+
+
+
 
         _measurements = d.pop("measurements", UNSET)
         measurements: UsageEventDetailOutMeasurements | Unset
@@ -284,10 +281,8 @@ class UsageEventDetailOut:
             provider_cost_micros=provider_cost_micros,
             request_id=request_id,
             currency=currency,
-            dim1=dim1,
-            dim2=dim2,
-            dim3=dim3,
             event_type=event_type,
+            grouping_fields=grouping_fields,
             measurements=measurements,
             metadata=metadata,
             pricing_provenance=pricing_provenance,

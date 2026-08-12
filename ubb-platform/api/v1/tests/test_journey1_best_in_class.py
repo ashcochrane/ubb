@@ -172,18 +172,19 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_metrics == []   # tokens HAS a matching card
-            # dim2/dim3 are declared fields on RecordUsageResponse post-Task-17
-            # SDK regeneration — attribute access, not additional_properties.
-            # PUBLISHED PROPERTY NAMES, so #276 left them where they were even
-            # though the columns behind them took the canonical noun; ticket 20
-            # stops exposing per-slot properties at all.
-            assert res.dim2 == service
-            assert res.dim3 == agent
+            # The grouping values come back keyed by the tenant's OWN declared
+            # keys (#277) — the three this journey declared, under the words it
+            # chose, rather than under two of UBB's slot numbers. That is the
+            # whole point of the shape: this assertion no longer has to know
+            # which slot the registry happened to bind "service" to.
+            assert res.grouping_fields.to_dict() == {
+                "product": product, "service": service, "agent": agent}
             _force_day(res.event_id, day)
 
-        # ---- 3b. One extra event for C1 with NO service dimension -> dim2="" ----
-        # This event MUST appear as "(unattributed)" in the dim2 breakdown
-        # so that the breakdown reconciles to the new grand total.
+        # ---- 3b. One extra event for C1 with NO service dimension ----
+        # Nothing declared on it, so it carries an EMPTY grouping-field object
+        # and must appear as "(unattributed)" in the "service" breakdown, so
+        # that the breakdown reconciles to the new grand total.
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
             provider_cost_micros=COST_UNATTR,
@@ -191,7 +192,9 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             # dimension fields are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
-        assert unattr_res.dim2 == ""
+        # Nothing declared on this one, so the object is EMPTY rather than three
+        # keys mapped to "": an unset slot is omitted (#277).
+        assert unattr_res.grouping_fields.to_dict() == {}
         _force_day(unattr_res.event_id, 1)  # pin to day 1 alongside other day-1 events
 
         # Expected grand-total provider cost (COGS) across all 9 events (8 matrix + 1 unattr).

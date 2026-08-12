@@ -201,8 +201,13 @@ class RecordUsageResponse(Schema):
     measurements: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
     uncosted_metrics: list[str] = []
-    dim2: str = ""
-    dim3: str = ""
+    # The posting's grouping values, keyed by the tenant's own declared key
+    # (#277) — see `UsageEventDetailOut.grouping_fields`, which is the same
+    # object. Inherited values are included: task- and subtask-scoped values are
+    # set at the start gate and never travel with the event (D6), so this is
+    # where a caller sees what its posting was attributed to without a second
+    # call.
+    grouping_fields: dict[str, str] = {}
 
 
 class BalanceResponse(Schema):
@@ -277,9 +282,25 @@ class UsageEventDetailOut(Schema):
     idempotency_key: str
     event_type: str = ""
     provider: str = ""
-    dim1: str = ""
-    dim2: str = ""
-    dim3: str = ""
+    # The posting's grouping values, keyed by the tenant's OWN declared key,
+    # with unset slots omitted (#277, §G4):
+    #
+    #     {"region": "eu-west-1", "model_variant": "flash-4.0-standard"}
+    #
+    # Three of the physical slots used to be published individually, under the
+    # slot's name. The slot is UBB's identity for the binding and not the
+    # tenant's — nobody chose "slot four" — so this object is keyed by the word
+    # the tenant declared, which makes the response self-describing and makes
+    # how many slots exist a question the contract never answers. #276 widened
+    # six slots to ten; under this shape that was not a contract change, and
+    # neither is the next one.
+    #
+    # Same flat `{key: value}` shape the write side takes, so the round trip
+    # needs no translation. Typed tighter than the write side on purpose: a
+    # declared value is admitted through `str()` and stored in a `CharField`, so
+    # a string is the only thing this can ever answer, and saying so is what
+    # gives a generated client a real type instead of `any`.
+    grouping_fields: dict[str, str] = {}
     currency: str = "usd"
     provider_cost_micros: int
     billed_cost_micros: int
@@ -921,16 +942,25 @@ class RateOut(Schema):
 #: published names now sit over six differently-named columns, and this dict is
 #: the join.
 #:
-#: **WHO CLOSES THIS IS GENUINELY UNSETTLED, so read before assuming.** Ticket
-#: 20's body is about a posting's grouping values and says nothing about a rate
-#: — but its acceptance criteria are worded wider than its body ("no physical
-#: slot field is exposed on any public schema"), and on that wording the rate
-#: schemas are in scope. Ticket 21 renames the Grouping Field route family and
-#: is not a candidate. Failing ticket 20, the rate entity, its book and its
-#: selector list are all rebuilt in **slice 4** — the same slice that owns the
-#: retired words still standing on this model.
+#: **WHO CLOSES THIS IS SETTLED, AND IT IS SLICE 4.** #276 left the question
+#: open here; ticket 20 (#277) answered it and did not take it. Its body is
+#: about a posting's grouping values and says nothing about a rate, while its
+#: acceptance criteria are worded wider ("no physical slot field is exposed on
+#: any public schema") — so the two readings really do differ, and **#193 §L
+#: decides between them**: "the rate entity, the rate book, the card-type
+#: discriminator, **the rate selector list**, specificity ranking, and the
+#: tenant markup" belong to slice 4, listed there expressly "so that no ticket
+#: quietly widens". Slice 4 rebuilds all three of these schemas, so converting
+#: them in #277 would have been the same work twice and a second breaking change
+#: on the same six properties.
 #:
-#: Either way the join below is DELETED rather than edited: once the properties
+#: The residue is not left to memory. `api/v1/tests/
+#: test_grouping_values_on_the_contract.py` walks every published schema, allows
+#: exactly these eighteen (schema, property) pairs, and fails if the set ever
+#: overstates what the contract actually publishes — so slice 4 cannot half-pay
+#: it, and nothing else can quietly join it.
+#:
+#: The join below is DELETED rather than edited: once the properties
 #: carry the column names there is nothing left to state. What must not happen
 #: is someone widening this dict to ten, which would coin four new published
 #: properties under a spelling both candidates are about to retire.
@@ -939,7 +969,7 @@ class RateOut(Schema):
 #: without an entry here are unreachable from outside — a reprice body leaves
 #: them at "", which matches a rate that leaves them unpinned — so a rate pinned
 #: on slot seven can be written server-side and never repriced through the API.
-#: That gap arrives with this ticket and leaves with slice 4.
+#: That gap arrived with #276 and leaves with slice 4.
 SLOT_PROPERTY_COLUMNS = {f"dim{i}": f"grouping_field_{i}" for i in range(1, 7)}
 
 

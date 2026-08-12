@@ -19,6 +19,17 @@ from core.models import BaseModel
 # `apps.metering.usage.models.Posting`).
 SLOT_CHOICES = [(f"grouping_field_{i}", f"grouping_field_{i}") for i in range(1, 11)]
 
+#: The slots that exist, in declaration order — the one derivation, so that a
+#: widening moves one line and not four.
+#:
+#: A STORED SLOT IS A COLUMN NAME on `Posting`, `Task` and `Rate`, which is why
+#: this is worth naming rather than restating as a `range` at each use: a slot
+#: outside this tuple is not a bad label, it is a declaration bound to a column
+#: that does not exist, and every event recorded against it would fail at insert.
+#: `DimensionService.admit` returns `{slot: value}` and the recording path hands
+#: that map straight to `create()` as keyword arguments.
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
+
 #: How wide a column holding one of the identifiers above has to be. Derived so
 #: the bound and the vocabulary cannot drift apart — a hand-typed width is how
 #: a widening ships with a column that silently truncates the widest member.

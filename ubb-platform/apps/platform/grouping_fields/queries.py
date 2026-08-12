@@ -17,6 +17,24 @@ def slot_map(tenant_id) -> dict:
                 .values_list("key", "slot"))
 
 
+def keys_by_slot(tenant_id) -> dict:
+    """{slot: declared key} for a tenant — the inverse of :func:`slot_map`.
+
+    `slot_map` answers the WRITE direction: a caller names its own key and the
+    registry says which column to put it in. This answers the READ direction,
+    which is what a response needs — the row carries a column and the reader
+    needs the tenant's own word for it. Both are one query over at most ten rows
+    under `uq_dimension_def_slot`, and the two are inverses because that
+    constraint and `uq_dimension_def_key` together make the binding a bijection.
+
+    Retired defs are included for the reason `slot_map` includes them: a posting
+    recorded before its field was retired must still be able to say what its
+    value means (D8).
+    """
+    return dict(GroupingField.objects.filter(tenant_id=tenant_id)
+                .values_list("slot", "key"))
+
+
 def declared_dimensions(tenant_id) -> list[dict]:
     """Full registry as plain dicts, in slot order.
 

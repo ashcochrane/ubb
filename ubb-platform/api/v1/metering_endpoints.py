@@ -276,6 +276,7 @@ def get_usage_event(request, event_id: UUID):
     this is where it is read back. Tenant-scoped; 404 for an unknown or
     foreign event id."""
     _product_check(request)
+    from apps.metering.usage.grouping import grouping_fields_for
     from apps.metering.usage.measurements import measurements_status_for
     from apps.metering.usage.models import Posting
 
@@ -292,14 +293,11 @@ def get_usage_event(request, event_id: UUID):
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,
-        # Published property names on the left, columns on the right (#276).
-        # Three of the ten slots reach this response and that is not a choice
-        # anyone made recently — it is the shape ticket 20 replaces wholesale
-        # with one object keyed by the tenant's own declared key, at which point
-        # no physical slot is exposed at all.
-        "dim1": e.grouping_field_1,
-        "dim2": e.grouping_field_2,
-        "dim3": e.grouping_field_3,
+        # Derived at the serialiser like the status below, and for the same
+        # reason (#277): the row carries physical slots, and what a caller reads
+        # is the tenant's own vocabulary. One registry read, and none at all for
+        # a posting with no grouping values.
+        "grouping_fields": grouping_fields_for(e),
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
@@ -985,7 +983,7 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
 
 @metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("dimension.declared")
+@records_audit("grouping_field.declared")
 def declare_dimensions(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -1002,7 +1000,7 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
                 DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
                                          max_cardinality=d.max_cardinality)
             audit_record(
-                action="dimension.declared",
+                action="grouping_field.declared",
                 tenant_id=tenant.id,
                 resource_type="dimension_registry",
                 resource_id=tenant.id,

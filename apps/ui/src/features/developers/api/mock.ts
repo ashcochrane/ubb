@@ -184,8 +184,11 @@ export async function sendTestEvent(
   return {
     event_id: crypto.randomUUID(),
     suspended: false,
-    dim2: "",
-    dim3: "",
+    // The posting's grouping values under the tenant's own declared keys
+    // (#277). Empty here because this mock declares no grouping fields and
+    // sends none — which is what the real response answers in that case too,
+    // rather than the two arbitrary slot properties this replaces.
+    grouping_fields: {},
     billed_cost_micros: billed,
     provider_cost_micros: provider,
     new_balance_micros: balanceMicros,

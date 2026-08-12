@@ -3,18 +3,10 @@ import re
 from django.db import IntegrityError, transaction
 
 from apps.platform.grouping_fields.models import (
-    FORBIDDEN_KEYS, RESERVED_KEYS, SLOT_CHOICES, GroupingField,
-    GroupingFieldValue,
+    FORBIDDEN_KEYS, RESERVED_KEYS, SLOTS, GroupingField, GroupingFieldValue,
 )
 
 KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{1,63}")
-
-#: The slots that exist, in declaration order. A stored slot IS a column name on
-#: the posting — `admit` below returns `{slot: value}` and the recording path
-#: hands that map to `create()` as keyword arguments — so a slot outside this
-#: list is not a bad label, it is a declaration bound to a column that does not
-#: exist, and every event the tenant records against it would fail at insert.
-SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 class DimensionError(ValueError):

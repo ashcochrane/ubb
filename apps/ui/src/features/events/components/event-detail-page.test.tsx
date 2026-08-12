@@ -47,6 +47,32 @@ describe("EventDetailPage", () => {
     expect(screen.getByText("llm-prices-2026")).toBeInTheDocument();
   });
 
+  it("labels each grouping value with the key the tenant declared", async () => {
+    // #277: the receipt used to carry three rows reading "Dimension 1..3" —
+    // console English for a slot number the tenant never chose, and only ever
+    // three of the ten slots that exist. Each declared key is now its own row,
+    // labelled with the tenant's own word and rendered VERBATIM: a declared key
+    // is tenant-authored data, not a registry concept, so there is nothing to
+    // look up and nothing to title-case (ADR-0008 §4.3).
+    renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(screen.getByText("copilot")).toBeInTheDocument();
+    expect(screen.getByText("realtime-api")).toBeInTheDocument();
+    expect(screen.getByText("agent-7")).toBeInTheDocument();
+    expect(screen.queryByText("Dimension 1")).not.toBeInTheDocument();
+  });
+
+  it("omits a grouping row entirely when the posting carried no value", async () => {
+    // An unset slot is absent from the object rather than present as "", so
+    // there is no row and no empty-looking cell to explain away.
+    renderPage({ eventId: EVENT_TIPPING_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(screen.queryByText("Dimension 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dimension 3")).not.toBeInTheDocument();
+  });
+
   it("renders the stop context timeline for a tipping event", async () => {
     renderPage({ eventId: EVENT_TIPPING_ID, customerId: CUSTOMER_A_ID });
 

@@ -4788,19 +4788,17 @@
             ],
             "title": "Billed Cost Micros"
           },
-          "dim2": {
-            "default": "",
-            "title": "Dim2",
-            "type": "string"
-          },
-          "dim3": {
-            "default": "",
-            "title": "Dim3",
-            "type": "string"
-          },
           "event_id": {
             "title": "Event Id",
             "type": "string"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Grouping Fields",
+            "type": "object"
           },
           "measurements": {
             "anyOf": [
@@ -6806,21 +6804,6 @@
             "title": "Currency",
             "type": "string"
           },
-          "dim1": {
-            "default": "",
-            "title": "Dim1",
-            "type": "string"
-          },
-          "dim2": {
-            "default": "",
-            "title": "Dim2",
-            "type": "string"
-          },
-          "dim3": {
-            "default": "",
-            "title": "Dim3",
-            "type": "string"
-          },
           "effective_at": {
             "title": "Effective At",
             "type": "string"
@@ -6829,6 +6812,14 @@
             "default": "",
             "title": "Event Type",
             "type": "string"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Grouping Fields",
+            "type": "object"
           },
           "id": {
             "format": "uuid",

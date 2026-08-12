@@ -125,15 +125,15 @@ export function EventDetailPage({
     ...(detail.provider !== ""
       ? [{ label: "Provider", value: detail.provider }]
       : []),
-    ...(detail.dim1 !== ""
-      ? [{ label: "Dimension 1", value: detail.dim1 }]
-      : []),
-    ...(detail.dim2 !== ""
-      ? [{ label: "Dimension 2", value: detail.dim2 }]
-      : []),
-    ...(detail.dim3 !== ""
-      ? [{ label: "Dimension 3", value: detail.dim3 }]
-      : []),
+    // The posting's grouping values, labelled with the key the tenant declared
+    // (#277). This used to be three rows reading "Dimension 1..3" — console
+    // English for a slot number the tenant never chose, and only ever three of
+    // the ten that exist. The response is now keyed by the declared key, so the
+    // label is the tenant's own word and every declared field shows up.
+    ...Object.entries(detail.grouping_fields).map(([key, value]) => ({
+      label: key,
+      value,
+    })),
   ];
 
   const moneyItems: DetailItem[] = [
