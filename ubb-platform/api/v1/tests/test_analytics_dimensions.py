@@ -118,11 +118,11 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
     """Both open-dict rollups name a row's grouped value what the contract does.
 
     `/margin/by-grouping-field` DECLARES its rows, and its published property is
-    `grouping_field_value` (`MarginRowOut`, `openapi/v1.json`). These two rollups
-    answer the same question about the same axes — including the reserved ones,
-    which that route already covers — and return `list[dict]`, so nothing in the
-    schema, the drift gate or the breaking gate can hold them to it. This class
-    is what holds them to it.
+    `grouping_field_value` (`GroupingFieldMarginRow`, `openapi/v1.json`). These
+    two rollups answer the same question about the same axes — including the
+    reserved ones, which that route already covers — and return `list[dict]`, so
+    nothing in the schema, the drift gate or the breaking gate can hold them to
+    it. This class is what holds them to it.
 
     **EVERY ASSERTION IS A WHOLE ROW, and that is the point of the class.** A key
     lookup (`row["grouping_field_value"]`) passes whatever the row is called as
@@ -131,6 +131,13 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
     disagree with the console. Equality against a literal dict fails on a key
     added, a key dropped and a key renamed alike, so the console's two constants
     and the SDK's README can be checked against something.
+
+    **THE SHARED `GROUPED_VALUE_KEY` DOES NOT MAKE THIS REDUNDANT, and the two
+    answer different questions.** Both writers now take the name from one
+    constant, so they cannot drift apart from each other — but a constant proves
+    they AGREE, not that what they agree on is what the console narrows and the
+    SDK documents. Only a literal spelled out here, away from the constant, says
+    that. It is deliberately NOT imported below for the same reason.
 
     The seed is deliberately ONE posting on ONE day: a whole-row assertion is
     only readable if every number in it is a value somebody chose.
@@ -164,11 +171,14 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
         }]}
 
     def test_the_timeseries_bucket_row_is_exactly_this(self):
-        """The second site, written independently of the first.
+        """The second site, on a different route, with a different row shape.
 
-        `apps/metering/queries.py` builds this row and `api/v1/metering_endpoints.py`
-        builds the one above; neither reads the other's spelling, which is why
-        one pin cannot stand for both.
+        `apps/metering/queries.py` builds this row and
+        `api/v1/metering_endpoints.py` builds the one above. They share the key's
+        NAME through one constant, so they cannot spell it differently — but
+        everything else about these two rows differs (bucket and markup here,
+        totals and counts there), and the sharing says nothing about whether
+        either reaches the wire intact. That is what two pins are for.
         """
         r = self._get("/api/v1/metering/analytics/usage/timeseries"
                       "?granularity=day&group_by=region")

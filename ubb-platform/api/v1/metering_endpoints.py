@@ -44,6 +44,7 @@ from apps.platform.work.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.pricing.services.pricing_service import PricingError
+from apps.metering.queries import GROUPED_VALUE_KEY
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -690,11 +691,13 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                 if dim != "customer" and not raw_val:
                     raw_val = "(unattributed)"
                 # The same property the DECLARED margin rollup publishes for the
-                # same thing (`MarginRowOut.grouping_field_value`). These rows
-                # are `list[dict]`, so no schema holds this name and no drift or
-                # breaking gate can see it change — `test_analytics_dimensions.py`
-                # asserts the whole row instead.
-                r["grouping_field_value"] = raw_val
+                # same thing (`GroupingFieldMarginRow.grouping_field_value`),
+                # taken from the one constant its sibling timeseries rollup also
+                # writes so the two cannot drift. These rows are `list[dict]`,
+                # so no schema holds the name and no drift or breaking gate can
+                # see it change — `test_analytics_dimensions.py` asserts the
+                # whole row instead.
+                r[GROUPED_VALUE_KEY] = raw_val
             breakdowns[dim] = rows
 
     return 200, {

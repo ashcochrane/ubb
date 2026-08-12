@@ -140,6 +140,12 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   book must also author them in whichever provider book would otherwise match, or the override never
   fires. The publish-time tooling does not warn on this today — a candidate for a future
   "ambiguous/shadowed override" lint alongside the specificity-tie warning the design doc flags.
+- **Migration note — superseded.** This ADR used to warn that
+  `apps/metering/usage/migrations/0028_remove_usageevent_idx_usage_attribution_and_more.py`
+  implemented a column move as `AddField` + `RemoveField` rather than `RenameField`, and that
+  replaying it against populated tables would drop the data it appeared to move. ADR-0007 §1 is now
+  the rule — a migration that renames or moves a column carries its data — and it is backed by a
+  check rather than by a note, which is what a note in this position was never going to achieve.
 - **A row's grouped VALUE is `grouping_field_value` on every rollup, and the AXIS is named by the
   request.** Three rollups group postings and put the grouped value on each row: the
   `/analytics/usage` breakdowns, the `/analytics/usage/timeseries` buckets, and
@@ -156,12 +162,18 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   holds a value. Nothing but a test asserting the whole row can hold that agreement, which is what
   `api/v1/tests/test_analytics_dimensions.py` does for both open rollups, and why the console's two
   narrowing constants and the SDK's samples had to move in the same commit rather than a later one.
-- **Migration note — superseded.** This ADR used to warn that
-  `apps/metering/usage/migrations/0028_remove_usageevent_idx_usage_attribution_and_more.py`
-  implemented a column move as `AddField` + `RemoveField` rather than `RenameField`, and that
-  replaying it against populated tables would drop the data it appeared to move. ADR-0007 §1 is now
-  the rule — a migration that renames or moves a column carries its data — and it is backed by a
-  check rather than by a note, which is what a note in this position was never going to achieve.
+  Both backend writers take the key from one constant (`apps/metering/queries.py`), so they cannot
+  drift apart from each other; the two whole-row pins remain because a shared constant proves they
+  AGREE and not that what they agree on is what the console narrows and the SDK documents.
+  **One console file was renamed under another slice's name, deliberately.** The breakdown
+  component's own FILENAME carried the retired noun, and the console importer ratchet pins that
+  exact path — which made renaming it slice 7's by the letter, and left two console files unpayable
+  while their entry was slice 2's. Leaving them would have failed the slice's landing condition for
+  the reason #312 exists, so slice 2 renamed the file and edited the one pinned path, taking slice
+  7's one-file entry to zero with it. That is the ledger's own rule rather than an exception to it:
+  an owner slice may move earlier but never later, and #283 settled that an entry cannot outlive its
+  debt whoever owns it. Slice 7 therefore never pays that file, and this sentence is why its ledger
+  entry is not there to explain itself.
 
 ## Deferred findings tracked against this ADR
 
