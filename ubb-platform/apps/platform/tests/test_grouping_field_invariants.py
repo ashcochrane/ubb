@@ -1,12 +1,21 @@
 """Tests backing ADR-0005, in the manner ADR-001 establishes: the hard rules
 are enforced here, not merely documented.
 
-EVERY REFUSAL BELOW IS DRIVEN AT EVERY SLOT, not at a representative one. #276
-took the count from six to ten and re-spelled all of them, and the failure it
-made possible is a rule that holds on the slots that already existed and lapses
-on the ones that did not — which a single hard-coded slot would never find. The
-loops are over the declared vocabulary rather than a literal ten, so a later
-widening is covered by construction rather than by someone remembering.
+EVERY REFUSAL BELOW IS DRIVEN AT EVERY SLOT, not at a representative one — #276
+took the count from six to ten and re-spelled all of them, and the failure that
+makes possible is a rule holding on the slots that already existed and lapsing
+on the ones that did not. The loops read the declared vocabulary rather than a
+literal ten, so a later widening is covered by construction.
+
+**THE TEN ARE NOT WORTH THE SAME IN EVERY TEST BELOW, and pretending otherwise
+would be the overclaim.** Rebinding, scope and the cardinality cap all compare a
+declaration against a STORED slot, so a per-slot bug is expressible and the loop
+is real coverage. The reserved-key and correlation-key refusals are not like
+that: `declare` rejects those keys before it ever looks at `slot`, so no slot
+argument can change the outcome. Those two loops are driven at ten anyway
+because the ticket asks for it, and because "the refusal does not consult the
+slot" is itself the thing worth holding still — but they buy their coverage from
+the ordering in `DimensionService.declare`, not from the repetition.
 """
 import pytest
 from apps.platform.tenants.models import Tenant
@@ -94,14 +103,49 @@ class TestGroupingFieldInvariants:
 
     def test_retired_def_stays_in_the_slot_map(self):
         """Retirement blocks new VALUES, not reads — historical rows must stay
-        groupable (design D8)."""
+        groupable (design D8). At every slot, since a widening is exactly the
+        change that could leave the newer ones out of the map."""
         from django.utils import timezone
         from apps.platform.grouping_fields.queries import slot_map
+        for position, slot in enumerate(SLOTS):
+            t = self._t()
+            key = f"key_{position}"
+            DimensionService.declare(t, key=key, slot=slot, scope="task")
+            GroupingField.objects.filter(tenant=t, key=key).update(
+                retired_at=timezone.now())
+            assert slot_map(t.id)[key] == slot
+
+    def test_a_retired_fields_recorded_values_are_still_resolvable(self):
+        """THE VALUES, not just the binding — which is what D8 actually promises.
+
+        `slot_map` staying populated says a retired key still names a column. It
+        says nothing about the distinct values already admitted under that key,
+        and those are what a historical row is grouped BY and what the values
+        route serves into a filter dropdown. A retirement that swept them would
+        satisfy every other test in this class.
+
+        The refusal on the way in is asserted alongside, because the two
+        together are the whole rule: no new values, every old one still there.
+        """
+        from django.utils import timezone
+        from apps.platform.grouping_fields.models import GroupingFieldValue
+
         t = self._t()
-        DimensionService.declare(t, key="region", slot="grouping_field_1", scope="task")
+        DimensionService.declare(t, key="region", slot=SLOTS[-1], scope="event")
+        DimensionService.admit(t, {"region": "eu-west-1"}, scope="event")
+        DimensionService.admit(t, {"region": "us-east-1"}, scope="event")
+
         GroupingField.objects.filter(tenant=t, key="region").update(
             retired_at=timezone.now())
-        assert slot_map(t.id)["region"] == "grouping_field_1"
+
+        assert set(GroupingFieldValue.objects.filter(
+            tenant=t, key="region").values_list("value", flat=True)) == {
+                "eu-west-1", "us-east-1"}
+        # A value already admitted is still admissible — it is a read of the
+        # ledger, not a new entry — while a novel one is refused.
+        DimensionService.admit(t, {"region": "eu-west-1"}, scope="event")
+        with pytest.raises(DimensionError, match="retired"):
+            DimensionService.admit(t, {"region": "ap-south-1"}, scope="event")
 
     def test_posting_and_rate_share_one_selector_vocabulary(self):
         """The unification (design D3): one word list, both sides.
@@ -133,13 +177,15 @@ class TestGroupingFieldInvariants:
         book — and returns as soon as a TIER yields any match at all. "Most
         pinned wins" only holds WITHIN one book.
 
-        Here the "" book carries a narrowly-pinned override (task_type + dim1,
-        specificity 2) while the provider-specific "openai" book carries only a
+        Here the "" book carries a narrowly-pinned override (task_type plus the
+        first slot, specificity 2) while the provider-specific "openai" book
+        carries only a
         broad provider pin (specificity 1). Naive "most selectors wins" ranking
         across the whole rate set would pick the "" book's rate. The real
         resolution never gets that far: the openai book is tried first, finds a
         match, and returns immediately — the "" book's more specific override
         is silently shadowed."""
+        from apps.metering.pricing.models import Rate
         from apps.metering.pricing.services.pricing_service import PricingService
         from apps.metering.pricing.tests._helpers import rate_in_default_book
 
@@ -156,10 +202,11 @@ class TestGroupingFieldInvariants:
             t, card_type="cost", provider="openai", measurement_key="input_tokens",
             rate_per_unit_micros=9_000, unit_quantity=1_000_000)
 
-        selectors = {"provider": "openai", "event_type": "", "task_type": "invoice_batch",
-                    "subtask_type": "",
-                     "grouping_field_1": "eu-west-1",
-                     "grouping_field_2": "", "grouping_field_3": "", "grouping_field_4": "", "grouping_field_5": "", "grouping_field_6": "", "grouping_field_7": "", "grouping_field_8": "", "grouping_field_9": "", "grouping_field_10": ""}
+        # Everything wildcarded except the two this scenario pins, and built
+        # from the resolver's own selector list so it cannot fall behind it.
+        selectors = {**{selector: "" for selector in Rate.SELECTORS},
+                     "provider": "openai", "task_type": "invoice_batch",
+                     "grouping_field_1": "eu-west-1"}
         provider_cost, _, provenance = PricingService.price(
             tenant=t, customer=c, selectors=selectors,
             measurements={"input_tokens": 1_000_000}, currency="usd",

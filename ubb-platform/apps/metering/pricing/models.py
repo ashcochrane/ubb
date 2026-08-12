@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from apps.platform.grouping_fields.models import SLOT_CHOICES
 from core.models import BaseModel
 
 
@@ -129,11 +130,12 @@ class Rate(BaseModel):
                 name="uq_rate_active_in_book"),
         ]
 
+    #: The slot half is read off the registry rather than restated, so a rate
+    #: cannot end up selecting on a different set of slots from the one a tenant
+    #: can declare. The four reserved axes are spelled out because they are not
+    #: in that vocabulary — they are always present and never declared.
     SELECTORS = ("provider", "event_type", "task_type", "subtask_type",
-                 "grouping_field_1", "grouping_field_2", "grouping_field_3",
-                 "grouping_field_4", "grouping_field_5", "grouping_field_6",
-                 "grouping_field_7", "grouping_field_8", "grouping_field_9",
-                 "grouping_field_10")
+                 *(slot for slot, _ in SLOT_CHOICES))
 
     @property
     def selector_tuple(self):

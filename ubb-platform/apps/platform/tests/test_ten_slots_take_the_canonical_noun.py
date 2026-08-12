@@ -139,16 +139,61 @@ class TheRegistryDeclaresTenSlotsTest(SimpleTestCase):
             with self.subTest(axis=axis):
                 self.assertNotIn(axis, SLOTS)
 
-    def test_the_column_holding_a_slot_identifier_fits_the_widest_one(self):
-        """The identifiers got longer at the same time as they got more numerous.
+    def test_the_widest_identifier_is_seventeen_characters(self):
+        """The literal the migration had to hard-code, pinned from the outside.
 
-        A widening that renamed the vocabulary but left the column at its old
-        width would truncate on write, and a truncated slot names no column at
-        all. Derived from the vocabulary on both sides so the two cannot drift.
+        `SLOT_MAX_LENGTH` is DEFINED as this maximum, so asserting the two are
+        equal would be asserting the definition — green whatever the vocabulary
+        said. The number is written out instead, because a migration cannot
+        import a module-level constant and expect it to mean the same thing
+        forever: `0004`'s `max_length=17` is frozen, and this is what holds the
+        live vocabulary to it.
         """
-        self.assertEqual(SLOT_MAX_LENGTH, max(len(slot) for slot in SLOTS))
-        self.assertEqual(GroupingField._meta.get_field("slot").max_length,
-                         SLOT_MAX_LENGTH)
+        self.assertEqual(max(len(slot) for slot in SLOTS), 17)
+
+
+class TheStoredSlotColumnIsWideEnoughTest(TestCase):
+    """Asked of Postgres, which is the only place the answer can be wrong.
+
+    Three declarations have to agree about how wide this column is: the
+    vocabulary, the model field, and migration `0004`'s frozen literal. The
+    model field is derived from the vocabulary so those two cannot disagree —
+    but the migration cannot be, and the LIVE column is whatever the migration
+    built. A migration that said `max_length=8` would leave every canonical
+    identifier truncating on write, and nothing else in this module would
+    notice: a truncated slot is still a string, and the registry would simply
+    stop resolving.
+    """
+
+    def test_the_live_column_admits_the_widest_identifier(self):
+        """Read from `information_schema` rather than through Django.
+
+        `get_table_description` builds its `FieldInfo` from the driver's cursor
+        description, and psycopg reports no length for `varchar` there —
+        `internal_size` comes back `None`, which compares against nothing. The
+        catalogue knows.
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT character_maximum_length FROM information_schema.columns "
+                "WHERE table_name = %s AND column_name = %s",
+                [GroupingField._meta.db_table, "slot"])
+            (width,) = cursor.fetchone()
+        self.assertIsNotNone(width, "the slot column is not a bounded varchar")
+        self.assertGreaterEqual(width, max(len(slot) for slot in SLOTS))
+
+    def test_the_widest_identifier_round_trips_through_the_database(self):
+        """The behaviour the width is for, driven rather than measured.
+
+        Postgres truncates silently only under some settings and errors under
+        others, so reading the declared width proves the declaration and not the
+        outcome. This writes the longest slot there is and reads it back.
+        """
+        widest = max(SLOTS, key=len)
+        field = GroupingField.objects.create(
+            tenant=Tenant.objects.create(name="T"), key="region", slot=widest,
+            scope="task")
+        self.assertEqual(GroupingField.objects.get(id=field.id).slot, widest)
 
 
 class EveryTableThatHoldsSlotsHasTenOfThemTest(TestCase):
@@ -260,12 +305,14 @@ class NoSlotCarriesAnIndexTest(TestCase):
     def test_the_surviving_composites_match_a_real_query_shape(self):
         """What replaced it, and why nothing replaced it in kind.
 
-        Nothing in this repository FILTERS on a slot. Every read of one is a
-        `GROUP BY` of a single slot inside a tenant (sometimes a customer) and an
-        `effective_at` window, so the columns that select the rows are the two
-        below and the slot is only the group key. Both of these already existed;
-        the dropped composite was a mis-ordered variant of the first, leading
-        with two columns nothing filters on.
+        No query selects rows by a slot. Every read of one is a `GROUP BY` of a
+        single slot inside a tenant (sometimes a customer) and an `effective_at`
+        window, so the columns that select the rows are the two below and the
+        slot is only the group key. The lone predicate on a slot anywhere is
+        `get_dimensional_margin`'s `.exclude(<slot>="")`, a negation no btree
+        index would serve. Both indexes below already existed; the dropped
+        composite was a mis-ordered variant of the first, leading with two
+        columns no query selects on.
         """
         for name, expected in SURVIVING_COMPOSITES.items():
             with self.subTest(index=name):
@@ -408,6 +455,15 @@ class ThePublishedContractIsUnchangedByTheWideningTest(SimpleTestCase):
     """
 
     def test_no_published_schema_exposes_a_slot_column(self):
+        """A GUARD AGAINST A FUTURE COMMIT, NOT EVIDENCE ABOUT THIS ONE.
+
+        No published schema has ever named a slot column, so this was green
+        before the rename and is green after it. Its whole value is forward:
+        the obvious way to "finish" this ticket is to re-spell the published
+        properties to match the columns, and that is the one thing it must not
+        do. Read it with the test below, which is the half that says something
+        about today.
+        """
         for name, schema in schemas().items():
             with self.subTest(schema=name):
                 self.assertFalse(
@@ -415,9 +471,11 @@ class ThePublishedContractIsUnchangedByTheWideningTest(SimpleTestCase):
                     f"{name} exposes a physical slot column")
 
     def test_the_rate_schemas_still_carry_the_properties_they_carried(self):
-        """The other half. An "exposes nothing canonical" check would also pass
-        if the properties had been deleted, which is a contract break this
-        ticket must not make either."""
+        """The half that is about today, and the control for the test above.
+
+        An "exposes nothing canonical" check passes just as green over a
+        contract whose properties were DELETED, which is a break this ticket
+        must not make either."""
         retired = _renames(*RESHAPED[1][1:])
         for name in ("RateIn", "RateChangeIn", "RateOut"):
             with self.subTest(schema=name):

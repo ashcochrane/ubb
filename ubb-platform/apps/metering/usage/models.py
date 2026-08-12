@@ -71,13 +71,15 @@ class Posting(BaseModel):
     #
     # The per-column indexes went because a cardinality-capped column is around
     # one percent selective, at which the planner reaches for a sequential scan
-    # or a composite anyway. The composite went for a sharper reason: NOTHING IN
-    # THIS REPOSITORY FILTERS ON A SLOT. Every read of one is a `GROUP BY` of a
-    # single slot inside a tenant (sometimes a customer) and an `effective_at`
-    # window — `apps.metering.queries.get_dimensional_margin`,
-    # `get_usage_timeseries`, `get_customer_billed_breakdown`, and the
-    # `/analytics/usage` breakdowns. So the columns that select the rows are
-    # `tenant`/`customer` and `effective_at`, and those are exactly what
+    # or a composite anyway. The composite went for a sharper reason: NO QUERY
+    # SELECTS ROWS BY A SLOT. Every read of one is a `GROUP BY` of a single slot
+    # inside a tenant (sometimes a customer) and an `effective_at` window —
+    # `apps.metering.queries.get_dimensional_margin`, `get_usage_timeseries`,
+    # `get_customer_billed_breakdown`, and the `/analytics/usage` breakdowns.
+    # The single predicate on a slot in the tree is `get_dimensional_margin`'s
+    # `.exclude(<slot>="")`, a negation on a column whose commonest value is ""
+    # — which no btree index would serve. So the columns that select the rows
+    # are `tenant`/`customer` and `effective_at`, and those are exactly what
     # `idx_usage_tenant_effective` and `idx_usage_customer_effective` lead with.
     # A composite led by two slots could only ever be scanned whole, and "the
     # first two of ten" is arbitrary in a way "the first two of six" merely

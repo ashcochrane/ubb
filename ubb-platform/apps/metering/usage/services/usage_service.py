@@ -12,6 +12,7 @@ from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
+from apps.platform.grouping_fields.models import SLOT_CHOICES
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +114,19 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
             "been invoiced; backfills into it are rejected")
 
 
-SLOTS = tuple(f"grouping_field_{i}" for i in range(1, 11))
+#: The slot columns, read off the registry that owns the vocabulary rather than
+#: restated as a range. A literal here would be a second declaration of how many
+#: slots exist, and the two would disagree the first time one moved — which is
+#: exactly what #276 would have had to fix in five places instead of one.
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 def _inherit_dimensions(task_id, dimension_slots):
-    """Resolve the fourteen selector values for one event (design D6).
+    """Resolve the twelve INHERITABLE selector values for one event (design D6).
+
+    Twelve, not fourteen: `provider` and `event_type` are the caller's own on
+    every event and are never inherited from the unit of work, so they are not
+    resolved here. The other two reserved axes are, and so are the ten slots.
 
     Precedence per slot: the event's own value, then the leaf unit's, then its
     parent's, then "". `task_type` always comes from the ROOT of the chain and

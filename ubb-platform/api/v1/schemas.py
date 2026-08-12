@@ -601,9 +601,8 @@ def task_out(t):
         # contract nothing. Ticket 20 replaces the physical slot with the
         # tenant's own declared key, which is the shape the read side is being
         # moved to match.
-        "dimensions": {s: getattr(t, s) for s in
-                       (f"grouping_field_{i}" for i in range(1, 11))
-                       if getattr(t, s)},
+        "dimensions": {slot: getattr(t, slot) for slot, _ in SLOT_CHOICES
+                       if getattr(t, slot)},
         "created_at": t.created_at.isoformat(),
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
     }
@@ -857,9 +856,14 @@ def book_out(b):
 
 class RateChangeIn(Schema):
     """One reprice in a publish. Match keys (measurement_key plus the ten
-    selector columns — provider/event_type/task_type/subtask_type/dim1..
-    dim6) locate the active rate; the remaining (nullable) fields, when
-    present, override it in the new version."""
+    selectors below — provider/event_type/task_type/subtask_type/dim1..dim6)
+    locate the active rate; the remaining (nullable) fields, when present,
+    override it in the new version.
+
+    These ten are not the whole selector set a rate can pin. A rate may also be
+    pinned on four further grouping-field slots that this body cannot name, and
+    such a rate cannot be matched here — a publish naming it fails to find an
+    active rate. Reaching them is not yet possible through the API."""
     measurement_key: str
     provider: str = ""
     event_type: str = ""
@@ -917,14 +921,19 @@ class RateOut(Schema):
 #: published names now sit over six differently-named columns, and this dict is
 #: the join.
 #:
-#: **NO TICKET IN SLICE 2 CLOSES THIS.** The posting's own slot properties go in
-#: ticket 20, which replaces them with one object keyed by the tenant's declared
-#: key; the rate's are not in that ticket, not in ticket 21 (which renames the
-#: Grouping Field route family), and not in any other. The rate entity, its book
-#: and its selector list are all rebuilt in **slice 4** — the same slice that
-#: owns the retired words still standing on this model — and that is where the
-#: join below is deleted rather than edited. Saying so here is the point: a
-#: reader who assumes the next ticket tidies this will not find it there.
+#: **WHO CLOSES THIS IS GENUINELY UNSETTLED, so read before assuming.** Ticket
+#: 20's body is about a posting's grouping values and says nothing about a rate
+#: — but its acceptance criteria are worded wider than its body ("no physical
+#: slot field is exposed on any public schema"), and on that wording the rate
+#: schemas are in scope. Ticket 21 renames the Grouping Field route family and
+#: is not a candidate. Failing ticket 20, the rate entity, its book and its
+#: selector list are all rebuilt in **slice 4** — the same slice that owns the
+#: retired words still standing on this model.
+#:
+#: Either way the join below is DELETED rather than edited: once the properties
+#: carry the column names there is nothing left to state. What must not happen
+#: is someone widening this dict to ten, which would coin four new published
+#: properties under a spelling both candidates are about to retire.
 #:
 #: Six, not ten. A rate can hold ten slots; the contract can name six. The four
 #: without an entry here are unreachable from outside — a reprice body leaves

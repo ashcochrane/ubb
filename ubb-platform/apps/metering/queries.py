@@ -30,6 +30,12 @@ from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate
 
 from core.time_windows import utc_day_start, utc_next_day_start
+from apps.platform.grouping_fields.models import SLOT_CHOICES
+
+#: The slot columns a caller may group by, read off the registry that owns the
+#: vocabulary. Restating it as a literal range here is how the two come to
+#: disagree.
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 class PeriodTotals(TypedDict):
@@ -299,7 +305,7 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
     valid_group_by = ("provider", "event_type", "task_type", "subtask_type",
-                      *(f"grouping_field_{i}" for i in range(1, 11)))
+                      *SLOTS)
     cols = ["bucket"]
     if group_by in valid_group_by:
         cols.append(group_by)
@@ -378,8 +384,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
-    valid = ("provider", "event_type", "task_type", "subtask_type",
-             *(f"grouping_field_{i}" for i in range(1, 11)))
+    valid = ("provider", "event_type", "task_type", "subtask_type", *SLOTS)
     if group_by not in valid:
         raise ValueError(f"group_by must be one of {valid}")
     grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(

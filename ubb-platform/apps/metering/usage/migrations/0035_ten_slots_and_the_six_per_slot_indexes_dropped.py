@@ -19,19 +19,38 @@ The per-column indexes go because a cardinality-capped column is around one
 percent selective, and at that selectivity the planner reaches for a sequential
 scan or a composite anyway.
 
-`idx_usage_dim_attribution` goes for a sharper reason: **nothing in this
-repository filters on a slot.** Every read of one is a `GROUP BY` of a single
-slot inside a tenant (sometimes a customer) and an `effective_at` window —
+`idx_usage_dim_attribution` goes for a sharper reason: **no query selects rows
+by a slot.** Every read of one is a `GROUP BY` of a single slot inside a tenant
+(sometimes a customer) and an `effective_at` window —
 `apps.metering.queries.get_dimensional_margin`, `get_usage_timeseries`,
-`get_customer_billed_breakdown`, and the `/analytics/usage` breakdowns. The
-columns that select the rows are `tenant`/`customer` and `effective_at`, and
-those are exactly what `idx_usage_tenant_effective` and
+`get_customer_billed_breakdown`, and the `/analytics/usage` breakdowns.
+
+There is exactly one predicate on a slot anywhere, and it is the exception that
+makes the point: `get_dimensional_margin` calls `.exclude(<slot>="")` to keep
+unattributed rows out of its breakdown. That is a NEGATION on a column whose
+commonest value is `""`, so it neither wants nor would get a btree index — the
+planner reads the range it was already reading and discards.
+
+So the columns that select the rows are `tenant`/`customer` and `effective_at`,
+and those are exactly what `idx_usage_tenant_effective` and
 `idx_usage_customer_effective` lead with; those two are the composites that
 match a real query shape, and they still match it at ten columns. A composite
 led by two slots could only ever be scanned whole. "The first two of ten" is
 also arbitrary in a way that "the first two of six" merely looked like it
 wasn't — six slots were all a tenant had, so leading with two of them at least
 read as a guess about the popular ones.
+
+**THIS IS A DEVIATION AND IT IS DELIBERATE.** #276 says "keep or re-shape the
+existing composite so that it still matches a real query shape at ten columns",
+which reads as an instruction to leave a slot-bearing composite behind. Neither
+was done: it is dropped, and nothing containing a slot replaces it. Re-shaping
+it would have meant choosing which of ten slots to privilege on evidence that
+does not exist — no query names any slot but the first, and that one only as a
+group key. The acceptance criterion is met on its own wording, which asks that
+"the remaining composite (or composites) match a real query shape at ten
+columns" and not that a slot appear in one; the two indexes named above do.
+Recorded here rather than argued in a commit message, because the next person
+to wonder where the slot index went will be reading this file.
 
 **The columns take the canonical noun.** Not forced by the forbidden-term sweep
 — the abbreviation these columns carried is not a whole-token match for the
@@ -69,13 +88,18 @@ from django.db import migrations, models
 
 #: The six renames, as (retired, canonical) pairs.
 #:
-#: The retired spelling survives in exactly one other place after this change,
-#: and on purpose: it is still the name of six PUBLISHED properties on the rate
-#: schemas and three on the posting detail response (`api/v1/schemas.py`).
-#: Nothing about the contract moves here. Ticket 20 replaces the posting's with
-#: one object keyed by the tenant's own declared key; the rate's wait for slice
-#: 4, which rebuilds that entity. Until then the column and the property are two
-#: names for one value, joined by the serializers rather than by spelling.
+#: The retired spelling survives after this change wherever it names a PUBLISHED
+#: property rather than a column, and on purpose. That is five schemas in
+#: `api/v1/schemas.py` — `RateIn`, `RateChangeIn` and `RateOut` (six each),
+#: `UsageEventDetailOut` (three) and `RecordUsageResponse` (two) — plus the two
+#: serializers that fill them, in `api/v1/metering_endpoints.py` and
+#: `apps/metering/usage/services/usage_service.py`.
+#:
+#: Nothing about the contract moves here. Ticket 20 replaces the posting's slot
+#: properties with one object keyed by the tenant's own declared key; the rate's
+#: are not in that ticket's body, and its entity is rebuilt in slice 4. Until
+#: then the column and the property are two names for one value, joined by the
+#: serializers rather than by spelling.
 #:
 #: The test module named for this migration reads both halves off the operations
 #: below rather than spelling either, which is what stops its assertions drifting

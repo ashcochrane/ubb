@@ -535,8 +535,14 @@ def delete_customer_markup(request, customer_id: UUID):
 _RESERVED_ANALYTICS_DIMS = ("provider", "event_type", "task_type", "subtask_type",
                             "customer")
 
-#: How many breakdowns one analytics call may ask for — the tenant slot count,
-#: read off the registry so the two cannot drift (#276 widened it to ten).
+#: How many breakdowns one analytics call may ask for. The tenant slot count,
+#: read off the registry rather than restated — six was the slot count too, and
+#: #276 made a hard-coded six disagree with it.
+#:
+#: NOT "one per requestable axis": the four reserved axes plus `customer` are
+#: also requestable, so fifteen names can be asked for and ten of them can be
+#: served in one call. The cap is a bound on work per request, and the slot
+#: count is what it has always been pinned to.
 _MAX_BREAKDOWNS = len(SLOT_CHOICES)
 
 
@@ -664,10 +670,6 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
 
     breakdowns: dict = {}
     if dimensions:
-        # One breakdown per declared axis at most. Tracks the slot count rather
-        # than restating it — six was the slot count, not a separate judgement
-        # about how many breakdowns a report can carry, and #276 made the two
-        # disagree.
         if len(dimensions) > _MAX_BREAKDOWNS:
             raise Problem("validation_error",
                           f"at most {_MAX_BREAKDOWNS} dimensions")

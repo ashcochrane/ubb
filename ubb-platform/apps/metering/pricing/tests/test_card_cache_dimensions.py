@@ -3,16 +3,20 @@ from django.test.utils import CaptureQueriesContext
 from django.db import connection
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services import card_cache as card_cache_module
 from apps.metering.pricing.services.card_cache import CardCache
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 
 
 def _sel(**kw):
-    base = {"provider": "", "event_type": "", "task_type": "", "subtask_type": "",
-            "grouping_field_1": "", "grouping_field_2": "", "grouping_field_3": "", "grouping_field_4": "", "grouping_field_5": "", "grouping_field_6": "", "grouping_field_7": "", "grouping_field_8": "", "grouping_field_9": "", "grouping_field_10": ""}
-    base.update(kw)
-    return base
+    """A fully-wildcarded selector map, overridden by whatever the caller pins.
+
+    Built from `Rate.SELECTORS` rather than transcribed: the resolver reads that
+    tuple, so a map written by hand is one that can silently stop covering a
+    selector the resolver still consults.
+    """
+    return {**{selector: "" for selector in Rate.SELECTORS}, **kw}
 
 
 @pytest.mark.django_db
