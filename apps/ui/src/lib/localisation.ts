@@ -106,3 +106,46 @@ export function labelMap(labelKeys: Readonly<Record<string, string>>) {
   return (value: string | null | undefined): string =>
     resolveLabel(labelKeys, value).text;
 }
+
+/**
+ * The label keys of a `tenant_defined` concept. There are none, by construction.
+ *
+ * The registry declares a concept's KIND, and `tenant_defined` means the tenant
+ * owns the values: UBB defines the field and its validation contract and never
+ * enumerates the set, because a registry that listed its tenants' event types
+ * would be the vendor catalogue map #137 constraint 5 forbids UBB to ship. So
+ * `@/lib/vocabulary` generates no `<CONCEPT>_LABEL_KEYS` for one — it writes
+ * *"no constants: this kind declares no values by construction"* and stops.
+ *
+ * This is that absence, spelled once. A call site could pass `{}` and get the
+ * same answer, but it would be an empty object literal with no explanation
+ * beside it, and the next reader would take it for an oversight.
+ */
+export const NO_DECLARED_VALUES: Readonly<Record<string, string>> = {};
+
+/**
+ * A value whose vocabulary the TENANT owns, rendered as the tenant declared it.
+ *
+ * An Event Type key, a metadata key — UBB knows the field, never the value, so
+ * every one of them resolves `unfamiliar` and renders verbatim. That is not a
+ * fallback: it is the whole answer for this kind of concept, and it is the same
+ * answer `resolveLabel` gives an unrecognised value of any other one, which is
+ * why this is a binding of the strict lookup rather than a second path beside
+ * it.
+ *
+ * ADR-0008 §4 DECIDES THE ADJACENT CASE AND #279 EXTENDS IT, which is worth
+ * stating precisely because the two are easy to run together. The ADR rules
+ * that silent humanisation is a defect and that an unknown OPEN value renders
+ * in a deliberate generic form — a value UBB has not met yet. A tenant-defined
+ * value is one UBB was never going to meet, and the argument only gets
+ * stronger: inventing English for a token somebody else chose does not merely
+ * guess at a name UBB never wrote down, it overwrites one the tenant did.
+ *
+ * Going through the lookup rather than returning the string buys one thing that
+ * matters and one that will. An empty key renders as an absence rather than as
+ * a blank name — the case a bare `{value}` gets wrong, and the one the metadata
+ * tree exercises, since a caller with a better word for "nothing here" keeps
+ * its own guard instead. And on the day a concept stops being tenant-defined,
+ * the call site changes by one identifier.
+ */
+export const tenantDefinedLabel = labelMap(NO_DECLARED_VALUES);

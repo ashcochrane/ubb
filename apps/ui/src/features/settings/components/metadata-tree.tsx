@@ -1,9 +1,16 @@
-import { humanize } from "@/lib/labels";
+import { tenantDefinedLabel } from "@/lib/localisation";
 
 /**
  * Curated key-value rendering for audit record metadata — never a raw JSON
  * dump. Objects and arrays nest with an indent guide; primitives render as
  * label → mono value pairs.
+ *
+ * **Curated is about the SHAPE, never the words.** Every key here was written by
+ * the tenant, and #279 renders it as they declared it. This component used to
+ * title-case them, so `enforcement_mode` reached the reader as "Enforcement
+ * mode" — UBB inventing user-facing English for somebody else's identifier, and
+ * the defect ADR-0008 §4 names on UBB's own vocabulary. Two keys differing only
+ * in case or punctuation arrived as one word.
  */
 export function MetadataTree({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);
@@ -29,7 +36,7 @@ function MetadataNode({ name, value }: { name: string; value: unknown }) {
     return (
       <div>
         <p className="text-[12px] font-medium text-muted-foreground">
-          {humanize(name)}
+          {tenantDefinedLabel(name)}
         </p>
         <div className="ml-1 space-y-1 border-l border-border pl-3">
           {entries.length === 0 ? (
@@ -46,7 +53,7 @@ function MetadataNode({ name, value }: { name: string; value: unknown }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="text-[12px] text-muted-foreground">
-        {humanize(name)}
+        {tenantDefinedLabel(name)}
       </span>
       <span className="min-w-0 break-all font-mono text-[12px]">
         {formatMetaValue(value)}

@@ -8,7 +8,7 @@ not repeat the retired word, because #206's sweep is right that a debt is not a
 licence for it to reach further.)
 
 The old behaviour cannot simply be deleted — `apps/ui/src/lib/labels.ts` is
-imported by forty-eight files, and #210 is explicit that slice 0 ends when the
+imported by forty-seven files, and #210 is explicit that slice 0 ends when the
 mechanism is active and regressions are impossible, **not** when all of them
 have been rewritten. So it survives as an **explicit legacy adapter**, and this
 module is what makes "reachable from allowlisted sites and nowhere else" a fact
@@ -116,6 +116,7 @@ DECLARED_NON_LABEL_EXPORTS = {
         "ranks a role for a floor comparison and returns a number. It carries "
         "no words, so there is nothing for a catalogue to own"),
     "BILLING_MODES": _VALUE_SET,
+    "COSTING_METHODS": _BY_REFERENCE,
     "PRODUCTS": _BY_REFERENCE,
     "ROLES": _VALUE_SET,
     "ANALYTICS_DIMENSIONS": _VALUE_SET,

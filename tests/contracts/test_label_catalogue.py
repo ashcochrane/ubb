@@ -12,12 +12,16 @@ produced it is gone.
 
 **And nothing renders a name any other way.** Coverage alone proves the
 catalogue is complete, not that it is *used*. `apps/ui/src/lib/labels.ts` still
-hand-writes twenty-nine value maps and eleven files still import its humaniser,
+hand-writes twenty-nine value maps and nine files still import its humaniser,
 and ADR-0008 §4.3 reverses #154 §9.1 to call that a defect rather than a soft
 landing: title-casing a retired token manufactures user-facing terminology out
-of an implementation token. #210 does not delete it — forty-eight files import
+of an implementation token. #210 does not delete it — forty-seven files import
 that module — so it survives as an explicit legacy adapter, and every one of its
 debts is a migration-ledger entry with an owner slice.
+
+**A collected debt stays collected.** Section 4 is a fourth question the three
+above cannot ask: the ledger and the console agree with each other even when
+both revert, so a debt already paid is pinned by id and held to both sides.
 
 **The ledger IS the allowlist.** There is no second list of permitted sites: a
 new map or a new humanising import is a ledger addition, and `tools.gates
@@ -109,7 +113,6 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/settings/components/billing-mode-card.tsx",
     "apps/ui/src/features/settings/components/invitations-section.tsx",
     "apps/ui/src/features/settings/components/members-section.tsx",
-    "apps/ui/src/features/settings/components/metadata-tree.tsx",
     "apps/ui/src/features/settings/components/products-card.tsx",
     "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
     "apps/ui/src/features/settings/lib/settings.ts",
@@ -304,7 +307,7 @@ def test_nothing_escapes_the_one_adapter(legacy):
     A second `humanize` declared anywhere in the console; a value map built
     without the `export const` the scanner reads; an `export { … }` clause that
     exports a name no declaration shows. Each would let a caller reach the
-    retired behaviour while the ledger went on saying eleven files do.
+    retired behaviour while the ledger went on naming the files that do.
 
     `scan_legacy` already reports all three as faults, and section 3's first
     test asserts there are none. This states the rule again because that
@@ -360,8 +363,8 @@ def test_every_adapter_export_is_classified(legacy):
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
         HUMANISER, "roleRank",
-        "BILLING_MODES", "PRODUCTS", "ROLES", "ANALYTICS_DIMENSIONS",
-        "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
+        "BILLING_MODES", "COSTING_METHODS", "PRODUCTS", "ROLES",
+        "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "
@@ -418,8 +421,163 @@ def test_the_map_constructor_name_appears_nowhere_else():
 
 
 # ---------------------------------------------------------------------------
+# 4. A debt this gate has already collected does not come back
+# ---------------------------------------------------------------------------
+
+#: The two humanising renderers slice 2 removed, each under the id of the ledger
+#: entry that owed it (#279). Both rendered a value the TENANT authored — an
+#: Event Type key, a metadata key — and #279 renders such a value as the tenant
+#: declared it, carrying ADR-0008 §4's ruling on an unknown OPEN value one step
+#: further. Title-casing someone else's identifier is the same defect as
+#: inventing UBB's own, and worse in one way: it does not merely guess at a name
+#: UBB never wrote down, it overwrites one the tenant did.
+#:
+#: This is NOT a second copy of the allowlist — the whole point of section 3 is
+#: that the ledger IS the allowlist, and a constant restating live entries would
+#: be the drifting copy ADR-0006 §4 warns about. These entries are not live.
+#: They record a fact that is now permanent, which is exactly the class of thing
+#: a literal may hold: two debts were paid, and neither side may quietly undo it.
+#: A slice that pays one of the nine still outstanding adds its line here. The
+#: closure below is what makes that an obligation rather than a courtesy.
+PAID_HUMANISING_DEBTS = {
+    "g6-humanises-test-event-response":
+        "apps/ui/src/features/developers/components/test-event-response.tsx::humanize",
+    "g6-humanises-metadata-tree":
+        "apps/ui/src/features/settings/components/metadata-tree.tsx::humanize",
+}
+
+#: How many files imported the humaniser when #210 installed this gate. Not a
+#: measurement — a HISTORICAL TOTAL, recorded in `gates/migration-ledger.yaml`'s
+#: own seeding authorisation for G6 (*"the forty-two entries … thirty
+#: hand-written value maps, one hand-written renderer and eleven files importing
+#: the humaniser"*). It is the one number in this file that must never move: no
+#: slice may add a humanising site, because the ratchet refuses a ledger
+#: addition without a reviewed authorisation.
+SEEDED_HUMANISING_SITES = 11
+
+
+def test_a_paid_humanising_debt_names_a_file_that_still_exists(legacy):
+    """Vacuity guard for section 4.
+
+    The assertions below are absences, and an absence is trivially true of a
+    file that has been deleted or renamed — at which point they would go on
+    passing while proving nothing about any code that ships. Both components are
+    still here; what changed is what they do.
+    """
+    assert PAID_HUMANISING_DEBTS, "nothing pinned — section 4 proves nothing"
+    scanned, _ = legacy
+    for site in sorted(PAID_HUMANISING_DEBTS.values()):
+        path, _, function = site.partition("::")
+        assert function == HUMANISER, f"`{site}` is not a humanising site"
+        assert (REPO_ROOT / path).is_file(), (
+            f"`{path}` no longer exists, so the absence below is vacuous. If the "
+            f"component was genuinely removed, delete its line here and say so")
+    # And the scan that reports the absence is not itself blind — section 3 asserts
+    # this too, for the other half of the same reason.
+    assert scanned.humanisers, "no humanising site found anywhere — the scan is blind"
+
+
+def test_every_humanising_debt_is_either_outstanding_or_paid(programme):
+    """The closure that stops the pin above from being quietly edited away.
+
+    Every assertion in this section reads `PAID_HUMANISING_DEBTS`, so deleting a
+    line from it would retire the check for that debt and nothing else would
+    notice — the exact defect this section exists to refuse, one level up. The
+    fix is not another list: it is arithmetic against a number that is FIXED
+    HISTORY rather than a measurement. Eleven files reached the humaniser when
+    #210 installed this gate; a debt can only be outstanding or paid; so the two
+    sets partition the eleven, for good.
+
+    That makes paying a debt a three-part act — convert the file, delete the
+    ledger entry, add the line here — and any two of the three fail. It also
+    generalises: the seven slices that still owe one of these inherit the same
+    obligation without a line of new mechanism.
+
+    What remains uncovered, stated rather than left to be found: a change that
+    edits all three together still passes here, and the backstop for that is
+    `tools.gates ratchet`, which refuses the ledger addition without a reviewed
+    seeding authorisation somebody has to write a reason into.
+    """
+    accounted = recorded(programme, GATE) | excepted(programme, GATE)
+    outstanding = {site for site in accounted
+                   if site.endswith(f"::{HUMANISER}")}
+    paid = set(PAID_HUMANISING_DEBTS.values())
+
+    both = sorted(outstanding & paid)
+    assert not both, (
+        f"recorded as outstanding and paid at once: {both}. A debt gates/ still "
+        f"owes has not been paid, whatever the pin says")
+    assert len(outstanding) + len(paid) == SEEDED_HUMANISING_SITES, (
+        f"{len(outstanding)} humanising debt(s) outstanding + {len(paid)} paid "
+        f"= {len(outstanding) + len(paid)}, and #210 seeded "
+        f"{SEEDED_HUMANISING_SITES}. Paying one is three acts: convert the file, "
+        f"delete its ledger entry, and add its id to PAID_HUMANISING_DEBTS. "
+        f"Adding a humanising site is not one of the moves this gate allows")
+
+
+def test_neither_paid_humanising_debt_has_come_back(legacy, programme):
+    """The two encodings of a paid debt, held to each other by id (#279).
+
+    `tests/contracts/test_model_naming_ledger_agreement.py` is the pattern: two
+    encodings of one fact, compared by id and in BOTH directions, so that
+    neither can gain, lose or relabel an entry alone. There the fact is a live
+    suppression; here it is a collected debt, and the two sides are the ledger
+    and the console rather than two files.
+
+    Section 3 already refuses a humanising site with no ledger entry, and a
+    ledger entry with no humanising site. What it cannot see is the pair moving
+    together — an entry re-seeded and a `humanize` import restored in one change
+    agree with each other perfectly, and the set comparison passes. That is the
+    only shape in which this ticket's work silently reverts, so it is the shape
+    this test is about.
+
+    BOTH FILES UNDER `gates/` ARE ONE SIDE HERE, debts and permanent exceptions
+    together. The quietest way to bring one of these back is not a ledger entry
+    at all — it is an exception saying the humanising is permanent, which no
+    ratchet counts and no slice ever clears.
+    """
+    scanned, _ = legacy
+    excused = (*programme.entries, *programme.exceptions)
+    faults = revivals(PAID_HUMANISING_DEBTS,
+                      {record.id for record in excused},
+                      recorded(programme, GATE) | excepted(programme, GATE),
+                      set(scanned.humanisers))
+    assert not faults, "a paid humanising debt is back.\n  " + "\n  ".join(faults)
+
+
+# ---------------------------------------------------------------------------
 # The predicates the assertions above call
 # ---------------------------------------------------------------------------
+
+def revivals(paid, ledger_ids, ledger_sites, humanising):
+    """Every way a collected humanising debt could return, by id and by site.
+
+    A real predicate rather than three inline `assert … not in`, so the controls
+    below can push synthetic revivals through the function the assertion calls.
+
+    THE ID IS THE IDENTITY AND THE SITE IS THE FALLBACK, which is why the ledger
+    is asked about them in that order rather than both at once. The id alone
+    would miss the same debt re-seeded under a new name — a rename away from
+    invisible. Reporting both when both hold would say "under some id other than
+    this one" about an entry carrying exactly this one, so the site is only
+    reported when the id did not already account for it.
+    """
+    faults = []
+    for entry_id, site in sorted(paid.items()):
+        if entry_id in ledger_ids:
+            faults.append(f"`{entry_id}` is recorded in gates/ again. It was "
+                          f"paid, not deferred — re-seeding it needs the "
+                          f"reasoning that says why, not a ledger line")
+        elif site in ledger_sites:
+            faults.append(f"{site} is excused in gates/ again under a different "
+                          f"id — the same debt renamed is the same debt, and a "
+                          f"reader following `{entry_id}` would find nothing")
+        if site in humanising:
+            faults.append(f"{site} reaches the humaniser again. A value the "
+                          f"tenant authored renders as they declared it "
+                          f"(#279); UBB does not reword it")
+    return faults
+
 
 def recorded(programme, gate):
     """The sites the ledger records against a gate."""
@@ -575,6 +733,47 @@ def test_a_permanently_excepted_site_is_accounted_for_without_being_a_debt():
     assert disagreements({stripe}, set(), excused={stripe}) == []
     assert len(disagreements({stripe, "apps/ui/src/x.tsx::humanize"}, set(),
                              excused={stripe})) == 1
+
+
+# --- controls over a paid debt coming back (section 4) ----------------------
+
+PAID = {"g6-humanises-x": "apps/ui/src/x.tsx::humanize"}
+
+
+def test_negative_control_a_re_seeded_ledger_entry_is_flagged():
+    """The id returns. This is the half a set comparison of sites cannot see,
+    because a re-seeded entry and a restored import agree with each other."""
+    faults = revivals(PAID, {"g6-humanises-x"}, set(), set())
+    assert len(faults) == 1 and "paid, not deferred" in faults[0]
+
+
+def test_negative_control_the_same_site_re_seeded_under_a_new_id_is_flagged():
+    """The rename that an id-only check would miss. The debt is the site; the id
+    is how a reader finds it, and changing one does not retire the other."""
+    faults = revivals(PAID, {"g6-something-else"},
+                      {"apps/ui/src/x.tsx::humanize"}, set())
+    assert len(faults) == 1 and "under a different id" in faults[0]
+
+
+def test_negative_control_a_restored_humaniser_is_flagged():
+    """The console side. Reached through the same predicate as the two above, so
+    a change that reverted both would report both rather than the first."""
+    faults = revivals(PAID, set(), set(), {"apps/ui/src/x.tsx::humanize"})
+    assert len(faults) == 1 and "reaches the humaniser again" in faults[0]
+
+
+def test_negative_control_a_debt_restored_on_both_sides_at_once_is_flagged():
+    """The shape section 3 is structurally incapable of catching, stated as its
+    own control: the ledger and the console reverted together, agreeing
+    perfectly. Two faults, not one — each side is named."""
+    faults = revivals(PAID, {"g6-humanises-x"}, set(),
+                      {"apps/ui/src/x.tsx::humanize"})
+    assert len(faults) == 2
+
+
+def test_positive_control_a_paid_debt_absent_from_both_sides_produces_no_faults():
+    assert revivals(PAID, {"g6-unrelated"}, {"apps/ui/src/y.tsx::humanize"},
+                    {"apps/ui/src/y.tsx::humanize"}) == []
 
 
 # --- controls over reading the catalogue at all -----------------------------

@@ -20,9 +20,18 @@ function renderConsole() {
   );
 }
 
-async function sendEvent(fields: { billedCost?: string; metricKey?: string }) {
+async function sendEvent(fields: {
+  billedCost?: string;
+  metricKey?: string;
+  eventType?: string;
+}) {
   const customerInput = screen.getByPlaceholderText("…or paste a customer UUID");
   fireEvent.change(customerInput, { target: { value: CUSTOMER_UUID } });
+  if (fields.eventType !== undefined) {
+    fireEvent.change(screen.getByPlaceholderText("chat_completion"), {
+      target: { value: fields.eventType },
+    });
+  }
   if (fields.billedCost !== undefined) {
     fireEvent.change(screen.getByPlaceholderText("0.60"), {
       target: { value: fields.billedCost },
@@ -52,6 +61,25 @@ describe("TestEventConsole", () => {
     expect(screen.getByLabelText("Copy event id")).toBeInTheDocument();
     // No stop verdict on an affordable event.
     expect(screen.queryByText("Stop verdict")).not.toBeInTheDocument();
+  });
+
+  it("names the tenant's Event Type key exactly as they typed it", async () => {
+    // The teaching surface is where a manufactured name does the most damage:
+    // an integrator reads this card to learn what UBB recorded, and a key it
+    // title-cased is a key they cannot find again. #279 — a `tenant_defined`
+    // value renders as the tenant declared it.
+    renderConsole();
+    // Chosen so the retired humaniser is visible in the failure rather than
+    // merely absent from it: it lower-cased, stripped the underscore and
+    // capitalised the first letter, turning this into "Anthropic.messages
+    // create".
+    await sendEvent({ eventType: "anthropic.messages_CREATE", billedCost: "0.60" });
+
+    // `textContent` on the heading, not `getByText`: a substring matcher would
+    // pass on "Anthropic.messages CREATE (anthropic.messages_CREATE)", which is
+    // still English UBB wrote for somebody else's identifier.
+    const heading = await screen.findByText(/recorded$/);
+    expect(heading.textContent).toBe("anthropic.messages_CREATE recorded");
   });
 
   it("flags metrics without a cost card as uncosted", async () => {

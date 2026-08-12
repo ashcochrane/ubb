@@ -13,7 +13,7 @@
 // from the registry into `@/lib/vocabulary`, wording owned by the console, and
 // strict lookup with no fallback at all. Write new code against that.
 //
-// This file survives only because it is imported by forty-eight others, and #210
+// This file survives only because it is imported by forty-seven others, and #210
 // is explicit that slice 0 ends when the mechanism is active and regressions
 // are impossible — not when every importer has been rewritten. So:
 //
@@ -29,7 +29,11 @@
 // not changed. What changed is what an unfamiliar value renders as: a
 // deliberate generic form, never a title-cased guess at English.
 
-import { TENANT_PRODUCT_VALUES, type TenantProduct } from "@/lib/vocabulary";
+import {
+  COSTING_METHOD_VALUES,
+  TENANT_PRODUCT_VALUES,
+  type TenantProduct,
+} from "@/lib/vocabulary";
 
 /** "failed_permanent" → "Failed permanent", "TOP_UP" → "Top up".
  *
@@ -193,6 +197,17 @@ export const preCheckReasonLabel = legacyLabelMap({
 
 // ---------------------------------------------------------------------------
 // Metering / events
+
+// The registry's two, held BY REFERENCE (#279) — the same shape and the same
+// reason as `PRODUCTS` above: `domain-vocabulary/` names this file as the
+// console's consumer of `costing_method`, so re-homing the list is a registry
+// edit rather than a console one.
+//
+// How an Event Type's supplier cost is derived. The WORDS for both are already
+// in the catalogue under `costing_method.*`, so a surface that comes to render
+// one binds `labelMap(COSTING_METHOD_LABEL_KEYS)` in its own module — the
+// `@/lib/products` shape — and never a map here.
+export const COSTING_METHODS = COSTING_METHOD_VALUES;
 
 export const cardTypeLabel = legacyLabelMap({ cost: "Cost card", price: "Price card" });
 export const pricingModelLabel = legacyLabelMap({ per_unit: "Per unit", flat: "Flat" });

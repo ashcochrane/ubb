@@ -41,6 +41,14 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   editing `src/locales/en.json`, never by writing a map. **This reverses the old "never render a
   raw snake_case token" rule** — that rule was right when the alternative was humanising it; now
   the alternative is a placeholder that discards what the server sent. Branch on `kind` to style it.
+- **A value the TENANT authored** — an Event Type key, a metadata key — takes `tenantDefinedLabel`
+  from the same module. The registry declares such a concept `tenant_defined` and generates no label
+  keys for it (UBB must never ship a catalogue of its tenants' vocabulary), so every value resolves
+  `unfamiliar` and renders exactly as they declared it. ADR-0008 §4 settles this for a value UBB has
+  not *yet* met; #279 extends the same reasoning to one it was never going to meet. Not `{value}` —
+  the lookup is also what renders an empty key as an absence rather than as a blank name. It returns
+  text, so a surface wanting to mark the token visually calls `resolveLabel(NO_DECLARED_VALUES, …)`
+  and branches on `kind` as above.
 - **`src/lib/labels.ts` is the LEGACY adapter** — every value map in it is a migration debt recorded
   in `gates/migration-ledger.yaml` with an owner slice. Do not add a map to it, and do not import its
   `humanize` into a new file: both fail CI, because the ledger is the allowlist and it only shrinks.
