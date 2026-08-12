@@ -24,36 +24,36 @@ class TestWildcardResolution:
     def test_wildcard_rate_matches_any_provider(self):
         """The headline fix: one provider-agnostic rate, not one per provider."""
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", metric_name="input_tokens",
+        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
         prov, _, p = self._price(t, c, provider="anthropic")
         assert prov == 2_000 and p["cost_source"] == "rate_card"
 
     def test_specific_rate_beats_the_wildcard(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", metric_name="input_tokens",
+        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             metric_name="input_tokens",
+                             measurement_key="input_tokens",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="openai")[0] == 9_000
 
     def test_wildcard_still_applies_to_other_providers(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", metric_name="input_tokens",
+        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             metric_name="input_tokens",
+                             measurement_key="input_tokens",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="anthropic")[0] == 2_000
 
     def test_more_pinned_selectors_wins(self):
         t, c = self._tc()
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             metric_name="input_tokens",
+                             measurement_key="input_tokens",
                              rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             task_type="year_end_close", metric_name="input_tokens",
+                             task_type="year_end_close", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="openai",
                            task_type="year_end_close")[0] == 1_000
@@ -61,7 +61,7 @@ class TestWildcardResolution:
     def test_non_matching_pinned_selector_excludes_the_rate(self):
         t, c = self._tc()
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             dim1="eu-west-1", metric_name="input_tokens",
+                             dim1="eu-west-1", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         prov, _, p = self._price(t, c, provider="openai", dim1="us-east-1")
         assert prov == 0 and p["uncosted_metrics"] == ["input_tokens"]
@@ -69,7 +69,7 @@ class TestWildcardResolution:
     def test_task_type_can_price_a_kind_of_job(self):
         t, c = self._tc()
         rate_in_default_book(t, card_type="price", task_type="year_end_close",
-                             metric_name="input_tokens",
+                             measurement_key="input_tokens",
                              rate_per_unit_micros=7_000, unit_quantity=1_000_000)
         _, billed, p = self._price(t, c, task_type="year_end_close")
         assert billed == 7_000 and p["price_source"] == "rate_card"
@@ -77,8 +77,8 @@ class TestWildcardResolution:
     def test_provider_book_present_but_no_matching_rate_falls_back_to_wildcard_book(self):
         """Pins the `_resolve_card` third cascade tier specifically: a
         provider-specific default book EXISTING (with a rate for a different
-        metric) must not shadow the tenant's "" (provider-agnostic) default
-        book for a metric only the wildcard book prices. This is the branch
+        quantity) must not shadow the tenant's "" (provider-agnostic) default
+        book for a quantity only the wildcard book prices. This is the branch
         that changes pre-existing behaviour — before the fallback tier was
         added, `_default_book` picked the "openai" book (found), then found
         no matching rate for "metric_y" in it, and never looked at the ""
@@ -87,9 +87,9 @@ class TestWildcardResolution:
         present, no matching rate" -> tier 3."""
         t, c = self._tc()
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             metric_name="metric_x",
+                             measurement_key="metric_x",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", metric_name="metric_y",
+        rate_in_default_book(t, card_type="cost", measurement_key="metric_y",
                              rate_per_unit_micros=3_000, unit_quantity=1_000_000)
         base = {"provider": "openai", "event_type": "", "task_type": "",
                 "subtask_type": "", "dim1": "", "dim2": "", "dim3": "",

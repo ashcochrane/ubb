@@ -228,3 +228,23 @@ GET /api/v1/metering/usage/{event_id} removed the optional property `usage_metri
 POST /api/v1/metering/usage removed the optional property `usage_metrics` from the response with the `200` status
 POST /api/v1/metering/usage removed the request property `usage_metrics`
 POST /api/v1/metering/usage/batch removed the request property `events/items/usage_metrics`
+
+# 2026-08-12 THE RATE'S QUANTITY NAME TAKES THE CANONICAL MEASUREMENT NAME
+# (#275, slice 2). Decision reference: ADR-0007 §1 and §3, and the slice spec's
+# §F3. The two lines below were EMITTED by the gate itself
+# (`python openapi/contract_gate.py --baseline origin/main --emit`, oasdiff
+# v1.23.0) and pasted unedited, per ADR-0007 §4.
+#
+# THE ARGUMENT LIVES IN THE SIBLING FILE, with this rename's four ERR-level
+# findings — read it there rather than twice. These two are the same two request
+# drops seen at WARN level; their ERR-level partners are the `added the new
+# required request property` lines that make this the first slice-2 break to
+# REFUSE a stale caller rather than silently ignore it.
+#
+# WHY A DROP HERE IS ONLY A WARNING WHILE ITS PARTNER IS AN ERROR: oasdiff rates
+# removing a request property below adding a required one, and it is right to —
+# on its own, dropping a property a server no longer reads breaks nobody. What
+# breaks the stale caller is the required property that replaced it. The pair is
+# the break; neither line is.
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/metric_name`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `metric_name`

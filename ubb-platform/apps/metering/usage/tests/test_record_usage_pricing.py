@@ -22,7 +22,7 @@ class TestRecordUsagePricing:
     def test_priced_from_cost_card_when_no_caller_cost(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+            measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", measurements={"input_tokens": 1000})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
@@ -46,7 +46,7 @@ class TestRecordUsagePricing:
         """
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            metric_name="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+            measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         http = Client()
         _, raw_key = TenantApiKey.create_key(t, label="test")
         resp = http.post(
@@ -73,7 +73,7 @@ class TestStrictCoverage:
     """Endpoint-level tests for strict cost-card coverage.
 
     F2.4's SECOND REFUSAL RETIRED WITH ITS INPUT (#272). It rejected an event
-    that declared a nameless magnitude with no metric name to resolve a rate
+    that declared a nameless magnitude with no quantity name to resolve a rate
     card against; that magnitude was the posting's inline unit total, and a
     caller can no longer state it at all. The refusal is therefore unexpressible
     rather than relaxed, and the four cases that drove it are gone.
@@ -160,10 +160,10 @@ class TestStrictCoverage:
         """
         return Rate.objects.create(
             tenant=tenant, card_type="cost", provider="", event_type="",
-            metric_name="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+            measurement_key="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
 
     def test_strict_uncovered_metric_still_422_via_existing_gate(self):
-        """Regression: strict + measurements with uncovered metric → 422 (existing gate)."""
+        """Regression: strict + measurements with an uncovered quantity → 422 (existing gate)."""
         t, c, http, auth = self._setup(strict=True)
         self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
@@ -176,12 +176,12 @@ class TestStrictCoverage:
     def test_strict_422_fires_before_posting_creation_idempotency_retry_succeeds(self):
         """F2.4 idempotency: a strict 422 fires before the Posting row exists.
         A corrected retry with the same idempotency_key must succeed (no row to
-        replay). Driven off the refusal that survives #272 — an uncosted metric
+        replay). Driven off the refusal that survives #272 — an uncosted quantity
         — because the one it was written against no longer has an input.
         """
         t, c, http, auth = self._setup(strict=True)
         self._card_for_some_other_measurement(t)
-        # First attempt: a metric with no cost card → 422, no row created.
+        # First attempt: a quantity with no cost card → 422, no row created.
         resp1 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",
             "measurements": {"uncovered_metric": 5},
@@ -193,7 +193,7 @@ class TestStrictCoverage:
 
         # Corrected retry with SAME idempotency_key: state the cost outright
         # instead of naming a quantity UBB has no card for. (Supplying the cost
-        # AND keeping the uncosted metric would still be refused — the caller-
+        # AND keeping the uncosted quantity would still be refused — the caller-
         # cost branch runs the same coverage check, deliberately.)
         resp2 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",

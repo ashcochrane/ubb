@@ -7,7 +7,7 @@ from apps.metering.pricing.services.card_cache import CardCache
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
     "task_type", "subtask_type", "dim1", "dim2", "dim3", "dim4", "dim5", "dim6",
-    "metric_name", "pricing_model", "rate_per_unit_micros",
+    "measurement_key", "pricing_model", "rate_per_unit_micros",
     "unit_quantity", "fixed_micros", "currency",
     "lineage_id", "rate_card_id",
 )
@@ -17,7 +17,7 @@ class BookService:
     @staticmethod
     def publish(book, changes, as_of=None):
         """Atomically reprice a set of the book's rates. Each change must match
-        exactly one ACTIVE rate in the book by (metric_name, plus the ten
+        exactly one ACTIVE rate in the book by (measurement_key, plus the ten
         selector columns — provider, event_type, task_type, subtask_type,
         dim1..dim6). Supersedes it (valid_to=T, book_version_to=old
         version) and inserts a new active rate (same lineage_id, valid_from>=T,
@@ -34,12 +34,12 @@ class BookService:
             for ch in changes:
                 old = Rate.objects.select_for_update().filter(
                     rate_card=locked, valid_to__isnull=True,
-                    metric_name=ch["metric_name"],
+                    measurement_key=ch["measurement_key"],
                     **{s: ch.get(s, "") for s in Rate.SELECTORS},
                 ).first()
                 if old is None:
                     raise ValueError(
-                        f"publish: no active rate for {ch['metric_name']!r} in book {locked.key}")
+                        f"publish: no active rate for {ch['measurement_key']!r} in book {locked.key}")
                 data = {f: getattr(old, f) for f in _RATE_COPY_FIELDS}
                 for k in ("pricing_model", "rate_per_unit_micros", "unit_quantity",
                           "fixed_micros"):

@@ -37,7 +37,7 @@ means 2 micros per token ($0.000002/token).
 ```python
 card = client.create_rate_card(
     card_type="cost",
-    metric_name="input_tokens",
+    measurement_key="input_tokens",
     pricing_model="per_unit",
     rate_per_unit_micros=2,
     unit_quantity=1,
@@ -348,7 +348,7 @@ MeteringClient(api_key: str, base_url: str = "http://localhost:8001", timeout: f
     max_retries: int = 3)
 
 # create_rate_card  → RateCard
-client.create_rate_card(*, card_type, metric_name, provider="", event_type="",
+client.create_rate_card(*, card_type, measurement_key, provider="", event_type="",
     dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
     unit_quantity=1_000_000, fixed_micros=0, currency="usd",
     product_id="", customer_id=None)

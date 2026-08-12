@@ -38,7 +38,7 @@ def price_card_fixture(tenant):
         key="openai", is_default=True, version=1)
     rate = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", pricing_model="per_unit",
+        measurement_key="tokens", currency="usd", pricing_model="per_unit",
         rate_per_unit_micros=10_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     return book, rate
@@ -99,12 +99,12 @@ def test_dimensioned_card_is_cached_per_selector_set(tenant, customer):
         key="dimensioned", is_default=True, version=1)
     rate_gpt4 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dim1="gpt-4",
+        measurement_key="tokens", currency="usd", dim1="gpt-4",
         rate_per_unit_micros=20_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     rate_gpt35 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        metric_name="tokens", currency="usd", dim1="gpt-3.5",
+        measurement_key="tokens", currency="usd", dim1="gpt-3.5",
         rate_per_unit_micros=5_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
 
@@ -174,7 +174,7 @@ def test_l1_cap_clears_instead_of_growing_unbounded(tenant, customer, price_card
     while len(card_cache_module._l1) < card_cache_module._L1_MAX:
         card_cache_module._l1[("pad", len(card_cache_module._l1))] = (
             0, time.monotonic() + 30, None)
-    # A resolve miss (different metric) inserts one entry -> triggers the clear.
+    # A resolve miss (different quantity) inserts one entry -> triggers the clear.
     CardCache.resolve(tenant, customer, "price", selectors, "other_metric", "usd")
     assert len(card_cache_module._l1) == 1
 
@@ -184,7 +184,7 @@ def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_c
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="openai", is_default=True, version=1)
     Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai", metric_name="tokens",
+        tenant=tenant, card_type="price", provider="openai", measurement_key="tokens",
         currency="usd", rate_per_unit_micros=10_000_000, rate_card=book,
         book_version_from=1)
     r = redis.from_url(settings.REDIS_URL)
@@ -193,7 +193,7 @@ def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_c
 
     with django_capture_on_commit_callbacks(execute=True):
         BookService.publish(book, changes=[{
-            "metric_name": "tokens", "provider": "openai", "event_type": "",
+            "measurement_key": "tokens", "provider": "openai", "event_type": "",
             "rate_per_unit_micros": 20_000_000,
         }])
 

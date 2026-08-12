@@ -3,7 +3,7 @@
 A REAL live-server test that drives the `ubb` Python SDK over HTTP against a
 running Django server. It proves a tenant can:
   - configure a cost rate-card (via the SDK, hitting the real URL route),
-  - record a multi-metric usage event WITHOUT supplying a provider cost,
+  - record a usage event of many quantities WITHOUT supplying a provider cost,
   - have the server compute COGS from the matching cost card, and
   - read per-customer / per-product provider cost (COGS) back through the SDK.
 
@@ -72,7 +72,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     # 2 micros per input token: per_unit, unit_quantity=1 token == 1 unit.
     # Rate.compute(units) == (units * rate + unit_quantity // 2) // unit_quantity + fixed
     #                         == (1000 * 2 + 0) // 1 + 0 == 2000.
-    rate_in_default_book(tenant, card_type="cost", metric_name="input_tokens",
+    rate_in_default_book(tenant, card_type="cost", measurement_key="input_tokens",
                             pricing_model="per_unit", rate_per_unit_micros=2, unit_quantity=1,
                             currency="usd")
 
@@ -86,10 +86,10 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "extra", "provider_key": ""})["id"]
         rate = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "output_tokens", "pricing_model": "per_unit",
+            "measurement_key": "output_tokens", "pricing_model": "per_unit",
             "rate_per_unit_micros": 5, "unit_quantity": 1})
         assert rate["card_type"] == "cost"
-        assert rate["metric_name"] == "output_tokens"
+        assert rate["measurement_key"] == "output_tokens"
         assert rate["rate_card_id"] == book_id
 
         # (b) record usage with measurements and NO caller cost -> engine computes COGS.

@@ -424,13 +424,13 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_create_rate_card_url(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "id": "rc_1", "card_type": "cost", "metric_name": "input_tokens",
+            "id": "rc_1", "card_type": "cost", "measurement_key": "input_tokens",
             "provider": "", "event_type": "", "dimensions": {},
             "pricing_model": "per_unit", "rate_per_unit_micros": 0,
             "unit_quantity": 1_000_000, "fixed_micros": 0, "currency": "usd",
             "product_id": "", "customer_id": None,
         })
-        self.client.create_rate_card(card_type="cost", metric_name="input_tokens")
+        self.client.create_rate_card(card_type="cost", measurement_key="input_tokens")
         call_args = mock_post.call_args
         self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
 

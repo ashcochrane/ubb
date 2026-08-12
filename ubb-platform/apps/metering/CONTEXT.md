@@ -117,7 +117,7 @@ markup configured → billed equals provider. (`apps/metering/pricing/models.py:
 ## Pricing — the RateCard engine
 
 **Rate**:
-A single priced *line* — one metric's rate for a combination of the ten declared selector columns
+A single priced *line* — one measurement key's rate for a combination of the ten declared selector columns
 — living in a RateCard, versioned via `lineage_id`. An empty selector is a wildcard; among rates
 that match within one book, the most-pinned (highest `specificity`) wins. (ADR-0005;
 `apps/metering/pricing/models.py:Rate`)

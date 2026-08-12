@@ -77,7 +77,17 @@ class Rate(BaseModel):
     dim4 = models.CharField(max_length=100, blank=True, default="")
     dim5 = models.CharField(max_length=100, blank=True, default="")
     dim6 = models.CharField(max_length=100, blank=True, default="")
-    metric_name = models.CharField(max_length=100)
+    # WHICH DECLARED QUANTITY THIS RATE PRICES, BY NAME — and free text on
+    # purpose, not by omission. Slice 2 pays the word; slice 3 replaces this
+    # with a reference to the declared record the name is a name *of*, at which
+    # point a rate naming a quantity nobody declared stops being writable.
+    # Until then the two sides agree by spelling alone, exactly as they did
+    # under the retired name. ADR-0007 §3 is what sanctions shipping the final
+    # name over a half-built implementation, and
+    # `tests/test_the_rates_quantity_name_takes_the_canonical_name.py` is where
+    # the boundary is held to the tree so the free text is not read as an
+    # oversight.
+    measurement_key = models.CharField(max_length=100)
     pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
     rate_per_unit_micros = models.BigIntegerField(default=0)
     unit_quantity = models.BigIntegerField(default=1_000_000)
@@ -94,12 +104,12 @@ class Rate(BaseModel):
     class Meta:
         db_table = "ubb_rate_card"
         indexes = [
-            models.Index(fields=["tenant", "card_type", "provider", "event_type", "metric_name"],
+            models.Index(fields=["tenant", "card_type", "provider", "event_type", "measurement_key"],
                          name="idx_ratecard_lookup"),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["rate_card", "metric_name", "currency", "provider",
+                fields=["rate_card", "measurement_key", "currency", "provider",
                         "event_type", "task_type", "subtask_type",
                         "dim1", "dim2", "dim3", "dim4", "dim5", "dim6"],
                 condition=models.Q(valid_to__isnull=True),

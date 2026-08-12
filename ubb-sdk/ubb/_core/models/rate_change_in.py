@@ -22,13 +22,13 @@ T = TypeVar("T", bound="RateChangeIn")
 
 @_attrs_define
 class RateChangeIn:
-    """ One reprice in a publish. Match keys (metric_name plus the ten
+    """ One reprice in a publish. Match keys (measurement_key plus the ten
     selector columns — provider/event_type/task_type/subtask_type/dim1..
     dim6) locate the active rate; the remaining (nullable) fields, when
     present, override it in the new version.
 
         Attributes:
-            metric_name (str):
+            measurement_key (str):
             dim1 (str | Unset):  Default: ''.
             dim2 (str | Unset):  Default: ''.
             dim3 (str | Unset):  Default: ''.
@@ -45,7 +45,7 @@ class RateChangeIn:
             unit_quantity (int | None | Unset):
      """
 
-    metric_name: str
+    measurement_key: str
     dim1: str | Unset = ''
     dim2: str | Unset = ''
     dim3: str | Unset = ''
@@ -67,7 +67,7 @@ class RateChangeIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        metric_name = self.metric_name
+        measurement_key = self.measurement_key
 
         dim1 = self.dim1
 
@@ -117,7 +117,7 @@ class RateChangeIn:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "metric_name": metric_name,
+            "measurement_key": measurement_key,
         })
         if dim1 is not UNSET:
             field_dict["dim1"] = dim1
@@ -155,7 +155,7 @@ class RateChangeIn:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        metric_name = d.pop("metric_name")
+        measurement_key = d.pop("measurement_key")
 
         dim1 = d.pop("dim1", UNSET)
 
@@ -218,7 +218,7 @@ class RateChangeIn:
 
 
         rate_change_in = cls(
-            metric_name=metric_name,
+            measurement_key=measurement_key,
             dim1=dim1,
             dim2=dim2,
             dim3=dim3,

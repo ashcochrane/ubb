@@ -26,7 +26,7 @@ class RecordUsageProvenanceTest(TestCase):
             card_type="cost",
             provider="openai",
             event_type="chat",
-            metric_name="input_tokens",
+            measurement_key="input_tokens",
             rate_per_unit_micros=5_000,
             unit_quantity=1_000_000,
         )

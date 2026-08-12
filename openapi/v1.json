@@ -4283,7 +4283,7 @@
         "type": "object"
       },
       "RateChangeIn": {
-        "description": "One reprice in a publish. Match keys (metric_name plus the ten\nselector columns \u2014 provider/event_type/task_type/subtask_type/dim1..\ndim6) locate the active rate; the remaining (nullable) fields, when\npresent, override it in the new version.",
+        "description": "One reprice in a publish. Match keys (measurement_key plus the ten\nselector columns \u2014 provider/event_type/task_type/subtask_type/dim1..\ndim6) locate the active rate; the remaining (nullable) fields, when\npresent, override it in the new version.",
         "properties": {
           "dim1": {
             "default": "",
@@ -4332,8 +4332,8 @@
             ],
             "title": "Fixed Micros"
           },
-          "metric_name": {
-            "title": "Metric Name",
+          "measurement_key": {
+            "title": "Measurement Key",
             "type": "string"
           },
           "pricing_model": {
@@ -4388,7 +4388,7 @@
           }
         },
         "required": [
-          "metric_name"
+          "measurement_key"
         ],
         "title": "RateChangeIn",
         "type": "object"
@@ -4444,10 +4444,10 @@
             "title": "Fixed Micros",
             "type": "integer"
           },
-          "metric_name": {
+          "measurement_key": {
             "maxLength": 100,
             "minLength": 1,
-            "title": "Metric Name",
+            "title": "Measurement Key",
             "type": "string"
           },
           "pricing_model": {
@@ -4487,7 +4487,7 @@
           }
         },
         "required": [
-          "metric_name"
+          "measurement_key"
         ],
         "title": "RateIn",
         "type": "object"
@@ -4542,8 +4542,8 @@
             "title": "Lineage Id",
             "type": "string"
           },
-          "metric_name": {
-            "title": "Metric Name",
+          "measurement_key": {
+            "title": "Measurement Key",
             "type": "string"
           },
           "pricing_model": {
@@ -4595,7 +4595,7 @@
           "rate_card_id",
           "lineage_id",
           "card_type",
-          "metric_name",
+          "measurement_key",
           "provider",
           "event_type",
           "task_type",
@@ -12372,7 +12372,7 @@
     },
     "/api/v1/metering/usage/{event_id}": {
       "get": {
-        "description": "Fetch one usage event's full pricing receipt (audit / dispute lookup).\n\nReturns every priced field plus pricing_provenance \u2014 the recorded\n\"why this amount\" (engine version, price source, per-metric card, and\ntier-by-tier breakdown). The usage list omits provenance to stay lean;\nthis is where it is read back. Tenant-scoped; 404 for an unknown or\nforeign event id.",
+        "description": "Fetch one usage event's full pricing receipt (audit / dispute lookup).\n\nReturns every priced field plus pricing_provenance \u2014 the recorded\n\"why this amount\" (engine version, price source, the card that priced each\nnamed quantity, and tier-by-tier breakdown). The usage list omits\nprovenance to stay lean;\nthis is where it is read back. Tenant-scoped; 404 for an unknown or\nforeign event id.",
         "operationId": "api_v1_metering_endpoints_get_usage_event",
         "parameters": [
           {

@@ -36,7 +36,7 @@ export function PublishRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <span className="font-mono text-[12px] font-medium text-text-primary">
-            {rate.metric_name}
+            {rate.measurement_key}
           </span>
           <span className="ml-2 text-[11px] text-text-muted">
             {[rate.provider, rate.event_type].filter(Boolean).join(" · ")}
@@ -53,7 +53,7 @@ export function PublishRow({
         >
           <SelectTrigger
             className="w-full"
-            aria-label={`Pricing model for ${rate.metric_name}`}
+            aria-label={`Pricing model for ${rate.measurement_key}`}
           >
             {pricingModelLabel(edit.pricing_model)}
           </SelectTrigger>
@@ -67,7 +67,7 @@ export function PublishRow({
           value={edit.rate}
           disabled={edit.pricing_model === "flat"}
           onChange={(event) => onEdit({ ...edit, rate: event.target.value })}
-          aria-label={`Rate for ${rate.metric_name} (${currency.toUpperCase()})`}
+          aria-label={`Rate for ${rate.measurement_key} (${currency.toUpperCase()})`}
         />
         <div className="flex flex-col gap-1">
           <Select
@@ -78,7 +78,7 @@ export function PublishRow({
           >
             <SelectTrigger
               className="w-full"
-              aria-label={`Unit quantity for ${rate.metric_name}`}
+              aria-label={`Unit quantity for ${rate.measurement_key}`}
               disabled={edit.pricing_model === "flat"}
             >
               {UNIT_QUANTITY_CHOICES.find((c) => c.value === edit.unit_choice)?.label ??
@@ -98,7 +98,7 @@ export function PublishRow({
               placeholder="Units"
               value={edit.custom_unit}
               onChange={(event) => onEdit({ ...edit, custom_unit: event.target.value })}
-              aria-label={`Custom unit quantity for ${rate.metric_name}`}
+              aria-label={`Custom unit quantity for ${rate.measurement_key}`}
             />
           )}
         </div>
@@ -106,7 +106,7 @@ export function PublishRow({
           inputMode="decimal"
           value={edit.fixed}
           onChange={(event) => onEdit({ ...edit, fixed: event.target.value })}
-          aria-label={`Fixed amount for ${rate.metric_name} (${currency.toUpperCase()})`}
+          aria-label={`Fixed amount for ${rate.measurement_key} (${currency.toUpperCase()})`}
         />
       </div>
       {changed && next && (

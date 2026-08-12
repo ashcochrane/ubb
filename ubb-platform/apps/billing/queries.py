@@ -103,7 +103,7 @@ def read_live_stop(owner_id, tenant) -> dict:
 
 
 def get_negative_balance_stats(tenant_id=None):
-    """Aged-negatives ops metric (#41, pin 10) — a cross-product read.
+    """The aged-negatives operations figure (#41, pin 10) — a cross-product read.
     Counts wallets currently below zero and
     the age of the oldest, from Wallet.negative_since (the ≥0 → <0 transition
     stamp; soft-deleted wallets excluded by the default manager). Visibility

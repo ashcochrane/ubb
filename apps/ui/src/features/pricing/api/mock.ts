@@ -152,7 +152,7 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
     (rate) =>
       rate.rate_card_id === bookId &&
       rate.valid_to == null &&
-      rate.metric_name === body.metric_name &&
+      rate.measurement_key === body.measurement_key &&
       rate.provider === provider &&
       rate.event_type === (body.event_type ?? "") &&
       sameSelectors(rate, body),
@@ -171,7 +171,7 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
     lineage_id: nextId("lineage"),
     card_type: book.card_type,
     currency: book.currency,
-    metric_name: body.metric_name,
+    measurement_key: body.measurement_key,
     provider,
     event_type: body.event_type ?? "",
     task_type: body.task_type ?? "",
@@ -219,7 +219,7 @@ export async function publishBook(bookId: string, body: PublishIn): Promise<Book
       (rate) =>
         rate.rate_card_id === bookId &&
         rate.valid_to == null &&
-        rate.metric_name === change.metric_name &&
+        rate.measurement_key === change.measurement_key &&
         rate.provider === (change.provider ?? "") &&
         rate.event_type === (change.event_type ?? "") &&
         sameSelectors(rate, change),
@@ -229,7 +229,7 @@ export async function publishBook(bookId: string, body: PublishIn): Promise<Book
         422,
         "validation_error",
         "Validation error",
-        `No active rate matches "${change.metric_name}" — nothing was changed.`,
+        `No active rate matches "${change.measurement_key}" — nothing was changed.`,
       );
     }
     superseded.push({

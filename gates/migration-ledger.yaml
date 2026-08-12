@@ -580,23 +580,35 @@ entries:
     gate: G7
     site: backend::metric
     expected: measurement_key
-    found: 18 files
+    found: 1 files
     owner_slice: slice_2
     reason: >-
       The industry uses this word for the metered ENTITY rather than for
       the quantity inside it, so keeping it would have guaranteed mis-
       translation at every integration boundary (#145 §10). Slice 2
       declares measurements and the word goes with the model.
+      #275 cleared seventeen of the eighteen — the pricing spine and its
+      receipt, the resolved-rate cache, both read contracts, the published
+      endpoint description and the pricing tests. The one left is the
+      pricing changelog, a LIVING document that ticket 26 rewrites whole;
+      splitting it across two commits would leave a half-rewritten record
+      of what the API used to be.
 
   - id: g7-backend-metric_name
     gate: G7
     site: backend::metric_name
     expected: measurement_key
-    found: 27 files
+    found: 1 files
     owner_slice: slice_2
     reason: >-
       The declared measurement's key. Slice 2's `value_type` / `unit` /
       `source_path` declaration is where the field is rebuilt (#145).
+      #275 renamed the rate's column to it by `RenameField` and cleared
+      every backend reader. The remaining file is the pricing changelog —
+      ticket 26's, for the reason recorded on `g7-backend-metric` above.
+      The name is FINAL and the implementation is not: it is still free
+      text, and slice 3 replaces it with a reference to the declared
+      record (ADR-0007 §3, spec §F3).
 
   - id: g7-backend-pre_check
     gate: G7
@@ -990,23 +1002,19 @@ entries:
     gate: G7
     site: console::metric
     expected: measurement_key
-    found: 17 files
+    found: 13 files
     owner_slice: slice_2
     reason: >-
       The industry uses this word for the metered ENTITY rather than for
       the quantity inside it, so keeping it would have guaranteed mis-
       translation at every integration boundary (#145 §10). Slice 2
       declares measurements and the word goes with the model.
-
-  - id: g7-console-metric_name
-    gate: G7
-    site: console::metric_name
-    expected: measurement_key
-    found: 9 files
-    owner_slice: slice_2
-    reason: >-
-      The declared measurement's key. Slice 2's `value_type` / `unit` /
-      `source_path` declaration is where the field is rebuilt (#145).
+      #275 cleared four: the generated schema mirror, and the three
+      pricing files whose prose names the very property it renamed. The
+      thirteen left are the developers and events features, the books
+      table's empty state, two design exports, a flow rationale, an
+      architecture note and two mockups — none of them forced by the
+      rename, all of them ticket 23's.
 
   - id: g7-console-price_card
     gate: G7
@@ -1543,28 +1551,6 @@ entries:
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
 
-  - id: g7-openapi-metric
-    gate: G7
-    site: openapi::metric
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The industry uses this word for the metered ENTITY rather than for
-      the quantity inside it, so keeping it would have guaranteed mis-
-      translation at every integration boundary (#145 §10). Slice 2
-      declares measurements and the word goes with the model.
-
-  - id: g7-openapi-metric_name
-    gate: G7
-    site: openapi::metric_name
-    expected: measurement_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      The declared measurement's key. Slice 2's `value_type` / `unit` /
-      `source_path` declaration is where the field is rebuilt (#145).
-
   - id: g7-openapi-pricing_model
     gate: G7
     site: openapi::pricing_model
@@ -1914,23 +1900,18 @@ entries:
     gate: G7
     site: sdk::metric
     expected: measurement_key
-    found: 2 files
+    found: 1 files
     owner_slice: slice_2
     reason: >-
       The industry uses this word for the metered ENTITY rather than for
       the quantity inside it, so keeping it would have guaranteed mis-
       translation at every integration boundary (#145 §10). Slice 2
       declares measurements and the word goes with the model.
-
-  - id: g7-sdk-metric_name
-    gate: G7
-    site: sdk::metric_name
-    expected: measurement_key
-    found: 9 files
-    owner_slice: slice_2
-    reason: >-
-      The declared measurement's key. Slice 2's `value_type` / `unit` /
-      `source_path` declaration is where the field is rebuilt (#145).
+      #275 cleared the generated half: the word reached the SDK's core
+      only through an endpoint description it copies, and rewording that
+      description regenerated it away. What is left is the README's own
+      prose about uncosted quantities, which nothing generates and which
+      ticket 25 takes.
 
   - id: g7-sdk-pre_check
     gate: G7

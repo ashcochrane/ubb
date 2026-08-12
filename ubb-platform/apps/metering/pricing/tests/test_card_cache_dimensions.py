@@ -23,7 +23,7 @@ class TestCardCacheDimensions:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", dim1="eu",
-                             metric_name="input_tokens", rate_per_unit_micros=1_000,
+                             measurement_key="input_tokens", rate_per_unit_micros=1_000,
                              unit_quantity=1_000_000)
         card_cache_module._l1.clear()
         CardCache.begin_request(t.id)

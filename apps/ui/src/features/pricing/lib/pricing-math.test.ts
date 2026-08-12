@@ -98,7 +98,7 @@ describe("form schemas", () => {
 
   it("requires a positive whole number for custom unit quantities", () => {
     const base = {
-      metric_name: "gpt4o_input_tokens",
+      measurement_key: "gpt4o_input_tokens",
       provider: "openai",
       event_type: "",
       task_type: "",
@@ -113,9 +113,9 @@ describe("form schemas", () => {
     expect(resolveUnitQuantity({ unit_choice: "1000000", custom_unit: "" })).toBe(1_000_000);
   });
 
-  it("requires a metric name", () => {
+  it("requires a measurement key", () => {
     const result = rateFormSchema.safeParse({
-      metric_name: "",
+      measurement_key: "",
       provider: "",
       event_type: "",
       task_type: "",

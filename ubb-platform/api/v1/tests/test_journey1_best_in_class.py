@@ -11,7 +11,7 @@ end to end -- with NO raw SQL and NO client-side joins -- using only the SDK:
     have every breakdown reconcile to the SAME grand-total provider cost,
   - read a per-day time-series that reconciles to the dimensional breakdown,
   - walk a rate-card's version history and query it point-in-time via ``as_of``,
-  - and prove the opt-in strict mode rejects an uncosted metric (no silent $0).
+  - and prove the opt-in strict mode rejects an uncosted quantity (no silent $0).
 
 Why live-server (not mocked httpx): mocked unit tests let real wire-level
 mismatches ship undetected (a 404 on a renamed route, a response body the SDK
@@ -123,7 +123,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         ]})
 
         # ---- 2. create a default cost BOOK, then add TWO dimensional rates for
-        # metric "tokens" that differ ONLY by the declared "service" dimension
+        # quantity "tokens" that differ ONLY by the declared "service" dimension
         # (dim2). The pricing engine matches a rate's selector columns against
         # the event's OWN columns (design D3: "" wildcards, a pinned value must
         # match exactly). Every rate lives under a book -> book-scoped
@@ -132,10 +132,10 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             "card_type": "cost", "key": "cogs", "provider_key": "",
             "is_default": True})["id"]
         alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dim2": "alpha",
+            "measurement_key": "tokens", "dim2": "alpha",
             "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
         beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "metric_name": "tokens", "dim2": "beta",
+            "measurement_key": "tokens", "dim2": "beta",
             "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
         assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
@@ -263,7 +263,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # publish (supersedes v1, opens v2, bumps the book version) — the
         # book-scoped reprice path.
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"metric_name": "tokens", "dim2": "alpha",
+            "changes": [{"measurement_key": "tokens", "dim2": "alpha",
                          "rate_per_unit_micros": 99}]})
         assert published["version"] == 2
 
@@ -293,7 +293,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         now_active = _alpha_rows()
         assert len(now_active) == 1 and now_active[0]["rate_per_unit_micros"] == 99
 
-        # ---- 7. opt-in strict mode: an uncosted metric is REJECTED (no silent $0) ----
+        # ---- 7. opt-in strict mode: an uncosted quantity is REJECTED (no silent $0) ----
         tenant.require_cost_card_coverage = True
         tenant.save()
         with pytest.raises(UBBAPIError) as exc:
