@@ -13,12 +13,14 @@ forbidden-term sweep's claim, not a pin's. The contract surface's ledger entry
 for that word reaching a recorded extent of zero, and being deleted for it, IS
 that proof; it is checked by `python -m tools.forbidden_terms` and by
 `tests/contracts`, and a second copy here could only ever raise the question of
-which copy was right. The same argument keeps this file from naming a retired
-term at all — including inside a ledger entry's id, where the hyphens leave the
-word a whole token the sweep matches. The sweep counts FILES per term, so a new
-file spelling one would push another slice's recorded extent wider, and a debt
-is a finite migration plan rather than a licence for the word to reach further
-while it stands.
+which copy was right. The same argument keeps this file from spelling a retired
+term anywhere the sweep would match one — including inside a ledger entry's id,
+where the hyphens leave the word a whole token. A retired word inside a longer
+identifier is invisible to that matcher and so appears here where naming a file
+requires it, which is the matcher's rule and not a loophole. The sweep counts
+FILES per term, so a new file spelling one would push another slice's recorded
+extent wider, and a debt is a finite migration plan rather than a licence for
+the word to reach further while it stands.
 
 *That the old paths were removed rather than merely joined by new ones* is the
 cumulative breaking gate's claim. Removing a published path and a published
@@ -29,9 +31,12 @@ unreviewed one.
 *That the routes still work* is proved where it always was — beside the request
 shapes, in `api/v1/tests/test_dimension_registry.py` for the registry pair and
 its values, and in `apps/subscriptions/tests/test_margin_endpoints.py` for the
-breakdown. Both files already carry the request property those routes take,
-which is a plural this slice does not own, so the round trips stay there rather
-than widening that extent into a new file.
+breakdown. The registry round trip has to stay in that first file: driving it
+means spelling the declaration request's own property, a plural this slice does
+not own, and a new file spelling it would push that recorded extent wider. The
+breakdown round trip stays in the second for the ordinary reason — it is where
+that endpoint's tests live — and not for the vocabulary reason: after this
+commit that file carries no retired word at all.
 
 What is left is the claim nothing else makes: the family's published IDENTITY —
 method, path and operation identifier — is exactly these four, and no fifth
@@ -114,10 +119,10 @@ class TheRouteFamilyIsPublishedUnderTheCanonicalNounTest(TestCase):
         in silence. So name the schema this ticket reshaped and prove it
         carries the property that replaced the retired one.
 
-        The property is the ledger's own `expected` for this site. A breakdown
-        row holds a VALUE a tenant reported — a model name, a region — not the
-        axis it was reported on, and the axis is already named by the request's
-        `group_by`. So the value word is what the row's property takes.
+        The property is the ledger's own `expected` for this site. Why a row
+        names the value and not the axis is argued once, on the schema itself
+        in `apps/subscriptions/api/margin_schemas.py`, rather than repeated
+        wherever the name shows up.
         """
         row = self.document["components"]["schemas"]["GroupingFieldMarginRow"]
         self.assertIn("grouping_field_value", row["properties"])

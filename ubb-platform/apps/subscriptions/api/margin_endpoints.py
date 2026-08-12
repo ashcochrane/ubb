@@ -86,8 +86,8 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
                    response={200: MarginByGroupingFieldOut, 422: ProblemOut})
 @role_floor(READ)
 def margin_by_grouping_field(request, group_by: str = "provider",
-                            tag_key: str = None,
-                            start_date: date = None, end_date: date = None):
+                             tag_key: str = None,
+                             start_date: date = None, end_date: date = None):
     """Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could

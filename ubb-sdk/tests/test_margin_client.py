@@ -42,9 +42,20 @@ class MarginClientTest(unittest.TestCase):
         # key in `additional_properties` rather than refusing it: without this
         # line the mock could spell the value property any way it liked, the
         # attribute would be UNSET, and every other assertion here would still
-        # pass. That is the failure mode this SDK's own gate exists for, one
-        # layer in — a test whose mock agrees with the mistake.
+        # pass — a test whose mock agrees with the mistake.
         self.assertEqual(rows[0].grouping_field_value, "openai")
+        # DEFECT, PRE-DATING #278 AND LEFT FOR #282, WHICH OWNS THIS METHOD.
+        # The line below asserts that the client sends `provider=1`, and the
+        # route does not accept it: the breakdown publishes four query
+        # parameters — the axis, the open-bag key, and the two date bounds —
+        # and the boolean pseudo-flags were deleted long enough ago that #278
+        # found their accepted-break entries INERT. Django Ninja ignores an
+        # unknown query parameter, so the call returns 200 grouped by the
+        # axis parameter's default, which is "provider" — and that is why
+        # `provider=True` has always looked correct. `product=True` has not
+        # been: it also returns provider-grouped rows, silently.
+        # The assertion stays until the method is rebuilt, because deleting it
+        # now would remove the only place the wrong request is written down.
         self.assertEqual(mock_get.call_args.kwargs["params"]["provider"], 1)
 
     @patch("ubb.metering.httpx.Client.get")

@@ -358,10 +358,16 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
 
     The row key names the VALUE grouped rather than the axis it was grouped on,
     because the caller already chose the axis and the row would otherwise repeat
-    it once per row. `get_usage_timeseries` above still spells its own row key
-    the old way: that is the analytics grouping surface, whose vocabulary is
-    owned by a later slice, and moving it here would take a debt that slice is
-    still counting.
+    it once per row.
+
+    `get_usage_timeseries` above still spells its own row key the old way, and
+    the reason is NOT that another slice owns it — the singular is this slice's
+    own debt and this module is inside its recorded extent. It is that the two
+    keys reach different surfaces: this one is a published response property on
+    the Grouping Field breakdown route, renamed in the same commit that renamed
+    the route, under a reviewed break. The timeseries key reaches the analytics
+    grouping surface, which #278 does not touch, and moving it there would be a
+    change to a different endpoint with no break recorded for it.
     """
     from apps.metering.usage.models import Posting
     qs = Posting.objects.filter(tenant_id=tenant_id)

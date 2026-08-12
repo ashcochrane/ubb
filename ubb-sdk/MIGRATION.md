@@ -200,7 +200,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
 | `get_customer_margin` | `CustomerMarginOut` (full body — adds `revenue_mode`, `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
-| `get_margin_by_dimension` | `list[DimensionMarginRow]` |
+| `get_margin_by_dimension` | `list[GroupingFieldMarginRow]` |
 | `get_margin_trend` | `list[MarginTrendPointOut]` |
 
 Attribute names are unchanged, so `result.checkout_url`-style call sites keep
