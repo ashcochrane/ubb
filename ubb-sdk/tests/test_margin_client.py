@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
 from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.dimension_margin_row import DimensionMarginRow
+from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 
@@ -33,11 +33,18 @@ class MarginClientTest(unittest.TestCase):
     def test_get_margin_by_dimension(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "period": {}, "rows": [
-                {"dimension": "openai", "provider_cost_micros": 1_000_000,
+                {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
                  "billed_cost_micros": 1_300_000, "margin_micros": 300_000, "event_count": 2}]})
         rows = self.client.get_margin_by_dimension(provider=True)
-        self.assertIsInstance(rows[0], DimensionMarginRow)
+        self.assertIsInstance(rows[0], GroupingFieldMarginRow)
         self.assertEqual(rows[0].margin_micros, 300_000)
+        # Asserted explicitly because the generated model keeps an unrecognised
+        # key in `additional_properties` rather than refusing it: without this
+        # line the mock could spell the value property any way it liked, the
+        # attribute would be UNSET, and every other assertion here would still
+        # pass. That is the failure mode this SDK's own gate exists for, one
+        # layer in — a test whose mock agrees with the mistake.
+        self.assertEqual(rows[0].grouping_field_value, "openai")
         self.assertEqual(mock_get.call_args.kwargs["params"]["provider"], 1)
 
     @patch("ubb.metering.httpx.Client.get")

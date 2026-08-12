@@ -14,7 +14,7 @@ from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.budget_config_out import BudgetConfigOut
 from ubb._core.models.budget_status_out import BudgetStatusOut
 from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.dimension_margin_row import DimensionMarginRow
+from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.grant_out import GrantOut
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.refund_response import RefundResponse
@@ -62,7 +62,7 @@ __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     # generated DTOs
     "RecordUsageResponse", "CloseTaskResponse", "CustomerResponse", "BalanceResponse",
-    "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "DimensionMarginRow",
+    "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
     "TenantMarkupOut", "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",

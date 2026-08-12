@@ -16,26 +16,26 @@ from typing import cast
 
 
 
-T = TypeVar("T", bound="DimensionMarginRow")
+T = TypeVar("T", bound="GroupingFieldMarginRow")
 
 
 
 @_attrs_define
-class DimensionMarginRow:
+class GroupingFieldMarginRow:
     """ 
         Attributes:
             billed_cost_micros (int):
             event_count (int):
             margin_micros (int):
             provider_cost_micros (int):
-            dimension (None | str | Unset):
+            grouping_field_value (None | str | Unset):
      """
 
     billed_cost_micros: int
     event_count: int
     margin_micros: int
     provider_cost_micros: int
-    dimension: None | str | Unset = UNSET
+    grouping_field_value: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -51,11 +51,11 @@ class DimensionMarginRow:
 
         provider_cost_micros = self.provider_cost_micros
 
-        dimension: None | str | Unset
-        if isinstance(self.dimension, Unset):
-            dimension = UNSET
+        grouping_field_value: None | str | Unset
+        if isinstance(self.grouping_field_value, Unset):
+            grouping_field_value = UNSET
         else:
-            dimension = self.dimension
+            grouping_field_value = self.grouping_field_value
 
 
         field_dict: dict[str, Any] = {}
@@ -66,8 +66,8 @@ class DimensionMarginRow:
             "margin_micros": margin_micros,
             "provider_cost_micros": provider_cost_micros,
         })
-        if dimension is not UNSET:
-            field_dict["dimension"] = dimension
+        if grouping_field_value is not UNSET:
+            field_dict["grouping_field_value"] = grouping_field_value
 
         return field_dict
 
@@ -84,27 +84,27 @@ class DimensionMarginRow:
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
-        def _parse_dimension(data: object) -> None | str | Unset:
+        def _parse_grouping_field_value(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        dimension = _parse_dimension(d.pop("dimension", UNSET))
+        grouping_field_value = _parse_grouping_field_value(d.pop("grouping_field_value", UNSET))
 
 
-        dimension_margin_row = cls(
+        grouping_field_margin_row = cls(
             billed_cost_micros=billed_cost_micros,
             event_count=event_count,
             margin_micros=margin_micros,
             provider_cost_micros=provider_cost_micros,
-            dimension=dimension,
+            grouping_field_value=grouping_field_value,
         )
 
 
-        dimension_margin_row.additional_properties = d
-        return dimension_margin_row
+        grouping_field_margin_row.additional_properties = d
+        return grouping_field_margin_row
 
     @property
     def additional_keys(self) -> list[str]:

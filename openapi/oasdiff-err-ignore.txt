@@ -302,3 +302,65 @@ GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required pro
 POST /api/v1/metering/pricing/rate-cards/{book_id}/publish added the new required request property `changes/items/measurement_key`
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates added the new required request property `measurement_key`
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `metric_name` from the response with the `200` status
+
+# ---------------------------------------------------------------------------
+# #278 (slice 2, ticket 21) — THE WHOLE GROUPING FIELD ROUTE FAMILY MOVES AT
+# ONCE: three paths, four operations, one commit.
+#
+#   PUT/GET /api/v1/metering/dimensions        -> /api/v1/metering/grouping-fields
+#   GET     .../dimensions/{key}/values        -> .../grouping-fields/{key}/values
+#   GET     /api/v1/margin/by-dimension        -> /api/v1/margin/by-grouping-field
+#
+# WHY ALL THREE TOGETHER, INCLUDING THE THIRD. The generated SDK modules for
+# every affected route carry the retired singular noun, and the ledger splits
+# this word's debt on singular versus plural: the singular is slice 2's on
+# backend, console, docs, contract and SDK. Renaming the registry pair and
+# leaving the breakdown route would leave a generated module carrying the word
+# with no slice able to clear it, because a module only regenerates away when
+# its route moves. The breakdown route is the least obvious member — it sits in
+# a different product's API module — and it is the reason the family is a family.
+#
+# THE CHURN IS REAL AND WAS WEIGHED. Slice 7 collapses five endpoints into one
+# economic query and absorbs the breakdown route, so this commit renames a route
+# that slice will then take away. The ledger's ownership rule decides it: an
+# owner may move a debt earlier, never later.
+#
+# HOW THIS BREAK FAILS, WHICH IS THE OPPOSITE OF THE FOUR BEFORE IT. #272-#275
+# dropped or renamed PROPERTIES, where django-ninja's `extra="ignore"` hands a
+# stale caller a 200 and quietly missing data. A removed PATH cannot fail
+# quietly: the request 404s on the first attempt, before anything is read,
+# written or priced. There is no window in which a caller believes it succeeded.
+#
+# ONLY ONE OF THE THREE PATHS APPEARS BELOW, AND THAT IS CORRECT. This gate
+# measures divergence from the PUBLISHED contract, and `/api/v1/metering/
+# dimensions` and its values route were both added AFTER the api-v1-launch tag.
+# The published contract never promised them, so removing them is not a
+# cumulative break and an entry for either would suppress nothing — the gate
+# says so, and calls such an entry inert. The authoring comparison against
+# `origin/main` does emit all four, which is the difference between the two
+# comparisons doing their jobs rather than a disagreement. The breakdown route
+# predates the tag, so its removal is a real break and is recorded.
+#
+# THE ROW PROPERTY IS NOT A SEPARATE FINDING. The breakdown row's value property
+# is renamed in the same commit — it named the axis rather than the value a row
+# holds, and the axis is already named by the request's `group_by` — but a
+# property inside a path that no longer exists is not separately reported, and
+# reviewing it separately would be reviewing the same removal twice.
+#
+# TWO ENTRIES IN oasdiff-warn-ignore.txt WENT INERT BECAUSE OF THIS CHANGE and
+# were deleted there: they recorded the removal of the breakdown route's
+# `provider`/`product` pseudo-flag query parameters, and a parameter cannot be
+# reported as removed from a path the document no longer has. The break they
+# described is subsumed by the path removal recorded below.
+#
+# WHY THE NAME. "Grouping Field" is the registry's canonical noun (ADR-0006):
+# the retired word named *price selection* at a competing product, which is the
+# one job a grouping axis in UBB will never do. The path segment is kebab-cased
+# to match its neighbour `/metering/task-types`, and the breakdown route stays
+# singular because it groups by one field at a time.
+#
+# WHY THE BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5 —
+# the launch tag is not what binds), so the cost is a one-line path edit in a
+# caller. The same rename after platform admission costs a 90-day deprecation
+# cycle under ADR-0003 §4, on three paths instead of none.
+GET /api/v1/margin/by-dimension api path removed without deprecation

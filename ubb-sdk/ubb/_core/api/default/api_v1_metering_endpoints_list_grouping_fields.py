@@ -8,15 +8,13 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.dimension_values_out import DimensionValuesOut
-from ...models.problem_out import ProblemOut
+from ...models.dimension_registry_out import DimensionRegistryOut
 from typing import cast
 
 
 
 def _get_kwargs(
-    key: str,
-
+    
 ) -> dict[str, Any]:
     
 
@@ -26,7 +24,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/dimensions/{key}/values".format(key=quote(str(key), safe=""),),
+        "url": "/api/v1/metering/grouping-fields",
     }
 
 
@@ -34,20 +32,13 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionValuesOut | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionRegistryOut | None:
     if response.status_code == 200:
-        response_200 = DimensionValuesOut.from_dict(response.json())
+        response_200 = DimensionRegistryOut.from_dict(response.json())
 
 
 
         return response_200
-
-    if response.status_code == 404:
-        response_404 = ProblemOut.from_dict(response.json())
-
-
-
-        return response_404
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -55,7 +46,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionValuesOut | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionRegistryOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,31 +56,25 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    key: str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[DimensionValuesOut | ProblemOut]:
-    """ List Dimension Values
+) -> Response[DimensionRegistryOut]:
+    """ List Grouping Fields
 
-     Every value admitted for one dimension — the read model a dashboard
-    filter dropdown needs. Bounded by the key's max_cardinality (D4).
-
-    Args:
-        key (str):
+     This tenant's declared Grouping Field vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionValuesOut | ProblemOut]
+        Response[DimensionRegistryOut]
      """
 
 
     kwargs = _get_kwargs(
-        key=key,
-
+        
     )
 
     response = client.get_httpx_client().request(
@@ -99,60 +84,48 @@ def sync_detailed(
     return _build_response(client=client, response=response)
 
 def sync(
-    key: str,
     *,
     client: AuthenticatedClient,
 
-) -> DimensionValuesOut | ProblemOut | None:
-    """ List Dimension Values
+) -> DimensionRegistryOut | None:
+    """ List Grouping Fields
 
-     Every value admitted for one dimension — the read model a dashboard
-    filter dropdown needs. Bounded by the key's max_cardinality (D4).
-
-    Args:
-        key (str):
+     This tenant's declared Grouping Field vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionValuesOut | ProblemOut
+        DimensionRegistryOut
      """
 
 
     return sync_detailed(
-        key=key,
-client=client,
+        client=client,
 
     ).parsed
 
 async def asyncio_detailed(
-    key: str,
     *,
     client: AuthenticatedClient,
 
-) -> Response[DimensionValuesOut | ProblemOut]:
-    """ List Dimension Values
+) -> Response[DimensionRegistryOut]:
+    """ List Grouping Fields
 
-     Every value admitted for one dimension — the read model a dashboard
-    filter dropdown needs. Bounded by the key's max_cardinality (D4).
-
-    Args:
-        key (str):
+     This tenant's declared Grouping Field vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionValuesOut | ProblemOut]
+        Response[DimensionRegistryOut]
      """
 
 
     kwargs = _get_kwargs(
-        key=key,
-
+        
     )
 
     response = await client.get_async_httpx_client().request(
@@ -162,30 +135,24 @@ async def asyncio_detailed(
     return _build_response(client=client, response=response)
 
 async def asyncio(
-    key: str,
     *,
     client: AuthenticatedClient,
 
-) -> DimensionValuesOut | ProblemOut | None:
-    """ List Dimension Values
+) -> DimensionRegistryOut | None:
+    """ List Grouping Fields
 
-     Every value admitted for one dimension — the read model a dashboard
-    filter dropdown needs. Bounded by the key's max_cardinality (D4).
-
-    Args:
-        key (str):
+     This tenant's declared Grouping Field vocabulary.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionValuesOut | ProblemOut
+        DimensionRegistryOut
      """
 
 
     return (await asyncio_detailed(
-        key=key,
-client=client,
+        client=client,
 
     )).parsed

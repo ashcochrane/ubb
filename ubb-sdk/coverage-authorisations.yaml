@@ -78,3 +78,28 @@ authorisations:
       the contract's first three concept-marked enumerations and a new
       hand-written client surface into one change, and a red run would not say
       which of the two produced it.
+
+  - id: slice-2-278-the-grouping-field-routes-are-renamed
+    issue: 278
+    operations_added: 3
+    reason: >-
+      No gap opens here and the SDK reaches exactly what it reached before. The
+      three are the same three registry operations, renamed: the collection
+      route in both directions and its value-listing route now spell the
+      canonical noun in their paths and identifiers, and the ratchet compares
+      operation IDENTITIES, so a renamed operation reads to it as one leaving
+      the unwrapped set and a different one joining. Three left and three
+      joined; the total is unmoved at 72.
+
+      That the ratchet cannot tell a rename from a new gap is not a flaw worth
+      routing around. Its whole argument is that the total has a hole the
+      identities do not, and the same property that catches wrap-three-publish-
+      two is what makes a rename visible here. Signing for three is the cheap
+      half of that trade, and this entry is the record that the three were
+      inspected and found to be the same operations under new names.
+
+      The fourth route this change renames — the margin breakdown — is
+      `wrapped`, was never in the unwrapped set, and so does not appear in this
+      count. Its hand-written method follows the renamed constant in the same
+      commit, because the operation registry is the only place in `ubb-sdk/ubb/`
+      a versioned path is spelled and a stale reference stops resolving.

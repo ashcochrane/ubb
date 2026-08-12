@@ -18,7 +18,7 @@ from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.api.margin_schemas import (
     RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut,
     RevenueModeIn, RevenueModeOut,
-    MarginSummaryOut, MarginByDimensionOut, UnprofitableOut, MarginListOut,
+    MarginSummaryOut, MarginByGroupingFieldOut, UnprofitableOut, MarginListOut,
     CustomerMarginOut, MarginTrendOut, BusinessMarginOut)
 
 margin_router = Router(auth=ApiKeyAuth())
@@ -82,12 +82,13 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     }
 
 
-@margin_router.get("/by-dimension", response={200: MarginByDimensionOut, 422: ProblemOut})
+@margin_router.get("/by-grouping-field",
+                   response={200: MarginByGroupingFieldOut, 422: ProblemOut})
 @role_floor(READ)
-def margin_by_dimension(request, group_by: str = "provider",
-                        tag_key: str = None,
-                        start_date: date = None, end_date: date = None):
-    """Margin by any declared dimension.
+def margin_by_grouping_field(request, group_by: str = "provider",
+                            tag_key: str = None,
+                            start_date: date = None, end_date: date = None):
+    """Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could
     not reach event_type at all despite get_dimensional_margin supporting it."""
@@ -103,7 +104,8 @@ def margin_by_dimension(request, group_by: str = "provider",
         if group_by not in ("provider", "event_type", "task_type", "subtask_type"):
             col = slot_map(request.auth.tenant.id).get(group_by)
             if col is None:
-                raise Problem("validation_error", f"unknown dimension {group_by!r}")
+                raise Problem("validation_error",
+                              f"{group_by!r} is not a declared grouping field")
         try:
             rows = get_dimensional_margin(request.auth.tenant.id, group_by=col,
                                           start_date=s, end_date=e)

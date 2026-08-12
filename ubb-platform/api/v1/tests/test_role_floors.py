@@ -77,11 +77,11 @@ _WRITE_ROUTES = {
 # moves the 5 lifecycle verbs onto subscriptions_router (a rename, not a net
 # add/remove): 118 - 2 = 116.
 #
-# unified dimension model: +3 (task 3) PUT /metering/dimensions [Admin — the
+# unified dimension model: +3 (task 3) PUT /metering/grouping-fields [Admin — the
 # plan owner's ruling: the dimension vocabulary feeds rate selection (D1), a
 # pricing-rule change like markup.set/rate_card.*, so it takes the Admin
-# default and needs no _WRITE_ROUTES entry], GET /metering/dimensions [Read],
-# GET /metering/dimensions/{key}/values [Read]. +2 (task 7) PUT
+# default and needs no _WRITE_ROUTES entry], GET /metering/grouping-fields [Read],
+# GET /metering/grouping-fields/{key}/values [Read]. +2 (task 7) PUT
 # /metering/task-types [Admin — same ruling: a task type's ceiling prices
 # usage], GET /metering/task-types [Read]. +2 (task 14) GET /metering/tasks
 # and GET /metering/tasks/{task_id} [Read] — the task read surface over the

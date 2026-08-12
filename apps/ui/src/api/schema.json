@@ -1334,45 +1334,6 @@
         "title": "DimensionDefOut",
         "type": "object"
       },
-      "DimensionMarginRow": {
-        "properties": {
-          "billed_cost_micros": {
-            "title": "Billed Cost Micros",
-            "type": "integer"
-          },
-          "dimension": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dimension"
-          },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
-          "margin_micros": {
-            "title": "Margin Micros",
-            "type": "integer"
-          },
-          "provider_cost_micros": {
-            "title": "Provider Cost Micros",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "provider_cost_micros",
-          "billed_cost_micros",
-          "margin_micros",
-          "event_count"
-        ],
-        "title": "DimensionMarginRow",
-        "type": "object"
-      },
       "DimensionRegistryIn": {
         "properties": {
           "dimensions": {
@@ -1405,27 +1366,6 @@
           "dimensions"
         ],
         "title": "DimensionRegistryOut",
-        "type": "object"
-      },
-      "DimensionValuesOut": {
-        "properties": {
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "values": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Values",
-            "type": "array"
-          }
-        },
-        "required": [
-          "key",
-          "values"
-        ],
-        "title": "DimensionValuesOut",
         "type": "object"
       },
       "EarningsOut": {
@@ -1910,6 +1850,66 @@
         "title": "GrantSummaryOut",
         "type": "object"
       },
+      "GroupingFieldMarginRow": {
+        "properties": {
+          "billed_cost_micros": {
+            "title": "Billed Cost Micros",
+            "type": "integer"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "grouping_field_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouping Field Value"
+          },
+          "margin_micros": {
+            "title": "Margin Micros",
+            "type": "integer"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_cost_micros",
+          "billed_cost_micros",
+          "margin_micros",
+          "event_count"
+        ],
+        "title": "GroupingFieldMarginRow",
+        "type": "object"
+      },
+      "GroupingFieldValuesOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "values"
+        ],
+        "title": "GroupingFieldValuesOut",
+        "type": "object"
+      },
       "InvitationCreateIn": {
         "properties": {
           "email": {
@@ -2074,14 +2074,14 @@
         "title": "LedgerEntryOut",
         "type": "object"
       },
-      "MarginByDimensionOut": {
+      "MarginByGroupingFieldOut": {
         "properties": {
           "period": {
             "$ref": "#/components/schemas/PeriodWindow"
           },
           "rows": {
             "items": {
-              "$ref": "#/components/schemas/DimensionMarginRow"
+              "$ref": "#/components/schemas/GroupingFieldMarginRow"
             },
             "title": "Rows",
             "type": "array"
@@ -2091,7 +2091,7 @@
           "period",
           "rows"
         ],
-        "title": "MarginByDimensionOut",
+        "title": "MarginByGroupingFieldOut",
         "type": "object"
       },
       "MarginListOut": {
@@ -9786,10 +9786,10 @@
         "summary": "Business Margin"
       }
     },
-    "/api/v1/margin/by-dimension": {
+    "/api/v1/margin/by-grouping-field": {
       "get": {
-        "description": "Margin by any declared dimension.\n\nReplaces the old `provider: int` / `product: int` pseudo-flags, which could\nnot reach event_type at all despite get_dimensional_margin supporting it.",
-        "operationId": "apps_subscriptions_api_margin_endpoints_margin_by_dimension",
+        "description": "Margin by any Grouping Field the tenant has declared.\n\nReplaces the old `provider: int` / `product: int` pseudo-flags, which could\nnot reach event_type at all despite get_dimensional_margin supporting it.",
+        "operationId": "apps_subscriptions_api_margin_endpoints_margin_by_grouping_field",
         "parameters": [
           {
             "in": "query",
@@ -9857,7 +9857,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MarginByDimensionOut"
+                  "$ref": "#/components/schemas/MarginByGroupingFieldOut"
                 }
               }
             },
@@ -9879,7 +9879,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Margin By Dimension"
+        "summary": "Margin By Grouping Field"
       }
     },
     "/api/v1/margin/customers": {
@@ -11296,10 +11296,10 @@
         "summary": "Get Usage"
       }
     },
-    "/api/v1/metering/dimensions": {
+    "/api/v1/metering/grouping-fields": {
       "get": {
-        "description": "This tenant's declared dimension vocabulary.",
-        "operationId": "api_v1_metering_endpoints_list_dimensions",
+        "description": "This tenant's declared Grouping Field vocabulary.",
+        "operationId": "api_v1_metering_endpoints_list_grouping_fields",
         "parameters": [],
         "responses": {
           "200": {
@@ -11318,11 +11318,11 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "List Dimensions"
+        "summary": "List Grouping Fields"
       },
       "put": {
         "description": "Declare this tenant's slicing axes \u2014 the ONE vocabulary used by both\nanalytics grouping and rate selection (design D1). Idempotent: re-PUTting\nan identical declaration is a no-op. `slot` and `scope` are immutable once\nbound and `max_cardinality` may only be raised (D8).",
-        "operationId": "api_v1_metering_endpoints_declare_dimensions",
+        "operationId": "api_v1_metering_endpoints_declare_grouping_fields",
         "parameters": [],
         "requestBody": {
           "content": {
@@ -11361,13 +11361,13 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Declare Dimensions"
+        "summary": "Declare Grouping Fields"
       }
     },
-    "/api/v1/metering/dimensions/{key}/values": {
+    "/api/v1/metering/grouping-fields/{key}/values": {
       "get": {
-        "description": "Every value admitted for one dimension \u2014 the read model a dashboard\nfilter dropdown needs. Bounded by the key's max_cardinality (D4).",
-        "operationId": "api_v1_metering_endpoints_list_dimension_values",
+        "description": "Every value admitted for one Grouping Field \u2014 the read model a dashboard\nfilter dropdown needs. Bounded by the key's max_cardinality (D4).",
+        "operationId": "api_v1_metering_endpoints_list_grouping_field_values",
         "parameters": [
           {
             "in": "path",
@@ -11384,7 +11384,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DimensionValuesOut"
+                  "$ref": "#/components/schemas/GroupingFieldValuesOut"
                 }
               }
             },
@@ -11406,7 +11406,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "List Dimension Values"
+        "summary": "List Grouping Field Values"
       }
     },
     "/api/v1/metering/pricing/customers/{customer_id}/markup": {

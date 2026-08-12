@@ -1047,7 +1047,7 @@ class DimensionRegistryOut(Schema):
     dimensions: list[DimensionDefOut]
 
 
-class DimensionValuesOut(Schema):
+class GroupingFieldValuesOut(Schema):
     key: str
     values: list[str]
 

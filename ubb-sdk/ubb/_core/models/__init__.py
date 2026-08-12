@@ -56,10 +56,8 @@ from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
 from .dimension_def_in import DimensionDefIn
 from .dimension_def_out import DimensionDefOut
-from .dimension_margin_row import DimensionMarginRow
 from .dimension_registry_in import DimensionRegistryIn
 from .dimension_registry_out import DimensionRegistryOut
-from .dimension_values_out import DimensionValuesOut
 from .earnings_out import EarningsOut
 from .event_category_in import EventCategoryIn
 from .event_category_out import EventCategoryOut
@@ -72,12 +70,14 @@ from .event_type_update_in_costing_method_type_0 import EventTypeUpdateInCosting
 from .grant_list_response import GrantListResponse
 from .grant_out import GrantOut
 from .grant_summary_out import GrantSummaryOut
+from .grouping_field_margin_row import GroupingFieldMarginRow
+from .grouping_field_values_out import GroupingFieldValuesOut
 from .invitation_create_in import InvitationCreateIn
 from .invitation_list_response import InvitationListResponse
 from .invitation_out import InvitationOut
 from .invoice_out import InvoiceOut
 from .ledger_entry_out import LedgerEntryOut
-from .margin_by_dimension_out import MarginByDimensionOut
+from .margin_by_grouping_field_out import MarginByGroupingFieldOut
 from .margin_list_out import MarginListOut
 from .margin_summary_out import MarginSummaryOut
 from .margin_threshold_in import MarginThresholdIn
@@ -298,10 +298,8 @@ __all__ = (
     "DebitRequest",
     "DimensionDefIn",
     "DimensionDefOut",
-    "DimensionMarginRow",
     "DimensionRegistryIn",
     "DimensionRegistryOut",
-    "DimensionValuesOut",
     "EarningsOut",
     "EventCategoryIn",
     "EventCategoryOut",
@@ -314,12 +312,14 @@ __all__ = (
     "GrantListResponse",
     "GrantOut",
     "GrantSummaryOut",
+    "GroupingFieldMarginRow",
+    "GroupingFieldValuesOut",
     "InvitationCreateIn",
     "InvitationListResponse",
     "InvitationOut",
     "InvoiceOut",
     "LedgerEntryOut",
-    "MarginByDimensionOut",
+    "MarginByGroupingFieldOut",
     "MarginListOut",
     "MarginSummaryOut",
     "MarginThresholdIn",

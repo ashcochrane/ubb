@@ -44,7 +44,7 @@ class MarginEndpointsTest(TestCase):
     def test_list_all_customer_margins(self):
         # #86 sweep: the root margin list moved from GET /margin to the explicit
         # GET /margin/customers segment — proving the named subpaths (/summary,
-        # /by-dimension, ...) are no longer shadowed by a bare mount root.
+        # /by-grouping-field, ...) are no longer shadowed by a bare mount root.
         r = self.http.get("/api/v1/margin/customers", **self._auth())
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
@@ -62,16 +62,17 @@ class MarginEndpointsTest(TestCase):
         self.assertEqual(r.json()["customer_id"], str(self.customer.id))
         self.assertIn("points", r.json())
 
-    def test_by_dimension_provider(self):
+    def test_by_grouping_field_provider(self):
         # Ported off the old `provider: int` pseudo-flag (#128 rework) to the
         # real group_by string.
-        r = self.http.get("/api/v1/margin/by-dimension?group_by=provider", **self._auth())
+        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=provider", **self._auth())
         assert r.status_code == 200
         rows = r.json()["rows"]
-        assert any(row["dimension"] == "openai" and row["margin_micros"] == 300_000 for row in rows)
+        assert any(row["grouping_field_value"] == "openai"
+                   and row["margin_micros"] == 300_000 for row in rows)
 
-    def test_by_dimension_unknown_group_by_is_422(self):
-        r = self.http.get("/api/v1/margin/by-dimension?group_by=nope", **self._auth())
+    def test_by_grouping_field_unknown_group_by_is_422(self):
+        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=nope", **self._auth())
         assert r.status_code == 422
 
     def test_threshold_get_default_and_put(self):

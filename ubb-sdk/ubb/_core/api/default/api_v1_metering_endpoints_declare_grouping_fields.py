@@ -29,7 +29,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "put",
-        "url": "/api/v1/metering/dimensions",
+        "url": "/api/v1/metering/grouping-fields",
     }
 
     _kwargs["json"] = body.to_dict()
@@ -77,7 +77,7 @@ def sync_detailed(
     body: DimensionRegistryIn,
 
 ) -> Response[DimensionRegistryOut | ProblemOut]:
-    """ Declare Dimensions
+    """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -113,7 +113,7 @@ def sync(
     body: DimensionRegistryIn,
 
 ) -> DimensionRegistryOut | ProblemOut | None:
-    """ Declare Dimensions
+    """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -144,7 +144,7 @@ async def asyncio_detailed(
     body: DimensionRegistryIn,
 
 ) -> Response[DimensionRegistryOut | ProblemOut]:
-    """ Declare Dimensions
+    """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -180,7 +180,7 @@ async def asyncio(
     body: DimensionRegistryIn,
 
 ) -> DimensionRegistryOut | ProblemOut | None:
-    """ Declare Dimensions
+    """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting

@@ -19,7 +19,7 @@ from ubb.types import (
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.dimension_margin_row import DimensionMarginRow
+from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
@@ -99,7 +99,7 @@ class MeteringClient:
         recorded".
 
         ``dimensions``: declared EVENT-scoped dimension values (the tenant's
-        registry, ``PUT /api/v1/metering/dimensions``) — what rate cards
+        registry, ``PUT /api/v1/metering/grouping-fields``) — what rate cards
         select on and analytics group by. Distinct from ``metadata``, the one
         open bag: free-form labelling, filterable and readable, never
         consulted for pricing or grouping. The second open bag folded into it
@@ -256,9 +256,9 @@ class MeteringClient:
         if end_date:
             params["end_date"] = end_date
         r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_DIMENSION,
+            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_GROUPING_FIELD,
             params=params)
-        return list_from_wire(DimensionMarginRow, r.json()["rows"])
+        return list_from_wire(GroupingFieldMarginRow, r.json()["rows"])
 
     def get_unprofitable_customers(self, period_start=None):
         params = {"period_start": period_start} if period_start else {}

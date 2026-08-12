@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,541 of 1,899 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,542 of 1,900 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -159,6 +159,16 @@ measurement_key:
     # the regeneration is staged, because the sweep's file set comes from
     # `git ls-files` — so re-take this number AFTER the last generated artifact
     # is staged, not after the last hand edit.
+    #
+    # #278 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,541 → 1,542 swept, 1,899
+    # → 1,900 tracked, 51/127 unchanged) — ONE new module, net. That "net" is
+    # the whole point of the line: #278 renamed the Grouping Field route family
+    # and the SDK regeneration DELETED seven generated modules and CREATED seven
+    # more, so a count taken at any point inside that regeneration would have
+    # been wrong in either direction. The single net addition is the new test
+    # module pinning the family's published identity. Nothing about this concept
+    # is in the commit — the numerator says so — and #275's RATE ARITHMETIC
+    # caution holds once more: a route rename went nowhere near `compute(units)`.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

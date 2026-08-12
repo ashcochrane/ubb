@@ -98,6 +98,6 @@ class TestAnalyticsDimensions:
 
     def test_margin_group_by_any_declared_key(self):
         self._seed()
-        r = self._get("/api/v1/margin/by-dimension?group_by=subtask_type")
+        r = self._get("/api/v1/margin/by-grouping-field?group_by=subtask_type")
         assert r.status_code == 200
-        assert {x["dimension"] for x in r.json()["rows"]} == {"ocr"}
+        assert {x["grouping_field_value"] for x in r.json()["rows"]} == {"ocr"}

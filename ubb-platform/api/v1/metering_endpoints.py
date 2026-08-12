@@ -31,7 +31,7 @@ from api.v1.schemas import (
     PaginatedBooks, PaginatedRates,
     book_out, rate_change_body, rate_out, usage_event_out,
     SLOT_PROPERTY_COLUMNS,
-    DimensionRegistryIn, DimensionRegistryOut, DimensionValuesOut,
+    DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
@@ -981,10 +981,11 @@ def delete_rate(request, book_id: UUID, rate_id: UUID):
     return {"status": "deleted"}
 
 
-@metering_router.put("/dimensions", response={200: DimensionRegistryOut, 422: ProblemOut})
+@metering_router.put("/grouping-fields",
+                     response={200: DimensionRegistryOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("grouping_field.declared")
-def declare_dimensions(request, payload: DimensionRegistryIn):
+def declare_grouping_fields(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
     an identical declaration is a no-op. `slot` and `scope` are immutable once
@@ -1014,26 +1015,26 @@ def declare_dimensions(request, payload: DimensionRegistryIn):
     return 200, {"dimensions": declared_dimensions(tenant.id)}
 
 
-@metering_router.get("/dimensions", response=DimensionRegistryOut)
+@metering_router.get("/grouping-fields", response=DimensionRegistryOut)
 @role_floor(READ)
-def list_dimensions(request):
-    """This tenant's declared dimension vocabulary."""
+def list_grouping_fields(request):
+    """This tenant's declared Grouping Field vocabulary."""
     _product_check(request)
     from apps.platform.grouping_fields.queries import declared_dimensions
     return {"dimensions": declared_dimensions(request.auth.tenant.id)}
 
 
-@metering_router.get("/dimensions/{key}/values",
-                     response={200: DimensionValuesOut, 404: ProblemOut})
+@metering_router.get("/grouping-fields/{key}/values",
+                     response={200: GroupingFieldValuesOut, 404: ProblemOut})
 @role_floor(READ)
-def list_dimension_values(request, key: str):
-    """Every value admitted for one dimension — the read model a dashboard
+def list_grouping_field_values(request, key: str):
+    """Every value admitted for one Grouping Field — the read model a dashboard
     filter dropdown needs. Bounded by the key's max_cardinality (D4)."""
     _product_check(request)
     from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 
     if not GroupingField.objects.filter(tenant=request.auth.tenant, key=key).exists():
-        raise Problem("not_found", f"dimension {key!r} is not declared")
+        raise Problem("not_found", f"{key!r} is not a declared grouping field")
     values = list(GroupingFieldValue.objects.filter(
         tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
     return 200, {"key": key, "values": values}
