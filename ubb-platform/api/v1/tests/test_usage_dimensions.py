@@ -5,6 +5,7 @@ from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.work.models import Task
 
 
 @pytest.mark.django_db
@@ -78,6 +79,93 @@ class TestUsageDimensions:
         # else asserts this: `test_the_open_bag.py` only covers non-reserved
         # keys.
         assert e.metadata == {"service": "extract", "agent": "textract-v2"}
+
+    # --- What comes BACK: the values keyed by the tenant's own key (#277) ---
+    #
+    # These live here, beside the write path, for two reasons. The round trip is
+    # one claim and reads better as one file; and a new file could not spell the
+    # request fields these need without pushing two other slices' recorded
+    # extents wider, which the sweep refuses. The absence half of ticket 20 —
+    # that no schema anywhere names a physical slot — is its own file,
+    # `test_grouping_values_on_the_contract.py`.
+
+    def _detail(self, event_id):
+        return self.client.get(f"/api/v1/metering/usage/{event_id}",
+                               **self._api_headers())
+
+    def test_the_detail_response_keys_the_values_by_the_declared_key(self):
+        self._declare()
+        r = self._post(dimensions={"model": "gpt-4"})
+        body = self._detail(r.json()["event_id"]).json()
+        assert body["grouping_fields"] == {"model": "gpt-4"}
+
+    def test_the_record_response_carries_the_same_object(self):
+        """Both posting responses, one shape. They disagreed before this
+        ticket: the detail response published the first three slots and the
+        record response published the second and third — a pair no reader could
+        have predicted and no argument ever chose."""
+        self._declare()
+        r = self._post(dimensions={"model": "gpt-4"})
+        assert r.json()["grouping_fields"] == {"model": "gpt-4"}
+
+    def test_the_object_reaches_the_tenth_slot(self):
+        """The old per-slot properties stopped at three, so seven of the ten
+        slots #276 built were unreadable through the API. The object reaches
+        every one of them, and reaches the next one without a contract
+        change."""
+        GroupingField.objects.create(tenant=self.tenant, key="tier",
+                                     slot="grouping_field_10", scope="event")
+        r = self._post(dimensions={"tier": "enterprise"})
+        assert r.json()["grouping_fields"] == {"tier": "enterprise"}
+
+    def test_the_record_response_shows_what_the_posting_inherited(self):
+        """A task-scoped value is set at the start gate and never sent with the
+        event (D6), so this response is the only place a caller learns what its
+        posting was actually attributed to. The old per-slot pair could show
+        that only when the value happened to land in slot two or three."""
+        self._declare()
+        task = Task.objects.create(tenant=self.tenant, customer=self.customer,
+                                   balance_snapshot_micros=0,
+                                   grouping_field_1="eu-west-1")
+        r = self._post(task_id=str(task.id), dimensions={"model": "gpt-4"})
+        assert r.status_code == 200
+        assert r.json()["grouping_fields"] == {"region": "eu-west-1",
+                                               "model": "gpt-4"}
+
+    def test_an_unset_slot_is_omitted_rather_than_carried_as_empty(self):
+        """A declared field the posting never carried is absent from the
+        object, not present as "". Publishing the empty string would ask an
+        integrator to tell a real value from a placeholder by comparing against
+        it — and it would put UBB's "not set" sentinel on the contract."""
+        self._declare()
+        GroupingField.objects.create(tenant=self.tenant, key="unused",
+                                     slot="grouping_field_3", scope="event")
+        r = self._post(dimensions={"model": "gpt-4"})
+        assert r.json()["grouping_fields"] == {"model": "gpt-4"}
+
+    def test_a_posting_with_no_grouping_values_carries_an_empty_object(self):
+        """Empty, never absent and never null: the property is always there and
+        always an object, so no reader ever branches on its presence."""
+        self._declare()
+        r = self._post()
+        assert r.json()["grouping_fields"] == {}
+        assert self._detail(r.json()["event_id"]).json()["grouping_fields"] == {}
+
+    def test_what_was_sent_is_what_comes_back(self):
+        """AC 3 — the read object is the shape the write side already takes, so
+        the round trip needs no translation table on either side of it."""
+        self._declare()
+        sent = {"model": "gpt-4"}
+        r = self._post(dimensions=sent)
+        assert r.json()["grouping_fields"] == sent
+        assert self._detail(r.json()["event_id"]).json()["grouping_fields"] == sent
+
+    def test_neither_response_carries_a_slot_named_property(self):
+        self._declare()
+        r = self._post(dimensions={"model": "gpt-4"})
+        for body in (r.json(), self._detail(r.json()["event_id"]).json()):
+            assert not [k for k in body if k.startswith(("dim", "grouping_field_"))
+                        and k != "grouping_fields"], body
 
     def test_product_id_is_gone_from_the_wire_contract(self):
         """Final-fixes wave, Critical 1+2: the legacy `product_id` field is

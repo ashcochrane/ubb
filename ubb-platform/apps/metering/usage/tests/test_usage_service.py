@@ -6,7 +6,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
-from apps.metering.usage.services.usage_service import UsageService, _result
+from apps.metering.usage.services.usage_service import SLOTS, UsageService, _result
 
 
 # Tier-2 (D5/I4): the customer-wide stop verdict must travel on EVERY
@@ -27,7 +27,7 @@ _RESULT_KEYS = {
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
     "stop", "stop_reason", "stop_scope", "stop_context",
-    "measurements", "pricing_provenance", "dim2", "dim3",
+    "measurements", "pricing_provenance", "grouping_fields",
 }
 
 
@@ -43,10 +43,15 @@ class ResultSignatureTest(TestCase):
         # Both idempotent-replay returns go through this single builder, so
         # asserting it here covers the replay paths that are awkward to
         # trigger deterministically.
+        # EVERY slot is stubbed, and off the vocabulary rather than by hand: a
+        # MagicMock answers an unstubbed attribute with a truthy mock, so a slot
+        # missed here would look to the builder like a grouping value that was
+        # set, and send it to the registry with a mock for a tenant id. Reading
+        # `SLOTS` means the next widening needs no edit at all.
         event = MagicMock(
             id="e1", provider_cost_micros=1, billed_cost_micros=1,
             task_id=None, measurements={}, pricing_provenance={},
-            grouping_field_2="", grouping_field_3="", stop_context=None,
+            stop_context=None, **{slot: "" for slot in SLOTS},
         )
         out = _result(event)
         # The EXACT new key set — retired keys (hard_stop,

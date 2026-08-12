@@ -12,6 +12,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
   from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
   from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
 
@@ -30,8 +31,7 @@ class RecordUsageResponse:
             event_id (str):
             suspended (bool):
             billed_cost_micros (int | None | Unset):
-            dim2 (str | Unset):  Default: ''.
-            dim3 (str | Unset):  Default: ''.
+            grouping_fields (RecordUsageResponseGroupingFields | Unset):
             measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
             parent_task_id (None | str | Unset):
@@ -50,8 +50,7 @@ class RecordUsageResponse:
     event_id: str
     suspended: bool
     billed_cost_micros: int | None | Unset = UNSET
-    dim2: str | Unset = ''
-    dim3: str | Unset = ''
+    grouping_fields: RecordUsageResponseGroupingFields | Unset = UNSET
     measurements: None | RecordUsageResponseMeasurementsType0 | Unset = UNSET
     new_balance_micros: int | None | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
@@ -72,6 +71,7 @@ class RecordUsageResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
         event_id = self.event_id
@@ -84,9 +84,9 @@ class RecordUsageResponse:
         else:
             billed_cost_micros = self.billed_cost_micros
 
-        dim2 = self.dim2
-
-        dim3 = self.dim3
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         measurements: dict[str, Any] | None | Unset
         if isinstance(self.measurements, Unset):
@@ -179,10 +179,8 @@ class RecordUsageResponse:
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
-        if dim2 is not UNSET:
-            field_dict["dim2"] = dim2
-        if dim3 is not UNSET:
-            field_dict["dim3"] = dim3
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if measurements is not UNSET:
             field_dict["measurements"] = measurements
         if new_balance_micros is not UNSET:
@@ -216,6 +214,7 @@ class RecordUsageResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
         d = dict(src_dict)
@@ -233,9 +232,15 @@ class RecordUsageResponse:
         billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
 
 
-        dim2 = d.pop("dim2", UNSET)
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: RecordUsageResponseGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
+        else:
+            grouping_fields = RecordUsageResponseGroupingFields.from_dict(_grouping_fields)
 
-        dim3 = d.pop("dim3", UNSET)
+
+
 
         def _parse_measurements(data: object) -> None | RecordUsageResponseMeasurementsType0 | Unset:
             if data is None:
@@ -384,8 +389,7 @@ class RecordUsageResponse:
             event_id=event_id,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,
-            dim2=dim2,
-            dim3=dim3,
+            grouping_fields=grouping_fields,
             measurements=measurements,
             new_balance_micros=new_balance_micros,
             parent_task_id=parent_task_id,

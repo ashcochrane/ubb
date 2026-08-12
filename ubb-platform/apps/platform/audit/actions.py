@@ -62,8 +62,17 @@ AUDIT_ACTIONS = (
     "rate.deleted",
     "markup.set",
     "markup.deleted",
-    # dimension registry (unified dimension model plan, D1)
-    "dimension.declared",
+    # Grouping Field registry (unified dimension model plan, D1). Renamed with
+    # the thing it records (#277): `audit_action` in
+    # `domain-vocabulary/concepts/governance.yaml` carries the old name as a
+    # retired alias and the canonical one in its values, so this is the ledger
+    # taking the vocabulary the registry already declared for it.
+    #
+    # ADR-004 §2 makes these names additive-only and a rename a breaking
+    # change; #154 §4.2 spends a one-time, scoped, pre-production exception on
+    # exactly this name among others, and that exception is what this rename
+    # is drawn against. It is spent at the cutover, not before.
+    "grouping_field.declared",
     # task type registry (unified dimension model plan, D7)
     "task_type.declared",
     # The Event Type catalogue — what the tenant declares it meters (#267).
@@ -74,7 +83,7 @@ AUDIT_ACTIONS = (
     # already run (`rate.added`/`rate.deleted`, `webhook_config.created`/
     # `.deleted`, `grant.created`/`.voided`). Declaring and re-declaring are
     # one act — a correction to a declaration is still a declaration, which is
-    # why `dimension.declared` covers a re-PUT — but WITHDRAWING is not, and
+    # why `grouping_field.declared` covers a re-PUT — but WITHDRAWING is not, and
     # neither is publishing:
     #
     #   * publication is what a tenant's generated integration is built

@@ -8,6 +8,7 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
+from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
 from apps.platform.events.outbox import write_event
@@ -208,14 +209,15 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "stop_context": event.stop_context,
         "measurements": event.measurements,
         "pricing_provenance": event.pricing_provenance,
-        # THE KEYS ARE PUBLISHED PROPERTY NAMES; THE ATTRIBUTES ARE COLUMNS,
-        # and #276 moved only the second of the two. What a caller reads back
-        # is `RecordUsageResponse`, whose shape this ticket leaves alone — the
-        # slot values stop being exposed under any per-slot name at all in
-        # ticket 20, which is where the mismatch below is resolved by the
-        # properties going away rather than by either side being re-spelled.
-        "dim2": event.grouping_field_2,
-        "dim3": event.grouping_field_3,
+        # The grouping values under the tenant's OWN keys (#277). #276 left a
+        # published-name/column mismatch here and ticket 20 resolved it by the
+        # per-slot properties going away rather than by either side being
+        # re-spelled: the second and third slots used to be published and the
+        # rest were not, which is a pair no reader could have predicted.
+        #
+        # This is also the one place a caller sees what its posting INHERITED —
+        # task- and subtask-scoped values never travel with the event (D6).
+        "grouping_fields": grouping_fields_for(event),
     }
 
 

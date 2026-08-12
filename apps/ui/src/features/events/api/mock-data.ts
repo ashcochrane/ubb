@@ -68,6 +68,18 @@ interface DetailSeed {
 }
 
 function makeDetail(seed: DetailSeed): UsageEventDetail {
+  // Keyed by the declared key with unset slots omitted, exactly as the API now
+  // answers (#277). The seed fields stay named for the slots because that is
+  // what this mock tenant happens to have DECLARED its keys as — the analytics
+  // breakdowns in `mock.ts` group on the same three names.
+  const groupingFields: Record<string, string> = {};
+  for (const [key, value] of [
+    ["dim1", seed.dim1],
+    ["dim2", seed.dim2],
+    ["dim3", seed.dim3],
+  ] as const) {
+    if (value !== undefined && value !== "") groupingFields[key] = value;
+  }
   return {
     id: seed.id,
     request_id: seed.request_id ?? `req_${seed.id.slice(0, 8)}`,
@@ -79,9 +91,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     currency: "usd",
     event_type: seed.event_type ?? "chat.completion",
     provider: seed.provider ?? "openai",
-    dim1: seed.dim1 ?? "",
-    dim2: seed.dim2 ?? "",
-    dim3: seed.dim3 ?? "",
+    grouping_fields: groupingFields,
     measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_provenance: seed.pricing_provenance ?? {},

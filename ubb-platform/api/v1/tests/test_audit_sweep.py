@@ -48,7 +48,8 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # (a rename, not a net add/remove): 58 - 2 = 56 + 6 = 62.
 #
 # unified dimension model: +1 (task 3) PUT /metering/dimensions records
-# dimension.declared — declaring a tenant's slicing vocabulary is
+# grouping_field.declared (renamed with the thing it records, #277) — declaring
+# a tenant's slicing vocabulary is
 # governance/config, not telemetry. +1 (task 7) PUT /metering/task-types
 # records task_type.declared — a task type's COGS ceiling is a pricing-rule
 # change, not telemetry. 62 + 2 = 64.
