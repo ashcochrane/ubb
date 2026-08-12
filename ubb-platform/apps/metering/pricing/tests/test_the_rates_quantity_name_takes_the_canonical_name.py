@@ -103,11 +103,24 @@ class TheMoveIsARenameTest(TestCase):
         An `AddField` beside a `RemoveField` produces a column of the right
         name holding none of the data, and every assertion in every other class
         here would pass over it.
+
+        NESTED OPERATIONS ARE WALKED, which is what stops this being a restating
+        of the operation-list test below. `SeparateDatabaseAndState` carries two
+        lists of its own, and a field add hidden in either of them is invisible
+        to a check that only reads the top level — while being exactly the shape
+        this rule forbids, and a shape this migration's second operation makes
+        possible for the first time.
         """
-        for op in self.migration.operations:
+        for op in self._every_operation():
             with self.subTest(operation=type(op).__name__):
                 self.assertNotIsInstance(
                     op, (operations.AddField, operations.RemoveField))
+
+    def _every_operation(self):
+        for op in self.migration.operations:
+            yield op
+            yield from getattr(op, "database_operations", ())
+            yield from getattr(op, "state_operations", ())
 
     def test_it_renames_the_column_on_the_rate(self):
         self.assertEqual(_RENAME.model_name.lower(), Rate._meta.model_name)
@@ -259,6 +272,10 @@ class TheNameIsStillFreeTextAndThatIsSliceThreesTest(TestCase):
         """
         tenant = Tenant.objects.create(name="T")
         undeclared = "a_quantity_no_declaration_carries"
+        # A guard on the premise, not evidence for the claim: the declarations
+        # table is empty in this test, so it can only ever hold. It is here so a
+        # future fixture that seeds declarations cannot make the write below
+        # accidentally legitimate without this line going red first.
         self.assertFalse(Measurement.objects.filter(code=undeclared).exists())
 
         rate = Rate.objects.create(tenant=tenant, **{CANONICAL_COLUMN: undeclared})
@@ -278,19 +295,22 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
     Receipts written before this commit are NOT rewritten and still carry the
     old key — a receipt records what the engine did on a day, and back-dating it
     to a vocabulary that did not exist then would make it a worse record. The
-    engine version stamped beside it is how a reader tells the two apart.
+    engine version stamped beside it does NOT separate the two and is
+    deliberately not bumped: it describes what the engine computed, and every
+    amount is identical either side of a rename. `pricing_service._compute`
+    argues that in full.
     """
 
     def test_a_priced_line_carries_the_canonical_name(self):
         tenant = Tenant.objects.create(name="T")
-        card = Rate.objects.create(
+        rate = Rate.objects.create(
             tenant=tenant, rate_per_unit_micros=2_000_000, unit_quantity=1_000_000,
             **{CANONICAL_COLUMN: "input_tokens"})
 
         _, _, receipt = PricingService._compute(
             tenant=tenant, measurements={"input_tokens": 3},
             caller_provider_cost=None, caller_billed=None,
-            resolve_card=lambda kind, key: card,
+            resolve_card=lambda kind, key: rate,
             apply_markup=lambda provider_cost: provider_cost)
 
         # Every priced line, not one picked out by the cost/price discriminator:
@@ -326,11 +346,19 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
     def test_the_write_side_still_requires_it(self):
         """The rename did not quietly make the name optional.
 
-        `RateIn` is the one schema of the three where the property is required,
-        and a rename that landed it as optional would satisfy every other
-        assertion here while letting a rate be written with no quantity named.
+        A rename that landed the property as optional would satisfy every other
+        assertion here while letting a rate be written with no quantity named —
+        and it would also make the accepted-break block's central claim false,
+        since a stale caller is refused precisely BECAUSE the replacement is
+        required.
+
+        Both write schemas, not one. It is required on all three of them (on the
+        read side that means the server always sends it), but the two that a
+        caller fills are the ones this claim is about.
         """
-        self.assertIn(CANONICAL_COLUMN, schemas()["RateIn"]["required"])
+        for name in ("RateIn", "RateChangeIn"):
+            with self.subTest(schema=name):
+                self.assertIn(CANONICAL_COLUMN, schemas()[name]["required"])
 
 
 class TheStaleWriterIsRefusedRatherThanIgnoredTest(SimpleTestCase):

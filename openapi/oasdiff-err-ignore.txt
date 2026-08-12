@@ -248,8 +248,8 @@ GET /api/v1/me/usage-summary removed the required property `metrics/items/units`
 GET /api/v1/me/usage-summary removed the required property `total_units` from the response with the `200` status
 
 # 2026-08-12 THE RATE'S QUANTITY NAME TAKES THE CANONICAL MEASUREMENT NAME
-# (#275, slice 2). Decision reference: ADR-0007 §1 and §3, and the slice spec's
-# §F3. The four lines below were EMITTED by the gate itself
+# (#275, slice 2; PR #303). Decision reference: ADR-0007 §1 and §3, and the
+# slice spec's §F3. The four lines below were EMITTED by the gate itself
 # (`python openapi/contract_gate.py --baseline origin/main --emit`, oasdiff
 # v1.23.0) and pasted unedited, per ADR-0007 §4 — everything above them is the
 # human metadata that section permits. Read this block together with the two

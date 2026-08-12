@@ -230,8 +230,8 @@ POST /api/v1/metering/usage removed the request property `usage_metrics`
 POST /api/v1/metering/usage/batch removed the request property `events/items/usage_metrics`
 
 # 2026-08-12 THE RATE'S QUANTITY NAME TAKES THE CANONICAL MEASUREMENT NAME
-# (#275, slice 2). Decision reference: ADR-0007 §1 and §3, and the slice spec's
-# §F3. The two lines below were EMITTED by the gate itself
+# (#275, slice 2; PR #303). Decision reference: ADR-0007 §1 and §3, and the
+# slice spec's §F3. The two lines below were EMITTED by the gate itself
 # (`python openapi/contract_gate.py --baseline origin/main --emit`, oasdiff
 # v1.23.0) and pasted unedited, per ADR-0007 §4.
 #

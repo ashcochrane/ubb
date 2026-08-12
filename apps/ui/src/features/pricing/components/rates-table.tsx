@@ -130,7 +130,7 @@ export function RatesTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Metric</TableHead>
+                  <TableHead>Measurement</TableHead>
                   <TableHead>Matchers</TableHead>
                   <TableHead>Model</TableHead>
                   <TableHead>Rate</TableHead>

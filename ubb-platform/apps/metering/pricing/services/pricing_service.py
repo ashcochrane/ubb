@@ -91,14 +91,25 @@ class PricingService:
         (provider_cost, billed, provenance)."""
         measurements = measurements or {}
         # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
-        # receipts already written are NOT rewritten. A receipt is a record of
-        # what the engine did on a day, so back-dating one to a vocabulary that
-        # did not exist when it was written would make it a worse record, not a
-        # better one; `engine_version` above is how a reader tells the two
-        # apart. Nothing in the tree reads this key — the response surfaces
-        # `uncosted_metrics` and the whole receipt as an opaque object, and the
-        # console reads neither — so the split costs no reader a lookup today.
-        # The list key beside it is untouched: it is not the retired word.
+        # receipts already written are NOT rewritten. A receipt records what the
+        # engine did on a day, so back-dating one to a vocabulary that did not
+        # exist when it was written would make it a worse record, not a better
+        # one.
+        #
+        # `engine_version` DOES NOT SEPARATE THE TWO SHAPES and is deliberately
+        # not bumped for this: it describes what the engine COMPUTED, and the
+        # arithmetic, the resolution order and every amount are identical either
+        # side of the rename. Moving it for a spelling would spend the one signal
+        # that means "the numbers were produced differently" on a change where
+        # they were not. A reader tells the shapes apart by which key the line
+        # carries, which is the honest discriminator because it is the only thing
+        # that actually differs.
+        #
+        # That costs nobody a lookup, because nothing in the tree reads this key.
+        # What IS read off the receipt is `uncosted_metrics` — by the endpoint
+        # below and by the console's test-event panel — and that key is
+        # untouched here, as is the list key on the next line: neither is the
+        # retired word.
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
         # ---- COST ----

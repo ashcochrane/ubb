@@ -132,7 +132,7 @@ export function AddRateDialog({
           className="space-y-4"
         >
           <FormField
-            label="Metric name"
+            label="Measurement key"
             error={form.formState.errors.measurement_key?.message}
             hint="The measurement key this rate prices, e.g. gpt4o_input_tokens."
           >

@@ -861,6 +861,13 @@ def add_rate(request, book_id: UUID, payload: RateIn):
                 tenant_id=request.auth.tenant.id,
                 resource_type="rate",
                 resource_id=rate.id,
+                # This key moved with the column (#275) and audit records
+                # already written are NOT rewritten, on the same ground as the
+                # pricing receipt: an audit row states what was done on a day,
+                # and back-dating it to a vocabulary that did not exist then
+                # would make it a worse record. Nothing queries this key — the
+                # audit read path filters on `action` and `resource_type`, both
+                # unchanged — so the split costs no reader a lookup.
                 metadata={
                     "book_id": str(book.id),
                     "measurement_key": rate.measurement_key,
