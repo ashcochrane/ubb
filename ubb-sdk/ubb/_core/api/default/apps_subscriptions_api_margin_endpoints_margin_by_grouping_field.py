@@ -8,7 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.margin_by_dimension_out import MarginByDimensionOut
+from ...models.margin_by_grouping_field_out import MarginByGroupingFieldOut
 from ...models.problem_out import ProblemOut
 from ...types import UNSET, Unset
 from typing import cast
@@ -63,7 +63,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/margin/by-dimension",
+        "url": "/api/v1/margin/by-grouping-field",
         "params": params,
     }
 
@@ -72,9 +72,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> MarginByDimensionOut | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> MarginByGroupingFieldOut | ProblemOut | None:
     if response.status_code == 200:
-        response_200 = MarginByDimensionOut.from_dict(response.json())
+        response_200 = MarginByGroupingFieldOut.from_dict(response.json())
 
 
 
@@ -93,7 +93,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[MarginByDimensionOut | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[MarginByGroupingFieldOut | ProblemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -110,10 +110,10 @@ def sync_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[MarginByDimensionOut | ProblemOut]:
-    """ Margin By Dimension
+) -> Response[MarginByGroupingFieldOut | ProblemOut]:
+    """ Margin By Grouping Field
 
-     Margin by any declared dimension.
+     Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could
     not reach event_type at all despite get_dimensional_margin supporting it.
@@ -129,7 +129,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[MarginByDimensionOut | ProblemOut]
+        Response[MarginByGroupingFieldOut | ProblemOut]
      """
 
 
@@ -155,10 +155,10 @@ def sync(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> MarginByDimensionOut | ProblemOut | None:
-    """ Margin By Dimension
+) -> MarginByGroupingFieldOut | ProblemOut | None:
+    """ Margin By Grouping Field
 
-     Margin by any declared dimension.
+     Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could
     not reach event_type at all despite get_dimensional_margin supporting it.
@@ -174,7 +174,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        MarginByDimensionOut | ProblemOut
+        MarginByGroupingFieldOut | ProblemOut
      """
 
 
@@ -195,10 +195,10 @@ async def asyncio_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[MarginByDimensionOut | ProblemOut]:
-    """ Margin By Dimension
+) -> Response[MarginByGroupingFieldOut | ProblemOut]:
+    """ Margin By Grouping Field
 
-     Margin by any declared dimension.
+     Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could
     not reach event_type at all despite get_dimensional_margin supporting it.
@@ -214,7 +214,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[MarginByDimensionOut | ProblemOut]
+        Response[MarginByGroupingFieldOut | ProblemOut]
      """
 
 
@@ -240,10 +240,10 @@ async def asyncio(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> MarginByDimensionOut | ProblemOut | None:
-    """ Margin By Dimension
+) -> MarginByGroupingFieldOut | ProblemOut | None:
+    """ Margin By Grouping Field
 
-     Margin by any declared dimension.
+     Margin by any Grouping Field the tenant has declared.
 
     Replaces the old `provider: int` / `product: int` pseudo-flags, which could
     not reach event_type at all despite get_dimensional_margin supporting it.
@@ -259,7 +259,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        MarginByDimensionOut | ProblemOut
+        MarginByGroupingFieldOut | ProblemOut
      """
 
 

@@ -507,7 +507,7 @@ entries:
     gate: G7
     site: backend::dimension
     expected: grouping_field_value
-    found: 37 files
+    found: 33 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
@@ -517,7 +517,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 20 files
+    found: 18 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -529,6 +529,9 @@ entries:
       in slice 2, and a recorded extent that overstates is an excuse with no
       upper bound. So the number comes down now, in the commit that cleared
       them, rather than waiting for the slice that owes the rest.
+      Two more went the same way in #278, which renamed the registry route
+      family: both were comments in tests naming the old path, and the path
+      was the plural's last use in either file.
 
   - id: g7-backend-markup.deleted
     gate: G7
@@ -935,7 +938,7 @@ entries:
     gate: G7
     site: console::dimension
     expected: grouping_field_value
-    found: 29 files
+    found: 28 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
@@ -1520,16 +1523,6 @@ entries:
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
 
-  - id: g7-openapi-dimension
-    gate: G7
-    site: openapi::dimension
-    expected: grouping_field_value
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      Slice 2 builds the ten Grouping Field slots that replace the
-      dimension registry, so the value word goes when the slots arrive.
-
   - id: g7-openapi-dimensions
     gate: G7
     site: openapi::dimensions
@@ -1834,31 +1827,44 @@ entries:
     gate: G7
     site: sdk::dimension
     expected: grouping_field_value
-    found: 10 files
+    found: 3 files
     owner_slice: slice_2
     reason: >-
       Slice 2 builds the ten Grouping Field slots that replace the
       dimension registry, so the value word goes when the slots arrive.
-      The tenth file is `ubb-sdk/ubb/_operations.py`, which #209 generates
-      from the contract: the word is there because a published PATH still
-      spells it, and it will regenerate away in the same commit that
-      renames the route. Recorded rather than excluded, because the
-      generated core beside it is swept on exactly the same footing and an
-      exemption for one generated mirror and not the other is the kind of
-      narrowing nobody can see.
+      #278 renamed the route family and SEVEN of the ten went with it in one
+      regeneration: four generated core modules, the generated operation
+      registry, the generated coverage manifest, and the margin client's test.
+      That is the prediction this entry recorded coming true — the word was in
+      the generated mirrors because a published PATH spelled it, and no hand
+      edit could have removed it. Recording them here rather than excluding
+      them is what made the payment measurable.
+      The three that remain are all HAND-WRITTEN — the README, the metering
+      client and its test — and they are #282's, which is the ticket for
+      everything in this SDK a human typed.
 
   - id: g7-sdk-dimensions
     gate: G7
     site: sdk::dimensions
     expected: analytics_grouping_kind
-    found: 18 files
+    found: 13 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
-      The nineteenth file is `ubb-sdk/ubb/_operations.py` — the same
+      The nineteenth file was `ubb-sdk/ubb/_operations.py` — the same
       generated registry, for the same reason as the singular above.
+      #278 cleared FIVE of these, and the OWNER does not move: slice 7 still
+      owes what is left. The five are the three generated modules for the
+      registry routes, that generated registry, and the generated coverage
+      manifest — all of which carried the plural only because a published path
+      spelled it, and all of which regenerated when #278 renamed the family.
+      Slice 2 may clear the plural where it names the registry route family
+      (#193 §G5); it leaves the plural where it names a grouping axis, which
+      is every one of the thirteen below. A recorded extent that overstates is
+      an excuse with no upper bound, so the number comes down in the commit
+      that cleared them.
 
   - id: g7-sdk-markup.set
     gate: G7

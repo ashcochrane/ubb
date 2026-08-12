@@ -243,14 +243,14 @@ class GetCostTotalsTest(TestCase):
         from apps.metering.queries import get_dimensional_margin
         rows = get_dimensional_margin(self.tenant.id, group_by="provider",
                                       start_date=self.start, end_date=self.end)
-        assert rows[0]["dimension"] == "openai"
+        assert rows[0]["grouping_field_value"] == "openai"
         assert rows[0]["margin_micros"] == 300_000
 
     def test_dimensional_margin_by_tag(self):
         from apps.metering.queries import get_dimensional_margin
         rows = get_dimensional_margin(self.tenant.id, tag_key="model",
                                       start_date=self.start, end_date=self.end)
-        assert rows[0]["dimension"] == "gpt-4"
+        assert rows[0]["grouping_field_value"] == "gpt-4"
         assert rows[0]["margin_micros"] == 300_000
 
 

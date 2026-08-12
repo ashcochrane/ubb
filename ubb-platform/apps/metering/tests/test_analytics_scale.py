@@ -97,7 +97,7 @@ class BoundaryEquivalenceTest(TestCase):
             self.tenant.id, group_by="provider",
             start_date=date(2026, 6, 1), end_date=date(2026, 7, 1))
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["dimension"], "openai")
+        self.assertEqual(rows[0]["grouping_field_value"], "openai")
         self.assertEqual(rows[0]["event_count"], 2)
 
     # --- inclusive-end (date <= end_date) call sites ---
@@ -474,7 +474,7 @@ class TagGroupByPushdownTest(TestCase):
         from apps.metering.usage.models import Posting as UE
 
         def _row(dim, provider, billed, count):
-            return {"dimension": dim, "provider_cost_micros": provider or 0,
+            return {"grouping_field_value": dim, "provider_cost_micros": provider or 0,
                     "billed_cost_micros": billed or 0,
                     "margin_micros": (billed or 0) - (provider or 0),
                     "event_count": count}
@@ -521,19 +521,19 @@ class TagGroupByPushdownTest(TestCase):
         rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
         self.assertEqual(len(rows), 3)
         # sort: -margin_micros => prod 3_500_000, staging 2_000_000, "" 600_000
-        self.assertEqual(rows[0]["dimension"], "prod")
+        self.assertEqual(rows[0]["grouping_field_value"], "prod")
         self.assertEqual(rows[0]["provider_cost_micros"], 1_500_000)
         self.assertEqual(rows[0]["billed_cost_micros"], 5_000_000)
         self.assertEqual(rows[0]["margin_micros"], 3_500_000)
         self.assertEqual(rows[0]["event_count"], 2)
 
-        self.assertEqual(rows[1]["dimension"], "staging")
+        self.assertEqual(rows[1]["grouping_field_value"], "staging")
         self.assertEqual(rows[1]["provider_cost_micros"], 2_000_000)
         self.assertEqual(rows[1]["billed_cost_micros"], 4_000_000)
         self.assertEqual(rows[1]["margin_micros"], 2_000_000)
         self.assertEqual(rows[1]["event_count"], 1)
 
-        self.assertEqual(rows[2]["dimension"], "")
+        self.assertEqual(rows[2]["grouping_field_value"], "")
         self.assertEqual(rows[2]["provider_cost_micros"], 400_000)
         self.assertEqual(rows[2]["billed_cost_micros"], 1_000_000)
         self.assertEqual(rows[2]["margin_micros"], 600_000)
@@ -577,7 +577,7 @@ class TagGroupByPushdownTest(TestCase):
         Without .order_by(), Meta.ordering adds effective_at to GROUP BY,
         shattering them into two rows.  Assert exactly one row for prod."""
         rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
-        prod_rows = [r for r in rows if r["dimension"] == "prod"]
+        prod_rows = [r for r in rows if r["grouping_field_value"] == "prod"]
         self.assertEqual(len(prod_rows), 1,
                          "GROUP-BY trap: prod split into multiple rows (missing .order_by())")
         self.assertEqual(prod_rows[0]["event_count"], 2)

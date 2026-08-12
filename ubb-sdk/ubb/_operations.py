@@ -202,10 +202,10 @@ API_V1_METERING_ENDPOINTS_CREATE_BOOK = Operation(
     'api_v1_metering_endpoints_create_book',
     'post',
     '/api/v1/metering/pricing/rate-cards')
-API_V1_METERING_ENDPOINTS_DECLARE_DIMENSIONS = Operation(
-    'api_v1_metering_endpoints_declare_dimensions',
+API_V1_METERING_ENDPOINTS_DECLARE_GROUPING_FIELDS = Operation(
+    'api_v1_metering_endpoints_declare_grouping_fields',
     'put',
-    '/api/v1/metering/dimensions')
+    '/api/v1/metering/grouping-fields')
 API_V1_METERING_ENDPOINTS_DECLARE_TASK_TYPES = Operation(
     'api_v1_metering_endpoints_declare_task_types',
     'put',
@@ -244,12 +244,14 @@ API_V1_METERING_ENDPOINTS_LIST_BOOK_RATES = Operation(
     'api_v1_metering_endpoints_list_book_rates',
     'get',
     '/api/v1/metering/pricing/rate-cards/{book_id}/rates')
-API_V1_METERING_ENDPOINTS_LIST_DIMENSIONS = Operation(
-    'api_v1_metering_endpoints_list_dimensions', 'get', '/api/v1/metering/dimensions')
-API_V1_METERING_ENDPOINTS_LIST_DIMENSION_VALUES = Operation(
-    'api_v1_metering_endpoints_list_dimension_values',
+API_V1_METERING_ENDPOINTS_LIST_GROUPING_FIELDS = Operation(
+    'api_v1_metering_endpoints_list_grouping_fields',
     'get',
-    '/api/v1/metering/dimensions/{key}/values')
+    '/api/v1/metering/grouping-fields')
+API_V1_METERING_ENDPOINTS_LIST_GROUPING_FIELD_VALUES = Operation(
+    'api_v1_metering_endpoints_list_grouping_field_values',
+    'get',
+    '/api/v1/metering/grouping-fields/{key}/values')
 API_V1_METERING_ENDPOINTS_LIST_TASKS = Operation(
     'api_v1_metering_endpoints_list_tasks', 'get', '/api/v1/metering/tasks')
 API_V1_METERING_ENDPOINTS_LIST_TASK_TYPES = Operation(
@@ -502,10 +504,10 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_LIST_MARGIN = Operation(
     'apps_subscriptions_api_margin_endpoints_list_margin',
     'get',
     '/api/v1/margin/customers')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_DIMENSION = Operation(
-    'apps_subscriptions_api_margin_endpoints_margin_by_dimension',
+APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_GROUPING_FIELD = Operation(
+    'apps_subscriptions_api_margin_endpoints_margin_by_grouping_field',
     'get',
-    '/api/v1/margin/by-dimension')
+    '/api/v1/margin/by-grouping-field')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_SUMMARY = Operation(
     'apps_subscriptions_api_margin_endpoints_margin_summary',
     'get',

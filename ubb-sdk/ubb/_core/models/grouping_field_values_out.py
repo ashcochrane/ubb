@@ -10,28 +10,25 @@ from ..types import UNSET, Unset
 
 from typing import cast
 
-if TYPE_CHECKING:
-  from ..models.dimension_margin_row import DimensionMarginRow
-  from ..models.period_window import PeriodWindow
 
 
 
 
 
-T = TypeVar("T", bound="MarginByDimensionOut")
+T = TypeVar("T", bound="GroupingFieldValuesOut")
 
 
 
 @_attrs_define
-class MarginByDimensionOut:
+class GroupingFieldValuesOut:
     """ 
         Attributes:
-            period (PeriodWindow):
-            rows (list[DimensionMarginRow]):
+            key (str):
+            values (list[str]):
      """
 
-    period: PeriodWindow
-    rows: list[DimensionMarginRow]
+    key: str
+    values: list[str]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -39,14 +36,9 @@ class MarginByDimensionOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.dimension_margin_row import DimensionMarginRow
-        from ..models.period_window import PeriodWindow
-        period = self.period.to_dict()
+        key = self.key
 
-        rows = []
-        for rows_item_data in self.rows:
-            rows_item = rows_item_data.to_dict()
-            rows.append(rows_item)
+        values = self.values
 
 
 
@@ -54,8 +46,8 @@ class MarginByDimensionOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "period": period,
-            "rows": rows,
+            "key": key,
+            "values": values,
         })
 
         return field_dict
@@ -64,32 +56,20 @@ class MarginByDimensionOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.dimension_margin_row import DimensionMarginRow
-        from ..models.period_window import PeriodWindow
         d = dict(src_dict)
-        period = PeriodWindow.from_dict(d.pop("period"))
+        key = d.pop("key")
+
+        values = cast(list[str], d.pop("values"))
 
 
-
-
-        rows = []
-        _rows = d.pop("rows")
-        for rows_item_data in (_rows):
-            rows_item = DimensionMarginRow.from_dict(rows_item_data)
-
-
-
-            rows.append(rows_item)
-
-
-        margin_by_dimension_out = cls(
-            period=period,
-            rows=rows,
+        grouping_field_values_out = cls(
+            key=key,
+            values=values,
         )
 
 
-        margin_by_dimension_out.additional_properties = d
-        return margin_by_dimension_out
+        grouping_field_values_out.additional_properties = d
+        return grouping_field_values_out
 
     @property
     def additional_keys(self) -> list[str]:

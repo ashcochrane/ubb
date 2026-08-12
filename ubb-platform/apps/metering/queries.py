@@ -351,9 +351,23 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     group_by in {"provider", "event_type", "task_type", "subtask_type",
     "grouping_field_1".."grouping_field_10"} (a resolved column, not a
     tenant-facing key — the caller resolves the tenant's declared name via the
-    dimension registry first);
+    Grouping Field registry first);
     OR tag_key for a key read out of the open bag.
-    Each row: {dimension, provider_cost_micros, billed_cost_micros, margin_micros, event_count}.
+    Each row: {grouping_field_value, provider_cost_micros, billed_cost_micros,
+    margin_micros, event_count}.
+
+    The row key names the VALUE grouped rather than the axis it was grouped on,
+    because the caller already chose the axis and the row would otherwise repeat
+    it once per row.
+
+    `get_usage_timeseries` above still spells its own row key the old way, and
+    the reason is NOT that another slice owns it — the singular is this slice's
+    own debt and this module is inside its recorded extent. It is that the two
+    keys reach different surfaces: this one is a published response property on
+    the Grouping Field breakdown route, renamed in the same commit that renamed
+    the route, under a reviewed break. The timeseries key reaches the analytics
+    grouping surface, which #278 does not touch, and moving it there would be a
+    change to a different endpoint with no break recorded for it.
     """
     from apps.metering.usage.models import Posting
     qs = Posting.objects.filter(tenant_id=tenant_id)
@@ -362,8 +376,8 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     if end_date:
         qs = qs.filter(effective_at__lt=utc_day_start(end_date))
 
-    def _row(dim, provider, billed, count):
-        return {"dimension": dim, "provider_cost_micros": provider or 0,
+    def _row(value, provider, billed, count):
+        return {"grouping_field_value": value, "provider_cost_micros": provider or 0,
                 "billed_cost_micros": billed or 0,
                 "margin_micros": (billed or 0) - (provider or 0), "event_count": count}
 
@@ -372,8 +386,8 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         # found it — only the column underneath moved, with the fold.
         grouped = (
             qs.filter(metadata__has_key=tag_key)
-            .annotate(dimension=KeyTextTransform(tag_key, "metadata"))
-            .values("dimension")
+            .annotate(grouping_field_value=KeyTextTransform(tag_key, "metadata"))
+            .values("grouping_field_value")
             .annotate(
                 prov_sum=Sum("provider_cost_micros"),
                 billed_sum=Sum("billed_cost_micros"),
@@ -381,7 +395,8 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
             )
             .order_by()
         )
-        rows = [_row(g["dimension"], g["prov_sum"], g["billed_sum"], g["cnt"]) for g in grouped]
+        rows = [_row(g["grouping_field_value"], g["prov_sum"], g["billed_sum"], g["cnt"])
+                for g in grouped]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
     valid = ("provider", "event_type", "task_type", "subtask_type", *SLOTS)

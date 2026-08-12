@@ -327,9 +327,9 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.create_rate_card
-  - operation_id: api_v1_metering_endpoints_declare_dimensions
+  - operation_id: api_v1_metering_endpoints_declare_grouping_fields
     method: PUT
-    path: /api/v1/metering/dimensions
+    path: /api/v1/metering/grouping-fields
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_declare_task_types
     method: PUT
@@ -381,13 +381,13 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.list_rate_cards
-  - operation_id: api_v1_metering_endpoints_list_dimension_values
+  - operation_id: api_v1_metering_endpoints_list_grouping_field_values
     method: GET
-    path: /api/v1/metering/dimensions/{key}/values
+    path: /api/v1/metering/grouping-fields/{key}/values
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_list_dimensions
+  - operation_id: api_v1_metering_endpoints_list_grouping_fields
     method: GET
-    path: /api/v1/metering/dimensions
+    path: /api/v1/metering/grouping-fields
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_task_types
     method: GET
@@ -763,9 +763,9 @@ operations:
     method: GET
     path: /api/v1/margin/customers
     disposition: generated_only
-  - operation_id: apps_subscriptions_api_margin_endpoints_margin_by_dimension
+  - operation_id: apps_subscriptions_api_margin_endpoints_margin_by_grouping_field
     method: GET
-    path: /api/v1/margin/by-dimension
+    path: /api/v1/margin/by-grouping-field
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_by_dimension

@@ -33,10 +33,15 @@ POST /api/v1/metering/usage removed the optional property `service_id` from the 
 GET /api/v1/metering/usage/{event_id} removed the optional property `agent_id` from the response with the `200` status
 GET /api/v1/metering/usage/{event_id} removed the optional property `product_id` from the response with the `200` status
 GET /api/v1/metering/usage/{event_id} removed the optional property `service_id` from the response with the `200` status
-# /margin/by-dimension's provider/product boolean pseudo-flags are replaced by
-# one real `group_by` parameter (design doc "What this deletes"):
-GET /api/v1/margin/by-dimension deleted the `query` request parameter `provider`
-GET /api/v1/margin/by-dimension deleted the `query` request parameter `product`
+# Two entries stood here recording that /margin/by-dimension's provider/product
+# boolean pseudo-flags were replaced by one real `group_by` parameter (design
+# doc "What this deletes"). #278 renamed that path, so the parameter deletions
+# stopped being findings — a parameter cannot be reported as removed from a path
+# the document no longer has, and the gate called both entries INERT. They are
+# deleted here rather than left, on this file's own rule: an entry that no
+# longer describes a real break has become a lie about what was reviewed. The
+# review itself is not lost — the path removal that subsumes them is recorded in
+# oasdiff-err-ignore.txt, and these two lines remain in git history.
 # Final-fixes wave, Critical 1+2: the legacy `product_id` wire field is deleted
 # from the usage write contract entirely — it broke accept/settle price parity
 # and bypassed the dimension cardinality cap (no admit, no declaration required):

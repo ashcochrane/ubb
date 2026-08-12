@@ -40,7 +40,7 @@ class BatchResult:
 # those responses are typed in the committed contract now, so their DTOs come
 # from the generated core (TopUpCheckoutResponse, WithdrawResponse,
 # RefundResponse, WalletTransactionOut, StatusResponse, CustomerMarginOut,
-# DimensionMarginRow, MarginTrendPointOut).
+# GroupingFieldMarginRow, MarginTrendPointOut).
 
 T = TypeVar("T")
 

@@ -98,19 +98,22 @@ class MarginSummaryOut(Schema):
     customer_count: int
 
 
-class DimensionMarginRow(Schema):
-    # Null when grouping by a tag key and the tag's JSON value is null —
-    # `has_key` matches the key, KeyTextTransform surfaces SQL NULL.
-    dimension: Optional[str] = None
+class GroupingFieldMarginRow(Schema):
+    # The VALUE the row groups, not the axis it was grouped on: the axis is
+    # already named by the request's `group_by`, and repeating it in every row
+    # would say the same thing once per row. Null when grouping by an open-bag
+    # key and that key's JSON value is null — `has_key` matches the key,
+    # KeyTextTransform surfaces SQL NULL.
+    grouping_field_value: Optional[str] = None
     provider_cost_micros: int
     billed_cost_micros: int
     margin_micros: int
     event_count: int
 
 
-class MarginByDimensionOut(Schema):
+class MarginByGroupingFieldOut(Schema):
     period: PeriodWindow
-    rows: list[DimensionMarginRow]
+    rows: list[GroupingFieldMarginRow]
 
 
 class UnprofitableCustomerRow(Schema):

@@ -116,7 +116,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # so dim1 needs a key to be addressable. Driven over the real HTTP
         # route, matching this test's style for every route the SDK doesn't
         # wrap yet. ----
-        _put(api, "/api/v1/metering/dimensions", {"dimensions": [
+        _put(api, "/api/v1/metering/grouping-fields", {"dimensions": [
             {"key": "product", "slot": "grouping_field_1", "scope": "event"},
             {"key": "service", "slot": "grouping_field_2", "scope": "event"},
             {"key": "agent", "slot": "grouping_field_3", "scope": "event"},
