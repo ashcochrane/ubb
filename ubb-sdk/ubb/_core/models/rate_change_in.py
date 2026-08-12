@@ -23,9 +23,14 @@ T = TypeVar("T", bound="RateChangeIn")
 @_attrs_define
 class RateChangeIn:
     """ One reprice in a publish. Match keys (measurement_key plus the ten
-    selector columns — provider/event_type/task_type/subtask_type/dim1..
-    dim6) locate the active rate; the remaining (nullable) fields, when
-    present, override it in the new version.
+    selectors below — provider/event_type/task_type/subtask_type/dim1..dim6)
+    locate the active rate; the remaining (nullable) fields, when present,
+    override it in the new version.
+
+    These ten are not the whole selector set a rate can pin. A rate may also be
+    pinned on four further grouping-field slots that this body cannot name, and
+    such a rate cannot be matched here — a publish naming it fails to find an
+    active rate. Reaching them is not yet possible through the API.
 
         Attributes:
             measurement_key (str):
