@@ -98,14 +98,18 @@ class MeteringClient:
         task, or the whole customer). A non-200 always means "this was not
         recorded".
 
-        ``dimensions``: declared EVENT-scoped dimension values (the tenant's
-        registry, ``PUT /api/v1/metering/grouping-fields``) — what rate cards
-        select on and analytics group by. Distinct from ``metadata``, the one
-        open bag: free-form labelling, filterable and readable, never
-        consulted for pricing or grouping. The second open bag folded into it
-        and its name retired with the grouping capability that name promised
-        — a caller that sent the old bag sends the same keys under
-        ``metadata``.
+        ``dimensions``: declared EVENT-scoped grouping field values (the
+        tenant's registry, ``PUT /api/v1/metering/grouping-fields``) — what
+        rate cards select on and analytics group by. The keyword still spells
+        the registry's old name because the request property does; the route
+        moved to the canonical one and the property follows in the slice that
+        owns it.
+
+        Distinct from ``metadata``, the one open bag: free-form labelling,
+        filterable and readable, never consulted for pricing or grouping. The
+        second open bag folded into it and its name retired with the grouping
+        capability that name promised — a caller that sent the old bag sends
+        the same keys under ``metadata``.
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
         datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
@@ -242,13 +246,25 @@ class MeteringClient:
             params=params)
         return from_wire(CustomerMarginOut, r.json())
 
-    def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
-                                start_date=None, end_date=None):
-        params = {}
-        if provider:
-            params["provider"] = 1
-        if product:
-            params["product"] = 1
+    def get_margin_by_grouping_field(self, *, group_by="provider", tag_key=None,
+                                     start_date=None, end_date=None):
+        """Margin broken down by one Grouping Field, one row per value.
+
+        ``group_by`` is the axis: one of the built-in ``provider``,
+        ``event_type``, ``task_type``, ``subtask_type``, or any key the tenant
+        has declared in its Grouping Field registry. The route resolves the key
+        and answers 422 for one it does not know — this client does not hold a
+        list of its own, because a client that did would refuse a key declared
+        after it was pinned.
+
+        ``tag_key`` groups by a key in the open metadata bag instead, and the
+        route prefers it over the axis when both arrive.
+
+        The row's value is ``grouping_field_value`` — the thing that was
+        reported, a model name or a region. The axis is not repeated on every
+        row, because the request already names it.
+        """
+        params = {"group_by": group_by}
         if tag_key:
             params["tag_key"] = tag_key
         if start_date:

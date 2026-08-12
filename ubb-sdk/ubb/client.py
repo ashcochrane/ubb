@@ -632,10 +632,10 @@ class UBBClient:
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         return self._require_metering().get_customer_margin(customer_id, start_date, end_date)
 
-    def get_margin_by_dimension(self, *, provider=False, product=False, tag_key=None,
-                                start_date=None, end_date=None):
-        return self._require_metering().get_margin_by_dimension(
-            provider=provider, product=product, tag_key=tag_key,
+    def get_margin_by_grouping_field(self, *, group_by="provider", tag_key=None,
+                                     start_date=None, end_date=None):
+        return self._require_metering().get_margin_by_grouping_field(
+            group_by=group_by, tag_key=tag_key,
             start_date=start_date, end_date=end_date)
 
     def get_unprofitable_customers(self, period_start=None):

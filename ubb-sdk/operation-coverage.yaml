@@ -768,7 +768,7 @@ operations:
     path: /api/v1/margin/by-grouping-field
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_by_dimension
+      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_by_grouping_field
   - operation_id: apps_subscriptions_api_margin_endpoints_margin_summary
     method: GET
     path: /api/v1/margin/summary
