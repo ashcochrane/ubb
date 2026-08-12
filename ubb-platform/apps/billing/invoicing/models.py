@@ -112,7 +112,10 @@ class CustomerUsageInvoice(BaseModel):
 
 class UsageInvoiceLineItem(BaseModel):
     usage_invoice = models.ForeignKey(CustomerUsageInvoice, on_delete=models.CASCADE, related_name="line_items")
-    dimension = models.CharField(max_length=255, blank=True, default="")
+    # The value of whichever axis `usage_line_item_group_by` names, or "" when
+    # the tenant groups nothing — the same thing the analytics rollups publish
+    # under this name. Internal: no schema declares it and no route returns it.
+    grouping_field_value = models.CharField(max_length=255, blank=True, default="")
     amount_micros = models.BigIntegerField(default=0)
     stripe_invoice_item_id = models.CharField(max_length=255, blank=True, default="")
 

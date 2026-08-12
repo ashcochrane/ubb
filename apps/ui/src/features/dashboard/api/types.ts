@@ -70,11 +70,17 @@ export interface BreakdownRow {
 }
 
 /**
- * The key the backend still puts a grouped value under on an untyped breakdown
- * row. It is NOT this console's word for it — `BreakdownRow.group_value` is —
- * and it is spelled here, once, because the backend has not yet renamed what it
- * emits. That rename is its own ledger entry, owned by this same slice; when it
- * lands, this constant is the only console site that moves.
+ * The key the backend puts a grouped value under on an untyped breakdown row.
+ * It is NOT this console's word for it — `BreakdownRow.group_value` is — and it
+ * is spelled here, once, because the row is untyped.
+ *
+ * **This constant is what #280 predicted would be the only console site to
+ * move, and #312 is the release that moved it.** `api/v1/metering_endpoints.py`
+ * now writes the property the DECLARED `/margin/by-grouping-field` rows have
+ * always published, so all three rollups agree on one word. Server and console
+ * moved in the same commit on purpose: renaming this read alone would have
+ * rendered every bar "(unattributed)" against a live server while every console
+ * test still passed.
  *
  * The rows are `additionalProperties: true` in the contract, so the generated
  * types cannot carry the name and a fixture cannot be type-checked into
@@ -84,7 +90,7 @@ export interface BreakdownRow {
  * Exported so this feature's mock emits the same key the narrowing reads —
  * a mock that spelled it separately could drift from the backend silently.
  */
-export const WIRE_GROUP_VALUE_KEY = "dimension";
+export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
 /**
  * GET /connect/status — untyped `dict` in the schema.

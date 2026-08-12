@@ -140,6 +140,22 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   book must also author them in whichever provider book would otherwise match, or the override never
   fires. The publish-time tooling does not warn on this today — a candidate for a future
   "ambiguous/shadowed override" lint alongside the specificity-tie warning the design doc flags.
+- **A row's grouped VALUE is `grouping_field_value` on every rollup, and the AXIS is named by the
+  request.** Three rollups group postings and put the grouped value on each row: the
+  `/analytics/usage` breakdowns, the `/analytics/usage/timeseries` buckets, and
+  `/margin/by-grouping-field`. Only the third DECLARES its rows (`GroupingFieldMarginRow`); the
+  other two return `list[dict]`, so no schema, no drift gate and no breaking gate can hold them to
+  anything, and the two of them were written independently of each other and of the declared one.
+  #312 settled which vocabulary they belong to and made all three agree. The reading is the declared
+  schema's own: *the value the row groups, not the axis it was grouped on* — the axis is already
+  named by the request's `group_by` (or by the key of the `breakdowns` map), so repeating it per row
+  would say the same thing once per row. **This is also why the two open rollups are slice 2's and
+  not slice 7's**, which owns the analytics grouping *capability* and its request parameter: the
+  registry retires the singular noun to `grouping_field_value` and the plural to
+  `analytics_grouping_kind`, so a value is this slice's and an axis is that one's, and the row key
+  holds a value. Nothing but a test asserting the whole row can hold that agreement, which is what
+  `api/v1/tests/test_analytics_dimensions.py` does for both open rollups, and why the console's two
+  narrowing constants and the SDK's samples had to move in the same commit rather than a later one.
 - **Migration note — superseded.** This ADR used to warn that
   `apps/metering/usage/migrations/0028_remove_usageevent_idx_usage_attribution_and_more.py`
   implemented a column move as `AddField` + `RemoveField` rather than `RenameField`, and that

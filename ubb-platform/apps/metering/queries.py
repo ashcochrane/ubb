@@ -284,10 +284,11 @@ def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_
 
 def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
                          group_by=None, start_date=None, end_date=None) -> list[dict]:
-    """Time-series spend rollup: daily or hourly COGS per tenant, optionally per customer/dimension.
+    """Time-series spend rollup: daily or hourly COGS per tenant, optionally
+    per customer or per grouping field.
 
     Returns list of dicts with bucket (ISO string), provider_cost_micros, billed_cost_micros,
-    markup_micros, event_count, and optionally dimension (when group_by is set).
+    markup_micros, event_count, and optionally grouping_field_value (when group_by is set).
     """
     from django.db.models.functions import TruncHour
     from apps.metering.usage.models import Posting
@@ -320,10 +321,17 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         d = dict(r)
         d["bucket"] = d["bucket"].isoformat() if d.get("bucket") else None
         if group_by and group_by in d:
-            raw_dim = d.pop(group_by)
+            raw_value = d.pop(group_by)
             # Map empty string or None to the unattributed sentinel so no events
             # are silently dropped and every timeseries bucket reconciles to the total.
-            d["dimension"] = raw_dim if raw_dim else "(unattributed)"
+            #
+            # The key is the one `get_dimensional_margin` below publishes
+            # through a declared schema (`GroupingFieldMarginRow`), and the one
+            # the sibling `/analytics/usage` breakdown writes — three rollups,
+            # one word for a row's grouped value. This row is an open dict, so
+            # the agreement is held by
+            # `api/v1/tests/test_analytics_dimensions.py` rather than by a type.
+            d["grouping_field_value"] = raw_value if raw_value else "(unattributed)"
         d["markup_micros"] = (d["billed_cost_micros"] or 0) - (d["provider_cost_micros"] or 0)
         out.append(d)
     return out
@@ -473,8 +481,8 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
     an empty slot value ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
-    distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
-    into "(other)" post-query.
+    grouped value of its own. SQL GROUP BY pushdown; NULL and "" groups are
+    merged into "(other)" post-query.
 
     ``group_by`` IS ONLY READ FOR ITS "tag:" PREFIX. Anything else means the
     first slot, whatever the stored configuration spells — which is why #276

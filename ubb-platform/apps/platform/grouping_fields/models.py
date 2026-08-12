@@ -35,7 +35,7 @@ SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 #: a widening ships with a column that silently truncates the widest member.
 SLOT_MAX_LENGTH = max(len(slot) for slot, _ in SLOT_CHOICES)
 
-# The level at which a dimension's value is CONSTANT (D6). Task- and
+# The level at which a grouping field's value is CONSTANT (D6). Task- and
 # subtask-scoped values are set once on the unit and inherited by its events;
 # event-scoped values are sent per call.
 SCOPE_CHOICES = [("task", "Task"), ("subtask", "Subtask"), ("event", "Event")]
@@ -68,7 +68,7 @@ class GroupingField(BaseModel):
     slot = models.CharField(max_length=SLOT_MAX_LENGTH, choices=SLOT_CHOICES)
     scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default="event")
     # Keyspace guard, not an invariant (D4): bounding distinct values is what
-    # makes the rate cache safely dimension-keyed. Raise only, never lower.
+    # makes the rate cache safely keyed by them. Raise only, never lower.
     max_cardinality = models.IntegerField(default=100)
     # Retire, never delete (D8): stops accepting new values while historical
     # rows keep their meaning and stay groupable.

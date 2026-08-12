@@ -24,7 +24,7 @@ export interface AnalyticsQueryLike {
   refetch: () => void;
 }
 
-export interface DimensionBreakdownProps {
+export interface GroupingFieldBreakdownProps {
   query: AnalyticsQueryLike;
   groupBy: BreakdownDimension;
   onGroupByChange: (groupBy: BreakdownDimension) => void;
@@ -32,13 +32,13 @@ export interface DimensionBreakdownProps {
   className?: string;
 }
 
-export function DimensionBreakdown({
+export function GroupingFieldBreakdown({
   query,
   groupBy,
   onGroupByChange,
   currency,
   className,
-}: DimensionBreakdownProps) {
+}: GroupingFieldBreakdownProps) {
   return (
     <ChartCard
       title="Cost breakdown"

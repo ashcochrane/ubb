@@ -84,17 +84,17 @@ describe("pivotTimeseries", () => {
   });
 
   // The grouped value arrives inside a row the contract types as
-  // `additionalProperties: true`, under a key the BACKEND owns and still
-  // spells with the retired word. `asTimeseriesPoints` reads it through
-  // `WIRE_GROUP_VALUE_KEY`, and this feature's mock EMITS it through the same
-  // constant — so every other fixture here would still pass if that constant
-  // were changed on the console side alone, and the chart would silently paint
-  // one "(unattributed)" series over the whole window.
+  // `additionalProperties: true`, under a key the BACKEND owns.
+  // `asTimeseriesPoints` reads it through `WIRE_GROUP_VALUE_KEY`, and this
+  // feature's mock EMITS it through the same constant — so every other fixture
+  // here would still pass if that constant were changed on the console side
+  // alone, and the chart would silently paint one "(unattributed)" series over
+  // the whole window.
   //
   // This fixture is a literal transcript of a backend response instead. It
-  // fails the moment the console's read stops matching what the server writes,
-  // and it is what must be updated — deliberately, in the same commit — when
-  // the backend's own rename lands.
+  // fails the moment the console's read stops matching what the server writes.
+  // #312 is the commit that updated it — deliberately, alongside the backend's
+  // own rename, which is the pairing this test exists to force.
   it("paints a verbatim backend response by its grouped value", () => {
     const fromBackend = [
       {
@@ -103,7 +103,7 @@ describe("pivotTimeseries", () => {
         billed_cost_micros: 100,
         markup_micros: 20,
         event_count: 1,
-        dimension: "openai",
+        grouping_field_value: "openai",
       },
     ];
 

@@ -131,18 +131,25 @@ export interface TimeseriesPoint {
 }
 
 /**
- * The key the backend still puts a grouped value under on an untyped
- * timeseries row. It is NOT this console's word for it — `group_value` is —
- * and it is spelled here, once, because the backend has not yet renamed what
- * it emits (`apps/metering/queries.py`). That rename is its own ledger entry;
- * when it lands, this constant is the only site in this feature that moves.
+ * The key the backend puts a grouped value under on an untyped timeseries row.
+ * It is NOT this console's word for it — `group_value` is — and it is spelled
+ * here, once, because the row is untyped: `series` is `additionalProperties:
+ * true` in the contract, so no generated type carries the name and no
+ * type-checked fixture can.
+ *
+ * **This constant is what #280 predicted would be the only site that moves,
+ * and #312 is the release that moved it.** `apps/metering/queries.py` now
+ * writes the property the DECLARED margin rows have always published, so the
+ * value below is that one. The two sides moved in the same commit on purpose:
+ * renaming this read alone would have rendered every series "(unattributed)"
+ * against a live server while every console test still passed.
  *
  * Exported so this feature's mock emits the same key the narrowing reads —
  * which also means the mock cannot contradict a mistake here. For that reason
  * `lib/timeseries.test.ts` pins it against a verbatim backend response, all
  * the way through to a painted series.
  */
-export const WIRE_GROUP_VALUE_KEY = "dimension";
+export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
 export function asTimeseriesPoints(
   series: Array<Record<string, unknown>>,

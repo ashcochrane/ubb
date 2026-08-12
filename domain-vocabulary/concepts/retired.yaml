@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,533 of 1,904 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,534 of 1,906 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -230,6 +230,23 @@ measurement_key:
     # is gone must be allowed to say the word; the alternative is sourcing the
     # token from this registry at runtime, which reads as cleverness and hides
     # what the test is about.
+    #
+    # #312 MOVED THE DENOMINATOR ONLY, UPWARD (1,533 → 1,534 swept, 1,904 →
+    # 1,906 tracked, 50/126 unchanged) — the "needs no story" direction, and it
+    # is recorded chiefly because it comes straight after #284, the one commit
+    # that ever moved the numerator without a word leaving the tree. NO
+    # EXCLUSION COUNT ROSE FOR A NEW REASON HERE: `historical-migrations` went
+    # 204 → 205 because this commit ADDS a migration to a directory the rule
+    # already covers, which is the bookkeeping every migration does and not a
+    # widening. That is the discriminator #284 wrote down, applied to the very
+    # next commit. Two new files, one of them that migration and the other the
+    # test module pinning it — so the tracked total moves by two and the swept
+    # by one. THREE FILES WERE ALSO RENAMED and none of them moves either count:
+    # a rename is a delete plus an add to `git ls-files`, and the sweep reads
+    # content rather than paths. Nothing about this concept is in the commit —
+    # it retires the SINGULAR GROUPING-FIELD VALUE word, a different registry
+    # entry entirely — and #275's RATE ARITHMETIC caution holds again: it went
+    # nowhere near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

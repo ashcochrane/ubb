@@ -107,7 +107,8 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         assert rep["total_provider_cost_micros"] == 2000
         assert any(r["customer__external_id"] == "acme" and r["total_provider_cost_micros"] == 2000
                    for r in rep["by_customer"])
-        assert any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 2000
+        assert any(r["grouping_field_value"] == "search"
+                   and r["total_provider_cost_micros"] == 2000
                    for r in rep["breakdowns"]["dim1"])
     finally:
         client.close()

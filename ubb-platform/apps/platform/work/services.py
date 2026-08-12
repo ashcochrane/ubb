@@ -31,7 +31,7 @@ class TaskService:
 
         ``task_type``/``subtask_type`` and ``dimension_slots`` (design D7/D6)
         are pure pass-through: the caller (billing's start-gate) already
-        resolved the declared type and admitted the dimension values —
+        resolved the declared type and admitted the grouping field values —
         TaskService only writes what it is given.
         """
         if parent is not None and parent.parent_id is not None:

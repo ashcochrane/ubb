@@ -33,10 +33,10 @@ class TestCardCacheDimensions:
         CardCache.begin_request(t.id)
         return t, c
 
-    def test_dimension_bearing_resolution_is_cached(self):
+    def test_slot_bearing_resolution_is_cached(self):
         """Before this change CardCache bypassed L1 whenever the open bag was
-        non-empty (card_cache.py:67-73), so every dimension-bearing event hit
-        Postgres.
+        non-empty (card_cache.py:67-73), so every event carrying a slot value
+        hit Postgres.
         Bounded cardinality (design D4) is what makes the key safe."""
         t, c = self._tc()
         sel = _sel(provider="openai", grouping_field_1="eu")

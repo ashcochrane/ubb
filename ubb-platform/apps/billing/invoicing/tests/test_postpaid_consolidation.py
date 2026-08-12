@@ -326,7 +326,7 @@ class TestSafetyAddendumResume:
         kw = m.item_create.call_args.kwargs
         assert kw["invoice"] == "in_renewal"
         assert kw["idempotency_key"] == f"usage-item-{rec.id}-cin_renewal-1"
-        assert sorted(rec.line_items.values_list("dimension", "stripe_invoice_item_id")) \
+        assert sorted(rec.line_items.values_list("grouping_field_value", "stripe_invoice_item_id")) \
             == [("a", "ii_renewal_0"), ("b", "ii_new_1")]
 
     def test_foreign_items_on_the_renewal_never_shadow_ours(self):
@@ -382,7 +382,7 @@ class TestSafetyAddendumResume:
         assert split[0].data["remainder_invoice_id"] == "in_new"
         assert split[0].data["remainder_line_indexes"] == ["1"]
         # Per-line item ids recorded from BOTH invoices.
-        pairs = dict(rec.line_items.values_list("dimension", "stripe_invoice_item_id"))
+        pairs = dict(rec.line_items.values_list("grouping_field_value", "stripe_invoice_item_id"))
         assert pairs == {"a": "ii_renewal_0", "b": "ii_new_1"}
 
     def test_full_adopt_records_with_zero_stripe_writes(self):
@@ -398,7 +398,7 @@ class TestSafetyAddendumResume:
         assert m.create.call_count == 0
         assert m.item_create.call_count == 0
         assert m.finalize.call_count == 0
-        pairs = dict(rec.line_items.values_list("dimension", "stripe_invoice_item_id"))
+        pairs = dict(rec.line_items.values_list("grouping_field_value", "stripe_invoice_item_id"))
         assert pairs == {"a": "ii_renewal_0", "b": "ii_renewal_1"}
 
     def test_finalize_race_during_item_create_falls_through_to_split(self, caplog):

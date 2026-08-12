@@ -39,7 +39,8 @@ class RiskService:
             missing = [d for d in policy["required_dimensions"] if d not in supplied]
             if missing:
                 raise ValueError(
-                    f"{kind}_type {key!r} missing required dimension(s): {missing}")
+                    f"{kind}_type {key!r} missing required grouping field(s): "
+                    f"{missing}")
 
         type_default = policy["default_provider_cost_limit_micros"] if policy else None
         if requested_limit_micros is not None:
@@ -182,7 +183,7 @@ class RiskService:
                 # Design D7: the ceiling belongs to the declared KIND of work,
                 # server-side — a caller may request lower, never higher.
                 # Raises ValueError (caught by the endpoint) on an undeclared/
-                # retired type, a missing required dimension, or a request
+                # retired type, a missing required grouping field, or a request
                 # above the type's ceiling.
                 resolved_key, slot_values, provider_cost_limit_micros = (
                     RiskService.resolve_type_policy(

@@ -143,7 +143,7 @@ def record_sync_item(tenant, item, customers, task_exists):
         if not task_exists[task_key]:
             return _rejected("not_found", "Task not found")
     # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
-    # dimension is THIS item's rejection, same as any other validation
+    # grouping field is THIS item's rejection, same as any other validation
     # failure below, and never reaches record_usage.
     try:
         dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
@@ -174,7 +174,7 @@ def record_usage(request, payload: RecordUsageRequest):
         get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
     # Task 9: admission is a WRITE (records GroupingFieldValue rows), so it runs
     # BEFORE the recording core, outside record_usage's own retry/replay
-    # machinery — a bad dimension is a whole-request 422, never a partial
+    # machinery — a bad grouping field is a whole-request 422, never a partial
     # record.
     try:
         dimension_slots = DimensionService.admit(
@@ -545,7 +545,7 @@ _MAX_BREAKDOWNS = len(SLOT_CHOICES)
 
 
 def _resolve_dimension(tenant, dim):
-    """Map a requested dimension name to the column to GROUP BY.
+    """Map a requested grouping axis to the column to GROUP BY.
 
     Reserved names map to themselves; declared tenant keys map to their slot.
     Anything else — notably a correlation id like task_id (design D9) — is a
@@ -557,7 +557,7 @@ def _resolve_dimension(tenant, dim):
         return "customer__external_id" if dim == "customer" else dim
     slot = slot_map(tenant.id).get(dim)
     if slot is None:
-        raise Problem("validation_error", f"unknown dimension {dim!r}")
+        raise Problem("validation_error", f"unknown grouping field {dim!r}")
     return slot
 
 
@@ -689,7 +689,12 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                 # Map empty string or None to the sentinel for non-customer cols
                 if dim != "customer" and not raw_val:
                     raw_val = "(unattributed)"
-                r["dimension"] = raw_val
+                # The same property the DECLARED margin rollup publishes for the
+                # same thing (`MarginRowOut.grouping_field_value`). These rows
+                # are `list[dict]`, so no schema holds this name and no drift or
+                # breaking gate can see it change — `test_analytics_dimensions.py`
+                # asserts the whole row instead.
+                r["grouping_field_value"] = raw_val
             breakdowns[dim] = rows
 
     return 200, {

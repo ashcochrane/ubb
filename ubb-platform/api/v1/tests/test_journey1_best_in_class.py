@@ -5,9 +5,9 @@ running Django server. It proves a tenant can do best-in-class cost attribution
 end to end -- with NO raw SQL and NO client-side joins -- using only the SDK:
 
   - bulk-create dimensional cost cards (one POST for the whole batch),
-  - record a fleet of multi-dimension usage events with NO caller-supplied cost,
+  - record a fleet of multi-axis usage events with NO caller-supplied cost,
     so the server computes COGS from the matching dimensional cost card,
-  - read a multi-dimension COGS breakdown back (product / service / agent) and
+  - read a multi-axis COGS breakdown back (product / service / agent) and
     have every breakdown reconcile to the SAME grand-total provider cost,
   - read a per-day time-series that reconciles to the dimensional breakdown,
   - walk a rate-card's version history and query it point-in-time via ``as_of``,
@@ -77,11 +77,11 @@ def _no_outbox_dispatch():
         yield
 
 
-# Expected per-event COGS, keyed by the service dimension, from the two cost
-# cards below. Asserted exactly so every reconciliation below is precise.
+# Expected per-event COGS, keyed by the service grouping field, from the two
+# cost cards below. Asserted exactly so every reconciliation below is precise.
 COST_ALPHA = 200   # rate 2/unit * 100 units, unit_quantity=1
 COST_BETA = 500    # rate 5/unit * 100 units, unit_quantity=1
-# Unattributed event: recorded with an explicit provider_cost_micros (no service dimension).
+# Unattributed event: recorded with an explicit provider_cost_micros (no service value).
 COST_UNATTR = 300
 
 
@@ -112,7 +112,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # label-lifting; the open bag is free-form only). "product" is bound
         # to dim1 the same way — declared and sent via `dimensions=` (the
         # legacy product_id wire field is gone; the only path onto dim1 is a
-        # declared dimension) — and GROUPING speaks declared keys (Task 15),
+        # declared grouping field) — and GROUPING speaks declared keys (Task 15),
         # so dim1 needs a key to be addressable. Driven over the real HTTP
         # route, matching this test's style for every route the SDK doesn't
         # wrap yet. ----
@@ -123,7 +123,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         ]})
 
         # ---- 2. create a default cost BOOK, then add TWO dimensional rates for
-        # quantity "tokens" that differ ONLY by the declared "service" dimension
+        # quantity "tokens" that differ ONLY by the declared "service" field
         # (dim2). The pricing engine matches a rate's selector columns against
         # the event's OWN columns (design D3: "" wildcards, a pinned value must
         # match exactly). Every rate lives under a book -> book-scoped
@@ -140,10 +140,9 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
         # ---- 3. record 8 events for C1: 2 products x 2 services x 2 agents,
-        # spread across 3 days; ONE event carries a mis-typed agent dimension
-        # value. ----
+        # spread across 3 days; ONE event carries a mis-typed agent value. ----
         # Each tuple: (product, service, agent, day). Expected cost derives purely
-        # from `service`. The matrix is balanced so each dimension reconciles.
+        # from `service`. The matrix is balanced so each axis reconciles.
         matrix = [
             ("p1", "alpha", "ag1",     1),   # 200
             ("p1", "beta",  "ag2",     1),   # 500
@@ -181,7 +180,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 "product": product, "service": service, "agent": agent}
             _force_day(res.event_id, day)
 
-        # ---- 3b. One extra event for C1 with NO service dimension ----
+        # ---- 3b. One extra event for C1 with NO service value ----
         # Nothing declared on it, so it carries an EMPTY grouping-field object
         # and must appear as "(unattributed)" in the "service" breakdown, so
         # that the breakdown reconciles to the new grand total.
@@ -189,7 +188,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
             provider_cost_micros=COST_UNATTR,
             # Deliberately no product/service/agent dimensions, so all three
-            # dimension fields are empty strings on the stored event.
+            # slot columns are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
         # Nothing declared on this one, so the object is EMPTY rather than three
@@ -202,8 +201,8 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                           [(p, s, a, d) for (p, s, a, d) in matrix]) + COST_UNATTR
         assert grand_total == 4 * COST_ALPHA + 4 * COST_BETA + COST_UNATTR == 3100
 
-        # Per-dimension expected provider-cost totals (matrix events + unattributed event).
-        # The unattributed event contributes to the "(unattributed)" bucket in each dimension.
+        # Per-axis expected provider-cost totals (matrix events + unattributed event).
+        # The unattributed event contributes to the "(unattributed)" bucket in each axis.
         exp_by_product, exp_by_service, exp_by_agent = {}, {}, {}
         for product, service, agent, _ in matrix:
             cost = expected_cost[service]
@@ -215,7 +214,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         exp_by_product["(unattributed)"] = COST_UNATTR
         exp_by_agent["(unattributed)"] = COST_UNATTR
 
-        # ---- 4. multi-dimension COGS breakdown via the SDK (no client joins) ----
+        # ---- 4. multi-axis COGS breakdown via the SDK (no client joins) ----
         rep = client.usage_analytics(
             customer_id=str(c1.id),
             dimensions=["product", "service", "agent"])
@@ -223,7 +222,8 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         assert set(breakdowns) == {"product", "service", "agent"}
 
         def _as_map(rows):
-            return {r["dimension"]: r["total_provider_cost_micros"] for r in rows}
+            return {r["grouping_field_value"]: r["total_provider_cost_micros"]
+                    for r in rows}
 
         by_product = _as_map(breakdowns["product"])
         by_service = _as_map(breakdowns["service"])
@@ -254,7 +254,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Sum provider cost per service across all buckets -> must equal step-4 totals.
         ts_by_service = {}
         for row in series:
-            svc = row["dimension"]
+            svc = row["grouping_field_value"]
             ts_by_service[svc] = ts_by_service.get(svc, 0) + (row["provider_cost_micros"] or 0)
         # Timeseries totals per service must match the step-4 dimensional breakdown
         # (alpha, beta, AND the "(unattributed)" bucket from the no-service-tag event).

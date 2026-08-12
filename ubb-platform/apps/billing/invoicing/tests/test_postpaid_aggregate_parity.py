@@ -6,7 +6,7 @@ reference implementation. Fixtures are adversarial on the label semantics:
 an EMPTY-STRING value, a missing key, an empty bag, and an empty dim1 must
 ALL collapse into "(other)" (the `or` in `(bag or {}).get(key) or "(other)"`
 maps both ''-valued and absent keys to the same bucket — note this differs
-from the analytics contract where "" stays a distinct dimension).
+from the analytics contract, where "" stays a grouped value of its own).
 
 The bag these read is the survivor of #273's fold; the `tag:` grouping
 prefix keeps the spelling it is published under, which is slice 7's to

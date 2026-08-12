@@ -151,7 +151,7 @@ describe("toBreakdownRows legacy fallback", () => {
       breakdowns: {
         provider: [
           {
-            dimension: "openai",
+            grouping_field_value: "openai",
             event_count: 3,
             total_provider_cost_micros: 600,
             total_billed_cost_micros: 900,

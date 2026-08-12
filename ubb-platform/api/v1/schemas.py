@@ -63,9 +63,9 @@ class PreCheckRequest(Schema):
     task_type: Optional[str] = Field(default=None, max_length=64)
     # Set instead of task_type when parent_task_id is present.
     subtask_type: Optional[str] = Field(default=None, max_length=64)
-    # Declared dimension values at task/subtask scope, inherited by every event
-    # in the tree (design D6). Keys must be declared; values are cardinality-
-    # capped on write.
+    # Declared grouping field values at task/subtask scope, inherited by every
+    # event in the tree (design D6). Keys must be declared; values are
+    # cardinality-capped on write.
     dimensions: dict = Field(default_factory=dict)
 
 
@@ -135,7 +135,7 @@ class RecordUsageRequest(Schema):
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
-    # Declared EVENT-scoped dimension values (design D1/D6). Keys must be in the
+    # Declared EVENT-scoped grouping field values (design D1/D6). Keys must be in the
     # tenant's GroupingField registry and declared at event scope; task- and
     # subtask-scoped values are set at the start-gate and inherited, not sent
     # here. Values are cardinality-capped on write.

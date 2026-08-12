@@ -15,7 +15,8 @@ class TestPostpaidModels:
             tenant=t, customer=c, period_start=datetime.date(2026, 6, 1),
             period_end=datetime.date(2026, 7, 1), total_billed_micros=1_000_000, currency="usd")
         assert inv.status == "pending"
-        UsageInvoiceLineItem.objects.create(usage_invoice=inv, dimension="", amount_micros=1_000_000)
+        UsageInvoiceLineItem.objects.create(usage_invoice=inv, grouping_field_value="",
+                                            amount_micros=1_000_000)
         assert inv.line_items.count() == 1
         cfg = PostpaidUsageConfig.objects.create(tenant=t)
         assert cfg.usage_line_item_group_by == ""

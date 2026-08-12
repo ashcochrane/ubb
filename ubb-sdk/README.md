@@ -150,12 +150,18 @@ includes a `breakdowns` dict keyed by grouping field, each value a list of
 per-value rows. An `(unattributed)` bucket collects events with no value for
 that field, so the rows always reconcile to `total_provider_cost_micros`.
 
-> **The row's value key is `"dimension"` on the wire, and that is not a typo
-> here.** The analytics routes return an open dict, and this SDK hands it to
-> you as it arrives rather than renaming keys in flight. The engine still
-> writes that key under its retired name; it is tracked as backend debt and
-> moves on the server side, at which point the samples below change with it.
-> The request keyword `dimensions` is the same story — the registry route is
+> **The row's value key is `"grouping_field_value"`, the same property the
+> declared `/margin/by-grouping-field` rows publish.** These analytics routes
+> return an open dict, so the key is not in the schema and this SDK hands the
+> rows to you as they arrive rather than renaming anything in flight — but the
+> three rollups now agree on one word for a row's grouped value.
+>
+> **This key changed in the release that renamed it server-side.** It was
+> previously the retired word the registry route dropped, and both moved
+> together on purpose: a client that renamed the read on its own would have
+> agreed with its own tests and disagreed with a running server.
+>
+> The request keyword `dimensions` has NOT moved — the registry route is
 > already `/grouping-fields`, and the request property follows in the slice
 > that owns it.
 
@@ -165,11 +171,11 @@ analytics = client.usage_analytics(
     dimensions=["product_id", "service_id", "agent_id"],
 )
 
-for dim, rows in analytics["breakdowns"].items():
+for field, rows in analytics["breakdowns"].items():
     for row in rows:
-        print(dim, row["dimension"], row["total_provider_cost_micros"])
-# dim="product_id"  dimension="search"         total_provider_cost_micros=45000
-# dim="product_id"  dimension="(unattributed)" total_provider_cost_micros=3000
+        print(field, row["grouping_field_value"], row["total_provider_cost_micros"])
+# field="product_id"  grouping_field_value="search"         total_provider_cost_micros=45000
+# field="product_id"  grouping_field_value="(unattributed)" total_provider_cost_micros=3000
 ```
 
 ### 5. Time-series spend rollup
@@ -186,7 +192,7 @@ series = client.usage_timeseries(
     group_by="product_id",
 )
 for row in series["series"]:
-    print(row["bucket"], row.get("dimension"), row["provider_cost_micros"])
+    print(row["bucket"], row.get("grouping_field_value"), row["provider_cost_micros"])
 ```
 
 ## Expiring credit grants (paid vs promo)

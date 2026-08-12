@@ -36,7 +36,7 @@ class TaskType(BaseModel):
     # COGS-denominated, matching Task.provider_cost_limit_micros. NULL = fall
     # back to the RiskConfig tenant default, then to uncapped.
     default_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
-    # Declared dimension keys a start call MUST supply for this kind of work.
+    # Declared grouping field keys a start call MUST supply for this kind of work.
     required_dimensions = models.JSONField(default=_empty_list, blank=True)
     retired_at = models.DateTimeField(null=True, blank=True)
 

@@ -74,9 +74,9 @@ class CardCache:
         """Resolve with PricingService._resolve_card semantics, always via L1.
 
         The old implementation bypassed the cache whenever a
-        task_type/subtask_type/slot selector was pinned, because an
-        unbounded tag keyspace would poison a dimension-less key — which
-        meant every dimension-bearing event hit Postgres. Dimensions are now
+        task_type/subtask_type/slot selector was pinned, because an unbounded
+        tag keyspace would poison a key that named no slot — which meant every
+        event carrying a slot value hit Postgres. Grouping fields are now
         declared and cardinality-capped (design D4), so the full
         fourteen-selector tuple is a bounded, safe cache key and the bypass is
         gone. Widening the slots to ten (#276) widened the tuple and changed
