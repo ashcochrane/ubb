@@ -16,7 +16,12 @@
 // So §9.2 makes it a standing obligation: any slice introducing or changing an
 // economic state owes at least one representative fixture and at least one
 // rendering assertion. Slice 2 is the first slice to owe one, which is why the
-// module is created here and seeded with one scenario rather than six.
+// module is created here — seeded with the one subject that slice introduces,
+// not with §9.4's whole list. That subject arrives as THREE functions rather
+// than one because `measurements_status` is a three-way distinction and the
+// pruned case is only meaningful against the other two: an assertion that a
+// pruned payload does not render as zero proves little until the rendering it
+// must ALSO differ from is on the page beside it.
 //
 // THE SHAPE IS THE POINT, and it is worth saying plainly because the obvious
 // alternative looks tidier. A scenario returns the ambiguous fact and the fact
@@ -90,10 +95,10 @@ export function prunedMeasurements(): MeasurementScenario {
 /**
  * A posting that was never measured — a Task sold for one agreed price.
  *
- * Included with the pruned case rather than after it. The distinction only
- * exists as a three-way one: an assertion that a pruned payload does not render
- * as zero proves very little on its own, because the rendering it must also
- * differ from is this one.
+ * Its bag is empty for a reason no retention horizon ever governed, which is
+ * why the registry's decision rule reads the posting's KIND before it looks for
+ * a measurement record at all — a posting that never had measurements is not a
+ * posting that has lost them.
  */
 export function measurementsNotApplicable(): MeasurementScenario {
   return { measurements: {}, measurements_status: "not_applicable" };
