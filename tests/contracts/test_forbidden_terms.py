@@ -621,9 +621,15 @@ def test_negative_control_the_workflow_rule_does_not_excuse_a_second_workflow(
 
     The residual it accepts is that the named file leaves the sweep entirely.
     What it must NOT do is reach the file beside it, so a second workflow
-    carrying a planted retired word has to fail. The rule's own `files` is left
-    alone here — it declares 1 and excuses 1 — which is what makes a change
-    from the exact path to `.github/workflows/**` unable to leave this green.
+    carrying a planted retired word has to fail. Honest first with the rule's
+    own declared count untouched, then the same rule reaching its directory:
+    both halves share one tree, so the second run's faults are caused by the
+    widening and by nothing else.
+
+    A synthetic second workflow is not decoration. `ci.yml` is the only tracked
+    workflow, so `.github/workflows/**` excuses exactly what the exact path does
+    in the real tree — this widening changes no count there and would be caught
+    nowhere but here.
     """
     rule = _rule(plan, "the-workflows-foreign-input-names")
     registry = _registry(tmp_path / "reg")
@@ -639,21 +645,6 @@ def test_negative_control_the_workflow_rule_does_not_excuse_a_second_workflow(
     assert [o.files for o in result.occurrences] == [
         (".github/workflows/release.yml",)]
     assert _codes(gate_faults(result, {})) == {codes.TERM_ON_LIVING_SURFACE}
-
-
-def test_negative_control_widening_the_workflow_rule_to_its_directory_fails(
-        plan, tmp_path):
-    """A rule that names one path cannot quietly become one that names a tree.
-
-    The same two files, the same declared count of 1: replacing the exact path
-    with its directory excuses both and the arithmetic says so.
-    """
-    rule = _rule(plan, "the-workflows-foreign-input-names")
-    registry = _registry(tmp_path / "reg")
-    paths = _tree(tmp_path, {
-        "code/live.py": "# anchor\n",
-        ".github/workflows/ci.yml": "with: {name: 'rate_card'}\n",
-        ".github/workflows/release.yml": "with: {name: 'rate_card'}\n"})
 
     widened = replace(rule, paths=(".github/workflows/**",))
     faults = run(tmp_path, registry, _plan([widened]), paths=paths).faults

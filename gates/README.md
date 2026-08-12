@@ -169,6 +169,15 @@ The separation is structural rather than a convention: an exception carries no
 `owner_slice` and no `expected`, because no rename is coming, and the schema
 refuses one that claims either.
 
+**But not every gate reads this file, and G7 does not.** The forbidden-term
+sweep reads the registry, `forbidden-term-sweep.yaml` and the G7 ledger entries
+— never this one. An exception filed here naming G7 would parse and would pass
+the check that it names an installed gate, and would then excuse nothing at all.
+A G7 case that is genuinely nobody's debt belongs in the sweep's own **counted
+exclusions** instead, where it is enumerated, counted and visible in a diff;
+#284 ruled one that way. Recorded here because the shape of this file makes it
+look like the obvious home, and the failure is silent.
+
 ## What the two files hold today
 
 Rule 2 is what decides this. A gate seeded with today's violations records them

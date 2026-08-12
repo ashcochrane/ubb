@@ -103,9 +103,12 @@ measurement_key:
     # exclusion rule, never a deletion — the word is still in the tree and is
     # still being written; say which file, under which rule, and check that the
     # occurrence was quotation rather than a fourth sense nobody had noticed.
-    # The three are told apart by the DENOMINATOR: it falls with the numerator
-    # in the third case and does not in the second. The denominator moves on any
-    # commit that adds a tracked file and needs no story at all.
+    # THE SECOND AND THIRD ARE TOLD APART BY ASKING WHETHER AN EXCLUSION COUNT
+    # MOVED in the same commit: only the third moves one. "The swept total fell"
+    # is NOT on its own the signature — a commit that DELETES files pays a sense
+    # and moves both totals — so the question is about the rules, not about the
+    # arithmetic. The swept total moves on any commit that adds or removes a
+    # tracked file and needs no story at all.
     #
     # #273 MOVED THE DENOMINATOR ONLY (1,534 → 1,533 swept, 51/127 unchanged),
     # and it is worth recording that the denominator can fall as well as rise:
@@ -201,8 +204,10 @@ measurement_key:
     # rewritten. That ticket widened the frozen-documents exclusion over
     # `docs/prototypes/`, and one of the twelve files it took out of the swept
     # set — the 2026-08-04 code-builder output notes — spells the word once.
-    # BOTH NUMBERS MOVING TOGETHER IS THE SIGNATURE of this case and is what
-    # tells it apart from a sense being paid, where the denominator holds still.
+    # THE SIGNATURE IS THE MOVED EXCLUSION COUNT, in that commit's diff:
+    # `frozen-dated-documents` went 121 -> 133. The tracked total holding still
+    # while the swept total falls is corroboration and not proof, since a commit
+    # that deleted twelve files would move both.
     #
     # THE OCCURRENCE WAS READ BEFORE THE NUMBER WAS REWRITTEN, which is the
     # whole discipline of this block. It is one line of an inventory of what the

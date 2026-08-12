@@ -193,9 +193,10 @@ def _baseline_spec(baseline: str, into: Path) -> Path:
         _fail(f"cannot read {SPEC_PATH} at {baseline!r}: "
               f"{result.stderr.decode(errors='replace').strip()}. "
               f"In CI this means the tag was not fetched: the "
-              f"`actions/checkout` step in .github/workflows/ci.yml needs "
-              f"`fetch-depth: 0` and its tag-fetching input turned on. The "
-              f"gate must never be skipped for a missing baseline.")
+              f"`actions/checkout` step in the `contract` job that runs this "
+              f"gate (.github/workflows/ci.yml) needs `fetch-depth: 0` and its "
+              f"tag-fetching input turned on. The gate must never be skipped "
+              f"for a missing baseline.")
     path = into / "baseline-v1.json"
     path.write_bytes(result.stdout)
     return path
