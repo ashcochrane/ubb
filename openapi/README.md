@@ -160,7 +160,7 @@ oasdiff breaking --fail-on WARN \
 
 Not a backlog. While the baseline is `api-v1-launch`, the differences from that
 tag are real, intentional and permanent; the files **grow** as reviewed breaks
-land. They clear only when slice 8 tags a **new** baseline and the gate is
+land. They clear only when slice 8 cuts a **new** baseline and the gate is
 pointed at it — `api-v1-launch` is never moved or deleted (§7.5).
 
 This is the **opposite mechanism** from the implementation-rule migration

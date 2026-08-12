@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,546 of 1,904 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,533 of 1,904 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    51 files, 127 occurrences
+    #     units    50 files, 126 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -91,15 +91,21 @@ measurement_key:
     # half of this ruling — the column and every named reader — and 24 files and
     # 198 occurrences left the tree with it (1,532/1,882 → 1,534/1,885 swept,
     # 75/325 → 51/127 counted). That is the retired sense being paid, not the
-    # claim eroding, and it is the only reason this number may fall.
+    # claim eroding.
     #
-    # THE RULE FOR THE NEXT READER IS UNCHANGED AND NOW HAS TWO HALVES. If the
-    # count RISES, somebody WROTE the word — find it and read it before
-    # rewriting the number, because rewriting it is how the sentence this entry
-    # defends quietly stops being true. If it FALLS, a commit removed occurrences
-    # of one of the surviving senses; say which sense and why, here. The
-    # denominator moves on any commit that adds a tracked file and needs no
-    # story at all.
+    # THE RULE FOR THE NEXT READER NOW HAS THREE CASES, and #284 is why the
+    # third one is written down rather than inferred. If the count RISES,
+    # somebody WROTE the word — find it and read it before rewriting the number,
+    # because rewriting it is how the sentence this entry defends quietly stops
+    # being true. If it FALLS BECAUSE AN OCCURRENCE LEFT THE TREE, a commit
+    # removed occurrences of one of the surviving senses; say which sense and
+    # why, here. And if it FALLS BECAUSE A FILE LEFT THE SWEPT SET — a widened
+    # exclusion rule, never a deletion — the word is still in the tree and is
+    # still being written; say which file, under which rule, and check that the
+    # occurrence was quotation rather than a fourth sense nobody had noticed.
+    # The three are told apart by the DENOMINATOR: it falls with the numerator
+    # in the third case and does not in the second. The denominator moves on any
+    # commit that adds a tracked file and needs no story at all.
     #
     # #273 MOVED THE DENOMINATOR ONLY (1,534 → 1,533 swept, 51/127 unchanged),
     # and it is worth recording that the denominator can fall as well as rise:
@@ -188,6 +194,25 @@ measurement_key:
     # because a Measurement is keyed by `measurement_key` and carries its own
     # `unit`. The numerator staying flat across a commit that touches this
     # subject is the strongest reading the entry has had since #272 paid it.
+    #
+    # #284 IS THE THIRD CASE, AND THE FIRST TIME THE NUMERATOR HAS FALLEN
+    # WITHOUT A WORD LEAVING THE TREE (1,546 → 1,533 swept, 1,904 tracked
+    # unchanged, 51/127 → 50/126 counted). Nothing was deleted and nothing was
+    # rewritten. That ticket widened the frozen-documents exclusion over
+    # `docs/prototypes/`, and one of the twelve files it took out of the swept
+    # set — the 2026-08-04 code-builder output notes — spells the word once.
+    # BOTH NUMBERS MOVING TOGETHER IS THE SIGNATURE of this case and is what
+    # tells it apart from a sense being paid, where the denominator holds still.
+    #
+    # THE OCCURRENCE WAS READ BEFORE THE NUMBER WAS REWRITTEN, which is the
+    # whole discipline of this block. It is one line of an inventory of what the
+    # 2026-08-04 SDK carried — "`record_usage` … carries `tags`, `dimensions`,
+    # `units` and `billed_cost_micros` … all of which the re-model deletes,
+    # renames or folds". That is the MEASURED-QUANTITY sense #272 retired, named
+    # as the subject of its own retirement: quotation, exactly like #272's own
+    # three deliberate spellings below, and not a fourth sense. It is also
+    # unremovable for a second reason — rewriting a dated paper model to satisfy
+    # a sweep would falsify the record, which is the exclusion's own argument.
     #
     # AND #272 ITSELF SPELLS THE WORD IN THREE PLACES, DELIBERATELY, WHICH IS
     # WHY THE FALL IS 24 FILES AND NOT 25. Two are the targeted proof named

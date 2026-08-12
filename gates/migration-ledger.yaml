@@ -1220,52 +1220,6 @@ entries:
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
 
-  - id: g7-docs-dimension
-    gate: G7
-    site: docs::dimension
-    expected: grouping_field_value
-    found: 2 files
-    owner_slice: slice_2
-    reason: >-
-      Slice 2 builds the ten Grouping Field slots that replace the
-      dimension registry, so the value word goes when the slots arrive.
-      #283 rewrote ADR-0005 whole under the canonical noun and moved its
-      filename with it. The two left are dated prototypes, which ticket 27
-      settles by joining them to the frozen-documents exclusion rather than
-      by rewriting a paper model to satisfy a sweep.
-
-  - id: g7-docs-dimensions
-    gate: G7
-    site: docs::dimensions
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
-      ADR-0005 stopped violating in #283, which rewrote it under the
-      canonical noun, and a recorded extent that overstates is an excuse
-      with no upper bound, so the number comes down in the commit that
-      cleared it. The OWNER does not move, and what that now means is
-      worth saying plainly rather than leaving to arithmetic: the single
-      remaining file is a dated prototype, which ticket 27 removes from
-      the swept set by exclusion rather than by rewriting. This entry
-      therefore reaches zero and is DELETED IN SLICE 2, and slice 7 —
-      still the owner of the word itself on every other surface — never
-      pays anything here.
-
-  - id: g7-docs-limit_reached
-    gate: G7
-    site: docs::limit_reached
-    expected: ceiling_status
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A ceiling status spelling the word ADR-0006 removed from the field
-      vocabulary. Slice 6 coins `ceiling_reached`, and #158 §12's lower-
-      bound rule is why `indeterminate` must never render as this.
-
   - id: g7-docs-meter_only
     gate: G7
     site: docs::meter_only
@@ -1285,11 +1239,16 @@ entries:
     gate: G7
     site: docs::pre_check
     expected: affordability_reason
-    found: 4 files
+    found: 3 files
     owner_slice: slice_6
     reason: >-
       It named when the question was asked rather than what was asked.
       Slice 6's admission control gives the answer its own vocabulary.
+      FOUR UNTIL #284, and the fourth was a dated prototype. That ticket
+      widened the frozen-documents exclusion over `docs/prototypes/`, so
+      the file left the swept set rather than being rewritten, and slice 6
+      now pays three living documents instead of four. The word is still
+      in the prototype, correctly, and no slice will remove it from there.
 
   - id: g7-docs-pricing_model
     gate: G7
@@ -1326,7 +1285,7 @@ entries:
     gate: G7
     site: docs::request_id
     expected: idempotency_key
-    found: 2 files
+    found: 1 files
     owner_slice: slice_5
     reason: >-
       A second caller-supplied correlation value with no uniqueness
@@ -1336,6 +1295,12 @@ entries:
       where the key that replaces it — caller-supplied `idempotency_key`
       with a permanent claim — is finalised, and the deletion is safe
       only once it is.
+      TWO UNTIL #284, and the second was a dated prototype. That ticket
+      widened the frozen-documents exclusion over `docs/prototypes/`, so
+      the file left the swept set rather than being rewritten. The one
+      left is ADR-0005, which spells the key deliberately — #283 records
+      it as a literal the running system still uses (`FORBIDDEN_KEYS`),
+      so slice 5 clears it when the field goes, not before.
 
   - id: g7-docs-soft_floor.cleared
     gate: G7
@@ -1360,22 +1325,30 @@ entries:
     gate: G7
     site: docs::stop.cleared
     expected: webhook_event_type
-    found: 2 files
+    found: 1 files
     owner_slice: slice_6
     reason: >-
       The clearing half of the same pair, replaced by
       `customer.stop_cleared`. Same owner as G8's entry.
+      TWO UNTIL #284, and the second was a dated prototype that named
+      both halves of the pair. That ticket widened the frozen-documents
+      exclusion over `docs/prototypes/`, so the file left the swept set
+      rather than being rewritten; the one left is a living spend-control
+      guide, and slice 6 pays it when the event is renamed.
 
   - id: g7-docs-stop.fired
     gate: G7
     site: docs::stop.fired
     expected: webhook_event_type
-    found: 3 files
+    found: 2 files
     owner_slice: slice_6
     reason: >-
       An event owned by a mechanism rather than by the customer whose
       state changed (ADR-0006 §5). `customer.stopped` replaces it when
       slice 6 rebuilds spend control. Same owner as G8's entry.
+      THREE UNTIL #284, and the third was the same dated prototype that
+      cost `stop.cleared` its second file. The two left are living
+      spend-control guides, and slice 6 pays both with the rename.
 
   - id: g7-docs-subtask_limit
     gate: G7
@@ -1398,34 +1371,24 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-docs-tags
-    gate: G7
-    site: docs::tags
-    expected: metadata_key
-    found: 1 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
-      #283 cleared four of the five: ADR-0005, the positioning note and
-      both spend-control guides. Two of those four used the word as
-      ordinary English — one as a VERB about marking events — which is
-      payable by rewording and was reworded. The one left is a dated
-      prototype, ticket 27's.
-
   - id: g7-docs-task.limit_exceeded
     gate: G7
     site: docs::task.limit_exceeded
     expected: webhook_event_type
-    found: 2 files
+    found: 1 files
     owner_slice: slice_5
     reason: >-
       Replaced by TWO events rather than renamed to one: #140 §4.3
       splits a spend kill from a Task nobody ever closed. Slice 5
       rebuilds the Task lifecycle that distinguishes them. Same owner as
       G8's entry for the same event.
+      TWO UNTIL #284, and the second was a dated prototype. That ticket
+      widened the frozen-documents exclusion over `docs/prototypes/`, so
+      the file left the swept set rather than being rewritten. The one
+      left is a living spend-control guide. G8's entry for the same event
+      is UNAFFECTED: it is sited on `events/schemas.py::TaskLimitExceeded`
+      and records the event name rather than a file count, so an exclusion
+      over documentation cannot move it.
 
   - id: g7-docs-task_limit
     gate: G7
@@ -1446,16 +1409,6 @@ entries:
     reason: >-
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
-
-  - id: g7-docs-within_limit
-    gate: G7
-    site: docs::within_limit
-    expected: ceiling_status
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The other ceiling status carrying the retired word.
-      `within_ceiling` replaces it when slice 6 builds the family.
 
   - id: g7-openapi-budget
     gate: G7
@@ -1680,23 +1633,6 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-openapi-tags
-    gate: G7
-    site: openapi::tags
-    expected: metadata_key
-    found: 2 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folded `tags`
-      into `metadata` (#145 §8, #273) and the capability retires with
-      the name. THE PUBLISHED CONTRACT IS PAID: the field left
-      `openapi/v1.json` with the fold. What remains is not the field at
-      all — the contract gate's own prose and the contract README both
-      use the word as an ordinary English VERB about cutting a git
-      baseline, and spec §I2 rules those payable by rewording, in the
-      ticket that owns the two exclusion rulings.
-
   - id: g7-openapi-task.limit_exceeded
     gate: G7
     site: openapi::task.limit_exceeded
@@ -1773,25 +1709,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-repo-tags
-    gate: G7
-    site: repo::tags
-    expected: metadata_key
-    found: 2 files
-    owner_slice: slice_2
-    reason: >-
-      A second open bag whose name implied the grouping capability the
-      surviving one deliberately does not have. Slice 2 folds `tags`
-      into `metadata` (#145 §8), and the capability retires with the
-      name.
-      BOTH FILES ARE TICKET 27'S, and #283 deliberately left them. The
-      context map's domain prose is that ticket's own named site, and
-      the CI workflow's `fetch-tags` input to `actions/checkout` is a
-      foreign system's parameter name at an integration boundary
-      (ADR-0006 §8) that no slice will ever rename — which is why it is
-      ruled on with a counted exclusion naming that one exact path
-      rather than by rewording something that cannot be reworded.
 
   - id: g7-sdk-budget
     gate: G7
