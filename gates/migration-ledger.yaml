@@ -514,10 +514,14 @@ entries:
       dimension registry, so the value word goes when the slots arrive.
       #283 cleared one — the kernel glossary's own entries for the axis,
       which is the ratchet reaching the document that defines the word.
-      THE REST HAS NO TICKET IN SLICE 2's CHAIN THAT NAMES IT, flagged on
-      PRs #308 and #310 and again here: what is left is service, endpoint
-      and test modules, and ticket 28 cannot declare the slice landed
-      while a slice-2 entry is still standing.
+      THE REST HAD NO TICKET UNTIL #312, which was raised out of #283 for
+      exactly that reason after PRs #308, #310 and #311 each flagged the
+      gap and each could pay only the file in front of it. What is left is
+      service, endpoint and test modules, one real column on
+      `UsageInvoiceLineItem`, and the untyped analytics response key that
+      `g7-console-dimension` and `g7-sdk-dimension` are both waiting on —
+      #312 owns all of it, and settles first whether that response key is
+      slice 2's to rename or slice 7's.
 
   - id: g7-backend-dimensions
     gate: G7
