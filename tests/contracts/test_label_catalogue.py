@@ -426,23 +426,34 @@ def test_the_map_constructor_name_appears_nowhere_else():
 
 #: The two humanising renderers slice 2 removed, each under the id of the ledger
 #: entry that owed it (#279). Both rendered a value the TENANT authored — an
-#: Event Type key, a metadata key — and ADR-0008 §4.4 is explicit that such a
-#: value renders as the tenant declared it. Title-casing someone else's
-#: identifier is the same defect as inventing UBB's own, and worse in one way:
-#: it does not merely guess at a name UBB never wrote down, it overwrites one
-#: the tenant did.
+#: Event Type key, a metadata key — and #279 renders such a value as the tenant
+#: declared it, carrying ADR-0008 §4's ruling on an unknown OPEN value one step
+#: further. Title-casing someone else's identifier is the same defect as
+#: inventing UBB's own, and worse in one way: it does not merely guess at a name
+#: UBB never wrote down, it overwrites one the tenant did.
 #:
 #: This is NOT a second copy of the allowlist — the whole point of section 3 is
 #: that the ledger IS the allowlist, and a constant restating live entries would
 #: be the drifting copy ADR-0006 §4 warns about. These entries are not live.
 #: They record a fact that is now permanent, which is exactly the class of thing
 #: a literal may hold: two debts were paid, and neither side may quietly undo it.
+#: A slice that pays one of the nine still outstanding adds its line here. The
+#: closure below is what makes that an obligation rather than a courtesy.
 PAID_HUMANISING_DEBTS = {
     "g6-humanises-test-event-response":
         "apps/ui/src/features/developers/components/test-event-response.tsx::humanize",
     "g6-humanises-metadata-tree":
         "apps/ui/src/features/settings/components/metadata-tree.tsx::humanize",
 }
+
+#: How many files imported the humaniser when #210 installed this gate. Not a
+#: measurement — a HISTORICAL TOTAL, recorded in `gates/migration-ledger.yaml`'s
+#: own seeding authorisation for G6 (*"the forty-two entries … thirty
+#: hand-written value maps, one hand-written renderer and eleven files importing
+#: the humaniser"*). It is the one number in this file that must never move: no
+#: slice may add a humanising site, because the ratchet refuses a ledger
+#: addition without a reviewed authorisation.
+SEEDED_HUMANISING_SITES = 11
 
 
 def test_a_paid_humanising_debt_names_a_file_that_still_exists(legacy):
@@ -466,6 +477,44 @@ def test_a_paid_humanising_debt_names_a_file_that_still_exists(legacy):
     assert scanned.humanisers, "no humanising site found anywhere — the scan is blind"
 
 
+def test_every_humanising_debt_is_either_outstanding_or_paid(programme):
+    """The closure that stops the pin above from being quietly edited away.
+
+    Every assertion in this section reads `PAID_HUMANISING_DEBTS`, so deleting a
+    line from it would retire the check for that debt and nothing else would
+    notice — the exact defect this section exists to refuse, one level up. The
+    fix is not another list: it is arithmetic against a number that is FIXED
+    HISTORY rather than a measurement. Eleven files reached the humaniser when
+    #210 installed this gate; a debt can only be outstanding or paid; so the two
+    sets partition the eleven, for good.
+
+    That makes paying a debt a three-part act — convert the file, delete the
+    ledger entry, add the line here — and any two of the three fail. It also
+    generalises: the seven slices that still owe one of these inherit the same
+    obligation without a line of new mechanism.
+
+    What remains uncovered, stated rather than left to be found: a change that
+    edits all three together still passes here, and the backstop for that is
+    `tools.gates ratchet`, which refuses the ledger addition without a reviewed
+    seeding authorisation somebody has to write a reason into.
+    """
+    accounted = recorded(programme, GATE) | excepted(programme, GATE)
+    outstanding = {site for site in accounted
+                   if site.endswith(f"::{HUMANISER}")}
+    paid = set(PAID_HUMANISING_DEBTS.values())
+
+    both = sorted(outstanding & paid)
+    assert not both, (
+        f"recorded as outstanding and paid at once: {both}. A debt gates/ still "
+        f"owes has not been paid, whatever the pin says")
+    assert len(outstanding) + len(paid) == SEEDED_HUMANISING_SITES, (
+        f"{len(outstanding)} humanising debt(s) outstanding + {len(paid)} paid "
+        f"= {len(outstanding) + len(paid)}, and #210 seeded "
+        f"{SEEDED_HUMANISING_SITES}. Paying one is three acts: convert the file, "
+        f"delete its ledger entry, and add its id to PAID_HUMANISING_DEBTS. "
+        f"Adding a humanising site is not one of the moves this gate allows")
+
+
 def test_neither_paid_humanising_debt_has_come_back(legacy, programme):
     """The two encodings of a paid debt, held to each other by id (#279).
 
@@ -482,7 +531,7 @@ def test_neither_paid_humanising_debt_has_come_back(legacy, programme):
     only shape in which this ticket's work silently reverts, so it is the shape
     this test is about.
 
-    BOTH GATES/ FILES ARE ONE SIDE HERE, debts and permanent exceptions
+    BOTH FILES UNDER `gates/` ARE ONE SIDE HERE, debts and permanent exceptions
     together. The quietest way to bring one of these back is not a ledger entry
     at all — it is an exception saying the humanising is permanent, which no
     ratchet counts and no slice ever clears.
@@ -526,7 +575,7 @@ def revivals(paid, ledger_ids, ledger_sites, humanising):
         if site in humanising:
             faults.append(f"{site} reaches the humaniser again. A value the "
                           f"tenant authored renders as they declared it "
-                          f"(ADR-0008 §4.4); UBB does not reword it")
+                          f"(#279); UBB does not reword it")
     return faults
 
 

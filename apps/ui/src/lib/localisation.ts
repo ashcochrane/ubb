@@ -126,21 +126,26 @@ export const NO_DECLARED_VALUES: Readonly<Record<string, string>> = {};
 /**
  * A value whose vocabulary the TENANT owns, rendered as the tenant declared it.
  *
- * ADR-0008 §4.4. An Event Type key, a metadata key — UBB knows the field, never
- * the value, so every one of them resolves `unfamiliar` and renders verbatim.
- * That is not a fallback: it is the whole answer for this kind of concept, and
- * it is the same answer `resolveLabel` gives an unrecognised value of any other
- * one, which is why this is a binding of the strict lookup rather than a second
- * path beside it.
+ * An Event Type key, a metadata key — UBB knows the field, never the value, so
+ * every one of them resolves `unfamiliar` and renders verbatim. That is not a
+ * fallback: it is the whole answer for this kind of concept, and it is the same
+ * answer `resolveLabel` gives an unrecognised value of any other one, which is
+ * why this is a binding of the strict lookup rather than a second path beside
+ * it.
  *
- * Title-casing one of these was the defect ADR-0008 §4.3 named on UBB's OWN
- * vocabulary, and it is worse here: inventing English for a token somebody else
- * chose does not merely guess at a name UBB never wrote down, it overwrites one
- * the tenant did.
+ * ADR-0008 §4 DECIDES THE ADJACENT CASE AND #279 EXTENDS IT, which is worth
+ * stating precisely because the two are easy to run together. The ADR rules
+ * that silent humanisation is a defect and that an unknown OPEN value renders
+ * in a deliberate generic form — a value UBB has not met yet. A tenant-defined
+ * value is one UBB was never going to meet, and the argument only gets
+ * stronger: inventing English for a token somebody else chose does not merely
+ * guess at a name UBB never wrote down, it overwrites one the tenant did.
  *
  * Going through the lookup rather than returning the string buys one thing that
  * matters and one that will. An empty key renders as an absence rather than as
- * a blank name — the case a bare `{value}` gets wrong. And on the day a concept
- * stops being tenant-defined, the call site changes by one identifier.
+ * a blank name — the case a bare `{value}` gets wrong, and the one the metadata
+ * tree exercises, since a caller with a better word for "nothing here" keeps
+ * its own guard instead. And on the day a concept stops being tenant-defined,
+ * the call site changes by one identifier.
  */
 export const tenantDefinedLabel = labelMap(NO_DECLARED_VALUES);

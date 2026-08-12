@@ -66,8 +66,8 @@ describe("TestEventConsole", () => {
   it("names the tenant's Event Type key exactly as they typed it", async () => {
     // The teaching surface is where a manufactured name does the most damage:
     // an integrator reads this card to learn what UBB recorded, and a key it
-    // title-cased is a key they cannot find again. ADR-0008 §4.4 — a
-    // `tenant_defined` value renders as the tenant declared it (#279).
+    // title-cased is a key they cannot find again. #279 — a `tenant_defined`
+    // value renders as the tenant declared it.
     renderConsole();
     // Chosen so the retired humaniser is visible in the failure rather than
     // merely absent from it: it lower-cased, stripped the underscore and

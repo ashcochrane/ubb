@@ -3450,10 +3450,15 @@ entries:
 
   # --- G6: the humanising call sites -----------------------------------------
   #
-  # Eleven files import `humanize` from the legacy adapter. The ledger IS the
-  # allowlist: a twelfth is a ledger addition, which the ratchet refuses
+  # Nine files import `humanize` from the legacy adapter. The ledger IS the
+  # allowlist: one more is a ledger addition, which the ratchet refuses
   # without a reviewed seeding authorisation, so the retired behaviour cannot
   # spread while it is being removed.
+  #
+  # The count is decremented rather than de-numbered because `manifest.yaml`
+  # defers to it — G6's notes say the live number is the ledger's to state and
+  # deliberately do not restate it. The RULE beside it carries no number, so a
+  # slice paying one of these has one sentence to find rather than two.
 
   - id: g6-humanises-usage-invoices-card
     gate: G6

@@ -3,11 +3,11 @@
 // warnings, and the STOP VERDICT block when stop=true (HTTP was still 200 —
 // the one-rule contract).
 //
-// The Event Type key in the heading is the TENANT'S, and it renders exactly as
-// they declared it (ADR-0008 §4.4, #279). This card used to title-case it,
-// which is the worst place in the console to do so: an integrator reads it to
-// learn what UBB recorded, and a key UBB reworded is one they cannot find
-// again on any other surface.
+// The Event Type key in the heading is the TENANT'S, and #279 renders it
+// exactly as they declared it. This card used to title-case it, which is the
+// worst place in the console to do so: an integrator reads it to learn what UBB
+// recorded, and a key UBB reworded is one they cannot find again on any other
+// surface.
 
 import { AlertTriangle, OctagonAlert } from "lucide-react";
 

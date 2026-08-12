@@ -6,11 +6,11 @@ import { tenantDefinedLabel } from "@/lib/localisation";
  * label → mono value pairs.
  *
  * **Curated is about the SHAPE, never the words.** Every key here was written by
- * the tenant, and ADR-0008 §4.4 is explicit that a `tenant_defined` value
- * renders as the tenant declared it. This component used to title-case them, so
- * `enforcement_mode` reached the reader as "Enforcement mode" — UBB inventing
- * user-facing English for somebody else's identifier, and the very defect
- * ADR-0008 §4.3 names on UBB's own vocabulary (#279).
+ * the tenant, and #279 renders it as they declared it. This component used to
+ * title-case them, so `enforcement_mode` reached the reader as "Enforcement
+ * mode" — UBB inventing user-facing English for somebody else's identifier, and
+ * the defect ADR-0008 §4 names on UBB's own vocabulary. Two keys differing only
+ * in case or punctuation arrived as one word.
  */
 export function MetadataTree({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);

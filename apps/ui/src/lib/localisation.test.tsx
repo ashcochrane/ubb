@@ -124,7 +124,8 @@ describe("strict lookup", () => {
 });
 
 describe("a value whose vocabulary the tenant owns", () => {
-  // ADR-0008 §4.4: a `tenant_defined` value renders AS THE TENANT DECLARED IT.
+  // #279: a `tenant_defined` value renders AS THE TENANT DECLARED IT, which is
+  // ADR-0008 §4's ruling on an unknown open value carried one step further.
   // The registry never enumerates one — map #137 constraint 5 forbids UBB to
   // ship a catalogue of its tenants' event types — so the generator emits no
   // `<CONCEPT>_LABEL_KEYS` for such a concept, and `NO_DECLARED_VALUES` is that
