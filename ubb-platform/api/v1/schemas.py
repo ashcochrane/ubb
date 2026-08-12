@@ -7,6 +7,7 @@ from pydantic import field_validator
 
 from api.v1.pagination import Paginated
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
+from apps.platform.grouping_fields.models import SLOT_CHOICES, SLOT_MAX_LENGTH
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 
@@ -593,8 +594,15 @@ def task_out(t):
         "total_billed_cost_micros": t.total_billed_cost_micros,
         "event_count": t.event_count,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        # A FREE-FORM OBJECT, so its keys are data and not contract: the
+        # published document types this as an object and names no property, and
+        # #276 renaming the columns therefore renames the keys here without
+        # touching the schema. That is also why widening it to ten costs the
+        # contract nothing. Ticket 20 replaces the physical slot with the
+        # tenant's own declared key, which is the shape the read side is being
+        # moved to match.
         "dimensions": {s: getattr(t, s) for s in
-                       ("dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+                       (f"grouping_field_{i}" for i in range(1, 11))
                        if getattr(t, s)},
         "created_at": t.created_at.isoformat(),
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
@@ -902,6 +910,42 @@ class RateOut(Schema):
     valid_to: Optional[str] = None
 
 
+#: THE WHOLE OF THE PROPERTY/COLUMN MISMATCH, IN ONE PLACE.
+#:
+#: #276 renamed the rate's slot columns to the canonical noun and deliberately
+#: renamed no published property — its acceptance criteria forbid it. So six
+#: published names now sit over six differently-named columns, and this dict is
+#: the join.
+#:
+#: **NO TICKET IN SLICE 2 CLOSES THIS.** The posting's own slot properties go in
+#: ticket 20, which replaces them with one object keyed by the tenant's declared
+#: key; the rate's are not in that ticket, not in ticket 21 (which renames the
+#: Grouping Field route family), and not in any other. The rate entity, its book
+#: and its selector list are all rebuilt in **slice 4** — the same slice that
+#: owns the retired words still standing on this model — and that is where the
+#: join below is deleted rather than edited. Saying so here is the point: a
+#: reader who assumes the next ticket tidies this will not find it there.
+#:
+#: Six, not ten. A rate can hold ten slots; the contract can name six. The four
+#: without an entry here are unreachable from outside — a reprice body leaves
+#: them at "", which matches a rate that leaves them unpinned — so a rate pinned
+#: on slot seven can be written server-side and never repriced through the API.
+#: That gap arrives with this ticket and leaves with slice 4.
+SLOT_PROPERTY_COLUMNS = {f"dim{i}": f"grouping_field_{i}" for i in range(1, 7)}
+
+
+def rate_change_body(change: dict) -> dict:
+    """One reprice body with its slot properties renamed to the columns.
+
+    `BookService.publish` matches an active rate on `Rate.SELECTORS`, which are
+    column names. Handing it the request body untranslated would match every
+    slot against "" and silently reprice the wrong rate — or, more often, fail
+    to find one at all and abort the publish.
+    """
+    return {SLOT_PROPERTY_COLUMNS.get(name, name): value
+            for name, value in change.items()}
+
+
 def rate_out(r):
     """RateOut's serializer — one rate version under a book."""
     return {
@@ -914,12 +958,8 @@ def rate_out(r):
         "event_type": r.event_type,
         "task_type": r.task_type,
         "subtask_type": r.subtask_type,
-        "dim1": r.dim1,
-        "dim2": r.dim2,
-        "dim3": r.dim3,
-        "dim4": r.dim4,
-        "dim5": r.dim5,
-        "dim6": r.dim6,
+        **{name: getattr(r, column)
+           for name, column in SLOT_PROPERTY_COLUMNS.items()},
         "pricing_model": r.pricing_model,
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
@@ -940,13 +980,20 @@ class PaginatedRates(Paginated[RateOut]):
 
 class DimensionDefIn(Schema):
     key: str = Field(max_length=64)
-    slot: str = Field(max_length=8)
+    # Both bounds are read off the registry's own vocabulary rather than typed,
+    # so a future widening cannot ship a contract that refuses the slots it just
+    # created. They are also the only two published values #276 moves: the
+    # identifiers got longer and there are ten of them, and a bound that still
+    # said six-and-eight would reject every one of the new ones. Neither is a
+    # property rename and neither narrows anything a caller could already send.
+    slot: str = Field(max_length=SLOT_MAX_LENGTH)
     scope: str = "event"
     max_cardinality: int = Field(default=100, ge=1, le=100_000)
 
 
 class DimensionRegistryIn(Schema):
-    dimensions: list[DimensionDefIn] = Field(min_length=1, max_length=6)
+    dimensions: list[DimensionDefIn] = Field(min_length=1,
+                                             max_length=len(SLOT_CHOICES))
 
 
 class DimensionDefOut(Schema):

@@ -1289,7 +1289,7 @@
             "type": "string"
           },
           "slot": {
-            "maxLength": 8,
+            "maxLength": 17,
             "title": "Slot",
             "type": "string"
           }
@@ -1379,7 +1379,7 @@
             "items": {
               "$ref": "#/components/schemas/DimensionDefIn"
             },
-            "maxItems": 6,
+            "maxItems": 10,
             "minItems": 1,
             "title": "Dimensions",
             "type": "array"

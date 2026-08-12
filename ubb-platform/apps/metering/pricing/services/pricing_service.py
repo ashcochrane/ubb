@@ -203,7 +203,7 @@ class PricingService:
         """Exact pricing: the compute spine over as_of-exact ORM card
         resolution (the full provenance receipt is persisted with the event)
         and live-ORM markup. ``selectors`` is the full {provider, event_type,
-        task_type, subtask_type, dim1..dim6} map (Rate.SELECTORS keys) — an
+        task_type, subtask_type, the ten slots} map (Rate.SELECTORS keys) — an
         absent/"" value wildcards against a rate that leaves it unpinned."""
         as_of = as_of or timezone.now()
 

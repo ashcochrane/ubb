@@ -61,7 +61,7 @@ class Rate(BaseModel):
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="rate_cards", null=True, blank=True)
     card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
-    # --- The ten selector columns (design D3) ---
+    # --- The fourteen selector columns (design D3) ---
     # "" means WILDCARD here (it means "not set" on a Posting). Among rates
     # matching an event, the winner has the most non-empty selectors. This is
     # the ONE matching semantic — the old JSONB `dimensions` subset match and
@@ -71,12 +71,22 @@ class Rate(BaseModel):
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
     task_type = models.CharField(max_length=64, blank=True, default="")
     subtask_type = models.CharField(max_length=64, blank=True, default="")
-    dim1 = models.CharField(max_length=100, blank=True, default="")
-    dim2 = models.CharField(max_length=100, blank=True, default="")
-    dim3 = models.CharField(max_length=100, blank=True, default="")
-    dim4 = models.CharField(max_length=100, blank=True, default="")
-    dim5 = models.CharField(max_length=100, blank=True, default="")
-    dim6 = models.CharField(max_length=100, blank=True, default="")
+    # Ten, matching the registry and the Posting since #276: a slot a tenant
+    # can declare and attribute but cannot PRICE on would be a grouping axis
+    # that silently is not a rate selector, which is the split D3 exists to
+    # close. Only six of these reach the published contract, and no slice-2
+    # ticket widens that — this entity's published surface is rebuilt in slice
+    # 4. `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS` holds the join and the gap.
+    grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_4 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_5 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_6 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_7 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
     # WHICH DECLARED QUANTITY THIS RATE PRICES, BY NAME — and free text on
     # purpose, not by omission. Slice 2 pays the word; slice 3 replaces this
     # with a reference to the declared record the name is a name *of*, at which
@@ -111,13 +121,19 @@ class Rate(BaseModel):
             models.UniqueConstraint(
                 fields=["rate_card", "measurement_key", "currency", "provider",
                         "event_type", "task_type", "subtask_type",
-                        "dim1", "dim2", "dim3", "dim4", "dim5", "dim6"],
+                        "grouping_field_1", "grouping_field_2", "grouping_field_3",
+                        "grouping_field_4", "grouping_field_5", "grouping_field_6",
+                        "grouping_field_7", "grouping_field_8", "grouping_field_9",
+                        "grouping_field_10"],
                 condition=models.Q(valid_to__isnull=True),
                 name="uq_rate_active_in_book"),
         ]
 
     SELECTORS = ("provider", "event_type", "task_type", "subtask_type",
-                 "dim1", "dim2", "dim3", "dim4", "dim5", "dim6")
+                 "grouping_field_1", "grouping_field_2", "grouping_field_3",
+                 "grouping_field_4", "grouping_field_5", "grouping_field_6",
+                 "grouping_field_7", "grouping_field_8", "grouping_field_9",
+                 "grouping_field_10")
 
     @property
     def selector_tuple(self):
@@ -126,7 +142,7 @@ class Rate(BaseModel):
     @property
     def specificity(self):
         """How many selectors this rate pins. The resolution tie-breaker (D3):
-        a rate pinning provider+event_type+dim1 beats one pinning provider
+        a rate pinning provider+event_type+one slot beats one pinning provider
         alone, so a tenant writes a broad default plus narrow overrides."""
         return sum(1 for v in self.selector_tuple if v)
 

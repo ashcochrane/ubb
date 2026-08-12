@@ -31,7 +31,7 @@ class TestAnalyticsDimensions:
         return self.client.get(path, HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _seed(self):
-        GroupingField.objects.create(tenant=self.tenant, key="region", slot="dim1",
+        GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task")
         parent = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                      balance_snapshot_micros=0,
@@ -47,7 +47,7 @@ class TestAnalyticsDimensions:
                 idempotency_key=f"k{i}", provider="aws_textract",
                 event_type="ocr_page", task_id=task.id,
                 task_type="invoice_batch",
-                subtask_type=task.subtask_type, dim1=dim1,
+                subtask_type=task.subtask_type, grouping_field_1=dim1,
                 provider_cost_micros=cost, billed_cost_micros=cost * 2)
         return parent, sub
 

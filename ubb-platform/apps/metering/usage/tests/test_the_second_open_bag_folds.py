@@ -151,6 +151,15 @@ class TheReverseIsExercisedTest(TestCase):
     naming the column would send this red on the next commit that drops a
     different one, and that failure reads as a broken reverse rather than as a
     stale fixture.
+
+    RECONCILED IN BOTH DIRECTIONS, and the second one was added by #276. Adding
+    what the historical model has and the table lacks is only half of it: a
+    later commit that ADDS a NOT NULL column leaves the live table demanding a
+    value the historical model has never heard of, and every insert below fails
+    with an integrity error that looks nothing like a stale fixture. #276 added
+    four such columns to this table at once. `test_posting_measurement.py`
+    already carried both directions; this one did not, because until now no
+    commit had exercised the difference.
     """
 
     def setUp(self):
@@ -159,15 +168,30 @@ class TheReverseIsExercisedTest(TestCase):
         state = loader.project_state((APP_LABEL, PARENT_MIGRATION))
         self.historical = state.apps
         self.Posting = self.historical.get_model(APP_LABEL, "Posting")
-        live = _live_columns()
-        with connection.schema_editor() as editor:
-            for field in self.Posting._meta.local_fields:
-                if field.column not in live:
-                    editor.add_field(self.Posting, field)
+        self._reconcile(self.Posting)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
         self.tenant, self.customer = _tenant_and_customer()
         self._n = 0
+
+    @staticmethod
+    def _reconcile(model):
+        """Make the live table accept this historical model's writes."""
+        table = model._meta.db_table
+        with connection.cursor() as cursor:
+            live = {column.name: column for column in
+                    connection.introspection.get_table_description(cursor, table)}
+        with connection.schema_editor() as editor:
+            for field in model._meta.local_fields:
+                if field.column not in live:
+                    editor.add_field(model, field)
+        known = {field.column for field in model._meta.local_fields}
+        quote = connection.ops.quote_name
+        with connection.cursor() as cursor:
+            for name, column in live.items():
+                if name not in known and not column.null_ok:
+                    cursor.execute(f"ALTER TABLE {quote(table)} "
+                                   f"ALTER COLUMN {quote(name)} DROP NOT NULL")
 
     def _posting(self, retiring, surviving):
         """Both bags, by role rather than by name — see `RETIRED_COLUMN`."""
@@ -348,7 +372,7 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i_lbl",
-            billed_cost_micros=500_000, dim1="chat",
+            billed_cost_micros=500_000, grouping_field_1="chat",
             metadata={"seat": "alice"})
 
         rows = get_customer_billed_breakdown(

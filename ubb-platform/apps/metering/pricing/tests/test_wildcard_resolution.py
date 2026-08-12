@@ -61,9 +61,9 @@ class TestWildcardResolution:
     def test_non_matching_pinned_selector_excludes_the_rate(self):
         t, c = self._tc()
         rate_in_default_book(t, card_type="cost", provider="openai",
-                             dim1="eu-west-1", measurement_key="input_tokens",
+                             grouping_field_1="eu-west-1", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
-        prov, _, p = self._price(t, c, provider="openai", dim1="us-east-1")
+        prov, _, p = self._price(t, c, provider="openai", grouping_field_1="us-east-1")
         assert prov == 0 and p["uncosted_metrics"] == ["input_tokens"]
 
     def test_task_type_can_price_a_kind_of_job(self):

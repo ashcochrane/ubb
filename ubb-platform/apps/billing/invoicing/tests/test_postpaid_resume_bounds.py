@@ -292,7 +292,7 @@ class TestFrozenLineSnapshot:
         for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
             ev = Posting.objects.create(
                 tenant=t, customer=c, request_id=f"r{i}", idempotency_key=f"i{i}",
-                provider_cost_micros=1, billed_cost_micros=micros, dim1=pid)
+                provider_cost_micros=1, billed_cost_micros=micros, grouping_field_1=pid)
             Posting.objects.filter(id=ev.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
 

@@ -1,10 +1,20 @@
 """Tests backing ADR-0005, in the manner ADR-001 establishes: the hard rules
-are enforced here, not merely documented."""
+are enforced here, not merely documented.
+
+EVERY REFUSAL BELOW IS DRIVEN AT EVERY SLOT, not at a representative one. #276
+took the count from six to ten and re-spelled all of them, and the failure it
+made possible is a rule that holds on the slots that already existed and lapses
+on the ones that did not — which a single hard-coded slot would never find. The
+loops are over the declared vocabulary rather than a literal ten, so a later
+widening is covered by construction rather than by someone remembering.
+"""
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.grouping_fields.models import SLOT_CHOICES, GroupingField
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
+
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 @pytest.mark.django_db
@@ -13,38 +23,74 @@ class TestGroupingFieldInvariants:
         return Tenant.objects.create(name="T")
 
     def test_slot_rebinding_is_refused(self):
-        t = self._t()
-        DimensionService.declare(t, key="region", slot="dim1", scope="task")
-        with pytest.raises(DimensionError, match="immutable"):
-            DimensionService.declare(t, key="region", slot="dim4", scope="task")
+        for origin, destination in zip(SLOTS, SLOTS[1:] + SLOTS[:1]):
+            t = self._t()
+            DimensionService.declare(t, key="region", slot=origin, scope="task")
+            with pytest.raises(DimensionError, match="immutable"):
+                DimensionService.declare(t, key="region", slot=destination, scope="task")
 
     def test_scope_change_is_refused(self):
-        t = self._t()
-        DimensionService.declare(t, key="region", slot="dim1", scope="task")
-        with pytest.raises(DimensionError, match="immutable"):
-            DimensionService.declare(t, key="region", slot="dim1", scope="event")
+        for slot in SLOTS:
+            t = self._t()
+            DimensionService.declare(t, key="region", slot=slot, scope="task")
+            with pytest.raises(DimensionError, match="immutable"):
+                DimensionService.declare(t, key="region", slot=slot, scope="event")
 
     def test_cardinality_cannot_be_lowered(self):
-        t = self._t()
-        DimensionService.declare(t, key="region", slot="dim1", scope="task",
-                                 max_cardinality=100)
-        with pytest.raises(DimensionError, match="lowered"):
-            DimensionService.declare(t, key="region", slot="dim1", scope="task",
-                                     max_cardinality=99)
+        for slot in SLOTS:
+            t = self._t()
+            DimensionService.declare(t, key="region", slot=slot, scope="task",
+                                     max_cardinality=100)
+            with pytest.raises(DimensionError, match="lowered"):
+                DimensionService.declare(t, key="region", slot=slot, scope="task",
+                                         max_cardinality=99)
 
     def test_every_correlation_id_is_refused_as_a_dimension(self):
         t = self._t()
         from apps.platform.grouping_fields.models import FORBIDDEN_KEYS
         for key in FORBIDDEN_KEYS:
-            with pytest.raises(DimensionError, match="correlation"):
-                DimensionService.declare(t, key=key, slot="dim1", scope="event")
+            for slot in SLOTS:
+                with pytest.raises(DimensionError, match="correlation"):
+                    DimensionService.declare(t, key=key, slot=slot, scope="event")
 
     def test_every_reserved_key_is_refused_as_a_dimension(self):
         t = self._t()
         from apps.platform.grouping_fields.models import RESERVED_KEYS
         for key in RESERVED_KEYS:
-            with pytest.raises(DimensionError, match="reserved"):
-                DimensionService.declare(t, key=key, slot="dim1", scope="event")
+            for slot in SLOTS:
+                with pytest.raises(DimensionError, match="reserved"):
+                    DimensionService.declare(t, key=key, slot=slot, scope="event")
+
+    def test_a_slot_outside_the_vocabulary_is_refused(self):
+        """#276's own refusal, and it exists because the alternative is silent.
+
+        A stored slot IS a column name: `admit` returns `{slot: value}` and the
+        recording path copies across only the slots it knows about. A
+        declaration bound to a slot that does not exist therefore stores fine,
+        accepts values fine, returns 200 fine — and attributes every one of them
+        to nothing. The tenant finds out when a chart is missing a column.
+
+        The case that makes this concrete is a caller written against the six
+        slots this ticket replaced, which is why the retired spelling is one of
+        the three driven here.
+        """
+        t = self._t()
+        for slot in ("dim1", "slot_1", ""):
+            with pytest.raises(DimensionError, match="is not a slot"):
+                DimensionService.declare(t, key="region", slot=slot, scope="event")
+
+    def test_every_declared_slot_is_accepted(self):
+        """The control for the refusal above.
+
+        Without it, a typo in the vocabulary check would refuse everything and
+        every other test in this class would still pass — they all assert
+        refusals.
+        """
+        t = self._t()
+        for position, slot in enumerate(SLOTS):
+            declared = DimensionService.declare(
+                t, key=f"key_{position}", slot=slot, scope="event")
+            assert declared.slot == slot
 
     def test_retired_def_stays_in_the_slot_map(self):
         """Retirement blocks new VALUES, not reads — historical rows must stay
@@ -52,10 +98,10 @@ class TestGroupingFieldInvariants:
         from django.utils import timezone
         from apps.platform.grouping_fields.queries import slot_map
         t = self._t()
-        DimensionService.declare(t, key="region", slot="dim1", scope="task")
+        DimensionService.declare(t, key="region", slot="grouping_field_1", scope="task")
         GroupingField.objects.filter(tenant=t, key="region").update(
             retired_at=timezone.now())
-        assert slot_map(t.id)["region"] == "dim1"
+        assert slot_map(t.id)["region"] == "grouping_field_1"
 
     def test_posting_and_rate_share_one_selector_vocabulary(self):
         """The unification (design D3): one word list, both sides.
@@ -103,7 +149,7 @@ class TestGroupingFieldInvariants:
         # "" (provider-agnostic) default book: narrow, highly-pinned override.
         rate_in_default_book(
             t, card_type="cost", provider="", task_type="invoice_batch",
-            dim1="eu-west-1", measurement_key="input_tokens",
+            grouping_field_1="eu-west-1", measurement_key="input_tokens",
             rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         # "openai" provider-specific default book: broad, single-selector rate.
         rate_in_default_book(
@@ -111,8 +157,9 @@ class TestGroupingFieldInvariants:
             rate_per_unit_micros=9_000, unit_quantity=1_000_000)
 
         selectors = {"provider": "openai", "event_type": "", "task_type": "invoice_batch",
-                    "subtask_type": "", "dim1": "eu-west-1", "dim2": "", "dim3": "",
-                    "dim4": "", "dim5": "", "dim6": ""}
+                    "subtask_type": "",
+                     "grouping_field_1": "eu-west-1",
+                     "grouping_field_2": "", "grouping_field_3": "", "grouping_field_4": "", "grouping_field_5": "", "grouping_field_6": "", "grouping_field_7": "", "grouping_field_8": "", "grouping_field_9": "", "grouping_field_10": ""}
         provider_cost, _, provenance = PricingService.price(
             tenant=t, customer=c, selectors=selectors,
             measurements={"input_tokens": 1_000_000}, currency="usd",

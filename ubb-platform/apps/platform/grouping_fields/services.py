@@ -3,10 +3,18 @@ import re
 from django.db import IntegrityError, transaction
 
 from apps.platform.grouping_fields.models import (
-    FORBIDDEN_KEYS, RESERVED_KEYS, GroupingField, GroupingFieldValue,
+    FORBIDDEN_KEYS, RESERVED_KEYS, SLOT_CHOICES, GroupingField,
+    GroupingFieldValue,
 )
 
 KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{1,63}")
+
+#: The slots that exist, in declaration order. A stored slot IS a column name on
+#: the posting — `admit` below returns `{slot: value}` and the recording path
+#: hands that map to `create()` as keyword arguments — so a slot outside this
+#: list is not a bad label, it is a declaration bound to a column that does not
+#: exist, and every event the tenant records against it would fail at insert.
+SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
 
 class DimensionError(ValueError):
@@ -28,6 +36,20 @@ class DimensionService:
             raise DimensionError(
                 f"{key!r} is a correlation identifier, not a dimension: it is "
                 "unbounded, so it is a filter parameter and cannot be grouped by")
+        # #276 widened this vocabulary from six slots to ten AND re-spelled all
+        # of them, so a caller written against the old spelling now names a slot
+        # that does not exist.
+        #
+        # WITHOUT THIS LINE THAT CALLER GETS A 200 AND LOSES ITS DATA, SILENTLY.
+        # The declaration stores; `admit` below then returns `{unknown: value}`;
+        # and `_inherit_dimensions` copies only the slots it knows about, so the
+        # value is dropped on the floor. Every event the tenant records against
+        # that key is attributed to nothing, and the first sign of it is a chart
+        # with a column missing. Refusing here turns that into a 422 against the
+        # request that is actually wrong.
+        if slot not in SLOTS:
+            raise DimensionError(
+                f"{slot!r} is not a slot: the slots are {', '.join(SLOTS)}")
 
         existing = GroupingField.objects.filter(tenant=tenant, key=key).first()
         if existing is None:

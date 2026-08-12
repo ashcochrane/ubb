@@ -80,21 +80,28 @@ OLD_COLUMN = "usage_event_id"
 NEW_COLUMN = "posting_id"
 REFUND_TABLE = "ubb_refund"
 
-#: The constraint and the six named indexes the table carried in, spelled out.
+#: The constraint and the named indexes the table carried in, spelled out.
 #: Every one still names the retired noun on purpose — there is no rename
 #: operation for either that Django will emit, only a drop and a re-create,
 #: which is the add-plus-remove this migration exists to avoid. ADR-0006 §9's
 #: rule is about the table name. Listed here so that a later change quietly
 #: rebuilding one goes red.
+#:
+#: SIX CAME ACROSS AND ONE HAS SINCE BEEN RETIRED. `idx_usage_dim_attribution`
+#: led with two slot columns, and #276 dropped it deliberately: nothing in this
+#: repository filters on a slot, so it could only ever be scanned whole. It is
+#: named in `DELIBERATELY_DROPPED` rather than deleted from this file, because
+#: an index silently disappearing from a list of indexes that must survive is
+#: exactly the accident this list exists to catch.
 CARRIED_CONSTRAINT = "uq_usage_event_idempotency_v2"
 CARRIED_INDEXES = (
     "idx_usage_customer_effective",
     "idx_usage_tenant_effective",
     "idx_usage_work_attribution",
-    "idx_usage_dim_attribution",
     "idx_usage_tenant_created",
     "idx_usage_stop_context",
 )
+DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
 
 #: The other seven currency columns, by table. **This ticket does not claim
 #: them.** One decision hands their constraints to the cutover decision and that
@@ -313,6 +320,10 @@ class TheTableCarriedEverythingTest(TestCase):
 
         missing = sorted(set(CARRIED_INDEXES) - live)
         self.assertEqual(missing, [], f"indexes did not follow the table: {live}")
+        # The other half: an index this repository decided to stop paying for
+        # must not quietly come back. Without this, moving a name out of the
+        # list above would be indistinguishable from forgetting it.
+        self.assertEqual(sorted(set(DELIBERATELY_DROPPED) & live), [])
 
     def test_the_inbound_foreign_key_still_points_at_the_renamed_table(self):
         with connection.cursor() as cur:

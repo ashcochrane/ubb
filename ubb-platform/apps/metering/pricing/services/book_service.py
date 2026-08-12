@@ -6,7 +6,8 @@ from apps.metering.pricing.services.card_cache import CardCache
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
-    "task_type", "subtask_type", "dim1", "dim2", "dim3", "dim4", "dim5", "dim6",
+    "task_type", "subtask_type",
+    *(f"grouping_field_{i}" for i in range(1, 11)),
     "measurement_key", "pricing_model", "rate_per_unit_micros",
     "unit_quantity", "fixed_micros", "currency",
     "lineage_id", "rate_card_id",
@@ -17,9 +18,14 @@ class BookService:
     @staticmethod
     def publish(book, changes, as_of=None):
         """Atomically reprice a set of the book's rates. Each change must match
-        exactly one ACTIVE rate in the book by (measurement_key, plus the ten
-        selector columns — provider, event_type, task_type, subtask_type,
-        dim1..dim6). Supersedes it (valid_to=T, book_version_to=old
+        exactly one ACTIVE rate in the book by (measurement_key, plus the
+        fourteen selector columns — provider, event_type, task_type,
+        subtask_type and the ten slots). Only six of the slots can be pinned
+        through the published reprice body — no slice-2 ticket widens it, and
+        slice 4 rebuilds this entity's published surface — so a change body
+        leaves the other four at "", and a rate pinned on one of them is not
+        repriceable through this route.
+        Supersedes it (valid_to=T, book_version_to=old
         version) and inserts a new active rate (same lineage_id, valid_from>=T,
         book_version_from=new version). Bumps book.version once. All-or-nothing.
 

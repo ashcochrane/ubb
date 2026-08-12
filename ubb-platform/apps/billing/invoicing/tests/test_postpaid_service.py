@@ -17,10 +17,10 @@ MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 class TestAggregate:
     def _events(self, t, c):
         Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
-            provider_cost_micros=600_000, billed_cost_micros=800_000, dim1="chat",
+            provider_cost_micros=600_000, billed_cost_micros=800_000, grouping_field_1="chat",
             effective_at=MID)
         Posting.objects.create(tenant=t, customer=c, request_id="r2", idempotency_key="i2",
-            provider_cost_micros=100_000, billed_cost_micros=200_000, dim1="",  # no product
+            provider_cost_micros=100_000, billed_cost_micros=200_000, grouping_field_1="",  # no product
             effective_at=MID)
 
     def test_single_line_default(self):

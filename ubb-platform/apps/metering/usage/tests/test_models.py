@@ -58,7 +58,7 @@ class PostingModelTest(TestCase):
             billed_cost_micros=500_000,
         )
         assert event.currency == "usd"
-        assert event.dim1 == ""
+        assert event.grouping_field_1 == ""
         # The nameless inline quantity that used to be asserted here retired in
         # #272 — the column and every reader of it. Proved as an absence by
         # `tests/contracts/test_the_inline_unit_total_is_gone.py`, which is the

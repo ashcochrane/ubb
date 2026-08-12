@@ -10,7 +10,7 @@ from apps.metering.pricing.tests._helpers import rate_in_default_book
 
 def _sel(**kw):
     base = {"provider": "", "event_type": "", "task_type": "", "subtask_type": "",
-            "dim1": "", "dim2": "", "dim3": "", "dim4": "", "dim5": "", "dim6": ""}
+            "grouping_field_1": "", "grouping_field_2": "", "grouping_field_3": "", "grouping_field_4": "", "grouping_field_5": "", "grouping_field_6": "", "grouping_field_7": "", "grouping_field_8": "", "grouping_field_9": "", "grouping_field_10": ""}
     base.update(kw)
     return base
 
@@ -22,7 +22,7 @@ class TestCardCacheDimensions:
         convention the existing test_card_cache.py uses (lines 52, 62)."""
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", dim1="eu",
+        rate_in_default_book(t, card_type="cost", provider="openai", grouping_field_1="eu",
                              measurement_key="input_tokens", rate_per_unit_micros=1_000,
                              unit_quantity=1_000_000)
         card_cache_module._l1.clear()
@@ -35,7 +35,7 @@ class TestCardCacheDimensions:
         Postgres.
         Bounded cardinality (design D4) is what makes the key safe."""
         t, c = self._tc()
-        sel = _sel(provider="openai", dim1="eu")
+        sel = _sel(provider="openai", grouping_field_1="eu")
         CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
         with CaptureQueriesContext(connection) as ctx:
             CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
@@ -43,9 +43,9 @@ class TestCardCacheDimensions:
 
     def test_different_dimension_values_do_not_collide(self):
         t, c = self._tc()
-        hit = CardCache.resolve(t, c, "cost", _sel(provider="openai", dim1="eu"),
+        hit = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="eu"),
                                 "input_tokens", "usd")
-        miss = CardCache.resolve(t, c, "cost", _sel(provider="openai", dim1="us"),
+        miss = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="us"),
                                  "input_tokens", "usd")
         assert hit is not None and miss is None
 
@@ -53,7 +53,7 @@ class TestCardCacheDimensions:
         """invalidate() bumps the Redis version counter; a NEW request observes
         the bump via begin_request, which is what stales the L1 entry."""
         t, c = self._tc()
-        sel = _sel(provider="openai", dim1="eu")
+        sel = _sel(provider="openai", grouping_field_1="eu")
         CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
         CardCache.invalidate(t.id)
         CardCache.begin_request(t.id)

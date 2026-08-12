@@ -111,7 +111,30 @@ class UpgradePathTest(TestCase):
         disk = _loader_with_applied([]).disk_migrations
         # Everything a pre-move database would have recorded: every other app's
         # history as-is, and this app's under the label it used to carry.
-        self.pre_move_history = [key for key in disk if key[0] != APP_LABEL]
+        #
+        # EXCEPT ANYTHING THAT POSTDATES THE MOVE. Another app's migration may
+        # depend on one of this app's, and a database that stopped at the last
+        # historical migration cannot have applied such a dependant — recording
+        # it produces a history no real database could be in, and the executor
+        # rightly answers by planning to unapply it. #276's registry rewrite is
+        # the first migration to depend across this boundary; before it, the
+        # blanket "every other app" was accidentally accurate rather than right.
+        applied = {key for key in disk if key[0] != APP_LABEL}
+        historical = {(APP_LABEL, name) for name in HISTORICAL_MIGRATIONS}
+        dropped: set = set()
+        while True:
+            dependants = {
+                key for key in applied
+                if any((dependency[0] == APP_LABEL
+                        and dependency not in historical) or dependency in dropped
+                       for dependency in disk[key].dependencies)
+            }
+            if not dependants:
+                break
+            dropped |= dependants
+            applied -= dependants
+
+        self.pre_move_history = sorted(applied)
         self.pre_move_history += [
             (OLD_APP_LABEL, name) for name in HISTORICAL_MIGRATIONS
         ]
