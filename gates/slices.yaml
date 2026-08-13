@@ -24,6 +24,24 @@
 # were provable on the spot and cost nothing to make. Later slices should flip
 # their own flag in their last ticket, which is what makes the declaration a
 # check rather than a formality.
+#
+# Slice 2 is the first to flip its own flag, in its own last ticket (#285), and
+# the declaration did cost something — which is the whole argument for doing it
+# here. Flipping it turned five of `test_migration_ledger.py`'s controls red —
+# four negative controls plus `test_a_legal_ledger_loads`, which is a positive
+# one — and left a SIXTH green and VACUOUS. That suite kept a private copy of
+# the "a slice that has not landed" idea, `entry(owner_slice="slice_2")`, and
+# `test_an_entry_owned_by_a_landed_slice_is_rejected` mutated slice 2 by name,
+# so on the day slice 2 landed that control went on passing with its mutation
+# line deleted outright. #256 repaired the same defect in the manifest's half
+# when slices 0 and 1 landed, and could not see this one, because slice 2 had
+# not landed yet.
+#
+# Three of the ledger's controls now DERIVE their slice from this file rather
+# than naming one, and `entry()`'s default moved to the shared `UNLANDED_SLICE`
+# sentinel that `test_gate_manifest.py` already guards by name. A filter over
+# `landed: false` cannot name a slice that has landed, so the next flip cannot
+# repeat this.
 
 version: 1
 
@@ -44,7 +62,7 @@ slices:
     issue: 193
     title: Measurement and catalogue
     order: 2
-    landed: false
+    landed: true
 
   slice_3:
     issue: 185

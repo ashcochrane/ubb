@@ -30,7 +30,15 @@ that resolves a base ref is exactly the part a pure test cannot reach.
 import pytest
 import yaml
 
-from _gate_helpers import gates, git, installed, load, real, rejection
+from _gate_helpers import (
+    UNLANDED_SLICE,
+    gates,
+    git,
+    installed,
+    load,
+    real,
+    rejection,
+)
 from _helpers import REPO_ROOT
 from tools.gates import errors as codes
 from tools.gates import load_programme
@@ -56,13 +64,42 @@ def slices(programme):
     return programme.slices
 
 
+@pytest.fixture(scope="module")
+def unlanded(slices):
+    """Every slice that has not landed, earliest in the chain first.
+
+    DERIVED rather than typed, and slice 2 landing is why. `entry`'s default
+    owner was `slice_2`, and `test_an_entry_owned_by_a_landed_slice_is_rejected`
+    mutated slice 2 by name — so on the day it landed that control went on
+    passing with its mutation line deleted entirely, proving nothing.
+
+    The two order-pair controls did NOT go red then, and that is the sharper
+    reason to derive rather than re-point: `compare` reads a slice's `order` and
+    never its `landed` flag, so a landed slice named there keeps passing while
+    describing a move :func:`load_programme` refuses outright. Re-typing a
+    different slice would only move the expiry date, and nothing would go red
+    when it arrived.
+
+    A filter cannot name a landed slice, so vacuity here is structurally
+    unavailable rather than something a future reader has to remember to check.
+    """
+    ordered = sorted((declared for declared in slices.values()
+                      if not declared.landed),
+                     key=lambda declared: declared.order)
+    assert len(ordered) >= 2, (
+        "fewer than two slices have yet to land, so the controls about the "
+        "ratchet's direction have no unlanded pair to run on — at that point "
+        "the ledger is at or near zero and they are asserting about history")
+    return tuple(declared.key for declared in ordered)
+
+
 def ledger(entries=(), authorisations=()):
     return {"version": 1, "entries": list(entries),
             "seeding_authorisations": list(authorisations)}
 
 
 def entry(identifier="L001", gate="G1", site="a/site.py::Thing",
-          owner_slice="slice_2", **overrides):
+          owner_slice=UNLANDED_SLICE, **overrides):
     body = {"id": identifier, "gate": gate, "site": site,
             "expected": "the_canonical_term", "owner_slice": owner_slice,
             "reason": "it predates the rename"}
@@ -203,15 +240,30 @@ def test_an_entry_naming_a_slice_that_does_not_exist_is_rejected(tmp_path):
     assert invalid.codes() == {codes.UNKNOWN_SLICE}
 
 
-def test_an_entry_owned_by_a_landed_slice_is_rejected(tmp_path):
+def test_an_entry_owned_by_a_landed_slice_is_rejected(tmp_path, unlanded):
     """#155 §17, closed. An entry cannot survive to slice 8 because everyone
-    assumed somebody else owned it: the moment its owner lands, it goes red."""
+    assumed somebody else owned it: the moment its owner lands, it goes red.
+
+    The mutation IS the control, so it names a slice that has not landed and
+    lands it here. Naming one that already had is how this went vacuous when
+    slice 2 landed: the shipped file carried `landed: true` by itself, the
+    rejection arrived for a reason the test had not caused, and the assertion
+    held with the mutation line deleted outright.
+    """
+    owner = unlanded[0]
+    assert owner != UNLANDED_SLICE, (
+        f"the synthetic gate rows are owed by {UNLANDED_SLICE}, so landing it "
+        f"here would fault all of them for `landed_slice_owns_gate` too and "
+        f"this control could no longer say the ledger's code is the ONLY one. "
+        f"It cannot happen while that slice carries the highest `order`, which "
+        f"is what makes it last — but the assertion below depends on it, so it "
+        f"is stated rather than left to be inferred")
     declared = yaml.safe_load(real("slices.yaml"))
-    declared["slices"]["slice_2"]["landed"] = True
+    declared["slices"][owner]["landed"] = True
     invalid = rejection(tmp_path, slices=declared,
                         gates=gates(G1=installed(), G14=installed()),
-                        ledger=ledger([entry(owner_slice="slice_2")]))
-    assert codes.OWNER_SLICE_LANDED in invalid.codes()
+                        ledger=ledger([entry(owner_slice=owner)]))
+    assert invalid.codes() == {codes.OWNER_SLICE_LANDED}
 
 
 def test_an_entry_missing_its_owner_is_rejected(tmp_path):
@@ -324,17 +376,19 @@ def test_an_override_that_licensed_nothing_fails(slices):
         codes.AUTHORISATION_INERT}
 
 
-def test_deferring_a_debt_to_a_later_slice_fails(slices):
+def test_deferring_a_debt_to_a_later_slice_fails(slices, unlanded):
     """Not an addition, and not a shrink either: the entry is still owed and now
     lands nearer the cutover. #155 §17's failure with an extra step."""
-    comparison = compare(ledger([entry(owner_slice="slice_2")]),
-                         ledger([entry(owner_slice="slice_7")]), slices)
+    earliest, latest = unlanded[0], unlanded[-1]
+    comparison = compare(ledger([entry(owner_slice=earliest)]),
+                         ledger([entry(owner_slice=latest)]), slices)
     assert {fault.code for fault in comparison.faults} == {codes.DEBT_DEFERRED}
 
 
-def test_pulling_a_debt_earlier_is_free(slices):
-    comparison = compare(ledger([entry(owner_slice="slice_7")]),
-                         ledger([entry(owner_slice="slice_2")]), slices)
+def test_pulling_a_debt_earlier_is_free(slices, unlanded):
+    earliest, latest = unlanded[0], unlanded[-1]
+    comparison = compare(ledger([entry(owner_slice=latest)]),
+                         ledger([entry(owner_slice=earliest)]), slices)
     assert comparison.ok
 
 
