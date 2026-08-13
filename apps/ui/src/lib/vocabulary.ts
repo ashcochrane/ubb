@@ -1409,6 +1409,33 @@ export const UNIT_LABEL_KEYS = {
 } as const satisfies Record<UnitKnown, string>;
 
 
+// --- unresolved_reason ------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which input was missing when supplier COGS could not be settled. Read only
+// where `costing_status` is `unresolved`, and never on its own: a status that
+// says a cost is missing without saying WHAT would settle it is a shrug rather
+// than something a tenant can act on. Each value names an input that did not
+// arrive, so the remedy is readable from the value.
+//
+// Declared in concepts/economics.yaml.
+
+export const UNRESOLVED_REASON_VALUES = [
+  "reported_cost_missing",
+  "cost_rate_missing",
+  "measurement_not_declared",
+] as const;
+
+export type UnresolvedReason = (typeof UNRESOLVED_REASON_VALUES)[number];
+
+export const UNRESOLVED_REASON_LABEL_KEYS = {
+  "reported_cost_missing": "unresolved_reason.reported_cost_missing",
+  "cost_rate_missing": "unresolved_reason.cost_rate_missing",
+  "measurement_not_declared": "unresolved_reason.measurement_not_declared",
+} as const satisfies Record<UnresolvedReason, string>;
+
+
 // --- usage_event_kind -------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.

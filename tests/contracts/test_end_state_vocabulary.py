@@ -690,10 +690,20 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     commit — three of slice 2's four left with the Event Type (#262), which
     holds the declaration lifecycle and the response-shape declaration, and the
     fourth left with the declared quantity that carries a unit (#263). **Slice
-    2's four are now all consumed**, so what remains is slice 0's pair alone:
-    the payment-rail names, declared there and built in slice 8 (ADR-0008
-    §10.4).
+    2's four are now all consumed**, so what remains is two concepts, each
+    declared a slice ahead of the machinery that reads it.
+
+    Slice 0's pair are the payment-rail names, declared there and built in
+    slice 8 (#158 §10.4). Slice 3's `unresolved_reason` — which input was
+    missing when a supplier cost could not be settled — is declared on its own
+    by #316, because a public closed value set that reaches code before it
+    reaches the registry is counted as an undeclared public value set, and
+    ADR-0007 §3 leaves no way to park one under a provisional name and correct
+    it later. It leaves this list in #317, the ticket that adds the column
+    holding it. Naming a consumer before then would be exactly the unexcused
+    failure this docstring opens with, which is what makes the list a place a
+    concept WAITS rather than a place one is missing from.
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment",
+        "payment_rail", "payment_rail_environment", "unresolved_reason",
     }
