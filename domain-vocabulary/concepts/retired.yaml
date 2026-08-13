@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,534 of 1,906 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,538 of 1,911 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -247,6 +247,27 @@ measurement_key:
     # it retires the SINGULAR GROUPING-FIELD VALUE word, a different registry
     # entry entirely — and #275's RATE ARITHMETIC caution holds again: it went
     # nowhere near `compute(units)`.
+    #
+    # #317 MOVED THE DENOMINATOR ONLY, UPWARD (1,534 → 1,538 swept, 1,906 →
+    # 1,911 tracked, 50/126 unchanged) — the "needs no story" direction again,
+    # and the same non-widening signature #312 records: `historical-migrations`
+    # went 205 → 206 because this commit ADDS a migration to a directory the
+    # rule already covers. FIVE NEW FILES, FOUR OF THEM SWEPT — the migration
+    # (excluded), the test module pinning the new columns, and THREE GENERATED
+    # SDK enum modules, one per response schema that now publishes the costing
+    # status. Those three are the reason this number was re-taken AFTER
+    # `generate_core.py` ran and its output was staged: #277 already paid for
+    # taking it before the regeneration, and a published property whose type is
+    # an enum mints a module per schema carrying it in exactly the same way.
+    #
+    # THE NUMERATOR HOLDING IS THE READING WORTH HAVING HERE, for the reason
+    # #281's entry gives about itself. This commit works inside the retired
+    # sense's own territory — it adds three columns to the posting that #272
+    # took the nameless integer off, and publishes one of them — and it still
+    # writes the word nowhere, because what a posting is measured by lives on
+    # its child record keyed by `measurement_key`, and what this commit adds is
+    # about MONEY rather than quantity. #275's RATE ARITHMETIC caution holds:
+    # nothing here goes near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

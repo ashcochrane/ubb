@@ -636,6 +636,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     # no column holds it, G10 proves so, and the census measures the module
     # that computes it exactly as it measures any other consumer.
     "measurements_status": Published(1, ENUM),    # UsageEventDetailOut
+    # #317 (slice 3) — the first concept whose marker was FORCED rather than
+    # scheduled. Its `openapi` consumer was declared long before the field, and
+    # `g4-openapi-costing_status` excused the gap while the backend served none
+    # of the values; the commit that made `usage/models.py` hold all three by
+    # reference closed it, because `advertised` is derived from the backend
+    # census alone and a concept advertised with no field naming it is what
+    # `test_every_advertised_concept_reaches_the_contract` refuses. Three
+    # nodes: every response that publishes a supplier cost says whether that
+    # cost is settled, so nobody reads a zero UBB has not learned yet as money.
+    "costing_status": Published(3, ENUM),  # record + list row + detail
 }
 
 
@@ -1278,8 +1288,18 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     The count is what a reviewer approved. If the seeding shrank to three
     entries because a walk broke, every test above would still pass — they are
     all "for each entry" — and this is what would not.
+
+    THE FLOOR MOVES DOWN BY ONE PER CONCEPT PAID, AND ONLY THEN. It went 25 →
+    24 in #317, which advertised `costing_status`. Lowering it is the correct
+    response to a debt being paid and the WRONG response to a walk breaking,
+    and the two are told apart by the assertion above it rather than by this
+    one: the equality already holds the real claim — as many entries as owed
+    sites, in both directions — so a walk that returned nothing would fail
+    there first, with a diff a reader can act on. This line exists for the case
+    the equality cannot see, where BOTH halves collapse together, and a floor
+    that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 25, (
+    assert len(_entries(programme)) >= 24, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

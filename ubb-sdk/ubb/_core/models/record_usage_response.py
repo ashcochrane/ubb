@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -28,6 +29,7 @@ T = TypeVar("T", bound="RecordUsageResponse")
 class RecordUsageResponse:
     """ 
         Attributes:
+            costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
             suspended (bool):
             billed_cost_micros (int | None | Unset):
@@ -47,6 +49,7 @@ class RecordUsageResponse:
             uncosted_metrics (list[str] | Unset):
      """
 
+    costing_status: RecordUsageResponseCostingStatus
     event_id: str
     suspended: bool
     billed_cost_micros: int | None | Unset = UNSET
@@ -74,6 +77,8 @@ class RecordUsageResponse:
         from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
+        costing_status = self.costing_status.value
+
         event_id = self.event_id
 
         suspended = self.suspended
@@ -174,6 +179,7 @@ class RecordUsageResponse:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "costing_status": costing_status,
             "event_id": event_id,
             "suspended": suspended,
         })
@@ -218,6 +224,11 @@ class RecordUsageResponse:
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
         from ..models.record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
         d = dict(src_dict)
+        costing_status = RecordUsageResponseCostingStatus(d.pop("costing_status"))
+
+
+
+
         event_id = d.pop("event_id")
 
         suspended = d.pop("suspended")
@@ -386,6 +397,7 @@ class RecordUsageResponse:
 
 
         record_usage_response = cls(
+            costing_status=costing_status,
             event_id=event_id,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,

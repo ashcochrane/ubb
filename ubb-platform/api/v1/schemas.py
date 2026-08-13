@@ -161,11 +161,42 @@ class UsageBatchResponse(Schema):
     rejected: int
 
 
+#: Whether the supplier cost beside it is settled (#317). `closed` — UBB owns
+#: all three — so the export writes a real `enum` here, and this file spells
+#: none of the values. The same marker mechanism as the block near the foot of
+#: this module; declared here because its first user is the next schema down.
+#:
+#: IT TRAVELS WITH THE AMOUNT, ON EVERY RESPONSE THAT CARRIES ONE. A cost of
+#: zero and a cost UBB has not learned yet are now two different facts in the
+#: table, and a response that published the number without this would hand a
+#: client back the exact ambiguity the column stopped having — read as money,
+#: both say "nothing", and only one of them means it.
+#:
+#: STORED, NOT DERIVED, which is where it differs from `MeasurementsStatus`
+#: below: a column holds it, because resolving a cost has to move the status
+#: and the amount in one `UPDATE`.
+#:
+#: The marker lands in the same commit that made the backend consumer serve the
+#: concept, and that is forced rather than chosen: the moment
+#: `usage/models.py` holds all three values by reference, the known-value
+#: document advertises them, and a concept advertised with no field naming it
+#: is what `test_every_advertised_concept_reaches_the_contract` refuses. The
+#: rest of what these responses owe — the amount admitting its own absent case,
+#: the caller's claimed figure, the unresolved reason's own metadata — is
+#: #323's, and none of it is anticipated here.
+CostingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "costing_status"})]
+
+
 class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
     suspended: bool
     provider_cost_micros: Optional[int] = None
+    # Whether the number above is settled. See `CostingStatus`: without it a
+    # supplier cost of zero and one UBB has not learned yet are the same
+    # answer on the wire.
+    costing_status: CostingStatus
     billed_cost_micros: Optional[int] = None
     task_id: Optional[str] = None
     # Set when the named unit is a subtask — its parent task (#38).
@@ -236,6 +267,10 @@ class UsageEventOut(Schema):
     event_type: str = ""
     provider: str = ""
     provider_cost_micros: Optional[int] = None
+    # On the lean list row too, and that is the point rather than symmetry: a
+    # list is where a reader totals a column by eye, so this is exactly where
+    # an unknown cost reading as zero would be believed.
+    costing_status: CostingStatus
     billed_cost_micros: Optional[int] = None
     metadata: dict
     effective_at: str
@@ -252,6 +287,7 @@ def usage_event_out(e):
         "event_type": e.event_type,
         "provider": e.provider,
         "provider_cost_micros": e.provider_cost_micros,
+        "costing_status": e.costing_status,
         "billed_cost_micros": e.billed_cost_micros,
         "metadata": e.metadata,
         "effective_at": e.effective_at.isoformat(),
@@ -303,6 +339,9 @@ class UsageEventDetailOut(Schema):
     grouping_fields: dict[str, str] = {}
     currency: str = "usd"
     provider_cost_micros: int
+    # Whether the number above is settled. Typed required, like the status
+    # below it and for the same reason: every posting has an answer.
+    costing_status: CostingStatus
     billed_cost_micros: int
     # The quantities this posting was measured by, keyed by declared code
     # (#274) — the field the status below has always been about.

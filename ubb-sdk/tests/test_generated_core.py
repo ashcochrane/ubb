@@ -30,6 +30,7 @@ class TestOpenWorldFieldTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
+                "costing_status": "known",
                 # A field added to the response after this client was pinned:
                 "brand_new_field": {"nested": 1},
             }
@@ -63,6 +64,7 @@ class TestOpenEnumTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
+                "costing_status": "known",
                 "stop": True,
                 "stop_scope": "a_scope_invented_next_year",
             }
@@ -78,12 +80,17 @@ class TestRequiredWhereTrueTyping:
 
     def test_required_field_has_no_default(self):
         with pytest.raises(TypeError):
-            RecordUsageResponse()  # event_id / suspended are required
+            # event_id / suspended / costing_status are required. The third
+            # joined them in #317: a supplier cost with no statement about
+            # whether it is settled is the ambiguity that ticket removed, so
+            # the contract does not let one arrive.
+            RecordUsageResponse()
         with pytest.raises(KeyError):
             RecordUsageResponse.from_dict({"suspended": False})  # missing event_id
 
     def test_optional_field_defaults_to_unset(self):
-        r = RecordUsageResponse.from_dict({"event_id": "evt_1", "suspended": False})
+        r = RecordUsageResponse.from_dict(
+            {"event_id": "evt_1", "suspended": False, "costing_status": "known"})
         assert isinstance(r.task_id, Unset)
         assert r.task_id is UNSET
 

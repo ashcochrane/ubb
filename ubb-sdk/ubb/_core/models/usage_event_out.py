@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.usage_event_out_costing_status import UsageEventOutCostingStatus
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -27,6 +28,7 @@ T = TypeVar("T", bound="UsageEventOut")
 class UsageEventOut:
     """ 
         Attributes:
+            costing_status (UsageEventOutCostingStatus):
             effective_at (str):
             id (UUID):
             metadata (UsageEventOutMetadata):
@@ -38,6 +40,7 @@ class UsageEventOut:
             stop_context (list[Any] | None | Unset):
      """
 
+    costing_status: UsageEventOutCostingStatus
     effective_at: str
     id: UUID
     metadata: UsageEventOutMetadata
@@ -55,6 +58,8 @@ class UsageEventOut:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.usage_event_out_metadata import UsageEventOutMetadata
+        costing_status = self.costing_status.value
+
         effective_at = self.effective_at
 
         id = str(self.id)
@@ -93,6 +98,7 @@ class UsageEventOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "costing_status": costing_status,
             "effective_at": effective_at,
             "id": id,
             "metadata": metadata,
@@ -117,6 +123,11 @@ class UsageEventOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.usage_event_out_metadata import UsageEventOutMetadata
         d = dict(src_dict)
+        costing_status = UsageEventOutCostingStatus(d.pop("costing_status"))
+
+
+
+
         effective_at = d.pop("effective_at")
 
         id = UUID(d.pop("id"))
@@ -174,6 +185,7 @@ class UsageEventOut:
 
 
         usage_event_out = cls(
+            costing_status=costing_status,
             effective_at=effective_at,
             id=id,
             metadata=metadata,

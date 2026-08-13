@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..types import UNSET, Unset
 from typing import cast
@@ -32,6 +33,7 @@ class UsageEventDetailOut:
     """ 
         Attributes:
             billed_cost_micros (int):
+            costing_status (UsageEventDetailOutCostingStatus):
             created_at (str):
             effective_at (str):
             id (UUID):
@@ -51,6 +53,7 @@ class UsageEventDetailOut:
      """
 
     billed_cost_micros: int
+    costing_status: UsageEventDetailOutCostingStatus
     created_at: str
     effective_at: str
     id: UUID
@@ -79,6 +82,8 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
         billed_cost_micros = self.billed_cost_micros
+
+        costing_status = self.costing_status.value
 
         created_at = self.created_at
 
@@ -137,6 +142,7 @@ class UsageEventDetailOut:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "billed_cost_micros": billed_cost_micros,
+            "costing_status": costing_status,
             "created_at": created_at,
             "effective_at": effective_at,
             "id": id,
@@ -176,6 +182,11 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
         d = dict(src_dict)
         billed_cost_micros = d.pop("billed_cost_micros")
+
+        costing_status = UsageEventDetailOutCostingStatus(d.pop("costing_status"))
+
+
+
 
         created_at = d.pop("created_at")
 
@@ -273,6 +284,7 @@ class UsageEventDetailOut:
 
         usage_event_detail_out = cls(
             billed_cost_micros=billed_cost_micros,
+            costing_status=costing_status,
             created_at=created_at,
             effective_at=effective_at,
             id=id,

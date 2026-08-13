@@ -191,6 +191,11 @@ export async function sendTestEvent(
     grouping_fields: {},
     billed_cost_micros: billed,
     provider_cost_micros: provider,
+    // This mock always produces a supplier figure — from the caller's own
+    // value or from the billed amount — so the cost it answers with is
+    // settled (#317). The literal is checked against the generated response
+    // union, so a value the registry renames fails to compile here.
+    costing_status: "known",
     new_balance_micros: balanceMicros,
     measurements: body.measurements ?? null,
     uncosted_metrics: uncosted,

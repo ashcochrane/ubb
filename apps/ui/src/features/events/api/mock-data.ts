@@ -116,6 +116,12 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     idempotency_key: seed.idempotency_key ?? `idem_${seed.id.slice(0, 8)}`,
     billed_cost_micros: seed.billed_cost_micros,
     provider_cost_micros: seed.provider_cost_micros,
+    // Every seeded posting carries a supplier cost, so every one of them is
+    // settled (#317). The literal is checked against the generated response
+    // union rather than being free text, so a value the registry renames
+    // fails to compile here. Rendering the OTHER two states is a later
+    // ticket's — this file has no unresolved row to render yet.
+    costing_status: "known",
     effective_at: seed.effective_at,
     created_at: seed.created_at ?? seed.effective_at,
     currency: "usd",

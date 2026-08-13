@@ -71,10 +71,15 @@
       ]
     },
     "costing_status": {
-      "advertised": false,
-      "backend_serves": "0 of 3 values",
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "known",
+        "unresolved",
+        "not_applicable"
+      ]
     },
     "customer_billing_mode": {
       "advertised": false,
@@ -317,7 +322,7 @@
     },
     "unresolved_reason": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
       "representation": "none"
     },

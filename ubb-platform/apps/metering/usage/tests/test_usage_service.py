@@ -21,8 +21,14 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # (#38). Kill directives never ride the result at all (#112): the recording
 # core registers kill execution on its own transaction.on_commit — the
 # exact-key-set assertion below pins that nothing internal can sneak in.
+#
+# `costing_status` joined in #317 and is a DELIBERATE addition, which is what
+# this set exists to make visible. It travels beside the supplier cost on every
+# return path for the same reason it does on the wire: the amount alone cannot
+# say whether it is settled, and a caller reading the replay return would
+# otherwise take an unresolved cost for a free one.
 _RESULT_KEYS = {
-    "event_id", "provider_cost_micros", "billed_cost_micros",
+    "event_id", "provider_cost_micros", "costing_status", "billed_cost_micros",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
@@ -49,7 +55,8 @@ class ResultSignatureTest(TestCase):
         # set, and send it to the registry with a mock for a tenant id. Reading
         # `SLOTS` means the next widening needs no edit at all.
         event = MagicMock(
-            id="e1", provider_cost_micros=1, billed_cost_micros=1,
+            id="e1", provider_cost_micros=1, costing_status="known",
+            billed_cost_micros=1,
             task_id=None, measurements={}, pricing_provenance={},
             stop_context=None, **{slot: "" for slot in SLOTS},
         )
