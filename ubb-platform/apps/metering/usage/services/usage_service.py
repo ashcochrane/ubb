@@ -190,6 +190,9 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
     return {
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
+        # Read off the row rather than assumed here, so an idempotent replay
+        # answers what the original recording concluded (#317).
+        "costing_status": event.costing_status,
         "billed_cost_micros": event.billed_cost_micros,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
         "task_id": str(event.task_id) if event.task_id else None,

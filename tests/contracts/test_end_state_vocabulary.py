@@ -690,20 +690,23 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     commit — three of slice 2's four left with the Event Type (#262), which
     holds the declaration lifecycle and the response-shape declaration, and the
     fourth left with the declared quantity that carries a unit (#263). **Slice
-    2's four are now all consumed**, so what remains is two concepts, each
-    declared a slice ahead of the machinery that reads it.
+    2's four are now all consumed**, so what remains is one pair, declared a
+    whole programme ahead of the machinery that reads it.
 
-    Slice 0's pair are the payment-rail names, declared there and built in
-    slice 8 (#158 §10.4). Slice 3's `unresolved_reason` — which input was
-    missing when a supplier cost could not be settled — is declared on its own
-    by #316, because a public closed value set that reaches code before it
-    reaches the registry is counted as an undeclared public value set, and
-    ADR-0007 §3 leaves no way to park one under a provisional name and correct
-    it later. It leaves this list in #317, the ticket that adds the column
-    holding it. Naming a consumer before then would be exactly the unexcused
-    failure this docstring opens with, which is what makes the list a place a
-    concept WAITS rather than a place one is missing from.
+    They are slice 0's payment-rail names, declared there and built in slice 8
+    (#158 §10.4).
+
+    **`unresolved_reason` left this list in #317, exactly as it said it would.**
+    It joined in #316, which declared the names on their own because a public
+    closed value set that reaches code before it reaches the registry is counted
+    as an undeclared public value set and ADR-0007 §3 leaves no way to park one
+    under a provisional name and correct it later; #317 added the posting column
+    that holds the values by reference, and the consumer was declared in that
+    same commit. A concept therefore WAITS here for a named ticket rather than
+    going missing here, and the two states are told apart by whether anybody can
+    say which ticket. That is the whole reason this is an equality: a concept
+    that quietly LOST its consumer would otherwise join the list unremarked.
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment", "unresolved_reason",
+        "payment_rail", "payment_rail_environment",
     }

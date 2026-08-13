@@ -206,36 +206,41 @@ costing_status:
     - surface: openapi
       path: openapi/v1.json
 
-# THE OTHER HALF OF THE SENTENCE ABOVE, AND IT LANDS BEFORE ANYTHING READS IT.
-# `costing_status` says supplier COGS is `unresolved`; this says which input
-# was missing. Slice 3 (#185) builds both, but the names are declared here
-# first and on their own: a public closed value set that reaches code before it
-# reaches this file is counted as an undeclared public value set (#191 story
-# 15, checked by tests/contracts/test_undeclared_value_sets.py), and ADR-0007
-# §3 forbids parking one under a provisional name and correcting it later.
-# Declaring first also lands each value and its wording in the same commit,
-# which is what the label catalogue checks in both directions — every registry
-# value has wording, and every label names a live registry value.
+# THE OTHER HALF OF THE SENTENCE ABOVE. `costing_status` says supplier COGS is
+# `unresolved`; this says which input was missing. Slice 3 (#185) builds both,
+# and the names were declared here first and on their own (#316): a public
+# closed value set that reaches code before it reaches this file is counted as
+# an undeclared public value set (#191 story 15, checked by
+# tests/contracts/test_undeclared_value_sets.py), and ADR-0007 §3 forbids
+# parking one under a provisional name and correcting it later. Declaring first
+# also lands each value and its wording in the same commit, which is what the
+# label catalogue checks in both directions — every registry value has wording,
+# and every label names a live registry value.
 #
-# IT THEREFORE DECLARES NO CONSUMERS, the position `payment_rail` has held in
-# concepts/payment-rails.yaml since slice 0. The horizons differ — that one
-# waits on a build eight slices away, this one on the next ticket — but the
-# state is the same, and schema.yaml requires the empty list be written out
-# rather than the key omitted, so the compiler reports it by name.
+# IT DECLARED NO CONSUMERS UNTIL #317, which is the ticket below it: naming one
+# before anything held these values by reference would not have been a promise
+# but a debt, because the census measures a declared consumer against every
+# value of a concept and one named early reports them all missing — a G2
+# finding needing a migration-ledger entry to own it, on a ledger that only
+# shrinks (#155 §3.2). `payment_rail` still holds that position in
+# concepts/payment-rails.yaml, waiting on a build eight slices away.
 #
-# Nothing holds these values by reference yet, and naming a consumer before one
-# exists would not be a promise but a debt: the census measures a declared
-# consumer against every value of the concept, so one named today would report
-# all three as missing — a G2 finding, which needs a migration-ledger entry to
-# own it, and the ledger only shrinks (#155 §3.2). An empty list is not a
-# suppressed finding: the census walks a concept's declared consumers, so with
-# none there is no verdict to take at all. They arrive with the column that
-# stores these values (#317) and the contract that publishes them.
+# THE BACKEND CONSUMER IS NOW REAL. The posting carries `unresolved_reason`
+# beside the supplier cost it qualifies, and derives its value set from the
+# generated `core.vocabulary` rather than restating it, so all three values are
+# held by reference and no entry is owed for them.
 #
-# Until then `openapi/known-values.json` records `representation: none` — the
-# registry declares no `openapi` consumer, which is its own statement that this
-# concept is not in the contract — and `advertised: false` following from it.
-# No values ride the row: absent means absent.
+# The console and the contract are NOT declared yet, and the order is forced
+# rather than preferred: the contract may not advertise a concept's values
+# while the backend consumer holds none of them. That rule was stated by the
+# openapi entry in the migration ledger, which #317 deleted along with the
+# backend one — an entry cannot outlive the debt it records — so it is written
+# out here, where the next concept to take this route will be standing. Backend,
+# then console, then spec. Until the contract consumer is
+# declared, `openapi/known-values.json` records `representation: none` — the
+# registry declaring no `openapi` consumer IS its own statement that the concept
+# is not in the contract — and `advertised: false` following from it. No values
+# ride the row: absent means absent.
 
 unresolved_reason:
   kind: closed
@@ -254,7 +259,9 @@ unresolved_reason:
     # The quantity names a declaration nobody made — the quarantine link.
     - measurement_not_declared
   label_key_prefix: unresolved_reason
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
 
 pricing_status:
   kind: closed

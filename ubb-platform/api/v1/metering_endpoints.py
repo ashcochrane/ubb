@@ -301,6 +301,9 @@ def get_usage_event(request, event_id: UUID):
         "grouping_fields": grouping_fields_for(e),
         "currency": e.currency,
         "provider_cost_micros": e.provider_cost_micros,
+        # Stored, unlike the two derived answers around it: the status is a
+        # statement about this posting's economics and a column holds it.
+        "costing_status": e.costing_status,
         "billed_cost_micros": e.billed_cost_micros,
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the

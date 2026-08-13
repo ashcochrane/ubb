@@ -636,6 +636,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     # no column holds it, G10 proves so, and the census measures the module
     # that computes it exactly as it measures any other consumer.
     "measurements_status": Published(1, ENUM),    # UsageEventDetailOut
+    # #317 (slice 3) — the first concept whose marker was FORCED rather than
+    # scheduled. Its `openapi` consumer was declared long before the field, and
+    # `g4-openapi-costing_status` excused the gap while the backend served none
+    # of the values; the commit that made `usage/models.py` hold all three by
+    # reference closed it, because `advertised` is derived from the backend
+    # census alone and a concept advertised with no field naming it is what
+    # `test_every_advertised_concept_reaches_the_contract` refuses. Three
+    # nodes: every response that publishes a supplier cost says whether that
+    # cost is settled, so nobody reads a zero UBB has not learned yet as money.
+    "costing_status": Published(3, ENUM),  # record + list row + detail
 }
 
 
@@ -754,6 +764,23 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # caller to state a fact UBB computes — the second encoding ADR-0006 §4
     # refuses, arriving through the wire instead of through a column.
     assert where["measurements_status"] == {"UsageEventDetailOut"}
+    # OUT ONLY as well, and for a DIFFERENT reason worth keeping apart from the
+    # one above: this status IS stored, so the objection is not that a caller
+    # would state a computed fact — it is that a caller does not know it. What
+    # a supplier charged is UBB's to resolve, and a request schema naming it
+    # would invite the guess that `claimed_provider_cost_micros` exists to keep
+    # out of COGS.
+    #
+    # THREE SCHEMAS BECAUSE THREE RESPONSES PUBLISH THE AMOUNT IT QUALIFIES,
+    # which is the whole rule for where this marker belongs: the ack, the list
+    # row and the detail receipt each return a supplier cost, and a cost
+    # published without its status hands a client back the ambiguity the column
+    # stopped having. A fourth schema carrying the amount and not this would be
+    # the finding, and that is what makes this line worth more than the count
+    # in `CONCEPTS_IN_THE_CONTRACT` — a count is satisfied by three markers
+    # anywhere at all.
+    assert where["costing_status"] == {"RecordUsageResponse", "UsageEventOut",
+                                       "UsageEventDetailOut"}
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is
@@ -1278,8 +1305,18 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     The count is what a reviewer approved. If the seeding shrank to three
     entries because a walk broke, every test above would still pass — they are
     all "for each entry" — and this is what would not.
+
+    THE FLOOR MOVES DOWN BY ONE PER CONCEPT PAID, AND ONLY THEN. It went 25 →
+    24 in #317, which advertised `costing_status`. Lowering it is the correct
+    response to a debt being paid and the WRONG response to a walk breaking,
+    and the two are told apart by the assertion above it rather than by this
+    one: the equality already holds the real claim — as many entries as owed
+    sites, in both directions — so a walk that returned nothing would fail
+    there first, with a diff a reader can act on. This line exists for the case
+    the equality cannot see, where BOTH halves collapse together, and a floor
+    that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 25, (
+    assert len(_entries(programme)) >= 24, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

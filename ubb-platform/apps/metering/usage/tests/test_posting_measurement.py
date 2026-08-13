@@ -346,16 +346,28 @@ class TheDerivedMeasurementsStatusTest(TestCase):
 
 
 class TheNullabilityAsymmetryTest(TestCase):
-    """The measurements go optional here; the two cost columns do not.
+    """The measurements went optional here; the cost columns go one slice each.
 
     It reads like an inconsistency and it is the rule: **each field goes
     nullable in the slice that owns its meaning.** Slice 2 owns whether a
-    posting has measurements, so the measurements become optional now. Slices 3
-    and 4 own whether a cost is *resolved*, and until then a cost column that
-    went nullable would be saying something no slice has decided — `NULL` for
-    "not resolved" is exactly the distinction `RESOLVE_ONCE` is being built to
-    carry, and pre-announcing it here would be a second break to repair the
-    first (ADR-0007 §3).
+    posting has measurements, so the measurements became optional then. A cost
+    column that went nullable in the same change would have been saying
+    something no slice had decided — `NULL` for "not resolved" is exactly the
+    distinction `RESOLVE_ONCE` is built to carry, and pre-announcing it would
+    have been a second break to repair the first (ADR-0007 §3).
+
+    **The asymmetry did not go away in #317; it moved.** Slice 3 owns whether a
+    SUPPLIER cost is resolved, so `provider_cost_micros` is nullable now and
+    `NULL` there means *not resolved*, defended at the database by the three
+    legal combinations in `Posting.Meta`. Slice 4 owns whether a CUSTOMER price
+    is resolved — `pricing_status`, the waive and the direct price all land
+    there — so `billed_cost_micros` is untouched, for the same reason and by
+    the same rule that kept them both untouched here one slice ago.
+
+    So this class is rewritten rather than relaxed, and it still fails in
+    exactly one direction each: a supplier cost that stopped being nullable
+    would have lost the distinction slice 3 exists to add, and a billed cost
+    that started being nullable would be slice 4 arriving early and unsigned.
     """
 
     def test_the_measurements_are_optional(self):
@@ -370,12 +382,30 @@ class TheNullabilityAsymmetryTest(TestCase):
         self.assertFalse(
             PostingMeasurement.objects.filter(posting=posting).exists())
 
-    def test_the_two_cost_columns_are_untouched_and_still_non_nullable(self):
-        for name in ("provider_cost_micros", "billed_cost_micros"):
-            with self.subTest(column=name):
-                field = Posting._meta.get_field(name)
-                self.assertFalse(field.null)
-                self.assertEqual(field.default, 0)
+    def test_the_supplier_cost_is_nullable_now_that_a_slice_owns_the_meaning(self):
+        """#317. The default stays 0, which is not a leftover.
+
+        A writer that says nothing about supplier cost still records `known`
+        and zero — the reading every row had before this column could be null,
+        and the one the migration gives every row that already existed. What
+        changed is that `NULL` became SAYABLE; who says it is the business of
+        the tickets that teach the recording path when a cost is missing.
+        """
+        field = Posting._meta.get_field("provider_cost_micros")
+        self.assertTrue(field.null)
+        self.assertEqual(field.default, 0)
+
+    def test_the_billed_cost_column_is_untouched_and_still_non_nullable(self):
+        """Slice 4's, and it stays that way for slice 4's own reason.
+
+        Nothing in slice 3 decides what an unresolved customer PRICE means, and
+        a column that went nullable here would be announcing a distinction with
+        no status column to qualify it and no rule to defend it — which is what
+        this test refused for the supplier cost one slice ago.
+        """
+        field = Posting._meta.get_field("billed_cost_micros")
+        self.assertFalse(field.null)
+        self.assertEqual(field.default, 0)
 
 
 class TheHorizonHasNoClockBehindItTest(TestCase):

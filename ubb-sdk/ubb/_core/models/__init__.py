@@ -148,6 +148,7 @@ from .record_usage_request_dimensions import RecordUsageRequestDimensions
 from .record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
 from .record_usage_request_metadata import RecordUsageRequestMetadata
 from .record_usage_response import RecordUsageResponse
+from .record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
 from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
@@ -217,12 +218,14 @@ from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
 from .usage_batch_response_results_item import UsageBatchResponseResultsItem
 from .usage_event_detail_out import UsageEventDetailOut
+from .usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from .usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
 from .usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
 from .usage_event_out import UsageEventOut
+from .usage_event_out_costing_status import UsageEventOutCostingStatus
 from .usage_event_out_metadata import UsageEventOutMetadata
 from .usage_invoice_list_response import UsageInvoiceListResponse
 from .usage_invoice_out import UsageInvoiceOut
@@ -390,6 +393,7 @@ __all__ = (
     "RecordUsageRequestMeasurementsType0",
     "RecordUsageRequestMetadata",
     "RecordUsageResponse",
+    "RecordUsageResponseCostingStatus",
     "RecordUsageResponseGroupingFields",
     "RecordUsageResponseMeasurementsType0",
     "RecordUsageResponsePricingProvenanceType0",
@@ -459,12 +463,14 @@ __all__ = (
     "UsageBatchResponse",
     "UsageBatchResponseResultsItem",
     "UsageEventDetailOut",
+    "UsageEventDetailOutCostingStatus",
     "UsageEventDetailOutGroupingFields",
     "UsageEventDetailOutMeasurements",
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutPricingProvenance",
     "UsageEventOut",
+    "UsageEventOutCostingStatus",
     "UsageEventOutMetadata",
     "UsageInvoiceListResponse",
     "UsageInvoiceOut",

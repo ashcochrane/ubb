@@ -1994,18 +1994,6 @@ entries:
       one word that named all of them at once. Slice 6 is where they become
       real.
 
-  - id: g2-backend-costing_status
-    gate: G2
-    site: ubb-platform/apps/metering/usage/models.py::costing_status
-    expected: costing_status
-    found: 0 of 3 values
-    owner_slice: slice_3
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. `unresolved` with a NULL
-      cost that is never zero is #146's central rule, and slice 3 is where the
-      cost record is rebuilt to carry it.
-
   - id: g2-backend-customer_billing_mode
     gate: G2
     site: ubb-platform/apps/platform/tenants/models.py::customer_billing_mode
@@ -2674,19 +2662,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 6 rebuilds spend control around #150's four families, which
       is what this names. The metadata appears in that slice.
-
-  - id: g4-openapi-costing_status
-    gate: G4
-    site: openapi/v1.json::costing_status
-    expected: costing_status
-    found: 0 of 3 values
-    owner_slice: slice_3
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 3 rebuilds Cost, and an event UBB can place but not price is
-      what this status records (#146). The metadata appears in that slice.
 
   - id: g4-openapi-customer_billing_mode
     gate: G4

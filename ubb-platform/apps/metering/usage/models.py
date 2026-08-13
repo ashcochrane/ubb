@@ -4,15 +4,52 @@ from django.utils import timezone
 
 from core.models import BaseModel
 from core.transitions import RECORD_RULE
+from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
+    COSTING_STATUS_NOT_APPLICABLE,
+    COSTING_STATUS_UNRESOLVED,
+    COSTING_STATUS_VALUES,
+    UNRESOLVED_REASON_VALUES,
+)
+
+
+# The two closed sets this model stores, DERIVED from the registry rather than
+# restated beside it. `choices=` is Django's own declaration that a column has a
+# closed value set, and it is worth having — it reaches forms, the admin and
+# `full_clean` — but a hand-typed list is the shape the migration ledger
+# recorded as a debt against this file until #317 deleted the entry: correct on
+# the day it is written and silently wrong the day `domain-vocabulary/` moves.
+# Built from the imported frozensets, it cannot be wrong on any day.
+#
+# The label is the token. Django's second element is not a translation hook, and
+# ADR-0008 §4 puts every human-facing word in the console's locale catalogue
+# keyed off the concept's `label_key_prefix`. English authored here would be a
+# wording nobody can reach and one more copy to keep in step.
+COSTING_STATUS_CHOICES = [(value, value) for value in sorted(COSTING_STATUS_VALUES)]
+UNRESOLVED_REASON_CHOICES = [(value, value)
+                             for value in sorted(UNRESOLVED_REASON_VALUES)]
 
 
 class Posting(BaseModel):
-    """One immutable economic posting — the row that says work was billed for.
+    """One economic posting — the row that says work was billed for.
 
     Renamed from the usage-event noun in #269 (slice 2), with its table, so the
     database stops preserving obsolete terminology (ADR-0006 §9, gate G9). The
     record of WHAT WAS MEASURED split off into a child of its own in #270; this
     row keeps the money, the attribution and the identity.
+
+    **IT NO LONGER CLAIMS TO BE IMMUTABLE AS A WHOLE**, and the word was dropped
+    here rather than left to age. ADR-0007 §2 refuses a record-level claim of
+    immutability precisely because it hides which columns are actually
+    protected, and its Context names the failure this docstring was heading for:
+    a docstring asserting that the first door made the row immutable, while
+    another door wrote to it. `save()` and `delete()` below still refuse every
+    update and every delete, and they are the whole of what is true today — but
+    `provider_cost_micros` is nullable from #317 SO THAT a cost can settle
+    later, which is a transition this class will admit through exactly one door
+    (#318) and the database will hold to `RESOLVE_ONCE`. Per-column transition
+    classes are declared there, not here; what changes today is only that this
+    docstring stops promising something it is about to stop meaning.
     """
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="postings"
@@ -94,7 +131,57 @@ class Posting(BaseModel):
     grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
-    provider_cost_micros = models.BigIntegerField(default=0)
+    # WHAT THE SUPPLIER CHARGED, AND WHETHER UBB KNOWS IT YET (#317).
+    #
+    # Nullable, and `NULL` means NOT RESOLVED. Zero keeps a meaning of its own —
+    # resolved, and it was exactly nothing. Until this column could be null
+    # there was no way to say the first thing, so a charge UBB had not learned
+    # about was stored as the same number as a call that cost nothing, and every
+    # total over it was wrong in the direction that looks healthy: margin better
+    # than it is, spend lower than it is (ADR-0007 §2).
+    #
+    # The two readings are kept apart BY THE DATABASE — `Meta` below refuses
+    # every combination outside the three legal ones — because a rule that only
+    # `full_clean` holds is a rule the writers that skip validation do not keep,
+    # and most of what writes here skips it.
+    #
+    # ⚠ SQL's aggregates skip NULL, so a bare `Sum` over this column now answers
+    # a number that looks complete and is not. Every total built on it becomes a
+    # pair — the resolved sum and its completeness — and that sweep is a later
+    # ticket of this slice; `or 0` is not the local fix, because `or 0`
+    # reproduces exactly the ambiguity this column just stopped having.
+    provider_cost_micros = models.BigIntegerField(null=True, blank=True, default=0)
+    # WHETHER THAT COST IS SETTLED. Not nullable: `unresolved` is a status, and a
+    # null one would be a fourth state meaning "nobody said" — the ambiguity
+    # this column exists to remove, moved one place to the left.
+    #
+    # It sits HERE, on the economic posting, beside the amount it qualifies, and
+    # not on the child measurement record: the status is a statement about the
+    # posting, and resolving a cost has to move the status and the amount in one
+    # `UPDATE`, which a cross-table pair cannot do.
+    #
+    # The default is `known`, which is the same reading the migration gives every
+    # row that already existed and for the same reason: a writer that says
+    # nothing about supplier cost has recorded what UBB actually holds, and
+    # inventing an unknown it never observed would make every period partial.
+    # The writers that produce `unresolved` are the ones that learn a cost is
+    # missing, and they are built by the tickets that follow this one.
+    costing_status = models.CharField(
+        max_length=32, choices=COSTING_STATUS_CHOICES,
+        default=COSTING_STATUS_KNOWN)
+    # WHICH INPUT DID NOT ARRIVE. Read only where the status is `unresolved`,
+    # and never on its own: a status that says a cost is missing without saying
+    # what would settle it is a shrug rather than something a tenant can act on.
+    unresolved_reason = models.CharField(
+        max_length=32, choices=UNRESOLVED_REASON_CHOICES, null=True, blank=True)
+    # WHAT THE CALLER BELIEVES THE CALL COST, WHICH IS NEVER COGS. A separate
+    # column rather than a second meaning for the one above: a field whose sense
+    # flips with an Event Type's costing declaration is retroactive — change the
+    # declaration and every historical row changes meaning. Accepted anywhere,
+    # never summed into cost, and unconstrained by the rule below, because a
+    # supplier who has not billed yet and a caller who has an opinion are the
+    # ordinary state of a call rather than a contradiction.
+    claimed_provider_cost_micros = models.BigIntegerField(null=True, blank=True)
     billed_cost_micros = models.BigIntegerField(default=0)
     pricing_provenance = models.JSONField(default=dict, blank=True)
     # The exact unit of work this event belongs to. The ONLY unit attribution
@@ -138,6 +225,48 @@ class Posting(BaseModel):
             models.UniqueConstraint(
                 fields=["tenant", "customer", "idempotency_key"],
                 name="uq_usage_event_idempotency_v2",
+            ),
+            # The two closed sets, at the database. The shape is the value-set
+            # check slice 2 put on the Event Type's costing declaration: a
+            # closed concept that only `clean()` defends is open to anything
+            # that writes without validating, which is most of what writes.
+            models.CheckConstraint(
+                condition=models.Q(
+                    costing_status__in=sorted(COSTING_STATUS_VALUES)),
+                name="ck_posting_costing_status",
+            ),
+            models.CheckConstraint(
+                condition=(models.Q(unresolved_reason__isnull=True)
+                           | models.Q(unresolved_reason__in=sorted(
+                               UNRESOLVED_REASON_VALUES))),
+                name="ck_posting_unresolved_reason",
+            ),
+            # THE THREE LEGAL COMBINATIONS, AND THERE ARE ONLY THREE:
+            #
+            #   known           →  amount IS NOT NULL  and  reason IS NULL
+            #   unresolved      →  amount IS NULL      and  reason IS NOT NULL
+            #   not_applicable  →  amount IS NULL      and  reason IS NULL
+            #
+            # This is what makes NULL and 0 stay distinguishable at the
+            # database rather than by convention: a row cannot claim to be
+            # costed and carry no amount, and cannot claim not to be and carry
+            # one. The status column's own value set is checked above rather
+            # than left implied by this disjunction, so that a row failing
+            # because it named a status nobody declared fails for a different
+            # constraint than one failing because its three columns disagree.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(costing_status=COSTING_STATUS_KNOWN,
+                             provider_cost_micros__isnull=False,
+                             unresolved_reason__isnull=True)
+                    | models.Q(costing_status=COSTING_STATUS_UNRESOLVED,
+                               provider_cost_micros__isnull=True,
+                               unresolved_reason__isnull=False)
+                    | models.Q(costing_status=COSTING_STATUS_NOT_APPLICABLE,
+                               provider_cost_micros__isnull=True,
+                               unresolved_reason__isnull=True)
+                ),
+                name="ck_posting_costing_status_agrees_with_the_cost",
             ),
         ]
         indexes = [

@@ -1,6 +1,13 @@
 """One-rule contract: every usage report answers 200; the ack carries the
 stop verdict (stop / stop_reason / stop_scope), and raise_on_stop=True turns
-any stop verdict into UBBStoppedError(reason, scope, task_id)."""
+any stop verdict into UBBStoppedError(reason, scope, task_id).
+
+Every body below now carries `costing_status`, which the ack has published
+since #317 and which the generated model requires. The literal is written out
+in each body rather than sourced from `ubb.vocabulary`, deliberately: these are
+transcripts of what the server sends, and a fixture that imported the same
+constant the client parses against could not contradict a mistake in it.
+"""
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -19,7 +26,8 @@ class StopVerdictTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_surfaces_customer_stop_fields(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "customer_wide_stop",
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
         self.assertTrue(result.stop)
@@ -31,7 +39,8 @@ class StopVerdictTest(unittest.TestCase):
         """A task-limit crossing rides a 200 — the event landed and billed;
         the ack names the task and carries its post-event totals."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "task_limit",
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "task_id": "task_1", "parent_task_id": None,
             "task_total_billed_cost_micros": 2_000_000,
             "task_total_provider_cost_micros": 1_100_000})
@@ -48,14 +57,16 @@ class StopVerdictTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_default_does_not_raise_on_stop(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "customer_wide_stop"})
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop"})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
         self.assertTrue(result.stop)  # returned, not raised
 
     @patch("ubb.metering.httpx.Client.post")
     def test_raise_on_stop_raises_for_customer_scope(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "customer_wide_stop",
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
         with self.assertRaises(UBBStoppedError) as cm:
             self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
@@ -67,7 +78,8 @@ class StopVerdictTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_raise_on_stop_raises_for_task_scope_with_task_id(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "task_limit",
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "task_id": "task_1"})
         with self.assertRaises(UBBStoppedError) as cm:
             self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
@@ -81,7 +93,8 @@ class StopVerdictTest(unittest.TestCase):
         """An event landing on a killed/completed task still records + bills
         (HTTP 200); the verdict is task_not_active, scope task."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": True, "stop_reason": "task_not_active",
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": True, "stop_reason": "task_not_active",
             "stop_scope": "task", "task_id": "task_1",
             "task_total_billed_cost_micros": 3_000_000,
             "task_total_provider_cost_micros": 1_500_000})
@@ -95,7 +108,8 @@ class StopVerdictTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_raise_on_stop_no_raise_when_not_stopped(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "stop": False})
+            "event_id": "e1", "suspended": False,
+            "costing_status": "known", "stop": False})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
                                           raise_on_stop=True)
         self.assertFalse(result.stop)  # no raise

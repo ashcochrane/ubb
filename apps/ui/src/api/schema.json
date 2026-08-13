@@ -4788,6 +4788,16 @@
             ],
             "title": "Billed Cost Micros"
           },
+          "costing_status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Costing Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
+          },
           "event_id": {
             "title": "Event Id",
             "type": "string"
@@ -4944,7 +4954,8 @@
         },
         "required": [
           "event_id",
-          "suspended"
+          "suspended",
+          "costing_status"
         ],
         "title": "RecordUsageResponse",
         "type": "object"
@@ -6795,6 +6806,16 @@
             "title": "Billed Cost Micros",
             "type": "integer"
           },
+          "costing_status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Costing Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -6900,6 +6921,7 @@
           "request_id",
           "idempotency_key",
           "provider_cost_micros",
+          "costing_status",
           "billed_cost_micros",
           "measurements_status",
           "effective_at",
@@ -6920,6 +6942,16 @@
               }
             ],
             "title": "Billed Cost Micros"
+          },
+          "costing_status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Costing Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
           },
           "effective_at": {
             "title": "Effective At",
@@ -6976,6 +7008,7 @@
         "required": [
           "id",
           "request_id",
+          "costing_status",
           "metadata",
           "effective_at"
         ],

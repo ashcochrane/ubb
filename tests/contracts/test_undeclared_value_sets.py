@@ -12,7 +12,7 @@ coincidence can satisfy"*. So the census cannot see it, will never be able to
 see it, and the honest response is not to pretend otherwise but to **count it**.
 
 That is what this module does. **Every Django `choices=` in living backend code
-is pinned below, by file and by count** — all 48 of them across 19 files,
+is pinned below, by file and by count** — all 50 of them across 20 files,
 whether or not the registry declares a consumer for that file.
 
 Pinning the whole inventory rather than only the unmatched part is deliberate,
@@ -68,6 +68,16 @@ from tools.vocabulary import load_registry
 #:
 #: What it is instead is an inventory with a number on it. Declaring a value set
 #: the agreed model says nothing about is legal — and it is legal VISIBLY.
+#:
+#: A COUNTED LINE IS NOT BY ITSELF A DEBT, and the posting is where that stops
+#: being a theoretical distinction. Its two lists are `choices=` arguments built
+#: BY COMPREHENSION over the frozensets `core.vocabulary` generates from the
+#: registry, so they enumerate what a Django field is entitled to enumerate
+#: while holding not one value of their own — which is why the census reads that
+#: file as serving `costing_status` in full and `g2-backend-costing_status` was
+#: deleted in the same commit that added these two lines. The inventory counts
+#: the SHAPE, deliberately: a derived list and a typed one are indistinguishable
+#: to a reader skimming a diff, so both come past one.
 VALUE_SETS = {
     "ubb-platform/apps/billing/gating/models.py": 5,
     "ubb-platform/apps/billing/invoicing/models.py": 4,
@@ -75,6 +85,7 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,
     "ubb-platform/apps/metering/pricing/models.py": 3,
+    "ubb-platform/apps/metering/usage/models.py": 2,
     "ubb-platform/apps/platform/customers/models.py": 3,
     "ubb-platform/apps/platform/event_types/models.py": 3,
     "ubb-platform/apps/platform/events/models.py": 1,
