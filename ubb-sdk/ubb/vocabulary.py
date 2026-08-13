@@ -1254,6 +1254,29 @@ UNIT_KNOWN_VALUES = frozenset({
 })
 
 
+# --- unresolved_reason -------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which input was missing when supplier COGS could not be settled. Read only
+# where `costing_status` is `unresolved`, and never on its own: a status that
+# says a cost is missing without saying WHAT would settle it is a shrug rather
+# than something a tenant can act on. Each value names an input that did not
+# arrive, so the remedy is readable from the value.
+#
+# Declared in concepts/economics.yaml.
+
+UNRESOLVED_REASON_REPORTED_COST_MISSING = 'reported_cost_missing'
+UNRESOLVED_REASON_COST_RATE_MISSING = 'cost_rate_missing'
+UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED = 'measurement_not_declared'
+
+UNRESOLVED_REASON_VALUES = frozenset({
+    UNRESOLVED_REASON_REPORTED_COST_MISSING,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
+})
+
+
 # --- usage_event_kind --------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

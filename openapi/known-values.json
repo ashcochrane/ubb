@@ -315,6 +315,12 @@
         "byte"
       ]
     },
+    "unresolved_reason": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
     "usage_event_kind": {
       "advertised": false,
       "backend_serves": "0 of 2 values",
