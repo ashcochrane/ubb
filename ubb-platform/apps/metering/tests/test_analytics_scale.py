@@ -415,7 +415,7 @@ class OpenBagGinPlannerProofTest(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# F2.3 — SQL pushdown for tag/dimension aggregation
+# F2.3 — SQL pushdown for grouped aggregation
 # ---------------------------------------------------------------------------
 
 class TagGroupByPushdownTest(TestCase):

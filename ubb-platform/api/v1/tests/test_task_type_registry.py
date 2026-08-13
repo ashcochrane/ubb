@@ -14,9 +14,8 @@ class TestTaskTypeRegistry:
         self.tenant = Tenant.objects.create(name="T", products=["metering"])
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
-        # required_dimensions is validated against the declared dimension
-        # registry (slot_map) — "region" must exist before a task type can
-        # require it.
+        # required_dimensions is validated against the Grouping Field registry
+        # (slot_map) — "region" must exist before a task type can require it.
         GroupingField.objects.create(tenant=self.tenant, key="region",
                                     slot="grouping_field_1", scope="task")
 

@@ -37,6 +37,24 @@ from apps.platform.grouping_fields.models import SLOT_CHOICES
 #: disagree.
 SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
+#: What a grouped analytics row calls the value it groups.
+#:
+#: THE SAME PROPERTY `GroupingFieldMarginRow` DECLARES on
+#: `/margin/by-grouping-field`, and its comment carries the reading: the VALUE
+#: the row groups, not the axis it was grouped on — the axis is already named by
+#: the request's `group_by`. Three rollups answer that question over the same
+#: axes and only that one declares its rows; the other two return `list[dict]`,
+#: so no schema, drift gate or breaking gate can hold them to it.
+#:
+#: It is a shared constant rather than a literal in each writer BECAUSE the two
+#: open rollups are written in different modules and one of them is in the
+#: composition layer. Spelled twice they can drift, and the only thing that
+#: would notice is a test — after the fact, and only if somebody wrote one.
+#: Spelled once they cannot. `api/v1/tests/test_analytics_dimensions.py` still
+#: asserts both whole rows against the running routes, because a shared constant
+#: proves the two AGREE and not that either is what the console and the SDK read.
+GROUPED_VALUE_KEY = "grouping_field_value"
+
 
 class PeriodTotals(TypedDict):
     total_cost_micros: int
@@ -284,10 +302,11 @@ def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_
 
 def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
                          group_by=None, start_date=None, end_date=None) -> list[dict]:
-    """Time-series spend rollup: daily or hourly COGS per tenant, optionally per customer/dimension.
+    """Time-series spend rollup: daily or hourly COGS per tenant, optionally
+    per customer or per grouping field.
 
     Returns list of dicts with bucket (ISO string), provider_cost_micros, billed_cost_micros,
-    markup_micros, event_count, and optionally dimension (when group_by is set).
+    markup_micros, event_count, and optionally grouping_field_value (when group_by is set).
     """
     from django.db.models.functions import TruncHour
     from apps.metering.usage.models import Posting
@@ -320,10 +339,12 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         d = dict(r)
         d["bucket"] = d["bucket"].isoformat() if d.get("bucket") else None
         if group_by and group_by in d:
-            raw_dim = d.pop(group_by)
+            raw_value = d.pop(group_by)
             # Map empty string or None to the unattributed sentinel so no events
             # are silently dropped and every timeseries bucket reconciles to the total.
-            d["dimension"] = raw_dim if raw_dim else "(unattributed)"
+            # The key is `GROUPED_VALUE_KEY` above, shared with the sibling
+            # `/analytics/usage` breakdown so the two cannot drift apart.
+            d[GROUPED_VALUE_KEY] = raw_value if raw_value else "(unattributed)"
         d["markup_micros"] = (d["billed_cost_micros"] or 0) - (d["provider_cost_micros"] or 0)
         out.append(d)
     return out
@@ -360,14 +381,14 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     because the caller already chose the axis and the row would otherwise repeat
     it once per row.
 
-    `get_usage_timeseries` above still spells its own row key the old way, and
-    the reason is NOT that another slice owns it — the singular is this slice's
-    own debt and this module is inside its recorded extent. It is that the two
-    keys reach different surfaces: this one is a published response property on
-    the Grouping Field breakdown route, renamed in the same commit that renamed
-    the route, under a reviewed break. The timeseries key reaches the analytics
-    grouping surface, which #278 does not touch, and moving it there would be a
-    change to a different endpoint with no break recorded for it.
+    THIS ROW IS THE DECLARED ONE, and it is why the other two say the same
+    thing. `GroupingFieldMarginRow` publishes this property through the schema,
+    so the drift and breaking gates hold it; `get_usage_timeseries` above and the
+    `/analytics/usage` breakdown return `list[dict]`, and #312 settled that they
+    belong to the same vocabulary and moved them onto `GROUPED_VALUE_KEY`. This
+    function keeps its literal spelling in the ANNOTATION below on purpose —
+    there it is a Django alias that has to match a `values()` lookup, which is a
+    different obligation from naming a wire key.
     """
     from apps.metering.usage.models import Posting
     qs = Posting.objects.filter(tenant_id=tenant_id)
@@ -377,7 +398,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
         qs = qs.filter(effective_at__lt=utc_day_start(end_date))
 
     def _row(value, provider, billed, count):
-        return {"grouping_field_value": value, "provider_cost_micros": provider or 0,
+        return {GROUPED_VALUE_KEY: value, "provider_cost_micros": provider or 0,
                 "billed_cost_micros": billed or 0,
                 "margin_micros": (billed or 0) - (provider or 0), "event_count": count}
 
@@ -473,8 +494,8 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
     an empty slot value ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
-    distinct dimension. SQL GROUP BY pushdown; NULL and "" groups are merged
-    into "(other)" post-query.
+    grouped value of its own. SQL GROUP BY pushdown; NULL and "" groups are
+    merged into "(other)" post-query.
 
     ``group_by`` IS ONLY READ FOR ITS "tag:" PREFIX. Anything else means the
     first slot, whatever the stored configuration spells — which is why #276

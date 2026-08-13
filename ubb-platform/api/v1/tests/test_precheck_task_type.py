@@ -85,4 +85,4 @@ class TestPreCheckTaskType:
                         {"customer_id": str(self.customer.id), "start_task": True,
                          "task_type": "invoice_batch"})
         assert r.status_code == 422
-        assert "required dimension" in r.json()["detail"]
+        assert "required grouping field" in r.json()["detail"]

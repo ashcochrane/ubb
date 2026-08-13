@@ -6,7 +6,7 @@ from apps.platform.grouping_fields.models import GroupingField, GroupingFieldVal
 
 
 @pytest.mark.django_db
-class TestDimensionRegistry:
+class TestGroupingFieldRegistry:
     def setup_method(self):
         # products=[...] is REQUIRED: these routes are gated by _product_check,
         # so a tenant without "metering" gets 403, not 422.

@@ -29,7 +29,7 @@ this change generates, and `python openapi/contract_gate.py` refuses an
 unreviewed one.
 
 *That the routes still work* is proved where it always was — beside the request
-shapes, in `api/v1/tests/test_dimension_registry.py` for the registry pair and
+shapes, in `api/v1/tests/test_grouping_field_registry.py` for the registry pair and
 its values, and in `apps/subscriptions/tests/test_margin_endpoints.py` for the
 breakdown. The registry round trip has to stay in that first file: driving it
 means spelling the declaration request's own property, a plural this slice does

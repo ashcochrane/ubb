@@ -474,10 +474,18 @@ class MeteringClientTest(unittest.TestCase):
         chose. Renaming it here would make the test disagree with the server
         while passing, which is the one thing a fixture must never do — the
         key moves when the engine moves it, and this file follows.
+
+        **IT HAS NOW MOVED (#312).** The engine writes `grouping_field_value`,
+        which is what the DECLARED margin row has published all along, and this
+        transcript follows in the same release rather than a later one. The
+        pin that makes this a transcript rather than a guess is
+        `api/v1/tests/test_analytics_dimensions.py`, which asserts the whole row
+        against the running route.
         """
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "total_events": 1,
-            "breakdowns": {"product_id": [{"dimension": "search", "event_count": 1,
+            "breakdowns": {"product_id": [{"grouping_field_value": "search",
+                                           "event_count": 1,
                                            "total_provider_cost_micros": 300_000,
                                            "total_billed_cost_micros": 500_000}]},
         })

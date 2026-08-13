@@ -87,7 +87,7 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/customers/components/subscription-tab.tsx",
     "apps/ui/src/features/customers/components/transactions-section.tsx",
     "apps/ui/src/features/customers/components/usage-invoices-section.tsx",
-    "apps/ui/src/features/dashboard/components/dimension-breakdown.tsx",
+    "apps/ui/src/features/dashboard/components/grouping-field-breakdown.tsx",
     "apps/ui/src/features/developers/components/test-event-response.tsx",
     "apps/ui/src/features/events/components/event-filters.tsx",
     "apps/ui/src/features/events/components/events-page.tsx",

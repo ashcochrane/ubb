@@ -40,13 +40,13 @@ class TestUsageDimensions:
         assert r.status_code == 200
         assert Posting.objects.get(id=r.json()["event_id"]).grouping_field_2 == "gpt-4"
 
-    def test_unknown_dimension_is_422(self):
+    def test_unknown_grouping_field_is_422(self):
         self._declare()
         r = self._post(dimensions={"nope": "x"})
         assert r.status_code == 422
-        assert "unknown dimension" in r.json()["detail"]
+        assert "unknown grouping field" in r.json()["detail"]
 
-    def test_task_scoped_dimension_rejected_on_an_event(self):
+    def test_task_scoped_grouping_field_rejected_on_an_event(self):
         self._declare()
         r = self._post(dimensions={"region": "eu"})
         assert r.status_code == 422
@@ -172,7 +172,7 @@ class TestUsageDimensions:
         """Final-fixes wave, Critical 1+2: the legacy `product_id` field is
         deleted from RecordUsageRequest entirely — it broke accept/settle
         price parity (the accept-time estimator never folded it) and bypassed
-        the dimension cardinality cap (no admit, no declaration required).
+        the grouping field cardinality cap (no admit, no declaration required).
         django-ninja/pydantic silently ignores an undeclared field by default
         (Schema.model_config sets no `extra` override), so a caller still
         sending `product_id` gets a normal 200 with dim1 untouched — NOT a

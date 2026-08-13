@@ -73,7 +73,7 @@ class TestAdmit:
 
     def test_unknown_key_rejected(self):
         t = self._t()
-        with pytest.raises(DimensionError, match="unknown dimension"):
+        with pytest.raises(DimensionError, match="unknown grouping field"):
             DimensionService.admit(t, {"nope": "x"}, scope="event")
 
     def test_wrong_scope_rejected(self):

@@ -47,7 +47,7 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # #7's plan_router) and moves the 5 lifecycle verbs onto subscriptions_router
 # (a rename, not a net add/remove): 58 - 2 = 56 + 6 = 62.
 #
-# unified dimension model: +1 (task 3) PUT /metering/grouping-fields records
+# unified grouping model: +1 (task 3) PUT /metering/grouping-fields records
 # grouping_field.declared (renamed with the thing it records, #277) — declaring
 # a tenant's slicing vocabulary is
 # governance/config, not telemetry. +1 (task 7) PUT /metering/task-types

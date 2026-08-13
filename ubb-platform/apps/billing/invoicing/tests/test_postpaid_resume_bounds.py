@@ -325,7 +325,7 @@ class TestFrozenLineSnapshot:
         assert m2.item_create.call_count == 0  # the frozen line matched the pinned item
         assert m2.finalize.call_count == 1
         assert rec.total_billed_micros == 1_000_000
-        assert list(rec.line_items.values_list("dimension", "amount_micros",
+        assert list(rec.line_items.values_list("grouping_field_value", "amount_micros",
                                                "stripe_invoice_item_id")) \
             == [("", 1_000_000, "ii_pinned")]
 
@@ -342,7 +342,7 @@ class TestFrozenLineSnapshot:
         assert m.item_create.call_count == 2  # grouped: one item per product
         assert rec.line_snapshot == [["prod_a", 600_000], ["prod_b", 400_000]]
         assert list(rec.line_items.order_by("-amount_micros")
-                    .values_list("dimension", "amount_micros")) \
+                    .values_list("grouping_field_value", "amount_micros")) \
             == [("prod_a", 600_000), ("prod_b", 400_000)]
 
 
@@ -667,7 +667,7 @@ class TestRepushCommand:
         c = _customer(t)
         rec = _row(t, c, status="failed", stripe_invoice_id="in_1", push_phase="finalized")
         UsageInvoiceLineItem.objects.create(
-            usage_invoice=rec, dimension="stale", amount_micros=999,
+            usage_invoice=rec, grouping_field_value="stale", amount_micros=999,
             stripe_invoice_item_id="ii_stale")
         with _stripe(retrieve=_stripe_invoice(id="in_1", status="open", rec=rec),
                      items=[_stripe_item(id="ii_new", line_index="0")]) as m, _agg():

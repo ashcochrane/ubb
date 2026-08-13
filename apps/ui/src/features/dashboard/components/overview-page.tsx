@@ -12,7 +12,7 @@ import { resolveRange, type DateRange } from "@/lib/date-range";
 import { useLifetimeAnalytics, useWindowAnalytics } from "../api/queries";
 import type { BreakdownDimension } from "../api/types";
 import { CustomerEconomicsTable } from "./customer-economics-table";
-import { DimensionBreakdown } from "./dimension-breakdown";
+import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
 import { GettingStartedCard } from "./getting-started-card";
 import { RevenueCostSection } from "./revenue-cost-section";
 import { StatRow } from "./stat-row";
@@ -69,7 +69,7 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
       <RevenueCostSection window={window} meterOnly={meterOnly} currency={currency} />
 
       <div className="grid gap-5 lg:grid-cols-5">
-        <DimensionBreakdown
+        <GroupingFieldBreakdown
           className="lg:col-span-2"
           query={analytics}
           groupBy={groupBy}

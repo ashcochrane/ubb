@@ -236,7 +236,8 @@ class PostpaidUsageService:
             rec.line_items.all().delete()
             for label, amount, item_id in items:
                 UsageInvoiceLineItem.objects.create(
-                    usage_invoice=rec, dimension=label, amount_micros=amount,
+                    usage_invoice=rec, grouping_field_value=label,
+                    amount_micros=amount,
                     stripe_invoice_item_id=item_id)
             rec.status = "pushed"
             rec.stripe_invoice_id = invoice_id or ""

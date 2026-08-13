@@ -16,18 +16,21 @@ class DimensionError(ValueError):
 class DimensionService:
     @staticmethod
     def declare(tenant, *, key, slot, scope, max_cardinality=100):
-        """Declare or update one dimension. Idempotent on (key, slot, scope);
-        enforces the D8 mutability rules."""
+        """Declare or update one grouping field. Idempotent on (key, slot,
+        scope); enforces the D8 mutability rules."""
         if not KEY_PATTERN.fullmatch(key or ""):
             raise DimensionError(
-                f"invalid dimension key {key!r}: must match [a-z][a-z0-9_]{{1,63}}")
+                f"invalid grouping field key {key!r}: must match "
+                f"[a-z][a-z0-9_]{{1,63}}")
         if key in RESERVED_KEYS:
             raise DimensionError(
-                f"{key!r} is a reserved dimension — always present, never declared")
+                f"{key!r} is a reserved grouping field — always present, never "
+                "declared")
         if key in FORBIDDEN_KEYS:
             raise DimensionError(
-                f"{key!r} is a correlation identifier, not a dimension: it is "
-                "unbounded, so it is a filter parameter and cannot be grouped by")
+                f"{key!r} is a correlation identifier, not a grouping field: it "
+                "is unbounded, so it is a filter parameter and cannot be "
+                "grouped by")
         # #276 widened this vocabulary from six slots to ten AND re-spelled all
         # of them, so a caller written against the old spelling now names a slot
         # that does not exist.
@@ -101,7 +104,8 @@ class DimensionService:
             for key, raw in values.items():
                 d = defs.get(key)
                 if d is None:
-                    raise DimensionError(f"unknown dimension {key!r}: declare it first")
+                    raise DimensionError(
+                        f"unknown grouping field {key!r}: declare it first")
                 if d.scope != scope:
                     raise DimensionError(
                         f"{key!r} is declared at {d.scope} scope and cannot be set "
@@ -109,7 +113,7 @@ class DimensionService:
                 value = str(raw)
                 if len(value) > 100:
                     raise DimensionError(
-                        f"dimension {key!r} value exceeds 100 characters")
+                        f"grouping field {key!r} value exceeds 100 characters")
                 DimensionService._record_value(tenant, d, value)
                 out[d.slot] = value
         return out
@@ -121,17 +125,17 @@ class DimensionService:
             return
         if grouping_field.retired_at is not None:
             raise DimensionError(
-                f"dimension {grouping_field.key!r} is retired and accepts no new "
-                f"values (got {value!r})")
+                f"grouping field {grouping_field.key!r} is retired and accepts "
+                f"no new values (got {value!r})")
         count = GroupingFieldValue.objects.filter(
             tenant=tenant, key=grouping_field.key).count()
         if count >= grouping_field.max_cardinality:
             raise DimensionError(
-                f"dimension {grouping_field.key!r} cardinality exceeded: "
+                f"grouping field {grouping_field.key!r} cardinality exceeded: "
                 f"{count} distinct values already recorded (max "
                 f"{grouping_field.max_cardinality}); {value!r} refused. High-"
                 "cardinality data belongs in metadata or a filter, not a "
-                "dimension")
+                "grouping field")
         try:
             with transaction.atomic():
                 GroupingFieldValue.objects.create(

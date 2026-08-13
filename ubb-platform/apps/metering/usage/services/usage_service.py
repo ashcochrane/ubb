@@ -288,20 +288,20 @@ class RecordingInput:
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, dimension_slots=None):
         """The normalization the recording path runs: tenant-currency stamp,
-        declared-dimension slot fill, and the ``or ""``/``or {}`` defaults
+        declared-grouping-field slot fill, and the ``or ""``/``or {}`` defaults
         the posting create relies on. Validation does NOT live here — the
         endpoint adapter validates before building.
 
         ``dimension_slots`` is an ALREADY-ADMITTED {slot: value} map (Task 9:
         DimensionService.admit ran in the caller — gather() never admits).
         The open bag is labelling only (#37) and is never consulted for
-        dimension values — the historical "product"/"service"/"agent"
+        grouped values — the historical "product"/"service"/"agent"
         label-lifting is retired.
 
-        Dimensions are DECLARED and INHERITED (design D1/D6) — there is no
+        Grouping fields are DECLARED and INHERITED (design D1/D6) — there is no
         label-fallback inference and no legacy ``product_id`` wire field: the
-        write contract's only path onto a slot is a declared dimension bound
-        to it (DimensionService.admit), same as any other dimension.
+        write contract's only path onto a slot is a declared grouping field
+        bound to it (DimensionService.admit), same as any other.
         ``_inherit_dimensions`` resolves the fourteen selector columns per
         slot: this event's own value wins, else the leaf task's, else its
         parent's, else ""."""

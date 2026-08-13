@@ -588,9 +588,9 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         # by_task_type stays empty until Task 10 populates task_type at record time.
         self.assertEqual(body["by_task_type"], [])
         self.assertTrue(body["by_tag"])           # non-empty (tag_key=model)
-        # dim1 is a declared dimension value ("chat"), reachable via the
+        # dim1 is a declared grouping field value ("chat"), reachable via the
         # generic dimensions= breakdown mechanism now that by_product is gone.
-        dim1_values = {row["dimension"] for row in body["breakdowns"]["dim1"]}
+        dim1_values = {row["grouping_field_value"] for row in body["breakdowns"]["dim1"]}
         self.assertIn("chat", dim1_values)
         tag_values = {row["tag_value"] for row in body["by_tag"]}
         self.assertIn("gpt-4", tag_values)
@@ -608,7 +608,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         from apps.metering.usage.models import Posting
         # dimensions= now resolves through the registry (#128 rework); the
         # tag:region escape hatch is gone (the open bag is not groupable), so
-        # this ports "region" to a declared dimension bound to dim4.
+        # this ports "region" to a declared grouping field bound to dim4.
         GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="grouping_field_1", scope="event")
         GroupingField.objects.create(tenant=self.tenant, key="dim2", slot="grouping_field_2", scope="event")
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_4", scope="event")
@@ -626,17 +626,17 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         b = resp.json()["breakdowns"]
         self.assertTrue(
-            any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 300_000
+            any(r["grouping_field_value"] == "search" and r["total_provider_cost_micros"] == 300_000
                 for r in b["dim1"]),
             f"dim1 rows: {b.get('dim1')}",
         )
         self.assertTrue(
-            any(r["dimension"] == "svcA" and r["total_provider_cost_micros"] == 300_000
+            any(r["grouping_field_value"] == "svcA" and r["total_provider_cost_micros"] == 300_000
                 for r in b["dim2"]),
             f"dim2 rows: {b.get('dim2')}",
         )
         self.assertTrue(
-            any(r["dimension"] == "us" and r["total_provider_cost_micros"] == 300_000
+            any(r["grouping_field_value"] == "us" and r["total_provider_cost_micros"] == 300_000
                 for r in b["region"]),
             f"region rows: {b.get('region')}",
         )
@@ -668,7 +668,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             f"by_customer rows: {body['by_customer']}",
         )
         self.assertTrue(
-            any(r["dimension"] == "search" and r["total_provider_cost_micros"] == 300_000
+            any(r["grouping_field_value"] == "search" and r["total_provider_cost_micros"] == 300_000
                 for r in body["breakdowns"]["dim1"]),
             f"dim1 rows: {body['breakdowns'].get('dim1')}",
         )
@@ -864,7 +864,8 @@ class DimensionBreakdownReconciliationTest(TestCase):
         self.assertEqual(grand_total, 200_000)
 
         breakdown = body["breakdowns"]["dim2"]
-        dim_map = {row["dimension"]: row["total_provider_cost_micros"] for row in breakdown}
+        dim_map = {row["grouping_field_value"]: row["total_provider_cost_micros"]
+                   for row in breakdown}
 
         # The named-service event must still appear
         self.assertIn("svcA", dim_map)

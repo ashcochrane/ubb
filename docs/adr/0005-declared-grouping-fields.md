@@ -146,6 +146,34 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   replaying it against populated tables would drop the data it appeared to move. ADR-0007 §1 is now
   the rule — a migration that renames or moves a column carries its data — and it is backed by a
   check rather than by a note, which is what a note in this position was never going to achieve.
+- **A row's grouped VALUE is `grouping_field_value` on every rollup, and the AXIS is named by the
+  request.** Three rollups group postings and put the grouped value on each row: the
+  `/analytics/usage` breakdowns, the `/analytics/usage/timeseries` buckets, and
+  `/margin/by-grouping-field`. Only the third DECLARES its rows (`GroupingFieldMarginRow`); the
+  other two return `list[dict]`, so no schema, no drift gate and no breaking gate can hold them to
+  anything, and the two of them were written independently of each other and of the declared one.
+  #312 settled which vocabulary they belong to and made all three agree. The reading is the declared
+  schema's own: *the value the row groups, not the axis it was grouped on* — the axis is already
+  named by the request's `group_by` (or by the key of the `breakdowns` map), so repeating it per row
+  would say the same thing once per row. **This is also why the two open rollups are slice 2's and
+  not slice 7's**, which owns the analytics grouping *capability* and its request parameter: the
+  registry retires the singular noun to `grouping_field_value` and the plural to
+  `analytics_grouping_kind`, so a value is this slice's and an axis is that one's, and the row key
+  holds a value. Nothing but a test asserting the whole row can hold that agreement, which is what
+  `api/v1/tests/test_analytics_dimensions.py` does for both open rollups, and why the console's two
+  narrowing constants and the SDK's samples had to move in the same commit rather than a later one.
+  Both backend writers take the key from one constant (`apps/metering/queries.py`), so they cannot
+  drift apart from each other; the two whole-row pins remain because a shared constant proves they
+  AGREE and not that what they agree on is what the console narrows and the SDK documents.
+  **One console file was renamed under another slice's name, deliberately.** The breakdown
+  component's own FILENAME carried the retired noun, and the console importer ratchet pins that
+  exact path — which made renaming it slice 7's by the letter, and left two console files unpayable
+  while their entry was slice 2's. Leaving them would have failed the slice's landing condition for
+  the reason #312 exists, so slice 2 renamed the file and edited the one pinned path, taking slice
+  7's one-file entry to zero with it. That is the ledger's own rule rather than an exception to it:
+  an owner slice may move earlier but never later, and #283 settled that an entry cannot outlive its
+  debt whoever owns it. Slice 7 therefore never pays that file, and this sentence is why its ledger
+  entry is not there to explain itself.
 
 ## Deferred findings tracked against this ADR
 

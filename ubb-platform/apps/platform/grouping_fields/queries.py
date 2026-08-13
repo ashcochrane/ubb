@@ -1,4 +1,4 @@
-"""Read contract for the dimension registry (ADR-001).
+"""Read contract for the Grouping Field registry (ADR-001).
 
 Products (metering pricing/analytics, billing start-gate) call these instead of
 importing the ORM models, so the registry can be reshaped without touching

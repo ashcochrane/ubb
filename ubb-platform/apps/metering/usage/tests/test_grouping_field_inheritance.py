@@ -7,7 +7,7 @@ from apps.metering.usage.services.usage_service import UsageService
 
 
 @pytest.mark.django_db
-class TestDimensionInheritance:
+class TestGroupingFieldInheritance:
     def _fixture(self):
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
@@ -62,7 +62,7 @@ class TestDimensionInheritance:
     def test_product_id_is_gone_from_the_record_usage_surface(self):
         """The legacy `product_id` wire field (and its fold onto dim1) was
         deleted wholesale (final-fixes wave, Critical 1+2) — it broke
-        accept/settle price parity AND bypassed the dimension cardinality
+        accept/settle price parity AND bypassed the grouping field cardinality
         cap. `product_id` is no longer a parameter of
         UsageService.record_usage at all, so passing it is a plain
         TypeError, same as any other unrecognized kwarg — there is no
@@ -77,7 +77,7 @@ class TestDimensionInheritance:
                 product_id="legacy-product")
 
     def test_declared_dim1_wins_over_task_inheritance(self):
-        """dim1's only source is a declared event-scoped dimension
+        """dim1's only source is a declared event-scoped grouping field
         (`dimension_slots`) — when both an event-scoped declared value and a
         task-inherited dim1 are present, the event-scoped value wins (D6
         precedence), unchanged by product_id's removal."""

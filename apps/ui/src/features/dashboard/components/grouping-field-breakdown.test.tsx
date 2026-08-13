@@ -6,7 +6,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { useWindowAnalytics } from "../api/queries";
 import type { BreakdownDimension, UsageAnalytics } from "../api/types";
-import { DimensionBreakdown } from "./dimension-breakdown";
+import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual =
@@ -42,7 +42,7 @@ function Harness() {
     React.useState<BreakdownDimension>("provider");
   const query = useWindowAnalytics(WINDOW, groupBy);
   return (
-    <DimensionBreakdown
+    <GroupingFieldBreakdown
       query={query}
       groupBy={groupBy}
       onGroupByChange={setGroupBy}
@@ -51,7 +51,7 @@ function Harness() {
   );
 }
 
-describe("DimensionBreakdown", () => {
+describe("GroupingFieldBreakdown", () => {
   it("switches the breakdown when a different axis is picked", async () => {
     renderWithClient(<Harness />);
 
@@ -81,7 +81,7 @@ describe("DimensionBreakdown", () => {
       breakdowns: { provider: [] },
     };
     renderWithClient(
-      <DimensionBreakdown
+      <GroupingFieldBreakdown
         query={{
           data: empty,
           isPending: false,

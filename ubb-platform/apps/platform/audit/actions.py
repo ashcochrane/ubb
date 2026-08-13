@@ -62,7 +62,8 @@ AUDIT_ACTIONS = (
     "rate.deleted",
     "markup.set",
     "markup.deleted",
-    # Grouping Field registry (unified dimension model plan, D1). Renamed with
+    # Grouping Field registry (the 2026-07-27 unified grouping model plan under
+    # `docs/plans/`, D1). Renamed with
     # the thing it records (#277): `audit_action` in
     # `domain-vocabulary/concepts/governance.yaml` carries the old name as a
     # retired alias and the canonical one in its values, so this is the ledger
@@ -73,7 +74,7 @@ AUDIT_ACTIONS = (
     # exactly this name among others, and that exception is what this rename
     # is drawn against. It is spent at the cutover, not before.
     "grouping_field.declared",
-    # task type registry (unified dimension model plan, D7)
+    # task type registry (the same plan, D7)
     "task_type.declared",
     # The Event Type catalogue — what the tenant declares it meters (#267).
     # Declaring what a call is, and what it costs, is governance in the same

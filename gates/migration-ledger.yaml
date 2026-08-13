@@ -503,26 +503,6 @@ entries:
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
 
-  - id: g7-backend-dimension
-    gate: G7
-    site: backend::dimension
-    expected: grouping_field_value
-    found: 32 files
-    owner_slice: slice_2
-    reason: >-
-      Slice 2 builds the ten Grouping Field slots that replace the
-      dimension registry, so the value word goes when the slots arrive.
-      #283 cleared one — the kernel glossary's own entries for the axis,
-      which is the ratchet reaching the document that defines the word.
-      THE REST HAD NO TICKET UNTIL #312, which was raised out of #283 for
-      exactly that reason after PRs #308, #310 and #311 each flagged the
-      gap and each could pay only the file in front of it. What is left is
-      service, endpoint and test modules, one real column on
-      `UsageInvoiceLineItem`, and the untyped analytics response key that
-      `g7-console-dimension` and `g7-sdk-dimension` are both waiting on —
-      #312 owns all of it, and settles first whether that response key is
-      slice 2's to rename or slice 7's.
-
   - id: g7-backend-dimensions
     gate: G7
     site: backend::dimensions
@@ -546,6 +526,23 @@ entries:
       and metering `CONTEXT.md` files each used the plural once, in prose
       about what the registry is, and both now name the declared field or
       the real published `required_dimensions` instead.
+      WHERE THE BOUNDARY WITH THE SINGULAR RUNS, settled in #312 and recorded
+      here because the singular's own entry was deleted in the commit that
+      settled it — an entry cannot outlive its debt, so a ruling kept only in
+      the entry it retired would be a ruling nobody could find. Two analytics
+      rollups return `list[dict]` and write a row's grouped value into an
+      undeclared key: `/analytics/usage`'s breakdowns and its timeseries
+      sibling. `metering_endpoints.py`'s comment on the neighbouring open-bag
+      block claims this whole surface for slice 7, and that comment is right
+      about the block it is attached to and does not reach these two. The
+      registry decides it: this term is retired to `analytics_grouping_kind`,
+      an AXIS, while the singular is retired to `grouping_field_value`, a
+      VALUE — and a row key holds a value. The declared third rollup had
+      already published it as `grouping_field_value` with a comment saying
+      exactly that, so slice 2 made the two open ones agree rather than
+      inventing a word. WHAT REMAINS THIS ENTRY'S is unchanged and is the
+      axis half: the request parameter, the `by_tag` block, and the discovery
+      contract that replaces them.
 
   - id: g7-backend-markup.deleted
     gate: G7
@@ -913,45 +910,6 @@ entries:
     reason: >-
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
-
-  - id: g7-console-dimension
-    gate: G7
-    site: console::dimension
-    expected: grouping_field_value
-    found: 6 files
-    owner_slice: slice_2
-    reason: >-
-      Slice 2 builds the ten Grouping Field slots that replace the
-      dimension registry, so the value word goes when the slots arrive.
-      #280 cleared twenty-two of the twenty-eight — the dashboard, events,
-      developers and pricing features, their mock data, types, libraries
-      and tests, plus the design exports, the flow rationale, the roadmap
-      and the two mockups. The six left are NOT console vocabulary, and
-      none is payable by this surface alone. They are three pairs:
-      TWO are the import specifier of the breakdown component, whose file
-      NAME is `owned_by_slice_7` because the console importer ratchet pins
-      that exact path (`g7-repo-dimension`). Renaming the file means
-      editing the pin, which is slice 7's.
-      TWO are one named constant each, in the two feature modules that
-      narrow the analytics rows the contract leaves untyped — the
-      dashboard's `breakdowns` and the events timeseries' `series`. The key
-      is what the BACKEND still emits (`api/v1/metering_endpoints.py` and
-      `apps/metering/queries.py` respectively, written independently of
-      each other); the console's own word for it is now `group_value`.
-      Renaming the read alone would silently render every bar and every
-      series "(unattributed)" against a live server, so each moves when
-      `g7-backend-dimension` does. `docs/conventions/coding-standards.md`
-      is explicit that a literal whose canonical name is not yet the string
-      in flight is left alone for the slice that owns it.
-      TWO are a verbatim backend response each — `economics.test.ts` and
-      `timeseries.test.ts` — one per constant, because each feature's mock
-      EMITS the key through the same constant its narrowing READS and so
-      cannot contradict a mistake in it. They are the pairing's only proof:
-      the rows are `additionalProperties: true`, so no generated type can
-      hold the name and no type-checked fixture can either.
-      A third narrowing, in the customers feature, was DELETED rather than
-      converted: that feature never sends `group_by`, so the key never
-      arrives, and its chart read no such field.
 
   - id: g7-console-dimensions
     gate: G7
@@ -1684,17 +1642,6 @@ entries:
       retired family word, and #210's importer ratchet pins its path. Slice 6
       builds #150's four families and renames the surface; the pin follows it.
 
-  - id: g7-repo-dimension
-    gate: G7
-    site: repo::dimension
-    expected: grouping_field_value
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The same, for `features/dashboard/components/dimension-breakdown.tsx`.
-      #145 renames the concept to Grouping Field and slice 7 rebuilds the
-      analytics surface that displays it.
-
   - id: g7-repo-meter_only
     gate: G7
     site: repo::meter_only
@@ -1743,37 +1690,6 @@ entries:
     reason: >-
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
-
-  - id: g7-sdk-dimension
-    gate: G7
-    site: sdk::dimension
-    expected: grouping_field_value
-    found: 2 files
-    owner_slice: slice_2
-    reason: >-
-      Slice 2 builds the ten Grouping Field slots that replace the
-      dimension registry, so the value word goes when the slots arrive.
-      #278 renamed the route family and SEVEN of the ten went with it in one
-      regeneration: four generated core modules, the generated operation
-      registry, the generated coverage manifest, and the margin client's test.
-      That is the prediction this entry recorded coming true — the word was in
-      the generated mirrors because a published PATH spelled it, and no hand
-      edit could have removed it. Recording them here rather than excluding
-      them is what made the payment measurable.
-      #282 took the third: the metering client's own prose, which described the
-      registry's values in the retired word while the route beside it already
-      named the canonical one.
-      THE TWO THAT REMAIN ARE NOT PROSE AND ARE NOT THIS SURFACE'S TO PAY. Both
-      hold the row key `/analytics/usage` and its timeseries sibling actually
-      put on the wire — the README documents it and one test fixture
-      reproduces it. Those two routes return an open dict and this SDK returns
-      it untouched, so there is no client-side name to change: renaming either
-      one would make a document and a test disagree with a running server while
-      both still passed, which is what `docs/conventions/coding-standards.md`
-      (§Vocabulary, final paragraph) refuses. The key is written by
-      `apps/metering/queries.py` and `api/v1/metering_endpoints.py`, both of
-      which are inside `backend::dimension` — so this entry's last two files
-      fall out of the commit that pays that one, and not before.
 
   - id: g7-sdk-dimensions
     gate: G7
