@@ -177,12 +177,23 @@ class UsageBatchResponse(Schema):
 #: and the amount in one `UPDATE`.
 #:
 #: The marker lands in the same commit that made the backend consumer serve the
-#: concept, and that is forced rather than chosen: the moment
-#: `usage/models.py` holds all three values by reference, the known-value
-#: document advertises them, and a concept advertised with no field naming it
-#: is what `test_every_advertised_concept_reaches_the_contract` refuses. The
-#: rest of what these responses owe — the amount admitting its own absent case,
-#: the caller's claimed figure, the unresolved reason's own metadata — is
+#: concept, and that is forced: the moment `usage/models.py` holds all three
+#: values by reference, the known-value document advertises them, and a concept
+#: advertised with no field naming it is what
+#: `test_every_advertised_concept_reaches_the_contract` refuses.
+#:
+#: ONE OTHER ROUTE WOULD ALSO HAVE GONE GREEN, and it is named here so nobody
+#: has to rediscover it and wonder whether it was missed: WITHDRAWING the
+#: registry's `openapi` consumer would drop the representation to none and take
+#: the concept out of the owed set entirely. It was rejected on two counts. It
+#: would make the registry state that this concept is not in the contract while
+#: the whole slice is building it — and the migration ledger only ever shrinks
+#: (#155 §3.2), so the entry deleted along with it could not be put back
+#: without a seeding authorisation. Withdrawing a declaration to quiet a gate
+#: is the shape `gates/README.md` spends four pages refusing.
+#:
+#: The rest of what these responses owe — the amount admitting its own absent
+#: case, the caller's claimed figure, the unresolved reason's own metadata — is
 #: #323's, and none of it is anticipated here.
 CostingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "costing_status"})]
@@ -341,6 +352,17 @@ class UsageEventDetailOut(Schema):
     provider_cost_micros: int
     # Whether the number above is settled. Typed required, like the status
     # below it and for the same reason: every posting has an answer.
+    #
+    # ⚠ THE AMOUNT ABOVE IS STILL REQUIRED AND NON-NULLABLE, WHICH THIS FIELD
+    # OUTRUNS. `unresolved` means the column is NULL, so the two together
+    # describe a response this schema cannot yet serialise. It is unreachable
+    # today — nothing writes `unresolved` until the settlement door and the
+    # compute spine land — and #323 owns making every response carrying a
+    # supplier cost admit its absent case. Recorded here rather than fixed
+    # here: widening the amount is that ticket's reviewed contract break, and
+    # the gap is a consequence of the status being published early (the census
+    # forces the marker into the commit that made the backend serve it), not
+    # something this schema chose.
     costing_status: CostingStatus
     billed_cost_micros: int
     # The quantities this posting was measured by, keyed by declared code

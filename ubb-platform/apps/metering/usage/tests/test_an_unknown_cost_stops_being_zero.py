@@ -17,11 +17,17 @@ difference is held **at the database** rather than by whoever remembers to look:
   cost, which is never COGS
 
 **Both value sets are held by reference**, imported from `core.vocabulary`,
-which is what pays `g2-backend-costing_status`. A `choices=` built from the
+which is what paid this file's backend entry in the migration ledger — deleted
+in the same commit, because an entry cannot outlive the debt it records, and an
+id quoted here would have been dangling the moment it was written.
+A `choices=` built from the
 imported frozensets is derived rather than restated: it cannot drift from the
 registry, and the labels are the tokens themselves because the wording lives in
 the console's locale catalogue (ADR-0008 §4) and a second copy of it here would
-be the thing the registry exists to prevent.
+be the thing the registry exists to prevent. The line is still counted by
+`tests/contracts/test_undeclared_value_sets.py`, which counts the SHAPE — a
+derived list and a typed one look identical to a reader skimming a diff, so
+both come past one.
 
 **Why the illegal combinations are attempted through raw SQL.** A `full_clean`
 that refuses them proves something about Django, not about the table, and this
@@ -67,7 +73,7 @@ def _tenant_and_customer():
     return tenant, Customer.objects.create(tenant=tenant, external_id="c1")
 
 
-def _posting(**kwargs):
+def _posting_for_a_new_customer(**kwargs):
     tenant, customer = _tenant_and_customer()
     return Posting.objects.create(tenant=tenant, customer=customer, **kwargs)
 
@@ -94,14 +100,26 @@ class TheColumnsAreShapedAsRuledTest(TestCase):
         assert self._field(REASON).null
         assert self._field(CLAIMED).null
 
-    def test_the_claimed_cost_is_a_separate_column_from_the_supplier_cost(self):
+    def test_the_claimed_cost_is_a_separate_column_in_the_table(self):
         """What the caller believes is never what the supplier charged.
 
         Two columns rather than one routed by a declaration: a field whose
         meaning flips with an Event Type's costing declaration is retroactive —
         change the declaration and every historical row changes meaning.
+
+        Read off the TABLE rather than off the model, because the model cannot
+        answer this: `_meta.get_field("x").name` is `"x"` by construction, so
+        comparing two of them is a statement about the two strings this module
+        typed and can never fail. What has an oracle is whether Postgres is
+        holding two distinct columns, which is what a single field serving both
+        meanings would break.
         """
-        assert self._field(CLAIMED).name != self._field(COST).name
+        with connection.cursor() as cursor:
+            columns = {column.name for column in
+                       connection.introspection.get_table_description(
+                           cursor, Posting._meta.db_table)}
+        assert {COST, CLAIMED} <= columns
+        assert len({COST, CLAIMED} & columns) == 2
 
 
 class TheValueSetsAreHeldByReferenceTest(TestCase):
@@ -109,8 +127,8 @@ class TheValueSetsAreHeldByReferenceTest(TestCase):
 
     The check is that the model's own `choices` agree with the registry's
     frozensets exactly. A hand-written list would pass on the day it was typed
-    and drift on the day the registry moved, which is the whole of what
-    `g2-backend-costing_status` recorded.
+    and drift on the day the registry moved, which is the whole of what the
+    ledger entry against this file recorded before #317 paid and deleted it.
     """
 
     def test_the_status_choices_are_the_registry_value_set(self):
@@ -144,10 +162,10 @@ class NullAndZeroAreDistinguishableAtTheDatabaseTest(TestCase):
     """
 
     def setUp(self):
-        self.free = _posting(
+        self.free = _posting_for_a_new_customer(
             idempotency_key="free",
             **{COST: 0, STATUS: COSTING_STATUS_KNOWN})
-        self.unknown = _posting(
+        self.unknown = _posting_for_a_new_customer(
             idempotency_key="unknown",
             **{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
                REASON: UNRESOLVED_REASON_COST_RATE_MISSING})
@@ -195,7 +213,7 @@ class TheThreeLegalCombinationsAreAdmittedTest(TestCase):
     """Each combination the rule permits, inserted through the ORM."""
 
     def test_known_carries_an_amount_and_no_reason(self):
-        posting = _posting(idempotency_key="k",
+        posting = _posting_for_a_new_customer(idempotency_key="k",
                            **{COST: 4_200, STATUS: COSTING_STATUS_KNOWN})
         assert (getattr(posting, COST), getattr(posting, REASON)) == (4_200, None)
 
@@ -206,19 +224,19 @@ class TheThreeLegalCombinationsAreAdmittedTest(TestCase):
         answer for a call that genuinely cost nothing, and it is the reading the
         migration gives every row that already existed.
         """
-        posting = _posting(idempotency_key="k0",
+        posting = _posting_for_a_new_customer(idempotency_key="k0",
                            **{COST: 0, STATUS: COSTING_STATUS_KNOWN})
         assert getattr(posting, COST) == 0
 
     def test_unresolved_carries_a_reason_and_no_amount(self):
-        posting = _posting(
+        posting = _posting_for_a_new_customer(
             idempotency_key="u",
             **{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
                REASON: UNRESOLVED_REASON_COST_RATE_MISSING})
         assert getattr(posting, COST) is None
 
     def test_not_applicable_carries_neither(self):
-        posting = _posting(idempotency_key="n",
+        posting = _posting_for_a_new_customer(idempotency_key="n",
                            **{COST: None, STATUS: COSTING_STATUS_NOT_APPLICABLE})
         assert getattr(posting, REASON) is None
 
@@ -229,7 +247,7 @@ class TheThreeLegalCombinationsAreAdmittedTest(TestCase):
         and a claimed figure are not a contradiction — they are the ordinary
         state of a call whose supplier has not billed yet.
         """
-        posting = _posting(
+        posting = _posting_for_a_new_customer(
             idempotency_key="c",
             **{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
                REASON: UNRESOLVED_REASON_COST_RATE_MISSING,
@@ -246,7 +264,7 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
     """
 
     def setUp(self):
-        self.posting = _posting(idempotency_key="subject",
+        self.posting = _posting_for_a_new_customer(idempotency_key="subject",
                                 **{COST: 1, STATUS: COSTING_STATUS_KNOWN})
 
     def _write(self, **columns):

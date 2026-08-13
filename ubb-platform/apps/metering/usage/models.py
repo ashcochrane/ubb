@@ -16,10 +16,10 @@ from core.vocabulary import (
 # The two closed sets this model stores, DERIVED from the registry rather than
 # restated beside it. `choices=` is Django's own declaration that a column has a
 # closed value set, and it is worth having — it reaches forms, the admin and
-# `full_clean` — but a hand-typed list is the shape `g2-backend-costing_status`
-# recorded as a debt: correct on the day it is written and silently wrong the
-# day `domain-vocabulary/` moves. Built from the imported frozensets, it cannot
-# be wrong on any day.
+# `full_clean` — but a hand-typed list is the shape the migration ledger
+# recorded as a debt against this file until #317 deleted the entry: correct on
+# the day it is written and silently wrong the day `domain-vocabulary/` moves.
+# Built from the imported frozensets, it cannot be wrong on any day.
 #
 # The label is the token. Django's second element is not a translation hook, and
 # ADR-0008 §4 puts every human-facing word in the console's locale catalogue
@@ -31,12 +31,25 @@ UNRESOLVED_REASON_CHOICES = [(value, value)
 
 
 class Posting(BaseModel):
-    """One immutable economic posting — the row that says work was billed for.
+    """One economic posting — the row that says work was billed for.
 
     Renamed from the usage-event noun in #269 (slice 2), with its table, so the
     database stops preserving obsolete terminology (ADR-0006 §9, gate G9). The
     record of WHAT WAS MEASURED split off into a child of its own in #270; this
     row keeps the money, the attribution and the identity.
+
+    **IT NO LONGER CLAIMS TO BE IMMUTABLE AS A WHOLE**, and the word was dropped
+    here rather than left to age. ADR-0007 §2 refuses a record-level claim of
+    immutability precisely because it hides which columns are actually
+    protected, and its Context names the failure this docstring was heading for:
+    a docstring asserting that the first door made the row immutable, while
+    another door wrote to it. `save()` and `delete()` below still refuse every
+    update and every delete, and they are the whole of what is true today — but
+    `provider_cost_micros` is nullable from #317 SO THAT a cost can settle
+    later, which is a transition this class will admit through exactly one door
+    (#318) and the database will hold to `RESOLVE_ONCE`. Per-column transition
+    classes are declared there, not here; what changes today is only that this
+    docstring stops promising something it is about to stop meaning.
     """
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="postings"

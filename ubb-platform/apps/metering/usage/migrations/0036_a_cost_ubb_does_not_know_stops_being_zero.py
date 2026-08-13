@@ -47,9 +47,11 @@ the column.
 `apps/metering/usage/models.py` derives both from the frozensets in
 `core.vocabulary`, so no living surface holds a copy that can drift from
 `domain-vocabulary/`. A migration is the opposite kind of document: it records
-the schema as it was on the day it ran, which is why `0019_two_position_
-enforcement_mode` still spells a value that no longer exists. Importing living
-constants into a frozen file would make replay depend on today's registry.
+the schema as it was on the day it ran, which is why
+`apps/platform/tenants/migrations/0019_two_position_enforcement_mode.py` — in
+another app, so look there rather than beside this file — still spells a value
+that no longer exists. Importing living constants into a frozen file would make
+replay depend on today's registry.
 `choices` emits no DDL in any case — the value sets are defended by the two
 checks below, not by this argument.
 

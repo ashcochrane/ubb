@@ -764,6 +764,23 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # caller to state a fact UBB computes — the second encoding ADR-0006 §4
     # refuses, arriving through the wire instead of through a column.
     assert where["measurements_status"] == {"UsageEventDetailOut"}
+    # OUT ONLY as well, and for a DIFFERENT reason worth keeping apart from the
+    # one above: this status IS stored, so the objection is not that a caller
+    # would state a computed fact — it is that a caller does not know it. What
+    # a supplier charged is UBB's to resolve, and a request schema naming it
+    # would invite the guess that `claimed_provider_cost_micros` exists to keep
+    # out of COGS.
+    #
+    # THREE SCHEMAS BECAUSE THREE RESPONSES PUBLISH THE AMOUNT IT QUALIFIES,
+    # which is the whole rule for where this marker belongs: the ack, the list
+    # row and the detail receipt each return a supplier cost, and a cost
+    # published without its status hands a client back the ambiguity the column
+    # stopped having. A fourth schema carrying the amount and not this would be
+    # the finding, and that is what makes this line worth more than the count
+    # in `CONCEPTS_IN_THE_CONTRACT` — a count is satisfied by three markers
+    # anywhere at all.
+    assert where["costing_status"] == {"RecordUsageResponse", "UsageEventOut",
+                                       "UsageEventDetailOut"}
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is

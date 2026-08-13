@@ -231,9 +231,12 @@ costing_status:
 # held by reference and no entry is owed for them.
 #
 # The console and the contract are NOT declared yet, and the order is forced
-# rather than preferred: the G4 entry on `costing_status` states it — the
-# contract may not advertise these values while the backend consumer holds none
-# of them. Backend, then console, then spec. Until the contract consumer is
+# rather than preferred: the contract may not advertise a concept's values
+# while the backend consumer holds none of them. That rule was stated by the
+# openapi entry in the migration ledger, which #317 deleted along with the
+# backend one — an entry cannot outlive the debt it records — so it is written
+# out here, where the next concept to take this route will be standing. Backend,
+# then console, then spec. Until the contract consumer is
 # declared, `openapi/known-values.json` records `representation: none` — the
 # registry declaring no `openapi` consumer IS its own statement that the concept
 # is not in the contract — and `advertised: false` following from it. No values
