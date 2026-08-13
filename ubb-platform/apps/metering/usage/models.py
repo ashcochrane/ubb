@@ -3,7 +3,7 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import BaseModel
-from core.transitions import RECORD_RULE
+from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
@@ -39,17 +39,20 @@ class Posting(BaseModel):
     row keeps the money, the attribution and the identity.
 
     **IT NO LONGER CLAIMS TO BE IMMUTABLE AS A WHOLE**, and the word was dropped
-    here rather than left to age. ADR-0007 §2 refuses a record-level claim of
+    in #317 rather than left to age. ADR-0007 §2 refuses a record-level claim of
     immutability precisely because it hides which columns are actually
     protected, and its Context names the failure this docstring was heading for:
     a docstring asserting that the first door made the row immutable, while
-    another door wrote to it. `save()` and `delete()` below still refuse every
-    update and every delete, and they are the whole of what is true today — but
-    `provider_cost_micros` is nullable from #317 SO THAT a cost can settle
-    later, which is a transition this class will admit through exactly one door
-    (#318) and the database will hold to `RESOLVE_ONCE`. Per-column transition
-    classes are declared there, not here; what changes today is only that this
-    docstring stops promising something it is about to stop meaning.
+    another door wrote to it.
+
+    **What is true instead is written per column in `transition_classes`
+    below**, and the database keeps it (#318). A supplier cost settles exactly
+    once — `unresolved` to `known`, amount and status together — through the one
+    function that performs that statement, and every other move on those columns
+    is refused by a trigger no door can go around. `save()` and `delete()` still
+    refuse the writers that come through them, which is not the same thing and
+    is not the enforcement: it is a local convenience, and ADR-0007 §2 is
+    explicit about the difference.
     """
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="postings"
@@ -212,6 +215,36 @@ class Posting(BaseModel):
     # partial GIN index below carries the past-limit report + filters).
     stop_context = models.JSONField(null=True, blank=True)
 
+    #: WHAT MAY HAPPEN TO THE COST COLUMNS, AND WHO KEEPS IT (ADR-0007 §2, #318).
+    #:
+    #: The amount and its status are ONE declaration written twice: they are
+    #: `RESOLVE_ONCE` **as a pair**, and the only statement that may move either
+    #: is the settlement in `pricing/services/cost_settlement.py`, which moves
+    #: both at once and clears the reason with them. Declaring them separately
+    #: would admit a row that had settled its amount and not said so.
+    #:
+    #: `unresolved_reason` carries no class of its own on purpose. It has no
+    #: lifecycle apart from the status it qualifies — it is written once with an
+    #: `unresolved` posting and cleared by the settlement that resolves it — so
+    #: a class here would be a second, weaker statement of the pair's rule. What
+    #: keeps it is the same trigger, which refuses to see it move on any other
+    #: statement.
+    #:
+    #: **The enforcement is the trigger installed by `migrations/0037`, not the
+    #: `save()` below.** `save()` refuses updates for the writers that go
+    #: through it, and that is a convenience rather than the rule: ADR-0007 §2
+    #: is explicit that a model-level guard is not enforcement, and names this
+    #: repository as the place that already shipped one a production writer
+    #: bypassed by design. Every declaration here is held across `save()`,
+    #: `QuerySet.update()` and raw SQL alike, and
+    #: `apps/platform/tests/test_transition_class_declarations.py` is what says
+    #: no column may be declared here without that being true of it.
+    transition_classes = {
+        "provider_cost_micros": RESOLVE_ONCE,
+        "costing_status": RESOLVE_ONCE,
+        "claimed_provider_cost_micros": FROZEN,
+    }
+
     class Meta:
         db_table = "ubb_posting"
         # The constraint and index names below still spell the retired noun,
@@ -327,8 +360,15 @@ class Posting(BaseModel):
             return {}
 
     def save(self, *args, **kwargs):
+        # NOT THE ENFORCEMENT — see `transition_classes` above. This door is
+        # shut because nothing that goes through it has any business rewriting
+        # a posting, and the message says which door is open instead rather
+        # than repeating the record-level immutability claim ADR-0007 §2
+        # refuses: a supplier cost does settle later, exactly once.
         if not self._state.adding:
-            raise ValueError("Posting records are immutable and cannot be updated.")
+            raise ValueError(
+                "A posting is not updated through save(). A supplier cost "
+                "settles through pricing.services.cost_settlement, once.")
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -374,8 +414,9 @@ class PostingMeasurement(BaseModel):
     and whose ``DELETE`` condition is cross-table and unexpressible until slice
     4, because one of the two statuses it reads lands in slice 3 and the other
     in slice 4. **No column here is declared into a class the database defends**
-    (``core.transitions.DATABASE_DEFENDED``), so slice 3 is still the first
-    slice with a protected column, exactly as G19's own note says. A model-level
+    (``core.transitions.DATABASE_DEFENDED``) — the protected columns slice 3
+    ships are the parent's, declared and defended in #318, and this record's
+    whole-record rule is a different obligation that is still owed. A model-level
     ``save()`` guard is deliberately *not* shipped in its place: ADR-0007 §2 is
     explicit that such a guard is not enforcement, and this repository has
     already shipped one that a production writer bypassed by design.

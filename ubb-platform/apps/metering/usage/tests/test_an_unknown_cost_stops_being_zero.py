@@ -29,22 +29,35 @@ be the thing the registry exists to prevent. The line is still counted by
 derived list and a typed one look identical to a reader skimming a diff, so
 both come past one.
 
-**Why the illegal combinations are attempted through raw SQL.** A `full_clean`
-that refuses them proves something about Django, not about the table, and this
+**Why the illegal combinations skip model validation.** A `full_clean` that
+refuses them proves something about Django, not about the table, and this
 repository has already shipped a model-level guard that a production writer
 bypassed by design. Each of the six illegal combinations and each of the two
-out-of-set values is therefore driven straight at Postgres, through a cursor,
-on a row the ORM has already committed. An `UPDATE` rather than an `INSERT`
-because a hand-written `INSERT` would have to name every NOT NULL column on
-this table and would then be testing that list; a `CHECK` constraint holds on
-both statements, and the legal combinations below are inserted through the ORM
-so that both statements are covered between them.
+out-of-set values is therefore written straight at Postgres, with nothing
+between the statement and the table but the ORM's own SQL.
 
-**No transition class is declared here**, and that is a requirement rather than
-an omission: `RESOLVE_ONCE` on this pair is a promise the database does not yet
-keep, and `apps/platform/tests/test_transition_class_declarations.py` exists to
-catch a column declared into a defended class before the defence lands. The
-declaration and the enforcement arrive together in the next ticket.
+⚠ **They are driven as an `INSERT`, and #318 is why.** This class originally
+drove each one as a raw `UPDATE` against a committed row — an `UPDATE` because a
+hand-written `INSERT` would have had to name every NOT NULL column and would
+then have been testing that list. #318 installed a `BEFORE UPDATE` trigger
+holding this pair to `RESOLVE_ONCE`, and **a `BEFORE` trigger runs before the
+table's constraints are evaluated**: every statement in this class started
+failing with the trigger's message instead, so the class went on passing while
+proving nothing whatever about the `CHECK`. It would have stayed green with the
+constraint dropped. The statement moved to an `INSERT`, which the trigger does
+not fire on, and the ORM names the columns so the objection to a hand-written
+one never arises. The `UPDATE` half of the story is now
+`test_a_cost_settles_once.py`, where it belongs.
+
+**The transition classes are declared here now, and #318 is why.** This module
+originally asserted the opposite — that no column of this model was declared
+into a class the database defends — because a declaration ahead of its
+enforcement is a promise nothing keeps, which
+`apps/platform/tests/test_transition_class_declarations.py` exists to catch.
+#318 landed the enforcement, so that assertion is **replaced by its inverse**
+rather than deleted or loosened: the pair is declared, the claim is declared,
+and the walk in that same file holds every declaration in the tree to being
+defended at the database.
 """
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
@@ -52,7 +65,8 @@ from django.test import TestCase
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
-from core.transitions import columns_declared_into_defended_classes
+from core.transitions import (
+    FROZEN, RESOLVE_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
@@ -256,52 +270,54 @@ class TheThreeLegalCombinationsAreAdmittedTest(TestCase):
 
 
 class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
-    """The eight statements Postgres must refuse, driven through a cursor.
+    """The eight rows Postgres must refuse, each one an `INSERT`.
 
     Six combinations outside the three legal ones, plus a status and a reason
     that name nothing the registry declares. None of them travels through model
     validation, which is the point: the guarantee is a property of the table.
+
+    **Each case names the constraint it expects to be refused by**, because
+    since #318 this table has two mechanisms on it and "something refused this"
+    stopped being evidence about either. See the module docstring for why the
+    statement is an `INSERT`.
     """
 
-    def setUp(self):
-        self.posting = _posting_for_a_new_customer(idempotency_key="subject",
-                                **{COST: 1, STATUS: COSTING_STATUS_KNOWN})
+    COMBINATION = "ck_posting_costing_status_agrees_with_the_cost"
+    STATUS_VALUES = "ck_posting_costing_status"
+    REASON_VALUES = "ck_posting_unresolved_reason"
 
-    def _write(self, **columns):
-        assignments = ", ".join(f"{name} = %s" for name in columns)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE {Posting._meta.db_table} SET {assignments} WHERE id = %s",
-                [*columns.values(), str(self.posting.pk)])
-
-    def _refused(self, **columns):
-        with self.assertRaises(IntegrityError):
+    def _refused(self, constraint, **columns):
+        try:
             with transaction.atomic():
-                self._write(**columns)
+                _posting_for_a_new_customer(idempotency_key="subject", **columns)
+        except IntegrityError as refusal:
+            assert constraint in str(refusal), str(refusal)
+        else:
+            self.fail("the row was admitted")
 
-    def test_the_cursor_can_write_a_legal_combination(self):
+    def test_the_orm_can_insert_a_legal_combination(self):
         """The control, and it is not optional.
 
         Every assertion below is "this statement failed". Without one statement
-        of the same shape that SUCCEEDS, a misspelled column name or a cursor
-        that could not write at all would satisfy the whole class.
+        of the same shape that SUCCEEDS, a fixture that could not write at all
+        would satisfy the whole class.
         """
-        self._write(**{COST: 7, STATUS: COSTING_STATUS_KNOWN, REASON: None})
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT {COST} FROM {Posting._meta.db_table} WHERE id = %s",
-                [str(self.posting.pk)])
-            assert cursor.fetchone()[0] == 7
+        posting = _posting_for_a_new_customer(
+            idempotency_key="subject", **{COST: 7, STATUS: COSTING_STATUS_KNOWN})
+        assert getattr(posting, COST) == 7
 
     def test_known_without_an_amount_is_refused(self):
-        self._refused(**{COST: None, STATUS: COSTING_STATUS_KNOWN, REASON: None})
+        self._refused(self.COMBINATION,
+                      **{COST: None, STATUS: COSTING_STATUS_KNOWN, REASON: None})
 
     def test_known_with_a_reason_is_refused(self):
-        self._refused(**{COST: 1, STATUS: COSTING_STATUS_KNOWN,
+        self._refused(self.COMBINATION,
+                      **{COST: 1, STATUS: COSTING_STATUS_KNOWN,
                          REASON: UNRESOLVED_REASON_COST_RATE_MISSING})
 
     def test_unresolved_with_an_amount_is_refused(self):
-        self._refused(**{COST: 1, STATUS: COSTING_STATUS_UNRESOLVED,
+        self._refused(self.COMBINATION,
+                      **{COST: 1, STATUS: COSTING_STATUS_UNRESOLVED,
                          REASON: UNRESOLVED_REASON_COST_RATE_MISSING})
 
     def test_unresolved_without_a_reason_is_refused(self):
@@ -310,39 +326,99 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
         A status saying a cost is missing without saying what would settle it is
         a shrug rather than something a tenant can act on.
         """
-        self._refused(**{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
+        self._refused(self.COMBINATION,
+                      **{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
                          REASON: None})
 
     def test_not_applicable_with_an_amount_is_refused(self):
-        self._refused(**{COST: 0, STATUS: COSTING_STATUS_NOT_APPLICABLE,
+        self._refused(self.COMBINATION,
+                      **{COST: 0, STATUS: COSTING_STATUS_NOT_APPLICABLE,
                          REASON: None})
 
     def test_not_applicable_with_a_reason_is_refused(self):
-        self._refused(**{COST: None, STATUS: COSTING_STATUS_NOT_APPLICABLE,
+        self._refused(self.COMBINATION,
+                      **{COST: None, STATUS: COSTING_STATUS_NOT_APPLICABLE,
                          REASON: UNRESOLVED_REASON_COST_RATE_MISSING})
 
-    def test_a_status_outside_the_declared_set_is_refused(self):
-        self._refused(**{COST: 1, STATUS: "settled", REASON: None})
-
     def test_a_reason_outside_the_declared_set_is_refused(self):
-        self._refused(**{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
+        """Isolated on purpose: the rest of this row is legal.
+
+        `unresolved` with no amount and a reason present satisfies the
+        combination check completely, so the only thing left to refuse it is the
+        reason's own value set — which is what makes this case evidence about
+        that constraint rather than about the disjunction beside it.
+        """
+        self._refused(self.REASON_VALUES,
+                      **{COST: None, STATUS: COSTING_STATUS_UNRESOLVED,
                          REASON: "supplier_was_asleep"})
 
+    def test_a_status_outside_the_declared_set_is_refused(self):
+        """The one case that cannot be isolated, and it says so.
 
-class ThisTicketDeclaresNoTransitionClassTest(TestCase):
-    """The tripwire's subject, asserted from this side too.
+        A status nobody declared fails the combination check as well, because
+        that check enumerates the three legal statuses by name — there is no row
+        carrying an undeclared status that the disjunction would tolerate. Which
+        of the two constraints Postgres reports is its own business, so this
+        asserts only the refusal; what proves the value set is defended in its
+        own right is the structural assertion below.
+        """
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                _posting_for_a_new_customer(
+                    idempotency_key="subject",
+                    **{COST: 1, STATUS: "settled", REASON: None})
 
-    `RESOLVE_ONCE` is the class this pair will take, and declaring it here would
-    put a column into a class G19 defends before G19 defends anything —
-    a promise with nothing behind it, which is exactly what
-    `test_no_column_is_declared_into_a_class_the_database_defends` is built to
-    catch. Asserted about this model rather than about the whole registry so
-    that the two checks fail for different reasons.
+    def test_the_status_value_set_is_a_constraint_of_its_own(self):
+        """Read out of `pg_constraint`, because the row above cannot show it.
+
+        Without this, dropping `ck_posting_costing_status` would leave every
+        test in this class green: the combination check would absorb the only
+        statement that names it.
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "WHERE t.relname = %s AND c.conname = %s",
+                [Posting._meta.db_table, self.STATUS_VALUES])
+            definition = cursor.fetchone()
+        assert definition is not None, f"{self.STATUS_VALUES} is not installed"
+        for value in COSTING_STATUS_VALUES:
+            assert f"'{value}'" in definition[0], value
+
+
+class ThePostingDeclaresWhatMayHappenToItsCostTest(TestCase):
+    """The tripwire's subject, asserted from this side too — now inverted.
+
+    #317 asserted here that this model declared **nothing**, because
+    `RESOLVE_ONCE` on the pair would have been a promise G19 did not yet keep.
+    #318 installed the enforcement, and this class turned over with it: the same
+    three columns, the same two checks, the opposite answer. It is asserted
+    about this model rather than about the whole registry so that this and the
+    walk in `apps/platform/tests/` fail for different reasons.
+
+    **Relaxing it to "the posting may declare classes" would have been the
+    failure it was built to catch** — a test that passes whether or not the
+    declaration exists is not a weaker version of this one, it is a different
+    test that checks nothing.
     """
 
-    def test_the_posting_declares_no_transition_classes_at_all(self):
-        assert not getattr(Posting, "transition_classes", None)
+    def test_the_cost_and_its_status_are_declared_resolve_once(self):
+        """As a pair, because the amount and the status settle together."""
+        assert Posting.transition_classes[COST] == RESOLVE_ONCE
+        assert Posting.transition_classes[STATUS] == RESOLVE_ONCE
 
-    def test_the_new_columns_are_in_no_defended_class(self):
+    def test_the_claimed_cost_is_declared_frozen(self):
+        assert Posting.transition_classes[CLAIMED] == FROZEN
+
+    def test_the_new_columns_are_the_defended_ones(self):
+        """Through the walk's own entry point, and pinned as an exact set.
+
+        A column added to this model's declarations moves this line, which is
+        the point: slice 4 declares its own pair here, and it should arrive past
+        a reader rather than alongside one.
+        """
         declared = columns_declared_into_defended_classes([Posting])
-        assert declared == []
+        assert declared == [("Posting", CLAIMED, FROZEN),
+                            ("Posting", STATUS, RESOLVE_ONCE),
+                            ("Posting", COST, RESOLVE_ONCE)]
