@@ -1,11 +1,18 @@
 """One door settles a supplier cost, and it tells the caller what happened (#318).
 
-ADR-0007 §2 gives the statement verbatim — a conditional update that asserts
-exactly one affected row:
+ADR-0007 §2 gives the shape of the statement — a conditional update that asserts
+exactly one affected row. Spelled for these columns, and with the third one the
+ADR's generic form does not carry:
 
-    UPDATE ... SET provider_cost_micros = %s, costing_status = 'known'
+    UPDATE ... SET provider_cost_micros = %s, costing_status = 'known',
+                   unresolved_reason = NULL
      WHERE id = %s AND provider_cost_micros IS NULL AND costing_status =
      'unresolved'
+
+**The reason column is not an embellishment**: #317's combination `CHECK`
+requires a `known` row to carry no reason, so the two-column statement the ADR
+writes generically cannot commit against this table. The `WHERE` clause is the
+ADR's, unchanged, and it is the whole of the precondition.
 
 **Zero affected rows is not a retry**, and that is the whole reason the door
 exists as a function rather than as a line in whichever service happens to learn
@@ -293,6 +300,12 @@ class ItIsTheOnlyApplicationWriterOfACostResolutionTest(TestCase):
 
     Walked as source rather than asserted in prose, because a prose claim about
     the rest of the repository ages the moment someone adds a line.
+
+    **What it covers, stated rather than implied**: an ORM `update` or
+    `bulk_update` naming a cost column in either argument shape, and a raw
+    `UPDATE ... SET` statement that names one. What it does not cover is
+    `setattr` plus `save()`, which names nothing to match — that door is shut by
+    the model itself and the last test here is where that is written down.
     """
 
     COLUMNS = {"provider_cost_micros", "costing_status", "unresolved_reason"}
@@ -304,35 +317,92 @@ class ItIsTheOnlyApplicationWriterOfACostResolutionTest(TestCase):
 
     DOOR = "apps/metering/pricing/services/cost_settlement.py"
 
-    def _writers_of_the_cost_columns(self, path):
-        """Every `.update(...)`/`.bulk_update(...)` in `path` naming a column."""
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    #: The one file allowed to write a settlement outside the door, declared
+    #: here rather than left undetected. It measures what the enforcement costs
+    #: (ADR-0007's Consequences), and it does so against a database it creates
+    #: and destroys in the same run — so its statement never meets a tenant's
+    #: data. A declared exception a reader can see beats a hole in the check.
+    MEASUREMENT_HARNESS = "scripts/measure_posting_transition_cost.py"
+
+    def _orm_writers(self, tree):
+        """`.update(...)` / `.bulk_update(...)` calls naming a cost column.
+
+        Both argument shapes count, and the second is why this is not a keyword
+        check: `bulk_update(postings, ["provider_cost_micros"])` passes its
+        columns as a LIST OF STRINGS, so a keyword-only test would have had
+        `bulk_update` in its list of names and no way whatever to see one. Any
+        string constant inside the call is compared, which also covers
+        `update(**{"provider_cost_micros": ...})`.
+        """
         return [node.lineno for node in ast.walk(tree)
                 if isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr in ("update", "bulk_update")
-                and {keyword.arg for keyword in node.keywords} & self.COLUMNS]
+                and ({keyword.arg for keyword in node.keywords}
+                     | {inner.value for inner in ast.walk(node)
+                        if isinstance(inner, ast.Constant)
+                        and isinstance(inner.value, str)}) & self.COLUMNS]
 
-    def test_no_other_module_updates_the_cost_columns(self):
+    def _raw_sql_writers(self, tree):
+        """String constants that are an `UPDATE` statement setting a column.
+
+        The ORM is not the only door — the door itself was very nearly written
+        with a cursor. Both `UPDATE` and `SET` are required so that prose
+        mentioning a column in passing is not a finding, and a statement that
+        updates this table without touching a cost column is not one either.
+        """
+        return [node.lineno for node in ast.walk(tree)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and "UPDATE" in node.value.upper()
+                and "SET" in node.value.upper()
+                and any(column in node.value for column in self.COLUMNS)]
+
+    def _writers_in(self, path):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        return self._orm_writers(tree) + self._raw_sql_writers(tree)
+
+    def test_no_other_module_writes_a_cost_resolution(self):
         platform = pathlib.Path(__file__).resolve().parents[4]
+        excused = {self.DOOR, self.MEASUREMENT_HARNESS}
         offenders = []
         for root in self.ROOTS:
             for path in sorted((platform / root).glob("**/*.py")):
                 relative = path.relative_to(platform).as_posix()
                 if ("/tests/" in f"/{relative}"
                         or "/migrations/" in f"/{relative}"
-                        or relative == self.DOOR):
+                        or relative in excused):
                     continue
                 offenders += [f"{relative}:{line}"
-                              for line in self._writers_of_the_cost_columns(path)]
+                              for line in self._writers_in(path)]
         self.assertEqual(offenders, [])
 
-    def test_the_walk_finds_the_door_when_it_is_not_excluded(self):
-        """The vacuity guard, through the same helper the walk uses.
+    def test_the_walk_finds_both_kinds_of_writer_when_not_excused(self):
+        """The vacuity guard, one arm per detector, through the real helpers.
 
         Without it, a walk that silently matched nothing — a renamed keyword, an
         `ast` shape that no longer occurs, a directory list that went stale —
-        would report a clean tree for a repository it never read.
+        would report a clean tree for a repository it never read. Each excused
+        file is also the positive control for the detector that would catch it:
+        the door is the ORM writer, the harness is the raw-SQL one.
         """
-        door = pathlib.Path(__file__).resolve().parents[4] / self.DOOR
-        self.assertEqual(len(self._writers_of_the_cost_columns(door)), 1)
+        platform = pathlib.Path(__file__).resolve().parents[4]
+        door = ast.parse((platform / self.DOOR).read_text(encoding="utf-8"))
+        harness = ast.parse(
+            (platform / self.MEASUREMENT_HARNESS).read_text(encoding="utf-8"))
+        self.assertEqual(len(self._orm_writers(door)), 1)
+        self.assertEqual(len(self._raw_sql_writers(harness)), 1)
+
+    def test_a_writer_cannot_hide_behind_save(self):
+        """The third door, closed by the model rather than by this walk.
+
+        `setattr` then `save()` names no column an `ast` walk could match, so
+        the walk cannot see it — and it cannot settle anything either, because
+        the posting refuses every update through that door. Asserted here so
+        that the gap in the walk is a stated one rather than an oversight.
+        """
+        posting = _unresolved()
+        posting.provider_cost_micros = 100
+        posting.costing_status = COSTING_STATUS_KNOWN
+        with self.assertRaises(ValueError):
+            posting.save()

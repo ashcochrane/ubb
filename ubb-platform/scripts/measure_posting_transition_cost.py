@@ -54,6 +54,12 @@ django.setup()
 
 from django.db import connection  # noqa: E402
 
+from core.vocabulary import (  # noqa: E402
+    COSTING_STATUS_KNOWN,
+    COSTING_STATUS_UNRESOLVED,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
+)
+
 TRIGGER = "trg_posting_declared_transitions"
 
 #: **One statement per batch, not one per row.** Issuing a statement per row
@@ -64,23 +70,27 @@ TRIGGER = "trg_posting_declared_transitions"
 #: fires the trigger once per row while paying for one round trip, which is what
 #: isolates the number this script exists to report.
 #:
-#: The two updates below are hand-written for that reason. **The insert is not**
-#: — it goes through `bulk_create`, because a hand-written one would have to
-#: name every NOT NULL column on this table and two of them are words the
-#: forbidden-term sweep is counting down. The ORM's own cost is in both the
-#: installed and the dropped number, so it cancels in the delta, which is the
-#: figure being reported; the absolute insert column is correspondingly
-#: inflated and is not comparable with the update columns beside it.
+#: The two updates below are single statements for that reason. **The insert is
+#: not one** — `_rows` and `_insert` go through `bulk_create`, because a
+#: hand-written `INSERT` would have to name every NOT NULL column on this table
+#: and two of them are words the forbidden-term sweep is counting down. The
+#: ORM's own cost is in both the installed and the dropped number, so it cancels
+#: in the delta, which is the figure being reported; the absolute insert column
+#: is correspondingly inflated and is not comparable with the update columns.
 
 #: A column no declared rule mentions — the ordinary write on this table, and
 #: where a trigger without a `WHEN` clause would show up as a tax on everything.
 UNRELATED_UPDATE = "UPDATE ubb_posting SET balance_after_micros = 1"
 
-#: The door's own statement, in bulk and with its guard clause intact.
-SETTLEMENT = """
-UPDATE ubb_posting SET provider_cost_micros = 42, costing_status = 'known',
-       unresolved_reason = NULL
- WHERE provider_cost_micros IS NULL AND costing_status = 'unresolved'
+#: The door's own statement, in bulk and with its guard clause intact. The two
+#: status tokens are INTERPOLATED FROM THE REGISTRY rather than typed: this is
+#: living code, so `docs/conventions/coding-standards.md` §Vocabulary applies to
+#: it in full, and the migration's frozen-file exemption does not reach here.
+SETTLEMENT = f"""
+UPDATE ubb_posting SET provider_cost_micros = 42,
+       costing_status = '{COSTING_STATUS_KNOWN}', unresolved_reason = NULL
+ WHERE provider_cost_micros IS NULL
+   AND costing_status = '{COSTING_STATUS_UNRESOLVED}'
 """
 
 
@@ -90,11 +100,11 @@ def _execute(statement, params=None):
 
 
 def _tenant_and_customer():
-    """The fixture, through the ORM — nothing here is being timed.
+    """The fixture, and nothing here is timed.
 
-    The posting insert below is hand-written because its cost is the subject;
-    these two are written the ordinary way because naming every NOT NULL column
-    on a tenant would make this script a list of them.
+    One tenant and one customer for the whole run, created once and reused by
+    every batch: what is being measured is what a rule costs per posting, and a
+    fixture rebuilt per run would put its own cost inside the numbers.
     """
     from apps.platform.customers.models import Customer
     from apps.platform.tenants.models import Tenant
@@ -118,9 +128,11 @@ def _rows(tenant, customer, rows, *, unresolved):
     """
     from apps.metering.usage.models import Posting
 
-    cost = dict(provider_cost_micros=None, costing_status="unresolved",
-                unresolved_reason="cost_rate_missing") if unresolved \
-        else dict(provider_cost_micros=1, costing_status="known")
+    cost = dict(
+        provider_cost_micros=None,
+        costing_status=COSTING_STATUS_UNRESOLVED,
+        unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING) if unresolved \
+        else dict(provider_cost_micros=1, costing_status=COSTING_STATUS_KNOWN)
     return [Posting(tenant=tenant, customer=customer,
                     idempotency_key=str(index), **cost)
             for index in range(rows)]
@@ -141,11 +153,18 @@ def _settle_batch():
 
 
 def _trigger_is_installed():
+    """Asked BY NAME, not by counting triggers on the table.
+
+    Slice 4 declares its own columns on this table and may well install a second
+    rule beside this one; a count would then answer "installed" for a table this
+    script had just stripped, and every number below would be a measurement of
+    nothing.
+    """
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT count(*) FROM pg_trigger t JOIN pg_class c "
             "ON c.oid = t.tgrelid "
-            "WHERE c.relname = 'ubb_posting' AND NOT t.tgisinternal")
+            "WHERE c.relname = 'ubb_posting' AND t.tgname = %s", [TRIGGER])
         return cursor.fetchone()[0] > 0
 
 
@@ -231,8 +250,10 @@ def main():
         for installed, dropped in zip(results["installed"], results["dropped"])))
     print(f"  {'noise floor':<16}" + "".join(f"{n:>10.4f}" for n in noise))
     print("\n  A delta inside the noise floor is not a cost — it is this "
-          "machine.\n  The insert column runs through the ORM and carries its "
-          "overhead in\n  both states; see the note beside INSERT above.")
+          "machine.\n  The insert column runs through `bulk_create` and carries "
+          "the ORM's own\n  overhead in both states, so its absolute figure is "
+          "not comparable with\n  the two update columns; the delta is. See "
+          "`_rows` and the note above it.")
 
 
 if __name__ == "__main__":

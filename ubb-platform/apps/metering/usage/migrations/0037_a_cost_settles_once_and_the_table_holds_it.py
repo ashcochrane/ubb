@@ -27,7 +27,7 @@ means an update that leaves all four columns alone never enters the function
 body either. What pays is a settlement, which happens once per posting.
 
 **Why there is no vendor guard, when the neighbouring raw-SQL migrations all
-have one.** `0011` and `0022` guard on `connection.vendor` because a GIN index
+have one.** `0011`, `0017` and `0022` guard on `connection.vendor` because a GIN index
 is an optimisation: a backend without one still holds the data correctly. This
 is not an optimisation — it is the enforcement half of a declaration the model
 now makes, and a guard would encode a fallback in which the promise is made and
@@ -41,10 +41,12 @@ carries a `JSONB` containment index that no other backend can build.
 length: a migration records the schema as it was on the day it ran, and
 importing living constants into a frozen file makes replay depend on today's
 registry. What keeps the copy honest is not this file but a test —
-`test_a_cost_settles_once.py::test_the_rule_names_the_status_values_the_registry_declares`
-reads the installed function's source out of `pg_proc` and compares it against
-`core.vocabulary`, so a rename in `domain-vocabulary/` turns red here rather
-than leaving a rule that quietly matches nothing.
+`test_a_cost_settles_once.py::TheRuleIsHeldByATriggerOnThisTableTest::
+test_the_rule_names_the_status_values_the_registry_declares` reads the installed
+function's source out of `pg_proc` and compares it against `core.vocabulary`, so
+a rename in `domain-vocabulary/` turns red here rather than leaving a rule that
+quietly matches nothing. That module also RUNS the reverse below, both
+directions, against a real refusal.
 
 **The refusal is raised as SQLSTATE 23000**, `integrity_constraint_violation`,
 which is the class Django maps to `IntegrityError` — the same exception the

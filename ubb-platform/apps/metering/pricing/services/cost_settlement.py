@@ -8,12 +8,19 @@ already asserted is a **correction**, and a correction is not this: it belongs
 in a record beside the original, not on top of it.
 
 **This module is the only application-level writer of a cost resolution.** Not
-by convention — `apps/metering/pricing/tests/test_cost_settlement.py` walks the
-tree and fails if a second one appears. The database refuses every *other* shape
-of write through a trigger (`usage/migrations/0037`), which is what makes the
-rule hold for a data migration or a shell session too; what it cannot do is
-notice that a correct settlement has been written twice in two places, each
-tested once. That half is held here.
+by convention — `apps/metering/pricing/tests/test_cost_settlement.py` walks
+living backend code and fails on any other `update`/`bulk_update` naming a cost
+column, and on any raw `UPDATE ... SET` that names one. It carries exactly one
+declared exception, the script that measures what the enforcement costs, and it
+states its own blind spot: `setattr` plus `save()` names nothing an `ast` walk
+can match, and needs nothing, because the posting refuses every update through
+that door.
+
+The database refuses every *other shape* of write through a trigger
+(`usage/migrations/0037`), which is what makes the rule hold for a data
+migration or a shell session too; what a trigger cannot do is notice that a
+correct settlement has been written twice in two places, each tested once. That
+half is what the walk is for.
 
 **Nothing calls this yet, and that is the shape of the slice.** No writer
 produces an `unresolved` posting until the compute spine learns to (#320), so

@@ -415,8 +415,8 @@ class PostingMeasurement(BaseModel):
     4, because one of the two statuses it reads lands in slice 3 and the other
     in slice 4. **No column here is declared into a class the database defends**
     (``core.transitions.DATABASE_DEFENDED``) — the protected columns slice 3
-    ships are the parent's, declared and defended in #318, and this record's
-    whole-record rule is a different obligation that is still owed. A model-level
+    ships are the parent's, declared and defended in #318, and the rule above is
+    not one of them. A model-level
     ``save()`` guard is deliberately *not* shipped in its place: ADR-0007 §2 is
     explicit that such a guard is not enforcement, and this repository has
     already shipped one that a production writer bypassed by design.

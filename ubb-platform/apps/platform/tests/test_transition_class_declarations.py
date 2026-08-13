@@ -53,14 +53,25 @@ def _declaring_models():
 
 
 def _tables():
-    """Model name to table, reached through the app registry.
+    """Model name to table, for the models that declare something.
 
-    `apps/platform/**` never imports a product (`docs/conventions/
-    coding-standards.md`), and a kernel-side gate whose subject is a product
-    model is exactly where that rule gets bent quietly — the boundary walker
-    skips `tests/`, so nothing would catch it.
+    Reached through the app registry: `apps/platform/**` never imports a product
+    (`docs/conventions/coding-standards.md`), and a kernel-side gate whose
+    subject is a product model is exactly where that rule gets bent quietly —
+    the boundary walker skips `tests/`, so nothing would catch it.
+
+    Built from the DECLARING models alone, and refusing a collision. Django does
+    not make a class name unique across apps, and the entry point this gate
+    walks returns names rather than models, so two declarers sharing one would
+    quietly send the check to look at the wrong table — and it would find the
+    wrong answer either way round.
     """
-    return {model.__name__: model._meta.db_table for model in apps.get_models()}
+    declaring = _declaring_models()
+    tables = {model.__name__: model._meta.db_table for model in declaring}
+    assert len(tables) == len(declaring), (
+        "two declaring models share a class name; this walk resolves a table by "
+        "that name and cannot tell them apart")
+    return tables
 
 
 def _rules_on(table):
@@ -115,12 +126,16 @@ class TransitionClassDeclarationsTest(TestCase):
         above would pass over an empty walk and report a clean board for a tree
         it never looked at, which is how this gate would come to hold nothing at
         exactly the moment it stopped being true.
+
+        It asserts a defended COLUMN and not merely a guarded table, which is a
+        distinction with teeth: a table can carry a rule that mentions none of
+        the columns declared on it, and that is precisely the case the positive
+        control below is built out of.
         """
         declared = self._declared()
         self.assertGreaterEqual(len(declared), 1)
-        tables = _tables()
-        self.assertTrue(any(_rules_on(tables[model_name])
-                            for model_name, _, _ in declared))
+        undefended = _columns_the_database_does_not_defend(declared, _tables())
+        self.assertGreaterEqual(len(declared) - len(undefended), 1)
 
     def test_the_check_reports_a_violation_when_there_is_one(self):
         """The positive control, through the check's real entry point.
