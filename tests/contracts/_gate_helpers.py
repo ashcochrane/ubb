@@ -55,9 +55,17 @@ def workflow_document(**overrides):
 
 
 #: A test module whose functions the synthetic suite genuinely collects — plus
-#: one that is skipped and one inside a class, because both are cases the
+#: one that is skipped and two inside classes, because each is a case the
 #: collection rules have to get right rather than guess at.
+#:
+#: The two classes are collected for DIFFERENT reasons and that is the point of
+#: having both: `TestThings` matches `python_classes`, and `ThingsTest` matches
+#: nothing at all — pytest collects it because it subclasses
+#: `unittest.TestCase`, which the setting does not govern. Every database-backed
+#: gate in the platform suite is spelled the second way.
 TEST_MODULE = '''\
+import unittest
+
 import pytest
 
 
@@ -72,6 +80,11 @@ def test_skipped():
 
 class TestThings:
     def test_in_a_class(self):
+        assert True
+
+
+class ThingsTest(unittest.TestCase):
+    def test_in_a_unittest_class(self):
         assert True
 
 

@@ -736,15 +736,45 @@ gates:
       `QuerySet.update()` and raw SQL.
     oracle: ADR-0007 §2
     source: ADR-0007 §2
-    status: owned_by_slice_3
-    blocked_on: >-
-      No column is declared into a transition class yet. Slice 3 introduces the
-      first RESOLVE_ONCE pair — a nullable `provider_cost_micros` resolving
-      atomically with `costing_status` — which is the subject this gate needs.
+    status: installed
     notes: >-
+      Installed by slice 3 over the first protected columns: a nullable
+      `provider_cost_micros` resolving atomically with `costing_status` as a
+      RESOLVE_ONCE pair, and `claimed_provider_cost_micros` FROZEN (#317
+      declared them, #318 built the enforcement, #319 flipped this row). All
+      three are held by a `BEFORE UPDATE` trigger on `ubb_posting`, because a
+      `CHECK` sees one row at a time and so cannot tell completing a blank from
+      changing an answer — which is the whole of the distinction RESOLVE_ONCE
+      draws.
+      The first node below WALKS the declarations — through
+      `core.transitions.columns_declared_into_defended_classes`, naming no
+      column — so a column a later slice declares is judged on the day it is
+      declared rather than when somebody remembers to extend a list. The other
+      three drive one transition class each through all three doors of the
+      statement above, and the one ADMITTED move is named beside the refusals
+      because a trigger that refused every settlement would satisfy refusals
+      alone. All four run in the `platform` suite, whose job and step are
+      declared and verified under `suites:` above.
       Slice 3 is the first slice with protected columns, not the last. Later
       slices adding FROZEN, SET_ONCE or PRUNABLE columns extend the installed
       gate rather than re-owning this row.
+      One obligation is deferred, by name — `PostingMeasurement`'s whole-record
+      `DELETE` rule, permitted only at or after `prunable_at` and only while its
+      parent posting is not `unresolved`, reads a status that lands in slice 4,
+      so slice 4 adds it as an EXTENSION of this installed gate rather than by
+      re-owning this row; it sits outside the statement above because every
+      column of that record is declared `RECORD_RULE`, which `core/transitions.py`
+      places outside `DATABASE_DEFENDED`, and so is not a field transition class
+      at all.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/apps/platform/tests/test_transition_class_declarations.py::TransitionClassDeclarationsTest::test_every_declared_column_is_defended_by_the_database
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_cost_settles_once.py::TheSettledAmountIsNotEditableTest::test_a_settled_amount_cannot_be_overwritten
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_cost_settles_once.py::TheClaimedCostIsFrozenTest::test_a_claimed_cost_cannot_be_edited
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_cost_settles_once.py::TheOnePermittedMoveIsAdmittedTest::test_an_unresolved_cost_settles_through_every_door
 
   G20:
     statement: Migrations carry their data — a rename, never an add-and-remove pair.

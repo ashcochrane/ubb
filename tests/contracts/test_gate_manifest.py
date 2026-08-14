@@ -108,13 +108,32 @@ def test_every_owed_row_names_a_real_slice_and_what_must_exist_first(programme):
 
 
 def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
-    """#191 decision 6 names these three explicitly, and the reason is the same
-    for each: the column, the protected field and the squash do not exist, so
-    installing the gate would be installing a test that passes on nothing."""
-    for name in ("G14", "G19", "G20"):
+    """#191 decision 6 names three explicitly, and the reason was the same for
+    each: the column, the protected field and the squash did not exist, so
+    installing the gate would be installing a test that passes on nothing.
+
+    **G19 has left that list because its subject arrived**, which is the only
+    reason a gate may leave it. Slice 3 declared the first columns into a class
+    the database defends and installed a trigger that holds them (#317, #318),
+    so its nodes now run against real declarations rather than passing on an
+    empty walk. The two that remain are asserted exactly as they were — the
+    `kind` discriminator column and the cutover squash still do not exist, and a
+    gate is removed here only when that stops being true of it.
+
+    The two halves are asserted together deliberately. Separately, dropping a
+    name from the tuple would be indistinguishable from silencing it; paired
+    with the claim that the departed gate is installed, the only way past this
+    test is the one that is honest.
+    """
+    for name in ("G14", "G20"):
         row = programme.gates[name]
         assert row.owner_slice is not None, (
             f"{name}'s subject does not exist yet, so it cannot be installed")
+
+    assert programme.gates["G19"].installed, (
+        "G19 was removed from the list above because slice 3 installed it. If "
+        "it is owed again its subject has gone, and it belongs back in the "
+        "list rather than in neither")
 
 
 def test_slice_0_declares_the_payment_rail_names_and_owes_the_machinery(programme):
@@ -581,10 +600,49 @@ def test_a_legal_programme_of_both_enforcement_kinds_loads(tmp_path):
 
 def test_a_test_inside_a_class_is_collected(tmp_path):
     """pytest collects `TestThings::test_in_a_class`, so the manifest must too —
-    a checker that only looked at module scope would call a real gate missing."""
-    programme = load(tmp_path, gates=gates(G1=installed(
-        [{"suite": "contracts", "node": f"{TEST_FILE}::test_in_a_class"}])))
+    a checker that only looked at module scope would call a real gate missing.
+
+    Named the way pytest names it, which is the whole of the spelling rule: a
+    node id here is one a reader can paste into a shell and watch run.
+    """
+    programme = load(tmp_path, gates=gates(G1=installed([{
+        "suite": "contracts",
+        "node": f"{TEST_FILE}::TestThings::test_in_a_class"}])))
     assert programme.gates["G1"].installed
+
+
+def test_a_unittest_subclass_is_collected_whatever_python_classes_says(tmp_path):
+    """`ThingsTest` matches no `python_classes` pattern, and pytest runs it
+    anyway — a `unittest.TestCase` subclass is collected regardless of that
+    setting, which is documented pytest behaviour rather than an accident.
+
+    This is not a corner: **every database-backed gate in the platform suite is
+    spelled this way**, because a test that needs Postgres is a
+    `django.test.TestCase` subclass and this repository names those
+    `<Thing>Test`. A walk that consulted `python_classes` alone would report a
+    running gate's real node as one pytest never collects, and refuse to let the
+    slice that wrote it install its row — which is exactly what happened to G19
+    (#319) before this case existed.
+    """
+    programme = load(tmp_path, gates=gates(G1=installed([{
+        "suite": "contracts",
+        "node": f"{TEST_FILE}::ThingsTest::test_in_a_unittest_class"}])))
+    assert programme.gates["G1"].installed
+
+
+def test_a_test_in_a_class_named_without_its_class_is_rejected(tmp_path):
+    """The bare spelling of a test that lives in a class names nothing pytest
+    runs: `pytest path::test_in_a_class` selects no tests at all.
+
+    Admitting it would break the one promise this node id makes — that it can be
+    pasted into a shell — and would do it in the direction that matters, since a
+    row could then name a "node" no run ever executes while the board stayed
+    green.
+    """
+    invalid = rejection(tmp_path, gates=gates(G1=installed(
+        [{"suite": "contracts", "node": f"{TEST_FILE}::test_in_a_class"}])))
+    assert invalid.codes() == {codes.GATE_NOT_RUNNING}
+    assert any("test_in_a_class" in error.message for error in invalid.errors)
 
 
 def test_a_helper_that_is_not_a_test_is_not_accepted_as_one(tmp_path):

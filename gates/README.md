@@ -76,10 +76,12 @@ every gate is accounted for. Locations may vary; accountability may not.
 construction rather than by a second check somebody has to remember to write.
 
 **A gate whose subject does not exist is recorded against its owner, never
-installed as a test that passes on nothing.** Three rows say so today: the four
-`kind` discriminator pins have no column to pin (slice 5), no field is declared
-into a transition class yet (slice 3), and ADR-0007 §1 states the data-carrying
-migration rule does not bind before the cutover squash (slice 8).
+installed as a test that passes on nothing.** Two rows say so today: the four
+`kind` discriminator pins have no column to pin (slice 5), and ADR-0007 §1
+states the data-carrying migration rule does not bind before the cutover squash
+(slice 8). A third said so until slice 3 gave G19 the subject it was waiting
+for — the first columns declared into a class the database defends, with a
+trigger holding them (#318) — and #319 flipped that row to `installed`.
 
 ### Flipping a row
 
