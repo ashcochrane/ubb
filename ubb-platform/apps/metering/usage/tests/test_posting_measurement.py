@@ -151,14 +151,11 @@ class TheChildRecordTest(TestCase):
         self.assertNotIn("measurements",
                          {f.name for f in Posting._meta.fields})
 
-    def test_the_strict_coverage_flag_still_defaults_off(self):
-        """Carried in from `test_measurements_field.py`, which this module
-        replaces: that file was named for a column that is no longer on the
-        posting, and its one assertion about the tenant flag beside it would
-        otherwise have been lost with it.
-        """
-        tenant, _ = _tenant_and_customer()
-        self.assertIs(tenant.require_cost_card_coverage, False)
+    # A third assertion here pinned the strict cost-coverage flag's default,
+    # carried in from `test_measurements_field.py` when this module replaced
+    # it. #321 deleted the column, so the default no longer exists to pin;
+    # what replaces it is an absence, asserted in
+    # `api/v1/tests/test_onboarding_is_not_a_wall.py` beside the behaviour.
 
 
 class AbsenceIsExpressedByAbsenceTest(TestCase):

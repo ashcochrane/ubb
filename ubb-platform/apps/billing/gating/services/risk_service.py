@@ -201,28 +201,20 @@ class RiskService:
                         config.default_subtask_provider_cost_limit_micros
                         if parent is not None
                         else config.default_task_provider_cost_limit_micros)
-                # Coverage gate (#28 decision 10): a COGS limit over uncovered
-                # events would silently count 0 — starting a limited unit is
-                # refused unless the tenant requires cost-card coverage,
-                # subtask limits the same as task limits. A start-gate refusal
-                # is legitimate: it refuses work that hasn't happened, never a
-                # usage report.
-                #
-                # ⚠ THE FLAG NO LONGER BUYS WHAT THIS GATE ASKS FOR (#320). The
-                # compute path stopped reading it: an event whose quantities
-                # matched no Cost Rate is now recorded with its cost UNRESOLVED
-                # whatever this flag says, and the unit total accumulates only
-                # the known part. So the defect above changed shape rather than
-                # going away — a COGS limit no longer counts an uncovered event
-                # as zero, it does not count it at all, and the total it races
-                # is a floor. This gate now refuses a start on a promise nothing
-                # keeps. It is left standing here on purpose: the flag, this
-                # read and the `cost_coverage_required` verdict are #321's to
-                # delete together, and #328 makes the floor say so.
-                if (provider_cost_limit_micros is not None
-                        and not customer.tenant.require_cost_card_coverage):
-                    return {"allowed": False, "reason": "cost_coverage_required",
-                            "balance_micros": balance, "task_id": None}
+                # NO COVERAGE GATE HERE, AND NOTHING REPLACES IT (#321). A
+                # limited unit used to be refused unless the tenant had set a
+                # flag promising full cost coverage (#28 decision 10): a COGS
+                # ceiling over uncovered events would otherwise race a total
+                # that silently counted 0. #320 took the premise away — an
+                # event whose quantities match no Cost Rate is now RECORDED
+                # with its cost unresolved, and the unit total accumulates only
+                # the known part, so the ceiling races a floor rather than a
+                # zero. Refusing a start on a promise nothing keeps was the
+                # remaining behaviour, and onboarding is not a wall: a tenant
+                # part-way through declaring their cost rates starts limited
+                # work like anyone else. #328 is what makes the floor say so
+                # downstream, which is where the honesty belongs — a start gate
+                # cannot tell a caller that a running total is incomplete.
                 from apps.platform.work.services import TaskService
 
                 task = TaskService.create_task(

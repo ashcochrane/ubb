@@ -75,10 +75,14 @@ class PreCheckResponse(Schema):
     # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
     # NEW top-level starts refuse; subtask starts under an active parent
     # pass) | rate_limit_exceeded | budget-cap reasons |
-    # concurrency_limit | cost_coverage_required (a resolved COGS limit
-    # requires Tenant.require_cost_card_coverage) | parent_task_not_active |
+    # concurrency_limit | parent_task_not_active |
     # subtask_depth_exceeded (subtask registration refusals, #38 — refusing
     # work that hasn't happened, never a usage report).
+    # A resolved COGS ceiling used to refuse here unless the tenant promised
+    # full cost coverage; #321 deleted that verdict outright rather than
+    # renaming it, because #320 made the promise unkeepable — an uncosted
+    # event is now recorded with its cost unresolved, so the ceiling races a
+    # floor rather than a total (#328 makes the floor say so).
     reason: Optional[str] = None
     balance_micros: Optional[int] = None
     task_id: Optional[str] = None
@@ -1170,7 +1174,6 @@ class TenantConfigOut(Schema):
     name: str
     billing_mode: str
     products: list[TenantProduct]
-    require_cost_card_coverage: bool
     default_currency: str
     stripe_connected_account_id: str
     is_active: bool
@@ -1200,7 +1203,6 @@ class TenantConfigOut(Schema):
 class TenantConfigIn(Schema):
     billing_mode: Optional[str] = None
     products: Optional[list[TenantProduct]] = None
-    require_cost_card_coverage: Optional[bool] = None
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).
     enforcement_mode: Optional[str] = None

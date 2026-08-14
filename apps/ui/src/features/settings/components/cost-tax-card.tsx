@@ -16,6 +16,11 @@ function hasCode(error: unknown, code: string): boolean {
   return error instanceof ApiProblem && error.code === code;
 }
 
+// A strict-cost-coverage toggle sat above the tax switch until #321. It armed
+// a wall — with it on, an event UBB could not cost was refused rather than
+// recorded — and the wall is gone: an uncostable event is now recorded with
+// its cost unresolved and the gaps named, so there is nothing left to turn on.
+// The card keeps its name because tax is still a cost-side setting.
 export function CostTaxCard({
   config,
   isAdmin,
@@ -23,7 +28,6 @@ export function CostTaxCard({
   config: TenantConfig;
   isAdmin: boolean;
 }) {
-  const coverage = useUpdateTenantConfig();
   const tax = useUpdateTenantConfig();
 
   return (
@@ -35,51 +39,6 @@ export function CostTaxCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Require cost card coverage</p>
-              <p className="max-w-sm text-[13px] text-muted-foreground">
-                Refuse to start work whose provider cost can't be derived from
-                your cost rate cards — so no usage ever runs at an unknown
-                cost.
-              </p>
-            </div>
-            <Switch
-              checked={config.require_cost_card_coverage}
-              disabled={!isAdmin || coverage.isPending}
-              aria-label="Require cost card coverage"
-              onCheckedChange={(checked: boolean) =>
-                coverage.mutate(
-                  { require_cost_card_coverage: checked },
-                  {
-                    onSuccess: () =>
-                      toastSuccess(
-                        checked
-                          ? "Cost card coverage is now required"
-                          : "Cost card coverage requirement removed",
-                      ),
-                  },
-                )
-              }
-            />
-          </div>
-          {coverage.isError && (
-            <p className="text-xs text-destructive">
-              {problemMessage(coverage.error)}
-              {hasCode(coverage.error, "no_cost_cards") && (
-                <>
-                  {" "}
-                  <a href="/pricing" className="underline">
-                    Create a cost card in Pricing
-                  </a>{" "}
-                  first, then try again.
-                </>
-              )}
-            </p>
-          )}
-        </div>
-
         <div className="space-y-2">
           <div className="flex items-start justify-between gap-4">
             <div>

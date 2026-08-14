@@ -392,3 +392,44 @@ GET /api/v1/margin/by-dimension api path removed without deprecation
 # field through the generated client, which is regenerated in this commit.
 GET /api/v1/metering/usage/{event_id} response property `provider_cost_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
 GET /api/v1/metering/usage/{event_id} the response property `provider_cost_micros` became optional for the status `200`
+#
+# #321 — THE STRICT COST-COVERAGE SETTING LEAVES THE TENANT CONFIG RESPONSE,
+# AND NOTHING TAKES ITS PLACE.
+#
+# One removal, reported twice because the same schema is the 200 of both the
+# GET and the PATCH. `require_cost_card_coverage` was REQUIRED and
+# non-optional on `TenantConfigOut`, so its removal is an ERR-level break
+# rather than the WARN a request half earns; the request half is recorded in
+# `oasdiff-warn-ignore.txt` and belongs to the same edit.
+#
+# WHY IT IS A DELETION AND NOT A DEFAULT-OFF. The setting armed a wall: with it
+# on, an event whose quantities matched no Cost Rate was REFUSED rather than
+# recorded, and a limited unit could not start without it. #320 took the first
+# meaning — such an event is now recorded with its cost unresolved and the gaps
+# named — which left a start gate refusing work on a promise nothing keeps.
+# Leaving the field on the contract defaulted off would publish a switch whose
+# only remaining effect was to refuse starts, and would let a tenant turn a
+# wall back on that the recording path no longer honours. Onboarding is not a
+# wall; there is no narrower break that says so.
+#
+# TWO PUBLISHED COMPONENT NAMES, NEITHER RENAMED. Django Ninja publishes a
+# `Schema` subclass name as the OpenAPI component name, so `TenantConfigIn` and
+# `TenantConfigOut` are both contract surface under their Python names. This
+# commit edits their fields and renames neither — a rename here would be a
+# second break for a different reason, and no ticket owns it.
+#
+# THE REFUSAL WORDS GO WITH IT, AND OASDIFF CANNOT SEE EITHER. The enable-time
+# problem code `no_cost_cards` and the admission verdict `cost_coverage_required`
+# are both deleted from `openapi/error-codes.json` in this commit: their raise
+# and return sites are gone, and a registry entry nothing can produce is a false
+# claim in a machine-read file. No error code and no verdict word appears in
+# `v1.json`, so there is nothing for oasdiff to compare — what proves the first
+# retirement is the SDK's generated exception hierarchy regenerating without
+# `NoCostCardsError`, which is in this commit too. Same shape as #320's
+# `pricing_error`, one flip earlier.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the one known consumer reads this
+# field through generated code, regenerated here and in #322.
+GET /api/v1/tenant/config removed the required property `require_cost_card_coverage` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the required property `require_cost_card_coverage` from the response with the `200` status

@@ -16,7 +16,6 @@ const baseConfig: TenantConfig = {
   name: "Acme AI",
   billing_mode: "prepaid",
   products: ["metering", "billing"],
-  require_cost_card_coverage: false,
   default_currency: "usd",
   stripe_connected_account_id: "acct_1",
   is_active: true,

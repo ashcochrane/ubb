@@ -14,7 +14,6 @@ import {
   BILLING_PERIODS,
   CURRENCY_LOCK_REASON,
   CURRENCY_LOCKED,
-  HAS_ACTIVE_COST_CARDS,
   INITIAL_CONNECT_STATUS,
   INITIAL_INVITATIONS,
   INITIAL_MARGIN_THRESHOLD,
@@ -109,17 +108,12 @@ export async function updateTenantConfig(
       "Prepaid and postpaid billing modes require the Billing product to be enabled.",
     );
   }
-  if (patch.require_cost_card_coverage != null) {
-    if (patch.require_cost_card_coverage && !HAS_ACTIVE_COST_CARDS) {
-      throw problem(
-        422,
-        "no_cost_cards",
-        "No cost cards",
-        "Enable at least one active cost rate card before requiring coverage.",
-      );
-    }
-    next.require_cost_card_coverage = patch.require_cost_card_coverage;
-  }
+  // NO COST-COVERAGE RULE HERE, AND NOTHING REPLACES IT (#321). This mock
+  // enforced its own "needs at least one active cost pricing book" refusal
+  // alongside the backend's. Both are gone: the setting they guarded is
+  // deleted, and onboarding is not a wall. A mock that kept the rule would be
+  // a SECOND definition of a behaviour the server no longer has — and the one
+  // a developer meets first, because mock mode is this console's default.
   if (patch.automatic_tax_enabled != null) {
     if (patch.automatic_tax_enabled && !STRIPE_TAX_ACTIVE) {
       throw problem(

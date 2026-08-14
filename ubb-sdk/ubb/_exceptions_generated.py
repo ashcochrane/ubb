@@ -145,11 +145,6 @@ class LastActiveKeyError(ConflictError):
     CODE = 'last_active_key'
 
 
-class NoCostCardsError(UnprocessableEntityError):
-    STATUS = 422
-    CODE = 'no_cost_cards'
-
-
 class RateLimitExceededError(RateLimitError):
     STATUS = 429
     CODE = 'rate_limit_exceeded'
@@ -208,7 +203,6 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'last_active_admin': LastActiveAdminError,
     'last_active_key': LastActiveKeyError,
     'method_not_allowed': MethodNotAllowedError,
-    'no_cost_cards': NoCostCardsError,
     'not_found': NotFoundError,
     'rate_limit_exceeded': RateLimitExceededError,
     'service_unavailable': ServiceUnavailableError,
@@ -257,7 +251,6 @@ __all__ = [
     'InvalidTenantIdError',
     'LastActiveAdminError',
     'LastActiveKeyError',
-    'NoCostCardsError',
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'UnsupportedCurrencyError',

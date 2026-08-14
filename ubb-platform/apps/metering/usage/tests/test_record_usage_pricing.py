@@ -88,11 +88,12 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
     the opposite, which is the more useful fact. A caller cannot correct an
     uncosted posting by re-posting it; the cost settles through one door.
 
-    The tenant setting that made the refusal conditional is no longer read on
-    this path and is not set here. It is NOT dead: the admission gate in
-    `billing/gating/services/risk_service.py` still reads it to refuse starting
-    a COGS-limited unit. Deleting the column, that gate and its refusal code is
-    #321's.
+    The tenant setting that made the refusal conditional stopped being read on
+    this path here, and is not set below. It outlived this commit by one: its
+    last read was the admission gate in
+    `billing/gating/services/risk_service.py`, refusing to start a
+    COGS-limited unit without it, and #321 deleted the column, that gate and
+    its refusal code together.
     """
 
     def _setup(self, products=None):

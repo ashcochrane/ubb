@@ -36,12 +36,13 @@ Back-out is instant (set `off`).
    cost / COGS — not your marked-up price); omitted, your tenant default
    applies; absent both, the task is uncapped and no signal ever fires. If
    `allowed` is `False`, don't start (`reason` says why —
-   `insufficient_funds`, `cost_coverage_required`, …). You get back `task_id`.
+   `insufficient_funds`, `soft_floor_reached`, …). You get back `task_id`.
    *(A read-only check without creating a task: `pre_check(customer_id)` —
    also your "is this customer allowed right now?" poll for webhook-less
-   setups.)* A limit requires cost-card coverage
-   (`require_cost_card_coverage`) so uncovered events can never silently
-   count as zero burn.
+   setups.)* A limit needs nothing declared in advance: an event UBB cannot
+   cost yet is recorded with its cost unresolved and the gaps named, so what
+   the limit races is a **floor** on the burn rather than a total that
+   silently counted uncovered events as zero.
 2. **Attribute usage.** Pass that `task_id` on **every** `record_usage(...)`
    for the task. `metadata` is an analytics-only label bag — it never attaches a limit.
 3. **Honor the stop.** Check `result.stop` on **every** ack and stop sending
