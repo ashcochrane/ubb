@@ -61,13 +61,10 @@ class MeteringProductGatingTest(TestCase):
     def test_tenant_with_metering_can_record_usage(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(self.customer.id),
-                "request_id": "req_met_1",
-                "idempotency_key": "idem_met_1",
-                "provider_cost_micros": 1_500_000,
-                "metadata": {"model": "gpt-4"},
-            }),
+            data=json.dumps(usage_payload(
+                self.customer, "met_1",
+                provider_cost_micros=1_500_000,
+                metadata={"model": "gpt-4"})),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
@@ -731,8 +728,8 @@ class RateCardValidationTest(TestCase):
         # uncosted, and says the posting's cost is unresolved rather than zero.
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
-            data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
-                  "measurements": {"undeclared_quantity": 100}}),
+            data=json.dumps(usage_payload(
+                c, "r9", measurements={"undeclared_quantity": 100})),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
         assert "undeclared_quantity" in resp.json().get(

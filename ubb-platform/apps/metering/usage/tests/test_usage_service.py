@@ -66,7 +66,9 @@ class ResultSignatureTest(TestCase):
             id="e1", provider_cost_micros=1, costing_status="known",
             # Stubbed rather than left to the mock, for the reason above: an
             # unstubbed attribute answers a truthy mock, so a settled posting
-            # would appear to carry both a cause and a claim.
+            # would appear to carry both a cause and a claim. Asserted below
+            # as well — a stub nothing reads guards nothing, and the key-set
+            # assertion alone would pass with a mock object in either slot.
             unresolved_reason=None, claimed_provider_cost_micros=None,
             billed_cost_micros=1,
             task_id=None, measurements={}, pricing_provenance={},
@@ -77,6 +79,13 @@ class ResultSignatureTest(TestCase):
         # run_total_cost_micros, run_id) can never sneak back in.
         self.assertEqual(set(out), _RESULT_KEYS)
         self.assertNotIn("hard_stop", out)
+        # A settled posting has no cause and no claim, and the builder passes
+        # both through untouched. Reading the VALUES is what makes the stubs
+        # above load-bearing: without these two lines the builder could emit a
+        # mock, a constant or the status itself in either slot and the key-set
+        # assertion would not notice.
+        self.assertIsNone(out["unresolved_reason"])
+        self.assertIsNone(out["claimed_provider_cost_micros"])
         self.assertFalse(out["stop"])
         self.assertIsNone(out["stop_reason"])
         self.assertIsNone(out["stop_scope"])

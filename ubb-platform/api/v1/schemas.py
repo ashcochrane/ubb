@@ -356,11 +356,11 @@ class UsageEventOut(Schema):
     # surface a tenant works THROUGH — the remedy is readable from the value,
     # so the list is where it saves a call rather than prompting one.
     unresolved_reason: Optional[UnresolvedReason] = None
-    # The lean row's one deliberate exception to leanness, and the reason is
-    # the same one that put the status here: this is where a reader totals a
-    # column by eye. A claim published only on the detail view would be a
-    # number invisible exactly where a supplier cost is missing and a
-    # plausible-looking figure would be reached for.
+    # The third field this row carries on one argument rather than on
+    # leanness, after the status (#317) and the cause above it: this is where
+    # a reader totals a column by eye. A claim published only on the detail
+    # view would be a number invisible exactly where a supplier cost is
+    # missing and a plausible-looking figure would be reached for.
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None

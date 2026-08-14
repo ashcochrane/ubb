@@ -180,6 +180,22 @@ An `open` concept keeps `type: string` and gets `x-ubb-known-values`; it is
 breaking change. A `closed` concept gets a real `enum`. A concept whose values
 the tenant owns gets neither, and a marker on one is refused.
 
+**A nullable `closed` field marks the alias, never the `Optional`.** Write
+`Optional[UnresolvedReason]`, so the marker lands in the STRING MEMBER of the
+union django-ninja renders. Hoisting it on to the union node itself — which is
+what `Annotated[Optional[str], Field(...)]` does — puts the generated `enum`
+beside the `anyOf`, and JSON Schema reads keywords at one node **conjunctively**:
+the field then admits `null` under `anyOf` and refuses it under `enum`, so the
+document contradicts every response the server sends for an unset value.
+
+Nothing else catches it. The wire body is unchanged, the export is clean (the
+applier asks only whether the node is string-*shaped*, and a union with a string
+member is), and `oasdiff` reads an added property either way — a document that
+lies with a green board. `test_a_closed_concepts_marker_never_sits_on_a_nullable_union`
+holds every advertised `closed` concept to this. The rule does not bind the
+`open` kind: `x-ubb-known-values` is documentation and constrains nothing, so a
+union node is an honest home for it.
+
 **Never type a vocabulary field as `Literal[...]`.** That is a second copy of a
 value set the registry owns, and for an open concept it is the silent closure
 G4 exists to refuse. The gate accounts for every `enum` in the committed

@@ -503,6 +503,57 @@ def test_every_advertised_concept_reaches_the_contract(spec, decisions):
         f"the field with `{MARKER}` and regenerate the spec.")
 
 
+def test_a_closed_concepts_marker_never_sits_on_a_nullable_union(spec,
+                                                                  decisions):
+    """A `closed` concept's `enum` must not be able to refuse `null` (#323).
+
+    JSON Schema reads keywords at one node CONJUNCTIVELY. So a node shaped
+
+        {"anyOf": [{"type": "string"}, {"type": "null"}], "enum": [...]}
+
+    admits `null` under `anyOf` and then refuses it under `enum` — the field is
+    nullable in every reader's eyes and unusable in a validator's. The honest
+    shape puts the marker in the STRING MEMBER, where the generated `enum`
+    constrains the strings and leaves the null member alone, which is what
+    django-ninja renders for `Optional[SomeMarkedAlias]`.
+
+    NOTHING ELSE IN THE REPOSITORY WOULD CATCH THE WRONG ONE. The wire body is
+    unchanged, so no endpoint test sees it; the export is clean, because
+    `apply.py` asks only whether the node is string-SHAPED
+    (:func:`_is_string_shaped` accepts a union with a string member) and not
+    whether writing an `enum` there would be true; and oasdiff reads an added
+    property either way. It is a document that contradicts the server with a
+    green board — ADR-0008 §9's failure mode landing on the contract itself.
+
+    ASSERTED OVER EVERY ADVERTISED CONCEPT, not over the fields that prompted
+    it. Three hard-coded field names would have expired the moment the next
+    nullable closed column shipped, and slice 4 adds several. The `open` kind
+    is deliberately out of scope: it writes `x-ubb-known-values`, which is
+    documentation metadata and constrains nothing, so a union node is a
+    perfectly honest home for it — which is exactly why the applier's own
+    nullable test covers that kind and could not have covered this one.
+    """
+    offenders, examined = [], 0
+    for pointer, node in marked_nodes(spec):
+        if decisions[node[MARKER]].representation != ENUM:
+            continue
+        examined += 1
+        if node.get("type") != "string":
+            offenders.append(f"{pointer} ({node[MARKER]})")
+
+    # The vacuity guard this check needs and the ones above do not: it is a
+    # "for each" over a filtered walk, so a filter that matched nothing would
+    # pass it silently. A count rather than a floor, because the floor is
+    # already `CONCEPTS_IN_THE_CONTRACT`'s job and two copies would drift.
+    assert examined, ("no advertised closed concept was examined — the walk "
+                      "or the representation filter is broken, not the spec")
+
+    assert not offenders, (
+        "a closed concept's marker sits on a union rather than on its string "
+        "member, so the generated `enum` refuses the `null` the union admits:"
+        "\n" + "\n".join(f"  {o}" for o in offenders))
+
+
 def test_the_contract_carries_no_vendor_extension_this_export_did_not_write(
         spec):
     """A hand-written `x-ubb-` key must not pass itself off as generated.
@@ -647,16 +698,23 @@ CONCEPTS_IN_THE_CONTRACT = {
     # cost is settled, so nobody reads a zero UBB has not learned yet as money.
     "costing_status": Published(3, ENUM),  # record + list row + detail
     # #323 (slice 3) — the other half of the sentence above, and the first
-    # NULLABLE concept the contract advertises. `null` is the answer on every
-    # settled posting, so the marker travels into the string member of the
-    # union rather than sitting on the union itself; `EventTypeUpdateIn`'s two
-    # optional markers are the precedent, and `test_the_cost_reaches_the_
-    # contract.py` is what holds this one to it. Placement matters here in a
-    # way it does not for a required field: `enum` and `anyOf` at one node are
-    # conjunctive, so the wrong one publishes a document that refuses the
-    # response the server actually returns. Three nodes, for the same reason
-    # the status has three — a cause that does not travel with the status it
-    # explains leaves the reader a shrug.
+    # nullable marker on a RESPONSE. Nullable markers are not new:
+    # `EventTypeUpdateIn` has carried two since #262, and they are the
+    # precedent this followed. What is new is that a server actually RETURNS
+    # the null — on a request field, `null` means "leave this alone" and no
+    # response body ever contains it, so a document that refused it would
+    # inconvenience a caller rather than contradict the server. Here `null` is
+    # the answer on every settled posting, which is nearly all of them.
+    #
+    # So the marker travels into the string member of the union rather than
+    # sitting on the union itself: `enum` and `anyOf` at ONE node are
+    # conjunctive, and the wrong placement publishes a document that refuses
+    # the response the server returns a few thousand times an hour.
+    # `test_a_closed_concepts_marker_never_sits_on_a_nullable_union` below
+    # holds every advertised concept to it, this one included.
+    #
+    # Three nodes, for the same reason the status has three — a cause that does
+    # not travel with the status it explains leaves the reader a shrug.
     "unresolved_reason": Published(3, ENUM),  # record + list row + detail
 }
 

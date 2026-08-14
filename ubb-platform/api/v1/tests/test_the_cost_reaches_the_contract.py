@@ -39,6 +39,7 @@ from django.test import Client, SimpleTestCase, TestCase
 
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from core.vocabulary import (COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED,
                              UNRESOLVED_REASON_COST_RATE_MISSING)
@@ -54,8 +55,14 @@ from api.v1.tests.test_metering_endpoints import usage_payload
 SPEC_PATH = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
 
 #: Every response schema that publishes a posting's supplier cost. The ack, the
-#: lean list row and the audit receipt — and the claim is that these three move
-#: together, so the set is named once here rather than three times below.
+#: lean list row and the audit receipt.
+#:
+#: THE CLAIM OF THIS MODULE IS THAT THESE THREE MOVE TOGETHER, so the set is
+#: named once and both halves read it: the contract class walks it directly,
+#: and `_WireCase.each_response` pairs each name with the body that schema
+#: serves. A fourth response publishing the amount without the two fields
+#: beside it is the finding, and it is one this set has to be able to state in
+#: one place for either half to notice.
 RESPONSES_CARRYING_THE_COST = ("RecordUsageResponse", "UsageEventOut",
                                "UsageEventDetailOut")
 
@@ -96,6 +103,19 @@ class _WireCase(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return response.json()
 
+    def each_response(self, ack):
+        """`(schema name, body)` for all three responses that carry the cost.
+
+        Built off `RESPONSES_CARRYING_THE_COST` rather than re-listing the
+        names, so the module has ONE statement of which responses are in scope
+        and the contract class and the wire classes cannot drift apart about
+        it. The ack is passed in because it is the only one already in hand —
+        the other two are fetched from the id it returns.
+        """
+        event_id = ack["event_id"]
+        bodies = (ack, self.list_row(event_id), self.detail(event_id))
+        return tuple(zip(RESPONSES_CARRYING_THE_COST, bodies))
+
 
 class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
     """A status that says a cost is missing also says what would settle it."""
@@ -112,11 +132,8 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         """
         ack = self.record("unresolved",
                           measurements={"undeclared_quantity": 100})
-        event_id = ack["event_id"]
 
-        for name, body in (("RecordUsageResponse", ack),
-                           ("UsageEventOut", self.list_row(event_id)),
-                           ("UsageEventDetailOut", self.detail(event_id))):
+        for name, body in self.each_response(ack):
             with self.subTest(response=name):
                 self.assertEqual(body["costing_status"],
                                  COSTING_STATUS_UNRESOLVED)
@@ -126,17 +143,31 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
     def test_a_settled_posting_publishes_no_reason_on_all_three(self):
         """The other direction, and it is what stops the field being noise.
 
-        A caller-supplied supplier cost settles the posting, so there is no
+        A quantity a Cost Rate DOES match settles the posting, so there is no
         missing input to name and the field is `null`. Without this the class
         above would pass against a serialiser that hard-coded one reason on to
         every posting it ever saw.
-        """
-        ack = self.record("known", provider_cost_micros=4_200)
-        event_id = ack["event_id"]
 
-        for name, body in (("RecordUsageResponse", ack),
-                           ("UsageEventOut", self.list_row(event_id)),
-                           ("UsageEventDetailOut", self.detail(event_id))):
+        SETTLED THROUGH THE RATE RATHER THAN THROUGH A CALLER-SUPPLIED FIGURE,
+        AND #324 IS WHY. Sending the supplier cost on the request is the
+        shorter route to `known` and was how this read first — but #324 makes
+        that a **422** wherever the Event Type does not declare the reported
+        method and the caller-supplied source kind, which no fixture here does.
+        The test would have gone red inside somebody else's ticket, for a
+        reason having nothing to do with what it asserts. Costing the quantity
+        exercises the calculated path instead, which #324 does not touch.
+        """
+        # The rate's shape is left to the model's own defaults rather than
+        # spelled out. That reads as brevity and is not: the word for it is
+        # retired, slice 7 owns re-spelling it, and its ledger entry caps the
+        # files that may still contain it at 21 — naming it here would have
+        # made this the 22nd and failed the sweep, exactly as the correlation
+        # key would have. The default IS the per-unit shape this needs.
+        cost_rate_in_default_book(self.tenant, measurement_key="tokens",
+                                  rate_per_unit_micros=42, unit_quantity=1)
+        ack = self.record("known", measurements={"tokens": 100})
+
+        for name, body in self.each_response(ack):
             with self.subTest(response=name):
                 self.assertEqual(body["costing_status"], COSTING_STATUS_KNOWN)
                 self.assertIn("unresolved_reason", body,
@@ -155,15 +186,12 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         fail here rather than in a tenant's reconciliation.
         """
         ack = self.record("row", measurements={"undeclared_quantity": 7})
-        event_id = ack["event_id"]
-        stored = Posting.objects.get(id=event_id)
+        stored = Posting.objects.get(id=ack["event_id"])
 
         self.assertIsNotNone(stored.unresolved_reason,
                              "the fixture stopped producing an unresolved "
                              "posting, so the comparison below is vacuous")
-        for name, body in (("RecordUsageResponse", ack),
-                           ("UsageEventOut", self.list_row(event_id)),
-                           ("UsageEventDetailOut", self.detail(event_id))):
+        for name, body in self.each_response(ack):
             with self.subTest(response=name):
                 self.assertEqual(body["unresolved_reason"],
                                  stored.unresolved_reason)
