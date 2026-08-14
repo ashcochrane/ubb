@@ -54,10 +54,14 @@ def workflow_document(**overrides):
     return document
 
 
-#: A test module whose functions the synthetic suite genuinely collects — plus
-#: one that is skipped and one inside a class, because both are cases the
-#: collection rules have to get right rather than guess at.
+#: A test module whose functions the synthetic suite genuinely collects — plus a
+#: skipped one, two classes collected by the two DIFFERENT doors
+#: `tools.gates.enforcement._definitions` documents, and a skipped class,
+#: because each is a case the collection rules have to get right rather than
+#: guess at.
 TEST_MODULE = '''\
+import unittest
+
 import pytest
 
 
@@ -72,6 +76,17 @@ def test_skipped():
 
 class TestThings:
     def test_in_a_class(self):
+        assert True
+
+
+class ThingsTest(unittest.TestCase):
+    def test_in_a_unittest_class(self):
+        assert True
+
+
+@pytest.mark.skip(reason="a gate whose class does not run is not installed")
+class TestSkippedThings:
+    def test_in_a_skipped_class(self):
         assert True
 
 

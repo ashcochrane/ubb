@@ -410,16 +410,20 @@ class PostingMeasurement(BaseModel):
         DELETE   permitted only at or after prunable_at, and only while the
                  parent posting is not unresolved
 
-    Enforcing that at the database is gate G19, which is ``owned_by_slice_3``
-    and whose ``DELETE`` condition is cross-table and unexpressible until slice
-    4, because one of the two statuses it reads lands in slice 3 and the other
-    in slice 4. **No column here is declared into a class the database defends**
+    Enforcing that at the database is **not** gate G19, which slice 3 installed.
+    G19's statement covers *field* transition classes, and **no column here is
+    declared into a class the database defends**
     (``core.transitions.DATABASE_DEFENDED``) — the protected columns slice 3
     ships are the parent's, declared and defended in #318, and the rule above is
-    not one of them. A model-level
-    ``save()`` guard is deliberately *not* shipped in its place: ADR-0007 §2 is
-    explicit that such a guard is not enforcement, and this repository has
-    already shipped one that a production writer bypassed by design.
+    not one of them. The ``DELETE`` condition above is cross-table and
+    unexpressible today, because the second of the two statuses it reads lands
+    in slice 4; slice 4 adds it as an **extension** of the installed gate rather
+    than by re-owning its row, and G19's `notes` name that deferral so it is
+    recorded beside the gate as well as here. A
+    model-level ``save()`` guard is deliberately *not* shipped in its place:
+    ADR-0007 §2 is explicit that such a guard is not enforcement, and this
+    repository has already shipped one that a production writer bypassed by
+    design.
 
     ``updated_at`` is inherited from ``BaseModel`` and, under the record rule
     above, never moves after insert.

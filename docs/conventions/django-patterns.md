@@ -78,8 +78,10 @@ wire and validate.
   the model's docstring. `PostingMeasurement` is the first (insert once, never update, delete only at
   or after its horizon).
 - **Declaring is not enforcing, and a declaration must arrive with what keeps it.** The database
-  enforcement is gate G19, `owned_by_slice_3`; a `DATABASE_DEFENDED` class with nothing behind it is
-  a promise nothing keeps. `apps/platform/tests/test_transition_class_declarations.py` is what holds
+  enforcement is gate G19, **installed by slice 3** (#319) and enforced over the *declarations*
+  rather than over a list of columns, so a column you declare is judged on the day you declare it; a
+  `DATABASE_DEFENDED` class with nothing behind it is a promise nothing keeps.
+  `apps/platform/tests/test_transition_class_declarations.py` is what holds
   that line, and since #318 it holds it from the other side: it walks every declaration in the tree
   and fails on any column the database does not actually defend. **The first pair
   (`Posting`, #318) is enforced by a `BEFORE UPDATE` trigger** installed alongside it in

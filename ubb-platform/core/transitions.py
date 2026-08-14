@@ -8,12 +8,24 @@ classes in a ``transition_classes`` mapping beside its fields, so that the
 question "what is allowed to happen to this?" is answered at model-definition
 time. ADR-0007's Consequences names that as both the cost and the point.
 
-**Declaring is not enforcing, and today nothing here enforces anything.**
-Database enforcement is gate G19, which is ``owned_by_slice_3`` and whose
-cross-table condition is unexpressible before slice 4 — one of the two statuses
-it must read lands in slice 3 and the other in slice 4. Nothing in this module
-installs a trigger, a rule or a ``CHECK``; it lets a column say what it is so
-that the gate which will hold it to that has a subject when it arrives.
+**Declaring is not enforcing, and nothing in this module enforces anything.**
+Database enforcement is gate G19, and slice 3 **installed** it: the trigger in
+``apps/metering/usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py``
+holds the first columns declared here across ``save()``, ``QuerySet.update()``
+and raw SQL alike, and
+``apps/platform/tests/test_transition_class_declarations.py`` walks
+every declaration in the tree and fails on any column the database does not
+actually defend. Nothing *here* installs a trigger, a rule or a ``CHECK`` — this
+module is the vocabulary, and the gate that holds a column to what it says lives
+with the table.
+
+**A different rule is genuinely deferred, and the comment this replaces
+conflated the two.** ``PostingMeasurement``'s whole-record ``DELETE`` condition
+is cross-table and unexpressible today, because the second of the two statuses
+it reads lands in slice 4. But every column of that record declares
+``RECORD_RULE``, which the constant below puts *outside* ``DATABASE_DEFENDED`` —
+so it is not a field transition class, it is not in G19's statement, and slice 4
+adds it as an extension of the installed gate rather than by re-owning its row.
 
 **There are four transition classes and this module adds none.** ADR-0007 §2
 enumerates them and they are the whole vocabulary; `RECORD_RULE` below is not a
@@ -21,17 +33,17 @@ fifth, and nothing here should be read as amending that ADR. It is what a column
 declares when it has *no* class — so that "declared into none, and here is what
 governs it instead" is written down rather than merely absent.
 
-That distinction was load-bearing for more than tidiness. G19's manifest row
-reads *"No column is declared into a transition class yet"*, and that sentence
-was true for as long as `DATABASE_DEFENDED` had no declarers — a `RECORD_RULE`
-column is one that declined a class rather than took one, so the measurement
-child did not make it false.
+That distinction was load-bearing for more than tidiness. G19's manifest row was
+blocked on *"No column is declared into a transition class yet"* until #319
+deleted that sentence, and it was true for as long as `DATABASE_DEFENDED` had no
+declarers — a `RECORD_RULE` column is one that declined a class rather than took
+one, so the measurement child did not make it false.
 
-**#318 made it false, which is what it was waiting for.** The economic posting
-declares the first `RESOLVE_ONCE` pair and the first `FROZEN` column, and a
-trigger installed with them holds all three across every door. The row's
-`blocked_on` sentence is therefore spent, and moving the row itself is #319's —
-this note records that the subject arrived, not that the gate did.
+**#318 made it false, which is what it was waiting for, and #319 moved the row.**
+The economic posting declares the first `RESOLVE_ONCE` pair and the first
+`FROZEN` column, a trigger installed with them holds all three across every
+door, and the row now names the tests that prove it rather than what it is
+waiting for.
 """
 
 #: The four classes of ADR-0007 §2, in the order that document states them.

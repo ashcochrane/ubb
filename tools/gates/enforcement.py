@@ -42,6 +42,11 @@ DEFAULT_NORECURSEDIRS = ("*.egg", ".*", "_darcs", "build", "CVS", "dist",
 # A decorator or `pytestmark` naming any of these takes the test out of the run.
 SKIPPING_MARKS = ("skip", "skipif", "xfail")
 
+# The word every `unittest.TestCase` base ends in — `TestCase` itself,
+# `SimpleTestCase`, `TransactionTestCase`, `django.test.TestCase`. pytest
+# collects a subclass of any of them whatever `python_classes` says.
+UNITTEST_BASE_SUFFIX = "TestCase"
+
 
 # ---------------------------------------------------------------------------
 # The workflow
@@ -235,32 +240,80 @@ def _module_level_skips(tree):
     return found
 
 
-def _definitions(tree, collection):
-    """Every `(name, node)` pytest would consider a test function in ``tree``.
+def _is_unittest_class(statement):
+    """Does ``statement`` subclass ``unittest.TestCase``, under any of its names?
 
-    Module scope, plus the bodies of classes whose names match
-    ``python_classes`` — a gate's test may legitimately live in a class.
+    pytest collects a ``unittest.TestCase`` subclass **whatever
+    ``python_classes`` says** — that setting governs its own class discovery and
+    not unittest's. Which is not a corner case here: every database-backed gate
+    in the platform suite is a ``django.test.TestCase`` subclass, and this
+    repository names those ``<Thing>Test``, which no ``Test*`` glob matches. A
+    walk that consulted ``python_classes`` alone would report a running gate's
+    real node as one pytest never collects, and refuse the row.
+
+    Decided off the base's spelling, because an AST cannot resolve an import:
+    ``TestCase``, ``django.test.TestCase``, ``SimpleTestCase`` and
+    ``TransactionTestCase`` all end in the word. That is a heuristic and it is
+    wrong in both directions, which is worth stating rather than claiming a safe
+    one. It MISSES a class reaching ``TestCase`` only through an intermediate
+    base declared elsewhere, and a test inherited from a mixin rather than
+    written in the class's own body — both refuse a row that could have been
+    installed. It ADMITS a class whose base merely ends in the word without
+    being unittest's, which would call a node armed that pytest does not
+    collect. Nothing here is load-bearing against a hostile author; what it is
+    for is the ordinary shape this repository actually writes, and the
+    conclusion it reaches is checked by the row's own tests running in CI.
+    """
+    for base in statement.bases:
+        name = (base.attr if isinstance(base, ast.Attribute)
+                else base.id if isinstance(base, ast.Name) else "")
+        if name.endswith(UNITTEST_BASE_SUFFIX):
+            return True
+    return False
+
+
+def _definitions(tree, collection):
+    """Every test in ``tree``, keyed by the node id tail pytest answers to.
+
+    A module-level function is keyed by its bare name; a test in a collected
+    class is keyed ``Class::function``, because that is what pytest takes and
+    ``path::function`` alone selects nothing at all for it. Keying both the same
+    way would admit a node id that no run ever executes.
+
+    A class is collected if it matches ``python_classes`` or subclasses
+    ``unittest.TestCase``; those are two different doors and the suite here uses
+    both.
+
+    The value is every definition whose marks govern the test — the function,
+    and the class around it where there is one. **A skip one level up silences
+    the test just as completely**, and reading the function alone would report a
+    gate as armed that pytest collects and does not run, which is the failure
+    this whole module exists to refuse.
     """
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield statement.name, statement
-        elif (isinstance(statement, ast.ClassDef)
-              and _matches_any(statement.name, collection.python_classes)):
+            yield statement.name, (statement,)
+        elif isinstance(statement, ast.ClassDef) and (
+                _matches_any(statement.name, collection.python_classes)
+                or _is_unittest_class(statement)):
             for inner in statement.body:
                 if isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    yield inner.name, inner
+                    yield f"{statement.name}::{inner.name}", (inner, statement)
 
 
 def collection_faults(repo_root, root, config_path, node):
     """Every reason the pytest suite rooted at ``root`` would not run ``node``.
 
-    ``node`` is ``path/to/test_file.py::test_function``, repo-relative — the
-    same spelling ``pytest`` itself takes, so a reader can paste it into a shell
-    and watch it run.
+    ``node`` is ``path/to/test_file.py::test_function``, or
+    ``path/to/test_file.py::TestClass::test_function`` for a test that lives in
+    a class — repo-relative, and in both cases the same spelling ``pytest``
+    itself takes, so a reader can paste it into a shell and watch it run.
     """
-    if node.count("::") != 1:
-        return [f"`{node}` is not a `path::function` node id"]
-    relative, function = node.split("::")
+    if not 1 <= node.count("::") <= 2:
+        return [f"`{node}` is not a `path::function` or "
+                f"`path::Class::function` node id"]
+    relative, qualified = node.split("::", 1)
+    function = qualified.rsplit("::", 1)[-1]
 
     path = Path(relative)
     if path.is_absolute() or ".." in path.parts:
@@ -297,14 +350,16 @@ def collection_faults(repo_root, root, config_path, node):
         return faults + [f"`{relative}` does not parse: {problem}"]
 
     definitions = dict(_definitions(tree, collection))
-    if function not in definitions:
-        return faults + [f"`{relative}` defines no test named `{function}`"]
+    if qualified not in definitions:
+        return faults + [f"`{relative}` defines no test named `{qualified}`"]
     if not _matches_any(function, collection.python_functions):
         faults.append(f"`{function}` does not match the suite's "
                       f"python_functions "
                       f"({' '.join(collection.python_functions)})")
 
-    marks = _skipping_marks(definitions[function]) | _module_level_skips(tree)
+    marks = _module_level_skips(tree)
+    for definition in definitions[qualified]:
+        marks |= _skipping_marks(definition)
     if marks:
         faults.append(f"`{function}` is marked {', '.join(sorted(marks))} — a "
                       f"gate that does not run is not installed")

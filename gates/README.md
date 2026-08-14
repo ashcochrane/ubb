@@ -76,10 +76,12 @@ every gate is accounted for. Locations may vary; accountability may not.
 construction rather than by a second check somebody has to remember to write.
 
 **A gate whose subject does not exist is recorded against its owner, never
-installed as a test that passes on nothing.** Three rows say so today: the four
-`kind` discriminator pins have no column to pin (slice 5), no field is declared
-into a transition class yet (slice 3), and ADR-0007 §1 states the data-carrying
-migration rule does not bind before the cutover squash (slice 8).
+installed as a test that passes on nothing.** Two rows say so today: the four
+`kind` discriminator pins have no column to pin (slice 5), and ADR-0007 §1
+states the data-carrying migration rule does not bind before the cutover squash
+(slice 8). A third said so until slice 3 gave G19 the subject it was waiting
+for — the first columns declared into a class the database defends, with a
+trigger holding them (#318) — and #319 flipped that row to `installed`.
 
 ### Flipping a row
 
@@ -472,6 +474,22 @@ concepts, so no label key can ever exist to move them to. A ledger entry for
 either would be a debt nobody could pay. They are still *seen*: the gate asserts
 each excused site is one the scanner actually reports, so an exception cannot
 suppress something that is not there.
+
+**#319 then installed G19 — the first gate installed by a slice other than 0,
+and it seeds NOTHING.** It is the third of that shape after G10 and G13, and for
+the strongest of the three reasons: the gate is a walk over the *declarations*
+themselves, so a column whose promise the database does not keep is not a debt to
+be recorded but a build that does not pass. There is nothing to owe, and no
+seeding authorisation was added.
+
+It is also the first row to name a test **inside a class**, which is where the
+cost landed. Every database-backed test here is a `django.test.TestCase`
+subclass named `<Thing>Test`, and pytest collects those because they are
+unittest subclasses, not because `python_classes` matches — it does not. So the
+node spelling grew a class segment (`path::Class::function`, what pytest itself
+takes) and the collection check grew the unittest door, or the row could not
+have named a single one of the tests that hold it. Worth knowing for the next
+slice that installs a gate over the model layer: that is all of them.
 
 **A gate installed in the platform or SDK suite keeps its allowlist there**, in
 the language that suite is written in, and a contract test holds the two to each
