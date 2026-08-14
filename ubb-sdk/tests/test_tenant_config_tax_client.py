@@ -7,7 +7,6 @@ CONFIG_FIXTURE = {
     "name": "TestTenant",
     "billing_mode": "meter_only",
     "products": ["metering"],
-    "require_cost_card_coverage": False,
     "default_currency": "usd",
     "stripe_connected_account_id": "acct_test",
     "is_active": True,

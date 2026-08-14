@@ -140,8 +140,7 @@ class UBBClient:
         ``provider_cost_limit_micros`` is the unit's COGS limit (what the job
         burns); omitted, the tenant default applies (the subtask default for
         a subtask) — absent both, the unit is uncapped and no stop signal
-        ever fires. A resolved limit requires cost-card coverage on the
-        tenant (refused ``cost_coverage_required`` otherwise).
+        ever fires.
         """
         if self.billing:
             check = self.billing.pre_check(
@@ -409,7 +408,6 @@ class UBBClient:
 
     def update_tenant_config(self, *, billing_mode: str | None = None,
                               products: list[str] | None = None,
-                              require_cost_card_coverage: bool | None = None,
                               automatic_tax_enabled: bool | None = None,
                               default_currency: str | None = None) -> dict:
         """Update the tenant's own configuration.
@@ -433,8 +431,6 @@ class UBBClient:
             body["billing_mode"] = billing_mode
         if products is not None:
             body["products"] = products
-        if require_cost_card_coverage is not None:
-            body["require_cost_card_coverage"] = require_cost_card_coverage
         if automatic_tax_enabled is not None:
             body["automatic_tax_enabled"] = automatic_tax_enabled
         if default_currency is not None:
