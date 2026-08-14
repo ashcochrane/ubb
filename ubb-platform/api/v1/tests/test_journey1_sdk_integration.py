@@ -100,7 +100,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
                                   measurements={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2
-        assert res.uncosted_metrics == []   # input_tokens HAS a cost card
+        assert res.uncosted_measurement_keys == []   # input_tokens HAS a cost card
 
         # (c) analytics returns per-customer + per-product PROVIDER cost (COGS) via the SDK.
         rep = client.usage_analytics(customer_id=str(customer.id), dimensions=["dim1"])

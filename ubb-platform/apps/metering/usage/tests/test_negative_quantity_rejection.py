@@ -8,9 +8,13 @@ measurement vocabulary and this validator moved with it *unchanged*, which is a
 claim with two sides: what it refuses, and what it still lets through. The first
 class below is the refusal. The second is the other side — the three things a
 caller may still send that a reader of the rename might reasonably assume it
-started refusing, and does not. Slice 3 owns every behaviour a declaration
-selects; until then an unmatched quantity is accepted here and contributes
-nothing downstream, and that is a decision rather than an omission.
+started refusing, and does not.
+
+Slice 3 arrived for one of those three (#320). An unmatched quantity is still
+ACCEPTED — that is the half this class is about and it has not moved — and it
+has stopped contributing a silent zero: the posting now says its cost is
+unresolved and names the missing rate. Refusing a *rate* that names a quantity
+nobody declared is #326's, and refusing the quantity itself is nobody's.
 """
 import json
 
@@ -59,7 +63,14 @@ class TestNegativeMetricSchemaRejection:
         assert resp.status_code == 422
 
     def test_negative_quantity_strict_mode_returns_422(self):
-        """Strict mode does not change the rejection — negative is always invalid."""
+        """Strict mode does not change the rejection — negative is always invalid.
+
+        ⚠ THE FLAG BELOW NO LONGER REACHES COSTING (#320), so this case has
+        become a duplicate of its sibling rather than a second mode of the same
+        rule. It is left standing because the column, this fixture and the name
+        of this test go together, and they go in #321 — a rename here would be
+        churn on a test that ticket deletes.
+        """
         tenant = Tenant.objects.create(
             name="Strict", products=["metering"], require_cost_card_coverage=True)
         _, raw_key = TenantApiKey.create_key(tenant, label="test")
@@ -110,20 +121,28 @@ class TestTheRenameTightenedNothing:
 
     The field is now named for the declarations its keys are keys into, and the
     obvious inference from that name is that an undeclared key stops being
-    allowed. It does not. Naming the field made the mismatch DESCRIBABLE; slice 3
-    is what makes it visible, and every case below is the interim behaviour it
-    will change.
+    allowed. It does not — not before slice 3 and not after it. Naming the field
+    made the mismatch DESCRIBABLE and #320 made it VISIBLE: the first case below
+    now records an unresolved cost where it used to record a zero, and what none
+    of the three has become is refused.
 
     These are the boundary, not the design: each one is here because a reader of
     the rename could reasonably believe it had already moved.
     """
 
     def test_a_key_no_declaration_matches_is_still_accepted(self):
-        """The silent-and-free case, unchanged and now under a truer name.
+        """Still accepted — and it has STOPPED BEING FREE (#320).
 
-        No declaration exists for this key and none is consulted; the request
-        is accepted and the quantity contributes nothing to either amount.
-        `test_record_usage_pricing.py` carries the money side of the same fact.
+        This test was written as the interim case: the quantity was accepted
+        and contributed a silent zero to the supplier cost. The acceptance is
+        the half that survives and is what this class is about; the zero is the
+        half slice 3 came for. A quantity nothing costed now leaves the posting
+        saying so — no amount, and a reason naming the missing rate — which is
+        the *only* change here. The request is not refused, and #326 is where
+        refusing a rate that names an undeclared quantity lands.
+
+        Rewritten rather than relaxed: dropping the amount assertion would have
+        left the class asserting a 200 that was never in doubt.
         """
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
@@ -131,7 +150,10 @@ class TestTheRenameTightenedNothing:
             "measurements": {"nothing_declares_this": 5000},
         })
         assert resp.status_code == 200
-        assert resp.json()["provider_cost_micros"] == 0
+        body = resp.json()
+        assert body["provider_cost_micros"] is None
+        assert body["costing_status"] == "unresolved"
+        assert body["uncosted_measurement_keys"] == ["nothing_declares_this"]
 
     def test_a_key_of_any_shape_is_still_accepted(self):
         """No key pattern arrived with the name.

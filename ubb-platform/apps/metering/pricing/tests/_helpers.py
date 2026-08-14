@@ -31,3 +31,16 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="
                                subtask_type=subtask_type,
                                customer=customer, rate_card=book,
                                book_version_from=book.version, **fields)
+
+
+def cost_rate_in_default_book(tenant, **fields):
+    """A COST Rate, without the caller having to name the discriminator.
+
+    The word that separates a cost rate from a price rate is retired and slice 4
+    owns re-spelling it (`pricing/models.py:50`), so the migration ledger caps
+    how many files may still contain it. That cap is a ceiling on SPREAD, not
+    only on what is left to fix — a new test module that names it puts the count
+    over its entry and the sweep fails. This file is already one of the counted
+    ones, so the word stays here and callers say what they mean.
+    """
+    return rate_in_default_book(tenant, card_type="cost", **fields)

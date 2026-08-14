@@ -11,7 +11,8 @@ end to end -- with NO raw SQL and NO client-side joins -- using only the SDK:
     have every breakdown reconcile to the SAME grand-total provider cost,
   - read a per-day time-series that reconciles to the dimensional breakdown,
   - walk a rate-card's version history and query it point-in-time via ``as_of``,
-  - and prove the opt-in strict mode rejects an uncosted quantity (no silent $0).
+  - and prove a quantity UBB cannot cost is RECORDED and reported as unresolved
+    rather than refused, and still never a silent $0 (#320).
 
 Why live-server (not mocked httpx): mocked unit tests let real wire-level
 mismatches ship undetected (a 404 on a renamed route, a response body the SDK
@@ -94,7 +95,6 @@ def _force_day(event_id, day):
 @pytest.mark.django_db(transaction=True)
 def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox_dispatch):
     from ubb.metering import MeteringClient
-    from ubb.exceptions import UBBAPIError
 
     tenant = Tenant.objects.create(name="J1cap", products=["metering"])
     _, raw_key = TenantApiKey.create_key(tenant)
@@ -170,7 +170,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 dimensions={"product": product, "service": service, "agent": agent})
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
-            assert res.uncosted_metrics == []   # tokens HAS a matching card
+            assert res.uncosted_measurement_keys == []   # tokens HAS a matching card
             # The grouping values come back keyed by the tenant's OWN declared
             # keys (#277) — the three this journey declared, under the words it
             # chose, rather than under two of UBB's slot numbers. That is the
@@ -299,15 +299,23 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         now_active = _alpha_rows()
         assert len(now_active) == 1 and now_active[0]["rate_per_unit_micros"] == 99
 
-        # ---- 7. opt-in strict mode: an uncosted quantity is REJECTED (no silent $0) ----
-        tenant.require_cost_card_coverage = True
-        tenant.save()
-        with pytest.raises(UBBAPIError) as exc:
-            client.record_usage(
-                customer_id=str(c1.id), request_id="r_strict",
-                idempotency_key="i_strict", measurements={"unmatched_metric": 5},
-                dimensions={"service": "alpha"})
-        assert exc.value.status_code == 422
+        # ---- 7. an uncosted quantity is RECORDED and reported, not refused ----
+        #
+        # This step used to assert a 422 under an opt-in tenant flag. The
+        # supplier had already run that call and already charged for it, so the
+        # refusal threw away the record of a real spend — and the flag meant a
+        # tenant could only choose between losing the event and being told the
+        # call was free. #320 replaced both with one answer, over the SDK and
+        # over the wire: the event lands, and the response says what UBB does
+        # not know and which declaration would settle it. Still no silent $0 —
+        # the amount is absent, which is the whole point of the column.
+        recorded = client.record_usage(
+            customer_id=str(c1.id), request_id="r_uncosted",
+            idempotency_key="i_uncosted", measurements={"unmatched_metric": 5},
+            dimensions={"service": "alpha"})
+        assert recorded.costing_status == "unresolved"
+        assert recorded.provider_cost_micros is None
+        assert recorded.uncosted_measurement_keys == ["unmatched_metric"]
     finally:
         client.close()
         api.close()

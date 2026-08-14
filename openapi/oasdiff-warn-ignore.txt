@@ -285,3 +285,27 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request pro
 # slice 4 rebuilds those three schemas. The residue is pinned in
 # `api/v1/tests/test_grouping_values_on_the_contract.py`, which fails if it ever
 # overstates what the contract actually publishes.
+#
+# #320 — THE UNCOSTED-QUANTITY LIST TAKES THE CANONICAL WORD FOR A DECLARED
+# QUANTITY, AND REPLACES THE OLD KEY RATHER THAN SITTING BESIDE IT.
+#
+# oasdiff reports a removal because the key is renamed; the shape is unchanged —
+# the same array of the same strings, under the word the rest of the system uses
+# for the things they name. The list is NOT redundant with `costing_status` and
+# is not dropped: the status says THAT a cost is unresolved, the list says WHICH
+# declaration to fix, and a tenant needs both.
+#
+# WHY IT IS TAKEN NOW RATHER THAN LATER. This response is already breaking in
+# this commit, and ADR-0007 §3 refuses a provisional public shape shipped beside
+# the final one. Nothing was forcing the rename otherwise: no migration-ledger
+# entry owns the old spelling, which survives the forbidden-term sweep only
+# because plurals are invisible to token matching. Keeping it would have bought
+# a second break later for the same rename.
+#
+# THE RETIRED WIRE ERROR CODE IS NOT IN EITHER FILE, AND THAT IS NOT AN
+# OMISSION. `pricing_error` is deleted from `openapi/error-codes.json` in this
+# commit — the refusal it named cannot happen any more — and no error code
+# appears in `v1.json` at all, so there is nothing for oasdiff to compare. What
+# proves that retirement is the SDK's generated exception hierarchy regenerating
+# without the class, which is #155 §4's condition 4 and is in this commit too.
+POST /api/v1/metering/usage removed the optional property `uncosted_metrics` from the response with the `200` status

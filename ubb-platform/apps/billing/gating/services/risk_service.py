@@ -207,6 +207,18 @@ class RiskService:
                 # subtask limits the same as task limits. A start-gate refusal
                 # is legitimate: it refuses work that hasn't happened, never a
                 # usage report.
+                #
+                # ⚠ THE FLAG NO LONGER BUYS WHAT THIS GATE ASKS FOR (#320). The
+                # compute path stopped reading it: an event whose quantities
+                # matched no Cost Rate is now recorded with its cost UNRESOLVED
+                # whatever this flag says, and the unit total accumulates only
+                # the known part. So the defect above changed shape rather than
+                # going away — a COGS limit no longer counts an uncovered event
+                # as zero, it does not count it at all, and the total it races
+                # is a floor. This gate now refuses a start on a promise nothing
+                # keeps. It is left standing here on purpose: the flag, this
+                # read and the `cost_coverage_required` verdict are #321's to
+                # delete together, and #328 makes the floor say so.
                 if (provider_cost_limit_micros is not None
                         and not customer.tenant.require_cost_card_coverage):
                     return {"allowed": False, "reason": "cost_coverage_required",

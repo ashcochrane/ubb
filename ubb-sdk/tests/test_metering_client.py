@@ -351,7 +351,7 @@ class MeteringClientTest(unittest.TestCase):
             "provider_cost_micros": 2000, "billed_cost_micros": 2000,
             "measurements": {"input_tokens": 1000},
             "pricing_provenance": {"engine_version": "x"},
-            "uncosted_metrics": ["foo"],
+            "uncosted_measurement_keys": ["foo"],
         })
         res = self.client.record_usage(
             customer_id="c", request_id="r", idempotency_key="i",
@@ -359,7 +359,7 @@ class MeteringClientTest(unittest.TestCase):
         )
         self.assertIsInstance(res, RecordUsageResponse)
         self.assertEqual(res.provider_cost_micros, 2000)
-        self.assertEqual(res.uncosted_metrics, ["foo"])
+        self.assertEqual(res.uncosted_measurement_keys, ["foo"])
 
     # ---- record_usage with task_id (one-rule task attribution) ----
 

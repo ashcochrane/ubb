@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasProduct } from "@/hooks/use-tenant-config";
 import { formatDate } from "@/lib/format";
+import { ABSENT_LABEL } from "@/lib/localisation";
 
 import { useUsageEvent } from "../api/queries";
 import { asStopContextEntries, type UsageEventDetail } from "../api/types";
@@ -146,7 +147,18 @@ export function EventDetailPage({
 
   const detail = event.data;
   const stopEntries = asStopContextEntries(detail.stop_context);
-  const margin = detail.billed_cost_micros - detail.provider_cost_micros;
+  // A SUPPLIER COST UBB HAS NOT LEARNED IS ABSENT, NOT ZERO (#320). Both rows
+  // below fall back to the console's absent marker rather than to a number:
+  // rendering `£0.00` would state that the call was free, and a margin computed
+  // against that zero would read as the whole billed amount — the flattering
+  // direction, on the one screen a tenant opens to check a single event.
+  //
+  // NOT THE FULL TREATMENT, DELIBERATELY: naming the status beside the amount
+  // and rendering a partial total as "at least" is #330's, which owns the
+  // rendering rule for the whole console.
+  const providerCost = detail.provider_cost_micros ?? null;
+  const margin =
+    providerCost === null ? null : detail.billed_cost_micros - providerCost;
   const hasMetadata = Object.keys(detail.metadata).length > 0;
   const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
   const backfilled =
@@ -187,11 +199,17 @@ export function EventDetailPage({
     },
     {
       label: "Provider cost",
-      value: formatEventMicros(detail.provider_cost_micros, detail.currency),
+      value:
+        providerCost === null
+          ? ABSENT_LABEL
+          : formatEventMicros(providerCost, detail.currency),
     },
     {
       label: "Margin on this event",
-      value: formatSignedEventMicros(margin, detail.currency),
+      value:
+        margin === null
+          ? ABSENT_LABEL
+          : formatSignedEventMicros(margin, detail.currency),
     },
     { label: "Currency", value: detail.currency.toUpperCase() },
   ];

@@ -59,22 +59,26 @@ res = client.record_usage(
     measurements={"input_tokens": 1000},
 )
 
-print(res.provider_cost_micros)   # computed COGS in micros (e.g. 2000 = $0.002)
-print(res.uncosted_metrics)       # measurement keys with no matching cost card
+print(res.provider_cost_micros)          # COGS in micros, or None if UBB does not know it
+print(res.costing_status)                # known | unresolved | not_applicable
+print(res.uncosted_measurement_keys)     # measurement keys with no matching cost card
 ```
 
-> **⚠️ Uncosted measurements:** if `record_usage(...)` returns a non-empty `uncosted_metrics`,
-> those measurements had **no matching cost rate-card and priced to $0** — your COGS is
-> understated for them. Either add a cost card for the measurement key, or enable
-> `require_cost_card_coverage` on the tenant to **hard-reject (422)** instead of silently
-> pricing $0.
-> An event that measures nothing at all is a marker event and is accepted in either mode — there
-> is nothing to resolve a rate card against, and nothing was claimed to have been consumed. Pass
+> **⚠️ A cost UBB cannot work out is `None`, never `0`.** If `record_usage(...)` answers
+> `costing_status == "unresolved"`, the event **was recorded** — your supplier already ran that
+> call and already charged for it, so UBB never throws the record away — and
+> `provider_cost_micros` is `None` rather than a number you could mistake for "free".
+> `uncosted_measurement_keys` names the measurements that need a cost rate declared; add one and
+> the cost resolves. `costing_status == "not_applicable"` is different again: that Event Type
+> declares no cost at all, which is a design decision and not something to fix.
+> An event that measures nothing at all is a marker event and is accepted — there is nothing to
+> resolve a rate card against, and nothing was claimed to have been consumed. Pass
 > `provider_cost_micros` directly whenever the cost is known but the measurements are not.
 
-`res.uncosted_metrics` is your signal that a measurement was recorded but has no cost card — add a
-card for any measurement key you want tracked. The response field itself keeps its published
-spelling; the field, not this prose, is the thing a caller reads.
+`res.uncosted_measurement_keys` is your signal that a measurement was recorded with no cost card —
+add a card for any measurement key you want costed. **This is not a refusal:** earlier versions
+could reject such a call with `422 pricing_error` under a tenant setting, and both the setting and
+that error code are gone.
 
 ### 2b. Caller timestamps (backfill) and batch ingestion
 
@@ -399,8 +403,9 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
 | Field | Meaning |
 |---|---|
 | `event_id` | Unique ID for this event |
-| `provider_cost_micros` | COGS computed from rate cards |
-| `uncosted_metrics` | Measurements with no matching cost card |
+| `provider_cost_micros` | COGS computed from rate cards — `None` when UBB does not know it |
+| `costing_status` | Whether that COGS is settled: `known` / `unresolved` / `not_applicable` |
+| `uncosted_measurement_keys` | Measurements with no matching cost card |
 | `billed_cost_micros` | Amount charged to the customer wallet |
 | `new_balance_micros` | Customer wallet balance after this event |
 | `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response) |

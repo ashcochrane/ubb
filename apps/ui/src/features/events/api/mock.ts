@@ -41,6 +41,24 @@ import {
 const KNOWN_CUSTOMERS = new Set([CUSTOMER_A_ID, CUSTOMER_B_ID, CUSTOMER_C_ID]);
 const MOCK_PAGE_SIZE = 25;
 
+/**
+ * Add the KNOWN part of a supplier cost to a running total (#320).
+ *
+ * An unresolved cost is ABSENT, not zero, so it contributes nothing — which is
+ * what SQL's own aggregates do to a NULL, and what the real read contract does
+ * behind these mocks. It is written as a skip rather than as `?? 0` because the
+ * two differ exactly where it matters: a coalesce produces a number that cannot
+ * be told apart from a complete one.
+ *
+ * The totals below are therefore floors, and none of them yet says how many
+ * rows it left out. Answering with the PAIR — the resolved sum and its
+ * completeness — is #327's for the read contract and #328's for its readers,
+ * and no fixture in this mock is unresolved today, so nothing here is short.
+ */
+function addKnownCost(total: number, micros: number | null | undefined): number {
+  return micros == null ? total : total + micros;
+}
+
 function notFound(detail: string): ApiProblem {
   return new ApiProblem({
     status: 404,
@@ -154,7 +172,8 @@ function groupBy(
     const totals = groups.get(key) ?? { event_count: 0, billed: 0, provider: 0 };
     totals.event_count += 1;
     totals.billed += event.detail.billed_cost_micros;
-    totals.provider += event.detail.provider_cost_micros;
+    totals.provider = addKnownCost(
+      totals.provider, event.detail.provider_cost_micros);
     groups.set(key, totals);
   }
   return groups;
@@ -194,7 +213,7 @@ export async function getUsageAnalytics(
   let provider = 0;
   for (const event of events) {
     billed += event.detail.billed_cost_micros;
-    provider += event.detail.provider_cost_micros;
+    provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
   return {
     total_events: events.length,
@@ -248,7 +267,8 @@ export async function getUsageTimeseries(
       : day;
     const bucket = buckets.get(key) ?? { billed: 0, provider: 0, count: 0 };
     bucket.billed += event.detail.billed_cost_micros;
-    bucket.provider += event.detail.provider_cost_micros;
+    bucket.provider = addKnownCost(
+      bucket.provider, event.detail.provider_cost_micros);
     bucket.count += 1;
     buckets.set(key, bucket);
   }
@@ -344,7 +364,7 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
   let provider = 0;
   for (const event of taskEvents) {
     billed += event.detail.billed_cost_micros;
-    provider += event.detail.provider_cost_micros;
+    provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
   const result: CloseTaskResult = {
     task_id: taskId,

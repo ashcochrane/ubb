@@ -26,8 +26,9 @@ class TestWildcardResolution:
         t, c = self._tc()
         rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
-        prov, _, p = self._price(t, c, provider="anthropic")
-        assert prov == 2_000 and p["cost_source"] == "rate_card"
+        costing = self._price(t, c, provider="anthropic")
+        assert costing.provider_cost_micros == 2_000
+        assert costing.pricing_receipt["cost_source"] == "rate_card"
 
     def test_specific_rate_beats_the_wildcard(self):
         t, c = self._tc()
@@ -63,16 +64,21 @@ class TestWildcardResolution:
         rate_in_default_book(t, card_type="cost", provider="openai",
                              grouping_field_1="eu-west-1", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
-        prov, _, p = self._price(t, c, provider="openai", grouping_field_1="us-east-1")
-        assert prov == 0 and p["uncosted_metrics"] == ["input_tokens"]
+        costing = self._price(t, c, provider="openai", grouping_field_1="us-east-1")
+        # The rate is excluded, so nothing costed this quantity — which since
+        # #320 is an absent amount and a named reason, never a zero.
+        assert costing.provider_cost_micros is None
+        assert (costing.pricing_receipt["uncosted_measurement_keys"]
+                == ["input_tokens"])
 
     def test_task_type_can_price_a_kind_of_job(self):
         t, c = self._tc()
         rate_in_default_book(t, card_type="price", task_type="year_end_close",
                              measurement_key="input_tokens",
                              rate_per_unit_micros=7_000, unit_quantity=1_000_000)
-        _, billed, p = self._price(t, c, task_type="year_end_close")
-        assert billed == 7_000 and p["price_source"] == "rate_card"
+        costing = self._price(t, c, task_type="year_end_close")
+        assert costing.billed_cost_micros == 7_000
+        assert costing.pricing_receipt["price_source"] == "rate_card"
 
     def test_provider_book_present_but_no_matching_rate_falls_back_to_wildcard_book(self):
         """Pins the `_resolve_card` third cascade tier specifically: a
@@ -94,8 +100,9 @@ class TestWildcardResolution:
         base = {"provider": "openai", "event_type": "", "task_type": "",
                 "subtask_type": "", "dim1": "", "dim2": "", "dim3": "",
                 "dim4": "", "dim5": "", "dim6": ""}
-        prov, _, p = PricingService.price(
+        costing = PricingService.price(
             tenant=t, customer=c, selectors=base,
             measurements={"metric_y": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
-        assert prov == 3_000 and p["cost_source"] == "rate_card"
+        assert costing.provider_cost_micros == 3_000
+        assert costing.pricing_receipt["cost_source"] == "rate_card"

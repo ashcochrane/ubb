@@ -242,7 +242,17 @@ class RecordUsageResponse(Schema):
     # The quantities as recorded — see `RecordUsageRequest.measurements` (#274).
     measurements: Optional[dict] = None
     pricing_provenance: Optional[dict] = None
-    uncosted_metrics: list[str] = []
+    # WHICH declared quantities went uncosted — the status above says THAT the
+    # cost is unresolved, and this says which declaration to fix. Both, because
+    # neither answers the other's question (#320).
+    #
+    # It took the canonical word for a declared quantity here rather than in a
+    # later break: the response was already breaking in this commit, no ledger
+    # entry owned the old spelling (it survived the forbidden-term sweep only
+    # because plurals are invisible to token matching), and keeping the old key
+    # beside the new status would have been two encodings of "we could not cost
+    # this" — which ADR-0007 §3 refuses in a response that is already breaking.
+    uncosted_measurement_keys: list[str] = []
     # The posting's grouping values, keyed by the tenant's own declared key
     # (#277) — see `UsageEventDetailOut.grouping_fields`, which is the same
     # object. Inherited values are included: task- and subtask-scoped values are
@@ -349,20 +359,23 @@ class UsageEventDetailOut(Schema):
     # gives a generated client a real type instead of `any`.
     grouping_fields: dict[str, str] = {}
     currency: str = "usd"
-    provider_cost_micros: int
+    # `None` means UBB does not know what the supplier charged — never that the
+    # call was free. Zero is a resolved amount and reads as zero.
+    #
+    # ⚠ WIDENED BY #320 RATHER THAN BY #323, WHICH OWNS THE REST OF THIS.
+    # #317 recorded the gap here and left it: the amount was required and
+    # non-nullable while `costing_status` could already say `unresolved`, which
+    # is a response this schema could not serialise. That was safe only while
+    # nothing wrote `unresolved`, and the compute spine in this commit is what
+    # starts writing it — so the half that would 500 is paid in the commit that
+    # makes it reachable, exactly as #317 paid its own contract half early when
+    # the consumer census forced one. **#323 still owns the claimed supplier
+    # cost, the unresolved reason's metadata and the known-value document**;
+    # none of that is anticipated here, and the other two responses carrying
+    # this amount already admitted the absent case before this ticket.
+    provider_cost_micros: Optional[int] = None
     # Whether the number above is settled. Typed required, like the status
     # below it and for the same reason: every posting has an answer.
-    #
-    # ⚠ THE AMOUNT ABOVE IS STILL REQUIRED AND NON-NULLABLE, WHICH THIS FIELD
-    # OUTRUNS. `unresolved` means the column is NULL, so the two together
-    # describe a response this schema cannot yet serialise. It is unreachable
-    # today — nothing writes `unresolved` until the settlement door and the
-    # compute spine land — and #323 owns making every response carrying a
-    # supplier cost admit its absent case. Recorded here rather than fixed
-    # here: widening the amount is that ticket's reviewed contract break, and
-    # the gap is a consequence of the status being published early (the census
-    # forces the marker into the commit that made the backend serve it), not
-    # something this schema chose.
     costing_status: CostingStatus
     billed_cost_micros: int
     # The quantities this posting was measured by, keyed by declared code

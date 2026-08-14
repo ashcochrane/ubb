@@ -76,12 +76,23 @@ Family parents: `BadRequestError` (400), `ForbiddenError` (403),
 Per-code leaves include `InsufficientBalanceError`, `WouldOverdrawError`,
 `CurrencyLockedError`, `LastActiveKeyError`, `LastActiveAdminError` (under
 `ConflictError`); `BillingPeriodClosedError`, `InvalidConfigError`,
-`InvalidRevenueModeError`, `NoCostCardsError`, `PricingError`,
+`InvalidRevenueModeError`, `NoCostCardsError`,
 `UnsupportedCurrencyError`, `ValidationError`, the three `EffectiveAt*Error`
 (under `UnprocessableEntityError`); `FeatureNotEnabledError` (under
 `ForbiddenError`); `InvalidCursorError` (under `BadRequestError`);
 `RateLimitExceededError` (under `RateLimitError`). The full registry is
 `openapi/error-codes.json`.
+
+**`PricingError` is gone, and it is not an alias.** It was raised when UBB could
+not work out what a call had cost your supplier, and the refusal it named cannot
+happen any more: the event is recorded, and the recording response says its cost
+is unresolved and which declared quantities went uncosted. An `except
+PricingError:` block therefore has nothing to catch — and because the class is
+generated from the registry, the name does not exist to import either, so a
+stale block fails at import with an `ImportError` rather than sitting there
+never firing. **What to do instead: read `costing_status` on the 200.** It says
+`known`, `unresolved` or `not_applicable`, and `uncosted_measurement_keys`
+names the quantities that need a cost rate declared.
 
 ### Status-code moves you may be catching by number
 

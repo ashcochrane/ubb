@@ -39,7 +39,6 @@ class UsageEventDetailOut:
             id (UUID):
             idempotency_key (str):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
-            provider_cost_micros (int):
             request_id (str):
             currency (str | Unset):  Default: 'usd'.
             event_type (str | Unset):  Default: ''.
@@ -48,6 +47,7 @@ class UsageEventDetailOut:
             metadata (UsageEventDetailOutMetadata | Unset):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset):
             provider (str | Unset):  Default: ''.
+            provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
             task_id (None | str | Unset):
      """
@@ -59,7 +59,6 @@ class UsageEventDetailOut:
     id: UUID
     idempotency_key: str
     measurements_status: UsageEventDetailOutMeasurementsStatus
-    provider_cost_micros: int
     request_id: str
     currency: str | Unset = 'usd'
     event_type: str | Unset = ''
@@ -68,6 +67,7 @@ class UsageEventDetailOut:
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
     provider: str | Unset = ''
+    provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
     task_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -95,8 +95,6 @@ class UsageEventDetailOut:
 
         measurements_status = self.measurements_status.value
 
-        provider_cost_micros = self.provider_cost_micros
-
         request_id = self.request_id
 
         currency = self.currency
@@ -120,6 +118,12 @@ class UsageEventDetailOut:
             pricing_provenance = self.pricing_provenance.to_dict()
 
         provider = self.provider
+
+        provider_cost_micros: int | None | Unset
+        if isinstance(self.provider_cost_micros, Unset):
+            provider_cost_micros = UNSET
+        else:
+            provider_cost_micros = self.provider_cost_micros
 
         stop_context: list[Any] | None | Unset
         if isinstance(self.stop_context, Unset):
@@ -148,7 +152,6 @@ class UsageEventDetailOut:
             "id": id,
             "idempotency_key": idempotency_key,
             "measurements_status": measurements_status,
-            "provider_cost_micros": provider_cost_micros,
             "request_id": request_id,
         })
         if currency is not UNSET:
@@ -165,6 +168,8 @@ class UsageEventDetailOut:
             field_dict["pricing_provenance"] = pricing_provenance
         if provider is not UNSET:
             field_dict["provider"] = provider
+        if provider_cost_micros is not UNSET:
+            field_dict["provider_cost_micros"] = provider_cost_micros
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
         if task_id is not UNSET:
@@ -203,8 +208,6 @@ class UsageEventDetailOut:
 
 
 
-
-        provider_cost_micros = d.pop("provider_cost_micros")
 
         request_id = d.pop("request_id")
 
@@ -254,6 +257,16 @@ class UsageEventDetailOut:
 
         provider = d.pop("provider", UNSET)
 
+        def _parse_provider_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        provider_cost_micros = _parse_provider_cost_micros(d.pop("provider_cost_micros", UNSET))
+
+
         def _parse_stop_context(data: object) -> list[Any] | None | Unset:
             if data is None:
                 return data
@@ -290,7 +303,6 @@ class UsageEventDetailOut:
             id=id,
             idempotency_key=idempotency_key,
             measurements_status=measurements_status,
-            provider_cost_micros=provider_cost_micros,
             request_id=request_id,
             currency=currency,
             event_type=event_type,
@@ -299,6 +311,7 @@ class UsageEventDetailOut:
             metadata=metadata,
             pricing_provenance=pricing_provenance,
             provider=provider,
+            provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,
             task_id=task_id,
         )

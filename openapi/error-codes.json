@@ -84,10 +84,6 @@
       "status": 404,
       "title": "Not found"
     },
-    "pricing_error": {
-      "status": 422,
-      "title": "Pricing error"
-    },
     "rate_limit_exceeded": {
       "status": 429,
       "title": "Rate limit exceeded"
@@ -124,7 +120,6 @@
       "effective_at_naive",
       "effective_at_too_old",
       "not_found",
-      "pricing_error",
       "validation_error"
     ],
     "pre_check_reasons": [
