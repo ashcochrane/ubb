@@ -150,12 +150,12 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
 
         SETTLED THROUGH THE RATE RATHER THAN THROUGH A CALLER-SUPPLIED FIGURE,
         AND #324 IS WHY. Sending the supplier cost on the request is the
-        shorter route to `known` and was how this read first — but #324 makes
+        shorter route to `known` and was how this read first — but #324 made
         that a **422** wherever the Event Type does not declare the reported
         method and the caller-supplied source kind, which no fixture here does.
         The test would have gone red inside somebody else's ticket, for a
         reason having nothing to do with what it asserts. Costing the quantity
-        exercises the calculated path instead, which #324 does not touch.
+        exercises the calculated path instead, which #324 left alone.
         """
         # The rate's shape is left to the model's own defaults rather than
         # spelled out. That reads as brevity and is not: the word for it is
@@ -210,9 +210,14 @@ class TheClaimedFigureIsPublishedApartFromCOGSTest(_WireCase):
 
         The column is declared FROZEN and #318's trigger enforces it, so a
         claim can only ever be set as the row is created — which is what #324
-        will do from the request. Until that lands nothing on the wire can
-        produce one, and a test that recorded through the endpoint would prove
-        only that both fields are null.
+        made the recording request do. This fixture predates that and is kept:
+        it puts a claim on a posting whose supplier cost is ALSO known, which
+        the request cannot produce in one call (a caller who may state the
+        supplier's figure is not the caller who needs to guess at it), and
+        that pair is what the second case below is about.
+
+        Recording a claim THROUGH the route is asserted next door, in
+        `test_two_request_fields_each_with_one_meaning.py`.
         """
         fields = {"provider_cost_micros": None, "billed_cost_micros": 0,
                   "costing_status": COSTING_STATUS_UNRESOLVED,
@@ -226,10 +231,11 @@ class TheClaimedFigureIsPublishedApartFromCOGSTest(_WireCase):
     def test_the_claim_is_published_on_every_response_carrying_the_cost(self):
         """Both figures on one body, each under its own name.
 
-        The ack is checked through the recording call rather than this fixture,
-        because nothing can attach a claim to a recording request yet: what it
-        proves there is that the FIELD is published, which is what a client
-        generated against this contract needs before #324 gives it a value.
+        The ack is checked through a recording call that states NO claim, and
+        that is the assertion: the field is published and answers `null` when
+        the caller said nothing, rather than defaulting to a figure nobody
+        supplied. What a call that DOES state one gets back is #324's, next
+        door.
         """
         posting = self._posting_with_a_claim()
 

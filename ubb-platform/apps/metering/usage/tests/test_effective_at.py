@@ -16,6 +16,8 @@ from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService, validate_effective_at,
 )
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from core.time_windows import month_bounds
@@ -35,6 +37,10 @@ def _prior_month_eff():
     cur_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return cur_start - timedelta(days=2)
 
+
+
+#: The Event Type the endpoint fixtures record against (#324).
+DECLARED = "declared.call"
 
 @pytest.mark.django_db
 class TestEffectiveAtBounds:
@@ -123,9 +129,14 @@ class TestEffectiveAtEndpoint:
                                   **(tenant_kwargs or {}))
         _, raw_key = TenantApiKey.create_key(t, label="test")
         c = Customer.objects.create(tenant=t, external_id="cust1")
+        # Each body below states the supplier's own cost, which needs the
+        # Event Type that declares it arrives on the call (#324) — otherwise
+        # the refusal here would answer before the timestamp is ever read.
+        declares_a_caller_supplied_cost(t, DECLARED)
         resp = Client().post(
             "/api/v1/metering/usage",
-            data=json.dumps({"customer_id": str(c.id), **payload}),
+            data=json.dumps({"customer_id": str(c.id),
+                             "event_type": DECLARED, **payload}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}")
         return resp

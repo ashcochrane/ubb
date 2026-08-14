@@ -63,6 +63,50 @@ class MeteringClientTest(unittest.TestCase):
         self.assertNotIn("measurements", body)
 
     @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_carries_the_callers_own_claimed_cost(self, mock_post):
+        """The caller's belief travels under its OWN key, never the cost (#324).
+
+        The two are different facts and the whole point of the second field is
+        that a client cannot express one as the other. A wrapper that folded
+        the claim into `provider_cost_micros` would be sending a number the
+        route reads as COGS — and, on an Event Type that does not declare it,
+        would turn an accepted call into a 422.
+        """
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_c", "new_balance_micros": 9_000_000,
+            "suspended": False, "costing_status": "unresolved",
+            "unresolved_reason": "reported_cost_missing",
+            "claimed_provider_cost_micros": 987_654,
+        })
+        result = self.client.record_usage(
+            customer_id="cust_1", request_id="rc", idempotency_key="ic",
+            claimed_provider_cost_micros=987_654)
+
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["claimed_provider_cost_micros"], 987_654)
+        self.assertNotIn("provider_cost_micros", body)
+        self.assertEqual(result.claimed_provider_cost_micros, 987_654)
+        self.assertIsNone(result.provider_cost_micros)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_omits_the_claim_when_it_is_not_given(self, mock_post):
+        """Absent is absent: an omitted claim sends no key at all.
+
+        The control for the case above. A default of zero here would record a
+        caller's belief that the call was free on every event that never
+        stated one.
+        """
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_d", "new_balance_micros": 9_000_000,
+            "suspended": False, "costing_status": "known"})
+
+        self.client.record_usage(customer_id="cust_1", request_id="rd",
+                                 idempotency_key="id")
+
+        self.assertNotIn("claimed_provider_cost_micros",
+                         mock_post.call_args.kwargs["json"])
+
+    @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_with_the_open_bag(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,

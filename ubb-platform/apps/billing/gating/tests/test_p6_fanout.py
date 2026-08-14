@@ -22,6 +22,8 @@ from apps.billing.wallets.models import Wallet
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -33,6 +35,10 @@ def _tenant(mode="prepaid", enf="enforcing"):
 def _limit_events(task_id):
     return OutboxEvent.objects.filter(
         event_type="task.limit_exceeded", payload__task_id=str(task_id))
+
+
+#: The Event Type these fixtures record against (#324).
+DECLARED = "declared.call"
 
 
 @pytest.mark.django_db
@@ -50,12 +56,15 @@ class TestTaskLimitFanout:
             tenant=t, customer=c, balance_snapshot_micros=100_000_000,
             provider_cost_limit_micros=10_000_000, billing_owner_id=c.id)
 
+        declares_a_caller_supplied_cost(t, DECLARED)
+
         def record(key, provider):
             return Client().post(
                 "/api/v1/metering/usage",
                 data=json.dumps({"customer_id": str(c.id), "request_id": key,
                                  "idempotency_key": key,
                                  "provider_cost_micros": provider,
+                                 "event_type": DECLARED,
                                  "billed_cost_micros": provider,
                                  "task_id": str(task.id)}),
                 content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {raw}")

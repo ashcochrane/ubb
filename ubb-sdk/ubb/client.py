@@ -188,7 +188,9 @@ class UBBClient:
         )
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
-                     provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
+                     provider_cost_micros: int | None = None,
+                     claimed_provider_cost_micros: int | None = None,
+                     billed_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
                      dimensions: dict | None = None,
@@ -206,9 +208,12 @@ class UBBClient:
         the named scope (``result.stop_scope``). ``raise_on_stop`` raises
         UBBStoppedError instead, for exception-driven loops.
 
-        Pricing: supply ``provider_cost_micros`` (explicit cost) and/or
-        ``measurements`` (named quantities priced server-side by the rate card);
-        both are optional here and the server enforces its pricing rules.
+        Pricing: supply ``provider_cost_micros`` (the SUPPLIER'S own reported
+        cost, admissible only where the Event Type declares that it arrives on
+        the call — 422 otherwise) and/or ``measurements`` (named quantities
+        priced server-side by the rate card); both are optional here and the
+        server enforces its pricing rules. ``claimed_provider_cost_micros`` is
+        your own belief about the cost: accepted anywhere and never COGS.
         ``recorded_at`` backdates the event (tz-aware datetime or ISO-8601
         string, bounded by the tenant's backfill window).
 
@@ -226,6 +231,7 @@ class UBBClient:
             request_id=request_id,
             idempotency_key=idempotency_key,
             provider_cost_micros=provider_cost_micros,
+            claimed_provider_cost_micros=claimed_provider_cost_micros,
             billed_cost_micros=billed_cost_micros,
             provider=provider,
             event_type=event_type,

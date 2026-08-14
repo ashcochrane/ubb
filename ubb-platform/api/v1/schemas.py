@@ -93,6 +93,26 @@ class PreCheckResponse(Schema):
     subtask_type: Optional[str] = None
 
 
+#: What the caller's own cost figure MEANS, published on the wire rather than
+#: kept in a comment here (#323, story 21).
+#:
+#: ONE WORDING, used by the request that carries the figure and the three
+#: responses that publish it back. A generated client's user never reads this
+#: module, and "never COGS" is the entire reason the figure has its own name
+#: instead of sharing `provider_cost_micros` — #151 §9.1 chose the name
+#: "precisely so it cannot be mistaken for canonical COGS", and a name is only
+#: half of saying so. Four paraphrases would be four chances to soften it, so
+#: the constant is shared and the sentence is stated once. It moved above the
+#: request in #324, which is where the figure now enters.
+CLAIMED_PROVIDER_COST_MEANING = (
+    "What the caller believes this call cost. Diagnostic only, recorded as "
+    "stated and never COGS: it is never rated, never summed into a cost "
+    "total, and never becomes the supplier cost beside it. "
+    "`provider_cost_micros` is the supplier's own reported figure and the "
+    "only one UBB treats as cost."
+)
+
+
 class RecordUsageRequest(Schema):
     customer_id: UUID
     request_id: str = Field(min_length=1, max_length=500)
@@ -104,7 +124,29 @@ class RecordUsageRequest(Schema):
     # went with it — it advertised a grouping capability this bag deliberately
     # does not have. Keys are yours: UBB stores and returns them as authored.
     metadata: dict = Field(default_factory=dict)
+    # THE SUPPLIER'S OWN REPORTED COST, and the only figure here UBB treats as
+    # COGS. Admissible only where the Event Type declares that it arrives on
+    # the call — `metering_endpoints.admit_supplier_cost` owns that rule and
+    # refuses everything else with a 422 rather than dropping it (#324).
     provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
+    # WHAT THE CALLER BELIEVES THE CALL COST, on its own field so it can be
+    # accepted anywhere without ever being read as the number above. The
+    # meaning is published rather than kept in this comment: the same sentence
+    # the three responses carry, so no reader meets two wordings of it.
+    #
+    # The bound is the one the supplier cost beside it carries. `amount_micros`
+    # three schemas down shares the LITERAL and not the rule — a wallet
+    # movement of nothing is refused, while a call that genuinely cost nothing
+    # is an ordinary resolved amount — so the two are deliberately not folded
+    # into one constant.
+    claimed_provider_cost_micros: Optional[int] = Field(
+        default=None, ge=0, le=999_999_999_999,
+        description=CLAIMED_PROVIDER_COST_MEANING)
+    # STAYS UNTIL SLICE 4, WITH ITS REPLACEMENT. #146 §8 gives the deletion to
+    # slice 3; the direct-price rules that replace it are slice 4's, and
+    # deleting this first would leave a window in which nothing can supply a
+    # price directly. The ruling is a test rather than this comment —
+    # `test_two_request_fields_each_with_one_meaning.py`, last case.
     billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     # The measured quantities, keyed by the codes declared beneath this event's
     # Event Type (#274). The name is the declarations' own: a quantity is
@@ -228,24 +270,6 @@ UnresolvedReason = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "unresolved_reason"})]
 
 
-#: What the caller's own cost figure MEANS, published on the wire rather than
-#: kept in a comment here (#323, story 21).
-#:
-#: One wording, used by all three responses. A generated client's user never
-#: reads this module, and "never COGS" is the entire reason the figure has its
-#: own name instead of sharing `provider_cost_micros` — #151 §9.1 chose the
-#: name "precisely so it cannot be mistaken for canonical COGS", and a name is
-#: only half of saying so. Three paraphrases would be three chances to soften
-#: it, so the constant is shared and the sentence is stated once.
-CLAIMED_PROVIDER_COST_MEANING = (
-    "What the caller believes this call cost. Diagnostic only, recorded as "
-    "stated and never COGS: it is never rated, never summed into a cost "
-    "total, and never becomes the supplier cost beside it. "
-    "`provider_cost_micros` is the supplier's own reported figure and the "
-    "only one UBB treats as cost."
-)
-
-
 class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
@@ -260,11 +284,10 @@ class RecordUsageResponse(Schema):
     # everywhere the status does, because a status that says a cost is missing
     # without saying what would settle it leaves the reader nothing to do.
     unresolved_reason: Optional[UnresolvedReason] = None
-    # ALWAYS NULL ON THIS RESPONSE UNTIL #324, and published anyway. Nothing
-    # can attach a claim to a recording request yet; the field is here so a
-    # client generated against this contract already has it when that lands,
-    # and so the three responses that publish a supplier cost publish the same
-    # pair rather than diverging by one ticket.
+    # WHAT THE CALLER SENT, HANDED STRAIGHT BACK. #323 published this field
+    # here while nothing could put a value in it; #324 gave the recording
+    # request the field that does, so an ack now echoes the caller's own
+    # figure beside the supplier's and the two are visibly different numbers.
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None

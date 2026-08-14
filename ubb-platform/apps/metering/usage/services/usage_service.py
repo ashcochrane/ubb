@@ -286,13 +286,18 @@ class RecordingInput:
     owner_row: object
     effective_at: datetime | None
     caller_provider_cost: int | None
+    #: What the caller BELIEVES the call cost — recorded as stated and never
+    #: rated. It sits beside `caller_provider_cost` and is never read with it:
+    #: the pricing spine below is never handed this value at all, which is what
+    #: keeps "never COGS" a property of the code rather than a convention.
+    claimed_provider_cost: int | None
     caller_billed: int | None
     now: datetime
 
     @classmethod
     def gather(cls, *, tenant, customer, request_id, idempotency_key,
                metadata, event_type, provider, measurements,
-               task_id, caller_provider_cost,
+               task_id, caller_provider_cost, claimed_provider_cost,
                caller_billed, effective_at, billing_owner_id, owner_row,
                now, dimension_slots=None):
         """The normalization the recording path runs: tenant-currency stamp,
@@ -329,6 +334,7 @@ class RecordingInput:
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
             caller_provider_cost=caller_provider_cost,
+            claimed_provider_cost=claimed_provider_cost,
             caller_billed=caller_billed, now=now)
 
 
@@ -428,6 +434,13 @@ class UsageService:
                     provider_cost_micros=provider_cost_micros,
                     costing_status=costing.costing_status,
                     unresolved_reason=costing.unresolved_reason,
+                    # WRITTEN AT INSERT AND ONLY AT INSERT. The column is
+                    # declared FROZEN and #318's trigger enforces it: what a
+                    # caller said they believed at the time is a record of the
+                    # call, and a claim that could be edited afterwards would
+                    # be an opinion rather than evidence. It passes the spine
+                    # by — nothing above rated it, and nothing below sums it.
+                    claimed_provider_cost_micros=inp.claimed_provider_cost,
                     billed_cost_micros=billed_cost_micros,
                     currency=inp.currency,
                     pricing_provenance=provenance,
@@ -521,7 +534,9 @@ class UsageService:
     @staticmethod
     @transaction.atomic
     def record_usage(tenant, customer, request_id, idempotency_key, *,
-                     provider_cost_micros=None, billed_cost_micros=None,
+                     provider_cost_micros=None,
+                     claimed_provider_cost_micros=None,
+                     billed_cost_micros=None,
                      provider="", event_type="", currency=None,
                      metadata=None, task_id=None, measurements=None,
                      effective_at=None, dimension_slots=None):
@@ -529,12 +544,19 @@ class UsageService:
         then the recording core. The keyword surface is the input adapter every
         service-level call site and both recording endpoints already speak; it
         lost the nameless inline quantity in #272, lost the second open bag in
-        #273, and is otherwise verbatim.
+        #273, and gained the caller's own claimed cost in #324.
 
         ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
         — the caller (endpoint / record_sync_item) runs DimensionService.admit
         BEFORE calling this, so a DimensionError is the whole-request/whole-
-        item rejection and never reaches here."""
+        item rejection and never reaches here.
+
+        ``provider_cost_micros`` is admitted the same way (#324): WHETHER a
+        caller may state the supplier's own cost turns on the Event Type's
+        declaration, and `metering_endpoints.admit_supplier_cost` answers it
+        for both routes before this runs. Whichever figure arrives here is
+        costed — that separation is what lets the batch route refuse one item
+        without disturbing the others, and it is why nothing below re-asks."""
         # select_related on the measurement child (#270): a replay's response
         # carries the ORIGINAL quantities, which the posting now reads through
         # the child — and the replay path is the hot one, so it pays for that
@@ -574,6 +596,7 @@ class UsageService:
             measurements=measurements,
             task_id=task_id,
             caller_provider_cost=provider_cost_micros,
+            claimed_provider_cost=claimed_provider_cost_micros,
             caller_billed=billed_cost_micros, effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,
             dimension_slots=dimension_slots)

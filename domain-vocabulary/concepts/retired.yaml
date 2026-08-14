@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,550 of 1,925 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,552 of 1,927 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -381,6 +381,35 @@ measurement_key:
     # `measurement_key` and is not published by any field this commit adds.
     # #275's RATE ARITHMETIC caution holds again — nothing here goes near
     # `compute(units)`.
+    #
+    # #324 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,550 → 1,552 swept,
+    # 1,925 → 1,927 tracked, 50/126 unchanged). TWO new files, both swept: the
+    # test module for the two request fields, and a test helper beside the
+    # Event Type declaration that writes the one declaration under which a
+    # caller may state the supplier's cost. NO GENERATED FILE APPEARED THIS
+    # TIME, and the difference from #323 is worth naming because it is the
+    # discriminator: that ticket advertised a CLOSED CONCEPT, which mints an
+    # SDK enum module per schema carrying it; this one adds an AMOUNT, which
+    # is a plain integer property and mints nothing. The count was still taken
+    # after the core regen — the rule does not change because a particular
+    # ticket would have survived breaking it.
+    #
+    # A THIRD RETIRED WORD ALMOST LANDED ON THE NEW MODULE, and it was neither
+    # of the two #323 names. `pricing_provenance` (`backend`, 9 files) was in
+    # the first draft's assertion that the caller's claimed figure never
+    # reaches the recorded pricing receipt — the sweep failed with
+    # `term_spread` at 10. The fix was to make the assertion stronger rather
+    # than to rename it: the test now asserts the claim appears under exactly
+    # ONE key of the whole detail response, which covers the receipt and every
+    # other key without naming any of them. NOT a numerator move on `units`.
+    #
+    # Nothing about THIS concept is in the commit. What the request gains is
+    # the caller's own claimed cost and a refusal on the supplier's; a
+    # posting's measured quantity lives on its child record keyed by
+    # `measurement_key`, and the one place this commit reads a quantity at all
+    # is the existing non-negativity validator, whose predicate it does not
+    # touch. #275's RATE ARITHMETIC caution holds again — nothing here goes
+    # near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

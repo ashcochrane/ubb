@@ -81,7 +81,9 @@ class MeteringClient:
     # ---- public API ----
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
-                     provider_cost_micros: int | None = None, billed_cost_micros: int | None = None,
+                     provider_cost_micros: int | None = None,
+                     claimed_provider_cost_micros: int | None = None,
+                     billed_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
                      dimensions: dict | None = None,
@@ -118,6 +120,19 @@ class MeteringClient:
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
 
+        ``provider_cost_micros`` is the SUPPLIER'S OWN reported cost, and it
+        is COGS. UBB accepts it only where the Event Type declares that the
+        figure arrives on the call — the reported costing method with a
+        caller-supplied source — and answers 422 anywhere else rather than
+        recording a number it would never read as cost. This client holds no
+        list of which Event Types those are: the route decides and says so.
+
+        ``claimed_provider_cost_micros`` is what YOU believe the call cost. It
+        is accepted on any event, recorded as stated, and never treated as
+        cost — never rated, never summed into a cost total, never the figure
+        above. Send it when you have an estimate and no declaration, which is
+        the case the 422 above points at.
+
         ``raise_on_stop``: when True, raise UBBStoppedError if the response
         carries a stop verdict (result.stop). The event is still
         recorded+charged either way; this is purely an ergonomic choice
@@ -133,6 +148,8 @@ class MeteringClient:
             body["effective_at"] = _serialize_recorded_at(recorded_at)
         if provider_cost_micros is not None:
             body["provider_cost_micros"] = provider_cost_micros
+        if claimed_provider_cost_micros is not None:
+            body["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if measurements is not None:
             body["measurements"] = measurements
         if billed_cost_micros is not None:

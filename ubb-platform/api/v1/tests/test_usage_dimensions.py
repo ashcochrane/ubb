@@ -2,6 +2,8 @@ import pytest
 from django.test import Client
 
 from apps.metering.usage.models import Posting
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
@@ -16,6 +18,12 @@ class TestUsageDimensions:
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.client = Client()
+        # Every body below states the supplier's own cost, which is admissible
+        # only where the Event Type declares that it arrives on the call
+        # (#324). Declared here rather than dropped from the bodies: the
+        # amounts are incidental to what this module asserts, but a recording
+        # call with no cost at all is not the shape these fixtures exercise.
+        declares_a_caller_supplied_cost(self.tenant, "completion")
 
     def _api_headers(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

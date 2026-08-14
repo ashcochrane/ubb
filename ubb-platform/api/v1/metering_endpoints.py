@@ -44,6 +44,9 @@ from apps.platform.work.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.queries import GROUPED_VALUE_KEY
+from apps.platform.event_types.costing import (
+    admits_a_caller_supplied_cost, cost_declaration)
+from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -68,6 +71,67 @@ _product_check = ProductAccess("metering")
 # batch stops being "N sequential singles".
 
 
+class SupplierCostNotAdmissible(ValueError):
+    """A caller stated the supplier's own cost where no declaration admits it.
+
+    Raised by :func:`admit_supplier_cost` before anything is recorded, and
+    rendered as a 422 by both recording routes. A ``ValueError`` so it takes
+    the same lane as every other pre-recording refusal on this surface.
+    """
+
+
+def admit_supplier_cost(tenant, item):
+    """Refuse a supplier cost the Event Type's declaration does not admit (#324).
+
+    **WHY A REFUSAL AND NOT A QUIET DROP.** The figure is COGS or it is
+    nothing: where no declaration admits it, UBB will never read it as cost, so
+    a `200` would tell an integrator their supplier costs are being recorded
+    while every one of them is discarded. This repository has already paid for
+    the softer version of that — a read route sent two query parameters it
+    publishes nowhere, and the framework's habit of DROPPING what no schema
+    declares kept it answering `200` on the axis default for years. An
+    integrator must never spend months believing UBB is using a number it has
+    been throwing away.
+
+    **WHY HERE AND NOT IN THE RECORDING SERVICE.** This is a rule about the
+    *request*: what a caller may assert, and how they are told they may not.
+    The two routes below are the recording service's only callers, so the edge
+    is the whole surface — and it is where the batch route can refuse ONE item
+    without throwing away the events beside it. It runs where the grouping-field
+    admission runs and for a DIFFERENT reason: that one is placed before the
+    core because it WRITES, and this one because a refusal belongs to the
+    request rather than to the recording.
+
+    **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** One query, and only on a
+    request that carries the figure — which is precisely the branch on which
+    the compute spine skips the same lookup, so no event pays for it twice. An
+    event that carries no supplier cost reads exactly what it read before. A
+    batch pays it per item that carries one; it is deliberately not memoised
+    across the batch, because a batch item is a whole independent request here
+    and a shared verdict would be the first place they stopped being one.
+
+    The message names both halves of the declaration that would admit the
+    figure, and the field that is accepted anywhere, so a caller reading the
+    body knows what to do next rather than only what they may not do.
+    """
+    if item.provider_cost_micros is None:
+        return
+    if admits_a_caller_supplied_cost(
+            cost_declaration(tenant=tenant, key=item.event_type)):
+        return
+    named = (f"Event Type {item.event_type!r} does not declare it"
+             if item.event_type
+             else "This event names no Event Type, so nothing declares it")
+    raise SupplierCostNotAdmissible(
+        f"provider_cost_micros is the supplier's own reported cost for this "
+        f"call. {named}: it is admissible only where the "
+        f"Event Type declares costing_method '{COSTING_METHOD_REPORTED}' with "
+        f"a reported-cost mapping whose source_kind is "
+        f"'{SOURCE_KIND_CALLER_SUPPLIED}'. Declare that pair, or send what you "
+        f"believe this call cost as claimed_provider_cost_micros, which is "
+        f"accepted on any event and is never treated as cost.")
+
+
 def usage_kwargs(item):
     """The single↔batch pass-through, written ONCE (#112): the field-for-
     field map from a request item (RecordUsageRequest — the single and batch
@@ -76,6 +140,7 @@ def usage_kwargs(item):
         request_id=item.request_id,
         idempotency_key=item.idempotency_key,
         provider_cost_micros=item.provider_cost_micros,
+        claimed_provider_cost_micros=item.claimed_provider_cost_micros,
         billed_cost_micros=item.billed_cost_micros,
         currency=item.currency,
         metadata=item.metadata,
@@ -159,6 +224,12 @@ def record_sync_item(tenant, item, customers, task_exists):
         dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
     except DimensionError as exc:
         return _rejected("validation_error", str(exc))
+    # #324: this item's own refusal, for the same reason — one item asserting a
+    # supplier cost it may not assert says nothing about the events beside it.
+    try:
+        admit_supplier_cost(tenant, item)
+    except SupplierCostNotAdmissible as exc:
+        return _rejected("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
             tenant=tenant, customer=customer, dimension_slots=dimension_slots,
@@ -194,6 +265,13 @@ def record_usage(request, payload: RecordUsageRequest):
         dimension_slots = DimensionService.admit(
             request.auth.tenant, payload.dimensions, scope="event")
     except DimensionError as exc:
+        raise Problem("validation_error", str(exc))
+    # #324: the supplier's own figure is admissible only where the Event Type
+    # declares it arrives on the call. Refused before anything is recorded —
+    # never dropped, which is what a 200 here would amount to.
+    try:
+        admit_supplier_cost(request.auth.tenant, payload)
+    except SupplierCostNotAdmissible as exc:
         raise Problem("validation_error", str(exc))
     try:
         result = UsageService.record_usage(

@@ -4652,6 +4652,20 @@
             ],
             "title": "Billed Cost Micros"
           },
+          "claimed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "maximum": 999999999999,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "title": "Claimed Provider Cost Micros"
+          },
           "currency": {
             "anyOf": [
               {

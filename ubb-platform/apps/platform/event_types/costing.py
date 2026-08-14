@@ -1,10 +1,16 @@
-"""What an Event Type declares about cost, for the one path that rates (#320).
+"""What an Event Type declares about cost, for the paths that act on it (#320).
 
 ``Measurement``'s own docstring has said *"nothing rates against these ... slice
 3 wires it"* since the table was created. This is that wire, and it is
 deliberately one function returning plain data rather than an ORM row handed
-across: the compute spine needs exactly two facts about a declaration and has no
-business holding a record it could accidentally save.
+across: its callers need three facts about a declaration and have no business
+holding a record they could accidentally save.
+
+**Two callers, one query each, asking different questions of the same record.**
+The compute spine asks what a posting's cost status should be. The recording
+edge asks whether the caller may state the supplier's figure at all (#324) —
+and only ever when one arrived, which is precisely the branch on which the
+spine never looks the declaration up.
 
 **Why this lives beside the declaration rather than in the pricer.** *"This
 Event Type carries no cost at all"* is a statement about what the tenant
@@ -24,13 +30,13 @@ from typing import NamedTuple
 
 from django.db.models import Count
 
-from core.vocabulary import COSTING_METHOD_REPORTED
+from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
 
 from .models import REPORTED_COST_MAPPING, EventType
 
 
 class CostDeclaration(NamedTuple):
-    """The two facts about a declaration that decide a posting's cost status."""
+    """The three facts about a declaration that a cost decision turns on."""
 
     #: How this Event Type's supplier cost is arrived at — held by reference
     #: from `core.vocabulary`, never re-spelled here.
@@ -39,6 +45,12 @@ class CostDeclaration(NamedTuple):
     #: tenant made, and the one thing that makes a posting `not_applicable`
     #: rather than merely uncosted.
     declares_no_cost: bool
+    #: WHERE the supplier's reported figure comes from, or `None` where this
+    #: Event Type declares no mapping at all. The rating path reads only the
+    #: PRESENCE of a mapping (#320); this is the one question that needs the
+    #: kind itself, and it is answered off the row already joined below rather
+    #: than by a second query.
+    reported_cost_source_kind: str | None
 
 
 def cost_declaration(*, tenant, key):
@@ -75,12 +87,43 @@ def cost_declaration(*, tenant, key):
            .first())
     if row is None:
         return None
+    # A missing reverse one-to-one answers None through getattr's default, the
+    # same read `EventType.publication_blockers` makes.
+    mapping = getattr(row, REPORTED_COST_MAPPING, None)
     return CostDeclaration(
         costing_method=row.costing_method,
         declares_no_cost=(
             row.costing_method != COSTING_METHOD_REPORTED
             and row.declared_quantities == 0
-            # A missing reverse one-to-one answers None through getattr's
-            # default, the same read `EventType.publication_blockers` makes.
-            and getattr(row, REPORTED_COST_MAPPING, None) is None),
+            and mapping is None),
+        reported_cost_source_kind=(None if mapping is None
+                                   else mapping.source_kind),
     )
+
+
+def admits_a_caller_supplied_cost(declaration):
+    """May a caller state the supplier's own cost on a call against this key?
+
+    Exactly one declaration says yes: the **reported** costing method with a
+    mapping whose source kind is the **caller-supplied** one. That pair is the
+    tenant saying "the supplier reports this number and my own code passes it
+    in", and it is the only shape under which UBB will read the figure as COGS.
+
+    **BOTH HALVES, AND THE SECOND IS THE ONE THAT BITES.** `reported` alone
+    says a supplier reports a figure, not that it arrives on the call — a
+    mapping declaring `provider_response` says the generated integration reads
+    it out of the supplier's own response, and a check that stopped at the
+    method would admit a number that came from somewhere the tenant never
+    declared.
+
+    `None` — no declaration at all — is a **no**. The Event Type registry is
+    opt-in and most postings still have no declaration, so this is the commonest
+    answer rather than an error case; what a tenant may not do is assert the
+    supplier's own number against nothing. The refusal itself is the caller's
+    edge to render (`api/v1/metering_endpoints.py`), which is where a 422 and
+    its wording belong; this answers only what the declaration permits.
+    """
+    return (declaration is not None
+            and declaration.costing_method == COSTING_METHOD_REPORTED
+            and declaration.reported_cost_source_kind
+            == SOURCE_KIND_CALLER_SUPPLIED)

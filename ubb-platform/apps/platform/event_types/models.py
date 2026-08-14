@@ -1300,7 +1300,9 @@ class ReportedCostMapping(DeclarationPart, BaseModel):
     integration: a supplier cost arrives on the wire, and no cost resolves
     through this record. The question this docstring left to slice 3 — one wire
     field routed by costing method, or two — was answered as **two**, each with
-    exactly one meaning (#324 owns the request half).
+    exactly one meaning. **The source kind is read at the edge now (#324):** a
+    caller may state the supplier's figure on the call exactly where this
+    record says `caller_supplied`, and is refused 422 everywhere else.
     """
 
     #: Everything that reaches the generated integration, which is everything

@@ -24,6 +24,8 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -35,6 +37,11 @@ SOFT = 2_000_000        # soft floor: the wind-down line is -2M
 _CONTEXT_KEYS = {"limit", "stop_scope", "tripped_at", "episode_seq",
                  "task_id", "subtask_id", "arrived_after"}
 
+
+
+#: The Event Type these fixtures record against, declared in `setUp` as one
+#: that takes the supplier's cost on the call (#324).
+DECLARED = "declared.call"
 
 class PastLimitPinTestBase(TestCase):
     def setUp(self):
@@ -50,6 +57,7 @@ class PastLimitPinTestBase(TestCase):
         CustomerBillingProfile.objects.create(
             customer=self.customer, min_balance_micros=FLOOR,
             soft_min_balance_micros=SOFT)
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def tearDown(self):
         cache.clear()
@@ -68,6 +76,10 @@ class PastLimitPinTestBase(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": f"req-{uuid.uuid4()}",
             "idempotency_key": f"idem-{uuid.uuid4()}",
+            # Every body here states the supplier's own cost, admissible only
+            # against an Event Type that declares it arrives on the call
+            # (#324). `extra` still wins, so a test may name another key.
+            "event_type": DECLARED,
         }
         data.update(extra)
         resp = self.http_client.post(
@@ -156,7 +168,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
                 "customer_id": str(self.customer.id),
                 "request_id": "rb1", "idempotency_key": "ib1",
                 "task_id": str(task.id), "provider_cost_micros": 500_000,
-                "billed_cost_micros": 500_000,
+                "event_type": DECLARED, "billed_cost_micros": 500_000,
             }]}), content_type="application/json", **self._auth())
         item = resp.json()["results"][0]
         self.assertTrue(item["accepted"])

@@ -61,6 +61,8 @@ from apps.billing.gating.services.live_counter import Door
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
 
@@ -86,6 +88,10 @@ def _correlation_values():
             if field.is_required() and field.annotation is str}
 
 
+
+#: The Event Type these fixtures record against (#324).
+DECLARED = "declared.call"
+
 class RecordingDriftPinTest(TestCase):
     """The tenant is prepaid and enforcing, so the fast lane is on and the
     live balance counter is the thing a stop verdict is read from."""
@@ -101,6 +107,9 @@ class RecordingDriftPinTest(TestCase):
             tenant=self.tenant, external_id="c1")
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=WALLET_MICROS)
+        # The request below states the supplier's own cost, admissible only
+        # against an Event Type that declares it arrives on the call (#324).
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def tearDown(self):
         cache.clear()
@@ -113,6 +122,7 @@ class RecordingDriftPinTest(TestCase):
             data=json.dumps({
                 "customer_id": str(self.customer.id),
                 "provider_cost_micros": 10_000_000,
+                "event_type": DECLARED,
                 "billed_cost_micros": billed_micros,
                 **_correlation_values(),
             }),

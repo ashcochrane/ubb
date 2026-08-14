@@ -41,6 +41,8 @@ from api.v1.openapi_export import GIT_ROOT
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.platform.event_types.models import Measurement
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -109,6 +111,10 @@ def _live_columns():
                 connection.introspection.get_table_description(
                     cursor, PostingMeasurement._meta.db_table)}
 
+
+
+#: The Event Type the endpoint fixture records against (#324).
+DECLARED = "declared.call"
 
 class TheMoveIsARenameTest(TestCase):
     """ADR-0007 §1, checked against the migration rather than the message."""
@@ -354,6 +360,9 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
     def setUp(self):
         self.tenant, self.customer = _tenant_and_customer()
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        # The body below states the supplier's own cost, admissible only
+        # against an Event Type that declares it arrives on the call (#324).
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def _post(self, bag_key):
         return self.client.post(
@@ -362,6 +371,7 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
                 "customer_id": str(self.customer.id),
                 correlation_field(): "req_stale",
                 "idempotency_key": f"idem_{bag_key}",
+                "event_type": DECLARED,
                 "provider_cost_micros": 1_000_000,
                 bag_key: {"input_tokens": 1200},
             }),

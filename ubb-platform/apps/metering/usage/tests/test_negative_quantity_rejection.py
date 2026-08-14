@@ -62,6 +62,34 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 422
 
+    def test_the_refusal_reaches_the_CALLER_and_names_the_quantity(self):
+        """A status code alone does not tell an integrator what to fix (#324).
+
+        The validator has always said which keys were negative; whether that
+        sentence reaches the wire is a property of the problem renderer, not of
+        the validator, and nothing asserted it. `problems.py` puts pydantic's
+        per-error dicts on the body as `errors[]`, so dropping `msg` from that
+        projection — a plausible tidy-up, since it is the noisiest of the three
+        keys — would leave every status assertion in this module green and take
+        the diagnosis away.
+
+        A defect upstream of UBB must not become a negative cost inside it, and
+        the caller is the only party who can fix the defect.
+        """
+        tenant, customer, http, auth = _setup_http()
+
+        resp = _post(http, auth, customer, {
+            "request_id": "r2", "idempotency_key": "k2",
+            "measurements": {"calls": -5, "fine": 1},
+        })
+
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["code"] == "validation_error"
+        messages = " ".join(error.get("msg", "") for error in body["errors"])
+        assert "calls" in messages, body
+        assert "fine" not in messages, body
+
     # A second case here drove the same rejection with the strict cost-coverage
     # flag on. #320 stopped that flag reaching costing, which made it a
     # duplicate of the case above rather than a second mode of the rule, and
@@ -152,10 +180,15 @@ class TestTheRenameTightenedNothing:
         assert resp.status_code == 200
 
     def test_an_absent_bag_is_still_accepted(self):
-        """A posting may still measure nothing at all. Absence is not a refusal."""
+        """A posting may still measure nothing at all. Absence is not a refusal.
+
+        The supplier cost this case used to carry went with #324, which made
+        stating it admissible only against a declaring Event Type — incidental
+        here, and a declaration would have put the subject of the test at one
+        remove from the thing it asserts.
+        """
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
             "request_id": "r9", "idempotency_key": "k9",
-            "provider_cost_micros": 4_000,
         })
         assert resp.status_code == 200
