@@ -63,7 +63,14 @@ class TestNegativeMetricSchemaRejection:
         assert resp.status_code == 422
 
     def test_negative_quantity_strict_mode_returns_422(self):
-        """Strict mode does not change the rejection — negative is always invalid."""
+        """Strict mode does not change the rejection — negative is always invalid.
+
+        ⚠ THE FLAG BELOW NO LONGER REACHES COSTING (#320), so this case has
+        become a duplicate of its sibling rather than a second mode of the same
+        rule. It is left standing because the column, this fixture and the name
+        of this test go together, and they go in #321 — a rename here would be
+        churn on a test that ticket deletes.
+        """
         tenant = Tenant.objects.create(
             name="Strict", products=["metering"], require_cost_card_coverage=True)
         _, raw_key = TenantApiKey.create_key(tenant, label="test")
