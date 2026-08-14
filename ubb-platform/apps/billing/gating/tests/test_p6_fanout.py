@@ -23,7 +23,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -35,10 +35,6 @@ def _tenant(mode="prepaid", enf="enforcing"):
 def _limit_events(task_id):
     return OutboxEvent.objects.filter(
         event_type="task.limit_exceeded", payload__task_id=str(task_id))
-
-
-#: The Event Type these fixtures record against (#324).
-DECLARED = "declared.call"
 
 
 @pytest.mark.django_db

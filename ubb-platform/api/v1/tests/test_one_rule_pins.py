@@ -43,17 +43,12 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
-
-
-#: The Event Type these fixtures record against, declared in `setUp` as one
-#: that takes the supplier's cost on the call (#324).
-DECLARED = "declared.call"
 
 class OneRulePinTestBase(TestCase):
     def setUp(self):

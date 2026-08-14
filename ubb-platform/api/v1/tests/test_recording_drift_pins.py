@@ -62,7 +62,7 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
 
@@ -87,10 +87,6 @@ def _correlation_values():
             for name, field in RecordUsageRequest.model_fields.items()
             if field.is_required() and field.annotation is str}
 
-
-
-#: The Event Type these fixtures record against (#324).
-DECLARED = "declared.call"
 
 class RecordingDriftPinTest(TestCase):
     """The tenant is prepaid and enforcing, so the fast lane is on and the

@@ -17,13 +17,9 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.billing.wallets.models import Wallet
 
-
-
-#: The Event Type the recording call below names (#324).
-DECLARED = "declared.call"
 
 class TestSubscriptionsProductIsolation(TestCase):
     def setUp(self):

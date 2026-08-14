@@ -210,7 +210,8 @@ class UBBClient:
 
         Pricing: supply ``provider_cost_micros`` (the SUPPLIER'S own reported
         cost, admissible only where the Event Type declares that it arrives on
-        the call — 422 otherwise) and/or ``measurements`` (named quantities
+        the call, and refused with a 422 otherwise) and/or ``measurements``
+        (named quantities
         priced server-side by the rate card); both are optional here and the
         server enforces its pricing rules. ``claimed_provider_cost_micros`` is
         your own belief about the cost: accepted anywhere and never COGS.

@@ -17,7 +17,7 @@ from apps.metering.usage.services.usage_service import (
 )
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from core.time_windows import month_bounds
@@ -37,10 +37,6 @@ def _prior_month_eff():
     cur_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return cur_start - timedelta(days=2)
 
-
-
-#: The Event Type the endpoint fixtures record against (#324).
-DECLARED = "declared.call"
 
 @pytest.mark.django_db
 class TestEffectiveAtBounds:

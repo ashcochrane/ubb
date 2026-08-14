@@ -134,11 +134,12 @@ class RecordUsageRequest(Schema):
     # meaning is published rather than kept in this comment: the same sentence
     # the three responses carry, so no reader meets two wordings of it.
     #
-    # The bound is the one the supplier cost beside it carries. `amount_micros`
-    # three schemas down shares the LITERAL and not the rule — a wallet
-    # movement of nothing is refused, while a call that genuinely cost nothing
-    # is an ordinary resolved amount — so the two are deliberately not folded
-    # into one constant.
+    # The bound is the one the supplier cost beside it carries. The three
+    # `amount_micros` fields further down this module — `DebitRequest`,
+    # `CreditRequest`, `CreateGrantRequest` — share the LITERAL and not the
+    # rule: a wallet movement of nothing is refused, while a call that
+    # genuinely cost nothing is an ordinary resolved amount. So the two are
+    # deliberately not folded into one constant.
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
         description=CLAIMED_PROVIDER_COST_MEANING)

@@ -42,7 +42,7 @@ from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.event_types.models import Measurement
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -111,10 +111,6 @@ def _live_columns():
                 connection.introspection.get_table_description(
                     cursor, PostingMeasurement._meta.db_table)}
 
-
-
-#: The Event Type the endpoint fixture records against (#324).
-DECLARED = "declared.call"
 
 class TheMoveIsARenameTest(TestCase):
     """ADR-0007 §1, checked against the migration rather than the message."""

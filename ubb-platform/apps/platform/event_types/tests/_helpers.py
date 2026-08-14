@@ -12,6 +12,13 @@ from core.vocabulary import (
 )
 
 
+#: The Event Type key a fixture names when all it needs is somewhere the
+#: supplier's own cost is admissible (#324). One string, imported, because a
+#: dozen modules wanted the same nothing-in-particular and a dozen copies of a
+#: literal is a dozen places to drift.
+DECLARED = "declared.call"
+
+
 def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
     """The ONE declaration under which a caller may state the supplier's cost.
 

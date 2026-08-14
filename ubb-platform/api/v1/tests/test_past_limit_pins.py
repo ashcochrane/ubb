@@ -25,7 +25,7 @@ from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -37,11 +37,6 @@ SOFT = 2_000_000        # soft floor: the wind-down line is -2M
 _CONTEXT_KEYS = {"limit", "stop_scope", "tripped_at", "episode_seq",
                  "task_id", "subtask_id", "arrived_after"}
 
-
-
-#: The Event Type these fixtures record against, declared in `setUp` as one
-#: that takes the supplier's cost on the call (#324).
-DECLARED = "declared.call"
 
 class PastLimitPinTestBase(TestCase):
     def setUp(self):

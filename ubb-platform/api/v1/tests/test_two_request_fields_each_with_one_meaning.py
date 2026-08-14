@@ -8,11 +8,13 @@ which had arrived:
   COGS. It is admissible only where the Event Type declares the reported
   costing method **and** a mapping whose source kind is the caller-supplied
   one — the declaration that says "this number arrives on the call". Anywhere
-  else it is a **422 naming that declaration**, because the alternative is the
-  failure this module exists to stop: a caller sending the figure somewhere UBB
-  will never read it as cost and never finding out. Django Ninja **drops** a
-  body key no schema publishes rather than refusing it, and a wrong request
-  that answers `200` is invisible to every gate in this repository.
+  else it is **refused, naming that declaration** — a 422 on the single route,
+  and a rejected item verdict on the batch route, whose body is 200 whatever
+  its items say. The alternative is the failure this module exists to stop: a
+  caller sending the figure somewhere UBB will never read it as cost and never
+  finding out. Django Ninja **drops** a body key no schema publishes rather
+  than refusing it, and a wrong request that answers `200` is invisible to
+  every gate in this repository.
 
 * `claimed_provider_cost_micros` is what the **caller** believes it cost. It is
   accepted on any event, recorded as stated, and is never COGS: never rated,
@@ -34,12 +36,15 @@ from pathlib import Path
 
 from django.test import Client, SimpleTestCase, TestCase
 
+from api.v1.schemas import RecordUsageRequest
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import EventType, ReportedCostMapping
 from apps.platform.event_types.tests._helpers import (
     declares_a_caller_supplied_cost)
+from apps.platform.grouping_fields.models import (
+    GroupingField, GroupingFieldValue)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_MICROS,
@@ -59,7 +64,7 @@ from core.vocabulary import (
 # ceiling on SPREAD, not only a count of what is left to fix — and that module
 # is already counted for both. Nothing here spells either.
 from api.v1.tests.test_metering_endpoints import (
-    THE_WHOLE_RECORDING_REQUEST, usage_payload)
+    THE_WHOLE_RECORDING_REQUEST, declared_grouping_values, usage_payload)
 
 #: The committed contract, at the git root — `ubb/openapi/v1.json`. The same
 #: address `test_the_cost_reaches_the_contract.py` reads it from.
@@ -248,6 +253,31 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         self.assertEqual(ack["costing_status"],
                          COSTING_STATUS_NOT_APPLICABLE)
 
+    def test_the_refusal_spends_nothing_of_the_tenants_keyspace(self):
+        """A refused request must not have WRITTEN on its way to being refused.
+
+        The grouping-field admission on both routes records novel values
+        against a per-key cardinality cap, and it used to run first. A request
+        refused here would then have burned a value out of a cap it never got
+        to use — permanently, since the ledger of admitted values is not
+        rolled back by a later refusal, and a tenant near their cap could be
+        pushed over it by requests that recorded nothing.
+
+        This is what the ordering in both routes is for, and the order is
+        invisible in a diff, so it is asserted rather than commented.
+        """
+        GroupingField.objects.create(
+            tenant=self.tenant, key="model", slot="grouping_field_1",
+            scope="event", max_cardinality=5)
+
+        self.refused("burns-nothing", event_type="acme.embed",
+                     provider_cost_micros=SUPPLIER,
+                     **declared_grouping_values({"model": "gpt-4"}))
+
+        self.assertEqual(GroupingFieldValue.objects.count(), 0,
+                         "the refusal spent a novel grouping value on a "
+                         "request that was never recorded")
+
     def test_the_batch_route_refuses_the_item_and_records_its_siblings(self):
         """Per ITEM, like every other validation failure on that route.
 
@@ -405,8 +435,6 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         and missing from the document above would be one a caller could send
         and no generated client could know about.
         """
-        from api.v1.schemas import RecordUsageRequest
-
         self.assertEqual(frozenset(RecordUsageRequest.model_fields),
                          THE_WHOLE_RECORDING_REQUEST)
 
@@ -427,11 +455,17 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         amount. They share a ceiling and nothing else, so a search-and-replace
         that harmonised them would quietly admit a zero-amount debit.
         """
+        ceiling = _bounds(self.schemas["RecordUsageRequest"]["properties"][
+            "claimed_provider_cost_micros"])[1]
+
         for name in ("DebitRequest", "CreditRequest", "CreateGrantRequest"):
             with self.subTest(schema=name):
                 node = self.schemas[name]["properties"]["amount_micros"]
                 self.assertEqual(node.get("exclusiveMinimum"), 0,
                                  f"{name}.amount_micros stopped refusing zero")
+                self.assertEqual(node.get("maximum"), ceiling,
+                                 f"{name}.amount_micros no longer carries the "
+                                 f"shared ceiling")
 
     def test_the_request_still_carries_the_directly_supplied_price(self):
         """`billed_cost_micros` STAYS on the request, and this is why.
@@ -444,14 +478,20 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         TOGETHER WITH its replacement, and this test is what carries the
         ruling forward rather than a sentence in a merged commit message.
 
-        The four RESPONSE schemas that publish a field of the same name are
-        kept by #146 §8.1 and are not this ticket's to touch — which is why
-        the assertion below is on the request and names it.
+        The schemas that publish a field of the SAME NAME on the way back are
+        kept by #146 §8.1 and are not this ticket's to touch. That half is
+        counted rather than asserted in prose: the request is one of the
+        schemas carrying the name, and every other one is a response.
         """
         self.assertIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertIn(
             "billed_cost_micros",
             self.schemas["RecordUsageRequest"]["properties"])
+        carrying = {name for name, schema in self.schemas.items()
+                    if "billed_cost_micros" in schema.get("properties", {})}
+        self.assertEqual(carrying - {"RecordUsageRequest"}, {
+            "GroupingFieldMarginRow", "RecordUsageResponse",
+            "UsageEventDetailOut", "UsageEventOut", "UsageMetricOut"})
 
 
 def _bounds(node):

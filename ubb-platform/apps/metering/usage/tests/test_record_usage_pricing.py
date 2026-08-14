@@ -5,16 +5,13 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
     RETIRED_COLUMN)
-
-#: The Event Type the two supplier-cost bodies name (#324).
-DECLARED = "declared.call"
 
 
 @pytest.mark.django_db

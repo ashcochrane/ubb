@@ -123,9 +123,12 @@ class MeteringClient:
         ``provider_cost_micros`` is the SUPPLIER'S OWN reported cost, and it
         is COGS. UBB accepts it only where the Event Type declares that the
         figure arrives on the call — the reported costing method with a
-        caller-supplied source — and answers 422 anywhere else rather than
-        recording a number it would never read as cost. This client holds no
-        list of which Event Types those are: the route decides and says so.
+        caller-supplied source — and refuses it anywhere else rather than
+        recording a number it would never read as cost: a 422 from this call,
+        and a rejected item verdict from ``record_batch``, whose response is
+        200 whatever its items say. This client holds no list of which Event
+        Types those are, per the open-world rule in
+        ``docs/conventions/sdk-wrap.md``: the route decides and says so.
 
         ``claimed_provider_cost_micros`` is what YOU believe the call cost. It
         is accepted on any event, recorded as stated, and never treated as

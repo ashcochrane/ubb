@@ -14,7 +14,7 @@ from django.test import TestCase, Client, skipUnlessDBFeature
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 # The retired bag's name, read off the migration that drops it rather than
@@ -23,10 +23,6 @@ from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests.test_the_second_open_bag_folds import (
     RETIRED_COLUMN)
 
-
-
-#: The Event Type the endpoint fixtures record against (#324).
-DECLARED = "declared.call"
 
 class TheBagIsStoredAsAuthoredTest(TestCase):
     def setUp(self):

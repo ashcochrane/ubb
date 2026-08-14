@@ -68,7 +68,7 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -146,10 +146,6 @@ def _strand_via_the_recording_path(raw_key, customer, billed_micros):
 
 
 NO_OUTCOMES = {"repaired": 0, "repaired_micros": 0, "repair_lapsed": 0}
-
-
-#: The Event Type these fixtures record against (#324).
-DECLARED = "declared.call"
 
 
 @pytest.mark.django_db

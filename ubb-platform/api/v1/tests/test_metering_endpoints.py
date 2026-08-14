@@ -6,7 +6,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
@@ -36,6 +36,18 @@ def usage_payload(customer, correlation, **fields):
             "idempotency_key": correlation, **fields}
 
 
+def declared_grouping_values(values):
+    """The recording body's declared grouping bag, for a caller that may not
+    spell its key.
+
+    `usage_payload`'s problem one key along, and the same answer: the wire name
+    of this bag is retired vocabulary under a spread ceiling (slice 7's, at 16
+    files), and this module is already one of the counted ones. A caller passes
+    the values and never learns which key they land under.
+    """
+    return {"dimensions": values}
+
+
 #: EVERY PARAMETER THE RECORDING REQUEST PUBLISHES, and nothing else (#324).
 #:
 #: Spelled here for `usage_payload`'s reason one word wider: TWO of these keys
@@ -56,12 +68,6 @@ THE_WHOLE_RECORDING_REQUEST = frozenset({
     "billed_cost_micros", "measurements", "currency", "task_id", "event_type",
     "provider", "dimensions", "effective_at",
 })
-
-#: The Event Type the fixtures below record against. Several of them state the
-#: supplier's own cost, which is admissible only where an Event Type declares
-#: that it arrives on the call (#324) — so those tenants declare this key and
-#: those bodies name it.
-DECLARED = "declared.call"
 
 
 class MeteringProductGatingTest(TestCase):

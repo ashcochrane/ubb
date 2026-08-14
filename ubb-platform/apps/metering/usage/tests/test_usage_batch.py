@@ -12,19 +12,13 @@ from django.utils import timezone
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 BATCH_URL = "/api/v1/metering/usage/batch"
 SINGLE_URL = "/api/v1/metering/usage"
-
-#: Every body in this module states the supplier's own cost, which is
-#: admissible only against an Event Type that declares it arrives on the call
-#: (#324). `_setup` declares it; every body names it. The amounts are what the
-#: per-item verdicts are built out of, so dropping them is not available here.
-DECLARED = "batch.item"
 
 
 def _setup(**tenant_kwargs):
