@@ -113,7 +113,23 @@ class TaskService:
 
         def _add(unit):
             unit.total_billed_cost_micros += int(billed_cost_micros)
-            unit.total_provider_cost_micros += int(provider_cost_micros)
+            # AN UNRESOLVED SUPPLIER COST ADDS NOTHING, AND THE TOTAL IS A FLOOR
+            # (#320). Before the compute spine could say "UBB does not know what
+            # this cost", `provider_cost_micros` was always a number and this
+            # line always ran; now the recording path hands `None` for a posting
+            # whose cost is unresolved, and adding a zero for it would be the
+            # silent-zero this slice exists to delete — the unit total would read
+            # complete while excluding a charge that really happened.
+            #
+            # NOT FIXED HERE, AND DELIBERATELY: the unit does not yet COUNT what
+            # it excluded, so a reader still cannot tell a complete total from a
+            # floor. #328 owns the unresolved counter and the pair that carries
+            # it out to every reader; this is the smallest change that keeps the
+            # recording path from failing loudly on a `None` it now produces.
+            # The COGS limit below races the same floor, which is the direction
+            # that under-fires rather than over-fires.
+            if provider_cost_micros is not None:
+                unit.total_provider_cost_micros += int(provider_cost_micros)
             unit.event_count += 1
             # Tier-2 (D10): stamp the heartbeat in the SAME write so the
             # stale-task reaper can tell a live task from a crashed one. A

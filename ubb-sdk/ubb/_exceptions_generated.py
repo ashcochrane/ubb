@@ -150,11 +150,6 @@ class NoCostCardsError(UnprocessableEntityError):
     CODE = 'no_cost_cards'
 
 
-class PricingError(UnprocessableEntityError):
-    STATUS = 422
-    CODE = 'pricing_error'
-
-
 class RateLimitExceededError(RateLimitError):
     STATUS = 429
     CODE = 'rate_limit_exceeded'
@@ -215,7 +210,6 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'method_not_allowed': MethodNotAllowedError,
     'no_cost_cards': NoCostCardsError,
     'not_found': NotFoundError,
-    'pricing_error': PricingError,
     'rate_limit_exceeded': RateLimitExceededError,
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
@@ -264,7 +258,6 @@ __all__ = [
     'LastActiveAdminError',
     'LastActiveKeyError',
     'NoCostCardsError',
-    'PricingError',
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'UnsupportedCurrencyError',

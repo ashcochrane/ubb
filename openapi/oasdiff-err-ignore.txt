@@ -364,3 +364,31 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required pr
 # caller. The same rename after platform admission costs a 90-day deprecation
 # cycle under ADR-0003 §4, on three paths instead of none.
 GET /api/v1/margin/by-dimension api path removed without deprecation
+#
+# #320 — THE COMPUTE SPINE STARTS WRITING AN UNRESOLVED COST, AND THE EVENT
+# DETAIL RESPONSE ADMITS THE ABSENT AMOUNT.
+#
+# Two findings, one edit: the supplier cost on the event-detail response became
+# nullable and therefore optional. #317 published `costing_status` on that same
+# schema and recorded, in the schema itself, that the amount beside it was still
+# required and non-nullable — a pair describing a response the document could
+# not serialise. That was harmless only while nothing wrote `unresolved`, and
+# the compute spine in this commit is what starts writing it. So the widening
+# lands here rather than in #323, which still owns the rest of that schema's
+# cost metadata: the caller's claimed figure and the unresolved reason's own
+# values. Paying a contract half in the commit that makes it reachable is the
+# rule #317 followed when the consumer census forced its own half early.
+#
+# THE OTHER TWO RESPONSES CARRYING THIS AMOUNT NEEDED NOTHING. The recording
+# response and the event list row already published it as optional, so this is
+# one schema catching up with its neighbours rather than a new shape arriving.
+#
+# WHAT THE BREAK BUYS: a consumer can tell "not known" from "nothing" without
+# inspecting a second field. The alternative was not a narrower break — it was a
+# 500 on the first uncosted event a tenant opened.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the one known consumer reads this
+# field through the generated client, which is regenerated in this commit.
+GET /api/v1/metering/usage/{event_id} response property `provider_cost_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+GET /api/v1/metering/usage/{event_id} the response property `provider_cost_micros` became optional for the status `200`

@@ -22,9 +22,11 @@ Five rules, each a pure function, each shown to bite:
                              retired when the category left the pricing ladder
                              and became analytics-only.
 ``never-monetary``           Neither satellite carries money, and no rating,
-                             cost-resolution or spend-ceiling module reads
-                             either one. Slice 2 owns the declaration; slice 3
-                             owns every behaviour the declaration selects.
+                             cost-resolution or spend-ceiling module queries a
+                             catalogue record. Slice 3 wired the cost
+                             declaration into rating (#320) and reads it
+                             through one function that answers in plain data;
+                             the classes themselves stay out of reach.
 ``identity-not-spelling``    Supplier cost resolution keys on the Provider's
                              identity. No code path parses a supplier's name
                              out of an Event Type key, and the catalogue names
@@ -159,7 +161,25 @@ BEHAVIOURAL_SURFACES = (
 #: records for reaching a satellite through the Event Type, and it is stated
 #: rather than half-closed: a token list that caught one spelling of an
 #: attribute walk and not another would read as coverage while providing none.
-CATALOGUE_TOKENS = ("event_types", "Provider", "EventCategory", "EventType",
+#:
+#: ⚠ **THE APP LABEL LEFT THIS LIST IN SLICE 3, WHICH IS THE SLICE IT WAS
+#: WAITING FOR (#320).** The rule's own message said it: *"slice 2 owns the
+#: declaration; slice 3 owns every behaviour the declaration selects"*, and the
+#: behaviour slice 3 owns is a cost that reads what the tenant declared —
+#: whether the supplier reports it, and whether this Event Type carries one at
+#: all. A gate written for the window in which nothing rated against the
+#: catalogue cannot also be the gate for the window after.
+#:
+#: What is left is narrower and still bites, and it is the half that was always
+#: load-bearing: **a behavioural module may not name a catalogue CLASS.** The
+#: four class names below are the ORM entry points, so the rule now says a
+#: rating path reaches the declaration through the one read that answers in
+#: plain data (``apps.platform.event_types.costing.cost_declaration``) and never
+#: by querying the records itself. Both controls for that are at the foot of
+#: this module — the sanctioned import passes, a direct ``EventType`` query does
+#: not — because "the app label is allowed now" with nothing showing what still
+#: fails would be a rule that had quietly stopped existing.
+CATALOGUE_TOKENS = ("Provider", "EventCategory", "EventType",
                     "MeasurementConcept")
 
 #: Taking a key apart. ``startswith``/``endswith`` are here because a shortcut
@@ -459,10 +479,12 @@ def classify_catalogue_reach(label, tree):
         return None
     return (
         RULE_MONETARY, label,
-        f"{label} names {', '.join(sorted(found))}. Nothing behavioural reads "
-        f"either satellite in slice 2: no rating path, no cost resolution and "
-        f"no spend ceiling. Slice 2 owns the declaration; slice 3 owns every "
-        f"behaviour the declaration selects ({TICKET})",
+        f"{label} names the catalogue class {', '.join(sorted(found))}. No "
+        f"rating path, cost resolution or spend ceiling may query the "
+        f"catalogue itself: neither satellite ever reaches money, the grouping "
+        f"is analytics-only, and what a declaration says about cost is read "
+        f"through apps.platform.event_types.costing.cost_declaration, which "
+        f"answers in plain data ({TICKET}, #320)",
     )
 
 
@@ -902,7 +924,38 @@ def test_negative_control_a_behavioural_module_naming_the_catalogue_is_flagged()
     assert hit is not None
     rule, _, message = hit
     assert rule == RULE_MONETARY
-    assert "event_types" in message
+    assert "Provider" in message
+
+
+def test_negative_control_a_rating_path_querying_the_declaration_is_flagged():
+    """The door slice 3 opened, and the one it did not (#320).
+
+    A rating path may now ask what an Event Type declares about cost. It asks
+    the read that answers in plain data; querying the record itself hands a
+    rating path a live row it can save, and puts a second definition of "what
+    this declaration means for cost" wherever the second caller writes one.
+    """
+    hit = _reach(
+        "apps/metering/pricing/services/pricing_service.py",
+        "def cost_for(tenant, key):\n"
+        "    return EventType.objects.get(tenant=tenant, key=key)\n",
+    )
+    assert hit is not None
+    assert hit[0] == RULE_MONETARY and "EventType" in hit[2]
+
+
+def test_positive_control_the_costing_read_is_not_a_crossing():
+    """The sanctioned door, asserted as passing rather than assumed to.
+
+    This is verbatim what `pricing_service.py` does, and if it ever stops
+    passing the production module is what goes red — so the rule and the one
+    reach it permits are pinned in the same place.
+    """
+    assert _reach(
+        "apps/metering/pricing/services/pricing_service.py",
+        "from apps.platform.event_types.costing import cost_declaration\n"
+        "declaration = cost_declaration(tenant=tenant, key=key)\n",
+    ) is None
 
 
 def test_negative_control_a_rating_path_reading_the_grouping_is_flagged():

@@ -43,7 +43,6 @@ from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
-from apps.metering.pricing.services.pricing_service import PricingError
 from apps.metering.queries import GROUPED_VALUE_KEY
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
@@ -91,22 +90,32 @@ def usage_kwargs(item):
 def usage_error(e):
     """The ONE record_usage error map (#112): exception → (code, detail).
     The specific-before-general order lives HERE and only here —
-    PricingError first, then EffectiveAtError (which IS a ValueError, so it
-    must be tested before the generic branch), then plain ValueError. The
-    single endpoint raises the code as a Problem; the batch wraps the same
-    code in a verdict dict."""
-    if isinstance(e, PricingError):
-        return "pricing_error", str(e)
+    EffectiveAtError (which IS a ValueError, so it must be tested before the
+    generic branch), then plain ValueError. The single endpoint raises the code
+    as a Problem; the batch wraps the same code in a verdict dict.
+
+    **A COST UBB CANNOT WORK OUT IS NO LONGER AN ERROR (#320)**, so the branch
+    that was first here is gone along with the exception it named and the wire
+    code it produced. The supplier has already run the call and already charged
+    for it; the event is recorded with its cost said to be unresolved, and the
+    caller learns that from the 200 body rather than from a 422 that throws the
+    charge away."""
     if isinstance(e, EffectiveAtError):
         return e.code, str(e)
     return "validation_error", str(e)
 
 
 def with_uncosted(result):
-    """Surface the provenance receipt's uncosted-metrics list on a success
-    body — both recording surfaces return it."""
+    """Surface the provenance receipt's uncosted-quantity list on a success
+    body — both recording surfaces return it.
+
+    The list says WHICH declared quantities went uncosted; `costing_status` on
+    the same body says THAT the cost is unresolved. Neither is the other: a
+    tenant fixing this needs the specific declaration, and a reader totalling a
+    column needs the status."""
     provenance = result.get("pricing_provenance") or {}
-    result["uncosted_metrics"] = provenance.get("uncosted_metrics", [])
+    result["uncosted_measurement_keys"] = provenance.get(
+        "uncosted_measurement_keys", [])
     return result
 
 
@@ -154,7 +163,7 @@ def record_sync_item(tenant, item, customers, task_exists):
         result = UsageService.record_usage(
             tenant=tenant, customer=customer, dimension_slots=dimension_slots,
             **usage_kwargs(item))
-    except (PricingError, ValueError) as e:
+    except ValueError as e:
         return _rejected(*usage_error(e))
     return {"accepted": True, **with_uncosted(result)}
 
@@ -167,7 +176,11 @@ def record_usage(request, payload: RecordUsageRequest):
     tipping event that crosses a limit and everything arriving after a kill.
     The stop instruction rides the response fields (stop / stop_reason /
     stop_scope); a non-200 always means "this was not recorded" (auth,
-    malformed payload, unknown customer/task, pricing/validation errors)."""
+    malformed payload, unknown customer/task, validation errors).
+
+    A cost UBB cannot work out is NOT one of those (#320): the event is
+    recorded, and `costing_status` plus `uncosted_measurement_keys` on this
+    body say so at the moment the gap is created."""
     _product_check(request)
 
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
@@ -187,7 +200,7 @@ def record_usage(request, payload: RecordUsageRequest):
             tenant=request.auth.tenant, customer=customer,
             dimension_slots=dimension_slots,
             **usage_kwargs(payload))
-    except (PricingError, ValueError) as e:
+    except ValueError as e:
         code, detail = usage_error(e)
         raise Problem(code, detail)
     # Kill execution is the recording core's job (#112): a crossing verdict

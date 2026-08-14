@@ -46,7 +46,7 @@ class RecordUsageResponse:
             task_id (None | str | Unset):
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
-            uncosted_metrics (list[str] | Unset):
+            uncosted_measurement_keys (list[str] | Unset):
      """
 
     costing_status: RecordUsageResponseCostingStatus
@@ -66,7 +66,7 @@ class RecordUsageResponse:
     task_id: None | str | Unset = UNSET
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
-    uncosted_metrics: list[str] | Unset = UNSET
+    uncosted_measurement_keys: list[str] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -169,9 +169,9 @@ class RecordUsageResponse:
         else:
             task_total_provider_cost_micros = self.task_total_provider_cost_micros
 
-        uncosted_metrics: list[str] | Unset = UNSET
-        if not isinstance(self.uncosted_metrics, Unset):
-            uncosted_metrics = self.uncosted_metrics
+        uncosted_measurement_keys: list[str] | Unset = UNSET
+        if not isinstance(self.uncosted_measurement_keys, Unset):
+            uncosted_measurement_keys = self.uncosted_measurement_keys
 
 
 
@@ -211,8 +211,8 @@ class RecordUsageResponse:
             field_dict["task_total_billed_cost_micros"] = task_total_billed_cost_micros
         if task_total_provider_cost_micros is not UNSET:
             field_dict["task_total_provider_cost_micros"] = task_total_provider_cost_micros
-        if uncosted_metrics is not UNSET:
-            field_dict["uncosted_metrics"] = uncosted_metrics
+        if uncosted_measurement_keys is not UNSET:
+            field_dict["uncosted_measurement_keys"] = uncosted_measurement_keys
 
         return field_dict
 
@@ -393,7 +393,7 @@ class RecordUsageResponse:
         task_total_provider_cost_micros = _parse_task_total_provider_cost_micros(d.pop("task_total_provider_cost_micros", UNSET))
 
 
-        uncosted_metrics = cast(list[str], d.pop("uncosted_metrics", UNSET))
+        uncosted_measurement_keys = cast(list[str], d.pop("uncosted_measurement_keys", UNSET))
 
 
         record_usage_response = cls(
@@ -414,7 +414,7 @@ class RecordUsageResponse:
             task_id=task_id,
             task_total_billed_cost_micros=task_total_billed_cost_micros,
             task_total_provider_cost_micros=task_total_provider_cost_micros,
-            uncosted_metrics=uncosted_metrics,
+            uncosted_measurement_keys=uncosted_measurement_keys,
         )
 
 

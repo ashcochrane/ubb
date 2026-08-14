@@ -705,15 +705,18 @@ class RateCardValidationTest(TestCase):
                           {"measurement_key": "input_tokens", "pricing_model": "graduated"})
         assert resp.status_code == 422
 
-    def test_record_usage_surfaces_uncosted_metrics(self):
-        # A quantity with NO matching cost card -> the response lists it as uncosted.
+    def test_record_usage_surfaces_uncosted_measurement_keys(self):
+        # A quantity with NO matching cost card -> the response lists it as
+        # uncosted, and says the posting's cost is unresolved rather than zero.
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
             data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
                   "measurements": {"undeclared_quantity": 100}}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
-        assert "undeclared_quantity" in resp.json().get("uncosted_metrics", [])
+        assert "undeclared_quantity" in resp.json().get(
+            "uncosted_measurement_keys", [])
+        assert resp.json()["costing_status"] == "unresolved"
 
     def test_publish_keeps_lineage_and_versions_history(self):
         # create a cost book + a rate (rate 2)

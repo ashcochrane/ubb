@@ -76,7 +76,11 @@ def sync_detailed(
     tipping event that crosses a limit and everything arriving after a kill.
     The stop instruction rides the response fields (stop / stop_reason /
     stop_scope); a non-200 always means \"this was not recorded\" (auth,
-    malformed payload, unknown customer/task, pricing/validation errors).
+    malformed payload, unknown customer/task, validation errors).
+
+    A cost UBB cannot work out is NOT one of those (#320): the event is
+    recorded, and `costing_status` plus `uncosted_measurement_keys` on this
+    body say so at the moment the gap is created.
 
     Args:
         body (RecordUsageRequest):
@@ -114,7 +118,11 @@ def sync(
     tipping event that crosses a limit and everything arriving after a kill.
     The stop instruction rides the response fields (stop / stop_reason /
     stop_scope); a non-200 always means \"this was not recorded\" (auth,
-    malformed payload, unknown customer/task, pricing/validation errors).
+    malformed payload, unknown customer/task, validation errors).
+
+    A cost UBB cannot work out is NOT one of those (#320): the event is
+    recorded, and `costing_status` plus `uncosted_measurement_keys` on this
+    body say so at the moment the gap is created.
 
     Args:
         body (RecordUsageRequest):
@@ -147,7 +155,11 @@ async def asyncio_detailed(
     tipping event that crosses a limit and everything arriving after a kill.
     The stop instruction rides the response fields (stop / stop_reason /
     stop_scope); a non-200 always means \"this was not recorded\" (auth,
-    malformed payload, unknown customer/task, pricing/validation errors).
+    malformed payload, unknown customer/task, validation errors).
+
+    A cost UBB cannot work out is NOT one of those (#320): the event is
+    recorded, and `costing_status` plus `uncosted_measurement_keys` on this
+    body say so at the moment the gap is created.
 
     Args:
         body (RecordUsageRequest):
@@ -185,7 +197,11 @@ async def asyncio(
     tipping event that crosses a limit and everything arriving after a kill.
     The stop instruction rides the response fields (stop / stop_reason /
     stop_scope); a non-200 always means \"this was not recorded\" (auth,
-    malformed payload, unknown customer/task, pricing/validation errors).
+    malformed payload, unknown customer/task, validation errors).
+
+    A cost UBB cannot work out is NOT one of those (#320): the event is
+    recorded, and `costing_status` plus `uncosted_measurement_keys` on this
+    body say so at the moment the gap is created.
 
     Args:
         body (RecordUsageRequest):

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,542 of 1,916 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,544 of 1,918 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -291,6 +291,30 @@ measurement_key:
     # fixture. Nothing about THIS concept is in the commit: what settles here is
     # MONEY, and a posting's measured quantity lives on its child record.
     # #275's RATE ARITHMETIC caution holds — nothing goes near `compute(units)`.
+    #
+    # #320 MOVED THE DENOMINATOR ONLY, UPWARD (1,542 → 1,544 swept, 1,916 →
+    # 1,918 tracked, 50/126 unchanged) — the "needs no story" direction, and the
+    # simplest shape it takes: TWO NEW FILES, BOTH SWEPT, NO MIGRATION and no
+    # exclusion count moved at all. The two are the read that answers what an
+    # Event Type declares about cost, and the module proving the compute spine
+    # records an event it cannot cost instead of refusing it.
+    #
+    # THE NUMERATOR HELD ONLY AFTER A CORRECTION, AND IT IS THE SAME LESSON
+    # #318 RECORDS ONE PARAGRAPH UP. The first version of this commit put the
+    # cost-vs-price discriminator into that new test module and named the
+    # receipt after the retired word for it — two words under live `term_spread`
+    # ceilings of their own, both failing before this number could be taken.
+    # Neither is this concept's word, which is the point: A CEILING BINDS EVERY
+    # RETIRED WORD A NEW FILE SPELLS, not only the one the ticket is about, and
+    # a test module is not exempt for being a test. Both were fixed at the
+    # source rather than by widening anything — a helper in the file that
+    # already spells the discriminator, and the canonical noun for the receipt
+    # on an internal name whose column and wire key another slice still owns.
+    #
+    # Nothing about THIS concept is in the commit. What it decides is whether a
+    # supplier COST is known, and a posting's measured quantity lives on its
+    # child record keyed by `measurement_key`. #275's RATE ARITHMETIC caution
+    # holds again — nothing here goes near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

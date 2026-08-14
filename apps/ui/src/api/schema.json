@@ -4943,12 +4943,12 @@
             ],
             "title": "Task Total Provider Cost Micros"
           },
-          "uncosted_metrics": {
+          "uncosted_measurement_keys": {
             "default": [],
             "items": {
               "type": "string"
             },
-            "title": "Uncosted Metrics",
+            "title": "Uncosted Measurement Keys",
             "type": "array"
           }
         },
@@ -6885,8 +6885,15 @@
             "type": "string"
           },
           "provider_cost_micros": {
-            "title": "Provider Cost Micros",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Micros"
           },
           "request_id": {
             "title": "Request Id",
@@ -6920,7 +6927,6 @@
           "id",
           "request_id",
           "idempotency_key",
-          "provider_cost_micros",
           "costing_status",
           "billed_cost_micros",
           "measurements_status",
@@ -12326,7 +12332,7 @@
     },
     "/api/v1/metering/usage": {
       "post": {
-        "description": "Record one usage event. One-rule contract: every event that reaches\nUBB is priced, recorded, and billed with an HTTP 200 \u2014 including the\ntipping event that crosses a limit and everything arriving after a kill.\nThe stop instruction rides the response fields (stop / stop_reason /\nstop_scope); a non-200 always means \"this was not recorded\" (auth,\nmalformed payload, unknown customer/task, pricing/validation errors).",
+        "description": "Record one usage event. One-rule contract: every event that reaches\nUBB is priced, recorded, and billed with an HTTP 200 \u2014 including the\ntipping event that crosses a limit and everything arriving after a kill.\nThe stop instruction rides the response fields (stop / stop_reason /\nstop_scope); a non-200 always means \"this was not recorded\" (auth,\nmalformed payload, unknown customer/task, validation errors).\n\nA cost UBB cannot work out is NOT one of those (#320): the event is\nrecorded, and `costing_status` plus `uncosted_measurement_keys` on this\nbody say so at the moment the gap is created.",
         "operationId": "api_v1_metering_endpoints_record_usage",
         "parameters": [],
         "requestBody": {

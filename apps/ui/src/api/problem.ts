@@ -119,7 +119,6 @@ const CODE_MESSAGES: Record<string, string> = {
     "Stripe Tax isn't active on the connected Stripe account.",
   insufficient_balance: "The balance is too low for this operation.",
   rate_limit_exceeded: "Too many requests — try again shortly.",
-  pricing_error: "The event couldn't be priced.",
   billing_period_closed: "That billing period is closed to changes.",
   service_unavailable: "The service is temporarily unavailable. Try again.",
   internal_error: "Something went wrong on our side.",

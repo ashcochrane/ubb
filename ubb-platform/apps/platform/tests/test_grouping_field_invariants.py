@@ -207,12 +207,12 @@ class TestGroupingFieldInvariants:
         selectors = {**{selector: "" for selector in Rate.SELECTORS},
                      "provider": "openai", "task_type": "invoice_batch",
                      "grouping_field_1": "eu-west-1"}
-        provider_cost, _, provenance = PricingService.price(
+        costing = PricingService.price(
             tenant=t, customer=c, selectors=selectors,
             measurements={"input_tokens": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
 
         # The openai book's broad, specificity-1 rate wins over the ""
         # book's narrow, specificity-2 override — book tier beats specificity.
-        assert provider_cost == 9_000
-        assert provenance["cost_source"] == "rate_card"
+        assert costing.provider_cost_micros == 9_000
+        assert costing.pricing_receipt["cost_source"] == "rate_card"

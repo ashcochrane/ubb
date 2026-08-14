@@ -307,11 +307,12 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             tenant=tenant, rate_per_unit_micros=2_000_000, unit_quantity=1_000_000,
             **{CANONICAL_COLUMN: "input_tokens"})
 
-        _, _, receipt = PricingService._compute(
-            tenant=tenant, measurements={"input_tokens": 3},
+        receipt = PricingService._compute(
+            measurements={"input_tokens": 3},
             caller_provider_cost=None, caller_billed=None,
+            resolve_declaration=lambda: None,
             resolve_card=lambda kind, key: rate,
-            apply_markup=lambda provider_cost: provider_cost)
+            apply_markup=lambda provider_cost: provider_cost).pricing_receipt
 
         # Every priced line, not one picked out by the cost/price discriminator:
         # that discriminator is a retired word slice 4 owns, and naming it here

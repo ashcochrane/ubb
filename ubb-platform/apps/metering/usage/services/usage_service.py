@@ -399,13 +399,20 @@ class UsageService:
                              "task_type": inp.task_type,
                              "subtask_type": inp.subtask_type,
                              **{slot: getattr(inp, slot) for slot in SLOTS}}
-                provider_cost_micros, billed_cost_micros, provenance = PricingService.price(
+                costing = PricingService.price(
                     tenant=tenant, customer=customer, selectors=selectors,
                     measurements=inp.measurements,
                     currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
                     caller_billed=inp.caller_billed,
                     as_of=inp.effective_at)
+                # THE STATUS IS THE SPINE'S ANSWER, CARRIED — NOT RE-DERIVED
+                # (#320). Nothing here re-reads the amount to decide whether it
+                # is known: a second definition of "unresolved" one layer up is
+                # exactly how the two come to disagree.
+                provider_cost_micros = costing.provider_cost_micros
+                billed_cost_micros = costing.billed_cost_micros
+                provenance = costing.pricing_receipt
                 create_kwargs = {}
                 if inp.effective_at is not None:
                     create_kwargs["effective_at"] = inp.effective_at
@@ -414,6 +421,8 @@ class UsageService:
                     idempotency_key=inp.idempotency_key, metadata=inp.metadata,
                     event_type=inp.event_type, provider=inp.provider,
                     provider_cost_micros=provider_cost_micros,
+                    costing_status=costing.costing_status,
+                    unresolved_reason=costing.unresolved_reason,
                     billed_cost_micros=billed_cost_micros,
                     currency=inp.currency,
                     pricing_provenance=provenance,

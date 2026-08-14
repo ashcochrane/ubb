@@ -1,13 +1,53 @@
+from typing import NamedTuple, Optional
+
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
+from apps.platform.event_types.costing import cost_declaration
+from core.vocabulary import (
+    COSTING_METHOD_REPORTED,
+    COSTING_STATUS_KNOWN,
+    COSTING_STATUS_NOT_APPLICABLE,
+    COSTING_STATUS_UNRESOLVED,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_REPORTED_COST_MISSING,
+)
 
 PRICING_ENGINE_VERSION = "2.1.0"
 
 
-class PricingError(Exception):
-    pass
+class Costing(NamedTuple):
+    """What the compute spine concluded — five facts, named rather than ordered.
+
+    This replaced a three-tuple when the spine started deciding the costing
+    status (#320). Two of the five are new and one changed meaning, and a
+    positional unpack cannot say which is which: `provider_cost_micros` is now
+    `None` wherever the status is not `known`, and a caller that kept reading
+    position zero as a number would have found a `None` in it with nothing
+    naming the reason. Five names cost one line at each of four call sites and
+    make every one of them say what it is reading.
+    """
+
+    #: WHAT UBB KNOWS THE SUPPLIER CHARGED — `None` when it does not know, which
+    #: is what the posting column stores and what its `CHECK` enforces (#317).
+    #: Never a partial sum: a cost that is partly resolved is not resolved.
+    provider_cost_micros: Optional[int]
+    #: What the customer is charged. Never `None` — the price half of an
+    #: uncosted event is slice 4's (`pricing_status`), and until then a price
+    #: derived by markup from an incomplete cost is a floor, exactly as it was
+    #: before this ticket.
+    billed_cost_micros: int
+    #: The Pricing Receipt: engine version, per-quantity lines, sources. Named
+    #: for the record it is (ADR-0006) — the column and the wire key it is
+    #: eventually stored under still carry the retired word, and re-spelling
+    #: either belongs to the slice that owns them.
+    pricing_receipt: dict
+    #: `known` · `unresolved` · `not_applicable`, held by reference from
+    #: `core.vocabulary`.
+    costing_status: str
+    #: Which input did not arrive, and `None` unless the status is `unresolved`.
+    unresolved_reason: Optional[str]
 
 
 class PricingService:
@@ -77,18 +117,42 @@ class PricingService:
             wildcard_book, selectors, measurement_key, currency, as_of)
 
     @staticmethod
-    def _compute(*, tenant, measurements, caller_provider_cost, caller_billed,
-                 resolve_card, apply_markup):
-        """The ONE compute spine (#112): coverage → cost → price → markup
+    def _compute(*, measurements, caller_provider_cost, caller_billed,
+                 resolve_declaration, resolve_card, apply_markup):
+        """The ONE compute spine (#112): cost → status → price → markup
         fallback. ``price`` is this spine under one card resolver —
-        ``resolve_card(card_type, measurement_key)`` and the matching
-        ``apply_markup(provider_cost)`` are the parameters — and it is the
-        only rider left since #239 deleted the accept-time estimate that was
-        the second. The parameterisation stays: it is what kept the two in
-        agreement by construction, and what a future second rider would use
-        rather than forking a pricing body. Raises PricingError exactly where
-        strict cost coverage fails; always returns
-        (provider_cost, billed, provenance)."""
+        ``resolve_card(card_type, measurement_key)``, ``resolve_declaration()``
+        and the matching ``apply_markup(provider_cost)`` are the parameters —
+        and it is the only rider left since #239 deleted the accept-time
+        estimate that was the second. The parameterisation stays: it is what
+        kept the two in agreement by construction, and what a future second
+        rider would use rather than forking a pricing body.
+
+        **THIS IS WHERE A COSTING STATUS IS DECIDED, AND THE ONLY PLACE (#320).**
+        Nothing raises here any more. An event UBB cannot cost is *recorded*
+        with the cost it does not have said out loud, because the supplier has
+        already run the call and already charged for it: refusing the record
+        does not undo the spend, it hides it, and the missing margin turns up a
+        month later as a gap nobody can account for.
+
+        The four answers, in the order they are asked:
+
+        1. the caller supplied a figure → `known`, and it is that figure
+        2. the Event Type declares no cost at all → `not_applicable`, no amount
+           and no reason, because a design decision is not an outstanding task
+        3. the Event Type declares a *reported* cost and no figure arrived →
+           `unresolved`, `reported_cost_missing`
+        4. otherwise the quantities resolve against Cost Rates → `known` and the
+           sum (**zero is a resolved amount**: a call that genuinely cost
+           nothing), or `unresolved`, `cost_rate_missing` and the list of
+           quantities that matched no rate
+
+        **A partly resolved cost is not a resolved cost.** Where any quantity
+        matched no rate the amount is `None` and the resolved lines stay in the
+        receipt below, which is where the floor lives. Storing the partial sum
+        is the ambiguity #317's column exists to remove, one layer up.
+
+        Always returns a :class:`Costing`."""
         measurements = measurements or {}
         # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
         # receipts already written are NOT rewritten. A receipt records what the
@@ -106,28 +170,39 @@ class PricingService:
         # that actually differs.
         #
         # That costs nobody a lookup, because nothing in the tree reads this key.
-        # What IS read off the receipt is `uncosted_metrics` — by the endpoint
-        # below and by the console's test-event panel — and that key is
-        # untouched here, as is the list key on the next line: neither is the
-        # retired word.
+        # What IS read off the receipt is the uncosted-quantity list — by the
+        # endpoint below and by the console's test-event panel — and #320 took
+        # the canonical word for a declared quantity into that key's name, in
+        # the break the recording response was already making.
         prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
         # ---- COST ----
+        unresolved_reason = None
         if caller_provider_cost is not None:
-            provider_cost = caller_provider_cost
+            # A figure the caller supplied IS the answer, and no declaration is
+            # consulted to confirm it. WHERE such a figure may be supplied at
+            # all is a separate question with its own refusal (#324); costing a
+            # figure that arrived is this one.
+            known_micros = caller_provider_cost
+            costing_status = COSTING_STATUS_KNOWN
             prov["cost_source"] = "caller"
-            # When the strict coverage flag is on, every quantity in
-            # measurements must have a matching cost card even when the caller
-            # supplies the aggregate cost. Without this check the caller-cost
-            # path silently bypasses the guarantee.
-            if measurements and getattr(tenant, "require_cost_card_coverage", False):
-                uncosted = [m for m in measurements
-                            if resolve_card("cost", m) is None]
-                if uncosted:
-                    prov["uncosted_metrics"] = uncosted
-                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
+        elif (declaration := resolve_declaration()) is not None \
+                and declaration.declares_no_cost:
+            # Not an outstanding task. `cost_source` is deliberately absent
+            # through here and the branch below: the key names which source
+            # produced the amount, and no source produced one.
+            known_micros = 0
+            costing_status = COSTING_STATUS_NOT_APPLICABLE
+        elif declaration is not None \
+                and declaration.costing_method == COSTING_METHOD_REPORTED:
+            known_micros = 0
+            costing_status = COSTING_STATUS_UNRESOLVED
+            unresolved_reason = UNRESOLVED_REASON_REPORTED_COST_MISSING
         else:
-            provider_cost = 0
+            # Calculated, or declared nowhere at all — the registry is opt-in
+            # and this is how everything recorded against an undeclared key has
+            # always costed.
+            known_micros = 0
             uncosted = []
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
             # It rejected an event that declared a nameless magnitude with no
@@ -158,15 +233,17 @@ class PricingService:
                     uncosted.append(measurement_key)
                     continue
                 amt = card.compute(units_val)
-                provider_cost += amt
+                known_micros += amt
                 prov["metrics"].append({"measurement_key": measurement_key,
                     "units": units_val, "card_type": "cost",
                     "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
             prov["cost_source"] = "rate_card"
             if uncosted:
-                prov["uncosted_metrics"] = uncosted
-                if getattr(tenant, "require_cost_card_coverage", False):
-                    raise PricingError(f"No cost rate card for metrics: {uncosted}")
+                prov["uncosted_measurement_keys"] = uncosted
+                costing_status = COSTING_STATUS_UNRESOLVED
+                unresolved_reason = UNRESOLVED_REASON_COST_RATE_MISSING
+            else:
+                costing_status = COSTING_STATUS_KNOWN
 
         # ---- PRICE ----
         if caller_billed is not None:
@@ -190,12 +267,28 @@ class PricingService:
                 billed = price_total
                 prov["price_source"] = "rate_card"
             else:
-                billed = apply_markup(provider_cost)
+                # MARKUP APPLIES TO WHAT IS KNOWN, WHICH IS WHAT IT ALWAYS DID.
+                # Before #320 an event whose quantities did not all resolve was
+                # marked up from the partial sum; it still is, and no billed
+                # figure anywhere moves because of this ticket. Whether a price
+                # derived from an incomplete cost may call itself settled is
+                # `pricing_status`, and that is slice 4's word, not one this
+                # slice may coin (spec §3.12).
+                billed = apply_markup(known_micros)
                 prov["price_source"] = "markup"
 
-        prov["provider_cost_micros"] = provider_cost
+        # The receipt records what the engine DID; the columns record what UBB
+        # KNOWS. Where the two differ the receipt keeps its resolved lines and
+        # the amount below is None — see the `_compute` docstring.
+        recorded_cost = (known_micros if costing_status == COSTING_STATUS_KNOWN
+                         else None)
+        prov["provider_cost_micros"] = recorded_cost
         prov["billed_cost_micros"] = billed
-        return provider_cost, billed, prov
+        return Costing(provider_cost_micros=recorded_cost,
+                       billed_cost_micros=billed,
+                       pricing_receipt=prov,
+                       costing_status=costing_status,
+                       unresolved_reason=unresolved_reason)
 
     @staticmethod
     def price(*, tenant, customer, selectors, measurements, currency,
@@ -212,12 +305,25 @@ class PricingService:
                 tenant, customer, card_type, selectors, measurement_key,
                 currency, as_of)
 
+        def resolve_declaration():
+            """What this event's Event Type declares about cost, or None.
+
+            A function rather than a value so the spine decides *whether* the
+            declaration matters, the same way it decides which cards to
+            resolve. A caller-supplied figure needs no declaration, and this is
+            a query per recording call on the hottest write path in the system
+            — one the spine simply never asks for on that branch.
+            """
+            return cost_declaration(tenant=tenant,
+                                    key=selectors.get("event_type"))
+
         def apply_markup(provider_cost):
             from apps.metering.pricing.services.markup_service import MarkupService
             return MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
 
         return PricingService._compute(
-            tenant=tenant, measurements=measurements,
+            measurements=measurements,
             caller_provider_cost=caller_provider_cost,
             caller_billed=caller_billed,
+            resolve_declaration=resolve_declaration,
             resolve_card=resolve_card, apply_markup=apply_markup)

@@ -176,7 +176,14 @@ export async function sendTestEvent(
   }
 
   const billed = body.billed_cost_micros ?? measuredCost;
-  const provider = body.provider_cost_micros ?? Math.round(billed * 0.62);
+  // A measurement no cost card covers leaves the whole supplier cost UNRESOLVED
+  // — not a smaller number (#320). A caller who states the cost outright is
+  // answered `known` whatever the measurements say, which is the backend's own
+  // order: the supplied figure is the answer and no declaration is consulted.
+  const resolved = body.provider_cost_micros != null || uncosted.length === 0;
+  const provider = resolved
+    ? (body.provider_cost_micros ?? Math.round(billed * 0.62))
+    : null;
 
   balanceMicros -= billed;
   const stopped = balanceMicros < 0;
@@ -191,14 +198,14 @@ export async function sendTestEvent(
     grouping_fields: {},
     billed_cost_micros: billed,
     provider_cost_micros: provider,
-    // This mock always produces a supplier figure — from the caller's own
-    // value or from the billed amount — so the cost it answers with is
-    // settled (#317). The literal is checked against the generated response
-    // union, so a value the registry renames fails to compile here.
-    costing_status: "known",
+    // The status and the amount are ONE fact and travel together: an absent
+    // amount reads `unresolved` and never `known` at zero (#317, #320). The
+    // literal is checked against the generated response union, so a value the
+    // registry renames fails to compile here.
+    costing_status: resolved ? "known" : "unresolved",
     new_balance_micros: balanceMicros,
     measurements: body.measurements ?? null,
-    uncosted_metrics: uncosted,
+    uncosted_measurement_keys: uncosted,
     pricing_provenance: {
       engine_version: "mock-1",
       price_source: body.billed_cost_micros != null ? "explicit" : "rate_card",

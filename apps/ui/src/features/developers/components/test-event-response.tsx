@@ -85,22 +85,26 @@ export function TestEventResponseCard({
         </p>
       )}
 
-      {(response.uncosted_metrics ?? []).length > 0 && (
+      {(response.uncosted_measurement_keys ?? []).length > 0 && (
         <div className="space-y-1.5 rounded-md border border-dashed border-border p-2.5">
           <p className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-primary">
             <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.5} />
             Measurements without a cost card
           </p>
           <div className="flex flex-wrap gap-1">
-            {(response.uncosted_metrics ?? []).map((key) => (
+            {(response.uncosted_measurement_keys ?? []).map((key) => (
               <Badge key={key} variant="outline" className="font-mono">
                 {key}
               </Badge>
             ))}
           </div>
+          {/* The old copy said these "contributed nothing to cost", which was
+              true when an uncosted measurement silently added zero. It does not
+              add zero any more: the whole event's supplier cost is unresolved
+              until a rate exists (#320). */}
           <p className="text-[11px] text-text-secondary">
-            These measurements were recorded but contributed nothing to cost.
-            Add a rate for them to a cost card to price them.
+            The event was recorded, and its supplier cost is unknown rather than
+            zero. Add a rate for these to a cost card to resolve it.
           </p>
         </div>
       )}
