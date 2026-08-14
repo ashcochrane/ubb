@@ -317,6 +317,11 @@ def get_usage_event(request, event_id: UUID):
         # Stored, unlike the two derived answers around it: the status is a
         # statement about this posting's economics and a column holds it.
         "costing_status": e.costing_status,
+        # Stored beside it, and read rather than re-derived (#323): the pair
+        # settles in one `UPDATE`, so a serialiser that recomputed the cause
+        # could contradict the status it arrived with.
+        "unresolved_reason": e.unresolved_reason,
+        "claimed_provider_cost_micros": e.claimed_provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the

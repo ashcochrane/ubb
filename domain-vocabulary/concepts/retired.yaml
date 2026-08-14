@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,546 of 1,921 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,550 of 1,925 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -345,6 +345,42 @@ measurement_key:
     # posting's measured quantity lives on its child record keyed by
     # `measurement_key` and was never in reach. #275's RATE ARITHMETIC caution
     # holds again — nothing here goes near `compute(units)`.
+    #
+    # #323 MOVED THE DENOMINATOR ONLY, UPWARD (1,546 → 1,550 swept, 1,921 →
+    # 1,925 tracked, 50/126 unchanged) — the "needs no story" direction again,
+    # and this time with a signature worth naming because it will recur for
+    # every remaining concept in this slice. FOUR NEW FILES, ALL FOUR SWEPT and
+    # none of them excluded: one test module, and THREE GENERATED SDK ENUM
+    # MODULES. A closed concept reaching the contract mints one module per
+    # schema that carries it — `record_usage_response_unresolved_reason_type_0`
+    # and its two siblings — which is #317's shape exactly (`costing_status`
+    # minted three of its own), and the `_type_0` suffix is the generator
+    # saying the field is nullable.
+    #
+    # THE COUNT WAS TAKEN AFTER THE SDK CORE REGEN, NOT BEFORE, and on this
+    # ticket that is the difference between 1,547 and 1,550. Three of the four
+    # new files do not exist until `generate_core.py` has run, and the sweep
+    # reads `git ls-files`, so a number taken at the end of the hand-written
+    # edits would have been three files short and green — the failure is a
+    # silent wrong number rather than a red board.
+    #
+    # A CORRELATION KEY THAT ALMOST LANDED ON A DIFFERENT ENTRY. The new test
+    # module records usage, and the recording request still requires the
+    # retired second correlation value (`backend::request_id`, slice 5's, at 65
+    # files). Naming it would have made the module the 66th and failed the
+    # sweep with `term_spread` — a ceiling on SPREAD, not only on what is left
+    # to fix. Answered as `cost_rate_in_default_book` answers the same problem
+    # one word along: the key is spelled once, in a file already counted, and
+    # the new module passes a string that never learns which key it lands under.
+    # NOT a numerator move on `units` — a different entry, and it did not move
+    # either.
+    #
+    # Nothing about THIS concept is in the commit. What reaches the contract is
+    # the CAUSE of an unsettled supplier cost and the caller's own claimed
+    # figure; a posting's measured quantity lives on its child record keyed by
+    # `measurement_key` and is not published by any field this commit adds.
+    # #275's RATE ARITHMETIC caution holds again — nothing here goes near
+    # `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

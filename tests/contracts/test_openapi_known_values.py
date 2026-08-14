@@ -646,6 +646,18 @@ CONCEPTS_IN_THE_CONTRACT = {
     # nodes: every response that publishes a supplier cost says whether that
     # cost is settled, so nobody reads a zero UBB has not learned yet as money.
     "costing_status": Published(3, ENUM),  # record + list row + detail
+    # #323 (slice 3) — the other half of the sentence above, and the first
+    # NULLABLE concept the contract advertises. `null` is the answer on every
+    # settled posting, so the marker travels into the string member of the
+    # union rather than sitting on the union itself; `EventTypeUpdateIn`'s two
+    # optional markers are the precedent, and `test_the_cost_reaches_the_
+    # contract.py` is what holds this one to it. Placement matters here in a
+    # way it does not for a required field: `enum` and `anyOf` at one node are
+    # conjunctive, so the wrong one publishes a document that refuses the
+    # response the server actually returns. Three nodes, for the same reason
+    # the status has three — a cause that does not travel with the status it
+    # explains leaves the reader a shrug.
+    "unresolved_reason": Published(3, ENUM),  # record + list row + detail
 }
 
 
@@ -781,6 +793,16 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # anywhere at all.
     assert where["costing_status"] == {"RecordUsageResponse", "UsageEventOut",
                                        "UsageEventDetailOut"}
+    # THE SAME THREE, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE. The
+    # cause is unreadable without the status and the status is unactionable
+    # without the cause, so the two sets are equal by design — a response
+    # carrying one and not the other is the finding, in either direction.
+    # Written out rather than compared to the line above, because asserting
+    # `where["unresolved_reason"] == where["costing_status"]` would go on
+    # passing if both concepts vanished from the contract together.
+    assert where["unresolved_reason"] == {"RecordUsageResponse",
+                                          "UsageEventOut",
+                                          "UsageEventDetailOut"}
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is

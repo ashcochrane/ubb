@@ -230,17 +230,31 @@ costing_status:
 # generated `core.vocabulary` rather than restating it, so all three values are
 # held by reference and no entry is owed for them.
 #
-# The console and the contract are NOT declared yet, and the order is forced
-# rather than preferred: the contract may not advertise a concept's values
-# while the backend consumer holds none of them. That rule was stated by the
-# openapi entry in the migration ledger, which #317 deleted along with the
+# THE CONTRACT CONSUMER IS NOW REAL TOO (#323), and the order it waited on is
+# forced rather than preferred: the contract may not advertise a concept's
+# values while the backend consumer holds none of them. That rule was stated by
+# the openapi entry in the migration ledger, which #317 deleted along with the
 # backend one — an entry cannot outlive the debt it records — so it is written
 # out here, where the next concept to take this route will be standing. Backend,
-# then console, then spec. Until the contract consumer is
-# declared, `openapi/known-values.json` records `representation: none` — the
-# registry declaring no `openapi` consumer IS its own statement that the concept
-# is not in the contract — and `advertised: false` following from it. No values
-# ride the row: absent means absent.
+# then spec. While no `openapi` consumer was declared,
+# `openapi/known-values.json` recorded `representation: none` — the registry
+# declaring none IS its own statement that the concept is not in the contract —
+# and `advertised: false` followed from it. Declaring one flips both, and the
+# three responses that publish the status this qualifies gain a field naming it
+# in the same commit, because a concept advertised with no field naming it is
+# what `test_every_advertised_concept_reaches_the_contract` refuses.
+#
+# THE CONSOLE IS STILL NOT DECLARED, AND ITS ABSENCE IS THE SAME RULING #316
+# MADE, NOT AN OVERSIGHT. `labels.ts` holds none of these three values by
+# reference — rendering them is #330's — so declaring the surface here would
+# report all three missing and demand the G2 migration-ledger entry that a
+# ledger which only shrinks (#155 §3.2) could not later be given back.
+# `costing_status` is the live proof beside it: it declares its console consumer
+# and still carries `g2-console-costing_status`, `found: 0 of 3 values`. The
+# `openapi` surface owes no such entry because the census has no verdict to give
+# for it at all — a JSON document cannot hold a value by reference, so
+# `tools/consumers/census.py` deliberately omits the surface and G4 asks the
+# question instead.
 
 unresolved_reason:
   kind: closed
@@ -262,6 +276,8 @@ unresolved_reason:
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py
+    - surface: openapi
+      path: openapi/v1.json
 
 pricing_status:
   kind: closed

@@ -13,6 +13,27 @@ from apps.metering.pricing.services import markup_cache
 from apps.metering.pricing.services.markup_cache import MarkupCache
 
 
+def usage_payload(customer, correlation, **fields):
+    """A recording-call body, without the caller naming the retired key.
+
+    The recording request still requires a second caller-supplied correlation
+    value beside `idempotency_key`. That word is RETIRED — slice 5 deletes it,
+    once the key that replaces it is finalised (`gates/migration-ledger.yaml`,
+    `backend::request_id`) — and its ledger entry caps how many files may still
+    contain it. **That cap is a ceiling on SPREAD, not only a count of what is
+    left to fix**, so a new test module naming the key puts the count over its
+    entry and the sweep fails. This module is already one of the counted ones,
+    so the word stays here and a caller elsewhere says what it means.
+
+    Exactly `cost_rate_in_default_book`'s shape, one retired word along
+    (`apps/metering/pricing/tests/_helpers.py`). Both callers pass one string
+    and never learn which key it lands under, so slice 5 re-spells it here and
+    nowhere else.
+    """
+    return {"customer_id": str(customer.id), "request_id": correlation,
+            "idempotency_key": correlation, **fields}
+
+
 class MeteringProductGatingTest(TestCase):
     def setUp(self):
         self.http_client = Client()

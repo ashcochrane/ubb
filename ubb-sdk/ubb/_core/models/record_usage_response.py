@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
+from ..models.record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -33,6 +34,10 @@ class RecordUsageResponse:
             event_id (str):
             suspended (bool):
             billed_cost_micros (int | None | Unset):
+            claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
+                recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
+                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
+                treats as cost.
             grouping_fields (RecordUsageResponseGroupingFields | Unset):
             measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
@@ -47,12 +52,14 @@ class RecordUsageResponse:
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
             uncosted_measurement_keys (list[str] | Unset):
+            unresolved_reason (None | RecordUsageResponseUnresolvedReasonType0 | Unset):
      """
 
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
     suspended: bool
     billed_cost_micros: int | None | Unset = UNSET
+    claimed_provider_cost_micros: int | None | Unset = UNSET
     grouping_fields: RecordUsageResponseGroupingFields | Unset = UNSET
     measurements: None | RecordUsageResponseMeasurementsType0 | Unset = UNSET
     new_balance_micros: int | None | Unset = UNSET
@@ -67,6 +74,7 @@ class RecordUsageResponse:
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
     uncosted_measurement_keys: list[str] | Unset = UNSET
+    unresolved_reason: None | RecordUsageResponseUnresolvedReasonType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -88,6 +96,12 @@ class RecordUsageResponse:
             billed_cost_micros = UNSET
         else:
             billed_cost_micros = self.billed_cost_micros
+
+        claimed_provider_cost_micros: int | None | Unset
+        if isinstance(self.claimed_provider_cost_micros, Unset):
+            claimed_provider_cost_micros = UNSET
+        else:
+            claimed_provider_cost_micros = self.claimed_provider_cost_micros
 
         grouping_fields: dict[str, Any] | Unset = UNSET
         if not isinstance(self.grouping_fields, Unset):
@@ -175,6 +189,14 @@ class RecordUsageResponse:
 
 
 
+        unresolved_reason: None | str | Unset
+        if isinstance(self.unresolved_reason, Unset):
+            unresolved_reason = UNSET
+        elif isinstance(self.unresolved_reason, RecordUsageResponseUnresolvedReasonType0):
+            unresolved_reason = self.unresolved_reason.value
+        else:
+            unresolved_reason = self.unresolved_reason
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -185,6 +207,8 @@ class RecordUsageResponse:
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
+        if claimed_provider_cost_micros is not UNSET:
+            field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if grouping_fields is not UNSET:
             field_dict["grouping_fields"] = grouping_fields
         if measurements is not UNSET:
@@ -213,6 +237,8 @@ class RecordUsageResponse:
             field_dict["task_total_provider_cost_micros"] = task_total_provider_cost_micros
         if uncosted_measurement_keys is not UNSET:
             field_dict["uncosted_measurement_keys"] = uncosted_measurement_keys
+        if unresolved_reason is not UNSET:
+            field_dict["unresolved_reason"] = unresolved_reason
 
         return field_dict
 
@@ -241,6 +267,16 @@ class RecordUsageResponse:
             return cast(int | None | Unset, data)
 
         billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
+
+
+        def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        claimed_provider_cost_micros = _parse_claimed_provider_cost_micros(d.pop("claimed_provider_cost_micros", UNSET))
 
 
         _grouping_fields = d.pop("grouping_fields", UNSET)
@@ -396,11 +432,32 @@ class RecordUsageResponse:
         uncosted_measurement_keys = cast(list[str], d.pop("uncosted_measurement_keys", UNSET))
 
 
+        def _parse_unresolved_reason(data: object) -> None | RecordUsageResponseUnresolvedReasonType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                unresolved_reason_type_0 = RecordUsageResponseUnresolvedReasonType0(data)
+
+
+
+                return unresolved_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponseUnresolvedReasonType0 | Unset, data)
+
+        unresolved_reason = _parse_unresolved_reason(d.pop("unresolved_reason", UNSET))
+
+
         record_usage_response = cls(
             costing_status=costing_status,
             event_id=event_id,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,
+            claimed_provider_cost_micros=claimed_provider_cost_micros,
             grouping_fields=grouping_fields,
             measurements=measurements,
             new_balance_micros=new_balance_micros,
@@ -415,6 +472,7 @@ class RecordUsageResponse:
             task_total_billed_cost_micros=task_total_billed_cost_micros,
             task_total_provider_cost_micros=task_total_provider_cost_micros,
             uncosted_measurement_keys=uncosted_measurement_keys,
+            unresolved_reason=unresolved_reason,
         )
 
 

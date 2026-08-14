@@ -80,6 +80,17 @@ class UsageRecorded(EventSchema):
     customer_id: str
     event_id: str
     cost_micros: int
+    # ⚠ A NULL HERE IS NOW AMBIGUOUS, AND NO TICKET HAS CLAIMED IT YET (#323).
+    # This field has always been nullable, but until #320 a null only ever
+    # meant "the recording path supplied nothing"; #320 taught the compute
+    # spine to leave the column NULL for a cost UBB could not settle, and this
+    # payload is filled straight from that column. So a subscriber now reads
+    # the same null for "no supplier cost" and "a supplier cost we have not
+    # learned yet" — the exact ambiguity slice 3 exists to end, surviving on a
+    # surface that is not a response. The three RESPONSES publishing this
+    # amount each carry `costing_status` beside it (#317) and its cause (#323);
+    # this payload carries neither. Carrying the completeness through the
+    # products is #328's, and this is the site it will want.
     provider_cost_micros: int | None = None
     billed_cost_micros: int | None = None
     event_type: str = ""

@@ -321,10 +321,15 @@
       ]
     },
     "unresolved_reason": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "reported_cost_missing",
+        "cost_rate_missing",
+        "measurement_not_declared"
+      ]
     },
     "usage_event_kind": {
       "advertised": false,
