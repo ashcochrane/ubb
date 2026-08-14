@@ -36,7 +36,6 @@ class SandboxProvisioningTest(TestCase):
             products=["metering", "billing"],
             billing_mode="prepaid",
             default_currency="eur",
-            require_cost_card_coverage=True,
             stripe_connected_account_id="acct_live_1",
             stripe_customer_id="cus_platform_1",
             charges_enabled=True,
@@ -50,7 +49,11 @@ class SandboxProvisioningTest(TestCase):
         self.assertCountEqual(sandbox.products, ["metering", "billing"])
         self.assertEqual(sandbox.billing_mode, "prepaid")
         self.assertEqual(sandbox.default_currency, "eur")
-        self.assertTrue(sandbox.require_cost_card_coverage)
+        # The strict cost-coverage flag was copied here until #321 deleted it.
+        # What a tenant tests is what they get, so the parity that matters is
+        # behavioural and is asserted as behaviour, in
+        # `api/v1/tests/test_onboarding_is_not_a_wall.py`: a sandbox and its
+        # live parent admit the same limited start.
         # NEVER copied: Stripe linkage
         self.assertEqual(sandbox.stripe_connected_account_id, "")
         self.assertEqual(sandbox.stripe_customer_id, "")

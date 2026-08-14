@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,544 of 1,918 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,545 of 1,920 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -314,6 +314,36 @@ measurement_key:
     # Nothing about THIS concept is in the commit. What it decides is whether a
     # supplier COST is known, and a posting's measured quantity lives on its
     # child record keyed by `measurement_key`. #275's RATE ARITHMETIC caution
+    # holds again — nothing here goes near `compute(units)`.
+    #
+    # #321 MOVED THE DENOMINATOR ONLY, UPWARD (1,544 → 1,545 swept, 1,918 →
+    # 1,920 tracked, 50/126 unchanged) — the "needs no story" direction, with
+    # the non-widening signature #312, #317 and #318 record: `historical-
+    # migrations` went 207 → 208 because this commit ADDS a migration to a
+    # directory the rule already covers. TWO NEW FILES, ONE OF THEM SWEPT — the
+    # removal migration (excluded) and the module proving that onboarding is
+    # not a wall.
+    #
+    # THE SDK WAS REGENERATED AND STILL MOVED NEITHER COUNT, which is the
+    # #277/#317 hazard answered rather than avoided. Removing a published
+    # property edits the model files that already carried it; it mints and
+    # deletes none, because a `bool` needs no module of its own the way an
+    # object or an enum does. The generated exception hierarchy lost a CLASS
+    # and not a file for the same reason — every problem code lives in one
+    # module. The count was still taken after both generators ran and their
+    # output was staged, because the rule is about when you look and not about
+    # what you expect to see.
+    #
+    # A LEDGER EXTENT FELL IN THIS COMMIT AND IT IS NOT THIS CONCEPT'S:
+    # `backend::card_type` went 32 → 31 files, because the deleted enable-time
+    # guard was one of the places that word was still spelled. It is recorded
+    # here only to say that it is NOT a numerator move on `units` — a different
+    # entry, paid down by the same deletion.
+    #
+    # Nothing about THIS concept is in the commit. What leaves is a tenant
+    # SETTING about cost coverage and the two refusal words it armed; a
+    # posting's measured quantity lives on its child record keyed by
+    # `measurement_key` and was never in reach. #275's RATE ARITHMETIC caution
     # holds again — nothing here goes near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every

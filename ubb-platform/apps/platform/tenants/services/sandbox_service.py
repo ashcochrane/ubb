@@ -42,7 +42,6 @@ def get_or_create_sandbox(tenant):
                 products=list(tenant.products or []),
                 billing_mode=tenant.billing_mode,
                 default_currency=tenant.default_currency,
-                require_cost_card_coverage=tenant.require_cost_card_coverage,
                 # NEVER copy Stripe fields: stripe_connected_account_id,
                 # stripe_customer_id, charges_enabled stay blank/False.
             )

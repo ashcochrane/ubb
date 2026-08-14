@@ -76,10 +76,6 @@
       "status": 405,
       "title": "Method not allowed"
     },
-    "no_cost_cards": {
-      "status": 422,
-      "title": "No cost rate cards"
-    },
     "not_found": {
       "status": 404,
       "title": "Not found"
@@ -127,7 +123,6 @@
       "budget_exceeded",
       "budget_unavailable",
       "concurrency_limit",
-      "cost_coverage_required",
       "customer_stopped",
       "insufficient_funds",
       "parent_task_not_active",

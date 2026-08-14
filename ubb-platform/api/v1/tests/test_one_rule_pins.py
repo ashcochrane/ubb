@@ -14,8 +14,14 @@ Pin 7  — every recorded event answers 200; no code path returns 429/409 for a
          usage report.
 Pin 14 — only the provider (COGS) total races the task limit; both totals on
          the record and the response.
-Pin 15 — the coverage gate refuses `cost_coverage_required` with coverage
-         off, passes with it on.
+Pin 15 — RETIRED by #321, and by deletion rather than rehoming. It pinned a
+         coverage gate that refused a limited start unless the tenant had set
+         a flag promising full cost coverage. #320 removed the premise (an
+         uncosted event is now recorded with its cost unresolved rather than
+         counted as zero), so the gate was refusing work on a promise nothing
+         keeps. What survives of it is the half that was never about coverage:
+         that an explicit ceiling beats the tenant default, and that a start
+         with no ceiling anywhere is uncapped — kept below under its own name.
 Pin 16 — the label fallback is removed: metadata={"task": ...} with no task_id
          gets no unit attribution, no limit, no kill.
 Pin 17 — the clean-cut sweep: no run-era event type in the catalog, neither
@@ -276,7 +282,15 @@ class Pin14DenominationTest(OneRulePinTestBase):
         self.assertEqual(task.status, "killed")
 
 
-class Pin15CoverageGateTest(OneRulePinTestBase):
+class CeilingResolutionAtStartTest(OneRulePinTestBase):
+    """What Pin 15 pinned that was never about coverage (#321).
+
+    This tenant declares no cost rates anywhere and every start below is
+    admitted, which is the deleted gate's absence asserted rather than merely
+    unexercised — under the old rule the first two would have been refused
+    `cost_coverage_required` with no task created.
+    """
+
     def _pre_check(self, **extra):
         data = {"customer_id": str(self.customer.id), "start_task": True}
         data.update(extra)
@@ -284,42 +298,27 @@ class Pin15CoverageGateTest(OneRulePinTestBase):
             "/api/v1/billing/pre-check", data=json.dumps(data),
             content_type="application/json", **self._auth())
 
-    def test_explicit_limit_refused_without_coverage(self):
+    def test_an_explicit_ceiling_wins_over_the_tenant_default(self):
+        RiskConfig.objects.create(
+            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
+
         resp = self._pre_check(provider_cost_limit_micros=5_000_000)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "cost_coverage_required")
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_default_limit_refused_without_coverage(self):
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
-        resp = self._pre_check()
-        body = resp.json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "cost_coverage_required")
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_limit_passes_with_coverage_on(self):
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
-
-        # Explicit limit wins over the default.
-        body = self._pre_check(provider_cost_limit_micros=5_000_000).json()
         self.assertTrue(body["allowed"])
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 5_000_000)
         self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
 
-        # Absent an explicit limit, the tenant default applies.
+    def test_the_tenant_default_applies_absent_an_explicit_ceiling(self):
+        RiskConfig.objects.create(
+            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
+
         body = self._pre_check().json()
         self.assertTrue(body["allowed"])
         self.assertEqual(body["provider_cost_limit_micros"], 7_000_000)
 
-    def test_uncapped_start_needs_no_coverage(self):
+    def test_a_start_with_no_ceiling_anywhere_is_uncapped(self):
         body = self._pre_check().json()
         self.assertTrue(body["allowed"])
         task = Task.objects.get(id=body["task_id"])

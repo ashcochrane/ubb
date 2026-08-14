@@ -453,7 +453,6 @@ def _config_out(t):
         "name": t.name,
         "billing_mode": t.billing_mode,
         "products": t.products,
-        "require_cost_card_coverage": t.require_cost_card_coverage,
         "default_currency": t.default_currency,
         "stripe_connected_account_id": t.stripe_connected_account_id,
         "is_active": t.is_active,
@@ -514,7 +513,6 @@ def get_tenant_config(request):
 @records_audit("tenant.config_changed")
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
-    from apps.metering.pricing.models import Rate
     from core.money import SUPPORTED_CURRENCIES
     t = request.auth.tenant
     new_currency = None
@@ -538,12 +536,6 @@ def update_tenant_config(request, payload: TenantConfigIn):
                     "wallets, Stripe Prices and invoices are "
                     "denominated in the current currency and there "
                     "is no FX/multi-currency support")
-    if payload.require_cost_card_coverage is True and not t.require_cost_card_coverage:
-        if not Rate.objects.filter(tenant=t, card_type="cost", valid_to__isnull=True).exists():
-            raise Problem(
-                "no_cost_cards",
-                "require_cost_card_coverage cannot be enabled with zero "
-                "active cost rate cards")
     if payload.automatic_tax_enabled is True and not t.automatic_tax_enabled:
         # F5.3 preflight: only when the tenant is charge-ready can we ask
         # Stripe whether Tax is actually configured on the connected account.
@@ -581,8 +573,6 @@ def update_tenant_config(request, payload: TenantConfigIn):
         t.billing_mode = payload.billing_mode
     if payload.products is not None:
         t.products = payload.products
-    if payload.require_cost_card_coverage is not None:
-        t.require_cost_card_coverage = payload.require_cost_card_coverage
     # Spend-safety caps. model_fields_set distinguishes an omitted key (leave
     # alone) from an explicit null (clear the cap) for the two nullable fields.
     fields_set = payload.model_fields_set

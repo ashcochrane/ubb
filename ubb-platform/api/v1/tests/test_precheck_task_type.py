@@ -14,11 +14,6 @@ class TestPreCheckTaskType:
         # products=[...] is REQUIRED: the route is gated by _product_check,
         # so a tenant without "billing" gets 403, not 422.
         self.tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
-        # A resolved non-null COGS limit is refused without this (see
-        # RiskServiceTaskTest._enable_coverage) — these tests are about
-        # ceiling RESOLUTION, not the coverage gate.
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         wallet = Wallet.objects.create(customer=self.customer)

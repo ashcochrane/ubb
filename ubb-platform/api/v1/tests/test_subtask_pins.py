@@ -342,34 +342,26 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
         self.assertFalse(body["allowed"])
         self.assertEqual(body["reason"], "subtask_depth_exceeded")
 
-    def test_subtask_default_limit_and_coverage_gate(self):
-        # The coverage gate applies to subtask limits the same as task
-        # limits: a resolved subtask default refuses without coverage ...
+    def test_subtask_default_limit_applies_with_no_cost_rates_declared(self):
+        # The SUBTASK default (not the task default) is the fallback for a
+        # subtask start, and it resolves on a tenant that has declared no cost
+        # rates: #321 deleted the coverage gate that refused a limited start
+        # here, subtask and task alike, with nothing in its place.
         RiskConfig.objects.create(
             tenant=self.tenant,
             default_subtask_provider_cost_limit_micros=3_000_000)
         parent = self._task()
         body = self._pre_check(parent_task_id=str(parent.id)).json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "cost_coverage_required")
-
-        # ... and applies with it on. The SUBTASK default (not the task
-        # default) is the fallback for a subtask start.
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
-        body = self._pre_check(parent_task_id=str(parent.id)).json()
         self.assertTrue(body["allowed"])
         self.assertEqual(body["provider_cost_limit_micros"], 3_000_000)
 
         # A top-level start ignores the subtask default (no task default set
-        # -> uncapped, no coverage refusal).
+        # -> uncapped).
         body = self._pre_check().json()
         self.assertTrue(body["allowed"])
         self.assertIsNone(body["provider_cost_limit_micros"])
 
     def test_explicit_subtask_limit_wins_over_default(self):
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
         RiskConfig.objects.create(
             tenant=self.tenant,
             default_subtask_provider_cost_limit_micros=3_000_000)

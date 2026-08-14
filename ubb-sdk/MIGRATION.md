@@ -76,7 +76,7 @@ Family parents: `BadRequestError` (400), `ForbiddenError` (403),
 Per-code leaves include `InsufficientBalanceError`, `WouldOverdrawError`,
 `CurrencyLockedError`, `LastActiveKeyError`, `LastActiveAdminError` (under
 `ConflictError`); `BillingPeriodClosedError`, `InvalidConfigError`,
-`InvalidRevenueModeError`, `NoCostCardsError`,
+`InvalidRevenueModeError`,
 `UnsupportedCurrencyError`, `ValidationError`, the three `EffectiveAt*Error`
 (under `UnprocessableEntityError`); `FeatureNotEnabledError` (under
 `ForbiddenError`); `InvalidCursorError` (under `BadRequestError`);
@@ -93,6 +93,21 @@ stale block fails at import with an `ImportError` rather than sitting there
 never firing. **What to do instead: read `costing_status` on the 200.** It says
 `known`, `unresolved` or `not_applicable`, and `uncosted_measurement_keys`
 names the quantities that need a cost rate declared.
+
+**`NoCostCardsError` is gone too, and so is the setting it guarded.** It was
+raised when you tried to turn on `require_cost_card_coverage` — the strict mode
+that made an uncostable event a 422 — without having declared any cost rates
+yet. Both the setting and the refusal are deleted: strict mode was the wall
+`PricingError` used to enforce, and with the wall gone there is nothing left to
+arm. The tenant-config request and response schemas no longer carry the field,
+and an `except NoCostCardsError:` block fails at import for the same reason as
+above. **What to do instead: nothing.** A tenant part-way through declaring
+their cost rates gets their events recorded, with the gaps named on the 200.
+
+The admission verdict `cost_coverage_required` goes with it. The start-gate
+call no longer refuses a start because a spend ceiling was requested without
+full cost coverage — that word can no longer appear in `reason`, and a limited
+start is admitted whatever you have declared.
 
 ### Status-code moves you may be catching by number
 

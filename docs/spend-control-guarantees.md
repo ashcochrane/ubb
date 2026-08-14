@@ -368,7 +368,7 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 12 | Soft floor refuses new top-level starts only; subtask pass-through; crossed/cleared exactly once; acks never change | `apps/billing/gating/tests/test_soft_floor_pins.py::TestPin12StartGate`, `::TestPin12PairExactlyOnce` |
 | 13 | Subtask killed alone — parent keeps running; parent trip cascades | `api/v1/tests/test_subtask_pins.py::Pin13ContainmentTest` |
 | 14 | Only the provider (COGS) total races a limit; both totals on record and response | `test_one_rule_pins.py::Pin14DenominationTest`; `test_subtask_pins.py::Pin14SubtaskDenominationTest` |
-| 15 | Coverage gate: a resolvable limit without cost coverage is refused `cost_coverage_required` | `test_one_rule_pins.py::Pin15CoverageGateTest` |
+| 15 | **Retired by #321 — this is no longer guaranteed, and by deletion rather than rehoming.** A resolvable limit used to be refused `cost_coverage_required` unless the tenant had promised full cost coverage. #320 removed the premise: an event UBB cannot cost is now recorded with its cost unresolved rather than counted as zero, so a limit races a floor, and the gate was refusing work on a promise nothing keeps. A limited start is now admitted whatever a tenant has declared. | — (the ceiling-resolution half survives as `test_one_rule_pins.py::CeilingResolutionAtStartTest`) |
 | 16 | Label fallback removed — a `metadata` label never attaches a limit | `test_one_rule_pins.py::Pin16LabelFallbackRemovedTest` |
 | 17 | The clean cut holds: no run-era name on any surface | `test_one_rule_pins.py::Pin17CleanCutSweepTest` |
 

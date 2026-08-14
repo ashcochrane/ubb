@@ -113,12 +113,6 @@ class RiskServiceTaskTest(TestCase):
         RiskConfig.objects.create(tenant=self.tenant)
         BillingTenantConfig.objects.create(tenant=self.tenant)
 
-    def _enable_coverage(self):
-        # The tenant-config API requires an active cost rate card to flip
-        # this; tests set the model field directly (per the #37 brief).
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
-
     def test_check_with_create_task_returns_task_id(self):
         # No explicit limit and no RiskConfig default -> uncapped task.
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
@@ -134,31 +128,7 @@ class RiskServiceTaskTest(TestCase):
         self.assertEqual(task.customer_id, self.customer.id)
         self.assertIsNone(task.provider_cost_limit_micros)
 
-    def test_explicit_limit_refused_without_coverage(self):
-        # A resolved non-null COGS limit with require_cost_card_coverage off
-        # is refused at the gate — no task is created.
-        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(
-            self.customer, create_task=True,
-            provider_cost_limit_micros=10_000_000,
-        )
-        self.assertFalse(result["allowed"])
-        self.assertEqual(result["reason"], "cost_coverage_required")
-        self.assertIsNone(result["task_id"])
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_default_limit_refused_without_coverage(self):
-        # The tenant-default limit resolves non-null too — same refusal.
-        config = self.tenant.risk_config
-        config.default_task_provider_cost_limit_micros = 7_000_000
-        config.save(update_fields=["default_task_provider_cost_limit_micros"])
-        result = RiskService.check(self.customer, create_task=True)
-        self.assertFalse(result["allowed"])
-        self.assertEqual(result["reason"], "cost_coverage_required")
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_explicit_limit_with_coverage_creates_limited_task(self):
-        self._enable_coverage()
+    def test_explicit_limit_creates_limited_task(self):
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
         result = RiskService.check(
             self.customer, create_task=True,
@@ -170,7 +140,6 @@ class RiskServiceTaskTest(TestCase):
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
 
     def test_tenant_default_limit_applies_when_no_explicit_limit(self):
-        self._enable_coverage()
         config = self.tenant.risk_config
         config.default_task_provider_cost_limit_micros = 7_000_000
         config.save(update_fields=["default_task_provider_cost_limit_micros"])

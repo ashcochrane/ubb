@@ -62,30 +62,12 @@ class TestNegativeMetricSchemaRejection:
         })
         assert resp.status_code == 422
 
-    def test_negative_quantity_strict_mode_returns_422(self):
-        """Strict mode does not change the rejection — negative is always invalid.
-
-        ⚠ THE FLAG BELOW NO LONGER REACHES COSTING (#320), so this case has
-        become a duplicate of its sibling rather than a second mode of the same
-        rule. It is left standing because the column, this fixture and the name
-        of this test go together, and they go in #321 — a rename here would be
-        churn on a test that ticket deletes.
-        """
-        tenant = Tenant.objects.create(
-            name="Strict", products=["metering"], require_cost_card_coverage=True)
-        _, raw_key = TenantApiKey.create_key(tenant, label="test")
-        customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        Rate.objects.create(
-            tenant=tenant, card_type="cost", measurement_key="tok",
-            pricing_model="per_unit", rate_per_unit_micros=1, unit_quantity=1,
-        )
-        http = Client()
-        auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
-        resp = _post(http, auth, customer, {
-            "request_id": "r3", "idempotency_key": "k3",
-            "measurements": {"tok": -100},
-        })
-        assert resp.status_code == 422
+    # A second case here drove the same rejection with the strict cost-coverage
+    # flag on. #320 stopped that flag reaching costing, which made it a
+    # duplicate of the case above rather than a second mode of the rule, and
+    # #321 deleted the flag: the case goes with it rather than being renamed.
+    # The predicate is a request validator (`api/v1/schemas.py`,
+    # `measurement_values_nonnegative`) and never consulted the tenant.
 
     def test_zero_quantity_accepted(self):
         """Zero is valid (boundary check — ge=0)."""

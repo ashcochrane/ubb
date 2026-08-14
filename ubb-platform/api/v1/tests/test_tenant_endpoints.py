@@ -94,11 +94,14 @@ class TenantConfigEndpointTest(TestCase):
         response = self.http_client.get("/api/v1/tenant/config", **self._auth())
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        for key in ("billing_mode", "products", "require_cost_card_coverage",
+        for key in ("billing_mode", "products",
                     "stripe_connected_account_id", "is_active"):
             self.assertIn(key, body, f"missing key: {key}")
         self.assertEqual(body["billing_mode"], "meter_only")
         self.assertIn("metering", body["products"])
+        # The strict cost-coverage setting left this response in #321 — the
+        # wall it armed is gone, so there is nothing here to read back.
+        self.assertNotIn("require_cost_card_coverage", body)
 
     # --- PATCH: happy path ---
 
@@ -113,19 +116,6 @@ class TenantConfigEndpointTest(TestCase):
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.billing_mode, "postpaid")
         self.assertIn("billing", self.tenant.products)
-
-    # --- PATCH: require_cost_card_coverage=true with no active cost cards → 422 ---
-
-    def test_patch_require_cost_card_coverage_without_cost_cards_returns_422(self):
-        response = self.http_client.patch(
-            "/api/v1/tenant/config",
-            data=json.dumps({"require_cost_card_coverage": True}),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(response.status_code, 422)
-        body = response.json()
-        self.assertEqual(body.get("code"), "no_cost_cards")
 
     # --- PATCH: a product the registry does not declare → 422 ---
 

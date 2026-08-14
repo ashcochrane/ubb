@@ -690,24 +690,13 @@ class PreCheckTaskTest(TestCase):
         self.assertEqual(task.balance_snapshot_micros, 20_000_000)
         self.assertIsNone(task.provider_cost_limit_micros)
 
-    def test_pre_check_capped_start_refused_without_coverage(self):
-        # A COGS limit over uncovered events would silently count 0 — with
-        # require_cost_card_coverage off, a limited start is refused and no
-        # task is created (a start-gate refusal refuses work that hasn't
-        # happened, never a usage report).
-        resp = self._pre_check(start_task=True, provider_cost_limit_micros=10_000_000)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "cost_coverage_required")
-        self.assertIsNone(body["task_id"])
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_pre_check_capped_start_with_coverage_snapshots_limit(self):
-        # Coverage on (set directly on the model — enabling it via the
-        # tenant-config API requires an active cost rate card).
-        self.tenant.require_cost_card_coverage = True
-        self.tenant.save(update_fields=["require_cost_card_coverage"])
+    def test_pre_check_capped_start_snapshots_limit(self):
+        # This tenant has declared no cost rates at all, and a limited start
+        # is admitted anyway (#321): the coverage gate that refused one is
+        # gone, with nothing in its place. What used to justify it — a COGS
+        # ceiling racing a total that silently counted uncovered events as 0 —
+        # stopped being true in #320, which records an uncosted event with its
+        # cost unresolved instead of counting it as nothing.
         resp = self._pre_check(start_task=True, provider_cost_limit_micros=10_000_000)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()

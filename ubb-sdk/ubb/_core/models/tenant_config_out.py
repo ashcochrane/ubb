@@ -31,7 +31,6 @@ class TenantConfigOut:
             is_active (bool):
             name (str):
             products (list[TenantConfigOutProductsItem]):
-            require_cost_card_coverage (bool):
             stripe_connected_account_id (str):
             default_task_provider_cost_limit_micros (int | None | Unset):
             enforcement_mode (str | Unset):  Default: 'off'.
@@ -46,7 +45,6 @@ class TenantConfigOut:
     is_active: bool
     name: str
     products: list[TenantConfigOutProductsItem]
-    require_cost_card_coverage: bool
     stripe_connected_account_id: str
     default_task_provider_cost_limit_micros: int | None | Unset = UNSET
     enforcement_mode: str | Unset = 'off'
@@ -76,8 +74,6 @@ class TenantConfigOut:
             products.append(products_item)
 
 
-
-        require_cost_card_coverage = self.require_cost_card_coverage
 
         stripe_connected_account_id = self.stripe_connected_account_id
 
@@ -109,7 +105,6 @@ class TenantConfigOut:
             "is_active": is_active,
             "name": name,
             "products": products,
-            "require_cost_card_coverage": require_cost_card_coverage,
             "stripe_connected_account_id": stripe_connected_account_id,
         })
         if default_task_provider_cost_limit_micros is not UNSET:
@@ -150,8 +145,6 @@ class TenantConfigOut:
             products.append(products_item)
 
 
-        require_cost_card_coverage = d.pop("require_cost_card_coverage")
-
         stripe_connected_account_id = d.pop("stripe_connected_account_id")
 
         def _parse_default_task_provider_cost_limit_micros(data: object) -> int | None | Unset:
@@ -187,7 +180,6 @@ class TenantConfigOut:
             is_active=is_active,
             name=name,
             products=products,
-            require_cost_card_coverage=require_cost_card_coverage,
             stripe_connected_account_id=stripe_connected_account_id,
             default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
             enforcement_mode=enforcement_mode,

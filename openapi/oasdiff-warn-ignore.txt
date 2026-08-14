@@ -309,3 +309,20 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request pro
 # proves that retirement is the SDK's generated exception hierarchy regenerating
 # without the class, which is #155 §4's condition 4 and is in this commit too.
 POST /api/v1/metering/usage removed the optional property `uncosted_metrics` from the response with the `200` status
+#
+# #321 — THE REQUEST HALF OF THE SAME DELETION.
+#
+# `TenantConfigIn.require_cost_card_coverage` was optional, so removing it is a
+# WARN where the response half is an ERR. The argument for taking it is one
+# argument, made once, in `oasdiff-err-ignore.txt` beside the response entries:
+# the setting armed a wall the recording path stopped honouring in #320, and it
+# is deleted rather than defaulted off so nobody can arm it again. Splitting the
+# request half across two commits would publish a writable setting nothing reads.
+#
+# A CALLER STILL SENDING THE KEY IS NOT REFUSED, AND THAT IS NOT A SECOND
+# CONTRACT. Django Ninja drops a body key no schema declares, so the PATCH keeps
+# answering 200 and simply changes nothing — the same shape every removed
+# optional request property has here. The proof that it changes nothing is the
+# field's absence from the tenant model, asserted in
+# `api/v1/tests/test_onboarding_is_not_a_wall.py`.
+PATCH /api/v1/tenant/config removed the request property `require_cost_card_coverage`

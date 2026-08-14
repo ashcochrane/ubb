@@ -465,7 +465,7 @@ entries:
     gate: G7
     site: backend::card_type
     expected: pricing_book_name
-    found: 32 files
+    found: 31 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in

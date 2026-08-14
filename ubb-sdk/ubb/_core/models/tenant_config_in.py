@@ -33,7 +33,6 @@ class TenantConfigIn:
             live_counter_maintenance_enabled (bool | None | Unset):
             min_balance_micros (int | None | Unset):
             products (list[TenantConfigInProductsType0Item] | None | Unset):
-            require_cost_card_coverage (bool | None | Unset):
             soft_min_balance_micros (int | None | Unset):
      """
 
@@ -45,7 +44,6 @@ class TenantConfigIn:
     live_counter_maintenance_enabled: bool | None | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
     products: list[TenantConfigInProductsType0Item] | None | Unset = UNSET
-    require_cost_card_coverage: bool | None | Unset = UNSET
     soft_min_balance_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -109,12 +107,6 @@ class TenantConfigIn:
         else:
             products = self.products
 
-        require_cost_card_coverage: bool | None | Unset
-        if isinstance(self.require_cost_card_coverage, Unset):
-            require_cost_card_coverage = UNSET
-        else:
-            require_cost_card_coverage = self.require_cost_card_coverage
-
         soft_min_balance_micros: int | None | Unset
         if isinstance(self.soft_min_balance_micros, Unset):
             soft_min_balance_micros = UNSET
@@ -142,8 +134,6 @@ class TenantConfigIn:
             field_dict["min_balance_micros"] = min_balance_micros
         if products is not UNSET:
             field_dict["products"] = products
-        if require_cost_card_coverage is not UNSET:
-            field_dict["require_cost_card_coverage"] = require_cost_card_coverage
         if soft_min_balance_micros is not UNSET:
             field_dict["soft_min_balance_micros"] = soft_min_balance_micros
 
@@ -249,16 +239,6 @@ class TenantConfigIn:
         products = _parse_products(d.pop("products", UNSET))
 
 
-        def _parse_require_cost_card_coverage(data: object) -> bool | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(bool | None | Unset, data)
-
-        require_cost_card_coverage = _parse_require_cost_card_coverage(d.pop("require_cost_card_coverage", UNSET))
-
-
         def _parse_soft_min_balance_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -278,7 +258,6 @@ class TenantConfigIn:
             live_counter_maintenance_enabled=live_counter_maintenance_enabled,
             min_balance_micros=min_balance_micros,
             products=products,
-            require_cost_card_coverage=require_cost_card_coverage,
             soft_min_balance_micros=soft_min_balance_micros,
         )
 
