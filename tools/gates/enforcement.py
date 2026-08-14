@@ -253,10 +253,16 @@ def _is_unittest_class(statement):
 
     Decided off the base's spelling, because an AST cannot resolve an import:
     ``TestCase``, ``django.test.TestCase``, ``SimpleTestCase`` and
-    ``TransactionTestCase`` all end in the word. A class that reaches
-    ``TestCase`` only through an intermediate base declared in another module is
-    therefore missed — a false NEGATIVE, which is the safe direction: the
-    failure this cannot produce is calling a dead gate live.
+    ``TransactionTestCase`` all end in the word. That is a heuristic and it is
+    wrong in both directions, which is worth stating rather than claiming a safe
+    one. It MISSES a class reaching ``TestCase`` only through an intermediate
+    base declared elsewhere, and a test inherited from a mixin rather than
+    written in the class's own body — both refuse a row that could have been
+    installed. It ADMITS a class whose base merely ends in the word without
+    being unittest's, which would call a node armed that pytest does not
+    collect. Nothing here is load-bearing against a hostile author; what it is
+    for is the ordinary shape this repository actually writes, and the
+    conclusion it reaches is checked by the row's own tests running in CI.
     """
     for base in statement.bases:
         name = (base.attr if isinstance(base, ast.Attribute)
@@ -277,16 +283,22 @@ def _definitions(tree, collection):
     A class is collected if it matches ``python_classes`` or subclasses
     ``unittest.TestCase``; those are two different doors and the suite here uses
     both.
+
+    The value is every definition whose marks govern the test — the function,
+    and the class around it where there is one. **A skip one level up silences
+    the test just as completely**, and reading the function alone would report a
+    gate as armed that pytest collects and does not run, which is the failure
+    this whole module exists to refuse.
     """
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield statement.name, statement
+            yield statement.name, (statement,)
         elif isinstance(statement, ast.ClassDef) and (
                 _matches_any(statement.name, collection.python_classes)
                 or _is_unittest_class(statement)):
             for inner in statement.body:
                 if isinstance(inner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    yield f"{statement.name}::{inner.name}", inner
+                    yield f"{statement.name}::{inner.name}", (inner, statement)
 
 
 def collection_faults(repo_root, root, config_path, node):
@@ -345,7 +357,9 @@ def collection_faults(repo_root, root, config_path, node):
                       f"python_functions "
                       f"({' '.join(collection.python_functions)})")
 
-    marks = _skipping_marks(definitions[qualified]) | _module_level_skips(tree)
+    marks = _module_level_skips(tree)
+    for definition in definitions[qualified]:
+        marks |= _skipping_marks(definition)
     if marks:
         faults.append(f"`{function}` is marked {', '.join(sorted(marks))} — a "
                       f"gate that does not run is not installed")

@@ -10,9 +10,10 @@ time. ADR-0007's Consequences names that as both the cost and the point.
 
 **Declaring is not enforcing, and nothing in this module enforces anything.**
 Database enforcement is gate G19, and slice 3 **installed** it: the trigger in
-``usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py`` holds the
-first columns declared here across ``save()``, ``QuerySet.update()`` and raw SQL
-alike, and ``apps/platform/tests/test_transition_class_declarations.py`` walks
+``apps/metering/usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py``
+holds the first columns declared here across ``save()``, ``QuerySet.update()``
+and raw SQL alike, and
+``apps/platform/tests/test_transition_class_declarations.py`` walks
 every declaration in the tree and fails on any column the database does not
 actually defend. Nothing *here* installs a trigger, a rule or a ``CHECK`` — this
 module is the vocabulary, and the gate that holds a column to what it says lives

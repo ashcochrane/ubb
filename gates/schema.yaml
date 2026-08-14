@@ -132,11 +132,17 @@ row_fields:
 # The two forms an `installed` row's `enforced_by` list may take. Both are
 # checked; neither is prose.
 enforcement_kinds:
-  # A test node in a declared pytest suite: `path/to/test_x.py::test_y`. The
-  # suite's job and step must be armed, and the node must be one this suite
-  # actually collects — the file matches `python_files`, the function matches
-  # `python_functions`, no `norecursedirs` or `--ignore` excludes the path, and
-  # the function carries no skip or xfail marker.
+  # A test node in a declared pytest suite: `path/to/test_x.py::test_y`, or
+  # `path/to/test_x.py::TestClass::test_y` for a test that lives in a class —
+  # in both cases the spelling pytest itself takes, so the node id can be pasted
+  # into a shell and watched running. The suite's job and step must be armed,
+  # and the node must be one this suite actually collects: the file matches
+  # `python_files`, the function matches `python_functions`, no `norecursedirs`
+  # or `--ignore` excludes the path, and neither the function nor the class
+  # around it carries a skip or xfail marker. A class is collected if it matches
+  # `python_classes` OR subclasses `unittest.TestCase`, which pytest collects
+  # whatever that setting says — the platform suite's database-backed gates are
+  # all `django.test.TestCase` subclasses named `<Thing>Test` (#319).
   suite_node:
     fields:
       - suite

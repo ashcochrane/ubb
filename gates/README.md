@@ -475,6 +475,22 @@ either would be a debt nobody could pay. They are still *seen*: the gate asserts
 each excused site is one the scanner actually reports, so an exception cannot
 suppress something that is not there.
 
+**#319 then installed G19 — the first gate installed by a slice other than 0,
+and it seeds NOTHING.** It is the third of that shape after G10 and G13, and for
+the strongest of the three reasons: the gate is a walk over the *declarations*
+themselves, so a column whose promise the database does not keep is not a debt to
+be recorded but a build that does not pass. There is nothing to owe, and no
+seeding authorisation was added.
+
+It is also the first row to name a test **inside a class**, which is where the
+cost landed. Every database-backed test here is a `django.test.TestCase`
+subclass named `<Thing>Test`, and pytest collects those because they are
+unittest subclasses, not because `python_classes` matches — it does not. So the
+node spelling grew a class segment (`path::Class::function`, what pytest itself
+takes) and the collection check grew the unittest door, or the row could not
+have named a single one of the tests that hold it. Worth knowing for the next
+slice that installs a gate over the model layer: that is all of them.
+
 **A gate installed in the platform or SDK suite keeps its allowlist there**, in
 the language that suite is written in, and a contract test holds the two to each
 other. #203's is `test_model_naming_ledger_agreement.py`: the platform suite has

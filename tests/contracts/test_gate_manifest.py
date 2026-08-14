@@ -630,6 +630,23 @@ def test_a_unittest_subclass_is_collected_whatever_python_classes_says(tmp_path)
     assert programme.gates["G1"].installed
 
 
+def test_a_row_naming_a_test_in_a_skipped_class_is_rejected(tmp_path):
+    """The skip that hides one level up, and the reason this case exists.
+
+    A skip on the CLASS silences every test in it, and reading the marks on the
+    function alone would never see it. That was harmless while no row named a
+    class-based node; the moment one does it is the manifest's own opening
+    failure — a gate listed as installed that pytest collects and does not run —
+    and it is worse than the function-level case, because one decorator silences
+    a whole file's worth of nodes at once. G19 names three in a single file.
+    """
+    invalid = rejection(tmp_path, gates=gates(G1=installed([{
+        "suite": "contracts",
+        "node": f"{TEST_FILE}::TestSkippedThings::test_in_a_skipped_class"}])))
+    assert invalid.codes() == {codes.GATE_NOT_RUNNING}
+    assert any("marked skip" in error.message for error in invalid.errors)
+
+
 def test_a_test_in_a_class_named_without_its_class_is_rejected(tmp_path):
     """The bare spelling of a test that lives in a class names nothing pytest
     runs: `pytest path::test_in_a_class` selects no tests at all.

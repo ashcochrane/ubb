@@ -418,8 +418,8 @@ class PostingMeasurement(BaseModel):
     not one of them. The ``DELETE`` condition above is cross-table and
     unexpressible today, because the second of the two statuses it reads lands
     in slice 4; slice 4 adds it as an **extension** of the installed gate rather
-    than by re-owning its row, and G19's manifest row carries that deferral by
-    name so it is a written obligation rather than a comment nobody greps. A
+    than by re-owning its row, and G19's `notes` name that deferral so it is
+    recorded beside the gate as well as here. A
     model-level ``save()`` guard is deliberately *not* shipped in its place:
     ADR-0007 §2 is explicit that such a guard is not enforcement, and this
     repository has already shipped one that a production writer bypassed by
