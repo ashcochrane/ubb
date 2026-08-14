@@ -77,9 +77,15 @@ wire and validate.
   fifth class — it is the absence of a per-column one, said out loud, with the rule itself written in
   the model's docstring. `PostingMeasurement` is the first (insert once, never update, delete only at
   or after its horizon).
-- **Declaring is not enforcing.** The database enforcement is gate G19, `owned_by_slice_3`; until it
-  lands, a `DATABASE_DEFENDED` class would be a promise nothing keeps.
-  `apps/platform/tests/test_transition_class_declarations.py` is what holds that line.
+- **Declaring is not enforcing, and a declaration must arrive with what keeps it.** The database
+  enforcement is gate G19, `owned_by_slice_3`; a `DATABASE_DEFENDED` class with nothing behind it is
+  a promise nothing keeps. `apps/platform/tests/test_transition_class_declarations.py` is what holds
+  that line, and since #318 it holds it from the other side: it walks every declaration in the tree
+  and fails on any column the database does not actually defend. **The first pair
+  (`Posting`, #318) is enforced by a `BEFORE UPDATE` trigger** installed alongside it in
+  `usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py` — a `CHECK` cannot see the
+  previous row, so it can carry a column's legal values but never a transition rule. A model-level
+  `save()` guard is not enforcement and is never shipped as one (ADR-0007 §2).
 
 ## Migrations
 

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,538 of 1,911 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,542 of 1,916 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -268,6 +268,29 @@ measurement_key:
     # its child record keyed by `measurement_key`, and what this commit adds is
     # about MONEY rather than quantity. #275's RATE ARITHMETIC caution holds:
     # nothing here goes near `compute(units)`.
+    #
+    # #318 MOVED THE DENOMINATOR ONLY, UPWARD (1,538 → 1,542 swept, 1,911 →
+    # 1,916 tracked, 50/126 unchanged) — the "needs no story" direction, with
+    # the same non-widening signature #312 and #317 record: `historical-
+    # migrations` went 206 → 207 because this commit ADDS a migration to a
+    # directory the rule already covers. FIVE NEW FILES, FOUR OF THEM SWEPT —
+    # the migration (excluded), the settlement door, its test module, the
+    # module proving the database refuses every other move, and the script that
+    # measures what that refusal costs. NO SDK REGENERATION and no generated
+    # artifact of any kind: this commit publishes nothing, so the #277/#317
+    # hazard of taking the count before a regeneration does not arise.
+    #
+    # THE NUMERATOR HELD ONLY ON THE SECOND ATTEMPT, AND THAT IS WORTH THE
+    # LINE. The first version of the measurement script hand-wrote an `INSERT`
+    # naming every NOT NULL column on the posting table, two of which are words
+    # under a live `term_spread` ceiling of their own — the sweep failed on both
+    # before this number was ever taken. The script now builds its rows through
+    # the ORM, which is also the truer instrument: the recording path it is
+    # measuring goes through Django too. A ceiling is a ceiling for new files as
+    # much as for old ones, and a fixture is not exempt because it is only a
+    # fixture. Nothing about THIS concept is in the commit: what settles here is
+    # MONEY, and a posting's measured quantity lives on its child record.
+    # #275's RATE ARITHMETIC caution holds — nothing goes near `compute(units)`.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

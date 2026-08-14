@@ -1,42 +1,50 @@
-"""No column is declared into a transition class the database defends.
+"""Every column declared into a transition class the database defends, is.
 
 ADR-0007 §2 requires every column of an economically protected record to declare
 what may happen to it, and requires the **database** to enforce that declaration
 across `save()`, `QuerySet.update()` and raw SQL alike. The enforcement half is
-gate G19, which is `owned_by_slice_3` and blocked on there being a subject: its
-manifest note reads *"Slice 3 is the first slice with protected columns, not the
-last."*
+gate G19.
 
-That note is a claim about the tree, and this is what keeps it true. A column
-declared `FROZEN`, `RESOLVE_ONCE`, `SET_ONCE` or `PRUNABLE` today would be a
-column making a promise nothing keeps — the exact failure ADR-0007 §2 names when
-it says a model-level guard alone is not enforcement, *"the repository has
-already shipped one that a production writer bypassed by design"*.
+**THIS FILE ASSERTED THE OPPOSITE UNTIL #318, AND IT WAS REPLACED BY ITS
+INVERSE RATHER THAN RELAXED.** Until slice 3 there was no enforcement, so the
+only honest thing to hold was that **nothing** was declared: a column declared
+`FROZEN`, `RESOLVE_ONCE`, `SET_ONCE` or `PRUNABLE` would have been a column
+making a promise nothing kept — the exact failure ADR-0007 §2 names when it says
+a model-level guard alone is not enforcement, *"the repository has already
+shipped one that a production writer bypassed by design"*. That assertion's own
+docstring said slice 3 would change it and G19's row together.
 
-The measurement child (#270) is the first record to declare its classes at all,
-and it declares every column into the record rule instead: it has no per-column
-lifecycle, because no column of it ever changes. When slice 3 ships the first
-`RESOLVE_ONCE` pair it will change G19's row and this file together — the point
-is that it cannot happen silently.
+Slice 3 declared the first pair and installed the trigger that keeps it, so the
+empty-set assertion had to go. **Loosening it — "a column may be declared" — is
+the failure it existed to prevent**, because such a test passes whether or not
+anything defends anything. The inverse holds the same line from the other side:
+declare what you like, and the database had better be holding it.
 
-**The gate ships with a positive control and a vacuity guard**, because an
-absence assertion that has never been shown to fail is an assertion, not
-evidence, and one that walks nothing is worse than none at all: the board stays
-green either way.
+**The check walks the declarations and names no column.** A list naming this
+slice's columns would expire in silence the moment slice 4 declared one of its
+own — the vacuity #256 fixed in the gate manifest and #285 shipped again in the
+migration ledger. It goes through
+`core.transitions.columns_declared_into_defended_classes`, the single entry
+point that returns `(model, column, class)` triples, and asserts every triple it
+returns is defended.
+
+**Both controls come over.** The vacuity guard flips with the assertion: it used
+to prove the walk had read a real declaration, and now proves at least one
+column is genuinely defended, so an empty walk cannot report a clean board. The
+positive control is unchanged in shape — two synthetic declarers through the
+check's real entry point, one of them clean — and it is pointed at a table that
+really does carry a rule, so what it demonstrates is the sharp case: a trigger
+on the table is not the same thing as a trigger that mentions this column.
 """
+import re
+
 from django.apps import apps
-from django.test import SimpleTestCase
+from django.db import connection
+from django.test import TestCase
 
 from core.transitions import (
-    DATABASE_DEFENDED, FROZEN, RECORD_RULE, RESOLVE_ONCE,
+    DATABASE_DEFENDED, RECORD_RULE, RESOLVE_ONCE,
     columns_declared_into_defended_classes)
-
-#: The first record to declare anything, named as a STRING and reached through
-#: the app registry. `apps/platform/**` never imports a product
-#: (`docs/conventions/coding-standards.md`), and a kernel-side gate whose
-#: subject is a product model is exactly where that rule gets bent quietly —
-#: the boundary walker skips `tests/`, so nothing would catch it.
-FIRST_DECLARER = "PostingMeasurement"
 
 
 def _declaring_models():
@@ -44,45 +52,113 @@ def _declaring_models():
             if getattr(model, "transition_classes", None)]
 
 
-class TransitionClassDeclarationsTest(SimpleTestCase):
+def _tables():
+    """Model name to table, for the models that declare something.
 
-    def test_no_column_is_declared_into_a_class_the_database_defends(self):
+    Reached through the app registry: `apps/platform/**` never imports a product
+    (`docs/conventions/coding-standards.md`), and a kernel-side gate whose
+    subject is a product model is exactly where that rule gets bent quietly —
+    the boundary walker skips `tests/`, so nothing would catch it.
+
+    Built from the DECLARING models alone, and refusing a collision. Django does
+    not make a class name unique across apps, and the entry point this gate
+    walks returns names rather than models, so two declarers sharing one would
+    quietly send the check to look at the wrong table — and it would find the
+    wrong answer either way round.
+    """
+    declaring = _declaring_models()
+    tables = {model.__name__: model._meta.db_table for model in declaring}
+    assert len(tables) == len(declaring), (
+        "two declaring models share a class name; this walk resolves a table by "
+        "that name and cannot tell them apart")
+    return tables
+
+
+def _rules_on(table):
+    """Everything the database will show us about the rules guarding `table`.
+
+    The trigger definition and the function body both count: a `WHEN` clause
+    lives in the first and the refusals in the second, and a column named in
+    either is a column the rule can see.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_get_triggerdef(t.oid), p.prosrc "
+            "FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid = t.tgrelid "
+            "JOIN pg_proc p ON p.oid = t.tgfoid "
+            "WHERE c.relname = %s AND NOT t.tgisinternal", [table])
+        return "\n".join(part for row in cursor.fetchall() for part in row)
+
+
+def _columns_the_database_does_not_defend(triples, tables):
+    """The check itself — the real one and the control both come through here.
+
+    A gate whose failing path has never been run is an assertion rather than
+    evidence, so there is one implementation and the positive control feeds it
+    synthetic declarers.
+    """
+    undefended = []
+    for model_name, column, transition_class in triples:
+        table = tables.get(model_name)
+        rules = _rules_on(table) if table else ""
+        if not re.search(rf"\b{re.escape(column)}\b", rules):
+            undefended.append((model_name, column, transition_class))
+    return sorted(undefended)
+
+
+class TransitionClassDeclarationsTest(TestCase):
+
+    def _declared(self):
+        return columns_declared_into_defended_classes(apps.get_models())
+
+    def test_every_declared_column_is_defended_by_the_database(self):
         self.assertEqual(
-            columns_declared_into_defended_classes(apps.get_models()), [])
+            _columns_the_database_does_not_defend(self._declared(), _tables()),
+            [])
 
-    def test_the_check_read_a_real_declaration(self):
-        """The vacuity guard.
+    def test_at_least_one_column_is_actually_defended(self):
+        """The vacuity guard, flipped along with the assertion above.
 
         `columns_declared_into_defended_classes` skips anything that declares
-        nothing, which is every model in the repository bar one. If that one
-        stopped declaring — a refactor, a moved model, a mapping renamed — the
-        assertion above would pass over an empty walk and report a clean board
-        for a tree it never looked at.
+        nothing, which is most of the repository. If the declarations were
+        removed — a refactor, a moved model, a mapping renamed — the assertion
+        above would pass over an empty walk and report a clean board for a tree
+        it never looked at, which is how this gate would come to hold nothing at
+        exactly the moment it stopped being true.
+
+        It asserts a defended COLUMN and not merely a guarded table, which is a
+        distinction with teeth: a table can carry a rule that mentions none of
+        the columns declared on it, and that is precisely the case the positive
+        control below is built out of.
         """
-        declaring = _declaring_models()
-        self.assertIn(FIRST_DECLARER, {model.__name__ for model in declaring})
-        columns = {column for model in declaring
-                   for column in model.transition_classes}
-        self.assertGreaterEqual(len(columns), 4)
+        declared = self._declared()
+        self.assertGreaterEqual(len(declared), 1)
+        undefended = _columns_the_database_does_not_defend(declared, _tables())
+        self.assertGreaterEqual(len(declared) - len(undefended), 1)
 
     def test_the_check_reports_a_violation_when_there_is_one(self):
         """The positive control, through the check's real entry point.
 
         Two synthetic declarers, one of them clean, so that what comes back is
-        the offending column rather than "something, somewhere, was wrong".
+        the offending column rather than "something, somewhere, was wrong". They
+        are pointed at a table that genuinely carries a rule, which makes this
+        the case worth controlling for: the table is guarded, and this column
+        still is not.
         """
         class Protected:
-            transition_classes = {"provider_cost_micros": RESOLVE_ONCE,
-                                  "currency": FROZEN,
+            transition_classes = {"a_column_no_rule_mentions": RESOLVE_ONCE,
                                   "notes": RECORD_RULE}
 
         class Clean:
             transition_classes = {"recorded_at": RECORD_RULE}
 
+        guarded_table = _tables()[self._declared()[0][0]]
         self.assertEqual(
-            columns_declared_into_defended_classes([Protected, Clean]),
-            [("Protected", "currency", FROZEN),
-             ("Protected", "provider_cost_micros", RESOLVE_ONCE)])
+            _columns_the_database_does_not_defend(
+                columns_declared_into_defended_classes([Protected, Clean]),
+                {"Protected": guarded_table, "Clean": guarded_table}),
+            [("Protected", "a_column_no_rule_mentions", RESOLVE_ONCE)])
 
     def test_every_declaration_is_one_of_the_known_answers(self):
         """The four classes, or the record rule that is not one of them."""

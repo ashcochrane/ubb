@@ -21,11 +21,17 @@ fifth, and nothing here should be read as amending that ADR. It is what a column
 declares when it has *no* class — so that "declared into none, and here is what
 governs it instead" is written down rather than merely absent.
 
-That distinction is load-bearing for more than tidiness. G19's manifest row
+That distinction was load-bearing for more than tidiness. G19's manifest row
 reads *"No column is declared into a transition class yet"*, and that sentence
-is still true with this module in the tree: `DATABASE_DEFENDED` is empty of
-declarers, and a `RECORD_RULE` column is one that declined a class rather than
-took one. Slice 3 is still the first slice with a protected column.
+was true for as long as `DATABASE_DEFENDED` had no declarers — a `RECORD_RULE`
+column is one that declined a class rather than took one, so the measurement
+child did not make it false.
+
+**#318 made it false, which is what it was waiting for.** The economic posting
+declares the first `RESOLVE_ONCE` pair and the first `FROZEN` column, and a
+trigger installed with them holds all three across every door. The row's
+`blocked_on` sentence is therefore spent, and moving the row itself is #319's —
+this note records that the subject arrived, not that the gate did.
 """
 
 #: The four classes of ADR-0007 §2, in the order that document states them.
