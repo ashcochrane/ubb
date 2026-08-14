@@ -425,7 +425,7 @@ live_counter_maintenance_enabled:
     90-day deprecation cycle.
   # `kind: free_text` is a DELIBERATE STRETCH and the first boolean in the
   # registry — no other boolean field is registered here (not
-  # `automatic_tax_enabled`, for one). None of
+  # `automatic_tax_enabled`, not `is_active`). None of
   # schema.yaml's four kinds is built for one: `closed` and `open` both demand
   # a value set plus a `label_key_prefix`, and `tenant_defined` is for values
   # the tenant owns. `free_text`'s own summary — "Not vocabulary. Recorded here

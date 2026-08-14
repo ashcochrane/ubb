@@ -278,12 +278,14 @@ class TenantConfigClientTest(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertEqual(result["billing_mode"], "postpaid")
 
-    def test_update_tenant_config_omits_none_fields(self):
-        """Only products is set; every other field is omitted from the body.
+    def test_a_single_field_update_sends_that_field_alone(self):
+        """One field given, one field on the wire — the arity its sibling lacks.
 
-        ``products`` is the one field no sibling module exercises alone, so this
-        stays a distinct case rather than a second copy of the currency or tax
-        single-field tests in ``test_tenant_config_tax_client.py``.
+        The sibling above sends two fields; this one exists to show a lone field
+        drags no defaults along with it. ``products`` is the subject because it
+        is the only one of the four surviving fields that no case in
+        ``test_tenant_config_tax_client.py`` already sends alone, so this stays
+        a distinct case rather than a duplicate of one.
         """
         updated = {**self.CONFIG_FIXTURE, "products": ["metering", "billing"]}
         mock_resp = MagicMock(status_code=200, json=lambda: updated)
@@ -302,9 +304,13 @@ class TenantConfigClientTest(unittest.TestCase):
         publish and answers 200, so a caller still passing this would get a
         successful call that changed nothing. Deleting the keyword argument is
         what turns that into a ``TypeError`` before the first HTTP request.
+
+        The message is asserted, not just the type: a bare ``TypeError`` would
+        also be raised by an unrelated signature change, and would then pass
+        for the wrong reason.
         """
         self.client.metering._request = MagicMock()
-        with self.assertRaises(TypeError):
+        with self.assertRaisesRegex(TypeError, "require_cost_card_coverage"):
             self.client.update_tenant_config(require_cost_card_coverage=True)
         self.client.metering._request.assert_not_called()
 
