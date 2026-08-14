@@ -101,8 +101,13 @@ yet. Both the setting and the refusal are deleted: strict mode was the wall
 `PricingError` used to enforce, and with the wall gone there is nothing left to
 arm. The tenant-config request and response schemas no longer carry the field,
 and an `except NoCostCardsError:` block fails at import for the same reason as
-above. **What to do instead: nothing.** A tenant part-way through declaring
-their cost rates gets their events recorded, with the gaps named on the 200.
+above. `update_tenant_config()` has lost the keyword argument of the same name,
+so a call still passing it raises `TypeError` before any request is sent —
+deliberately, because the server now drops a body key it does not publish and
+would otherwise answer 200 to a call that changed nothing. Drop the argument;
+`get_tenant_config()` no longer returns the field either. **What to do instead:
+nothing.** A tenant part-way through declaring their cost rates gets their
+events recorded, with the gaps named on the 200.
 
 The admission verdict `cost_coverage_required` goes with it. The start-gate
 call no longer refuses a start because a spend ceiling was requested without

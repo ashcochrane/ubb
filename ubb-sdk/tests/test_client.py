@@ -244,7 +244,6 @@ class TenantConfigClientTest(unittest.TestCase):
         "name": "TestTenant",
         "billing_mode": "meter_only",
         "products": ["metering"],
-        "require_cost_card_coverage": False,
         "default_currency": "usd",
         "stripe_connected_account_id": "acct_test",
         "is_active": True,
@@ -280,15 +279,34 @@ class TenantConfigClientTest(unittest.TestCase):
         self.assertEqual(result["billing_mode"], "postpaid")
 
     def test_update_tenant_config_omits_none_fields(self):
-        """Only require_cost_card_coverage=True is set; billing_mode and products are omitted."""
-        updated = {**self.CONFIG_FIXTURE, "require_cost_card_coverage": True}
+        """Only products is set; every other field is omitted from the body.
+
+        ``products`` is the one field no sibling module exercises alone, so this
+        stays a distinct case rather than a second copy of the currency or tax
+        single-field tests in ``test_tenant_config_tax_client.py``.
+        """
+        updated = {**self.CONFIG_FIXTURE, "products": ["metering", "billing"]}
         mock_resp = MagicMock(status_code=200, json=lambda: updated)
         self.client.metering._request = MagicMock(return_value=mock_resp)
-        self.client.update_tenant_config(require_cost_card_coverage=True)
+        self.client.update_tenant_config(products=["metering", "billing"])
         self.client.metering._request.assert_called_once_with(
             "patch", "/api/v1/tenant/config",
-            json={"require_cost_card_coverage": True},
+            json={"products": ["metering", "billing"]},
         )
+
+    def test_the_retired_coverage_setting_is_refused_before_any_request(self):
+        """Passing the deleted setting raises client-side; it is not sent and ignored.
+
+        The absence is asserted rather than merely unexercised, because the
+        failure mode here is silence: the server drops a body key it does not
+        publish and answers 200, so a caller still passing this would get a
+        successful call that changed nothing. Deleting the keyword argument is
+        what turns that into a ``TypeError`` before the first HTTP request.
+        """
+        self.client.metering._request = MagicMock()
+        with self.assertRaises(TypeError):
+            self.client.update_tenant_config(require_cost_card_coverage=True)
+        self.client.metering._request.assert_not_called()
 
     def test_update_tenant_config_empty_call_sends_empty_body(self):
         """Calling with no args sends an empty body."""
