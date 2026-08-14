@@ -13,6 +13,27 @@ from apps.metering.pricing.services import markup_cache
 from apps.metering.pricing.services.markup_cache import MarkupCache
 
 
+def usage_payload(customer, correlation, **fields):
+    """A recording-call body, without the caller naming the retired key.
+
+    The recording request still requires a second caller-supplied correlation
+    value beside `idempotency_key`. That word is RETIRED — slice 5 deletes it,
+    once the key that replaces it is finalised (`gates/migration-ledger.yaml`,
+    `backend::request_id`) — and its ledger entry caps how many files may still
+    contain it. **That cap is a ceiling on SPREAD, not only a count of what is
+    left to fix**, so a new test module naming the key puts the count over its
+    entry and the sweep fails. This module is already one of the counted ones,
+    so the word stays here and a caller elsewhere says what it means.
+
+    Exactly `cost_rate_in_default_book`'s shape, one retired word along
+    (`apps/metering/pricing/tests/_helpers.py`). Both callers pass one string
+    and never learn which key it lands under, so slice 5 re-spells it here and
+    nowhere else.
+    """
+    return {"customer_id": str(customer.id), "request_id": correlation,
+            "idempotency_key": correlation, **fields}
+
+
 class MeteringProductGatingTest(TestCase):
     def setUp(self):
         self.http_client = Client()
@@ -40,13 +61,10 @@ class MeteringProductGatingTest(TestCase):
     def test_tenant_with_metering_can_record_usage(self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(self.customer.id),
-                "request_id": "req_met_1",
-                "idempotency_key": "idem_met_1",
-                "provider_cost_micros": 1_500_000,
-                "metadata": {"model": "gpt-4"},
-            }),
+            data=json.dumps(usage_payload(
+                self.customer, "met_1",
+                provider_cost_micros=1_500_000,
+                metadata={"model": "gpt-4"})),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_met}",
         )
@@ -710,8 +728,8 @@ class RateCardValidationTest(TestCase):
         # uncosted, and says the posting's cost is unresolved rather than zero.
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
-            data=json.dumps({"customer_id": str(c.id), "request_id": "r9", "idempotency_key": "i9",
-                  "measurements": {"undeclared_quantity": 100}}),
+            data=json.dumps(usage_payload(
+                c, "r9", measurements={"undeclared_quantity": 100})),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
         assert "undeclared_quantity" in resp.json().get(

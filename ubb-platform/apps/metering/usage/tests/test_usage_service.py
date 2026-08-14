@@ -27,8 +27,16 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # return path for the same reason it does on the wire: the amount alone cannot
 # say whether it is settled, and a caller reading the replay return would
 # otherwise take an unresolved cost for a free one.
+#
+# `unresolved_reason` and `claimed_provider_cost_micros` joined it in #323, on
+# the same argument one step on: the status says a cost is missing, the reason
+# says which input would settle it, and the claim is the caller's own figure
+# that must never be read as the supplier's. All three are COLUMNS, so all
+# three survive a replay unchanged — which is the property this builder exists
+# to give the two idempotent return paths.
 _RESULT_KEYS = {
-    "event_id", "provider_cost_micros", "costing_status", "billed_cost_micros",
+    "event_id", "provider_cost_micros", "costing_status",
+    "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
@@ -56,6 +64,12 @@ class ResultSignatureTest(TestCase):
         # `SLOTS` means the next widening needs no edit at all.
         event = MagicMock(
             id="e1", provider_cost_micros=1, costing_status="known",
+            # Stubbed rather than left to the mock, for the reason above: an
+            # unstubbed attribute answers a truthy mock, so a settled posting
+            # would appear to carry both a cause and a claim. Asserted below
+            # as well — a stub nothing reads guards nothing, and the key-set
+            # assertion alone would pass with a mock object in either slot.
+            unresolved_reason=None, claimed_provider_cost_micros=None,
             billed_cost_micros=1,
             task_id=None, measurements={}, pricing_provenance={},
             stop_context=None, **{slot: "" for slot in SLOTS},
@@ -65,6 +79,13 @@ class ResultSignatureTest(TestCase):
         # run_total_cost_micros, run_id) can never sneak back in.
         self.assertEqual(set(out), _RESULT_KEYS)
         self.assertNotIn("hard_stop", out)
+        # A settled posting has no cause and no claim, and the builder passes
+        # both through untouched. Reading the VALUES is what makes the stubs
+        # above load-bearing: without these two lines the builder could emit a
+        # mock, a constant or the status itself in either slot and the key-set
+        # assertion would not notice.
+        self.assertIsNone(out["unresolved_reason"])
+        self.assertIsNone(out["claimed_provider_cost_micros"])
         self.assertFalse(out["stop"])
         self.assertIsNone(out["stop_reason"])
         self.assertIsNone(out["stop_scope"])

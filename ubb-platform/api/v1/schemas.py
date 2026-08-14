@@ -196,11 +196,54 @@ class UsageBatchResponse(Schema):
 #: without a seeding authorisation. Withdrawing a declaration to quiet a gate
 #: is the shape `gates/README.md` spends four pages refusing.
 #:
-#: The rest of what these responses owe — the amount admitting its own absent
+#: The rest of what these responses owed — the amount admitting its own absent
 #: case, the caller's claimed figure, the unresolved reason's own metadata — is
-#: #323's, and none of it is anticipated here.
+#: paid: #320 widened the last of the three amounts, and #323 published the
+#: reason and the claimed figure, both declared immediately below.
 CostingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "costing_status"})]
+
+
+#: WHICH input did not arrive, when the status above says `unresolved` (#323).
+#: `closed` — UBB owns all three — so the export writes a real `enum` here and
+#: this file spells none of the values.
+#:
+#: NULLABLE, WHICH IS WHY ITS MARKER SITS WHERE IT DOES. Every field using this
+#: is `Optional`, so django-ninja renders `anyOf: [string, null]` and the marker
+#: travels into the string member — `EventTypeUpdateIn.costing_method` is the
+#: standing precedent. That placement is load-bearing rather than incidental:
+#: `enum` and `anyOf` at ONE node are conjunctive, so a marker on the union
+#: itself would publish a document under which `null` is invalid, while the
+#: server returns `null` for every settled posting. The wire body would be
+#: unchanged and the export clean, so nothing but
+#: `test_the_cost_reaches_the_contract.py` would see it.
+#:
+#: NO HAND-WRITTEN `description`, DELIBERATELY, and this is where it differs
+#: from the claim below. The registry owns this concept's summary and generates
+#: its values; a sentence restating either here would be a second copy that can
+#: drift with nothing to catch it — no gate reads prose. The claimed figure has
+#: no registry entry to own it (it is an amount, not a value set), so the
+#: schema is the only place its meaning can live, and it says so there.
+UnresolvedReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "unresolved_reason"})]
+
+
+#: What the caller's own cost figure MEANS, published on the wire rather than
+#: kept in a comment here (#323, story 21).
+#:
+#: One wording, used by all three responses. A generated client's user never
+#: reads this module, and "never COGS" is the entire reason the figure has its
+#: own name instead of sharing `provider_cost_micros` — #151 §9.1 chose the
+#: name "precisely so it cannot be mistaken for canonical COGS", and a name is
+#: only half of saying so. Three paraphrases would be three chances to soften
+#: it, so the constant is shared and the sentence is stated once.
+CLAIMED_PROVIDER_COST_MEANING = (
+    "What the caller believes this call cost. Diagnostic only, recorded as "
+    "stated and never COGS: it is never rated, never summed into a cost "
+    "total, and never becomes the supplier cost beside it. "
+    "`provider_cost_micros` is the supplier's own reported figure and the "
+    "only one UBB treats as cost."
+)
 
 
 class RecordUsageResponse(Schema):
@@ -212,6 +255,18 @@ class RecordUsageResponse(Schema):
     # supplier cost of zero and one UBB has not learned yet are the same
     # answer on the wire.
     costing_status: CostingStatus
+    # WHICH input did not arrive, when the status says `unresolved`. Null
+    # otherwise — a settled cost has no missing input to name. It travels
+    # everywhere the status does, because a status that says a cost is missing
+    # without saying what would settle it leaves the reader nothing to do.
+    unresolved_reason: Optional[UnresolvedReason] = None
+    # ALWAYS NULL ON THIS RESPONSE UNTIL #324, and published anyway. Nothing
+    # can attach a claim to a recording request yet; the field is here so a
+    # client generated against this contract already has it when that lands,
+    # and so the three responses that publish a supplier cost publish the same
+    # pair rather than diverging by one ticket.
+    claimed_provider_cost_micros: Optional[int] = Field(
+        default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None
     task_id: Optional[str] = None
     # Set when the named unit is a subtask — its parent task (#38).
@@ -296,6 +351,18 @@ class UsageEventOut(Schema):
     # list is where a reader totals a column by eye, so this is exactly where
     # an unknown cost reading as zero would be believed.
     costing_status: CostingStatus
+    # And so is the reason, for the same argument one step on: a list of rows
+    # reading `unresolved` with no cause is a column of shrugs. This is the
+    # surface a tenant works THROUGH — the remedy is readable from the value,
+    # so the list is where it saves a call rather than prompting one.
+    unresolved_reason: Optional[UnresolvedReason] = None
+    # The third field this row carries on one argument rather than on
+    # leanness, after the status (#317) and the cause above it: this is where
+    # a reader totals a column by eye. A claim published only on the detail
+    # view would be a number invisible exactly where a supplier cost is
+    # missing and a plausible-looking figure would be reached for.
+    claimed_provider_cost_micros: Optional[int] = Field(
+        default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None
     metadata: dict
     effective_at: str
@@ -313,6 +380,8 @@ def usage_event_out(e):
         "provider": e.provider,
         "provider_cost_micros": e.provider_cost_micros,
         "costing_status": e.costing_status,
+        "unresolved_reason": e.unresolved_reason,
+        "claimed_provider_cost_micros": e.claimed_provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
         "metadata": e.metadata,
         "effective_at": e.effective_at.isoformat(),
@@ -366,21 +435,40 @@ class UsageEventDetailOut(Schema):
     # `None` means UBB does not know what the supplier charged — never that the
     # call was free. Zero is a resolved amount and reads as zero.
     #
-    # ⚠ WIDENED BY #320 RATHER THAN BY #323, WHICH OWNS THE REST OF THIS.
+    # ⚠ WIDENED BY #320 RATHER THAN BY #323, WHICH OWNED THE REST OF THIS.
     # #317 recorded the gap here and left it: the amount was required and
     # non-nullable while `costing_status` could already say `unresolved`, which
     # is a response this schema could not serialise. That was safe only while
-    # nothing wrote `unresolved`, and the compute spine in this commit is what
-    # starts writing it — so the half that would 500 is paid in the commit that
-    # makes it reachable, exactly as #317 paid its own contract half early when
-    # the consumer census forced one. **#323 still owns the claimed supplier
-    # cost, the unresolved reason's metadata and the known-value document**;
-    # none of that is anticipated here, and the other two responses carrying
-    # this amount already admitted the absent case before this ticket.
+    # nothing wrote `unresolved`, and #320's compute spine is what started
+    # writing it — so the half that would 500 was paid in the commit that made
+    # it reachable, exactly as #317 paid its own contract half early when the
+    # consumer census forced one.
+    #
+    # THIS WAS THE ONLY ONE OF THE THREE THAT NEEDED WIDENING, and the reason
+    # the other two did not is worth keeping: they have been `Optional` since
+    # long before slice 3, while the COLUMN behind them was non-nullable with a
+    # default of zero. Their nullability was decorative — no posting could
+    # produce a null to put through it. So the absent case became EXPRESSIBLE
+    # in #317, which made the column nullable, and REACHABLE in #320, which
+    # taught the spine to leave it unset; on those two schemas the contract had
+    # been ready for years and was waiting on the table. That is why #323 —
+    # nominally the ticket that owns AC 1 — edits no amount at all, and why
+    # `test_the_cost_reaches_the_contract.py` asserts the property over all
+    # three rather than trusting a claim spread across two earlier commits.
+    # What #323 does add is the two fields below.
     provider_cost_micros: Optional[int] = None
     # Whether the number above is settled. Typed required, like the status
     # below it and for the same reason: every posting has an answer.
     costing_status: CostingStatus
+    # The audit lookup is where an unresolved cost gets investigated, so the
+    # cause belongs on it — see `UnresolvedReason`. Null on a settled posting.
+    unresolved_reason: Optional[UnresolvedReason] = None
+    # The caller's own figure, on the receipt where a dispute is settled. This
+    # is the response the field matters most on: the two numbers are read
+    # side by side here, which is exactly the comparison story 20 asks for and
+    # exactly the confusion story 21 refuses.
+    claimed_provider_cost_micros: Optional[int] = Field(
+        default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: int
     # The quantities this posting was measured by, keyed by declared code
     # (#274) — the field the status below has always been about.

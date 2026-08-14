@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
+from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -40,6 +41,10 @@ class UsageEventDetailOut:
             idempotency_key (str):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
             request_id (str):
+            claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
+                recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
+                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
+                treats as cost.
             currency (str | Unset):  Default: 'usd'.
             event_type (str | Unset):  Default: ''.
             grouping_fields (UsageEventDetailOutGroupingFields | Unset):
@@ -50,6 +55,7 @@ class UsageEventDetailOut:
             provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
             task_id (None | str | Unset):
+            unresolved_reason (None | Unset | UsageEventDetailOutUnresolvedReasonType0):
      """
 
     billed_cost_micros: int
@@ -60,6 +66,7 @@ class UsageEventDetailOut:
     idempotency_key: str
     measurements_status: UsageEventDetailOutMeasurementsStatus
     request_id: str
+    claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: str | Unset = 'usd'
     event_type: str | Unset = ''
     grouping_fields: UsageEventDetailOutGroupingFields | Unset = UNSET
@@ -70,6 +77,7 @@ class UsageEventDetailOut:
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
     task_id: None | str | Unset = UNSET
+    unresolved_reason: None | Unset | UsageEventDetailOutUnresolvedReasonType0 = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -96,6 +104,12 @@ class UsageEventDetailOut:
         measurements_status = self.measurements_status.value
 
         request_id = self.request_id
+
+        claimed_provider_cost_micros: int | None | Unset
+        if isinstance(self.claimed_provider_cost_micros, Unset):
+            claimed_provider_cost_micros = UNSET
+        else:
+            claimed_provider_cost_micros = self.claimed_provider_cost_micros
 
         currency = self.currency
 
@@ -141,6 +155,14 @@ class UsageEventDetailOut:
         else:
             task_id = self.task_id
 
+        unresolved_reason: None | str | Unset
+        if isinstance(self.unresolved_reason, Unset):
+            unresolved_reason = UNSET
+        elif isinstance(self.unresolved_reason, UsageEventDetailOutUnresolvedReasonType0):
+            unresolved_reason = self.unresolved_reason.value
+        else:
+            unresolved_reason = self.unresolved_reason
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -154,6 +176,8 @@ class UsageEventDetailOut:
             "measurements_status": measurements_status,
             "request_id": request_id,
         })
+        if claimed_provider_cost_micros is not UNSET:
+            field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if currency is not UNSET:
             field_dict["currency"] = currency
         if event_type is not UNSET:
@@ -174,6 +198,8 @@ class UsageEventDetailOut:
             field_dict["stop_context"] = stop_context
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
+        if unresolved_reason is not UNSET:
+            field_dict["unresolved_reason"] = unresolved_reason
 
         return field_dict
 
@@ -210,6 +236,16 @@ class UsageEventDetailOut:
 
 
         request_id = d.pop("request_id")
+
+        def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        claimed_provider_cost_micros = _parse_claimed_provider_cost_micros(d.pop("claimed_provider_cost_micros", UNSET))
+
 
         currency = d.pop("currency", UNSET)
 
@@ -295,6 +331,26 @@ class UsageEventDetailOut:
         task_id = _parse_task_id(d.pop("task_id", UNSET))
 
 
+        def _parse_unresolved_reason(data: object) -> None | Unset | UsageEventDetailOutUnresolvedReasonType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                unresolved_reason_type_0 = UsageEventDetailOutUnresolvedReasonType0(data)
+
+
+
+                return unresolved_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventDetailOutUnresolvedReasonType0, data)
+
+        unresolved_reason = _parse_unresolved_reason(d.pop("unresolved_reason", UNSET))
+
+
         usage_event_detail_out = cls(
             billed_cost_micros=billed_cost_micros,
             costing_status=costing_status,
@@ -304,6 +360,7 @@ class UsageEventDetailOut:
             idempotency_key=idempotency_key,
             measurements_status=measurements_status,
             request_id=request_id,
+            claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,
             event_type=event_type,
             grouping_fields=grouping_fields,
@@ -314,6 +371,7 @@ class UsageEventDetailOut:
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,
             task_id=task_id,
+            unresolved_reason=unresolved_reason,
         )
 
 

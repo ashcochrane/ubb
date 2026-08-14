@@ -191,8 +191,13 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
         # Read off the row rather than assumed here, so an idempotent replay
-        # answers what the original recording concluded (#317).
+        # answers what the original recording concluded (#317). The cause and
+        # the caller's claim ride the same rule (#323): all three are columns,
+        # and a replay that re-derived any of them could answer differently
+        # from the recording it is replaying.
         "costing_status": event.costing_status,
+        "unresolved_reason": event.unresolved_reason,
+        "claimed_provider_cost_micros": event.claimed_provider_cost_micros,
         "billed_cost_micros": event.billed_cost_micros,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
         "task_id": str(event.task_id) if event.task_id else None,

@@ -4788,6 +4788,18 @@
             ],
             "title": "Billed Cost Micros"
           },
+          "claimed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "title": "Claimed Provider Cost Micros"
+          },
           "costing_status": {
             "enum": [
               "known",
@@ -4950,6 +4962,23 @@
             },
             "title": "Uncosted Measurement Keys",
             "type": "array"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
           }
         },
         "required": [
@@ -6790,6 +6819,18 @@
             "title": "Billed Cost Micros",
             "type": "integer"
           },
+          "claimed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "title": "Claimed Provider Cost Micros"
+          },
           "costing_status": {
             "enum": [
               "known",
@@ -6905,6 +6946,23 @@
               }
             ],
             "title": "Task Id"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
           }
         },
         "required": [
@@ -6932,6 +6990,18 @@
               }
             ],
             "title": "Billed Cost Micros"
+          },
+          "claimed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "title": "Claimed Provider Cost Micros"
           },
           "costing_status": {
             "enum": [
@@ -6993,6 +7063,23 @@
               }
             ],
             "title": "Stop Context"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
           }
         },
         "required": [

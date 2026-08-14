@@ -317,6 +317,16 @@ def get_usage_event(request, event_id: UUID):
         # Stored, unlike the two derived answers around it: the status is a
         # statement about this posting's economics and a column holds it.
         "costing_status": e.costing_status,
+        # Stored beside it, and read rather than re-derived (#323) — for two
+        # different reasons, which is why they are not one comment. The cause
+        # settles WITH the status and the amount, in the one `UPDATE`
+        # RESOLVE_ONCE permits, so a serialiser that recomputed it could
+        # contradict the status it arrived with. The claim never moves at all:
+        # it is declared FROZEN (`usage/models.py`), so what is published is
+        # necessarily what the caller said at the time, which is the only
+        # thing that makes it worth publishing.
+        "unresolved_reason": e.unresolved_reason,
+        "claimed_provider_cost_micros": e.claimed_provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the

@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.usage_event_out_costing_status import UsageEventOutCostingStatus
+from ..models.usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -34,10 +35,15 @@ class UsageEventOut:
             metadata (UsageEventOutMetadata):
             request_id (str):
             billed_cost_micros (int | None | Unset):
+            claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
+                recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
+                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
+                treats as cost.
             event_type (str | Unset):  Default: ''.
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
+            unresolved_reason (None | Unset | UsageEventOutUnresolvedReasonType0):
      """
 
     costing_status: UsageEventOutCostingStatus
@@ -46,10 +52,12 @@ class UsageEventOut:
     metadata: UsageEventOutMetadata
     request_id: str
     billed_cost_micros: int | None | Unset = UNSET
+    claimed_provider_cost_micros: int | None | Unset = UNSET
     event_type: str | Unset = ''
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
+    unresolved_reason: None | Unset | UsageEventOutUnresolvedReasonType0 = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -74,6 +82,12 @@ class UsageEventOut:
         else:
             billed_cost_micros = self.billed_cost_micros
 
+        claimed_provider_cost_micros: int | None | Unset
+        if isinstance(self.claimed_provider_cost_micros, Unset):
+            claimed_provider_cost_micros = UNSET
+        else:
+            claimed_provider_cost_micros = self.claimed_provider_cost_micros
+
         event_type = self.event_type
 
         provider = self.provider
@@ -94,6 +108,14 @@ class UsageEventOut:
         else:
             stop_context = self.stop_context
 
+        unresolved_reason: None | str | Unset
+        if isinstance(self.unresolved_reason, Unset):
+            unresolved_reason = UNSET
+        elif isinstance(self.unresolved_reason, UsageEventOutUnresolvedReasonType0):
+            unresolved_reason = self.unresolved_reason.value
+        else:
+            unresolved_reason = self.unresolved_reason
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -106,6 +128,8 @@ class UsageEventOut:
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
+        if claimed_provider_cost_micros is not UNSET:
+            field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if provider is not UNSET:
@@ -114,6 +138,8 @@ class UsageEventOut:
             field_dict["provider_cost_micros"] = provider_cost_micros
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
+        if unresolved_reason is not UNSET:
+            field_dict["unresolved_reason"] = unresolved_reason
 
         return field_dict
 
@@ -152,6 +178,16 @@ class UsageEventOut:
         billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
 
 
+        def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        claimed_provider_cost_micros = _parse_claimed_provider_cost_micros(d.pop("claimed_provider_cost_micros", UNSET))
+
+
         event_type = d.pop("event_type", UNSET)
 
         provider = d.pop("provider", UNSET)
@@ -184,6 +220,26 @@ class UsageEventOut:
         stop_context = _parse_stop_context(d.pop("stop_context", UNSET))
 
 
+        def _parse_unresolved_reason(data: object) -> None | Unset | UsageEventOutUnresolvedReasonType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                unresolved_reason_type_0 = UsageEventOutUnresolvedReasonType0(data)
+
+
+
+                return unresolved_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventOutUnresolvedReasonType0, data)
+
+        unresolved_reason = _parse_unresolved_reason(d.pop("unresolved_reason", UNSET))
+
+
         usage_event_out = cls(
             costing_status=costing_status,
             effective_at=effective_at,
@@ -191,10 +247,12 @@ class UsageEventOut:
             metadata=metadata,
             request_id=request_id,
             billed_cost_micros=billed_cost_micros,
+            claimed_provider_cost_micros=claimed_provider_cost_micros,
             event_type=event_type,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,
+            unresolved_reason=unresolved_reason,
         )
 
 
