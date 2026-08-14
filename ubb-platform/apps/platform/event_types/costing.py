@@ -50,6 +50,15 @@ def cost_declaration(*, tenant, key):
     way this repository has always costed, against Cost Rates. Reading absence
     as `not_applicable` would report a design decision nobody made.
 
+    **A DRAFT DECLARATION COUNTS, AND THAT IS A CHOICE.** `declaration_status`
+    is not filtered on here. Publication governs what a generated integration
+    was built against — that is what `published_revision` counts — and it is not
+    a claim about what the tenant means today. A tenant who corrects a
+    declaration sees the correction on the next call rather than after a
+    publish, and a draft `reported` declaration is answered `reported_cost_
+    missing` rather than being costed against rate cards it has disowned, which
+    is the truer of the two available answers.
+
     **A `reported` declaration always carries a cost, mapping or no mapping.**
     The method itself is the statement that a supplier reports a figure; a
     missing mapping means the figure has nowhere to come *from*, which is

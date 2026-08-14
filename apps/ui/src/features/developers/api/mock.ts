@@ -205,7 +205,12 @@ export async function sendTestEvent(
     costing_status: resolved ? "known" : "unresolved",
     new_balance_micros: balanceMicros,
     measurements: body.measurements ?? null,
-    uncosted_measurement_keys: uncosted,
+    // EMPTY WHENEVER THE COST RESOLVED, because that is what the real response
+    // does: the backend writes this list on the rate-card branch only, and a
+    // caller who states the cost outright never reaches it. Listing the keys
+    // anyway would make this panel warn about a declaration the API never
+    // complained about.
+    uncosted_measurement_keys: resolved ? [] : uncosted,
     pricing_provenance: {
       engine_version: "mock-1",
       price_source: body.billed_cost_micros != null ? "explicit" : "rate_card",

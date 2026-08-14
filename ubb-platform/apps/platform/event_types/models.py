@@ -33,10 +33,13 @@ satellites it hangs off, ``Provider`` and ``EventCategory``, ``Measurement``,
 the declared quantity, ``MeasurementConcept``, the opt-in grouping two
 declarations may share, ``ReportedCostMapping``, where a supplier's own cost
 figure is read from, and ``QuarantinedKey`` — the one record here that is
-about a name the catalogue does NOT contain. Nothing here is wired to
-anything: no rating path reads it, no cost resolves through it, no spend ceiling
-consults it. Slice 2 owns the declaration; slice 3 owns every behaviour the
-declaration selects. ``apps/platform/tests/test_event_type_satellite_invariants.py``
+about a name the catalogue does NOT contain. Slice 2 owned the declaration;
+slice 3 owns every behaviour the declaration selects, and #320 wired the first
+of them: **what an Event Type says about cost now reaches the rating path**,
+through ``costing.py`` next door, which answers in plain data and is the only
+door onto this package a behavioural module may use. No spend ceiling consults
+any of this, and neither satellite reaches money at all.
+``apps/platform/tests/test_event_type_satellite_invariants.py``
 and its siblings ``test_event_type_declaration_invariants.py``,
 ``test_reported_cost_invariants.py`` and ``test_quarantine_invariants.py`` are
 where those claims are held to the tree rather than asserted here.
@@ -985,10 +988,16 @@ class Measurement(DeclarationPart, BaseModel):
     ``apps/platform/tests/test_event_type_declaration_invariants.py`` is what
     holds that to the tree.
 
-    **Nothing rates against these.** No rating path reads this table; slice 3
-    wires it. Unknown-key handling — quarantine, remediation, replay — is #265's,
-    and the only thing said about it here is that an undeclared code contributes
-    nothing to :meth:`EventType.missing_required_measurements`.
+    **The rating path reads this table, and reads one thing off it (#320).**
+    Whether any quantity is declared here at all is half of what makes an Event
+    Type carry no cost — the other half is the reported-cost mapping beside it —
+    and `costing.py` asks that question with a count rather than by loading the
+    rows. No rate is selected by anything on this record: a Cost Rate still
+    matches on `measurement_key`, and that this record declares that key is a
+    fact `Rate` will hold by reference in its own slice, not one resolution
+    consults here. Unknown-key handling — quarantine, remediation, replay — is
+    #265's, and the only thing said about it here is that an undeclared code
+    contributes nothing to :meth:`EventType.missing_required_measurements`.
     """
 
     #: What a change to one of these revises. The publication pins the
@@ -1283,11 +1292,15 @@ class ReportedCostMapping(DeclarationPart, BaseModel):
     keeping money off the Event Type keeps ``no-cost-amount`` next door able to
     say something absolute about that record.
 
-    **Nothing behavioural is wired.** An Event Type declared with a mapping sits
-    inert: no rating path reads this, and no cost resolves through it. Whether
-    the reported cost and the diagnostic claimed-cost field on the wire are one
-    field routed by costing method or two is explicitly owed to slice 3 and is
-    deliberately not answered here.
+    **What the rating path reads here is PRESENCE, and nothing else (#320).**
+    A declaration with no quantities and no mapping carries no cost at all, and
+    its postings say `not_applicable` rather than pretending to an outstanding
+    task. The mapping's own fields — where to read the figure, in what
+    representation, in which currency — still reach nothing but the generated
+    integration: a supplier cost arrives on the wire, and no cost resolves
+    through this record. The question this docstring left to slice 3 — one wire
+    field routed by costing method, or two — was answered as **two**, each with
+    exactly one meaning (#324 owns the request half).
     """
 
     #: Everything that reaches the generated integration, which is everything

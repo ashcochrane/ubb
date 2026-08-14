@@ -174,7 +174,7 @@ class PricingService:
         # endpoint below and by the console's test-event panel — and #320 took
         # the canonical word for a declared quantity into that key's name, in
         # the break the recording response was already making.
-        prov = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
+        receipt = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
 
         # ---- COST ----
         unresolved_reason = None
@@ -183,26 +183,26 @@ class PricingService:
             # consulted to confirm it. WHERE such a figure may be supplied at
             # all is a separate question with its own refusal (#324); costing a
             # figure that arrived is this one.
-            known_micros = caller_provider_cost
+            computed_micros = caller_provider_cost
             costing_status = COSTING_STATUS_KNOWN
-            prov["cost_source"] = "caller"
+            receipt["cost_source"] = "caller"
         elif (declaration := resolve_declaration()) is not None \
                 and declaration.declares_no_cost:
             # Not an outstanding task. `cost_source` is deliberately absent
             # through here and the branch below: the key names which source
             # produced the amount, and no source produced one.
-            known_micros = 0
+            computed_micros = 0
             costing_status = COSTING_STATUS_NOT_APPLICABLE
         elif declaration is not None \
                 and declaration.costing_method == COSTING_METHOD_REPORTED:
-            known_micros = 0
+            computed_micros = 0
             costing_status = COSTING_STATUS_UNRESOLVED
             unresolved_reason = UNRESOLVED_REASON_REPORTED_COST_MISSING
         else:
             # Calculated, or declared nowhere at all — the registry is opt-in
             # and this is how everything recorded against an undeclared key has
             # always costed.
-            known_micros = 0
+            computed_micros = 0
             uncosted = []
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
             # It rejected an event that declared a nameless magnitude with no
@@ -233,13 +233,13 @@ class PricingService:
                     uncosted.append(measurement_key)
                     continue
                 amt = card.compute(units_val)
-                known_micros += amt
-                prov["metrics"].append({"measurement_key": measurement_key,
+                computed_micros += amt
+                receipt["metrics"].append({"measurement_key": measurement_key,
                     "units": units_val, "card_type": "cost",
                     "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
-            prov["cost_source"] = "rate_card"
+            receipt["cost_source"] = "rate_card"
             if uncosted:
-                prov["uncosted_measurement_keys"] = uncosted
+                receipt["uncosted_measurement_keys"] = uncosted
                 costing_status = COSTING_STATUS_UNRESOLVED
                 unresolved_reason = UNRESOLVED_REASON_COST_RATE_MISSING
             else:
@@ -248,7 +248,7 @@ class PricingService:
         # ---- PRICE ----
         if caller_billed is not None:
             billed = caller_billed
-            prov["price_source"] = "caller"
+            receipt["price_source"] = "caller"
         else:
             price_total, matched = 0, False
             for measurement_key, units_val in sorted(measurements.items()):
@@ -262,31 +262,58 @@ class PricingService:
                 amt = card.compute(units_val)
                 entry["micros"] = amt
                 price_total += amt
-                prov["metrics"].append(entry)
+                receipt["metrics"].append(entry)
             if matched:
                 billed = price_total
-                prov["price_source"] = "rate_card"
+                receipt["price_source"] = "rate_card"
             else:
-                # MARKUP APPLIES TO WHAT IS KNOWN, WHICH IS WHAT IT ALWAYS DID.
-                # Before #320 an event whose quantities did not all resolve was
-                # marked up from the partial sum; it still is, and no billed
-                # figure anywhere moves because of this ticket. Whether a price
-                # derived from an incomplete cost may call itself settled is
-                # `pricing_status`, and that is slice 4's word, not one this
-                # slice may coin (spec §3.12).
-                billed = apply_markup(known_micros)
-                prov["price_source"] = "markup"
+                # MARKUP APPLIES TO WHAT THE COST BRANCH ARRIVED AT, AND THAT
+                # MOVES FOR EXACTLY ONE POPULATION (#320).
+                #
+                # An event with no declaration — every event in this repository
+                # before the registry is adopted — takes the rate-card branch
+                # above, so its markup basis is the same partial sum it always
+                # was and its billed figure does not move at all.
+                #
+                # A DECLARED `reported` OR NO-COST EVENT TYPE IS DIFFERENT, and
+                # it is a real change rather than an oversight: those branches
+                # arrive at nothing, so a tenant with such a declaration, cost
+                # rates for its quantities and NO price rate now bills
+                # `markup(0)` where they billed markup over those rates. That is
+                # the honest answer, because the declaration is the tenant
+                # saying those rates are not this Event Type's cost: `reported`
+                # means the supplier's own figure is the cost, and no-cost means
+                # there is none. Marking up a basis the declaration disowns
+                # would be inventing a number, which is the failure this slice
+                # exists to delete — and it would be inventing it in the
+                # flattering direction.
+                #
+                # `markup(0)` IS THE FLOOR, WHICH IS THIS SLICE'S SHAPE FOR
+                # INCOMPLETE INFORMATION EVERYWHERE ELSE. The same event once
+                # its supplier figure arrives takes the caller branch and bills
+                # `markup(figure)`; until then the basis is missing and the
+                # price built on it is a floor, on a posting already marked
+                # `unresolved` so nobody reads it as settled. Whether such a
+                # price may call ITSELF unsettled is `pricing_status`, which is
+                # slice 4's word and not one this slice may coin (spec §3.12) —
+                # and re-pricing after a settlement is that slice's too.
+                #
+                # Pinned by `TestNoBilledFigureMoves` for the population that
+                # does not move, and by the two cases below it for the one that
+                # does. Both halves are asserted; neither is left to a comment.
+                billed = apply_markup(computed_micros)
+                receipt["price_source"] = "markup"
 
         # The receipt records what the engine DID; the columns record what UBB
         # KNOWS. Where the two differ the receipt keeps its resolved lines and
         # the amount below is None — see the `_compute` docstring.
-        recorded_cost = (known_micros if costing_status == COSTING_STATUS_KNOWN
+        recorded_cost = (computed_micros if costing_status == COSTING_STATUS_KNOWN
                          else None)
-        prov["provider_cost_micros"] = recorded_cost
-        prov["billed_cost_micros"] = billed
+        receipt["provider_cost_micros"] = recorded_cost
+        receipt["billed_cost_micros"] = billed
         return Costing(provider_cost_micros=recorded_cost,
                        billed_cost_micros=billed,
-                       pricing_receipt=prov,
+                       pricing_receipt=receipt,
                        costing_status=costing_status,
                        unresolved_reason=unresolved_reason)
 

@@ -261,13 +261,18 @@ class TestTheComputeSpineDecidesTheStatus:
 
 
 @pytest.mark.django_db
-class TestNoBilledFigureMoves:
-    """This ticket changes what UBB says about COST. It charges nothing new.
+class TestNoBilledFigureMovesOnTheRateCardBranch:
+    """The population that does not move: everything costed from Cost Rates.
 
-    The guard against the obvious over-reach: a price marked up from an
-    incomplete cost was a floor before this ticket and is the same floor after
-    it. Whether such a price may call itself settled is `pricing_status`, which
-    is slice 4's word and one slice 3 must not coin (spec §3.12).
+    Which is every event with a `calculated` declaration and every event with no
+    declaration at all — the whole of this repository until a tenant adopts the
+    registry. A price marked up from an incomplete cost was a floor before this
+    ticket and is the same floor after it, to the micro. Whether such a price
+    may call itself settled is `pricing_status`, which is slice 4's word and one
+    slice 3 must not coin (spec §3.12).
+
+    The population that DOES move is next door, asserted rather than left to the
+    comment that explains it.
     """
 
     def test_markup_still_applies_to_the_rated_part(self):
@@ -295,6 +300,87 @@ class TestNoBilledFigureMoves:
         rate_in_default_book(
             tenant, provider="openai",
             event_type=EVENT_TYPE_KEY, measurement_key="prompt_tokens",
+            rate_per_unit_micros=11_000, unit_quantity=1_000)
+
+        costing = _price(tenant, _customer(tenant))
+
+        assert costing.costing_status == COSTING_STATUS_UNRESOLVED
+        assert costing.billed_cost_micros == 11_000
+
+
+@pytest.mark.django_db
+class TestTheOneBilledFigureThatDoesMove:
+    """A declaration that disowns Cost Rates disowns them as a markup basis too.
+
+    THE CHANGE, STATED: an Event Type declared `reported` or declared with no
+    cost at all, holding Cost Rates for its quantities and NO price rate, billed
+    markup over those rates before this ticket and bills `markup(0)` after it.
+    Nothing else in the system moves.
+
+    It is asserted here rather than described, because a billed figure moving is
+    the kind of thing that must be somebody's decision on the record. The
+    decision: the declaration is the tenant saying those rates are not this
+    Event Type's cost — `reported` means the supplier's own figure is — so
+    marking up a basis the declaration disowns would invent a number, in the
+    flattering direction, which is the whole failure this slice deletes. What is
+    left is a floor on a posting already marked `unresolved`, and the same event
+    bills `markup(figure)` the moment its supplier figure arrives.
+    """
+
+    def _marked_up_tenant(self):
+        from apps.metering.pricing.models import TenantMarkup
+        tenant = _tenant()
+        TenantMarkup.objects.create(tenant=tenant,
+                                    markup_percentage_micros=20_000_000)
+        return tenant
+
+    def test_a_reported_declaration_does_not_mark_up_its_cost_rates(self):
+        tenant = self._marked_up_tenant()
+        _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
+                     quantities=("prompt_tokens",), mapping=True)
+        _cost_rate(tenant)
+
+        costing = _price(tenant, _customer(tenant))
+
+        assert costing.costing_status == COSTING_STATUS_UNRESOLVED
+        assert costing.billed_cost_micros == 0
+        assert costing.pricing_receipt["price_source"] == "markup"
+
+    def test_the_same_event_bills_over_the_figure_once_it_arrives(self):
+        """The positive control, and what makes the zero above a floor rather
+        than a verdict: one input arrives and the price appears."""
+        tenant = self._marked_up_tenant()
+        _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
+                     quantities=("prompt_tokens",), mapping=True)
+        _cost_rate(tenant)
+
+        costing = _price(tenant, _customer(tenant), caller_provider_cost=5_000)
+
+        assert costing.costing_status == COSTING_STATUS_KNOWN
+        assert costing.billed_cost_micros == 6_000
+
+    def test_an_event_type_carrying_no_cost_does_not_mark_up_either(self):
+        tenant = self._marked_up_tenant()
+        _declaration(tenant, quantities=())
+        _cost_rate(tenant)
+
+        costing = _price(tenant, _customer(tenant))
+
+        assert costing.costing_status == COSTING_STATUS_NOT_APPLICABLE
+        assert costing.billed_cost_micros == 0
+
+    def test_a_price_rate_still_charges_whatever_the_declaration_says(self):
+        """The half that is NOT at stake: a declared price is a declared price.
+
+        A tenant who states what they charge is unaffected by any of this, which
+        is what bounds the change above to one population.
+        """
+        tenant = self._marked_up_tenant()
+        _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
+                     quantities=("prompt_tokens",), mapping=True)
+        rate_in_default_book(
+            tenant, provider="openai", event_type=EVENT_TYPE_KEY,
+            measurement_key="prompt_tokens",
             rate_per_unit_micros=11_000, unit_quantity=1_000)
 
         costing = _price(tenant, _customer(tenant))
@@ -364,11 +450,14 @@ class TestTheRecordingCallStopsRefusing:
     def test_a_task_total_excludes_an_unresolved_cost_rather_than_zeroing_it(self):
         """The unit total accumulates the KNOWN part and is a floor.
 
-        The counter that would let a reader tell that floor from a complete
-        total is #328's; what is asserted here is only that an unresolved cost
-        contributes nothing and does not fail the recording path — an accumulator
-        that added a zero for it would be the silent zero this slice deletes,
-        and one that added `None` would 500 on the call it was meant to record.
+        WHAT THIS CAN AND CANNOT SHOW, stated because the difference is not
+        obvious: it catches an accumulator that adds the `None` this ticket now
+        produces, which would 500 on the very call it was meant to record. It
+        does NOT distinguish skipping an unresolved cost from adding a zero for
+        it — both leave this total at 0, and nothing on the unit tells them
+        apart until #328 adds the counter that says how many rows were excluded.
+        That is the ticket to strengthen this assertion in, and claiming the
+        stronger reading here would be claiming a mutation nothing kills.
         """
         from apps.platform.work.models import Task
         tenant = _tenant()

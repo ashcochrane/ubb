@@ -173,12 +173,23 @@ BEHAVIOURAL_SURFACES = (
 #: What is left is narrower and still bites, and it is the half that was always
 #: load-bearing: **a behavioural module may not name a catalogue CLASS.** The
 #: four class names below are the ORM entry points, so the rule now says a
-#: rating path reaches the declaration through the one read that answers in
-#: plain data (``apps.platform.event_types.costing.cost_declaration``) and never
-#: by querying the records itself. Both controls for that are at the foot of
-#: this module — the sanctioned import passes, a direct ``EventType`` query does
-#: not — because "the app label is allowed now" with nothing showing what still
+#: rating path reaches the declaration through a read that answers in plain data
+#: (``apps.platform.event_types.costing.cost_declaration``) and never by
+#: querying the records itself. Both controls for that are at the foot of this
+#: module — the sanctioned import passes, a direct ``EventType`` query does not
+#: — because "the app label is allowed now" with nothing showing what still
 #: fails would be a rule that had quietly stopped existing.
+#:
+#: ⚠ **HOW WIDE THE HOLE IS, SAID PLAINLY RATHER THAN IMPLIED.** Dropping the
+#: label admits **any** non-class reach into ``apps.platform.event_types`` from
+#: a behavioural module, not only the costing read: importing ``quarantine.py``
+#: or a ``reported_cost.py`` helper now passes this walk. That is deliberate and
+#: not merely tolerated — spec §3.4 rules that billing calls the kernel
+#: quarantine guard DIRECTLY, so a later ticket of this same slice needs exactly
+#: that reach and would otherwise arrive to a red gate it had no way to satisfy.
+#: What still holds the line is ADR-001's import matrix, which governs which
+#: packages may reach which, and what this rule adds on top of it is one thing:
+#: money code does not hold catalogue ROWS.
 CATALOGUE_TOKENS = ("Provider", "EventCategory", "EventType",
                     "MeasurementConcept")
 

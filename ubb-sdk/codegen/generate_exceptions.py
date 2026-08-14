@@ -47,7 +47,12 @@ HAND_OWNED_STATUSES = {401}
 
 def _leaf_class_name(code: str) -> str:
     """PascalCase(code) + 'Error', with a trailing '_error' in the code stripped
-    so ``pricing_error`` -> ``PricingError`` (not ``PricingErrorError``)."""
+    so ``validation_error`` -> ``ValidationError`` (not ``ValidationErrorError``).
+
+    The example used to be ``pricing_error``, which #320 retired from the
+    registry — a worked example naming a code the registry no longer has is a
+    reader's first wrong turn.
+    """
     stem = code[:-6] if code.endswith("_error") else code
     return "".join(part.capitalize() for part in stem.split("_")) + "Error"
 

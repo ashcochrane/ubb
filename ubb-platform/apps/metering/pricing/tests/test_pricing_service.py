@@ -2,8 +2,11 @@
 
 **The refusal cases left with the refusal (#320).** Four tests here existed to
 assert that an event naming a quantity with no Cost Rate was *rejected*, under a
-tenant flag that has no reads left; a fifth asserted the permissive half of the
-same branch. The event is now recorded with its cost said to be unresolved, and
+tenant flag this ticket stopped reading on the compute path; a fifth asserted
+the permissive half of the same branch. (The flag itself survives, and so does
+one other read of it — `billing/gating/services/risk_service.py` still refuses
+to START a COGS-limited unit without it. Deleting the column and that gate is
+#321's.) The event is now recorded with its cost said to be unresolved, and
 what it says is asserted where the decision is made —
 ``test_an_uncostable_event_is_recorded_not_refused.py``, which covers all four
 statuses through the same resolution path. They are not relaxed here into
