@@ -113,8 +113,6 @@ const CODE_MESSAGES: Record<string, string> = {
   validation_error: "Some fields are invalid.",
   invalid_config: "This configuration is invalid.",
   unsupported_currency: "That currency isn't supported.",
-  no_cost_cards:
-    "Cost card coverage requires at least one active cost rate card.",
   stripe_tax_not_active:
     "Stripe Tax isn't active on the connected Stripe account.",
   insufficient_balance: "The balance is too low for this operation.",

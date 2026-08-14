@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,545 of 1,920 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,546 of 1,921 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -316,13 +316,13 @@ measurement_key:
     # child record keyed by `measurement_key`. #275's RATE ARITHMETIC caution
     # holds again — nothing here goes near `compute(units)`.
     #
-    # #321 MOVED THE DENOMINATOR ONLY, UPWARD (1,544 → 1,545 swept, 1,918 →
-    # 1,920 tracked, 50/126 unchanged) — the "needs no story" direction, with
+    # #321 MOVED THE DENOMINATOR ONLY, UPWARD (1,544 → 1,546 swept, 1,918 →
+    # 1,921 tracked, 50/126 unchanged) — the "needs no story" direction, with
     # the non-widening signature #312, #317 and #318 record: `historical-
     # migrations` went 207 → 208 because this commit ADDS a migration to a
-    # directory the rule already covers. TWO NEW FILES, ONE OF THEM SWEPT — the
-    # removal migration (excluded) and the module proving that onboarding is
-    # not a wall.
+    # directory the rule already covers. THREE NEW FILES, TWO OF THEM SWEPT —
+    # the removal migration (excluded), the module proving that onboarding is
+    # not a wall, and the console mock's own absence test.
     #
     # THE SDK WAS REGENERATED AND STILL MOVED NEITHER COUNT, which is the
     # #277/#317 hazard answered rather than avoided. Removing a published

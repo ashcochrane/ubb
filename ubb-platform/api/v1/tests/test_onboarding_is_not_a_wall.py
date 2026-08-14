@@ -63,6 +63,15 @@ class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
         self.assertIsNone(result["reason"])
         self.assertEqual(result["provider_cost_limit_micros"], 7_000_000)
 
+
+class TheSettingIsGoneRatherThanDefaultedOffTest(TestCase):
+    """Nobody can turn the wall back on — there is nothing left to turn.
+
+    Nothing here touches the database, on purpose: these read the model's
+    declared fields and two checked-in registry documents, and paying an
+    admission fixture for them would say the tests were about admission.
+    """
+
     def test_the_refusal_word_leaves_the_published_verdict_vocabulary(self):
         """A word the API can no longer return is a lie in a machine-read file.
 
@@ -85,10 +94,6 @@ class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
         from core.problems import PROBLEMS
 
         self.assertNotIn("no_cost_cards", PROBLEMS)
-
-
-class TheSettingIsGoneRatherThanDefaultedOffTest(TestCase):
-    """Nobody can turn the wall back on — there is nothing left to turn."""
 
     def test_the_tenant_model_has_no_such_field(self):
         with self.assertRaises(FieldDoesNotExist):
@@ -124,25 +129,41 @@ class ASandboxAdmitsWhatItsLiveParentAdmitsTest(TestCase):
             name="Live Co", products=["metering", "billing"])
         self.sandbox = get_or_create_sandbox(self.live)
 
-    def _admit_a_limited_start(self, tenant, external_id):
+    def _outcome_of_a_limited_start(self, tenant, external_id):
+        """The verdict, reduced to what a caller can act on.
+
+        `task_id` and `balance_micros` are excluded because they differ
+        between two tenants for reasons that have nothing to do with this
+        ticket; the ceiling that comes back is included, because a gate that
+        refused would return none.
+        """
         customer = Customer.objects.create(
             tenant=tenant, external_id=external_id)
         RiskConfig.objects.create(tenant=tenant)
         BillingTenantConfig.objects.create(tenant=tenant)
         Wallet.objects.create(customer=customer, balance_micros=20_000_000)
-        return RiskService.check(
+
+        result = RiskService.check(
             customer, create_task=True, provider_cost_limit_micros=5_000_000)
+        task = Task.objects.filter(tenant=tenant).get()
+        return {
+            "allowed": result["allowed"],
+            "reason": result["reason"],
+            "ceiling_returned": result["provider_cost_limit_micros"],
+            "ceiling_on_the_task": task.provider_cost_limit_micros,
+        }
 
     def test_both_admit_a_limited_start_with_no_cost_rates_declared(self):
-        live_result = self._admit_a_limited_start(self.live, "live-1")
-        sandbox_result = self._admit_a_limited_start(self.sandbox, "sandbox-1")
+        live = self._outcome_of_a_limited_start(self.live, "live-1")
+        sandbox = self._outcome_of_a_limited_start(self.sandbox, "sandbox-1")
 
-        self.assertTrue(live_result["allowed"])
-        self.assertTrue(sandbox_result["allowed"])
-        self.assertEqual(live_result["reason"], sandbox_result["reason"])
-        self.assertEqual(
-            live_result["provider_cost_limit_micros"],
-            sandbox_result["provider_cost_limit_micros"])
-        self.assertEqual(
-            Task.objects.filter(tenant=self.live).count(),
-            Task.objects.filter(tenant=self.sandbox).count())
+        # Stated absolutely first, so this cannot pass by both being refused.
+        self.assertEqual(live, {
+            "allowed": True,
+            "reason": None,
+            "ceiling_returned": 5_000_000,
+            "ceiling_on_the_task": 5_000_000,
+        })
+        # Then the parity, over the whole verdict rather than key by key — a
+        # difference in any field the caller reads fails here.
+        self.assertEqual(sandbox, live)

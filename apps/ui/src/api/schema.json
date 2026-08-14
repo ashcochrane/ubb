@@ -6207,17 +6207,6 @@
             ],
             "title": "Products"
           },
-          "require_cost_card_coverage": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Require Cost Card Coverage"
-          },
           "soft_min_balance_micros": {
             "anyOf": [
               {
@@ -6294,10 +6283,6 @@
             "title": "Products",
             "type": "array"
           },
-          "require_cost_card_coverage": {
-            "title": "Require Cost Card Coverage",
-            "type": "boolean"
-          },
           "soft_min_balance_micros": {
             "anyOf": [
               {
@@ -6318,7 +6303,6 @@
           "name",
           "billing_mode",
           "products",
-          "require_cost_card_coverage",
           "default_currency",
           "stripe_connected_account_id",
           "is_active",

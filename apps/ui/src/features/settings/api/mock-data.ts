@@ -21,8 +21,9 @@ export const CURRENCY_LOCKED = true;
 export const CURRENCY_LOCK_REASON =
   "Wallet transactions already exist for this workspace, so the currency can no longer change.";
 
-/** The tenant DOES have active cost rate cards (coverage toggle can enable). */
-export const HAS_ACTIVE_COST_CARDS = true;
+// A `HAS_ACTIVE_COST_CARDS` flag sat here for the coverage toggle's mock
+// refusal. Both went in #321 with the setting itself — a fixture for a rule
+// nothing enforces is a rule a reader will assume still exists.
 /** Stripe Tax is active on the connected account (tax toggle can enable). */
 export const STRIPE_TAX_ACTIVE = true;
 

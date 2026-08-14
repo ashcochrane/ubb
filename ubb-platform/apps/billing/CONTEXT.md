@@ -135,9 +135,14 @@ docstring — the guard's whole value is that its exception set is small, named,
 
 **Start-gate (spend gate)**:
 The durable pre-start check — suspension, stop flag, rate/concurrency limits, affordability, the
-soft floor (top-level starts only), budget, cost-card coverage — run before a Task is created.
+soft floor (top-level starts only), budget — run before a Task is created.
 Refusing a start is legitimate under the one-rule model: it refuses work that hasn't happened,
 never a usage report.
+A cost-coverage condition sat in this list until #321 and is gone with nothing in its place: it
+refused a COGS-limited start unless the tenant had promised full cost coverage, and #320 made that
+promise unkeepable by recording an uncostable event with its cost unresolved rather than counting
+it as zero. The ceiling now races a floor, and saying so is a downstream job (#328), not a
+start-gate one.
 (`apps/billing/gating/services/risk_service.py`)
 
 **Live counter**:

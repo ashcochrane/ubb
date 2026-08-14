@@ -22,7 +22,6 @@ let mockTenantConfig: TenantConfig = {
   name: "Acme AI",
   billing_mode: "prepaid",
   products: ["metering", "billing", "referrals"],
-  require_cost_card_coverage: false,
   default_currency: "usd",
   stripe_connected_account_id: "acct_mock123",
   is_active: true,
