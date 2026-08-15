@@ -957,7 +957,13 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
     (point-in-time)."""
     _product_check(request)
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
-    qs = Rate.objects.filter(tenant=request.auth.tenant, rate_card=book)
+    # The declaration is joined, not fetched per row: `rate_out` reads the
+    # quantity's name off it since #326, and a page of fifty rates would
+    # otherwise be fifty-one queries. A deactivated rate references nothing and
+    # answers from its own column, which `select_related` handles without a
+    # second path — it is a LEFT JOIN, not a filter.
+    qs = Rate.objects.filter(
+        tenant=request.auth.tenant, rate_card=book).select_related("measurement")
     if as_of is not None:
         qs = qs.filter(valid_from__lte=as_of).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))

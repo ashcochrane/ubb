@@ -1,4 +1,4 @@
-﻿"""Fix 1: negative measurements values must be rejected.
+"""Fix 1: negative measurements values must be rejected.
 
 Pydantic schema validator on RecordUsageRequest — endpoint returns 422,
 unconditionally (any card shape, strict mode or not).

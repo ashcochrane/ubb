@@ -51,11 +51,11 @@ class TenantMarkup(BaseModel):
 
 #: The check that makes a rate say which quantity it prices, exactly once
 #: (#326). Named here rather than spelled at each site because every test of it
-#: asserts the MESSAGE — this table now has three mechanisms that answer
-#: `IntegrityError` (a partial unique index, the transition trigger `0018`
-#: installs, and this), and "the write was rejected" stopped being evidence the
-#: moment there was more than one.
-NAMES_ONE_QUANTITY = "ck_rate_names_one_quantity"
+#: asserts the MESSAGE: several mechanisms on this table answer
+#: `IntegrityError` — the partial unique index, this check, the reference's own
+#: foreign key and the two triggers `0018` and `0020` install — and "the write
+#: was rejected" stopped being evidence the moment there was more than one.
+NAMES_ONE_QUANTITY_CHECK = "ck_rate_names_one_quantity"
 
 CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
 # per_unit/flat only: ADR-0003 — the MVP launches without tiered pricing
@@ -124,8 +124,15 @@ class Rate(BaseModel):
     # THE NAME A CONVERSION COULD NOT PLACE, AND NOTHING ELSE. It is not a
     # second spelling of the reference above — the check below makes the two
     # mutually exclusive, so exactly one of them says which quantity a rate
-    # names and no row has both. Its only writer is migration `0019`; a rate
-    # written afterwards names a declaration or is refused.
+    # names and no row has both.
+    #
+    # ITS ONLY WRITER IS MIGRATION `0019`, AND THAT IS ENFORCED RATHER THAN
+    # ASSERTED. The check cannot do it: it is evaluated against one row and
+    # cannot tell the conversion's UPDATE from a fresh INSERT carrying a loose
+    # name, which is the same defect wearing the new column. `0020` installs a
+    # `BEFORE INSERT` trigger refusing any rate that references no declaration,
+    # and that is what makes a rate naming an undeclared quantity unwritable at
+    # every door rather than only at the route.
     undeclared_measurement_key = models.CharField(max_length=100, blank=True,
                                                   default="")
     pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
@@ -212,17 +219,19 @@ class Rate(BaseModel):
             # EXACTLY ONE OF THE TWO SAYS WHICH QUANTITY (#326). A live rate
             # references a declaration and carries no loose name; a rate the
             # conversion could not place carries its name and references
-            # nothing. Neither both nor neither — and "neither" is the one that
-            # matters, because it is the shape a caller reaching past the route
-            # would write: a rate naming a quantity nobody declared has no
-            # declaration to reference, so this is where that write is refused.
+            # nothing. Neither both nor neither.
+            #
+            # This holds the SHAPE of a row, at all times, including across an
+            # update that would blank a placeless rate's name and leave it
+            # pricing nothing and saying nothing. WHO MAY BE BORN is a
+            # different question and a check cannot answer it — see `0020`.
             models.CheckConstraint(
                 condition=(
                     models.Q(measurement__isnull=False,
                              undeclared_measurement_key="")
                     | (models.Q(measurement__isnull=True)
                        & ~models.Q(undeclared_measurement_key=""))),
-                name=NAMES_ONE_QUANTITY),
+                name=NAMES_ONE_QUANTITY_CHECK),
         ]
 
     @property

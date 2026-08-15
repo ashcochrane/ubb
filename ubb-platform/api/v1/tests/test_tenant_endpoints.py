@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import date
 from django.test import TestCase, Client
 from apps.platform.event_types.tests._helpers import declares_a_quantity

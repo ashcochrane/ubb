@@ -140,7 +140,9 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    set above rather than this step gaining a condition it cannot honour.
     if not keep_config:
         Rate = django_apps.get_model("pricing", "Rate")
-        _wipe("pricing.Rate", lambda: Rate.objects.filter(tenant=tenant).delete())
+        manager = _wipe_manager(Rate)
+        _wipe("pricing.Rate",
+              lambda m=manager: m.filter(tenant=tenant).delete())
 
     # 4. Generic sweep: every remaining concrete model with a FK/O2O to Tenant.
     for model in django_apps.get_models():

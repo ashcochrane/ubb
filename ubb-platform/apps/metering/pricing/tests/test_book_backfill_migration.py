@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from django.core.management import call_command
 from django.utils import timezone
 from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment

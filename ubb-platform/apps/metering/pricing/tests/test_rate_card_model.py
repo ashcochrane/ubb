@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 

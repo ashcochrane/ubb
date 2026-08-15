@@ -1,12 +1,11 @@
-﻿import json
+import json
 
 import pytest
 from django.test import Client
-from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    DECLARED, declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting

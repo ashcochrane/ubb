@@ -55,9 +55,10 @@ def declaration_named(*, tenant, measurement_key):
     newest: a reference that moved every time a tenant declared the same
     spelling under one more Event Type would make the unique constraint over it
     stop refusing what it refuses today, and it would do so silently, one
-    declaration at a time. `created_at` is tie-broken by `id` because two
-    declarations written in one transaction share a timestamp, and a pick that
-    is only usually deterministic is not one.
+    declaration at a time. `created_at` is tie-broken by `id` because nothing
+    stops two rows sharing a stamp — `bulk_create` and a clock coarser than the
+    gap between two inserts both produce it — and a pick that is only usually
+    deterministic is not one.
     """
     if not measurement_key:
         return None

@@ -32,12 +32,13 @@ already what every case here wants.
 import json
 from importlib import import_module
 
-from django.db import IntegrityError, connection, migrations as operations
+from django.db import (IntegrityError, connection, migrations as operations,
+                       transaction)
 from django.db.migrations.loader import MigrationLoader
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import NAMES_ONE_QUANTITY, Rate
+from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     cost_book, cost_rate_in_default_book)
@@ -55,6 +56,9 @@ from core.vocabulary import (
 APP_LABEL = "pricing"
 CONVERSION = "0019_the_rates_quantity_name_becomes_a_reference"
 PARENT = "0018_a_rate_takes_effect_from_the_moment_the_tenant_chooses"
+#: The rule the check could not state — who may be INSERTed (#326, review pass).
+DECLARATION_RULE = "0020_a_new_rate_names_a_declaration_or_is_refused"
+DECLARATION_TRIGGER = "trg_rate_names_a_declaration"
 
 #: The column the conversion removed, named once here because the historical
 #: model this module replays is the only thing that still has it.
@@ -62,6 +66,11 @@ TEXT_COLUMN = "measurement_key"
 
 DECLARED_NAME = "input_tokens"
 UNDECLARED_NAME = "typo_tokens"
+
+#: The partial unique index the conversion rebuilt over the reference. Named
+#: because every refusal here asserts WHICH mechanism refused: several on this
+#: table answer `IntegrityError` and they hold entirely different things.
+ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
 
 
 def _migration():
@@ -201,7 +210,15 @@ class TheReverseIsExercisedTest(TestCase):
         with connection.cursor() as cursor:
             cursor.execute(
                 f"ALTER TABLE {connection.ops.quote_name(table)} "
-                f"DROP CONSTRAINT IF EXISTS {NAMES_ONE_QUANTITY}")
+                f"DROP CONSTRAINT IF EXISTS {NAMES_ONE_QUANTITY_CHECK}")
+            # And the rule `0020` installs, for the same reason and one more:
+            # the rows this test writes are pre-conversion rows, which reference
+            # no declaration BECAUSE the conversion has not run — that is the
+            # state it exists to fix. A rule added AFTER the migration being
+            # replayed is not part of the table it ran against.
+            cursor.execute(
+                f"DROP TRIGGER IF EXISTS {DECLARATION_TRIGGER} "
+                f"ON {connection.ops.quote_name(table)}")
 
     def _run(self, code):
         with connection.schema_editor() as editor:
@@ -392,28 +409,103 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
             AuditRecord.objects.filter(tenant_id=self.tenant.id).count(),
             recorded)
 
-    def test_the_database_refuses_a_rate_that_references_nothing(self):
-        """The door the route is not standing at.
+    def test_the_database_refuses_a_new_rate_naming_an_undeclared_quantity(self):
+        """THE DOOR THE ROUTE IS NOT STANDING AT, and the check does not close it.
 
-        A nullable reference is what lets a deactivated row keep its place, and
-        without this check it would also be a way to write a brand-new rate that
-        names nothing at all — the same defect the conversion is closing, one
-        `Rate.objects.create` away.
+        `ck_rate_names_one_quantity` was written to. It cannot: a check is
+        evaluated against one row and is satisfied by a rate INSERTED with no
+        reference and a loose name — which is exactly the defect this slice
+        deletes, one `Rate.objects.create` away from the route that refuses it.
+        Review found that; `0020`'s `BEFORE INSERT` trigger is what actually
+        closes it, and the message it raises carries the name that was refused.
         """
-        with self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY):
-            Rate.objects.create(tenant=self.tenant, measurement=None)
+        self.assertFalse(
+            Measurement.objects.filter(code=UNDECLARED_NAME).exists())
+        with self.assertRaisesRegex(IntegrityError, UNDECLARED_NAME):
+            Rate.objects.create(tenant=self.tenant,
+                                undeclared_measurement_key=UNDECLARED_NAME)
 
     def test_a_row_may_not_claim_both_a_declaration_and_a_loose_name(self):
-        """The other half of the check, and the reason it is not `NOT NULL`.
+        """The check, on the write where it IS the mechanism.
 
         Exactly one of the two columns says which quantity a rate prices. A row
         carrying both would make `measurement_key` a question with two answers,
         which is the shape ADR-0006 §4 refuses everywhere else.
+
+        The trigger does not fire here — its `WHEN` clause asks whether the
+        reference is null and this row has one — so the refusal is the check's,
+        and the assertion says which. Insert order matters on this table now: a
+        `BEFORE` trigger runs ahead of the table's checks, so a test that drove
+        this shape with a null reference would be asserting the other rule while
+        reading as though it asserted this one.
         """
         declaration = declares_a_quantity(self.tenant, DECLARED_NAME)
-        with self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY):
+        with self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY_CHECK):
             Rate.objects.create(tenant=self.tenant, measurement=declaration,
                                 undeclared_measurement_key=UNDECLARED_NAME)
+
+    def test_a_deactivated_rate_may_not_be_stripped_of_its_name(self):
+        """The check's other case, which only an UPDATE can reach.
+
+        A placeless rate that lost its name would price nothing and say nothing
+        — unreadable, unfixable, and indistinguishable from a row somebody meant
+        to leave empty. The trigger cannot hold this: it fires on INSERT, and
+        this row was not inserted, it was left behind by the conversion.
+        """
+        rate = cost_rate_in_default_book(self.tenant,
+                                         measurement_key=DECLARED_NAME)
+        Rate.objects.filter(pk=rate.pk).update(
+            measurement=None, undeclared_measurement_key=UNDECLARED_NAME)
+
+        with self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY_CHECK):
+            Rate.objects.filter(pk=rate.pk).update(
+                undeclared_measurement_key="")
+
+
+class TheDeclarationTriggerReversesTest(TestCase):
+    """`0020` installs a rule; dropping it puts the table back.
+
+    A reverse nobody has run is a `noop` with better manners — and this one has
+    real work to undo, since a trigger and its function both outlive the
+    migration that made them. Driven the way `0018`'s is: the refusal fires,
+    the reverse runs, the same write is then accepted, and the forward runs
+    again so the class leaves the table as it found it.
+    """
+
+    def setUp(self):
+        self.tenant = _tenant()
+        self.migration = MigrationLoader(connection).get_migration(
+            APP_LABEL, DECLARATION_RULE)
+        (self.rule,) = [op for op in self.migration.operations
+                        if isinstance(op, operations.RunPython)]
+
+    def _run(self, code):
+        with connection.schema_editor() as editor:
+            code(None, editor)
+
+    def _refused(self):
+        """The write, in its own transaction.
+
+        A failed statement poisons the surrounding one until it is rolled back,
+        and this test issues three — so each refusal is fenced or the second
+        write reports the first one's failure.
+        """
+        with transaction.atomic():
+            Rate.objects.create(tenant=self.tenant,
+                                undeclared_measurement_key=UNDECLARED_NAME)
+
+    def test_the_refusal_goes_away_and_comes_back(self):
+        with self.assertRaisesRegex(IntegrityError, UNDECLARED_NAME):
+            self._refused()
+
+        self._run(self.rule.reverse_code)
+        # Accepted with the rule gone, which is what proves the rule was doing
+        # the refusing rather than something else on this table.
+        self._refused()
+
+        self._run(self.rule.code)
+        with self.assertRaisesRegex(IntegrityError, UNDECLARED_NAME):
+            self._refused()
 
 
 class ADeactivatedRateKeepsItsNameAndPricesNothingTest(TestCase):
@@ -462,7 +554,11 @@ class TheRebuiltObjectsStillEnforceWhatTheyDidTest(TestCase):
         tenant = _tenant()
         cost_rate_in_default_book(tenant, provider="openai",
                                   measurement_key=DECLARED_NAME)
-        with self.assertRaises(IntegrityError):
+        # The constraint by name, not "something refused this": this index, the
+        # check, the reference's foreign key and two triggers all answer
+        # `IntegrityError` on this table, and the rule the models file states
+        # for its own check applies here first.
+        with self.assertRaisesRegex(IntegrityError, ACTIVE_ROW_UNIQUE):
             cost_rate_in_default_book(tenant, provider="openai",
                                       measurement_key=DECLARED_NAME)
 
@@ -487,7 +583,7 @@ class TheRebuiltObjectsStillEnforceWhatTheyDidTest(TestCase):
 
         cost_rate_in_default_book(tenant, provider="openai",
                                   measurement_key=DECLARED_NAME)
-        with self.assertRaises(IntegrityError):
+        with self.assertRaisesRegex(IntegrityError, ACTIVE_ROW_UNIQUE):
             cost_rate_in_default_book(tenant, provider="openai",
                                       measurement_key=DECLARED_NAME)
 

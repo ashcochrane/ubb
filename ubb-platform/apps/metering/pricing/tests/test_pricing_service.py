@@ -1,4 +1,4 @@
-﻿"""Rate resolution and the arithmetic over it.
+"""Rate resolution and the arithmetic over it.
 
 **The refusal cases left with the refusal (#320).** Four tests here existed to
 assert that an event naming a quantity with no Cost Rate was *rejected*, under a

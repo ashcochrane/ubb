@@ -68,6 +68,12 @@ class BookService:
                 # is therefore unmatchable here, which is the same answer it
                 # gives resolution: it cannot be repriced, and the refusal below
                 # says so with the name in it.
+                #
+                # `of=("self",)` locks the RATE and not the row it joins. The
+                # lock is here to serialise reprices of one rate; a declaration
+                # is read-only on this path, and locking it would make two
+                # publishes of two different rates that happen to price one
+                # quantity wait for each other.
                 old = Rate.objects.select_for_update(of=("self",)).filter(
                     rate_card=locked, valid_to__isnull=True,
                     measurement__code=ch["measurement_key"],

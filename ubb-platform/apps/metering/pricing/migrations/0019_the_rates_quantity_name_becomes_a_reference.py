@@ -38,9 +38,22 @@ and repointing it at some other declaration invents a decision the tenant never
 made. It keeps its row, it keeps its name in `undeclared_measurement_key` —
 which is what it answers with, and what the reverse reads to put the text column
 back exactly as it found it — and it references nothing, so nothing resolves
-against it. `ck_rate_names_one_quantity` then makes that state the ONLY state a
-reference-less rate may be in, which is what stops the nullable column being a
-door around the refusal.
+against it. `ck_rate_names_one_quantity` makes that the ONLY state a
+reference-less rate may be in: it must carry the name, and it may not carry both.
+
+⚠ **That check is not what stops the null being a door — `0020` is.** A check
+cannot tell an INSERT from an UPDATE, so it is satisfied by a rate INSERTED with
+no reference and a loose name, which is precisely the defect this migration
+exists to delete. The trigger beside it refuses that insert; the two rules are
+described together where the second is installed.
+
+⚠ **The rebuilt unique constraint does not cover the deactivated rows**, and
+that is a real difference rather than an oversight. Postgres treats NULLs as
+distinct, so two placeless rows with identical selectors no longer collide where
+two rows holding the same text did. Nothing can produce a second one — the only
+writer of that state is this migration, and `0020` refuses the insert — so the
+population is closed at whatever the conversion found. Recorded because "still
+enforces what it enforced before" is otherwise not literally true.
 
 **The quantity's published name does not move.** `measurement_key` is still what
 the three rate schemas carry, still what the receipt and the audit record write,

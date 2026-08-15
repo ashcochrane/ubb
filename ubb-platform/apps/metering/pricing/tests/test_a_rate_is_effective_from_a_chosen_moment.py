@@ -75,6 +75,14 @@ VALID_TO = "valid_to"
 
 TABLE = Rate._meta.db_table
 
+#: The rule this module is about, by the name `0018` gave it. Spelled since
+#: #326, which installed a SECOND trigger on this table — one holding what may
+#: happen to a rate's two moments, the other what may be born at all — so
+#: "the trigger on this table" stopped being a description of anything.
+TRANSITION_TRIGGER = "trg_rate_declared_transitions"
+#: The other one, named here only so the count below says which two it found.
+DECLARATION_TRIGGER = "trg_rate_names_a_declaration"
+
 #: The two halves of the one table, reached through the helpers that know which
 #: book a rate belongs in. The word that separates them is retired and slice 4
 #: owns re-spelling it, so neither this module nor its assertions ever say it —
@@ -139,8 +147,23 @@ def _refusal_body():
     prose-satisfiable assertion about whether a rule exists is the exact shape
     this repository keeps paying for.
     """
-    body = _trigger_rows()[0][2]
-    return "\n".join(re.sub(r"--.*$", "", line) for line in body.splitlines())
+    return "\n".join(re.sub(r"--.*$", "", line)
+                     for line in _transition_trigger()[2].splitlines())
+
+
+def _transition_trigger():
+    """The row `0018` installed, addressed BY NAME.
+
+    It was `_trigger_rows()[0]` while this table had one trigger. #326 installed
+    a second — a `BEFORE INSERT` rule refusing a rate that references no
+    declaration — and `pg_trigger` promises no order, so an index would have
+    made every assertion below a coin toss between two rules that hold
+    completely different things.
+    """
+    for row in _trigger_rows():
+        if row[0] == TRANSITION_TRIGGER:
+            return row
+    raise AssertionError(f"{TRANSITION_TRIGGER} is not installed on {TABLE}")
 
 
 def _trigger_rows():
@@ -149,7 +172,7 @@ def _trigger_rows():
     One join, read by both classes that ask the database anything: a migration
     that ran is evidence that a file executed, not that a rule is installed.
     Returns `(name, type_bits, function_body)` per non-internal trigger, which
-    is every fact the two callers between them need.
+    is every fact the callers between them need.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -464,8 +487,17 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
     MIGRATION = "0018_a_rate_takes_effect_from_the_moment_the_tenant_chooses"
 
-    def test_exactly_one_trigger_guards_this_table(self):
-        self.assertEqual(len(_trigger_rows()), 1)
+    def test_exactly_these_two_rules_guard_this_table(self):
+        """This asserted ONE trigger until #326 installed the second.
+
+        Kept as an exact set rather than relaxed to a count or to "at least
+        mine": what it is really holding is that nobody adds a rule to the
+        hottest priced table in the system without a reader of this file finding
+        out. A third arrival is a decision somebody made, and it goes red here
+        first.
+        """
+        self.assertEqual({name for name, _, _ in _trigger_rows()},
+                         {TRANSITION_TRIGGER, DECLARATION_TRIGGER})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -476,7 +508,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         must not fire on `INSERT` either — that statement is where a caller
         declares the moment, which is the thing this ticket exists to permit.
         """
-        _, tgtype, _ = _trigger_rows()[0]
+        _, tgtype, _ = _transition_trigger()
         self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")
         self.assertTrue(tgtype & (1 << 1), "not BEFORE")
         self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
@@ -507,14 +539,19 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
-        self.assertEqual(_trigger_rows(), [])
+        # This rule gone, and only this one: the table carries a second trigger
+        # since #326, and asserting an empty catalogue would have meant
+        # asserting that reversing one migration removed another's rule.
+        self.assertNotIn(TRANSITION_TRIGGER,
+                         {name for name, _, _ in _trigger_rows()})
         _through_the_queryset(rate, **{VALID_FROM: moved})
         rate.refresh_from_db()
         self.assertEqual(getattr(rate, VALID_FROM), moved)
 
         with connection.schema_editor() as editor:
             run_python.code(None, editor)
-        self.assertEqual(len(_trigger_rows()), 1)
+        self.assertIn(TRANSITION_TRIGGER,
+                      {name for name, _, _ in _trigger_rows()})
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(

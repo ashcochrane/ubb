@@ -988,16 +988,27 @@ class Measurement(DeclarationPart, BaseModel):
     ``apps/platform/tests/test_event_type_declaration_invariants.py`` is what
     holds that to the tree.
 
-    **The rating path reads this table, and reads one thing off it (#320).**
-    Whether any quantity is declared here at all is half of what makes an Event
-    Type carry no cost — the other half is the reported-cost mapping beside it —
-    and `costing.py` asks that question with a count rather than by loading the
-    rows. No rate is selected by anything on this record: a Cost Rate still
-    matches on `measurement_key`, and that this record declares that key is a
-    fact `Rate` will hold by reference in its own slice, not one resolution
-    consults here. Unknown-key handling — quarantine, remediation, replay — is
-    #265's, and the only thing said about it here is that an undeclared code
-    contributes nothing to :meth:`EventType.missing_required_measurements`.
+    **The rating path reads this table, and reads two things off it (#320,
+    #326).** Whether any quantity is declared here at all is half of what makes
+    an Event Type carry no cost — the other half is the reported-cost mapping
+    beside it — and `costing.py` asks that question with a count rather than by
+    loading the rows. The second read arrived with the reference: **a Cost Rate
+    still matches on `measurement_key`**, and since #326 it holds this record
+    rather than a spelling of it, so resolution reads the code back through the
+    reference (`PricingService._resolve_rate_within` joins on
+    `measurement__code`).
+
+    **That join is not this record selecting a rate, and the distinction is
+    load-bearing.** Nothing on this row is a selector: declarations are
+    Event-Type-local, so a rate that leaves `event_type` unpinned prices this
+    quantity under every Event Type declaring that name, and matching on the
+    referenced row's IDENTITY instead would silently narrow it to one of them.
+    The reference is a statement about the tenant's catalogue — this name was
+    declared — and never about which Event Type's copy a rate meant.
+
+    Unknown-key handling — quarantine, remediation, replay — is #265's, and the
+    only thing said about it here is that an undeclared code contributes nothing
+    to :meth:`EventType.missing_required_measurements`.
     """
 
     #: What a change to one of these revises. The publication pins the

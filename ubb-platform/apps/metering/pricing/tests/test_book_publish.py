@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from django.utils import timezone
 from apps.metering.pricing.models import Rate, RateCard
 from apps.metering.pricing.services.book_service import BookService

@@ -57,7 +57,7 @@ from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
 from api.v1.schemas import RateIn
-from apps.metering.pricing.models import NAMES_ONE_QUANTITY, Rate
+from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.platform.event_types.models import Measurement
 from apps.platform.event_types.quantities import declaration_named
@@ -89,8 +89,11 @@ CANONICAL_COLUMN = _RENAME.new_name
 #: the rate now holds it BY.
 DECLARATION_FIELD = "measurement"
 
-#: The two database objects built over the column. Both survive the rename
-#: untouched, which is the claim the state-only half of the migration makes.
+#: The two database objects over the quantity a rate prices. They survived the
+#: RENAME untouched — the claim the state-only half of `0016` makes — and were
+#: REBUILT by the conversion that replaced the column with a reference, because
+#: an index over a text column and one over a foreign key are not the same
+#: object. Their names did not change, which is why these two constants did not.
 LOOKUP_INDEX = "idx_ratecard_lookup"
 ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
 
@@ -264,21 +267,22 @@ class TheNameIsAReferenceAndSliceThreePaidItTest(TestCase):
     def test_a_rate_may_not_name_a_quantity_nobody_declared(self):
         """The inversion of `test_a_rate_may_still_name_a_quantity_nobody_declared`.
 
-        That test performed the write and asserted it SUCCEEDED. The write is
-        performed here too, against the same name, and it is refused — by the
-        database rather than by a `clean()` a caller can skip, which is the
-        difference between a rule and a habit (ADR-0007 §2).
+        That test performed a write against a name no declaration carries and
+        asserted it SUCCEEDED. The write performed here is the same one — the
+        same name, and a name rather than an absence, because "a rate carrying
+        no quantity at all is refused" is a weaker claim that would pass while
+        the defect stood. It is refused by the database rather than by a
+        `clean()` a caller can skip, which is the difference between a rule and
+        a habit (ADR-0007 §2).
 
         THE PREMISE GUARD BELOW IS UNCHANGED, and it is what makes the refusal
         mean something. Without it a fixture that seeded the name would leave
         this test refusing a write for some other reason entirely and reporting
         it as this one.
 
-        Both doors, because they fail for different reasons. There is nothing to
-        reference — the lookup a caller makes with the name answers `None`, and
-        that is where the tenant-facing 422 comes from — and a rate written with
-        no reference at all is refused by the check constraint, so the ORM is
-        not a way around the route.
+        The lookup is asserted beside it because the two answer different
+        questions: nothing to reference is why the route answers 422, and the
+        refusal below is why the ORM is not a way around the route.
         """
         tenant = Tenant.objects.create(name="T")
         undeclared = "a_quantity_no_declaration_carries"
@@ -292,8 +296,9 @@ class TheNameIsAReferenceAndSliceThreePaidItTest(TestCase):
             declaration_named(tenant=tenant, measurement_key=undeclared))
 
         with transaction.atomic(), \
-                self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY):
-            Rate.objects.create(tenant=tenant, measurement=None)
+                self.assertRaisesRegex(IntegrityError, undeclared):
+            Rate.objects.create(tenant=tenant,
+                                undeclared_measurement_key=undeclared)
 
 
 class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):

@@ -1,4 +1,4 @@
-﻿"""Sandbox-via-sibling-tenant (F4.4): schema, provisioning, key routing, reset.
+"""Sandbox-via-sibling-tenant (F4.4): schema, provisioning, key routing, reset.
 
 The sandbox is a SIBLING Tenant row, so every tenant-scoped mechanism applies
 to it for free; these tests pin the parts that are sandbox-specific.
