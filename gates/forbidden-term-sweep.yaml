@@ -144,7 +144,7 @@ exclusions:
 
   - id: historical-migrations
     permanence: until_slice_8
-    files: 208
+    files: 209
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,552 of 1,927 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,553 of 1,929 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -410,6 +410,48 @@ measurement_key:
     # is the existing non-negativity validator, whose predicate it does not
     # touch. #275's RATE ARITHMETIC caution holds again — nothing here goes
     # near `compute(units)`.
+    #
+    # #325 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,552 → 1,553 swept,
+    # 1,927 → 1,929 tracked, 50/126 unchanged). TWO new files and they land in
+    # DIFFERENT SETS: one test module, swept, and one migration, excluded —
+    # which is why the tracked total moves by two and the swept total by one.
+    # #275 has exactly this signature and records it the same way.
+    #
+    # AN EXCLUSION COUNT MOVED IN THIS COMMIT, AND IT IS NOT THE THIRD CASE
+    # ABOVE. `historical-migrations` goes 208 → 209. The rule at the head of
+    # this entry tells the second and third cases apart by asking whether an
+    # exclusion count moved, so a reader arriving at this diff would find the
+    # third case's signature and start looking for a word still being written
+    # under a widened rule. There is no such word and the rule did not widen:
+    # its `paths` are untouched, and a file entered the excluded set by being
+    # CREATED inside a directory the rule has always covered. The distinction
+    # worth carrying forward is that the third case's signature is an exclusion
+    # count rising WHILE THE SWEPT TOTAL FALLS; here both rose, which no
+    # widening can produce, since widening moves a file from one set to the
+    # other rather than adding one to each.
+    #
+    # THE NEW MODULE CREATES RATES AND NAMES NONE OF THE THREE WORDS THAT
+    # WOULD HAVE COST IT, all three slice 4's and all three ceilings on SPREAD.
+    # The discriminator between a cost rule and a price rule
+    # (`backend::card_type`, 31 files) is reached through the two helpers that
+    # already carry it in a file already counted — the answer
+    # `cost_rate_in_default_book` was minted for, used here for both halves
+    # because the price helper's own default is the price half. The
+    # shape-of-charge column (`backend::pricing_model`, 21 files) is simply not
+    # passed: the model's default already is the value every case here wants.
+    # The book pointer (`backend::rate_card`, 23 files) is the third, and the
+    # one assertion needing a book fetches it by tenant rather than reading it
+    # off a rate — the property that points at it is the retired spelling,
+    # while the class name is not, because the sweep matches case-sensitively.
+    # NOT a numerator move on `units`: none of the three is this entry's word,
+    # and this entry's word did not move.
+    #
+    # Nothing about THIS concept is in the commit. What changes is WHEN a
+    # pricing rule takes effect and whether that moment may be edited
+    # afterwards; a posting's measured quantity lives on its child record keyed
+    # by `measurement_key` and is not read here at all. #275's RATE ARITHMETIC
+    # caution holds again — the rules this commit dates are the ones
+    # `compute(units)` reads, and it does not touch that method.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

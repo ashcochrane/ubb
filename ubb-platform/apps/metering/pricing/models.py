@@ -1,9 +1,11 @@
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 from core.models import BaseModel
+from core.transitions import FROZEN, SET_ONCE
 
 
 class TenantMarkup(BaseModel):
@@ -109,8 +111,53 @@ class Rate(BaseModel):
     book_version_from = models.PositiveIntegerField(default=1)
     book_version_to = models.PositiveIntegerField(null=True, blank=True)
     lineage_id = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
-    valid_from = models.DateTimeField(auto_now_add=True, db_index=True)
+    # WHEN THIS RULE TAKES EFFECT, CHOSEN BY THE CALLER — past, future or
+    # omitted (#325). It was `auto_now_add=True`, which does not default: it
+    # OVERWRITES whatever was supplied, on every insert. A tenant could
+    # therefore only ever say "effective from the instant I clicked save",
+    # which made the remediation loop this slice exists to close unclosable —
+    # an event replayed from January resolves against the rules effective in
+    # January, there were none, and the correction came back a plausible
+    # number that was not the answer.
+    #
+    # `default=timezone.now` is the same behaviour for every caller that
+    # supplies nothing, said as a default rather than as an override, which is
+    # the whole difference: a default is a value a caller may replace.
+    valid_from = models.DateTimeField(default=timezone.now, db_index=True)
     valid_to = models.DateTimeField(null=True, blank=True)
+
+    #: WHAT MAY HAPPEN TO THE TWO COLUMNS RESOLUTION READS (ADR-0007 §2).
+    #:
+    #: Removing the flag above and stopping there would have left the column
+    #: UNCONSTRAINED, which is a different defect and one the same rule
+    #: refuses in the same breath: mutability is declared per field **and**
+    #: enforced by the database.
+    #:
+    #: `valid_from` is FROZEN — none after insert. When a rule took effect is
+    #: a fact *about* the rule, and moving it retroactively re-costs work that
+    #: has already reported. Nothing in the system would disagree with itself
+    #: afterwards; the totals would simply become different totals from the
+    #: ones the tenant was shown, with no record that they moved.
+    #:
+    #: `valid_to` is SET_ONCE — null to a value, once. It is not FROZEN
+    #: because closing a rule is a legitimate late arrival: a rate is written
+    #: open-ended and stays that way until it is retired or repriced, which is
+    #: how both live writers use it. What is refused is the SECOND write —
+    #: moving the close, or taking it back. Reopening a rule over a period
+    #: that has already reported is a rewrite of history rather than an edit.
+    #:
+    #: **The enforcement is the trigger installed by `migrations/0018`, not
+    #: anything here.** ADR-0007 §2 is explicit that a model-level guard is
+    #: not enforcement. Both declarations are held across `save()`,
+    #: `QuerySet.update()` and raw SQL alike, on BOTH halves of this table —
+    #: one model carries the cost and the price side and the rule does not get
+    #: to know which. `apps/platform/tests/test_transition_class_declarations.py`
+    #: is what says no column may be declared here without that being true of
+    #: it, and it covers these two without naming either.
+    transition_classes = {
+        "valid_from": FROZEN,
+        "valid_to": SET_ONCE,
+    }
 
     class Meta:
         db_table = "ubb_rate_card"

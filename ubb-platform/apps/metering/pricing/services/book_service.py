@@ -26,12 +26,25 @@ class BookService:
         leaves the other four at "", and a rate pinned on one of them is not
         repriceable through this route.
         Supersedes it (valid_to=T, book_version_to=old
-        version) and inserts a new active rate (same lineage_id, valid_from>=T,
+        version) and inserts a new active rate (same lineage_id, valid_from=T,
         book_version_from=new version). Bumps book.version once. All-or-nothing.
 
-        `as_of` is expected to be ~now (used for the supersede timestamp);
-        future-dated scheduling is not supported because the new rate's
-        valid_from is auto-stamped at insert.
+        ONE CLOCK CLOSES THE BOUNDARY AND OPENS IT, AND THAT FIXED A LIVE BUG
+        (#325). Until the effective moment became suppliable, the replacement
+        opened at the instant of INSERT — `T + ε`, strictly after the moment the
+        outgoing rate closed at. Resolution asks for `valid_from <= as_of` and
+        `valid_to > as_of`, so no rate at all covered `[T, T + ε)`: an event
+        landing in that window matched nothing and fell through to markup
+        pricing, which returns a plausible number and raises nothing.
+        Microseconds wide, real and invisible. Both rows now take the same `T`,
+        which with a half-open range is exactly no gap and exactly no overlap.
+        `NoInstantFallsBetweenTwoVersionsTest` holds it.
+
+        `as_of` is expected to be ~now. Scheduling a reprice for a future date
+        is not offered THROUGH THIS ROUTE — the published body carries no
+        moment, and this entity's published surface is slice 4's — but the
+        column no longer refuses one: a caller of this service may pass a future
+        `as_of` and both rows will take it.
         """
         as_of = as_of or timezone.now()
         with transaction.atomic():
@@ -53,6 +66,7 @@ class BookService:
                         data[k] = ch[k]
                 data["book_version_from"] = new_version
                 data["book_version_to"] = None
+                data["valid_from"] = as_of
                 # Re-validate the repriced shape so a publish can never create a
                 # rate with a retired/unknown pricing_model. Raises
                 # ValueError -> rolls back the whole publish (endpoint maps 422).
@@ -60,7 +74,7 @@ class BookService:
                 if data["pricing_model"] not in valid_models:
                     raise ValueError(
                         f"pricing_model must be one of {sorted(valid_models)}")
-                # Close the old row, then open the new (valid_from auto_now_add > T).
+                # Close the old row at T, then open the new AT THE SAME T.
                 old.valid_to = as_of
                 old.book_version_to = locked.version
                 old.save(update_fields=["valid_to", "book_version_to", "updated_at"])

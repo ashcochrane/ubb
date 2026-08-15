@@ -9,7 +9,6 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
-from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.metering.usage.services.usage_service import (
@@ -173,16 +172,24 @@ class TestHistoricalPricing:
     def test_backdated_event_prices_on_superseded_card_version(self):
         """as_of threading proof: v1 (10 micros/unit) superseded by v2 (50)
         ten days ago; an event effective in the v1 era prices on v1 and the
-        provenance pins v1's rate_card_id."""
+        provenance pins v1's rate_card_id.
+
+        BOTH WINDOWS ARE NOW DECLARED AT INSERT RATHER THAN STAMPED ON
+        AFTERWARDS (#325). This test used to reach around the defect it was
+        standing next to: the effective moment was `auto_now_add`, so the only
+        way to set up a historical window was a `QuerySet.update()` after the
+        row existed — which is exactly the move that column is now declared
+        FROZEN against, and which no tenant could ever have made. Declaring the
+        moments makes the fixture the thing a tenant can actually do.
+        """
         t, c = _setup()
         now = timezone.now()
         v1 = rate_in_default_book(t, card_type="price", measurement_key="tok",
-            pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1)
-        Rate.objects.filter(id=v1.id).update(
+            pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
             valid_from=now - timedelta(days=40), valid_to=now - timedelta(days=10))
         v2 = rate_in_default_book(t, card_type="price", measurement_key="tok", lineage_id=v1.lineage_id,
-            pricing_model="per_unit", rate_per_unit_micros=50, unit_quantity=1)
-        Rate.objects.filter(id=v2.id).update(valid_from=now - timedelta(days=10))
+            pricing_model="per_unit", rate_per_unit_micros=50, unit_quantity=1,
+            valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(
             t, c, "r1", "k1", measurements={"tok": 100},
