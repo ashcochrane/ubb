@@ -622,9 +622,9 @@ def withdraw_measurement(request, key: str, code: str):
         raise Problem(
             "not_found",
             f"event type '{key}' declares no measurement with code '{code}'")
-    # The same shape `withdraw_event_category` above states, and counted for the
-    # same reason: `PROTECT` on the rate's reference (#326) would otherwise
-    # surface as a 500. Withdrawing the declaration and quietly deactivating the
+    # The same shape `withdraw_event_category` above states, and checked ahead
+    # of the delete for the same reason: `PROTECT` on the rate's reference
+    # (#326) would otherwise surface as a 500. Withdrawing the declaration and quietly deactivating the
     # tenant's rates was the alternative — and beyond rewriting their pricing on
     # their behalf, it is not even available: `SET_NULL` would leave a row
     # referencing nothing and carrying no name, which `ck_rate_names_one_quantity`
