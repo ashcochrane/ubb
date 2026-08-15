@@ -1,4 +1,4 @@
-"""Sandbox-via-sibling-tenant (F4.4): schema, provisioning, key routing, reset.
+﻿"""Sandbox-via-sibling-tenant (F4.4): schema, provisioning, key routing, reset.
 
 The sandbox is a SIBLING Tenant row, so every tenant-scoped mechanism applies
 to it for free; these tests pin the parts that are sandbox-specific.
@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.webhook_models import TenantWebhookConfig
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from apps.platform.tenants.tasks import reset_sandbox_tenant_sync
@@ -211,7 +212,8 @@ class SandboxResetTest(TestCase):
         from apps.metering.pricing.models import Rate
 
         Rate.objects.create(
-            tenant=tenant, card_type="cost", measurement_key="tokens",
+            tenant=tenant, card_type="cost",
+            measurement=declares_a_quantity(tenant, "tokens"),
             rate_per_unit_micros=10)
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(
@@ -235,6 +237,7 @@ class SandboxResetTest(TestCase):
         from apps.billing.wallets.models import Wallet, WalletTransaction
         from apps.metering.pricing.models import Rate
         from apps.metering.usage.models import Posting
+        from apps.platform.event_types.models import Measurement
 
         self._seed_domain_rows(self.sandbox, "sb-")
         self._seed_config_rows(self.sandbox)
@@ -256,6 +259,12 @@ class SandboxResetTest(TestCase):
 
         # Config preserved
         self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 1)
+        # And the declaration that rate names, with it. A kept rate pointing at
+        # a wiped quantity is not a state this reset may produce (#326) — it is
+        # not merely undesirable, it is refused, and the whole reset fails.
+        self.assertEqual(
+            Measurement.objects.filter(
+                event_type__tenant=self.sandbox).count(), 1)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 1)

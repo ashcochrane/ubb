@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,553 of 1,929 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,555 of 1,932 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -461,6 +461,31 @@ measurement_key:
     # by `measurement_key` and is not read here at all. #275's RATE ARITHMETIC
     # caution holds again — the rules this commit dates are the ones
     # `compute(units)` reads, and it does not touch that method.
+    #
+    # #326 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,553 → 1,555 swept,
+    # 1,929 → 1,932 tracked, 50/126 unchanged — this entry's own `units`
+    # evidence, and still not the sweep's closing line, which the paragraph
+    # above disarms). THREE new files across BOTH sets: two swept — a kernel
+    # read module and a test module — and one migration, excluded, so
+    # `historical-migrations` goes 209 → 210 for the second commit running.
+    # Both totals rose, which is the signature #325's paragraph above records
+    # as ruling out a widened exclusion.
+    #
+    # THE COMMIT MADE THIS CONCEPT'S NAME A REFERENCE AND STILL DID NOT MOVE
+    # THIS ENTRY'S NUMBER, which is worth stating because it is the one commit
+    # so far where a reader would expect otherwise. `measurement_key` is the
+    # CANONICAL name and this entry is about the retired senses of `units`; the
+    # rate's column stopped holding a name and started holding the declared
+    # record, and the name it answers with is the declaration's. Two of the
+    # three words #325's paragraph above lists were paid the same way again —
+    # the cost/price discriminator through the helpers (one of which is new,
+    # in the same already-counted file, because a test needed an empty book and
+    # the create body names the word), and the shape-of-charge column by not
+    # passing an argument. The third, `rate.added`, is not on that list and was
+    # found the same way: an assertion naming the audit action a refused write
+    # must not have written. It was replaced by a STRONGER one — that the
+    # refusal wrote no audit entry of ANY kind — which names nothing and would
+    # also catch a second entry riding along beside the one being checked.
     #
     # OUTCOME: SENSE, NOT ALIAS. Every residual occurrence was read and every
     # one falls in a surviving sense above; there is no fifth. The column and

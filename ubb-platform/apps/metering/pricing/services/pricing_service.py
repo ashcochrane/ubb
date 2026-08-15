@@ -59,11 +59,26 @@ class PricingService:
         event's value. Among matches the most-pinned rate wins, tie-broken by
         latest valid_from. `measurement_key` alone keeps exact-match semantics —
         a rate prices one named quantity, and a rate that wildcarded WHICH
-        quantity it priced would charge the same for all of them."""
+        quantity it priced would charge the same for all of them.
+
+        **THE MATCH IS STILL ON THE NAME, THROUGH THE REFERENCE (#326).** The
+        rate holds the declared record rather than a spelling of it, and this
+        line reads the name back off it. Matching on the record's IDENTITY
+        instead would be a different rule, not a tidier spelling of this one:
+        declarations are Event-Type-local, so a rate that leaves `event_type`
+        unpinned prices the quantity under every Event Type that declares that
+        name, and identity matching would silently narrow it to one of them.
+        `Measurement`'s own docstring called this — *"a Cost Rate still matches
+        on measurement_key"* — before the reference existed.
+
+        A rate the conversion could not place references nothing, so it cannot
+        match here at all. That is what "deactivated" means in practice: the row
+        is still readable, still lists, still says what it was written to price,
+        and prices nothing."""
         if book is None:
             return None
         qs = Rate.objects.filter(
-            rate_card=book, measurement_key=measurement_key, currency=currency,
+            rate_card=book, measurement__code=measurement_key, currency=currency,
             valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
         for name in Rate.SELECTORS:

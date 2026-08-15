@@ -1,4 +1,4 @@
-import json
+﻿import json
 from unittest.mock import patch
 
 from django.test import TestCase, Client
@@ -6,7 +6,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    DECLARED, declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
@@ -741,6 +741,12 @@ class RateCardValidationTest(TestCase):
         self.client = Client()
         self.tenant = Tenant.objects.create(name="Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        # Declared first, because a rate names a declared quantity (#326) — and
+        # declared even for the case whose point is a REFUSAL, so the refusal
+        # asserted there is the one the test is named for rather than whichever
+        # check happens to run first.
+        for code in ("input_tokens", "tokens"):
+            declares_a_quantity(self.tenant, code)
 
     def _post(self, path, body):
         return self.client.post(path, data=json.dumps(body),
@@ -809,6 +815,10 @@ class RateCardBatchCreateTest(TestCase):
         self.client = Client()
         self.tenant = Tenant.objects.create(name="Batch Rate Tenant", products=["metering"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        # See RateCardValidationTest above: declared first, including for the
+        # case whose point is a different refusal entirely.
+        for code in ("tokens", "images", "bad"):
+            declares_a_quantity(self.tenant, code)
 
     def _post(self, path, body):
         return self.client.post(path, data=json.dumps(body),

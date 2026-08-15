@@ -36,7 +36,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost)
+    declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.metering.usage.models import Posting
 
 
@@ -105,6 +105,10 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
     _, raw_key = TenantApiKey.create_key(tenant)
     c1 = Customer.objects.create(tenant=tenant, external_id="c1")
     Customer.objects.create(tenant=tenant, external_id="c2")  # C2: isolation/noise
+    # The quantity both rates below price, declared: a rate names a declared
+    # quantity (#326). The journey adds the rates over real HTTP, so without
+    # this the route answers 422 and the journey stops at step 2.
+    declares_a_quantity(tenant, "tokens")
 
     client = MeteringClient(api_key=raw_key, base_url=live_server.url)
     api = httpx.Client(base_url=live_server.url,

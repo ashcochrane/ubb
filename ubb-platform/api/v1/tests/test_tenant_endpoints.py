@@ -1,6 +1,7 @@
-import json
+﻿import json
 from datetime import date
 from django.test import TestCase, Client
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
@@ -507,7 +508,8 @@ class TenantConfigCurrencyTest(TestCase):
         every card from matching and collapse COGS to the markup fallback."""
         from apps.metering.pricing.models import Rate
         Rate.objects.create(
-            tenant=self.tenant, card_type="cost", measurement_key="tokens",
+            tenant=self.tenant, card_type="cost",
+            measurement=declares_a_quantity(self.tenant, "tokens"),
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency)
         self._assert_locked()
@@ -516,7 +518,8 @@ class TenantConfigCurrencyTest(TestCase):
         from django.utils import timezone
         from apps.metering.pricing.models import Rate
         Rate.objects.create(
-            tenant=self.tenant, card_type="cost", measurement_key="tokens",
+            tenant=self.tenant, card_type="cost",
+            measurement=declares_a_quantity(self.tenant, "tokens"),
             pricing_model="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency, valid_to=timezone.now())
         resp = self._patch({"default_currency": "eur"})

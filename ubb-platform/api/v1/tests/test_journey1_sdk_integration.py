@@ -18,6 +18,7 @@ import pytest
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 
@@ -75,6 +76,10 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     rate_in_default_book(tenant, card_type="cost", measurement_key="input_tokens",
                             pricing_model="per_unit", rate_per_unit_micros=2, unit_quantity=1,
                             currency="usd")
+    # The quantity the rate added over HTTP below prices. A rate names a
+    # declared quantity (#326), and this journey adds one through the real
+    # route, so the declaration is part of the journey rather than of a fixture.
+    declares_a_quantity(tenant, "output_tokens")
 
     client = MeteringClient(api_key=raw_key, base_url=live_server.url)
     api = httpx.Client(base_url=live_server.url,

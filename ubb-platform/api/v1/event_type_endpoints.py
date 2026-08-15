@@ -65,6 +65,7 @@ from api.v1.schemas import (
     ReportedCostMappingOut, event_category_out, event_type_out,
     measurement_out, provider_out, reported_cost_mapping_out,
 )
+from apps.metering.pricing.models import Rate
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.event_types.models import (
@@ -598,15 +599,27 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
 
 
 @event_type_router.delete("/event-types/{key}/measurements/{code}",
-                          response={204: None, 404: ProblemOut})
+                          response={204: None, 404: ProblemOut,
+                                    409: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("measurement.withdrawn")
 def withdraw_measurement(request, key: str, code: str):
-    """Withdraw one declared quantity. This revises the publication too.
+    """Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
     """
+    # The refusal is the same shape `withdraw_event_category` above states:
+    # counted here because `PROTECT` on the rate's reference (#326) would
+    # otherwise surface as a 500. Withdrawing the declaration and quietly
+    # deactivating the tenant's rates was the alternative, and it would rewrite
+    # their pricing on their behalf — which is the one thing this product does
+    # not do. The reason a rate holds the declaration at all is that a name
+    # nobody declared was a rate that cost nothing and looked configured.
     _product_check(request)
     tenant = request.auth.tenant
     event_type = _declaration(tenant, key)
@@ -616,6 +629,13 @@ def withdraw_measurement(request, key: str, code: str):
         raise Problem(
             "not_found",
             f"event type '{key}' declares no measurement with code '{code}'")
+    priced_by = Rate.objects.filter(measurement=measurement).count()
+    if priced_by:
+        raise Problem(
+            "conflict",
+            f"{priced_by} rate(s) price '{code}'. Delete them first, or keep "
+            f"the declaration: a rate names the quantity it prices, so a "
+            f"quantity nobody declares is a rate that prices nothing.")
     _withdrawn(measurement, action="measurement.withdrawn", tenant=tenant,
                resource_type="measurement",
                resource_id=f"{event_type.key}:{code}",

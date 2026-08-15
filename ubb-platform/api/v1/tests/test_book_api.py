@@ -12,6 +12,7 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.metering.pricing.models import Rate, RateCard
 
 
@@ -22,6 +23,12 @@ class BookApiTest(TestCase):
             name="Book Tenant", products=["metering", "billing"])
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="book")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        # The two quantities every rate below prices. A rate names a DECLARED
+        # quantity since #326, so this is the step a tenant now takes first —
+        # and the route answers 422 without it, which is its own test rather
+        # than a surprise in these.
+        for code in ("input_tokens", "output_tokens"):
+            declares_a_quantity(self.tenant, code)
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
