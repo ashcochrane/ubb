@@ -35,6 +35,8 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost)
 from apps.metering.usage.models import Posting
 
 
@@ -84,6 +86,9 @@ COST_ALPHA = 200   # rate 2/unit * 100 units, unit_quantity=1
 COST_BETA = 500    # rate 5/unit * 100 units, unit_quantity=1
 # Unattributed event: recorded with an explicit provider_cost_micros (no service value).
 COST_UNATTR = 300
+#: The Event Type that one event names, so it may state the supplier's own
+#: figure at all (#324). It carries no grouping values, which is the point.
+UNATTRIBUTED_EVENT_TYPE = "unattributed.call"
 
 
 def _force_day(event_id, day):
@@ -184,8 +189,13 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Nothing declared on it, so it carries an EMPTY grouping-field object
         # and must appear as "(unattributed)" in the "service" breakdown, so
         # that the breakdown reconciles to the new grand total.
+        # The supplier's own figure is admissible only where an Event Type
+        # declares that it arrives on the call (#324), so this journey declares
+        # one for the event that carries it.
+        declares_a_caller_supplied_cost(tenant, UNATTRIBUTED_EVENT_TYPE)
         unattr_res = client.record_usage(
             customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
+            event_type=UNATTRIBUTED_EVENT_TYPE,
             provider_cost_micros=COST_UNATTR,
             # Deliberately no product/service/agent dimensions, so all three
             # slot columns are empty strings on the stored event.

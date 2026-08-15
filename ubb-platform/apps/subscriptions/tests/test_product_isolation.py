@@ -16,6 +16,8 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.billing.wallets.models import Wallet
 
 
@@ -75,6 +77,7 @@ class TestSubscriptionsProductIsolation(TestCase):
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
+        declares_a_caller_supplied_cost(customer.tenant, DECLARED)
 
         response = self.http_client.post(
             "/api/v1/metering/usage",
@@ -82,6 +85,7 @@ class TestSubscriptionsProductIsolation(TestCase):
                 "customer_id": str(customer.id),
                 "request_id": "req-isolation-1",
                 "idempotency_key": "idem-isolation-1",
+                "event_type": DECLARED,
                 "provider_cost_micros": 500_000,
             }),
             content_type="application/json",

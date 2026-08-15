@@ -26,6 +26,8 @@ from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
@@ -48,6 +50,7 @@ class SubtaskPinMixin:
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=100_000_000)
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def tearDown(self):
         cache.clear()
@@ -66,6 +69,10 @@ class SubtaskPinMixin:
             "customer_id": str(self.customer.id),
             "request_id": f"req-{uuid.uuid4()}",
             "idempotency_key": f"idem-{uuid.uuid4()}",
+            # Every body here states the supplier's own cost, admissible only
+            # against an Event Type that declares it arrives on the call
+            # (#324). `extra` still wins, so a test may name another key.
+            "event_type": DECLARED,
         }
         data.update(extra)
         return self.http_client.post(
@@ -248,6 +255,7 @@ class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
             "customer_id": str(self.customer.id),
             "request_id": f"rb{i}", "idempotency_key": f"ib{i}",
             "task_id": str(sub.id), "provider_cost_micros": 6_000_000,
+            "event_type": DECLARED,
         } for i in range(2)]
         resp = self.http_client.post(
             "/api/v1/metering/usage/batch",

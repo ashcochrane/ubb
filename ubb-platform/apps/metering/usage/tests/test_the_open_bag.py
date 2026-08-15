@@ -13,6 +13,8 @@ from unittest.mock import patch
 from django.test import TestCase, Client, skipUnlessDBFeature
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 # The retired bag's name, read off the migration that drops it rather than
@@ -123,6 +125,9 @@ class TheBagIsFilterableTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_gk"
         )
+        # The recording calls below state the supplier's own cost, which one
+        # Event Type declaration admits and nothing else does (#324).
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_the_bag_round_trips_through_the_recording_route(self, mock_process):
@@ -133,6 +138,7 @@ class TheBagIsFilterableTest(TestCase):
                 "request_id": "req_gk_ep1",
                 "idempotency_key": "idem_gk_ep1",
                 "provider_cost_micros": 1_000_000,
+                "event_type": DECLARED,
                 "metadata": {"department": "engineering"},
             }),
             content_type="application/json",
@@ -159,6 +165,7 @@ class TheBagIsFilterableTest(TestCase):
                     "request_id": f"req_filter_{i}",
                     "idempotency_key": f"idem_filter_{i}",
                     "provider_cost_micros": 1_000_000,
+                    "event_type": DECLARED,
                     "metadata": {"department": dept},
                 }),
                 content_type="application/json",
@@ -197,6 +204,7 @@ class TheBagIsFilterableTest(TestCase):
                 "request_id": "req_stale",
                 "idempotency_key": "idem_stale",
                 "provider_cost_micros": 1_000_000,
+                "event_type": DECLARED,
                 RETIRED_COLUMN: {"department": "sales"},
             }),
             content_type="application/json",
@@ -217,6 +225,7 @@ class TheBagIsFilterableTest(TestCase):
                 "request_id": "req_gk_ep2",
                 "idempotency_key": "idem_gk_ep2",
                 "provider_cost_micros": 1_000_000,
+                "event_type": DECLARED,
                 "metadata": {"Cost Centre": "EMEA"},
             }),
             content_type="application/json",

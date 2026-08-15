@@ -250,8 +250,11 @@ class TestTheComputeSpineDecidesTheStatus:
         assert costing.provider_cost_micros == 5_000
 
     def test_a_caller_supplied_figure_needs_no_declaration_at_all(self):
-        """WHERE such a figure may be supplied is #324's refusal. Costing one
-        that arrived is this ticket's, and it costs without a lookup."""
+        """WHERE such a figure may be supplied is #324's refusal, which sits at
+        the recording edge and has already run by the time the spine is called.
+        Costing one that arrived is this ticket's, and it costs without a
+        lookup — the spine asks no declaration on this branch, which is what
+        makes the edge's own query the only one either path pays for."""
         tenant = _tenant()
 
         costing = _price(tenant, _customer(tenant), caller_provider_cost=900)

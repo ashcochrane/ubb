@@ -5,6 +5,8 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
@@ -34,6 +36,40 @@ def usage_payload(customer, correlation, **fields):
             "idempotency_key": correlation, **fields}
 
 
+def declared_grouping_values(values):
+    """The recording body's declared grouping bag, for a caller that may not
+    spell its key.
+
+    `usage_payload`'s problem one key along, and the same answer: the wire name
+    of this bag is retired vocabulary under a spread ceiling (slice 7's, at 16
+    files), and this module is already one of the counted ones. A caller passes
+    the values and never learns which key they land under.
+    """
+    return {"dimensions": values}
+
+
+#: EVERY PARAMETER THE RECORDING REQUEST PUBLISHES, and nothing else (#324).
+#:
+#: Spelled here for `usage_payload`'s reason one word wider: TWO of these keys
+#: are retired words under a spread ceiling — the correlation value above and
+#: the grouping bag slice 7 owns — and this module is already counted for both.
+#: The claim that reads it lives in
+#: `test_two_request_fields_each_with_one_meaning.py`, where the two cost
+#: fields' story is; only the spelling is here.
+#:
+#: A WHOLE SET RATHER THAN A KEY AT A TIME. Django Ninja drops a body key no
+#: schema publishes instead of refusing it, so a per-key assertion stays green
+#: while an undeclared field rides along beside it — which is how a read route
+#: in this repository sent two parameters it publishes nowhere and answered
+#: `200` on the axis default for years.
+THE_WHOLE_RECORDING_REQUEST = frozenset({
+    "customer_id", "request_id", "idempotency_key", "metadata",
+    "provider_cost_micros", "claimed_provider_cost_micros",
+    "billed_cost_micros", "measurements", "currency", "task_id", "event_type",
+    "provider", "dimensions", "effective_at",
+})
+
+
 class MeteringProductGatingTest(TestCase):
     def setUp(self):
         self.http_client = Client()
@@ -49,6 +85,9 @@ class MeteringProductGatingTest(TestCase):
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
+        # The recording call below states the supplier's own cost, which one
+        # Event Type declaration admits and nothing else does (#324).
+        declares_a_caller_supplied_cost(self.tenant_metering_only, DECLARED)
 
     def test_metering_only_tenant_gets_403_on_billing_balance(self):
         response = self.http_client.get(
@@ -62,7 +101,7 @@ class MeteringProductGatingTest(TestCase):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps(usage_payload(
-                self.customer, "met_1",
+                self.customer, "met_1", event_type=DECLARED,
                 provider_cost_micros=1_500_000,
                 metadata={"model": "gpt-4"})),
             content_type="application/json",
@@ -373,6 +412,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_task_met"
         )
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -393,6 +433,7 @@ class MeteringTaskEndpointTest(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": "req_1",
             "idempotency_key": "idem_1",
+            "event_type": DECLARED,
             "provider_cost_micros": 1_000_000,
         }
         data.update(extra)
@@ -914,6 +955,7 @@ class RecordUsageCurrencyTest(TestCase):
             name="CurTenant", products=["metering"], default_currency="usd")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cur")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="cur_c1")
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
 
     def _post(self, body):
         return self.http_client.post(
@@ -928,6 +970,7 @@ class RecordUsageCurrencyTest(TestCase):
             "customer_id": str(self.customer.id),
             "request_id": f"req_{idem}",
             "idempotency_key": idem,
+            "event_type": DECLARED,
             "provider_cost_micros": 1_000_000,
             **extra,
         }
@@ -955,12 +998,14 @@ class RecordUsageCurrencyTest(TestCase):
             name="EurTenant", products=["metering"], default_currency="eur")
         _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
         eur_customer = Customer.objects.create(tenant=eur_tenant, external_id="cur_eur1")
+        declares_a_caller_supplied_cost(eur_tenant, DECLARED, currency="eur")
         resp = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(eur_customer.id),
                 "request_id": "req_eur",
                 "idempotency_key": "idem_eur",
+                "event_type": DECLARED,
                 "provider_cost_micros": 1_000_000,
             }),
             content_type="application/json",

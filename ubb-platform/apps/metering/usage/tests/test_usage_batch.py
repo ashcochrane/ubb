@@ -11,6 +11,8 @@ from django.utils import timezone
 
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -24,6 +26,7 @@ def _setup(**tenant_kwargs):
                               **tenant_kwargs)
     _, raw_key = TenantApiKey.create_key(t, label="test")
     c = Customer.objects.create(tenant=t, external_id="cust1")
+    declares_a_caller_supplied_cost(t, DECLARED)
     http = Client()
     auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
     return t, c, http, auth
@@ -36,7 +39,8 @@ def _post(http, auth, url, body):
 
 def _item(c, n, **extra):
     return {"customer_id": str(c.id), "request_id": f"r{n}",
-            "idempotency_key": f"k{n}", "provider_cost_micros": 10, **extra}
+            "idempotency_key": f"k{n}", "provider_cost_micros": 10,
+            "event_type": DECLARED, **extra}
 
 
 @pytest.mark.django_db
@@ -76,7 +80,8 @@ class TestBatchBasics:
         resp = _post(http, auth, BATCH_URL, {"events": [
             _item(c, 1),
             {"customer_id": str(c.id), "request_id": "r-other",
-             "idempotency_key": "k1", "provider_cost_micros": 99},
+             "idempotency_key": "k1", "provider_cost_micros": 99,
+             "event_type": DECLARED},
         ]}).json()
         assert resp["accepted"] == 2
         assert resp["results"][1]["event_id"] == resp["results"][0]["event_id"]
@@ -154,7 +159,8 @@ class TestBatchBasics:
         t, c, http, auth = _setup()
         single = _post(http, auth, SINGLE_URL,
                        {"customer_id": str(c.id), "request_id": "s1",
-                        "idempotency_key": "ks1", "provider_cost_micros": 10}).json()
+                        "idempotency_key": "ks1", "provider_cost_micros": 10,
+                        "event_type": DECLARED}).json()
         batch = _post(http, auth, BATCH_URL, {"events": [_item(c, 1)]}).json()
         item = dict(batch["results"][0])
         assert item.pop("accepted") is True
@@ -186,12 +192,14 @@ class TestBatchOneRuleParity:
         return [
             {"customer_id": str(c.id), "request_id": f"r{n0}",
              "idempotency_key": f"k{n0}", "provider_cost_micros": 600,
-             "task_id": str(task.id)},
+             "event_type": DECLARED, "task_id": str(task.id)},
             {"customer_id": str(c.id), "request_id": f"r{n0+1}",
              "idempotency_key": f"k{n0+1}", "provider_cost_micros": 600,
+             "event_type": DECLARED,
              "task_id": str(task.id)},  # 1200 > 1000 → task_limit crossing
             {"customer_id": str(c.id), "request_id": f"r{n0+2}",
              "idempotency_key": f"k{n0+2}", "provider_cost_micros": 100,
+             "event_type": DECLARED,
              "task_id": str(task.id)},  # task now killed → task_not_active
         ]
 

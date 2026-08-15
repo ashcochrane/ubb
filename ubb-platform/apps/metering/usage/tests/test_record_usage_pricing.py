@@ -4,6 +4,8 @@ import pytest
 from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting
@@ -103,6 +105,10 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         )
         key_obj, raw_key = TenantApiKey.create_key(t, label="test")
         c = Customer.objects.create(tenant=t, external_id="cust1")
+        # The two bodies below that state the supplier's own cost need the
+        # Event Type that declares it arrives on the call (#324); the rest of
+        # this class never names it.
+        declares_a_caller_supplied_cost(t, DECLARED)
         http = Client()
         auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
         return t, c, http, auth
@@ -131,7 +137,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         t, c, http, auth = self._setup()
         resp = self._post(http, auth, c, {
             "request_id": "r3", "idempotency_key": "ik3",
-            "provider_cost_micros": 123,
+            "event_type": DECLARED, "provider_cost_micros": 123,
         })
         assert resp.status_code == 200
         assert resp.json()["provider_cost_micros"] == 123
@@ -228,7 +234,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
 
         resp2 = self._post(http, auth, c, {
             "request_id": "r7", "idempotency_key": "ik7",
-            "provider_cost_micros": 500,
+            "event_type": DECLARED, "provider_cost_micros": 500,
         })
 
         assert resp2.status_code == 200

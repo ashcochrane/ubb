@@ -181,8 +181,9 @@ class PricingService:
         if caller_provider_cost is not None:
             # A figure the caller supplied IS the answer, and no declaration is
             # consulted to confirm it. WHERE such a figure may be supplied at
-            # all is a separate question with its own refusal (#324); costing a
-            # figure that arrived is this one.
+            # all is a separate question, answered before this runs and with
+            # its own 422 — `metering_endpoints.admit_supplier_cost` (#324).
+            # Costing a figure that arrived is this one.
             computed_micros = caller_provider_cost
             costing_status = COSTING_STATUS_KNOWN
             receipt["cost_source"] = "caller"

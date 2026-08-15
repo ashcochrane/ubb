@@ -10,6 +10,8 @@ from django.test import TestCase, Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    DECLARED, declares_a_caller_supplied_cost)
 from apps.billing.wallets.models import Wallet
 
 
@@ -27,6 +29,7 @@ class TestMeteringOnlyTenant(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_met_only"
         )
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
@@ -40,6 +43,7 @@ class TestMeteringOnlyTenant(TestCase):
                 "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
                 "provider_cost_micros": 1_000_000,
+                "event_type": DECLARED,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -187,6 +191,7 @@ class TestBothProductsTenant(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust_both"
         )
+        declares_a_caller_supplied_cost(self.tenant, DECLARED)
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 10_000_000
         wallet.save(update_fields=["balance_micros"])
@@ -200,6 +205,7 @@ class TestBothProductsTenant(TestCase):
                 "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
                 "provider_cost_micros": 1_000_000,
+                "event_type": DECLARED,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -253,6 +259,7 @@ class TestBothProductsTenant(TestCase):
                 "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
                 "provider_cost_micros": 2_000_000,
+                "event_type": DECLARED,
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
