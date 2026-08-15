@@ -49,6 +49,7 @@ rebuilt, which is slice 4's, and this module asserts only that slice 4 inherits
 two constrained columns rather than a flag to delete —
 :class:`SliceFourInheritsConstrainedColumnsRatherThanAFlagTest`.
 """
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -69,8 +70,8 @@ from apps.platform.tenants.models import Tenant
 from core.transitions import (
     FROZEN, SET_ONCE, columns_declared_into_defended_classes)
 
-FROM = "valid_from"
-TO = "valid_to"
+VALID_FROM = "valid_from"
+VALID_TO = "valid_to"
 
 TABLE = Rate._meta.db_table
 
@@ -127,6 +128,39 @@ DOORS = (("QuerySet.update()", _through_the_queryset),
          ("save()", _through_save))
 
 
+def _refusal_body():
+    """The trigger function's EXECUTABLE text — its comments stripped out.
+
+    Stripping is not fussiness, and it was measured rather than supposed. Every
+    branch in that function carries an SQL comment naming the column it is
+    about, so "the column is named in the body" is satisfied by the comment
+    EXPLAINING a branch that has been deleted: removing the whole `valid_to`
+    refusal left the assertion below green until the comments came out. A
+    prose-satisfiable assertion about whether a rule exists is the exact shape
+    this repository keeps paying for.
+    """
+    body = _trigger_rows()[0][2]
+    return "\n".join(re.sub(r"--.*$", "", line) for line in body.splitlines())
+
+
+def _trigger_rows():
+    """What the catalogue holds about the rules guarding this table, now.
+
+    One join, read by both classes that ask the database anything: a migration
+    that ran is evidence that a file executed, not that a rule is installed.
+    Returns `(name, type_bits, function_body)` per non-internal trigger, which
+    is every fact the two callers between them need.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT t.tgname, t.tgtype, p.prosrc "
+            "FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid = t.tgrelid "
+            "JOIN pg_proc p ON p.oid = t.tgfoid "
+            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
+        return cursor.fetchall()
+
+
 class TransitionRefusalMixin:
 
     def _refusal(self, door, rate, **columns):
@@ -167,24 +201,36 @@ class TheDeclaredMomentSurvivesTheInsertTest(TestCase):
         moment = timezone.now() - timedelta(days=30)
         for half, rate_in_book in HALVES:
             with self.subTest(half=half):
-                rate = rate_in_book(_tenant(), **{FROM: moment})
-                self.assertEqual(getattr(Rate.objects.get(id=rate.id), FROM),
+                rate = rate_in_book(_tenant(), **{VALID_FROM: moment})
+                self.assertEqual(getattr(Rate.objects.get(id=rate.id), VALID_FROM),
                                  moment)
 
     def test_a_moment_in_the_future_survives(self):
         """Forward dating, which is the same mechanism read the other way.
 
-        A tenant announcing a rise from the first of next month writes the row
-        now and the rule starts then. Nothing schedules it and nothing needs to:
+        A row whose moment has not arrived resolves for nobody until it does:
         resolution already asks which rule was effective at the event's own
-        moment, so a row whose moment has not arrived resolves for nobody until
-        it does.
+        instant, so nothing has to schedule anything.
+
+        ⚠ THAT IS THE COLUMN'S HALF AND IT IS NOT THE WHOLE FEATURE, which is
+        worth saying here because the shortest reading of this test is "a
+        tenant can now schedule next month's rise" and they cannot. Two things
+        stand in the way and neither is this ticket's. `uq_rate_active_in_book`
+        is unique on the selectors WHERE `valid_to IS NULL`, so a future-dated
+        row cannot be written beside the open row it is meant to replace — the
+        pair has to be created by one act that closes the outgoing rule, which
+        is the Pricing Book Publish record (2026-07-31 decision, §6.3). And
+        `CardCache.resolve` hardcodes `timezone.now()`, so resolution behind
+        the cache is not time-aware at all; §8.3 of that decision assigns
+        making it so to the same later work. What this test pins is the column:
+        a supplied future moment is kept rather than overwritten, which is the
+        thing that had to be true first.
         """
         moment = timezone.now() + timedelta(days=7)
         for half, rate_in_book in HALVES:
             with self.subTest(half=half):
-                rate = rate_in_book(_tenant(), **{FROM: moment})
-                self.assertEqual(getattr(Rate.objects.get(id=rate.id), FROM),
+                rate = rate_in_book(_tenant(), **{VALID_FROM: moment})
+                self.assertEqual(getattr(Rate.objects.get(id=rate.id), VALID_FROM),
                                  moment)
 
     def test_a_rate_that_names_no_moment_is_effective_from_now(self):
@@ -197,8 +243,8 @@ class TheDeclaredMomentSurvivesTheInsertTest(TestCase):
         before = timezone.now()
         rate = cost_rate_in_default_book(_tenant())
         after = timezone.now()
-        self.assertGreaterEqual(getattr(rate, FROM), before)
-        self.assertLessEqual(getattr(rate, FROM), after)
+        self.assertGreaterEqual(getattr(rate, VALID_FROM), before)
+        self.assertLessEqual(getattr(rate, VALID_FROM), after)
 
 
 class APastRateResolvesOnlyAfterItsMomentTest(TestCase):
@@ -217,7 +263,7 @@ class APastRateResolvesOnlyAfterItsMomentTest(TestCase):
         self.tenant = _tenant()
         self.customer = _customer(self.tenant)
         self.moment = timezone.now() - timedelta(days=20)
-        cost_rate_in_default_book(self.tenant, **{FROM: self.moment},
+        cost_rate_in_default_book(self.tenant, **{VALID_FROM: self.moment},
                                   **self.RATE)
 
     def _cost_at(self, as_of):
@@ -271,12 +317,12 @@ class AReplayedEventResolvesAgainstTheRateEffectiveThenTest(TestCase):
         # what this ticket adds — before it, neither statement was sayable.
         cost_rate_in_default_book(
             self.tenant, rate_per_unit_micros=10,
-            **{FROM: self.then - timedelta(days=10),
-               TO: self.then + timedelta(days=10)},
+            **{VALID_FROM: self.then - timedelta(days=10),
+               VALID_TO: self.then + timedelta(days=10)},
             **self.RATE)
         cost_rate_in_default_book(
             self.tenant, rate_per_unit_micros=50,
-            **{FROM: self.then + timedelta(days=10)}, **self.RATE)
+            **{VALID_FROM: self.then + timedelta(days=10)}, **self.RATE)
 
     def _record(self, **kwargs):
         return UsageService.record_usage(
@@ -310,12 +356,12 @@ class TheEffectiveMomentIsFrozenTest(TransitionRefusalMixin, TestCase):
     def test_the_moment_cannot_be_moved_earlier(self):
         self._refused_on_both_halves(
             FROZEN, lambda rate_in_book: rate_in_book(_tenant()),
-            **{FROM: timezone.now() - timedelta(days=1)})
+            **{VALID_FROM: timezone.now() - timedelta(days=1)})
 
     def test_the_moment_cannot_be_moved_later(self):
         self._refused_on_both_halves(
             FROZEN, lambda rate_in_book: rate_in_book(_tenant()),
-            **{FROM: timezone.now() + timedelta(days=1)})
+            **{VALID_FROM: timezone.now() + timedelta(days=1)})
 
     def test_a_moment_declared_in_the_past_cannot_be_moved_either(self):
         """The row this ticket newly made writable is not a special case.
@@ -328,8 +374,8 @@ class TheEffectiveMomentIsFrozenTest(TransitionRefusalMixin, TestCase):
         declared = timezone.now() - timedelta(days=30)
         self._refused_on_both_halves(
             FROZEN,
-            lambda rate_in_book: rate_in_book(_tenant(), **{FROM: declared}),
-            **{FROM: declared - timedelta(days=1)})
+            lambda rate_in_book: rate_in_book(_tenant(), **{VALID_FROM: declared}),
+            **{VALID_FROM: declared - timedelta(days=1)})
 
 
 class TheClosingMomentIsSetOnceTest(TransitionRefusalMixin, TestCase):
@@ -343,8 +389,18 @@ class TheClosingMomentIsSetOnceTest(TransitionRefusalMixin, TestCase):
 
     @staticmethod
     def _closed(rate_in_book, when=None):
+        """A rate that arrives already closed, declared at INSERT.
+
+        Which is a different statement from a rate closed by an `UPDATE`, and
+        the AC is about the second one — so
+        `test_a_rate_closed_through_a_door_cannot_be_closed_again` drives that
+        sequence literally rather than leaning on the two being equivalent.
+        They are equivalent here (the trigger reads `OLD`, and `OLD.valid_to`
+        is non-null either way), but "equivalent" is an argument and the AC
+        asked for a sequence.
+        """
         return rate_in_book(_tenant(),
-                            **{TO: when or timezone.now() - timedelta(days=1)})
+                            **{VALID_TO: when or timezone.now() - timedelta(days=1)})
 
     def test_an_open_rate_can_be_closed_through_every_door(self):
         """The control, and the class is worthless without it.
@@ -359,13 +415,34 @@ class TheClosingMomentIsSetOnceTest(TransitionRefusalMixin, TestCase):
             for name, door in DOORS:
                 with self.subTest(half=half, door=name):
                     rate = rate_in_book(_tenant())
-                    door(rate, **{TO: closing})
+                    door(rate, **{VALID_TO: closing})
                     rate.refresh_from_db()
-                    self.assertEqual(getattr(rate, TO), closing)
+                    self.assertEqual(getattr(rate, VALID_TO), closing)
 
     def test_a_closed_rate_cannot_be_closed_at_a_different_moment(self):
         self._refused_on_both_halves(
-            SET_ONCE, self._closed, **{TO: timezone.now()})
+            SET_ONCE, self._closed, **{VALID_TO: timezone.now()})
+
+    def test_a_rate_closed_through_a_door_cannot_be_closed_again(self):
+        """"Set twice" as the literal sequence, not as an equivalent one.
+
+        Every other refusal here starts from a rate that arrived closed. This
+        one performs the first close as a real `UPDATE` — the statement both
+        live writers actually issue — and then attempts a second through each
+        door in turn. It is the AC read word for word: null to a value, and
+        then the value refusing to move.
+        """
+        for half, rate_in_book in HALVES:
+            for name, door in DOORS:
+                with self.subTest(half=half, door=name):
+                    rate = rate_in_book(_tenant())
+                    _through_the_queryset(rate, **{VALID_TO: timezone.now()})
+                    rate.refresh_from_db()
+                    message = self._refusal(
+                        door, rate,
+                        **{VALID_TO: timezone.now() + timedelta(days=1)})
+                    self.assertIsNotNone(message, "the write was admitted")
+                    self.assertIn(SET_ONCE, message)
 
     def test_a_closed_rate_cannot_be_reopened(self):
         """The move the declaration is really about.
@@ -374,7 +451,7 @@ class TheClosingMomentIsSetOnceTest(TransitionRefusalMixin, TestCase):
         reported, which is not an edit to a row — it is a different answer to a
         question somebody has already been given.
         """
-        self._refused_on_both_halves(SET_ONCE, self._closed, **{TO: None})
+        self._refused_on_both_halves(SET_ONCE, self._closed, **{VALID_TO: None})
 
 
 class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
@@ -387,18 +464,8 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
     MIGRATION = "0018_a_rate_takes_effect_from_the_moment_the_tenant_chooses"
 
-    def _trigger_row(self):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname, t.tgtype, p.prosrc "
-                "FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "JOIN pg_proc p ON p.oid = t.tgfoid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            return cursor.fetchall()
-
     def test_exactly_one_trigger_guards_this_table(self):
-        self.assertEqual(len(self._trigger_row()), 1)
+        self.assertEqual(len(_trigger_rows()), 1)
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -409,7 +476,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         must not fire on `INSERT` either — that statement is where a caller
         declares the moment, which is the thing this ticket exists to permit.
         """
-        _, tgtype, _ = self._trigger_row()[0]
+        _, tgtype, _ = _trigger_rows()[0]
         self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")
         self.assertTrue(tgtype & (1 << 1), "not BEFORE")
         self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
@@ -440,18 +507,18 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
-        self.assertEqual(self._trigger_row(), [])
-        _through_the_queryset(rate, **{FROM: moved})
+        self.assertEqual(_trigger_rows(), [])
+        _through_the_queryset(rate, **{VALID_FROM: moved})
         rate.refresh_from_db()
-        self.assertEqual(getattr(rate, FROM), moved)
+        self.assertEqual(getattr(rate, VALID_FROM), moved)
 
         with connection.schema_editor() as editor:
             run_python.code(None, editor)
-        self.assertEqual(len(self._trigger_row()), 1)
+        self.assertEqual(len(_trigger_rows()), 1)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(
-                    rate, **{FROM: moved - timedelta(days=1)})
+                    rate, **{VALID_FROM: moved - timedelta(days=1)})
 
     def test_a_column_the_rule_says_nothing_about_still_writes(self):
         """The rule guards two columns, not the table.
@@ -495,7 +562,7 @@ class TheGateSawTheseColumnsWithoutBeingToldTest(TestCase):
     def test_the_walk_reports_both_columns_by_declaration_alone(self):
         self.assertEqual(
             columns_declared_into_defended_classes([Rate]),
-            [("Rate", FROM, FROZEN), ("Rate", TO, SET_ONCE)])
+            [("Rate", VALID_FROM, FROZEN), ("Rate", VALID_TO, SET_ONCE)])
 
     def test_neither_column_is_named_anywhere_in_the_gate(self):
         """The claim that makes the coverage above mean something.
@@ -507,33 +574,39 @@ class TheGateSawTheseColumnsWithoutBeingToldTest(TestCase):
         """
         for path in (self.WALK, self.CHECK):
             source = path.read_text(encoding="utf-8")
-            for column in (FROM, TO):
+            for column in (VALID_FROM, VALID_TO):
                 with self.subTest(file=path.name, column=column):
                     self.assertNotIn(column, source)
 
-    def test_the_check_itself_still_finds_nothing_undefended(self):
-        """The gate's verdict, taken here over the whole tree.
+    def test_each_declared_column_is_named_inside_the_refusal_itself(self):
+        """One notch stronger than the gate, and STILL WEAKER THAN IT LOOKS.
 
-        Not a duplicate of the gate: this is what fails if a later change
-        declares a column and forgets the rule, and it is in *this* module so
-        that the failure lands beside the declarations it is about rather than
-        in a kernel test whose author never heard of a rate.
+        The gate asks whether a declared column is named anywhere in the rules
+        guarding its table — the trigger definition and the function body,
+        joined. This table's `WHEN` clause names both columns, so a trigger
+        whose two refusals had been deleted outright would satisfy the gate
+        completely. This asserts the narrower thing: each declared column is
+        named in the function's EXECUTABLE body — comments stripped, for the
+        reason `_refusal_body` gives, which is that the first version of this
+        test was itself satisfied by a comment.
+
+        NEITHER CHECK PROVES THE RULE HOLDS, and that is worth writing down
+        rather than leaving the next reader to find it the hard way. A branch
+        can name a column and refuse nothing — `IF FALSE AND ...` satisfies
+        both, which is how this was measured rather than assumed. What holds
+        these two columns is the six refusal cases above, each driven over both
+        halves and all three doors; this is the static half, and its whole job
+        is to go red if a later edit drops a column from the rule while leaving
+        its declaration behind.
+
+        It walks `Rate` alone and says so. The whole-tree question — is EVERY
+        declared column defended — is the gate's, it runs in this same suite,
+        and restating it here would be a second copy that could disagree.
         """
-        rules = self._rules_on(TABLE)
+        body = _refusal_body()
         for _, column, _ in columns_declared_into_defended_classes([Rate]):
             with self.subTest(column=column):
-                self.assertIn(column, rules)
-
-    @staticmethod
-    def _rules_on(table):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_get_triggerdef(t.oid), p.prosrc "
-                "FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "JOIN pg_proc p ON p.oid = t.tgfoid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [table])
-            return "\n".join(part for row in cursor.fetchall() for part in row)
+                self.assertIn(column, body)
 
 
 class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
@@ -550,10 +623,14 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
     These carry the declarations forward. If slice 4 re-decides them it will
     have to delete assertions that say what was decided and why, which is the
     difference between a re-decision and an omission.
+
+    ⚠ ONE OF THEM FORECLOSES A DESIGN THAT IS ALREADY WRITTEN DOWN, and the
+    last case here is that fact rather than a sentence in a merged commit
+    message. Carrying a declaration forward means inheriting what it costs.
     """
 
     def test_the_effective_moment_carries_no_flag_left_to_delete(self):
-        field = Rate._meta.get_field(FROM)
+        field = Rate._meta.get_field(VALID_FROM)
         self.assertFalse(field.auto_now_add)
         self.assertIs(field.default, timezone.now)
 
@@ -565,7 +642,40 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
         here — and the gate then makes it a rule in the database.
         """
         self.assertEqual(Rate.transition_classes,
-                         {FROM: FROZEN, TO: SET_ONCE})
+                         {VALID_FROM: FROZEN, VALID_TO: SET_ONCE})
+
+    def test_set_once_forecloses_the_cancellation_the_versions_decision_wrote(self):
+        """WHAT THIS DECLARATION COSTS, AND WHO PAYS IT — read before slice 4.
+
+        The 2026-07-31 pricing-versions decision (§6.5) cancels a pending
+        publish by deleting the rows whose moment is still in the future and
+        *"reopens their predecessors' `valid_to`"*. That reopen is a
+        value-to-null write, and `SET_ONCE` refuses it unconditionally. The
+        mechanism that document describes is therefore not available as
+        written, and nothing else in the tree says so.
+
+        THE JUSTIFICATION EVERY OTHER SITE GIVES DOES NOT COVER THIS CASE, and
+        pretending it does is how the gap would be missed. `models.py`, the
+        migration and this module all argue `SET_ONCE` from *"a period that has
+        already reported"* — but §6.5's window is explicitly one where nothing
+        has, *"safe only because nothing has resolved against the boundary
+        yet"*. The rule still holds here, because a column's class cannot be
+        conditional on whether anyone happened to read the row: `SET_ONCE` is
+        enforced by a trigger that has no way to ask. That is an argument the
+        next author may reject, and this ticket does not pre-empt it.
+
+        SO THE CHOICE IS THEIRS AND IT IS NAMED: express a cancellation without
+        reopening a closed row, or re-decide this class with an argument that
+        survives the paragraph above. What is refused is re-deciding it by
+        accident, which is what a rebuilt model quietly dropping a mapping
+        would be.
+        """
+        closed = cost_rate_in_default_book(
+            _tenant(), **{VALID_TO: timezone.now() + timedelta(days=7)})
+        with self.assertRaises(IntegrityError) as refusal:
+            with transaction.atomic():
+                _through_the_queryset(closed, **{VALID_TO: None})
+        self.assertIn(SET_ONCE, str(refusal.exception))
 
     def test_the_rule_lives_where_a_rebuilt_surface_cannot_reach_it(self):
         """Why the inheritance is safe rather than merely intended.
@@ -579,7 +689,7 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
         rate = cost_rate_in_default_book(_tenant())
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                _through_raw_sql(rate, **{FROM: timezone.now()})
+                _through_raw_sql(rate, **{VALID_FROM: timezone.now()})
 
 
 class NoInstantFallsBetweenTwoVersionsTest(TestCase):
@@ -614,9 +724,9 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
                                     "rate_per_unit_micros": 90}])
 
         opened.refresh_from_db()
-        boundary = getattr(opened, TO)
+        boundary = getattr(opened, VALID_TO)
         replacement = Rate.objects.exclude(id=opened.id).get()
-        self.assertEqual(getattr(replacement, FROM), boundary)
+        self.assertEqual(getattr(replacement, VALID_FROM), boundary)
 
         cost = PricingService.price(
             tenant=tenant, customer=customer, selectors={},

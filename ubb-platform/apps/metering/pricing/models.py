@@ -146,6 +146,13 @@ class Rate(BaseModel):
     #: moving the close, or taking it back. Reopening a rule over a period
     #: that has already reported is a rewrite of history rather than an edit.
     #:
+    #: ⚠ That last sentence is the USUAL case and not the whole rule, and the
+    #: difference has an owner. A trigger cannot ask whether anyone has read a
+    #: row, so `SET_ONCE` refuses a reopen even where nothing has reported yet
+    #: — which forecloses the cancellation mechanism the pricing-versions
+    #: decision §6.5 describes. Named, with the choice it leaves open, in
+    #: `test_a_rate_is_effective_from_a_chosen_moment.py`'s slice-4 class.
+    #:
     #: **The enforcement is the trigger installed by `migrations/0018`, not
     #: anything here.** ADR-0007 §2 is explicit that a model-level guard is
     #: not enforcement. Both declarations are held across `save()`,

@@ -40,11 +40,18 @@ class BookService:
         which with a half-open range is exactly no gap and exactly no overlap.
         `NoInstantFallsBetweenTwoVersionsTest` holds it.
 
-        `as_of` is expected to be ~now. Scheduling a reprice for a future date
-        is not offered THROUGH THIS ROUTE — the published body carries no
-        moment, and this entity's published surface is slice 4's — but the
-        column no longer refuses one: a caller of this service may pass a future
-        `as_of` and both rows will take it.
+        `as_of` IS STILL EXPECTED TO BE ~NOW, AND THAT IS A CONSTRAINT RATHER
+        THAN A HABIT. The column stopped overwriting a supplied moment, so both
+        rows here would faithfully take a future `as_of` — but faithfully
+        writing a future boundary is not the same as honouring one, and two
+        things downstream do not. `CardCache.resolve` hardcodes
+        `timezone.now()` rather than the event's own instant, and this method
+        invalidates that cache at publish time, which is the wrong moment when
+        the boundary is in the future; the 2026-07-31 pricing-versions decision
+        (§8.3) assigns both to the work that introduces forward-dating. So
+        nothing here advertises a future `as_of`, no caller passes one, and the
+        published body carries no moment at all — this entity's published
+        surface is slice 4's.
         """
         as_of = as_of or timezone.now()
         with transaction.atomic():

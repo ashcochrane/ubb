@@ -412,7 +412,16 @@ measurement_key:
     # near `compute(units)`.
     #
     # #325 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,552 → 1,553 swept,
-    # 1,927 → 1,929 tracked, 50/126 unchanged). TWO new files and they land in
+    # 1,927 → 1,929 tracked, 50/126 unchanged). ⚠ THAT LAST PAIR IS THIS
+    # ENTRY'S OWN EVIDENCE — `units`, at 50 files and 126 occurrences, the
+    # number the block above measures — and it is NOT the sweep's closing line,
+    # which reads "40 in 127 (area, term) site(s)" and counts retired terms
+    # against ledger sites across the whole tree. Two adjacent pairs of
+    # two-digit numbers measuring different things: #325's review read one as
+    # the other and reported a contradiction that was not there. Both are
+    # correct and neither moved.
+    #
+    # TWO new files and they land in
     # DIFFERENT SETS: one test module, swept, and one migration, excluded —
     # which is why the tracked total moves by two and the swept total by one.
     # #275 has exactly this signature and records it the same way.
