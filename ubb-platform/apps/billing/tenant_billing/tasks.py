@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.billing.tenant_billing.services import TenantBillingService
+from apps.platform.event_types.quarantine import PeriodHoldsUnresolvedValues
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,16 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
 )
 def close_tenant_billing_periods():
-    """Close all open billing periods from previous months."""
+    """Close all open billing periods from previous months.
+
+    A period holding a name nobody has decided about REFUSES to close (#329),
+    and that refusal is caught on its own, above the generic branch below it.
+    Falling into that branch would report a failure — with a traceback, at
+    error, saying the close failed — for a period working exactly as designed,
+    and an operator cannot triage that. Nothing is broken: a tenant has a
+    decision outstanding, and the sweeper moves on to the next period so that
+    one tenant's unanswered question does not hold up everybody else's month.
+    """
     today = timezone.now().date()
     first_of_month = today.replace(day=1)
 
@@ -36,6 +46,20 @@ def close_tenant_billing_periods():
             )
         except (OperationalError, InterfaceError):
             raise  # Transient DB errors — let Celery retry
+        except PeriodHoldsUnresolvedValues as refusal:
+            # A REFUSAL, NOT A FAILURE — and it names what is held, because an
+            # operator reading this has to know which names to go and decide.
+            # `warning` rather than `exception`: there is no traceback worth
+            # reading, and an error here would be the one thing that stops this
+            # log distinguishing a broken close from a working one.
+            logger.warning(
+                "tenant_billing.period_close_refused",
+                extra={"data": {
+                    "period_id": str(period.id),
+                    "tenant": period.tenant.name,
+                    "held": list(refusal.held),
+                }},
+            )
         except Exception:
             logger.exception(
                 "Failed to close tenant billing period",

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,559 of 1,940 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,560 of 1,941 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -561,6 +561,26 @@ measurement_key:
     # literal was — a renamed catalog entry now moves the test with it. The
     # #323 lesson generalises: where a retired word has a symbol, name the
     # symbol.
+    #
+    # #329 MOVED THE DENOMINATOR ONLY, BY ONE, WITH NO EXCLUSION MOVING
+    # (1,559 → 1,560 swept, 1,940 → 1,941 tracked, 50/126 unchanged). ONE new
+    # swept file — the test module holding that a period holding money nobody
+    # has accounted for does not close — and no migration, so the exclusion
+    # counts are untouched and the tracked total rises by exactly the swept
+    # total. That is the simplest of the three cases: the count for this word
+    # did not fall, and nothing was excluded to keep it where it is.
+    #
+    # THE NEAR-MISS WAS A RETIRED WORD ON A COLUMN THE NEW TEST WANTED TO READ.
+    # The obvious assertion for "an event whose quantity names a declaration
+    # nobody made is marked not fully costed" is to read the recorded receipt
+    # off the posting and check which name went uncosted — and that column's own
+    # spelling is `pricing_provenance`, retired and capped at NINE files, in a
+    # module that was not one of them. Answered the #327 way rather than by
+    # moving the assertion: the posting is asked for the MARK it carries — the
+    # status, the absent amount and the reason — which is what the acceptance
+    # criterion actually says, and a positive control in the same fixture proves
+    # the undeclared name is the cause. The receipt's contents stay asserted at
+    # the pricing spine, where the answered value has a live spelling.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

@@ -89,8 +89,18 @@ GROUPED_VALUE_KEY = "grouping_field_value"
 
 
 class PeriodTotals(TypedDict):
+    #: What the tenant was CHARGED, which is never partial: the column is NOT
+    #: NULL, so nothing is skipped and the count below says nothing about it.
     total_cost_micros: int
     event_count: int
+    #: What the SUPPLIER charged, and how much of it UBB has learned. The pair
+    #: travels together for the reason `core.cost_totals` states: a bare sum
+    #: over a nullable column answers a number that looks complete and is not.
+    #: It is here because the period close is the moment a month stops being
+    #: revisable, and a month that closes without saying what it could not
+    #: account for is exactly the silence #329 removes.
+    total_provider_cost_micros: int
+    unresolved_event_count: int
 
 
 #: STILL SPELLS THE RETIRED NOUN, DELIBERATELY, AND NOBODY OWNS IT YET (#269).
@@ -133,29 +143,41 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
                       basis: str = "effective") -> PeriodTotals:
     """Get aggregate usage totals for a tenant's billing period.
 
-    Returns dict with 'total_cost_micros' and 'event_count'.
+    Returns the billed total and its event count, plus the supplier-cost pair
+    — the resolved sum and how many postings it excluded (#327).
     basis="effective" windows on effective_at (when the usage happened);
     basis="arrival" windows on created_at (when it was recorded) — used by
     tenant platform-fee reconciliation, which accrues fees in the ARRIVAL
     period to match the wall-clock live accumulator.
+
+    THE TWO TOTALS ARE NOT THE SAME KIND OF NUMBER, and the count belongs to
+    exactly one of them. `billed_cost_micros` is NOT NULL, so its sum passes
+    over nothing and is complete by construction; `provider_cost_micros` is
+    nullable and its sum is a floor. Reading the count as a caveat on the
+    billed total would report a period as partial in the one figure that never
+    is — which is why the pair is built by `core.cost_totals` in the same query
+    as the total it qualifies rather than assembled beside it here.
     """
     from apps.metering.usage.models import Posting
 
     if basis not in ("effective", "arrival"):
         raise ValueError("basis must be 'effective' or 'arrival'")
     field = "created_at" if basis == "arrival" else "effective_at"
-    totals = Posting.objects.filter(
+    totals = carry_cost_total(Posting.objects.filter(
         tenant_id=tenant_id,
         **{f"{field}__gte": utc_day_start(period_start),
            f"{field}__lt": utc_day_start(period_end)},
     ).aggregate(
         total_cost=Sum("billed_cost_micros"),
         event_count=Count("id"),
-    )
+        **cost_total_annotations(key="total_provider_cost_micros"),
+    ), key="total_provider_cost_micros")
 
     return {
         "total_cost_micros": totals["total_cost"] or 0,
         "event_count": totals["event_count"] or 0,
+        "total_provider_cost_micros": totals["total_provider_cost_micros"],
+        UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
     }
 
 

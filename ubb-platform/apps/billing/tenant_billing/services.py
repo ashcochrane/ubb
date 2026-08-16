@@ -6,7 +6,10 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.billing.tenant_billing.models import PlatformFeeCarry, TenantBillingPeriod
+from apps.platform.event_types.quarantine import refuse_a_silent_close
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.money import DEFAULT_CURRENCY, from_minor, to_minor
+from core.time_windows import utc_day_start
 
 logger = logging.getLogger(__name__)
 
@@ -226,9 +229,56 @@ class TenantBillingService:
         R3): ``_calculate_fees`` returns exact micros, ``_bank_fee_carry``
         floors them once and banks the remainder against the tenant for the
         next period. Both return 0 for a sandbox tenant, which accrues no fee.
+
+        **A PERIOD HOLDING MONEY NOBODY HAS ACCOUNTED FOR DOES NOT CLOSE
+        (#329).** ``refuse_a_silent_close`` is the kernel's own definition of
+        "unresolved", built beside the table it reads precisely so that whoever
+        wired the close would inherit it rather than write a second one. Billing
+        calls it directly: ADR-001 lets any product import the platform kernel,
+        and putting a read contract or a hook in between would be that second
+        definition, one indirection away.
+
+        It runs BEFORE the reconcile, so a period that will not close does not
+        first do the work of closing: reconciliation reads every posting in the
+        window and rewrites the period's totals, and none of that survives a
+        refusal. The saving is one wasted pass per attempt rather than a
+        recurring one — the sweeper above this runs monthly — but the ordering
+        also decides what the refusal MEANS. Refusing after the rewrite would
+        leave a period whose stored totals had moved and whose status had not,
+        which is a period reporting one thing and holding another.
+
+        It runs AFTER the status check, and that is the other half of the same
+        rule. An already-closed period is not refused: it closed, and nothing
+        about a name held later makes that untrue. Raising there would report a
+        month as unaccounted-for on every subsequent call, for a close that
+        already happened.
+
+        **The refusal is not a partial close, and the two are different things.**
+        A held name is an outstanding TENANT decision — map it, register it or
+        dismiss it — so the close refuses until one is taken. An unresolved
+        supplier cost is missing information that may never arrive, so the
+        period closes on time and states how many costs it excluded. One late
+        supplier invoice must not freeze a tenant's billing.
         """
+        # A period that is not open has nothing to refuse and nothing to close.
+        # This read is unlocked and can be stale, which is safe in the only
+        # direction that matters: a stale "closed" skips a close rather than
+        # performing one, and the authority is still the locked check below.
+        if period.status != "open":
+            return
+
+        refuse_a_silent_close(
+            tenant=period.tenant,
+            # Keyword-only at the guard, and worth restating here: the two
+            # instants are the same type, and an inverted window matches
+            # nothing, reports nothing held, and lets the period close. The
+            # bounds are the period's own, so the window is half-open at both
+            # ends and one held charge cannot refuse two adjacent periods.
+            opened_at=utc_day_start(period.period_start),
+            closes_at=utc_day_start(period.period_end))
+
         # Reconcile first — catches any accumulate_usage drift near month-end
-        TenantBillingService.reconcile_period(period)
+        totals = TenantBillingService.reconcile_period(period)
 
         with transaction.atomic():
             period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
@@ -243,6 +293,44 @@ class TenantBillingService:
             period.status = "closed"
             period.platform_fee_micros = fee_micros
             period.save(update_fields=["status", "platform_fee_micros", "updated_at"])
+
+        # WHAT THE MONTH COULD NOT ACCOUNT FOR, SAID RATHER THAN INFERRED.
+        # Both keys, always, including the zero: a count written only when it is
+        # non-zero cannot be told apart from a count nobody wrote, and the pair
+        # exists to remove exactly that ambiguity. The supplier total is a floor
+        # wherever the count is above zero.
+        #
+        # OUTSIDE the transaction, and after it, so this states a close that
+        # committed rather than one that was attempted. A period that was
+        # already closed returns before reaching here and correctly says
+        # nothing: it is not this call that closed it.
+        #
+        # AND A CLOSE WITH NO TRUSTED READ BEHIND IT IS A DIFFERENT STATEMENT,
+        # not the same one with zeroes in it. Reconciliation returns `None` when
+        # metering could see none of the postings the period's own counter says
+        # it holds — so the month closed without UBB learning what was in it,
+        # which is worth an operator's attention and is not a completeness
+        # figure at all.
+        if totals is None:
+            logger.warning(
+                "tenant_billing.period_closed_without_a_trusted_total",
+                extra={"data": {
+                    "period_id": str(period.id),
+                    "tenant_id": str(period.tenant_id),
+                }},
+            )
+            return
+
+        logger.info(
+            "tenant_billing.period_closed",
+            extra={"data": {
+                "period_id": str(period.id),
+                "tenant_id": str(period.tenant_id),
+                "total_provider_cost_micros":
+                    totals["total_provider_cost_micros"],
+                UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
+            }},
+        )
 
     @staticmethod
     def reconcile_period(period):
@@ -259,6 +347,17 @@ class TenantBillingService:
         fee-billed THIS month — otherwise the live accumulator and this
         reconcile would permanently disagree about backdated events (the
         accumulate-vs-reconcile drift asymmetry).
+
+        **Returns the totals it read, or `None` where it did not trust them**,
+        so that ``close_period`` states what the month excluded without paying
+        for the same window twice — and states nothing rather than zero where
+        there was nothing to state. The supplier
+        pair is read on the ARRIVAL basis for the same reason the fee accrues on
+        it: a report about what a period left out has to be about the rows that
+        period accounts for. That is a different question from the one the
+        quarantine guard asks, which places a held name by when the call
+        happened — a January charge repaired in March is January's in both
+        directions.
         """
         from apps.metering.queries import get_period_totals
 
@@ -269,8 +368,17 @@ class TenantBillingService:
 
         # Skip if no events found — avoids zeroing out periods where events
         # were recorded via accumulate_usage but aren't queryable here.
+        #
+        # ⚠ AND RETURNS NOTHING, WHICH IS THE WHOLE POINT OF THE BRANCH. This
+        # read disagreed with the live accumulator and was not trusted enough to
+        # write down; handing it back as a supplier-cost pair would let the
+        # close publish `unresolved_event_count: 0` — "this month excluded
+        # nothing" — for exactly the window it just declined to believe. That is
+        # the silent zero this slice exists to delete, one layer up. `None`
+        # means UBB did not learn what this period holds, and the caller says so
+        # rather than reporting a figure nobody computed.
         if recomputed_count == 0 and period.event_count > 0:
-            return
+            return None
 
         if (recomputed_cost != period.total_usage_cost_micros
                 or recomputed_count != period.event_count):
@@ -289,3 +397,5 @@ class TenantBillingService:
                 total_usage_cost_micros=recomputed_cost,
                 event_count=recomputed_count,
             )
+
+        return totals

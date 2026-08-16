@@ -33,13 +33,15 @@ the ordinary route and does no more than record that it happened, so this
 module cannot register a name even by accident.
 ``apps/platform/tests/test_quarantine_invariants.py`` holds that to the source.
 
-**Nothing here is wired, and that is slice 2's shape rather than an omission.**
-No recording path calls these functions, no costing status is written, and the
-period-close path does not yet consult :func:`refuse_a_silent_close`. Slice 2
-owns the declaration and the machinery; slice 3 owns every behaviour that reads
-it (#193 §L). The safeguard is built now because it is a statement about what
-this table means, and building it beside the table is what stops it being
-re-derived — differently — by whoever wires the close.
+**The safeguard is wired; the accept half is not.** :func:`refuse_a_silent_close`
+is consulted by ``TenantBillingService.close_period`` (#329), which calls it
+directly — ADR-001 lets any product import the platform kernel, and a read
+contract or a hook in between would be a second definition of "unresolved" one
+indirection away from the one built here. What still has no caller is the accept
+half above: no recording path holds a name yet. Slice 2 owned the declaration
+and the machinery; slice 3 owns the behaviours that read it (#193 §L), and this
+was the first of them. Building the safeguard beside the table is what stopped
+it being re-derived — differently — by whoever wired the close.
 """
 from dataclasses import dataclass
 from datetime import datetime
@@ -465,10 +467,16 @@ def refuse_a_silent_close(*, tenant, opened_at, closes_at):
     its work: dismissal is the tenant answering this question, and a close that
     still refused afterwards would leave the period permanently unclosable.
 
-    **Nothing calls this yet.** The period close belongs to billing and slice 3
-    owns wiring it (#193 §L). It is built beside the table it reads so that
-    whoever wires it inherits this definition of "unresolved" rather than
-    writing a second one.
+    **Called by ``TenantBillingService.close_period`` (#329)**, before it
+    reconciles, so a period that will not close does not first do the work of
+    closing. Billing calls it directly, which is what this function being built
+    beside the table was for: the one definition of "unresolved" is the one
+    below, and there is no second one for a caller to drift from.
+
+    It refuses on a held NAME and never on an unresolved COST. A held name is a
+    tenant decision nobody has taken; a missing supplier figure may never
+    arrive, and freezing a tenant's billing until it does would be a worse
+    answer than closing on time and saying what was excluded.
     """
     held = unresolved_in_period(tenant=tenant, opened_at=opened_at,
                                 closes_at=closes_at)
