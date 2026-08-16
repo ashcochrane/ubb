@@ -743,38 +743,31 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     total_billed = totals["total_billed_cost_micros"] or 0
     total_provider = totals["total_provider_cost_micros"]
 
-    def _breakdown(grouped):
+    def _paired(grouped):
+        """Resolve each grouped row's cost pair. Every block goes through here,
+        including the two below that build their own query."""
         return [carry_cost_total(row, key="total_provider_cost_micros")
                 for row in grouped]
 
-    by_provider = _breakdown(
-        qs.exclude(provider="").values("provider").annotate(
+    def _rollup(column, *, skip_blank=False):
+        """One breakdown block: group by `column`, largest billed first, every
+        row carrying the count of what its own group excluded.
+
+        Four blocks differed only in the column they group and whether an
+        unattributed value is dropped, and the completeness pair would have been
+        a fifth copy of the same four lines in each.
+        """
+        rows = qs.exclude(**{column: ""}) if skip_blank else qs
+        return _paired(rows.values(column).annotate(
             event_count=Count("id"),
             total_cost_micros=Sum("billed_cost_micros"),
             **cost_total_annotations(key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_event_type = _breakdown(
-        qs.exclude(event_type="").values("event_type").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            **cost_total_annotations(key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_customer = _breakdown(
-        qs.values("customer__external_id").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            **cost_total_annotations(key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_task_type = _breakdown(
-        qs.exclude(task_type="").values("task_type").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            **cost_total_annotations(key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
+        ).order_by("-total_cost_micros"))
+
+    by_provider = _rollup("provider", skip_blank=True)
+    by_event_type = _rollup("event_type", skip_blank=True)
+    by_customer = _rollup("customer__external_id")
+    by_task_type = _rollup("task_type", skip_blank=True)
 
     by_tag = []
     if tag_key:
@@ -784,7 +777,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         # is what migrates the capability onto the declared grouping contract.
         # All that moved here is the column underneath, because the bag this
         # read folded into the survivor.
-        by_tag = _breakdown(
+        by_tag = _paired(
             qs.filter(metadata__has_key=tag_key)
             .annotate(tag_value=KeyTextTransform(tag_key, "metadata"))
             .values("tag_value")
@@ -805,7 +798,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             col = _resolve_dimension(tenant, dim)
             # Run over the FULL qs (no exclusion) so every event is counted.
             # customer always has an external_id so no "(unattributed)" needed there.
-            rows = _breakdown(
+            rows = _paired(
                 qs.values(col)
                 .annotate(
                     event_count=Count("id"),

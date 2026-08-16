@@ -47,8 +47,9 @@ from core.cost_totals import SUPPLIER_COST_COLUMN
 PLATFORM_ROOT = Path(__file__).resolve().parents[3]
 
 # Where a cost total can be built at all. Tests write the aggregates they are
-# asserting about, and a migration is a historical statement that cannot be
-# rewritten (ADR-0007 §1).
+# asserting about — including the Python reference loop the analytics pushdown
+# is compared against — and a migration's aggregate runs once against the data
+# as it stood, never as part of an answer to a tenant.
 SEARCH_ROOTS = ("apps", "api", "core")
 SKIP_PARTS = ("tests", "migrations")
 

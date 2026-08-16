@@ -106,6 +106,16 @@ class GroupingFieldMarginRow(Schema):
     # KeyTextTransform surfaces SQL NULL.
     grouping_field_value: Optional[str] = None
     provider_cost_micros: int
+    #: HOW MANY EVENTS THE COST ABOVE COULD NOT INCLUDE, for THIS row's group
+    #: (#327). Non-zero makes the cost a floor and `margin_micros` a ceiling —
+    #: the margin can only be smaller than stated, never larger.
+    #:
+    #: It is declared here rather than left to arrive because this row is the
+    #: DECLARED one of the three rollups over these axes: the read contract
+    #: attaches the count, and a schema that does not name it does not merely
+    #: omit it — django-ninja DROPS it, which turns a floor back into a figure
+    #: on the one surface of the three that a drift gate can see.
+    unresolved_event_count: int
     billed_cost_micros: int
     margin_micros: int
     event_count: int

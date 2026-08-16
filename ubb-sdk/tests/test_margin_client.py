@@ -29,8 +29,14 @@ class MarginClientTest(unittest.TestCase):
         self.assertEqual(m.gross_margin_micros, 500_300_000)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
 
+    # `unresolved_event_count` is required on the row (#327): the supplier cost
+    # a margin is taken against can be one UBB has not resolved, and a row that
+    # did not say so would report a ceiling on a margin as a margin. One here,
+    # so the fixture is a row of the kind that needs the field rather than a row
+    # that merely carries it.
     ROWS = {"period": {}, "rows": [
         {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
+         "unresolved_event_count": 1,
          "billed_cost_micros": 1_300_000, "margin_micros": 300_000,
          "event_count": 2}]}
 
@@ -46,6 +52,10 @@ class MarginClientTest(unittest.TestCase):
         # attribute would be UNSET, and every other assertion here would still
         # pass — a test whose mock agrees with the mistake.
         self.assertEqual(rows[0].grouping_field_value, "openai")
+        # The completeness reaches a typed attribute, not the untyped bag —
+        # which is the whole reason the row declares it rather than letting it
+        # arrive: a caller must be able to see that this margin is a ceiling.
+        self.assertEqual(rows[0].unresolved_event_count, 1)
 
     @patch("ubb.metering.httpx.Client.get")
     def test_the_request_carries_the_axis_and_nothing_the_route_would_drop(

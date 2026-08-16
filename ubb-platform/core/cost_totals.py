@@ -56,21 +56,22 @@ from core.vocabulary import COSTING_STATUS_UNRESOLVED
 #: is how four products come to disagree about the same fact.
 UNRESOLVED_EVENT_COUNT_KEY = "unresolved_event_count"
 
-#: The posting's own column names, which are the defaults rather than the rule:
-#: any table that comes to carry a cost and its status names its own pair.
+#: The posting's columns, named once. They are public because the GATE reads
+#: them: `apps/platform/tests/test_no_bare_supplier_cost_aggregate.py` walks the
+#: tree for a `Sum` over the first of these, and asks HERE which column that is
+#: rather than holding a copy of the name — a gate naming its own subject is a
+#: gate that expires silently the day the column is renamed.
 #:
-#: They are public because the gate reads them.
-#: `apps/platform/tests/test_no_bare_supplier_cost_aggregate.py` walks the tree
-#: for a `Sum` over the first of these outside this module, and it asks HERE
-#: which column that is rather than holding a copy of the name — a gate naming
-#: its own subject is a gate that expires silently the day the column is
-#: renamed.
+#: They are constants rather than parameters of the functions below because
+#: exactly one table carries this pair. When a second one does — slice 4's
+#: billed cost is the candidate — that is the commit that finds out what the
+#: two tables have in common, and a knob added ahead of it would only be a guess
+#: about the answer.
 SUPPLIER_COST_COLUMN = "provider_cost_micros"
 COSTING_STATUS_COLUMN = "costing_status"
 
 
-def cost_total_annotations(*, key: str, amount: str = SUPPLIER_COST_COLUMN,
-                           status: str = COSTING_STATUS_COLUMN) -> dict:
+def cost_total_annotations(*, key: str) -> dict:
     """The two expressions a supplier-cost aggregation takes, in one dict.
 
     Splat into ``.aggregate()`` or into ``.annotate()`` after a ``.values()``:
@@ -82,9 +83,9 @@ def cost_total_annotations(*, key: str, amount: str = SUPPLIER_COST_COLUMN,
     reason.
     """
     return {
-        key: Sum(amount),
+        key: Sum(SUPPLIER_COST_COLUMN),
         UNRESOLVED_EVENT_COUNT_KEY: Count(
-            "id", filter=Q(**{status: COSTING_STATUS_UNRESOLVED})),
+            "id", filter=Q(**{COSTING_STATUS_COLUMN: COSTING_STATUS_UNRESOLVED})),
     }
 
 

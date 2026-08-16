@@ -216,6 +216,29 @@ class TestACostTotalSaysWhatItExcluded:
             costing_status=COSTING_STATUS_NOT_APPLICABLE).count() == 1
         assert totals[UNRESOLVED_EVENT_COUNT_KEY] == 0
 
+    def test_a_window_that_costs_nothing_reports_the_whole_billed_as_markup(self):
+        """The one tenant-visible number this commit CHANGES, pinned.
+
+        The revenue rollup used to answer a markup of zero whenever the provider
+        aggregate came back `None` — harmless while the column was NOT NULL,
+        because `None` then meant "no rows" and billed was zero too. Since #317
+        it also means "every cost in this window is unresolved or not
+        applicable", and a window that billed real money against no supplier
+        cost at all is a window whose markup is ALL of it.
+
+        Here every remaining event's Event Type declares no supplier cost, so
+        the total is complete and the markup is the whole billed amount — not
+        the zero the old branch would have answered.
+        """
+        Posting.objects.exclude(
+            costing_status=COSTING_STATUS_NOT_APPLICABLE).delete()
+
+        out = get_revenue_analytics(self.tenant.id)
+        assert out["total_provider_cost_micros"] == 0
+        assert out[UNRESOLVED_EVENT_COUNT_KEY] == 0
+        assert out["total_billed_cost_micros"] == 1_000_000
+        assert out["total_markup_micros"] == 1_000_000
+
     def test_the_margin_a_partial_cost_produces_is_partial_too(self):
         """Everything derived from the resolved sum inherits its completeness.
 

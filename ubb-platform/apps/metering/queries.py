@@ -50,11 +50,17 @@ SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 #
 # `billed_cost_micros` is NOT NULL, so its `Sum` can only be `None` when nothing
 # contributed at all — the empty sum, with no second reading to be confused
-# with. Those totals keep their `or 0` and stay single figures, and that is the
-# difference rather than an oversight: there is no completeness to report about
-# a column that cannot be unknown. Slice 4 owns that column; when it can be
-# unknown, the same two functions cover it — they take the amount and the status
-# column as arguments for that reason.
+# with. Those totals stay single figures, and that is the difference rather than
+# an oversight: there is no completeness to report about a column that cannot be
+# unknown. Slice 4 owns that column, and the commit that makes it nullable is
+# the one that finds out what the two columns have in common.
+#
+# ⚠ AND ITS `or 0` SURVIVES ONLY WHERE THE AGGREGATE IS UNGROUPED. A GROUPED
+# `Sum` cannot answer `None` over a NOT NULL column: a group exists in the
+# result only because a row produced it. So the coalesce is live in
+# `get_customer_cost_totals` and `get_revenue_analytics`'s totals, where an
+# empty window is a real case, and it is DEAD in every per-row rollup — where
+# it has been deleted rather than left reading as though it guarded something.
 
 #: What a grouped analytics row calls the value it groups.
 #:
@@ -72,6 +78,13 @@ SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 #: Spelled once they cannot. `api/v1/tests/test_analytics_dimensions.py` still
 #: asserts both whole rows against the running routes, because a shared constant
 #: proves the two AGREE and not that either is what the console and the SDK read.
+#:
+#: ⚠ THE THREE ROLLUPS SHARE A SECOND PROPERTY NOW, AND THE DECLARED ONE HAD TO
+#: BE TOLD (#327). All three carry `unresolved_event_count` — but a key the
+#: declared row does not name is a key django-ninja DROPS, so `#327` added it to
+#: `GroupingFieldMarginRow` in the same commit that started attaching it here.
+#: Two open rollups gaining a key silently while the declared one loses it is
+#: precisely the divergence this constant exists to make impossible.
 GROUPED_VALUE_KEY = "grouping_field_value"
 
 
@@ -400,8 +413,10 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
             # `/analytics/usage` breakdown so the two cannot drift apart.
             d[GROUPED_VALUE_KEY] = raw_value if raw_value else "(unattributed)"
         # Billed minus what UBB knows it paid. Bounded by this bucket's own
-        # count rather than carrying a second one of its own.
-        d["markup_micros"] = (d["billed_cost_micros"] or 0) - d["provider_cost_micros"]
+        # count rather than carrying a second one of its own. No coalesce on the
+        # billed half: this aggregate is grouped over a NOT NULL column, so a
+        # bucket exists only because a row produced one.
+        d["markup_micros"] = d["billed_cost_micros"] - d["provider_cost_micros"]
         out.append(d)
     return out
 
@@ -460,17 +475,31 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     if end_date:
         qs = qs.filter(effective_at__lt=utc_day_start(end_date))
 
+    #: What one grouped row is made of. The aggregate writes the row's final
+    #: names directly, so the only thing left to do per row is name the value it
+    #: groups and subtract — no second vocabulary of aliases in between.
+    _AGGREGATE = {
+        **cost_total_annotations(key="provider_cost_micros"),
+        "billed_cost_micros": Sum("billed_cost_micros"),
+        "event_count": Count("id"),
+    }
+
     def _row(value, group):
-        """One row, from one group of the aggregate. The pair is resolved first
-        so the margin is taken against the sum the row will actually state."""
-        cost = carry_cost_total(dict(group), key="prov_sum")
-        billed = cost["billed_sum"] or 0
+        """One row, from one group of the aggregate.
+
+        The pair is resolved FIRST so the margin is taken against the sum the
+        row will actually state. `billed_cost_micros` needs no coalesce here:
+        this aggregate is grouped, so a group exists only because a row produced
+        it, and that column is NOT NULL.
+        """
+        cost = carry_cost_total(dict(group), key="provider_cost_micros")
         return {GROUPED_VALUE_KEY: value,
-                "provider_cost_micros": cost["prov_sum"],
+                "provider_cost_micros": cost["provider_cost_micros"],
                 UNRESOLVED_EVENT_COUNT_KEY: cost[UNRESOLVED_EVENT_COUNT_KEY],
-                "billed_cost_micros": billed,
-                "margin_micros": billed - cost["prov_sum"],
-                "event_count": cost["cnt"]}
+                "billed_cost_micros": cost["billed_cost_micros"],
+                "margin_micros": (cost["billed_cost_micros"]
+                                  - cost["provider_cost_micros"]),
+                "event_count": cost["event_count"]}
 
     if tag_key:
         # The keyed margin breakdown is slice 7's surface, left where #273
@@ -479,11 +508,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
             qs.filter(metadata__has_key=tag_key)
             .annotate(grouping_field_value=KeyTextTransform(tag_key, "metadata"))
             .values("grouping_field_value")
-            .annotate(
-                **cost_total_annotations(key="prov_sum"),
-                billed_sum=Sum("billed_cost_micros"),
-                cnt=Count("id"),
-            )
+            .annotate(**_AGGREGATE)
             .order_by()
         )
         rows = [_row(g["grouping_field_value"], g) for g in grouped]
@@ -492,10 +517,8 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     valid = ("provider", "event_type", "task_type", "subtask_type", *SLOTS)
     if group_by not in valid:
         raise ValueError(f"group_by must be one of {valid}")
-    grouped = (qs.exclude(**{group_by: ""}).values(group_by).annotate(
-        **cost_total_annotations(key="prov_sum"),
-        billed_sum=Sum("billed_cost_micros"),
-        cnt=Count("id")).order_by())
+    grouped = (qs.exclude(**{group_by: ""}).values(group_by)
+               .annotate(**_AGGREGATE).order_by())
     rows = [_row(g[group_by], g) for g in grouped]
     return sorted(rows, key=lambda r: -r["margin_micros"])
 

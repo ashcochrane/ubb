@@ -1878,10 +1878,15 @@
           "provider_cost_micros": {
             "title": "Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "provider_cost_micros",
+          "unresolved_event_count",
           "billed_cost_micros",
           "margin_micros",
           "event_count"
