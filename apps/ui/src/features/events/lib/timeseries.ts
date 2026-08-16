@@ -27,6 +27,20 @@ const SERIES_COLORS = [
 export const OTHER_LABEL = "Other";
 const OTHER_KEY = "d:__other__";
 
+/**
+ * Where each ungrouped row keeps its bucket's own uncosted-event count.
+ *
+ * It rides the pivoted row rather than sitting beside the chart because the
+ * completeness is per bucket: a window-wide caveat would mark every day for one
+ * day's missing supplier invoice. No `<Line>` names this key, so it is carried
+ * and never plotted, and the tooltip reads it to bound the provider series.
+ *
+ * ONLY THE UNGROUPED PIVOT CARRIES IT, and that is not an omission. The grouped
+ * pivot sums BILLED cost per group and plots no supplier cost at all — there is
+ * nothing there for a completeness count to qualify.
+ */
+export const UNRESOLVED_COUNT_KEY = "unresolved_event_count";
+
 function groupValueOf(point: TimeseriesPoint): string {
   return point.group_value ?? "(unattributed)";
 }
@@ -41,6 +55,7 @@ export function pivotTimeseries(
         bucket: point.bucket,
         billed: point.billed_cost_micros,
         provider: point.provider_cost_micros,
+        [UNRESOLVED_COUNT_KEY]: point.unresolved_event_count,
       })),
       series: [
         { key: "billed", label: "Billed", color: SERIES_COLORS[0] },

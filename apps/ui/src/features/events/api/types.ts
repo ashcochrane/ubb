@@ -126,6 +126,8 @@ export interface TimeseriesPoint {
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
+  /** This bucket's own uncosted events — the server answers it per bucket. */
+  unresolved_event_count: number;
   /** Present only when group_by was requested; "(unattributed)" for empties. */
   group_value?: string;
 }
@@ -164,6 +166,7 @@ export function asTimeseriesPoints(
       billed_cost_micros: num(row.billed_cost_micros),
       markup_micros: num(row.markup_micros),
       event_count: num(row.event_count),
+      unresolved_event_count: num(row.unresolved_event_count),
     };
     const groupValue = str(row[WIRE_GROUP_VALUE_KEY]);
     if (groupValue !== null) point.group_value = groupValue;

@@ -19,8 +19,13 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros, formatPercent } from "@/lib/format";
+import { formatEventCount, formatMicros } from "@/lib/format";
 import { revenueModeLabel } from "@/lib/labels";
+import {
+  marginBound,
+  marginPercentBound,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { useBusinessMargin } from "../api/queries";
@@ -103,7 +108,7 @@ export function BusinessRollup({
                     {formatMicros(seat.total_revenue_micros, currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(seat.provider_cost_micros, currency)}
+                    {supplierCostTotal(seat.provider_cost_micros, seat, currency)}
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -111,10 +116,10 @@ export function BusinessRollup({
                       seat.gross_margin_micros < 0 && "text-danger-dark",
                     )}
                   >
-                    {formatMicros(seat.gross_margin_micros, currency)}
+                    {marginBound(seat.gross_margin_micros, seat, currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatPercent(seat.margin_percentage)}
+                    {marginPercentBound(seat.margin_percentage, seat)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -127,8 +132,12 @@ export function BusinessRollup({
                 <TableCell className="text-right tabular-nums">
                   {formatMicros(totals.total_revenue_micros, currency)}
                 </TableCell>
+                {/* The totals row carries its own count rather than summing the
+                    seats': a business's rollup is aggregated server-side over
+                    the same postings, so re-deriving it here would be a second
+                    definition of the one fact. */}
                 <TableCell className="text-right tabular-nums">
-                  {formatMicros(totals.provider_cost_micros, currency)}
+                  {supplierCostTotal(totals.provider_cost_micros, totals, currency)}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -136,7 +145,7 @@ export function BusinessRollup({
                     totals.gross_margin_micros < 0 && "text-danger-dark",
                   )}
                 >
-                  {formatMicros(totals.gross_margin_micros, currency)}
+                  {marginBound(totals.gross_margin_micros, totals, currency)}
                 </TableCell>
                 {/* The totals shape carries no margin_percentage. */}
                 <TableCell className="text-right text-text-muted">—</TableCell>

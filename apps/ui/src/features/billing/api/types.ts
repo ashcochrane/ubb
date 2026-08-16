@@ -23,6 +23,15 @@ export interface RevenueDailyRow {
   provider_cost_micros: number;
   billed_cost_micros: number;
   event_count: number;
+  /**
+   * How many of the day's events carry a supplier cost UBB never learned.
+   *
+   * PER DAY, not per window: an unresolved cost belongs to the day it fell in,
+   * and a reader hovering one point has to be told about that point. The server
+   * builds it in the same aggregate as the day's cost (`get_revenue_analytics`),
+   * so it is present on every row the endpoint emits.
+   */
+  unresolved_event_count: number;
 }
 
 /**
@@ -38,5 +47,15 @@ export function toRevenueDailyRow(row: Record<string, unknown>): RevenueDailyRow
     billed_cost_micros:
       typeof row.billed_cost_micros === "number" ? row.billed_cost_micros : 0,
     event_count: typeof row.event_count === "number" ? row.event_count : 0,
+    // Degrading a MISSING count to zero says "this day left nothing out",
+    // which is the one claim this field exists to stop the console making by
+    // accident. It is safe here only because the server writes it on every row
+    // unconditionally and `test_a_cost_total_says_what_it_excluded.py` holds it
+    // there; a row without it is a backend regression, not a shape this
+    // narrowing should invent an answer for.
+    unresolved_event_count:
+      typeof row.unresolved_event_count === "number"
+        ? row.unresolved_event_count
+        : 0,
   };
 }

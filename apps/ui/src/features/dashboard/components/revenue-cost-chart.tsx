@@ -17,6 +17,11 @@ import {
   formatEventCount,
   formatMicros,
 } from "@/lib/format";
+import {
+  marginBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 
 import type { RevenueCostPoint } from "../lib/economics";
 
@@ -26,6 +31,28 @@ interface TipEntry {
   value?: number | string;
   color?: string;
   payload?: RevenueCostPoint;
+}
+
+/**
+ * One tooltip row's amount, bounded by the DAY'S own completeness.
+ *
+ * A line cannot say "at least" — a plotted position is a position — so the
+ * point where the reader actually asks for a number is the point that has to
+ * answer honestly. Keyed on `dataKey` rather than on the series name, which is
+ * display copy and moves.
+ */
+function seriesAmount(entry: TipEntry, currency: string): string {
+  if (typeof entry.value !== "number") return String(entry.value ?? "");
+  const point = entry.payload;
+  if (!point) return formatMicros(entry.value, currency);
+  if (entry.dataKey === "provider_micros") {
+    return supplierCostTotal(entry.value, point, currency);
+  }
+  if (entry.dataKey === "margin_micros") {
+    return marginBound(entry.value, point, currency);
+  }
+  // Billed is NOT NULL at the column and whole by construction.
+  return formatMicros(entry.value, currency);
 }
 
 function ChartTip({
@@ -61,15 +88,16 @@ function ChartTip({
             {entry.name}
           </span>
           <span className="font-medium text-text-primary">
-            {typeof entry.value === "number"
-              ? formatMicros(entry.value, currency)
-              : entry.value}
+            {seriesAmount(entry, currency)}
           </span>
         </div>
       ))}
       {point && (
         <div className="mt-1 border-t border-border pt-1 text-text-muted">
           {formatEventCount(point.event_count)} events
+          {partialTotalNote(point.unresolved_event_count) && (
+            <div>{partialTotalNote(point.unresolved_event_count)}</div>
+          )}
         </div>
       )}
     </div>

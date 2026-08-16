@@ -27,7 +27,12 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { resolveRange, type DateRange } from "@/lib/date-range";
-import { formatMicros, formatPercent } from "@/lib/format";
+import { formatMicros } from "@/lib/format";
+import {
+  marginBound,
+  marginPercentBound,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { useCustomerMargins } from "../api/queries";
@@ -171,7 +176,7 @@ export function CustomersPage({
                     {formatMicros(listRowRevenueMicros(row), currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(row.provider_cost_micros, currency)}
+                    {supplierCostTotal(row.provider_cost_micros, row, currency)}
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -179,7 +184,7 @@ export function CustomersPage({
                       row.gross_margin_micros < 0 && "text-danger-dark",
                     )}
                   >
-                    {formatMicros(row.gross_margin_micros, currency)}
+                    {marginBound(row.gross_margin_micros, row, currency)}
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -187,7 +192,7 @@ export function CustomersPage({
                       row.margin_percentage < 0 && "text-danger-dark",
                     )}
                   >
-                    {formatPercent(row.margin_percentage)}
+                    {marginPercentBound(row.margin_percentage, row)}
                   </TableCell>
                 </TableRow>
               ))}

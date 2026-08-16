@@ -43,6 +43,26 @@ describe("BillingPage", () => {
     expect(screen.queryByText("Postpaid invoicing")).not.toBeInTheDocument();
   });
 
+  // #330: the window's supplier total is a FLOOR whenever it holds events UBB
+  // could not cost, and the markup beside it is then a ceiling — billed minus
+  // the RESOLVED cost, which is the backend's own statement about that figure
+  // (`get_revenue_analytics`). The mock puts uncosted events on today, so every
+  // default window is partial and both tiles have to say which way they are
+  // wrong.
+  it("renders a partial window's cost as a floor and its markup as a ceiling", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    expect(await screen.findByText(/^at least \$/)).toBeInTheDocument();
+    expect(screen.getByText(/^at most \$/)).toBeInTheDocument();
+    // The note beside them says how many events are missing and which way the
+    // total is wrong — a marker alone would leave the reader to guess.
+    expect(screen.getByText(/3 events have a supplier cost/)).toBeInTheDocument();
+    // Billed cost is NOT NULL at the column and whole by construction, so it is
+    // rendered as the figure it is.
+    expect(screen.getAllByText(/^\$[\d,]+\.\d\d$/).length).toBeGreaterThan(0);
+  });
+
   it("shows the empty state when the period filter matches nothing", async () => {
     renderPage();
 

@@ -14,7 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMicros, formatPercent } from "@/lib/format";
+import { formatMicros } from "@/lib/format";
+import {
+  marginBound,
+  marginPercentBound,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { useMarginCustomers } from "../api/queries";
@@ -204,18 +209,22 @@ function EconomicsRows({
                 <TableCell className="text-right font-medium">
                   {formatMicros(view.revenue_micros, currency)}
                 </TableCell>
+                {/* Each customer's total carries its OWN count: an unresolved
+                    cost belongs to the customer it was incurred for, and a
+                    table that bounded every row on the window's total would
+                    caveat nine rows for one customer's missing invoice. */}
                 <TableCell className="text-right text-text-secondary">
-                  {formatMicros(row.provider_cost_micros, currency)}
+                  {supplierCostTotal(row.provider_cost_micros, row, currency)}
                 </TableCell>
                 <TableCell
                   className={cn("text-right font-medium", negative && "text-destructive")}
                 >
-                  {formatMicros(view.margin_micros, currency)}
+                  {marginBound(view.margin_micros, row, currency)}
                 </TableCell>
                 <TableCell
                   className={cn("text-right", negative && "text-destructive")}
                 >
-                  {formatPercent(view.margin_pct)}
+                  {marginPercentBound(view.margin_pct, row)}
                 </TableCell>
               </TableRow>
             );

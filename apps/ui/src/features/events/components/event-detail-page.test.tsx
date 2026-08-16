@@ -4,11 +4,19 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  COSTING_STATUS_EXPLANATIONS,
+  costingStatusLabel,
+  unresolvedReasonLabel,
+} from "@/lib/supplier-cost";
+
+import {
   CUSTOMER_A_ID,
   EVENT_PRUNED_ID,
   EVENT_RICH_ID,
   EVENT_TASK_CHARGE_ID,
+  EVENT_TASK_KILL_ID,
   EVENT_TIPPING_ID,
+  EVENT_UNRESOLVED_ID,
 } from "../api/mock-data";
 import {
   MEASUREMENTS_STATUS_EXPLANATIONS,
@@ -207,6 +215,87 @@ describe("EventDetailPage", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(measurementsStatusLabel("not_applicable"))).not.toBeInTheDocument();
     expect(screen.queryByText(NO_QUANTITIES_RECORDED)).not.toBeInTheDocument();
+  });
+
+  // --- the supplier cost UBB never learned (#330, #155 §9.2) --------------
+  //
+  // Same rule as the measurement trio above, one field over: an absence has to
+  // render as the absence it is, and the two absences a supplier cost can have
+  // must not look alike. Nothing is stubbed — the fixture is a representative
+  // payload served by this feature's own mock provider.
+
+  it("renders an unlearned supplier cost AS UNLEARNED — never as zero", async () => {
+    renderPage({ eventId: EVENT_UNRESOLVED_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+
+    // THE ASSERTION THE TICKET EXISTS FOR. A cost UBB has not learned rendered
+    // as `$0.00` would state that the supplier charged nothing, and the margin
+    // computed against that zero would read as the whole billed amount — the
+    // flattering direction, on the one screen a tenant opens to check a single
+    // event.
+    const section = screen.getByText("Cost").closest("section");
+    expect(section).not.toBeNull();
+    expect(section?.textContent ?? "").not.toContain("$0.00");
+
+    // The absence is NAMED, in the catalogue's words rather than the console's.
+    expect(screen.getByText(costingStatusLabel("unresolved"))).toBeInTheDocument();
+    expect(
+      screen.getByText(COSTING_STATUS_EXPLANATIONS.unresolved),
+    ).toBeInTheDocument();
+    // And the missing INPUT is named beside it: a status saying a cost is
+    // missing without saying what would settle it is a shrug.
+    expect(screen.getByText("Missing input")).toBeInTheDocument();
+    expect(
+      screen.getByText(unresolvedReasonLabel("cost_rate_missing")),
+    ).toBeInTheDocument();
+
+    // What was billed is still on the receipt, which is what makes the silence
+    // about the supplier cost something the tenant can see rather than infer.
+    expect(screen.getByText("$0.0310")).toBeInTheDocument();
+  });
+
+  it("names a settled cost as settled, and asks for no missing input", async () => {
+    renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(screen.getByText(costingStatusLabel("known"))).toBeInTheDocument();
+    expect(screen.queryByText("Missing input")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(costingStatusLabel("unresolved")),
+    ).not.toBeInTheDocument();
+  });
+
+  it("closes a task holding an unlearned cost and says the total is a floor", async () => {
+    // The still-open task holds the one unresolved event, so its rolled-up
+    // supplier cost can only be higher than it says.
+    renderPage({ eventId: EVENT_UNRESOLVED_ID, customerId: CUSTOMER_A_ID });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Close task" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, close it" }));
+
+    expect(await screen.findByText(/Task closed/)).toBeInTheDocument();
+    expect(screen.getByText(/^at least \$\d/)).toBeInTheDocument();
+    expect(screen.getByText("Costs still unknown")).toBeInTheDocument();
+  });
+
+  // AC 3, and the case a marker would get wrong. The killed task holds two
+  // events costed two different ways — one reported by the caller, one
+  // calculated from Cost Rates — and nothing is missing from it. Mixed
+  // derivation is COMPLETE: a footnote on every mixed total is a footnote on
+  // almost every total, and the completeness question reads the count and
+  // nothing else.
+  it("reads a task costed BOTH ways as complete, with no caveat", async () => {
+    renderPage({ eventId: EVENT_TASK_KILL_ID, customerId: CUSTOMER_A_ID });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Close task" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, close it" }));
+
+    expect(await screen.findByText(/Task closed — Killed/)).toBeInTheDocument();
+    // Two events, $0.05 reported + $0.03 calculated, and the total is a figure.
+    expect(screen.getByText("$0.08")).toBeInTheDocument();
+    expect(screen.queryByText(/at least/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Costs still unknown")).not.toBeInTheDocument();
   });
 
   it("shows the refund dialog with replay-safe copy and issues the refund", async () => {

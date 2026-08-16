@@ -13,6 +13,11 @@ import {
 } from "recharts";
 
 import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import {
+  marginBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 
 import type { RevenueDailyRow } from "../api/types";
 
@@ -26,6 +31,27 @@ const SERIES: { key: keyof ChartRow; label: string; color: string }[] = [
   { key: "markup_micros", label: "Markup", color: "var(--chart-3)" },
 ];
 
+/**
+ * One tooltip row's amount, bounded by the DAY'S own completeness.
+ *
+ * The plotted line is a position and cannot say "at least"; the tooltip is
+ * where the reader asks for the number, so it is where the number has to be
+ * honest. Keyed on the series' data key — display copy moves, keys do not.
+ */
+function seriesAmount(
+  key: keyof ChartRow,
+  micros: number,
+  point: ChartRow,
+  currency: string,
+): string {
+  if (key === "provider_cost_micros") {
+    return supplierCostTotal(micros, point, currency);
+  }
+  if (key === "markup_micros") return marginBound(micros, point, currency);
+  // Billed is NOT NULL at the column and whole by construction.
+  return formatMicros(micros, currency);
+}
+
 function RevenueTooltip({
   active,
   payload,
@@ -33,12 +59,17 @@ function RevenueTooltip({
   currency,
 }: {
   active?: boolean;
-  payload?: { dataKey?: string | number; value?: number | string }[];
+  payload?: {
+    dataKey?: string | number;
+    value?: number | string;
+    payload?: ChartRow;
+  }[];
   label?: string | number;
   currency: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
   const row = new Map(payload.map((entry) => [String(entry.dataKey), entry.value]));
+  const point = payload[0]?.payload;
   return (
     <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
       <div className="mb-1 font-medium text-text-primary">
@@ -51,11 +82,18 @@ function RevenueTooltip({
           <div key={series.key} className="flex items-center justify-between gap-4">
             <span className="text-text-secondary">{series.label}</span>
             <span className="font-medium text-text-primary">
-              {formatMicros(value, currency)}
+              {point
+                ? seriesAmount(series.key, value, point, currency)
+                : formatMicros(value, currency)}
             </span>
           </div>
         );
       })}
+      {point && partialTotalNote(point.unresolved_event_count) && (
+        <div className="mt-1 border-t border-border pt-1 text-text-muted">
+          {partialTotalNote(point.unresolved_event_count)}
+        </div>
+      )}
     </div>
   );
 }

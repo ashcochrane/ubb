@@ -6,6 +6,11 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import {
+  marginBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 
 import { useUsageAnalytics } from "../api/queries";
@@ -60,12 +65,17 @@ export function AnalyticsStrip({
         <StatCard
           variant="raised"
           label="Provider cost"
-          value={formatMicros(data.total_provider_cost_micros, currency)}
+          value={supplierCostTotal(
+            data.total_provider_cost_micros,
+            data,
+            currency,
+          )}
+          subtitle={partialTotalNote(data.unresolved_event_count) ?? undefined}
         />
         <StatCard
           variant="raised"
           label="Markup margin"
-          value={formatMicros(data.usage_markup_margin_micros, currency)}
+          value={marginBound(data.usage_markup_margin_micros, data, currency)}
           subtitle="Billed minus provider cost"
         />
       </div>

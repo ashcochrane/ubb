@@ -13,10 +13,71 @@ import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatEventCount, formatMicros } from "@/lib/format";
 import { taskStatusLabel } from "@/lib/labels";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
+import { partialTotalNote, supplierCostTotal } from "@/lib/supplier-cost";
 
 import { useCloseTask } from "../api/queries";
+import type { CloseTaskResult } from "../api/types";
 import { shortId } from "../lib/search";
 import { Section } from "./section";
+
+/**
+ * What a closed task cost, once it is closed.
+ *
+ * THE TASK'S OWN COGS, and the one total this console shows for a whole unit of
+ * work. It is a FLOOR whenever the task holds events UBB could not cost — and
+ * how the ones it COULD cost were derived never enters that: a task mixing
+ * calculated and reported events is complete, because nothing is missing from
+ * it. The count is the only thing asked.
+ */
+function ClosedTaskTotals({
+  result,
+  currency,
+}: {
+  result: CloseTaskResult;
+  currency: string;
+}) {
+  const stillUnknown = partialTotalNote(result.unresolved_event_count);
+  return (
+    <div className="mt-3 rounded-md bg-bg-subtle p-3">
+      <p className="text-[13px] font-medium text-text-primary">
+        Task closed — {taskStatusLabel(result.status)}
+      </p>
+      <DetailList
+        className="mt-1"
+        items={[
+          {
+            label: "Events",
+            value: formatEventCount(result.event_count),
+          },
+          {
+            label: "Total billed",
+            value: formatMicros(result.total_billed_cost_micros, currency),
+          },
+          {
+            label: "Total provider cost",
+            value: supplierCostTotal(
+              result.total_provider_cost_micros,
+              result,
+              currency,
+            ),
+          },
+          ...(stillUnknown
+            ? [{ label: "Costs still unknown", value: stillUnknown }]
+            : []),
+          ...(result.parent_task_id
+            ? [
+                {
+                  label: "Parent task",
+                  value: shortId(result.parent_task_id),
+                  mono: true,
+                },
+              ]
+            : []),
+        ]}
+      />
+    </div>
+  );
+}
 
 export function TaskSection({ taskId }: { taskId: string }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -35,40 +96,7 @@ export function TaskSection({ taskId }: { taskId: string }) {
       </div>
 
       {result ? (
-        <div className="mt-3 rounded-md bg-bg-subtle p-3">
-          <p className="text-[13px] font-medium text-text-primary">
-            Task closed — {taskStatusLabel(result.status)}
-          </p>
-          <DetailList
-            className="mt-1"
-            items={[
-              {
-                label: "Events",
-                value: formatEventCount(result.event_count),
-              },
-              {
-                label: "Total billed",
-                value: formatMicros(result.total_billed_cost_micros, currency),
-              },
-              {
-                label: "Total provider cost",
-                value: formatMicros(
-                  result.total_provider_cost_micros,
-                  currency,
-                ),
-              },
-              ...(result.parent_task_id
-                ? [
-                    {
-                      label: "Parent task",
-                      value: shortId(result.parent_task_id),
-                      mono: true,
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        </div>
+        <ClosedTaskTotals result={result} currency={currency} />
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span title={canWrite ? undefined : "Requires the Write role"}>

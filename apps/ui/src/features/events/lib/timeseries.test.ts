@@ -7,6 +7,7 @@ function point(
   bucket: string,
   billed: number,
   groupValue?: string,
+  unresolvedEventCount = 0,
 ): TimeseriesPoint {
   const base: TimeseriesPoint = {
     bucket,
@@ -14,6 +15,7 @@ function point(
     provider_cost_micros: Math.round(billed * 0.8),
     markup_micros: Math.round(billed * 0.2),
     event_count: 1,
+    unresolved_event_count: unresolvedEventCount,
   };
   if (groupValue !== undefined) base.group_value = groupValue;
   return base;
@@ -31,6 +33,38 @@ describe("pivotTimeseries", () => {
     ]);
     expect(pivot.data).toHaveLength(2);
     expect(pivot.data[0]).toMatchObject({ billed: 100, provider: 80 });
+  });
+
+  // The provider series is a FLOOR wherever its bucket holds uncosted events,
+  // and the tooltip is the only place a line chart can say so — so the count
+  // has to survive the pivot rather than being dropped with the rest of the
+  // row. Carried, never plotted: no series names this key.
+  it("carries each bucket's own uncosted-event count when not grouped", () => {
+    const pivot = pivotTimeseries(
+      [
+        point("2026-07-01T00:00:00Z", 100, undefined, 2),
+        point("2026-07-02T00:00:00Z", 200),
+      ],
+      false,
+    );
+
+    expect(pivot.data[0]).toMatchObject({ unresolved_event_count: 2 });
+    expect(pivot.data[1]).toMatchObject({ unresolved_event_count: 0 });
+    expect(pivot.series.map((s) => s.key)).not.toContain(
+      "unresolved_event_count",
+    );
+  });
+
+  // Grouped mode sums BILLED cost per group and plots no supplier cost at all,
+  // so there is nothing for a completeness count to qualify — and carrying one
+  // would invite a reader to attach it to a series it says nothing about.
+  it("carries no count when grouped, because no supplier cost is plotted", () => {
+    const pivot = pivotTimeseries(
+      [point("2026-07-01T00:00:00Z", 300, "openai", 2)],
+      true,
+    );
+
+    expect(pivot.data[0]).not.toHaveProperty("unresolved_event_count");
   });
 
   it("paints every group when there are three or fewer", () => {

@@ -8,8 +8,11 @@
 
 import {
   availableMeasurements,
+  knownCost,
   measurementsNotApplicable,
   prunedMeasurements,
+  unknownCost,
+  type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
 
 import type {
@@ -50,6 +53,13 @@ export const EVENT_BACKFILL_ID = "f61b7c96-2d4f-41a8-b235-9a8e3c1d5f74";
 export const EVENT_PRUNED_ID = "3d8c1e47-6f52-4a93-b70e-2c9a5f8d1b06";
 /** A Task sold for one agreed price, so never measured at all (#281). */
 export const EVENT_TASK_CHARGE_ID = "7a4e9d15-3b60-4c28-8f91-0d6b3e7a2c58";
+/** July traffic whose supplier cost matched no Cost Rate, so was never learned
+ * (#330). It is the only unresolved posting in this story, and the reason the
+ * July totals over it are floors. */
+export const EVENT_UNRESOLVED_ID = "6b2f8c30-4d71-4e59-9c18-5a3e7d0f4b92";
+/** The killed task's other event, costed by CALCULATION where the kill event
+ * beside it was REPORTED (#330). Two derivations, one complete task. */
+export const EVENT_TASK_RATED_ID = "4f9a2d68-7c05-4b31-8e72-1b6d9a3f5c04";
 
 export interface MockEvent {
   customer_id: string;
@@ -66,7 +76,19 @@ interface DetailSeed {
   dim2?: string;
   dim3?: string;
   billed_cost_micros: number;
-  provider_cost_micros: number;
+  /**
+   * The supplier cost, its status and — where there is one — the input that is
+   * missing, as ONE object (#330).
+   *
+   * A bare `provider_cost_micros` used to sit here with the status supplied by
+   * a constant in `makeDetail`, which was true while every seed carried a
+   * number. It stops being true the moment one does not, and a `null` amount is
+   * two different states: a cost UBB could not learn, and a cost there was
+   * never going to be. Taking the trio from `@/lib/economic-scenarios` is what
+   * stops a seed writing one of them and letting a default invent the rest —
+   * the same rule, and the same reason, as `measurements_status` below.
+   */
+  cost: SupplierCostScenario;
   measurements?: Record<string, number>;
   metadata?: Record<string, unknown>;
   task_id?: string | null;
@@ -115,13 +137,13 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     request_id: seed.request_id ?? `req_${seed.id.slice(0, 8)}`,
     idempotency_key: seed.idempotency_key ?? `idem_${seed.id.slice(0, 8)}`,
     billed_cost_micros: seed.billed_cost_micros,
-    provider_cost_micros: seed.provider_cost_micros,
-    // Every seeded posting carries a supplier cost, so every one of them is
-    // settled (#317). The literal is checked against the generated response
-    // union rather than being free text, so a value the registry renames
-    // fails to compile here. Rendering the OTHER two states is a later
-    // ticket's — this file has no unresolved row to render yet.
-    costing_status: "known",
+    // All three from the seed's one scenario object. There is no default here
+    // any more: the file now HAS an unresolved row to render, and a constant
+    // `"known"` beside a null amount would be the exact row the posting's own
+    // check constraint refuses.
+    provider_cost_micros: seed.cost.provider_cost_micros,
+    costing_status: seed.cost.costing_status,
+    unresolved_reason: seed.cost.unresolved_reason,
     effective_at: seed.effective_at,
     created_at: seed.created_at ?? seed.effective_at,
     currency: "usd",
@@ -166,7 +188,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim2: "realtime-api",
       dim3: "agent-7",
       billed_cost_micros: 187_500,
-      provider_cost_micros: 142_300,
+      cost: knownCost(142_300),
       // Composed rather than hand-built, because this is the event the
       // `available` rendering assertion runs against — so all three states the
       // receipt distinguishes come from the same module. The payload is
@@ -216,7 +238,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       effective_at: "2026-07-18T14:02:11Z",
       created_at: "2026-07-18T14:02:12Z",
       billed_cost_micros: 96_000,
-      provider_cost_micros: 75_000,
+      cost: knownCost(75_000),
       measurements: { input_tokens: 2100, output_tokens: 940 },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
       pricing_provenance: markupProvenance(75_000),
@@ -240,7 +262,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       effective_at: "2026-07-18T14:03:27Z",
       created_at: "2026-07-18T14:03:28Z",
       billed_cost_micros: 54_000,
-      provider_cost_micros: 42_000,
+      cost: knownCost(42_000),
       measurements: { input_tokens: 1200, output_tokens: 480 },
       metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(42_000),
@@ -266,7 +288,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       provider: "anthropic",
       event_type: "messages.create",
       billed_cost_micros: 31_000,
-      provider_cost_micros: 24_000,
+      cost: knownCost(24_000),
       measurements: { input_tokens: 800, output_tokens: 260 },
       metadata: { env: "prod", team: "assist" },
       pricing_provenance: markupProvenance(24_000),
@@ -292,7 +314,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim1: "batch",
       dim2: "batch-worker",
       billed_cost_micros: 64_000,
-      provider_cost_micros: 50_000,
+      cost: knownCost(50_000),
       measurements: { input_tokens: 1500, output_tokens: 620 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
@@ -313,13 +335,43 @@ const FEATURE_EVENTS: MockEvent[] = [
   {
     customer_id: CUSTOMER_A_ID,
     detail: makeDetail({
+      // THE KILLED TASK'S OTHER EVENT, AND IT WAS COSTED THE OTHER WAY (#330).
+      // Its supplier cost was CALCULATED from Cost Rates; the kill event beside
+      // it was REPORTED by the caller. The task therefore holds both derivations
+      // and is nonetheless COMPLETE — nothing is missing from it — which is the
+      // case the rule has to get right: how a cost was arrived at is not a
+      // defect in it, and a footnote on every mixed total is a footnote on
+      // almost every total.
+      id: EVENT_TASK_RATED_ID,
+      effective_at: "2026-07-21T09:02:44Z",
+      created_at: "2026-07-21T09:02:45Z",
+      event_type: "embedding.create",
+      provider: "mistral",
+      dim1: "batch",
+      dim2: "batch-worker",
+      billed_cost_micros: 38_400,
+      cost: knownCost(30_000),
+      measurements: { embedding_tokens: 7400 },
+      metadata: { env: "prod", team: "assist" },
+      task_id: TASK_KILLED_ID,
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "markup",
+        cost_source: "cost_rate",
+        cost_rate: { book: "llm-prices-2026", quantity: "embedding_tokens" },
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
       id: EVENT_BACKFILL_ID,
       effective_at: "2026-07-06T18:22:40Z",
       created_at: "2026-07-20T10:04:15Z",
       event_type: "embedding.create",
       dim1: "search-api",
       billed_cost_micros: 22_400,
-      provider_cost_micros: 17_500,
+      cost: knownCost(17_500),
       measurements: { embedding_tokens: 5200 },
       metadata: {
         env: "prod",
@@ -327,6 +379,46 @@ const FEATURE_EVENTS: MockEvent[] = [
         backfill_batch: "2026-07-20-recovery",
       },
       pricing_provenance: markupProvenance(17_500),
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // THE ONE EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED — #155 §9.2's owed
+      // fixture for the state slice 3 introduces, and the reason every total
+      // over the July window is now a floor rather than a figure.
+      //
+      // IN the July window on purpose, unlike the two measurement fixtures
+      // below. Those had to stay outside it so the story's totals kept their
+      // arithmetic; this one has to be inside it, because the thing it exists
+      // to exercise IS a total. Its billed amount is real and counted; its
+      // supplier cost contributes nothing, and the count beside every total
+      // says so.
+      //
+      // It also belongs to the still-open task, so closing that task shows what
+      // a partial Task COGS reads like — the surface the rule was written for.
+      id: EVENT_UNRESOLVED_ID,
+      effective_at: "2026-07-22T14:08:31Z",
+      created_at: "2026-07-22T14:08:32Z",
+      event_type: "transcription.create",
+      provider: "deepgram",
+      dim1: "search-api",
+      dim2: "realtime-api",
+      billed_cost_micros: 31_000,
+      // No Cost Rate matched this quantity at the moment it happened, so there
+      // is nothing to record and the receipt says which input is missing —
+      // never a zero, which would state that the supplier charged nothing.
+      cost: unknownCost("cost_rate_missing"),
+      measurements: { audio_seconds: 412 },
+      metadata: { env: "prod", team: "assist" },
+      task_id: TASK_OPEN_ID,
+      // A billed amount with no supplier cost under it: the engine priced this
+      // event directly rather than as a markup over a cost it does not have.
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "price_rule",
+        cost_source: "unresolved",
+      },
     }),
   },
   // The two events whose measurement record is NOT simply present — #155 §9.2's
@@ -344,7 +436,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-05-02T11:27:54Z",
       dim1: "copilot",
       billed_cost_micros: 94_000,
-      provider_cost_micros: 73_000,
+      cost: knownCost(73_000),
       metadata: { env: "prod", team: "search" },
       pricing_provenance: markupProvenance(73_000),
       ...prunedMeasurements(),
@@ -362,7 +454,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       event_type: "task.charge",
       dim1: "batch",
       billed_cost_micros: 2_500_000,
-      provider_cost_micros: 1_840_000,
+      cost: knownCost(1_840_000),
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_FIXED_PRICE_ID,
       pricing_provenance: {
@@ -402,7 +494,7 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       dim2: index % 4 === 0 ? "batch-worker" : "realtime-api",
       dim3: index % 5 === 0 ? "agent-7" : "",
       billed_cost_micros: billed,
-      provider_cost_micros: providerCost,
+      cost: knownCost(providerCost),
       measurements: {
         input_tokens: 900 + (index % 23) * 240,
         output_tokens: 260 + (index % 11) * 145,

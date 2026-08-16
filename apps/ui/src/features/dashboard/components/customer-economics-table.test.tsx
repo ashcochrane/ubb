@@ -66,12 +66,28 @@ describe("CustomerEconomicsTable", () => {
       <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
     );
 
-    // nova-ai: negative gross margin rendered from the API's figures.
-    expect(await screen.findByText("-$88.00")).toBeInTheDocument();
+    // nova-ai: negative gross margin rendered from the API's figures — and
+    // bounded, because it is the one customer holding uncosted events (#330).
+    expect(await screen.findByText("at most -$88.00")).toBeInTheDocument();
     const acmeLink = screen.getByRole("link", { name: "1f0c9c4e…" });
     expect(acmeLink).toHaveAttribute(
       "title",
       "1f0c9c4e-8f2a-4a1e-9d3b-6a1f00000001",
     );
+  });
+
+  // The rule this table has to get right, stated as a contrast rather than as
+  // one assertion: nova-ai's COGS can only be higher and its margin only lower,
+  // while acme-corp's are figures. A row that bounded both, or neither, would
+  // pass a single-row test and mislead on the page.
+  it("says which COGS is a floor and leaves the settled ones alone", async () => {
+    renderWithClient(
+      <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
+    );
+
+    expect(await screen.findByText("at least $88.00")).toBeInTheDocument();
+    // acme-corp's COGS is whole, and renders as the figure it is.
+    expect(screen.getByText("$274.00")).toBeInTheDocument();
+    expect(screen.queryByText("at least $274.00")).not.toBeInTheDocument();
   });
 });

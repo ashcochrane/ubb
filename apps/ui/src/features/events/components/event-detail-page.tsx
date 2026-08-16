@@ -16,6 +16,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHasProduct } from "@/hooks/use-tenant-config";
 import { formatDate } from "@/lib/format";
 import { ABSENT_LABEL } from "@/lib/localisation";
+import {
+  COSTING_STATUS_EXPLANATIONS,
+  costingStatusLabel,
+  unresolvedReasonLabel,
+} from "@/lib/supplier-cost";
 
 import { useUsageEvent } from "../api/queries";
 import { asStopContextEntries, type UsageEventDetail } from "../api/types";
@@ -153,9 +158,11 @@ export function EventDetailPage({
   // against that zero would read as the whole billed amount — the flattering
   // direction, on the one screen a tenant opens to check a single event.
   //
-  // NOT THE FULL TREATMENT, DELIBERATELY: naming the status beside the amount
-  // and rendering a partial total as "at least" is #330's, which owns the
-  // rendering rule for the whole console.
+  // AND THE ABSENCE IS NAMED (#330). A dash says something is not there; the
+  // status says WHICH not-there this is, because a cost UBB could not learn and
+  // a cost there was never going to be are opposite facts wearing the same
+  // empty cell. There is no "at least" on this screen and that is not an
+  // omission: one event has no total to be a floor of — it has the mark itself.
   const providerCost = detail.provider_cost_micros ?? null;
   const margin =
     providerCost === null ? null : detail.billed_cost_micros - providerCost;
@@ -204,6 +211,18 @@ export function EventDetailPage({
           ? ABSENT_LABEL
           : formatEventMicros(providerCost, detail.currency),
     },
+    { label: "Cost status", value: costingStatusLabel(detail.costing_status) },
+    // Read only where the status is `unresolved`, and never on its own: a
+    // status saying a cost is missing without saying WHAT would settle it is a
+    // shrug rather than something a tenant can act on.
+    ...(detail.costing_status === "unresolved"
+      ? [
+          {
+            label: "Missing input",
+            value: unresolvedReasonLabel(detail.unresolved_reason),
+          },
+        ]
+      : []),
     {
       label: "Margin on this event",
       value:
@@ -233,7 +252,10 @@ export function EventDetailPage({
         </Section>
 
         <div className="space-y-4">
-          <Section title="Cost">
+          <Section
+            title="Cost"
+            description={COSTING_STATUS_EXPLANATIONS[detail.costing_status]}
+          >
             <DetailList items={moneyItems} />
           </Section>
 

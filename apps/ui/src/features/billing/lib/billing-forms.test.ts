@@ -91,19 +91,37 @@ describe("untyped revenue daily rows", () => {
         provider_cost_micros: 10,
         billed_cost_micros: 13,
         event_count: 2,
+        unresolved_event_count: 1,
       }),
     ).toEqual({
       day: "2026-07-01",
       provider_cost_micros: 10,
       billed_cost_micros: 13,
       event_count: 2,
+      unresolved_event_count: 1,
     });
     expect(toRevenueDailyRow({ day: 42, provider_cost_micros: "x" })).toEqual({
       day: "",
       provider_cost_micros: 0,
       billed_cost_micros: 0,
       event_count: 0,
+      unresolved_event_count: 0,
     });
+  });
+
+  // The day's own completeness has to SURVIVE the narrowing, and this is the
+  // assertion that says so: reading the cost while dropping the count beside it
+  // would leave the chart plotting a floor and calling it a figure (#330).
+  it("carries the day's own uncosted-event count through", () => {
+    const row = toRevenueDailyRow({
+      day: "2026-07-01",
+      provider_cost_micros: 10,
+      billed_cost_micros: 13,
+      event_count: 2,
+      unresolved_event_count: 3,
+    });
+
+    expect(row.unresolved_event_count).toBe(3);
   });
 });
 

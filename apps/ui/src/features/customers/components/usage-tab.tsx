@@ -11,6 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import {
+  marginBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { useUsageAnalytics, useUsageTimeseries } from "../api/queries";
@@ -65,8 +70,15 @@ export function UsageTab({
           />
           <StatCard
             label="Provider cost"
-            value={formatMicros(analytics.data.total_provider_cost_micros, currency)}
+            value={supplierCostTotal(
+              analytics.data.total_provider_cost_micros,
+              analytics.data,
+              currency,
+            )}
             variant="raised"
+            subtitle={
+              partialTotalNote(analytics.data.unresolved_event_count) ?? undefined
+            }
           />
           <StatCard
             label="Markup margin"
@@ -76,7 +88,11 @@ export function UsageTab({
                   analytics.data.usage_markup_margin_micros < 0 && "text-danger-dark",
                 )}
               >
-                {formatMicros(analytics.data.usage_markup_margin_micros, currency)}
+                {marginBound(
+                  analytics.data.usage_markup_margin_micros,
+                  analytics.data,
+                  currency,
+                )}
               </span>
             }
             variant="raised"

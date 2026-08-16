@@ -29,6 +29,24 @@ describe("CustomersPage", () => {
     ).toBeInTheDocument();
   });
 
+  // #330: nova-ai is the one customer in this roster holding events UBB could
+  // not cost, so its COGS is a floor, its margin a ceiling and its margin
+  // percentage the same — while every settled row stays a figure. Asserted as
+  // a contrast rather than as one row: a table that bounded all five, or none,
+  // would pass a single-row test and mislead on the page.
+  it("bounds the COGS and margin of the customer whose costs are incomplete", async () => {
+    renderPage();
+
+    expect(
+      await screen.findByText("at least $88.00", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("at most -$88.00")).toBeInTheDocument();
+    // luna-labs also runs at a loss, and every one of its costs is known.
+    expect(screen.getByText("-$14.70")).toBeInTheDocument();
+    expect(screen.queryByText("at most -$14.70")).not.toBeInTheDocument();
+    expect(screen.getByText("$55.90")).toBeInTheDocument();
+  });
+
   it("shows the filtered empty state when no customer ID matches", async () => {
     renderPage();
     await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 });

@@ -62,13 +62,20 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     margin_percentage: -35.7,
   },
   {
-    // nova-ai — metered-only: real COGS, no recognised revenue.
+    // nova-ai — metered-only: real COGS, no recognised revenue, and THE ONE
+    // CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE (#330). Four of its
+    // events carry a supplier cost UBB never learned, so its provider total is
+    // a floor and its margin a ceiling — and the console has to say so rather
+    // than print both as figures. Kept in sync by hand with the customers
+    // feature's roster (`customers/api/mock-data.ts`), which the comment at the
+    // head of this file already warns about; the count is a fact about the
+    // events behind these figures, so it must not differ between the two.
     customer_id: CUSTOMER_IDS.nova,
     subscription_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: 88_000_000,
-    unresolved_event_count: 0,
+    unresolved_event_count: 4,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
   },
@@ -104,7 +111,10 @@ export function mockMarginSummary(window: Window): MarginSummary {
     usage_billed_micros: 653_900_000,
     usage_revenue_micros: 565_900_000,
     provider_cost_micros: 563_600_000,
-    unresolved_event_count: 0,
+    // The exact sum over MOCK_MARGIN_CUSTOMERS, this figure included: only
+    // nova-ai holds uncosted events, so the window's total is a floor by the
+    // same four.
+    unresolved_event_count: 4,
     total_revenue_micros: 764_900_000,
     gross_margin_micros: 201_300_000,
     margin_percentage: 26.32,
@@ -119,7 +129,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       customer_id: CUSTOMER_IDS.nova,
       external_id: "nova-ai",
       gross_margin_micros: -88_000_000,
-      unresolved_event_count: 0,
+      unresolved_event_count: 4,
       margin_percentage: -100,
     },
     {
@@ -140,7 +150,10 @@ const WINDOW_TOTALS = {
   total_events: 93_558,
   total_billed_cost_micros: 653_900_000,
   total_provider_cost_micros: 563_600_000,
-  unresolved_event_count: 0,
+  // The same four events the margin summary counts — analytics and margin read
+  // the same postings over the same window, so a story where they disagreed
+  // would be a story no server could produce.
+  unresolved_event_count: 4,
   usage_markup_margin_micros: 90_300_000,
 };
 
@@ -231,7 +244,8 @@ export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
   total_events: 812_441,
   total_billed_cost_micros: 7_845_300_000,
   total_provider_cost_micros: 6_690_150_000,
-  unresolved_event_count: 0,
+  // Lifetime spans the window, so it cannot count FEWER than the window does.
+  unresolved_event_count: 4,
   usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],
   by_event_type: [],

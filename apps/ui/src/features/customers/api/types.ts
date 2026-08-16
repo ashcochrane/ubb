@@ -90,6 +90,8 @@ export interface TimeseriesPoint {
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
+  /** This bucket's own uncosted events — the server answers it per bucket. */
+  unresolved_event_count: number;
 }
 
 /** One itemized event inside a past-limit episode. */
@@ -171,6 +173,7 @@ export function narrowTimeseriesPoints(
     billed_cost_micros: num(row.billed_cost_micros),
     markup_micros: num(row.markup_micros),
     event_count: num(row.event_count),
+    unresolved_event_count: num(row.unresolved_event_count),
   }));
 }
 

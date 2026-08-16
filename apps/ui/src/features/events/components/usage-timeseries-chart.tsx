@@ -12,8 +12,89 @@ import {
 } from "recharts";
 
 import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import { partialTotalNote, supplierCostTotal } from "@/lib/supplier-cost";
 
-import type { ChartSeries } from "../lib/timeseries";
+import { UNRESOLVED_COUNT_KEY, type ChartSeries } from "../lib/timeseries";
+
+/** The one series in this chart that plots a SUPPLIER cost (ungrouped mode). */
+const PROVIDER_SERIES_KEY = "provider";
+
+type PivotedRow = Record<string, number | string>;
+
+interface TipEntry {
+  dataKey?: string | number;
+  name?: string | number;
+  value?: number | string;
+  payload?: PivotedRow;
+}
+
+/**
+ * The bucket's own uncosted-event count, or nothing where the pivot carries
+ * none — which is the grouped mode, where no supplier cost is plotted at all.
+ */
+function bucketCompleteness(
+  row: PivotedRow | undefined,
+): { unresolved_event_count: number } | null {
+  const count = row?.[UNRESOLVED_COUNT_KEY];
+  return typeof count === "number" ? { unresolved_event_count: count } : null;
+}
+
+/**
+ * One tooltip row's amount, bounded by that BUCKET'S own completeness.
+ *
+ * A plotted position cannot say "at least", so the tooltip is where the bound
+ * has to appear. Billed cost is NOT NULL at the column and whole by
+ * construction, and so is every grouped series, which sums billed.
+ */
+function seriesAmount(entry: TipEntry, currency: string): string {
+  const micros = typeof entry.value === "number" ? entry.value : 0;
+  const completeness = bucketCompleteness(entry.payload);
+  if (entry.dataKey === PROVIDER_SERIES_KEY && completeness) {
+    return supplierCostTotal(micros, completeness, currency);
+  }
+  return formatMicros(micros, currency);
+}
+
+function SpendTooltip({
+  active,
+  payload,
+  label,
+  currency,
+}: {
+  active?: boolean;
+  payload?: TipEntry[];
+  label?: string | number;
+  currency: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const completeness = bucketCompleteness(payload[0]?.payload);
+  const note = completeness
+    ? partialTotalNote(completeness.unresolved_event_count)
+    : null;
+  return (
+    <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
+      <div className="mb-1 font-medium text-text-primary">
+        {bucketLabel(label)}
+      </div>
+      {payload.map((entry) => (
+        <div
+          key={String(entry.dataKey)}
+          className="flex items-center justify-between gap-4 text-text-secondary"
+        >
+          <span>{entry.name}</span>
+          <span className="font-medium text-text-primary">
+            {seriesAmount(entry, currency)}
+          </span>
+        </div>
+      ))}
+      {note && (
+        <div className="mt-1 border-t border-border pt-1 text-text-muted">
+          {note}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Buckets arrive as day-truncated UTC datetimes ("2026-07-01T00:00:00Z").
@@ -55,19 +136,7 @@ export default function UsageTimeseriesChart({
             axisLine={false}
             width={64}
           />
-          <Tooltip
-            formatter={(value, name) => [
-              formatMicros(typeof value === "number" ? value : 0, currency),
-              typeof name === "string" ? name : "",
-            ]}
-            labelFormatter={bucketLabel}
-            contentStyle={{
-              background: "var(--color-bg-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-          />
+          <Tooltip content={<SpendTooltip currency={currency} />} />
           {series.map((entry) => (
             <Line
               key={entry.key}

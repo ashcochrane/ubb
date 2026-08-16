@@ -46,11 +46,16 @@ export async function getRevenueAnalytics(range: {
     // mock honest about that shape.
     daily: daily.map((row) => ({ ...row })),
     total_provider_cost_micros: totalProvider,
-    // Every supplier cost in this mock is a number somebody wrote down, so
-    // nothing was excluded from that total and it says so (#327). What a
-    // PARTIAL total looks like on screen — "at least £X.XX" — is #330's, and
-    // the mock gains a partial fixture there rather than here.
-    unresolved_event_count: 0,
+    // SUMMED FROM THE ROWS RATHER THAN STATED (#330). The window's count is
+    // the sum of its days' counts on the server too, so a mock that wrote its
+    // own would be a second definition — and would go on saying "nothing was
+    // excluded" whatever the rows said. The fixture puts uncosted events on
+    // today, so every window ending today is partial and the tiles below it
+    // read "at least".
+    unresolved_event_count: daily.reduce(
+      (sum, row) => sum + row.unresolved_event_count,
+      0,
+    ),
     total_billed_cost_micros: totalBilled,
     total_markup_micros: totalBilled - totalProvider,
   };

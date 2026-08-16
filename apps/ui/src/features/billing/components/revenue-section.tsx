@@ -11,6 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { DATE_RANGE_PRESETS, resolveRange, type DateRange } from "@/lib/date-range";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import {
+  marginBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { SectionCard } from "./section-card";
@@ -78,11 +83,22 @@ export function RevenueSection({
                 />
                 <StatCard
                   label="Provider cost"
-                  value={formatMicros(query.data.total_provider_cost_micros, currency)}
+                  value={supplierCostTotal(
+                    query.data.total_provider_cost_micros,
+                    query.data,
+                    currency,
+                  )}
+                  subtitle={
+                    partialTotalNote(query.data.unresolved_event_count) ?? undefined
+                  }
                 />
                 <StatCard
                   label="Markup"
-                  value={formatMicros(query.data.total_markup_micros, currency)}
+                  value={marginBound(
+                    query.data.total_markup_micros,
+                    query.data,
+                    currency,
+                  )}
                   subtitle="Billed minus provider cost"
                 />
               </div>
