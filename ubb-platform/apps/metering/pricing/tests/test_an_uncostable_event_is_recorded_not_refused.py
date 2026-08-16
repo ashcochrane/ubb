@@ -432,6 +432,60 @@ class TestTheRecordingCallStopsRefusing:
         assert result["costing_status"] == COSTING_STATUS_UNRESOLVED
         assert result["provider_cost_micros"] is None
 
+    def test_a_quantity_naming_a_declaration_nobody_made_is_not_fully_costed(self):
+        """#265's second hand-forward, and it is payable rather than buildable.
+
+        The hand-forward asked that an event whose quantity names a declaration
+        nobody made be "marked not fully costed", and could not be paid when it
+        was written because no such mark existed — the costing status is this
+        slice's. It exists now, and the mark it asks for is the one this posting
+        already takes, so what this ticket owes is the assertion rather than a
+        second mechanism.
+
+        WHY THE FIXTURE IS BUILT THIS WAY. The declared quantity is fully rated,
+        so the posting's `unresolved` cannot be read as "the rates are
+        incomplete" — everything the tenant declared has a rate, and the only
+        thing left is a name their declaration does not mention. The neighbours
+        above cover an unrated quantity that IS declared; this covers the other
+        one, and the pair is what makes the status about the name.
+
+        ⚠ THE OTHER SIDE OF THIS FACT IS NOT CROSS-CHECKED, AND #329 CLAIMED IT
+        WAS. Quarantine answers the same question for the period close — which
+        events a month cannot account for — but its own test asserts only its
+        query, creates no posting and never reads a costing status, so a drift
+        here leaves it green. The two definitions cannot be compared until
+        something on the recording path holds a name, and nothing does yet; the
+        quarantine test module records what closes it.
+        """
+        tenant = _tenant()
+        customer = _customer(tenant)
+        _declaration(tenant, quantities=("prompt_tokens",))
+        _cost_rate(tenant, measurement_key="prompt_tokens")
+
+        result = UsageService.record_usage(
+            tenant, customer, "req-5", "idem-5",
+            event_type=EVENT_TYPE_KEY, provider="openai",
+            measurements={"prompt_tokens": 1_000, "reasoning_tokens": 40})
+
+        posting = Posting.objects.get(id=result["event_id"])
+        assert posting.costing_status == COSTING_STATUS_UNRESOLVED
+        assert posting.provider_cost_micros is None
+        assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
+
+        # THE CONTROL, IN THE SAME FIXTURE, and it is what makes the assertion
+        # above evidence rather than a coincidence: the identical event without
+        # the undeclared name resolves. A rate that had silently failed to
+        # resolve would leave the first event unresolved for a reason that has
+        # nothing to do with what this test claims, and this is the assertion
+        # that fails when it does.
+        control = UsageService.record_usage(
+            tenant, customer, "req-6", "idem-6",
+            event_type=EVENT_TYPE_KEY, provider="openai",
+            measurements={"prompt_tokens": 1_000})
+
+        assert control["costing_status"] == COSTING_STATUS_KNOWN
+        assert control["provider_cost_micros"] == 5_000
+
     def test_a_replay_answers_what_the_original_recording_concluded(self):
         tenant = _tenant()
         customer = _customer(tenant)

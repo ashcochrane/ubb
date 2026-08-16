@@ -8,6 +8,12 @@ from apps.metering.queries import (
     get_period_totals, get_customer_usage_for_period,
     get_usage_event_cost, get_revenue_analytics,
 )
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.vocabulary import (
+    COSTING_STATUS_NOT_APPLICABLE,
+    COSTING_STATUS_UNRESOLVED,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
+)
 
 
 class GetPeriodTotalsTest(TestCase):
@@ -80,6 +86,56 @@ class GetPeriodTotalsTest(TestCase):
     def test_invalid_basis_raises(self):
         with self.assertRaises(ValueError):
             get_period_totals(self.tenant.id, self.start, self.end, basis="bogus")
+
+    def test_the_supplier_total_says_how_many_costs_it_excluded(self):
+        """The pair, on the read contract itself (#329).
+
+        Asserted here rather than only through billing's close, because this is
+        the surface another product reads: a key that reaches the close by
+        accident and falls off the contract is exactly the failure #327 found
+        one layer over, where the one declared row silently dropped what two
+        undeclared ones carried.
+        """
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            billed_cost_micros=1_000_000, provider_cost_micros=400_000,
+        )
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r2", idempotency_key="i2",
+            billed_cost_micros=2_000_000, provider_cost_micros=None,
+            costing_status=COSTING_STATUS_UNRESOLVED,
+            unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING,
+        )
+
+        totals = get_period_totals(self.tenant.id, self.start, self.end)
+
+        assert totals["total_provider_cost_micros"] == 400_000
+        assert totals[UNRESOLVED_EVENT_COUNT_KEY] == 1
+        # THE BILLED TOTAL IS NOT WHAT THE COUNT IS ABOUT. Its column is NOT
+        # NULL, so it passed over nothing and includes the very posting the
+        # count excludes — a reader taking the count as a caveat on this figure
+        # would report a period partial in the one number that never is.
+        assert totals["total_cost_micros"] == 3_000_000
+        assert totals["event_count"] == 2
+
+    def test_a_cost_that_does_not_exist_is_not_a_cost_that_is_missing(self):
+        """`not_applicable` carries a NULL amount and SQL skips it identically,
+        and it must still not be counted (#327): the Event Type declares no
+        supplier cost, so the total is complete. Counting it would mark every
+        metering-only tenant's every period partial forever."""
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r1", idempotency_key="i1",
+            billed_cost_micros=1_000_000, provider_cost_micros=None,
+            costing_status=COSTING_STATUS_NOT_APPLICABLE,
+        )
+
+        totals = get_period_totals(self.tenant.id, self.start, self.end)
+
+        assert totals[UNRESOLVED_EVENT_COUNT_KEY] == 0
+        assert totals["total_provider_cost_micros"] == 0
 
 
 class GetCustomerUsageForPeriodTest(TestCase):

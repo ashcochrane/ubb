@@ -18,16 +18,33 @@ vocabulary. Everything below is one of those two failures, held open.
   "The month is closed" must never mean "closed except for the parts nobody
   looked at."
 
-**What is deliberately not here, and one AC that cannot be paid in full.**
-Nothing in slice 2 is wired: no recording path calls any of this, no costing
-status is written and the coverage refusal is untouched — those are slice 3's,
-along with the flag and its raise sites (#193 §L). So the ticket's "its event
-is marked not fully costed" has **no mark to make**: there is no posting here
-to carry one. What is paid instead is the read that mark will be computed from
-— see
+**What is deliberately not here, and the AC slice 2 could not pay in full.**
+Slice 2 wired none of this: no recording path called any of it and no costing
+status existed, so the ticket's *"its event is marked not fully costed"* had
+**no mark to make** — there was no posting here to carry one. What was paid
+instead is the read that mark is computed from — see
 ``test_a_held_quantity_is_reported_as_unaccounted_for_until_resolved``, which
 is deliberately asserted through the query rather than through the row's own
 field, because the second would pass however badly the query behaved.
+
+**Both halves are now paid, in two different places** — the mark exists (#320)
+and is asserted on the posting by metering's own uncostable-event module, and
+the period close consults the query below (#329).
+
+⚠ **What is NOT paid is an agreement between them, and #329's ticket says
+otherwise.** It calls the test below *"the existing test that goes red the day
+the two definitions disagree"*. It cannot: it creates no posting, reads no
+costing status and imports nothing from pricing, so a drift on the pricing side
+leaves it green. It is a one-sided test and always was — deliberately, because
+when it was written the other side did not exist.
+
+**The agreement is unbuildable until the accept half is wired, which is why
+this is recorded rather than papered over.** Nothing on the recording path calls
+:func:`hold_an_unrecognised_quantity`, so no posting and no held row are ever
+produced by the same event; there is no case in which the two definitions can be
+compared. The commit that gives the recording path a caller is the one that can
+assert an event marked `unresolved` is also the event the close refuses over,
+and it is the commit that should.
 
 The structural half — that a held name can never become a declaration, by
 relation or by identity — is a property of the model registry and of this
