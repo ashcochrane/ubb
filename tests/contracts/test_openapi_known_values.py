@@ -696,7 +696,17 @@ CONCEPTS_IN_THE_CONTRACT = {
     # `test_every_advertised_concept_reaches_the_contract` refuses. Three
     # nodes: every response that publishes a supplier cost says whether that
     # cost is settled, so nobody reads a zero UBB has not learned yet as money.
-    "costing_status": Published(3, ENUM),  # record + list row + detail
+    #
+    # #328 (slice 3) — A FOURTH NODE, AND THE FIRST MARKER OUTSIDE A RESPONSE.
+    # `usage.recorded` carries the amount too, and until this commit it carried
+    # it with no status: a subscriber read the same null for "no supplier cost"
+    # and "one UBB has not learned", which is the ambiguity the other three
+    # nodes exist to remove. Two products now count exclusions off this payload,
+    # so the field is not decoration. It is marked rather than left a bare
+    # `type: string` because the applier walks the `webhooks` section like any
+    # other, and an unmarked node would have published a closed concept as an
+    # open one — the shape this map exists to make countable.
+    "costing_status": Published(4, ENUM),  # record + list row + detail + payload
     # #323 (slice 3) — the other half of the sentence above, and the first
     # nullable marker on a RESPONSE. Nullable markers are not new:
     # `EventTypeUpdateIn` has carried two since #262, and they are the
@@ -810,7 +820,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     """
     where = {}
     for pointer, node in marked_nodes(spec):
-        where.setdefault(node[MARKER], set()).add(pointer.split("/")[3])
+        parts = pointer.split("/")
+        # A marker sits on a component schema (`/components/schemas/<Name>/…`)
+        # or, since #328, inside the `webhooks` section
+        # (`/webhooks/<event type>/post/…`) — the applier walks the whole
+        # document and does not care which. Each is named the way a reader of
+        # the contract would name it, so the assertions below stay readable
+        # rather than carrying a pointer fragment.
+        where.setdefault(node[MARKER], set()).add(
+            parts[2] if parts[1] == "webhooks" else parts[3])
 
     assert where["costing_method"] == {"EventTypeIn", "EventTypeOut",
                                        "EventTypeUpdateIn"}
@@ -841,23 +859,35 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # would invite the guess that `claimed_provider_cost_micros` exists to keep
     # out of COGS.
     #
-    # THREE SCHEMAS BECAUSE THREE RESPONSES PUBLISH THE AMOUNT IT QUALIFIES,
+    # FOUR CARRIERS BECAUSE FOUR SURFACES PUBLISH THE AMOUNT IT QUALIFIES,
     # which is the whole rule for where this marker belongs: the ack, the list
-    # row and the detail receipt each return a supplier cost, and a cost
-    # published without its status hands a client back the ambiguity the column
-    # stopped having. A fourth schema carrying the amount and not this would be
-    # the finding, and that is what makes this line worth more than the count
-    # in `CONCEPTS_IN_THE_CONTRACT` — a count is satisfied by three markers
-    # anywhere at all.
+    # row, the detail receipt and — since #328 — the `usage.recorded` payload
+    # each carry a supplier cost, and a cost published without its status hands
+    # a reader back the ambiguity the column stopped having. A fifth surface
+    # carrying the amount and not this would be the finding, and that is what
+    # makes this line worth more than the count in `CONCEPTS_IN_THE_CONTRACT` —
+    # a count is satisfied by four markers anywhere at all.
+    #
+    # The payload is the first marker outside a response, and it earns the
+    # marker on exactly the stated rule rather than by extension: two products
+    # count their exclusions off that field, so a subscriber switching on it
+    # needs the set the document now states.
     assert where["costing_status"] == {"RecordUsageResponse", "UsageEventOut",
-                                       "UsageEventDetailOut"}
-    # THE SAME THREE, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE. The
-    # cause is unreadable without the status and the status is unactionable
-    # without the cause, so the two sets are equal by design — a response
-    # carrying one and not the other is the finding, in either direction.
-    # Written out rather than compared to the line above, because asserting
-    # `where["unresolved_reason"] == where["costing_status"]` would go on
-    # passing if both concepts vanished from the contract together.
+                                       "UsageEventDetailOut", "usage.recorded"}
+    # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
+    # The cause is unreadable without the status and the status is unactionable
+    # without the cause, so over RESPONSES the two sets are equal by design — a
+    # response carrying one and not the other is the finding, in either
+    # direction. Written out rather than compared to the line above, because
+    # asserting `where["unresolved_reason"] == where["costing_status"]` would go
+    # on passing if both concepts vanished from the contract together.
+    #
+    # ⚠ THE PAYLOAD IS DELIBERATELY OUTSIDE THAT EQUALITY (#328), which is why
+    # the two lines are no longer the same set. A response is read by a tenant
+    # looking at ONE event, who needs to know which input would settle it; the
+    # payload's readers are accumulators counting HOW MANY costs they could not
+    # include, and not one of them asks why. A cause carried there would be a
+    # field nothing reads, which is how a field goes stale and starts lying.
     assert where["unresolved_reason"] == {"RecordUsageResponse",
                                           "UsageEventOut",
                                           "UsageEventDetailOut"}

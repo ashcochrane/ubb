@@ -24,10 +24,16 @@ happened rather than against a permitted site existing.
 
 **The one exemption is DERIVED, not asserted.** `CustomerEconomics` — the
 monthly margin snapshot — has a column of the same name that is `NOT NULL`, so
-SQL's null-skipping cannot reach it and there is nothing for a count to report.
+SQL's null-skipping cannot reach it and this rule has nothing to say about it.
 That is a claim about a model, so the exemption is granted by re-checking the
 claim rather than by naming the file and hoping: the day that column becomes
 nullable, the exemption goes red rather than silently covering a real defect.
+
+⚠ The exempt total is **still a pair** (#328) — it publishes a count, summed
+from a column each snapshot filled in from the accumulator it froze. That is a
+fact inherited from upstream rather than one this aggregate could measure, which
+is why the exemption is about null-skipping and not about completeness. The pair
+itself is asserted in `apps/subscriptions/tests/test_queries.py`.
 
 ⚠ **What this does NOT cover.** It reads the FIRST argument of a `Sum` call and
 only when that argument is a literal string, so `Sum(F("provider_cost_micros"))`

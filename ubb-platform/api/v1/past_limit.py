@@ -34,6 +34,8 @@ from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
+from core.cost_totals import (
+    UNRESOLVED_EVENT_COUNT_KEY, cost_total, counts_as_unresolved)
 
 _UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 
@@ -78,6 +80,12 @@ def _bucket_events(customer, since, until):
                 "effective_at": e.effective_at.isoformat(),
                 "billed_cost_micros": e.billed_cost_micros,
                 "provider_cost_micros": e.provider_cost_micros,
+                # The amount above is `None` both where UBB has not resolved
+                # this cost and where the Event Type declares none, and the two
+                # are read differently by every total built on them (#328). The
+                # itemized row carries the status so a reader of the row — and
+                # the sums below — can tell which.
+                "costing_status": e.costing_status,
                 "arrived_after": ctx.get("arrived_after", True),
             })
             if b["ctx_tripped_at"] is None and ctx.get("tripped_at"):
@@ -116,10 +124,35 @@ def _signal_episodes(tenant, owner, opened_type, closed_type, family):
     return eps
 
 
+def _supplier_cost_of(events):
+    """The pair, over itemized rows: what can be added up, and what cannot.
+
+    ⚠ THIS SUM USED TO RAISE (#328). ``sum(e["provider_cost_micros"] …)`` over a
+    posting whose supplier cost UBB has not resolved is ``int + None`` — a 500
+    on a report about money already spent, reachable the moment a tenant's cost
+    rates fall behind their traffic. The failure was inherited from #317 making
+    the column nullable; it was a `TypeError` rather than a wrong number, which
+    is the one thing to be grateful for.
+
+    An unresolved cost is skipped and COUNTED, so the total is a floor that says
+    how far it falls short. A cost the Event Type declares does not exist is
+    skipped and not counted: it contributes a genuine zero, and there is nothing
+    about it to report (#327). The two look identical on the row — both carry
+    `None` — so the status is what tells them apart.
+    """
+    resolved = sum(e["provider_cost_micros"] for e in events
+                   if e["provider_cost_micros"] is not None)
+    unresolved = sum(1 for e in events
+                     if counts_as_unresolved(e["costing_status"]))
+    return cost_total(key="provider_cost_micros", resolved_micros=resolved,
+                      unresolved_events=unresolved)
+
+
 def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
                  subtask_id, provider_cost_limit_micros, tripped_at,
                  resumed_at, bucket):
     events = bucket["events"] if bucket else []
+    supplier = _supplier_cost_of(events)
     return {
         "family": family, "limit": limit, "stop_scope": stop_scope,
         "episode_seq": episode_seq,
@@ -130,8 +163,8 @@ def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
         "event_count": len(events),
         "total_billed_cost_micros": sum(
             e["billed_cost_micros"] for e in events),
-        "total_provider_cost_micros": sum(
-            e["provider_cost_micros"] for e in events),
+        "total_provider_cost_micros": supplier["provider_cost_micros"],
+        UNRESOLVED_EVENT_COUNT_KEY: supplier[UNRESOLVED_EVENT_COUNT_KEY],
     }
 
 
@@ -151,9 +184,16 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             counted.add((limit, ev["event_id"]))
             t = totals.setdefault(limit, {
                 "billed_cost_micros": 0, "provider_cost_micros": 0,
-                "event_count": 0})
+                UNRESOLVED_EVENT_COUNT_KEY: 0, "event_count": 0})
             t["billed_cost_micros"] += ev["billed_cost_micros"]
-            t["provider_cost_micros"] += ev["provider_cost_micros"]
+            # The same pair as the episode rows, on the same terms: add what is
+            # resolved, count what is not (#328). A per-limit total that read
+            # complete while its own episodes read partial would be two answers
+            # about one set of events.
+            if ev["provider_cost_micros"] is not None:
+                t["provider_cost_micros"] += ev["provider_cost_micros"]
+            elif counts_as_unresolved(ev["costing_status"]):
+                t[UNRESOLVED_EVENT_COUNT_KEY] += 1
             t["event_count"] += 1
 
     # Customer-wide floor episodes: signal history ∪ tagged-event episodes.

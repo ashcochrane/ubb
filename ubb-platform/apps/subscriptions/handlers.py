@@ -4,6 +4,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.platform.events.schemas import UsageRecorded
+from core.cost_totals import counts_as_unresolved
 
 logger = logging.getLogger("ubb.events")
 
@@ -24,7 +25,8 @@ def _current_period_bounds():
 
 
 def handle_usage_recorded_subscriptions(event_id, payload):
-    """Accumulate provider + billed usage cost for margin. Atomic F() increment.
+    """Accumulate provider + billed usage cost for margin, and the count of the
+    supplier costs the provider total could not include. Atomic F() increment.
 
     Buckets by the Posting's effective_at so backdated / late-retry events
     land in the correct month. Fast path: the payload carries effective_at
@@ -33,12 +35,30 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     (keeps legacy test fixtures with "evt-1" style ids green).
     """
     evt = UsageRecorded.from_payload(payload)
-    provider = evt.provider_cost_micros or 0
+    # THE COUNTER IS THE FIX; THE LINE BELOW IT IS ONLY A SPELLING (#328).
+    # Worth saying plainly, because `provider = … if … is not None else 0` does
+    # exactly what the `or 0` it replaces did — a null still contributes
+    # nothing, and it must, since there is no amount to add. What stops that
+    # zero from producing a monthly total indistinguishable from a complete one
+    # is `unresolved`, recorded beside it. The explicit form stays because it
+    # says the null is expected rather than shrugged at, and because the AC
+    # asks for the coalesce to be gone rather than moved.
+    #
+    # The status decides, never the amount: `not_applicable` is null too, and
+    # counting it would mark every metering-only tenant's every period partial
+    # forever (#327's ruling, inherited).
+    unresolved = 1 if counts_as_unresolved(evt.costing_status) else 0
+    provider = evt.provider_cost_micros if evt.provider_cost_micros is not None else 0
     # billed_cost_micros is None on a legacy payload predating the split —
     # the billed total then IS cost_micros.
     billed = (evt.billed_cost_micros
               if evt.billed_cost_micros is not None else evt.cost_micros) or 0
-    if billed <= 0 and provider <= 0:
+    # AN EVENT THAT COSTS NOTHING AND BILLS NOTHING IS STILL WORTH RECORDING
+    # WHEN ITS COST IS UNKNOWN. The early return is right for an event that
+    # moved no money; a cost UBB has not learned has not been shown to be zero,
+    # and dropping it here is how a period comes to read complete because the
+    # only thing missing from it was never counted.
+    if billed <= 0 and provider <= 0 and not unresolved:
         return
 
     # Fast path: parse the payload's effective_at (present on all F4.2+
@@ -70,6 +90,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         period_start=period_start,
     ).update(
         total_provider_cost_micros=F("total_provider_cost_micros") + provider,
+        unresolved_event_count=F("unresolved_event_count") + unresolved,
         total_billed_cost_micros=F("total_billed_cost_micros") + billed,
         event_count=F("event_count") + 1,
     )
@@ -83,6 +104,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 period_start=period_start,
                 period_end=period_end,
                 total_provider_cost_micros=provider,
+                unresolved_event_count=unresolved,
                 total_billed_cost_micros=billed,
                 event_count=1,
             )
@@ -93,6 +115,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 period_start=period_start,
             ).update(
                 total_provider_cost_micros=F("total_provider_cost_micros") + provider,
+                unresolved_event_count=F("unresolved_event_count") + unresolved,
                 total_billed_cost_micros=F("total_billed_cost_micros") + billed,
                 event_count=F("event_count") + 1,
             )

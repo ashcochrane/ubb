@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.referrals.models import Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
+from core.cost_totals import counts_as_unresolved
 from apps.referrals.rewards.services import RewardService
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,18 @@ def reconcile_referral(referral, period_start, period_end):
     total_raw_cost = 0
     total_reward = 0
     has_actual_cost = False
+    # WHAT THE COST TOTAL BELOW LEAVES OUT, COUNTED AS IT GOES (#328).
+    #
+    # Skipping a null was already deliberate here — a profit share over a cost
+    # UBB has not learned falls back to the tenant's estimate, which is a
+    # defensible answer and the only one available. What the ledger could not
+    # say was how much of the period was answered that way. Counting is what
+    # turns a silent fallback into a stated one.
+    #
+    # Only `unresolved` counts. A cost the Event Type declares does not exist is
+    # also null and is also skipped, and it is not missing (#327) — the row's
+    # status is the only thing that separates them.
+    unresolved_events = 0
 
     for event in events:
         cost = event.get("billed_cost_micros") or 0
@@ -39,6 +52,8 @@ def reconcile_referral(referral, period_start, period_end):
         if raw_cost is not None:
             total_raw_cost += raw_cost
             has_actual_cost = True
+        elif counts_as_unresolved(event.get("costing_status")):
+            unresolved_events += 1
 
         reward = RewardService.calculate_reward(
             referral, cost, raw_cost_micros=raw_cost
@@ -74,6 +89,7 @@ def reconcile_referral(referral, period_start, period_end):
             "period_end": period_end,
             "referred_spend_micros": total_spend,
             "raw_cost_micros": total_raw_cost,
+            "unresolved_event_count": unresolved_events,
             "reward_micros": total_reward,
             "calculation_method": calc_method,
         },

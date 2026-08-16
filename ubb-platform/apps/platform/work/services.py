@@ -2,6 +2,8 @@ import logging
 
 from django.utils import timezone
 
+from core.cost_totals import counts_as_unresolved
+from core.vocabulary import COSTING_STATUS_KNOWN
 from apps.platform.work.models import Task
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,7 @@ class TaskService:
 
     @staticmethod
     def accumulate_cost(task_id, *, billed_cost_micros, provider_cost_micros,
+                        costing_status=COSTING_STATUS_KNOWN,
                         tenant_id=None, customer_id=None):
         """The ONE accumulate primitive — always records, never raises on
         limits (one-rule: every event that reaches UBB is priced, recorded,
@@ -65,6 +68,13 @@ class TaskService:
         heartbeat in the same transaction (containment: the parent sees
         everything underneath it, #38). Rollup happens unconditionally: late
         events on a killed subtask keep counting into the parent.
+
+        ``costing_status`` is the compute spine's own answer about the supplier
+        cost (#328). Where it says the cost is unresolved, the provider total
+        takes nothing and ``unresolved_event_count`` takes one instead, so the
+        total this unit publishes is a floor that says how much it left out.
+        The rollup carries the count upward like the money: a parent whose
+        child excluded a cost has excluded it too.
 
         Returns ``(task, verdicts)`` where ``task`` is the named unit and
         ``verdicts`` is a dict of crossing verdicts for the caller to turn
@@ -93,6 +103,22 @@ class TaskService:
         cascade can never deadlock. Must be called inside
         @transaction.atomic; uses select_for_update.
         """
+        # A COST THAT IS ABSENT AND `known` IS A CONTRADICTION, AND THE DEFAULT
+        # ABOVE IS WHY IT IS REFUSED HERE (#328). `costing_status` defaults to
+        # `known` so the ~25 callers that pass a real amount need not restate
+        # the obvious — but that same default would let a caller hand this seam
+        # `None` with nothing said and have the exclusion silently vanish, which
+        # is the "replaced by another default" this ticket exists to delete.
+        # It is the posting table's own rule (`known` implies the amount is NOT
+        # NULL), enforced where the accumulator can see it, because the total
+        # this builds is written rather than re-read: an exclusion missed here
+        # cannot be recovered later.
+        if provider_cost_micros is None and costing_status == COSTING_STATUS_KNOWN:
+            raise ValueError(
+                "provider_cost_micros is None but costing_status says 'known': "
+                "pass the spine's own status so the unit can count what it "
+                "could not add")
+
         def _locked(unit_id):
             qs = Task.objects.select_for_update()
             if tenant_id is not None:
@@ -113,23 +139,30 @@ class TaskService:
 
         def _add(unit):
             unit.total_billed_cost_micros += int(billed_cost_micros)
-            # AN UNRESOLVED SUPPLIER COST ADDS NOTHING, AND THE TOTAL IS A FLOOR
-            # (#320). Before the compute spine could say "UBB does not know what
-            # this cost", `provider_cost_micros` was always a number and this
-            # line always ran; now the recording path hands `None` for a posting
-            # whose cost is unresolved, and adding a zero for it would be the
-            # silent-zero this slice exists to delete — the unit total would read
-            # complete while excluding a charge that really happened.
+            # AN UNRESOLVED SUPPLIER COST ADDS NOTHING AND IS COUNTED, WHICH IS
+            # WHAT MAKES THE TOTAL A FLOOR THAT SAYS SO (#320, #328). Before the
+            # compute spine could say "UBB does not know what this cost",
+            # `provider_cost_micros` was always a number and this line always
+            # ran; now the recording path hands `None` for a posting whose cost
+            # is unresolved, and adding a zero for it would be the silent-zero
+            # this slice exists to delete — the unit total would read complete
+            # while excluding a charge that really happened.
             #
-            # NOT FIXED HERE, AND DELIBERATELY: the unit does not yet COUNT what
-            # it excluded, so a reader still cannot tell a complete total from a
-            # floor. #328 owns the unresolved counter and the pair that carries
-            # it out to every reader; this is the smallest change that keeps the
-            # recording path from failing loudly on a `None` it now produces.
-            # The COGS limit below races the same floor, which is the direction
-            # that under-fires rather than over-fires.
+            # THE STATUS DECIDES, NOT THE AMOUNT. A `None` arrives for an
+            # unresolved cost and for one that does not exist, and only the
+            # first is missing information: counting the second would mark every
+            # metering-only tenant's every unit partial forever (#327). The
+            # caller passes the spine's own answer rather than this seam
+            # re-deriving one, because a second definition of "unresolved" is
+            # how two of them come to disagree.
+            #
+            # The COGS limit below races the floor, which is the direction that
+            # under-fires rather than over-fires: a unit is never killed for
+            # spend UBB cannot demonstrate.
             if provider_cost_micros is not None:
                 unit.total_provider_cost_micros += int(provider_cost_micros)
+            elif counts_as_unresolved(costing_status):
+                unit.unresolved_event_count += 1
             unit.event_count += 1
             # Tier-2 (D10): stamp the heartbeat in the SAME write so the
             # stale-task reaper can tell a live task from a crashed one. A
@@ -138,6 +171,7 @@ class TaskService:
             unit.last_event_at = now
             unit.save(update_fields=["total_billed_cost_micros",
                                      "total_provider_cost_micros",
+                                     "unresolved_event_count",
                                      "event_count", "last_event_at",
                                      "updated_at"])
 
@@ -256,6 +290,10 @@ class TaskService:
                         reason=reason,
                         total_billed_cost_micros=killed.total_billed_cost_micros,
                         total_provider_cost_micros=killed.total_provider_cost_micros,
+                        # The total that crossed the limit is a floor when this
+                        # is non-zero (#328) — the unit really spent at least
+                        # that much, so the crossing is sound and understated.
+                        unresolved_event_count=killed.unresolved_event_count,
                         provider_cost_limit_micros=killed.provider_cost_limit_micros or 0)
                     if killed.parent_id is not None:
                         outbox = write_event(SubtaskLimitExceeded(

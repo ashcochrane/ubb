@@ -22,11 +22,18 @@ class MarginClientTest(unittest.TestCase):
             "subscription_revenue_micros": 500_000_000,
             "usage_billed_micros": 1_300_000, "usage_revenue_micros": 1_300_000,
             "provider_cost_micros": 1_000_000, "total_revenue_micros": 501_300_000,
+            # One event's supplier cost is unresolved, so this margin is a
+            # CEILING (#328) — a fixture of the kind that needs the field rather
+            # than one that merely carries it, on the ROWS precedent below.
+            "unresolved_event_count": 1,
             "gross_margin_micros": 500_300_000, "margin_percentage": 99.8,
             "event_count": 2, "period": {"start": "2026-06-01", "end": "2026-06-09"}})
         m = self.client.get_customer_margin("c1")
         self.assertIsInstance(m, CustomerMarginOut)
         self.assertEqual(m.gross_margin_micros, 500_300_000)
+        # Read off the TYPED attribute, not the untyped bag: the point of the
+        # field being required is that the generated model carries it.
+        self.assertEqual(m.unresolved_event_count, 1)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
 
     # `unresolved_event_count` is required on the row (#327): the supplier cost
@@ -115,10 +122,14 @@ class MarginClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "customer_id": "c1", "points": [
                 {"period_start": "2026-05-01", "provider_cost_micros": 100,
+                 # Per point (#328): a month whose cost total excluded an event
+                 # is a floor for that month alone.
+                 "unresolved_event_count": 1,
                  "usage_billed_micros": 200, "subscription_revenue_micros": 0,
                  "gross_margin_micros": 100, "margin_percentage": 50.0}]})
         pts = self.client.get_margin_trend("c1", periods=3)
         self.assertIsInstance(pts[0], MarginTrendPointOut)
+        self.assertEqual(pts[0].unresolved_event_count, 1)
         self.assertEqual(mock_get.call_args.kwargs["params"]["periods"], 3)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1/trend")
 

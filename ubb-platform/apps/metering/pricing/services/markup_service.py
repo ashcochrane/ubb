@@ -13,6 +13,34 @@ from dataclasses import dataclass
 from apps.metering.pricing.models import TenantMarkup
 
 
+def refuse_an_unresolved_basis(provider_cost_micros):
+    """A cost UBB has not resolved has no markup, and no substitute for one.
+
+    ⚠ EVERY OTHER READER IN THIS SWEEP ANSWERS A FLOOR AND SAYS HOW FAR SHORT
+    IT FALLS; A MARKUP CANNOT (#328). A total can be partial and say so, but a
+    single price is one number: there is no "at least" to state about it, so
+    the honest answers are a real basis or a refusal. Marking up zero would put
+    a price nobody stated on an invoice.
+
+    The compute spine reaches its own decision before calling either applier —
+    it marks up zero deliberately and records the posting `unresolved`, which
+    is that decision made in the one place holding the receipt — so a `None`
+    arriving here is a caller that skipped the spine. Refusing by name beats
+    the `TypeError` the arithmetic would raise two lines later about a
+    `NoneType`.
+
+    Shared by ``MarkupService.apply`` and ``MarkupCache.apply`` rather than
+    copied into both: the cache's whole contract is that it answers what the
+    service answers, and two copies of a refusal is how the two come to differ
+    exactly where it matters.
+    """
+    if provider_cost_micros is None:
+        raise ValueError(
+            "provider_cost_micros is unresolved: a supplier cost UBB has not "
+            "resolved cannot be marked up, and a markup of zero would be a "
+            "price nobody stated")
+
+
 @dataclass(frozen=True)
 class ResolvedMarkup:
     """The markup that applies to one (tenant, customer), and where it came from.
@@ -65,7 +93,19 @@ class MarkupService:
 
     @staticmethod
     def apply(provider_cost_micros, tenant, customer):
-        """billed = provider + markup(provider); nothing configured -> billed == provider."""
+        """billed = provider + markup(provider); nothing configured -> billed == provider.
+
+        ⚠ A COST UBB HAS NOT RESOLVED HAS NO MARKUP, AND THIS REFUSES RATHER
+        THAN INVENTS ONE (#328). Every other reader in this sweep answers a
+        floor and says how far short it falls; a markup cannot, because it is
+        not a total — there is no "at least" to state about a single price. The
+        spine reaches its own decision before calling here (it marks up zero and
+        records the posting `unresolved`, which is that decision made in the one
+        place that holds the receipt), so a `None` arriving here is a caller
+        that skipped it. Refusing by name beats the `TypeError` the arithmetic
+        below would raise two lines later about a `NoneType`.
+        """
+        refuse_an_unresolved_basis(provider_cost_micros)
         markup = MarkupService.resolve(tenant, customer)
         if markup is None:
             return provider_cost_micros

@@ -42,6 +42,19 @@ class ReferralRewardLedger(BaseModel):
     period_end = models.DateField()
     referred_spend_micros = models.BigIntegerField()
     raw_cost_micros = models.BigIntegerField(default=0)
+    # HOW MANY OF THE PERIOD'S EVENTS THAT COST TOTAL COULD NOT INCLUDE (#328).
+    #
+    # The reconciler skips a supplier cost UBB has not resolved (#317) and
+    # rewards that event off the tenant's estimate instead — a deliberate
+    # fallback, and the right one. What was missing was any record of how often
+    # it happened: `calculation_method` names ONE method for the whole period,
+    # so a period reconciled entirely from estimates was written down exactly
+    # like one reconciled from figures.
+    #
+    # Non-zero makes `raw_cost_micros` a floor and `reward_micros` a figure that
+    # would move if those costs arrived. An event whose Event Type declares no
+    # supplier cost is not counted (#327).
+    unresolved_event_count = models.IntegerField(default=0)
     reward_micros = models.BigIntegerField()
     calculation_method = models.CharField(
         max_length=20, choices=CALCULATION_METHOD_CHOICES

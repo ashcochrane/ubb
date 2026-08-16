@@ -213,7 +213,7 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
                 for rule in plan.exclusions}
     assert declared == {
         "frozen-dated-documents": ("permanent", 133, 6),
-        "historical-migrations": (UNTIL_SLICE_8, 211, 19),
+        "historical-migrations": (UNTIL_SLICE_8, 214, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

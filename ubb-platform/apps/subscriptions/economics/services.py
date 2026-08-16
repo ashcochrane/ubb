@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics
 from apps.subscriptions.economics.revenue import RevenueService
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 
 
 def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
@@ -16,7 +17,14 @@ def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
 class MarginService:
     @staticmethod
     def compute_live(tenant_id, customer_id, start_date, end_date) -> dict:
-        """Live margin for any window from Posting + revenue. No persistence."""
+        """Live margin for any window from Posting + revenue. No persistence.
+
+        The margin CARRIES the cost total's completeness rather than growing one
+        of its own (#328): subtracting a floor from a revenue figure produces a
+        ceiling on the margin, and there is one fact underneath both — which
+        postings the cost excluded. A derived figure that minted a second
+        counter would be counting the same events twice.
+        """
         from apps.metering.queries import get_customer_cost_totals
         from apps.platform.tenants.models import Tenant
         from apps.platform.customers.models import Customer
@@ -35,6 +43,7 @@ class MarginService:
             "usage_billed_micros": costs["billed_cost_micros"],
             "usage_revenue_micros": usage_revenue,
             "provider_cost_micros": costs["provider_cost_micros"],
+            UNRESOLVED_EVENT_COUNT_KEY: costs[UNRESOLVED_EVENT_COUNT_KEY],
             "total_revenue_micros": total_revenue,
             "gross_margin_micros": margin,
             "margin_percentage": float(pct),
@@ -45,7 +54,11 @@ class MarginService:
     def compute_business(tenant_id, business, start_date, end_date) -> dict:
         seats = list(business.seats.all())
         per_seat = [MarginService.compute_live(tenant_id, s.id, start_date, end_date) for s in seats]
+        # The rollup's completeness is its seats' completeness added up (#328):
+        # a business total that excluded one seat's cost has excluded it, and
+        # summing the counts is the same arithmetic as summing the costs.
         keys = ["subscription_revenue_micros", "usage_revenue_micros", "provider_cost_micros",
+                UNRESOLVED_EVENT_COUNT_KEY,
                 "total_revenue_micros", "gross_margin_micros", "event_count"]
         totals = {k: 0 for k in keys}
         for d in per_seat:
@@ -67,6 +80,11 @@ class MarginService:
         acc = CustomerCostAccumulator.objects.filter(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start).first()
         provider_cost = acc.total_provider_cost_micros if acc else 0
+        # The snapshot freezes what the accumulator excluded ALONGSIDE what it
+        # totalled (#328). Both come from the same row or neither does: a
+        # customer with no accumulator has no cost and nothing left out, which
+        # is a complete answer rather than an unknown one.
+        unresolved = acc.unresolved_event_count if acc else 0
         usage_billed = acc.total_billed_cost_micros if acc else 0
         tenant = Tenant.objects.get(id=tenant_id)
         customer = Customer.objects.get(id=customer_id)
@@ -82,6 +100,7 @@ class MarginService:
                 "subscription_revenue_micros": subscription_revenue,
                 "usage_billed_micros": usage_billed,
                 "provider_cost_micros": provider_cost,
+                UNRESOLVED_EVENT_COUNT_KEY: unresolved,
                 "total_revenue_micros": total_revenue,
                 "revenue_mode": mode,
                 "gross_margin_micros": margin,
@@ -148,7 +167,23 @@ class MarginService:
         prev = (CustomerEconomics.objects.filter(
             tenant_id=econ.tenant_id, customer_id=econ.customer_id,
             period_start__lt=econ.period_start).order_by("-period_start").first())
-        if prev and prev.provider_cost_micros > 0:
+        # AN UNRESOLVED PREVIOUS COST IS NOT A SPIKE OF ANY SIZE (#328).
+        #
+        # The comparison is a RATIO and the previous period is its denominator.
+        # A previous total that excluded costs is too small, so every rise
+        # computed against it is too big — and the failure direction is a false
+        # alarm about somebody's money, which is worse than silence. There is no
+        # substitute figure to divide by either: the true previous cost is
+        # unknown, not zero, and answering "no spike" is the only claim the data
+        # supports. The window still says it is incomplete — the count is on the
+        # snapshot both readings come from, so nothing is hidden by declining to
+        # compare.
+        #
+        # The CURRENT period being partial is the opposite case and still fires:
+        # a floor understates the rise, so a threshold crossed on one has really
+        # been crossed. What the consumer gets told is that the number under the
+        # alarm is a lower bound — see the count on the payload below.
+        if prev and prev.provider_cost_micros > 0 and not prev.unresolved_event_count:
             rise = (Decimal(econ.provider_cost_micros - prev.provider_cost_micros)
                     / Decimal(prev.provider_cost_micros) * 100)
             if rise >= spike_pct:
@@ -163,5 +198,6 @@ class MarginService:
                             period_start=econ.period_start.isoformat(),
                             prev_provider_cost_micros=prev.provider_cost_micros,
                             current_provider_cost_micros=econ.provider_cost_micros,
+                            unresolved_event_count=econ.unresolved_event_count,
                             prev_margin_pct=float(prev.margin_percentage),
                             current_margin_pct=float(econ.margin_percentage)))

@@ -50,6 +50,25 @@ class PeriodWindow(Schema):
     end: str
 
 
+# WHAT `unresolved_event_count` MEANS EVERYWHERE BELOW, SAID ONCE (#328).
+#
+# It is the number of events the supplier cost beside it could not include —
+# `Posting.provider_cost_micros` is nullable and a null means UBB has not
+# resolved that cost (#317), so a total built over the column is a FLOOR
+# wherever this is non-zero, and every margin derived from that total is a
+# CEILING: the true margin can only be smaller than the figure shown. Zero means
+# the figure is whole.
+#
+# An event whose Event Type declares no supplier cost is NOT counted. Nothing
+# about it is missing (#327), and a caveat that is always on is a caveat nobody
+# reads.
+#
+# Every schema here that publishes a supplier cost declares it, because a key a
+# schema does not name is a key django-ninja DROPS rather than passes through —
+# which is how #327's declared row lost the count while its two untyped
+# siblings carried it for free.
+
+
 class SeatMarginOut(Schema):
     """One customer's live margin (``MarginService.compute_live``) — the shape
     a business rollup's ``seats`` entries carry."""
@@ -59,6 +78,7 @@ class SeatMarginOut(Schema):
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
+    unresolved_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
@@ -77,6 +97,7 @@ class CustomerMarginListRow(Schema):
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
+    unresolved_event_count: int
     gross_margin_micros: int
     margin_percentage: float
 
@@ -92,6 +113,9 @@ class MarginSummaryOut(Schema):
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
+    #: The tenant-wide count: every customer's, added up, because the cost above
+    #: is every customer's added up.
+    unresolved_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
@@ -130,6 +154,10 @@ class UnprofitableCustomerRow(Schema):
     customer_id: str
     external_id: str
     gross_margin_micros: int
+    #: A margin named as unprofitable is a CEILING wherever this is non-zero, so
+    #: the count can never mean "perhaps they are fine" — only that they may be
+    #: worse than the figure says.
+    unresolved_event_count: int
     margin_percentage: float
 
 
@@ -141,6 +169,9 @@ class UnprofitableOut(Schema):
 class MarginTrendPointOut(Schema):
     period_start: str
     provider_cost_micros: int
+    #: Per POINT, because completeness varies month to month and a trend that
+    #: stated it once would be stating it about the wrong months.
+    unresolved_event_count: int
     usage_billed_micros: int
     subscription_revenue_micros: int
     gross_margin_micros: int
@@ -158,6 +189,9 @@ class BusinessMarginTotals(Schema):
     subscription_revenue_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
+    #: The seats' counts added up, exactly as the cost above is: one seat's
+    #: unresolved cost makes the business figure a floor too.
+    unresolved_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     event_count: int

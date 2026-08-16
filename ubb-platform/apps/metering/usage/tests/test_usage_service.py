@@ -34,12 +34,19 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # that must never be read as the supplier's. All three are COLUMNS, so all
 # three survive a replay unchanged — which is the property this builder exists
 # to give the two idempotent return paths.
+#
+# `task_total_unresolved_event_count` joined in #328, and it is about the UNIT
+# rather than this event: the three above say whether THIS cost is settled, and
+# this says how many of the unit's costs the running total beside it could not
+# include. A caller watching its own spend against a COGS limit is watching a
+# floor wherever it is non-zero, which no per-event field can tell it.
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "costing_status",
     "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
+    "task_total_unresolved_event_count",
     "stop", "stop_reason", "stop_scope", "stop_context",
     "measurements", "pricing_provenance", "grouping_fields",
 }

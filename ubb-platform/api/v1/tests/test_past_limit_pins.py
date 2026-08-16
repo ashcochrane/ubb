@@ -276,13 +276,17 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         self.assertIsNotNone(ep["resumed_at"])
 
         # Totals per limit, both denominations — "exactly what was spent
-        # past the limit and why", one call.
+        # past the limit and why", one call. Every supplier-cost total also
+        # states what it could not include (#328); here every event's cost is
+        # resolved, so both totals are whole and say so.
         self.assertEqual(report["totals_per_limit"], {
             "task_limit": {"billed_cost_micros": 9_000_000,
                            "provider_cost_micros": 13_000_000,
+                           "unresolved_event_count": 0,
                            "event_count": 2},
             "customer_wide_stop": {"billed_cost_micros": 18_000_000,
                                    "provider_cost_micros": 2_000_000,
+                                   "unresolved_event_count": 0,
                                    "event_count": 2},
         })
 

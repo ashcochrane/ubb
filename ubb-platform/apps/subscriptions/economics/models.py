@@ -11,6 +11,17 @@ class CustomerCostAccumulator(BaseModel):
     total_provider_cost_micros = models.BigIntegerField(default=0)
     total_billed_cost_micros = models.BigIntegerField(default=0)
     event_count = models.IntegerField(default=0)
+    # HOW MANY OF THOSE EVENTS THE PROVIDER TOTAL COULD NOT INCLUDE (#328).
+    #
+    # The handler adds each event's supplier cost as it arrives, and a cost UBB
+    # has not resolved (#317) contributes nothing — so without this the running
+    # total would be a floor that reads like a figure. Written in the same
+    # atomic increment as the amount, because a total and its completeness that
+    # can be updated separately will eventually disagree.
+    #
+    # An event whose Event Type declares no supplier cost is NOT counted: there
+    # is nothing missing about a cost that does not exist (#327).
+    unresolved_event_count = models.IntegerField(default=0)
 
     class Meta:
         app_label = "subscriptions"
@@ -32,6 +43,19 @@ class CustomerEconomics(BaseModel):
     subscription_revenue_micros = models.BigIntegerField(default=0)  # manual + stripe
     usage_billed_micros = models.BigIntegerField(default=0)
     provider_cost_micros = models.BigIntegerField(default=0)
+    # WHAT THE FROZEN COST TOTAL LEFT OUT, copied from the accumulator this
+    # snapshot is taken from (#328).
+    #
+    # It makes `provider_cost_micros` above a floor and every figure derived
+    # from it a bound: `gross_margin_micros` is a CEILING on the margin, and
+    # `margin_percentage` a ceiling on the percentage. The column stays NOT
+    # NULL — SQL's null-skipping never reaches a snapshot, so `Sum` over it is
+    # complete by construction and what travels is this count, not a null.
+    #
+    # It is also what the cost-spike comparison consults: a previous period
+    # whose cost excluded something is too small a denominator, so the rise
+    # computed against it would be too big. See MarginService.evaluate_and_emit.
+    unresolved_event_count = models.IntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
     total_revenue_micros = models.BigIntegerField(default=0)
     revenue_mode = models.CharField(max_length=20, blank=True, default="")

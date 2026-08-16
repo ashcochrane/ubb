@@ -375,6 +375,7 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
     event_count: taskEvents.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
+    unresolved_event_count: 0,
   };
   closedTasks.set(taskId, result);
   return result;

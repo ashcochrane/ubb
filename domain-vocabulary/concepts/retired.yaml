@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,558 of 1,936 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,559 of 1,940 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -531,6 +531,36 @@ measurement_key:
     # by `measurement_key` and no total here reads it. #275's RATE ARITHMETIC
     # caution holds again — `compute(units)` is not on this path, and the counts
     # this commit adds are counts of ROWS rather than of anything measured.
+    #
+    # #328 MOVED BOTH DENOMINATORS, AND ONE OF THEM FOR THE THIRD CASE ABOVE
+    # (1,558 → 1,559 swept, 1,936 → 1,940 tracked, 50/126 unchanged). ONE new
+    # swept file — the test module asserting that four products carry the
+    # completeness through instead of dropping it — and THREE new migrations,
+    # which is why `historical-migrations` goes 211 → 214 and the tracked total
+    # rises by four while the swept total rises by one. That is an exclusion
+    # count moving in the same commit, the discriminator the three-case rule
+    # names; it is the benign reading, because the count for this word did not
+    # fall.
+    #
+    # THE WORD ALMOST ROSE, IN A SENTENCE ABOUT WORK RATHER THAN ABOUT MONEY.
+    # A docstring in platform's work read contract described a rollup as summing
+    # a count "over the units in the group" — the plural, in its ordinary
+    # English sense, in a file the sweep reads. It is now "over every unit in
+    # the group", which says the same thing in the singular this slice's own
+    # concept survives as. Worth recording because it is the first time the
+    # near-miss came from PROSE about a different subject entirely rather than
+    # from an identifier: none of the three surviving senses was in play, and no
+    # amount of care about currency or rate arithmetic would have caught it.
+    #
+    # A FOURTH RETIRED WORD ALSO ALMOST LANDED ON THAT MODULE, AND IT IS A
+    # CATALOG EVENT NAME. `task.limit_exceeded` (`backend`, FIFTEEN files) is
+    # the kill announcement's type, and the module read the outbox for it by
+    # name; the sweep failed with `term_spread` at sixteen. Answered without
+    # moving the assertion anywhere: the query addresses the schema's own
+    # `EVENT_TYPE` constant instead of the string, which is stricter than the
+    # literal was — a renamed catalog entry now moves the test with it. The
+    # #323 lesson generalises: where a retired word has a symbol, name the
+    # symbol.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

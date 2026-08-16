@@ -37,6 +37,9 @@ class TestGetEconomicsSummary:
             "subscription_revenue_micros": 0,
             "usage_billed_micros": 0,
             "provider_cost_micros": 0,
+            # A window with no snapshots excluded nothing — the empty sum is
+            # complete, and this is the zero that says so (#328).
+            "unresolved_event_count": 0,
             "total_margin_micros": 0,
             "customer_count": 0,
         }
@@ -63,6 +66,9 @@ class TestGetEconomicsSummary:
             subscription_revenue_micros=200_000_000,
             usage_billed_micros=80_000_000,
             provider_cost_micros=60_000_000,
+            # One of the two customers' months excluded a cost, so the tenant's
+            # total is a floor by exactly that much (#328).
+            unresolved_event_count=3,
             gross_margin_micros=220_000_000,
             margin_percentage=60,
         )
@@ -75,28 +81,38 @@ class TestGetEconomicsSummary:
             "subscription_revenue_micros": 300_000_000,
             "usage_billed_micros": 110_000_000,
             "provider_cost_micros": 80_000_000,
+            "unresolved_event_count": 3,
             "total_margin_micros": 330_000_000,
             "customer_count": 2,
         }
 
-    def test_the_column_this_total_sums_cannot_be_unknown(self):
-        """Why this one total is not a pair (#327).
+    def test_this_totals_completeness_is_inherited_rather_than_measured(self):
+        """Why this one total's count comes from a column (#327, #328).
 
-        Every other supplier-cost total in the tree now reports the count of
-        postings it excluded, because the posting's column is nullable and SQL
-        skips nulls silently. This total sums a monthly SNAPSHOT of that cost,
-        and a snapshot cannot be unknown — so there is nothing for a count to
-        report, and publishing a zero nothing computes would be the very number
-        this slice exists to stop producing.
+        Every supplier-cost total in the tree reports the count of postings it
+        excluded, because the posting's column is nullable and SQL skips nulls
+        silently. This total does not sum that column — it sums a monthly
+        SNAPSHOT of it, which cannot be unknown, so null-skipping can never
+        reach it and its own `Sum` is complete by construction. #327 therefore
+        left it a single figure rather than publishing a zero nothing computed.
 
-        The claim is `NOT NULL`, so the day the snapshot learns to say "I
-        excluded some" this test goes red and the read contract's docstring gets
-        read rather than believed.
+        What changed in #328 is upstream: the accumulator these snapshots are
+        built from now counts the costs it could not add, and the snapshot
+        freezes that count. So the pair here is REAL and inherited — the sum of
+        numbers each row measured — rather than derived from the nullness of
+        anything in this query.
+
+        Both halves are asserted, because either one going false would make the
+        read contract's docstring wrong in a different way: if the cost column
+        became nullable the figure would need a count of its OWN, and if the
+        count column went away there would be nothing to inherit.
         """
         from apps.subscriptions.economics.models import CustomerEconomics
 
-        column = CustomerEconomics._meta.get_field("provider_cost_micros")
-        assert column.null is False
+        cost = CustomerEconomics._meta.get_field("provider_cost_micros")
+        assert cost.null is False
+        count = CustomerEconomics._meta.get_field("unresolved_event_count")
+        assert count.null is False
 
 
 @pytest.mark.django_db

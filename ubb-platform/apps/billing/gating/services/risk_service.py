@@ -212,9 +212,13 @@ class RiskService:
                 # zero. Refusing a start on a promise nothing keeps was the
                 # remaining behaviour, and onboarding is not a wall: a tenant
                 # part-way through declaring their cost rates starts limited
-                # work like anyone else. #328 is what makes the floor say so
-                # downstream, which is where the honesty belongs — a start gate
-                # cannot tell a caller that a running total is incomplete.
+                # work like anyone else. The floor says so downstream (#328):
+                # the unit counts what its total could not include and publishes
+                # the count on every read of it, which is where the honesty
+                # belongs — a start gate cannot tell a caller that a running
+                # total is incomplete. The race is still under-firing rather
+                # than over-firing: a unit is never killed for spend UBB cannot
+                # demonstrate.
                 from apps.platform.work.services import TaskService
 
                 task = TaskService.create_task(

@@ -47,7 +47,17 @@ def handle_usage_recorded_referrals(event_id, payload):
     if referral.snapshot_reward_type == "flat_fee" and referral.flat_fee_paid:
         return
 
-    # Calculate reward
+    # Calculate reward. A NULL SUPPLIER COST IS PASSED THROUGH AS ONE (#328):
+    # `calculate_reward` falls back to the tenant's estimated cost percentage
+    # for a profit share it cannot compute, which is the same fallback the
+    # period reconciler takes and the reason both must agree. Coalescing to zero
+    # here would pay out a reward on a profit UBB has not measured — the
+    # flattering direction, off a number nobody stated.
+    #
+    # No count travels with it because nothing here is a TOTAL: this is one
+    # event's reward. The accumulator it feeds sums REWARDS and referred SPEND,
+    # neither of which is a supplier cost. What the period excluded is recorded
+    # by the reconciler, on the ledger row that states the period's cost.
     raw_cost_micros = evt.provider_cost_micros
     reward_micros = RewardService.calculate_reward(
         referral, cost_micros, raw_cost_micros=raw_cost_micros

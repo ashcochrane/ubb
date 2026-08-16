@@ -98,3 +98,51 @@ class TestMarkupPrecedenceWithPlans:
         resolved = MarkupService.resolve(self.tenant, self.customer)
         assert resolved.source == "plan"
         assert MarkupService.apply(500_000, self.tenant, self.customer) == 500_000
+
+
+@pytest.mark.django_db
+class TestAnUnresolvedCostHasNoMarkup:
+    """The one site in slice 3's sweep that refuses instead of reporting a floor
+    (#328).
+
+    Every other reader of a supplier cost answers what it can and states what it
+    left out. A markup cannot: it is not a total, so there is no "at least" to
+    say about it, and marking up zero would put a price nobody stated on an
+    invoice. So the answers are a real basis or a refusal.
+
+    Both appliers are asserted, and separately. `MarkupCache.apply`'s whole
+    contract is that it answers what `MarkupService.apply` answers, and a shared
+    guard proved through only one of them is a guard that can quietly stop being
+    shared.
+    """
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="T", products=["metering"])
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1")
+
+    def test_the_service_refuses_a_cost_ubb_has_not_resolved(self):
+        # The MESSAGE, not just the type: `TypeError`-shaped failures from the
+        # arithmetic two lines down would satisfy a bare `raises(ValueError)`
+        # against a version with no guard at all.
+        with pytest.raises(ValueError, match="provider_cost_micros is unresolved"):
+            MarkupService.apply(None, self.tenant, self.customer)
+
+    def test_the_cache_refuses_it_on_the_same_terms(self):
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+
+        with pytest.raises(ValueError, match="provider_cost_micros is unresolved"):
+            MarkupCache.apply(None, tenant=self.tenant, customer=self.customer)
+
+    def test_a_resolved_zero_is_still_a_basis_and_is_marked_up(self):
+        """The control that stops the guard reaching a real number.
+
+        Zero keeps a meaning of its own — resolved, and it was exactly nothing
+        — which is the distinction the nullable column exists to hold. A guard
+        written as a truthiness test would swallow it and refuse a cost UBB
+        knows perfectly well.
+        """
+        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
+                                    markup_percentage_micros=20_000_000,
+                                    fixed_uplift_micros=1_000)
+        assert MarkupService.apply(0, self.tenant, self.customer) == 1_000

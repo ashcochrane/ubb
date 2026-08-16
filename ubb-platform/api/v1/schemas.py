@@ -301,6 +301,12 @@ class RecordUsageResponse(Schema):
     # totals (containment); the parent's totals ride its own acks/events.
     task_total_billed_cost_micros: Optional[int] = None
     task_total_provider_cost_micros: Optional[int] = None
+    # How many of the unit's events that provider total could not include
+    # (#328). `costing_status` above says whether THIS event's cost is one of
+    # them; this says how many the running total has already left out, which is
+    # the number a caller watching its own spend against a limit needs. Null
+    # exactly when the totals beside it are — no named unit, nothing to total.
+    task_total_unresolved_event_count: Optional[int] = None
     # One-rule stop verdict on a 200 body — the event was ALWAYS recorded +
     # charged; `stop` means "stop sending work for the named scope". The
     # scalar slot carries one verdict: a unit-scoped crossing wins over a
@@ -519,12 +525,18 @@ class PastLimitReportResponse(Schema):
     # {family: floor_stop|task|soft_floor, limit, stop_scope, episode_seq,
     #  task_id, subtask_id, provider_cost_limit_micros, tripped_at,
     #  resumed_at, events: [{event_id, effective_at, billed_cost_micros,
-    #  provider_cost_micros, arrived_after}], event_count,
-    #  total_billed_cost_micros, total_provider_cost_micros}.
+    #  provider_cost_micros, costing_status, arrived_after}], event_count,
+    #  total_billed_cost_micros, total_provider_cost_micros,
+    #  unresolved_event_count}.
     # Soft-floor entries are crossed/cleared MARKER rows: events always [].
     # totals_per_limit: {limit: {billed_cost_micros, provider_cost_micros,
-    #  event_count}} — both denominations, per tripping limit, covering
-    # exactly the itemized events of the episodes shown.
+    #  unresolved_event_count, event_count}} — both denominations, per tripping
+    # limit, covering exactly the itemized events of the episodes shown.
+    # #328: an itemized event carries `costing_status` because its supplier
+    # cost is null both where UBB has not resolved one and where the Event Type
+    # declares none; each total carries `unresolved_event_count`, the number of
+    # the first kind it therefore could not include, which makes that total a
+    # floor.
     customer_id: str
     billing_owner_id: str
     since: Optional[str] = None
@@ -775,6 +787,10 @@ class CloseTaskResponse(Schema):
     status: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    #: See `TaskOut.unresolved_event_count` — a closed unit's total is a floor
+    #: on exactly the same terms as a running one's, and closing it settles
+    #: nothing that was never learned.
+    unresolved_event_count: int
     event_count: int
 
 
@@ -785,6 +801,17 @@ class TaskOut(Schema):
     subtask_type: str = ""
     status: str
     total_provider_cost_micros: int
+    #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
+    #:
+    #: Non-zero means the unit cost AT LEAST that much: the accumulate primitive
+    #: adds a supplier cost only where UBB has resolved one, and counts the rest
+    #: here rather than adding a zero that would read as a settled figure. It is
+    #: also what the unit's COGS limit raced, so a limit that has not fired has
+    #: not been shown to be safe.
+    #:
+    #: An event whose Event Type declares no supplier cost is not counted: there
+    #: is nothing missing about a cost that does not exist.
+    unresolved_event_count: int
     total_billed_cost_micros: int
     event_count: int
     provider_cost_limit_micros: Optional[int] = None
@@ -802,6 +829,7 @@ def task_out(t):
         "task_type": t.task_type, "subtask_type": t.subtask_type,
         "status": t.status,
         "total_provider_cost_micros": t.total_provider_cost_micros,
+        "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
         "event_count": t.event_count,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
@@ -876,6 +904,10 @@ class TaskAnalyticsRow(Schema):
     task_type: str
     run_count: int
     total_provider_cost_micros: int
+    #: How many events this KIND of work could not cost (#328). Non-zero makes
+    #: every figure in the row a floor — the total, the mean and the p95 — since
+    #: each unit they are built from is one.
+    unresolved_event_count: int
     total_billed_cost_micros: int
     avg_provider_cost_micros: int
     p95_provider_cost_micros: int
