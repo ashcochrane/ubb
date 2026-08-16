@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,555 of 1,933 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,558 of 1,936 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -499,6 +499,38 @@ measurement_key:
     # every reader of it died in this slice — that half of the ruling was never
     # in doubt — but the deletion is proved by a targeted test rather than by
     # the sweep, because the sweep can never reach zero on this word.
+    #
+    # #327 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,555 → 1,558 swept,
+    # 1,933 → 1,936 tracked, 50/126 unchanged — this entry's own `units`
+    # evidence, still not the sweep's closing line). THREE new files, all three
+    # swept and none excluded: a kernel module that builds a supplier-cost total
+    # together with the count of what it excluded, a test module asserting that
+    # every total says so, and a tree-walking gate that fails on the next bare
+    # aggregate over the column. No migration this time, so
+    # `historical-migrations` holds at 211 — the discriminator #326's paragraph
+    # above names, working the other way round.
+    #
+    # A FOURTH RETIRED WORD ALMOST LANDED ON THE NEW MODULE, AND IT IS NEITHER
+    # OF THE THREE #323 AND #324 NAME. `tag_key` (`backend`, EIGHT files) is the
+    # request parameter naming a key out of the open bag, and the module needed
+    # it twice: once for the keyed margin rollup and once for the route's keyed
+    # breakdown. The sweep failed with `term_spread` at nine. Both assertions
+    # moved to `apps/metering/tests/test_analytics_scale.py`, which already
+    # carries the word AND already owns both of those rollups with a fixture
+    # that spans them — so the pins landed beside the behaviour rather than in a
+    # file that had to import it. The completeness pin for the OTHER keyed
+    # rollup went to `test_analytics_dimensions.py` for the same reason and
+    # against slice 7's other word. The lesson #323 wrote is now three tickets
+    # old and still the answer: spell a retired word only in a file already
+    # counted, and prefer the file that owns the behaviour to the file that owns
+    # the test.
+    #
+    # Nothing about THIS concept is in the commit. What changes is that a total
+    # over the supplier's cost now travels with the count of postings it could
+    # not include; a posting's measured quantity lives on its child record keyed
+    # by `measurement_key` and no total here reads it. #275's RATE ARITHMETIC
+    # caution holds again — `compute(units)` is not on this path, and the counts
+    # this commit adds are counts of ROWS rather than of anything measured.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

@@ -29,12 +29,14 @@ class RevenueAnalyticsResponse:
             total_billed_cost_micros (int):
             total_markup_micros (int):
             total_provider_cost_micros (int):
+            unresolved_event_count (int):
      """
 
     daily: list[RevenueAnalyticsResponseDailyItem]
     total_billed_cost_micros: int
     total_markup_micros: int
     total_provider_cost_micros: int
+    unresolved_event_count: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -56,6 +58,8 @@ class RevenueAnalyticsResponse:
 
         total_provider_cost_micros = self.total_provider_cost_micros
 
+        unresolved_event_count = self.unresolved_event_count
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -64,6 +68,7 @@ class RevenueAnalyticsResponse:
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_markup_micros": total_markup_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unresolved_event_count": unresolved_event_count,
         })
 
         return field_dict
@@ -90,11 +95,14 @@ class RevenueAnalyticsResponse:
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
 
+        unresolved_event_count = d.pop("unresolved_event_count")
+
         revenue_analytics_response = cls(
             daily=daily,
             total_billed_cost_micros=total_billed_cost_micros,
             total_markup_micros=total_markup_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            unresolved_event_count=unresolved_event_count,
         )
 
 

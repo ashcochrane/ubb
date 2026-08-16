@@ -62,6 +62,8 @@ export async function getRevenueAnalytics(
     })),
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
+    // Nothing was excluded — see the note beside the billing feature's copy.
+    unresolved_event_count: 0,
     total_markup_micros: billed - provider,
   };
 }

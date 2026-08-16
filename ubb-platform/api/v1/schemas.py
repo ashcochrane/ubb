@@ -831,6 +831,22 @@ class UsageAnalyticsResponse(Schema):
     total_events: int
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    #: HOW MANY EVENTS THE SUPPLIER-COST TOTAL COULD NOT INCLUDE (#327).
+    #:
+    #: A supplier cost UBB has not resolved contributes nothing to the total
+    #: above, and SQL says nothing about having skipped it — so the total says
+    #: it here instead. Non-zero means the figure is a FLOOR: the true cost is
+    #: at least that much, and the margin beside it is at most what it says.
+    #: Zero means the total is whole.
+    #:
+    #: An event whose Event Type declares no supplier cost is NOT counted here.
+    #: Nothing about it is missing, and a caveat that is always on is a caveat
+    #: nobody reads.
+    #:
+    #: The breakdown blocks below are `list[dict]` and each of their rows
+    #: carries the same key for its own group. No schema holds those rows, so
+    #: `api/v1/tests/test_a_cost_total_says_what_it_excluded.py` asserts them.
+    unresolved_event_count: int
     usage_markup_margin_micros: int
     by_provider: list[dict]
     by_event_type: list[dict]
@@ -842,6 +858,9 @@ class UsageAnalyticsResponse(Schema):
 
 class RevenueAnalyticsResponse(Schema):
     total_provider_cost_micros: int
+    #: The same pair as `UsageAnalyticsResponse` above, for the tenant-wide
+    #: total. Each row of `daily` carries its own count for its own day.
+    unresolved_event_count: int
     total_billed_cost_micros: int
     total_markup_micros: int
     daily: list[dict]

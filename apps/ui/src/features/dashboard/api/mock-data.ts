@@ -132,6 +132,7 @@ const WINDOW_TOTALS = {
   total_events: 93_558,
   total_billed_cost_micros: 653_900_000,
   total_provider_cost_micros: 563_600_000,
+  unresolved_event_count: 0,
   usage_markup_margin_micros: 90_300_000,
 };
 
@@ -222,6 +223,7 @@ export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
   total_events: 812_441,
   total_billed_cost_micros: 7_845_300_000,
   total_provider_cost_micros: 6_690_150_000,
+  unresolved_event_count: 0,
   usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],
   by_event_type: [],

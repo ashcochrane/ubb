@@ -219,6 +219,7 @@ export async function getUsageAnalytics(
     total_events: events.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
+    unresolved_event_count: 0,
     usage_markup_margin_micros: billed - provider,
     by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
     by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),

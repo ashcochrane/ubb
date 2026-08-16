@@ -39,6 +39,7 @@ class UsageAnalyticsResponse:
             total_billed_cost_micros (int):
             total_events (int):
             total_provider_cost_micros (int):
+            unresolved_event_count (int):
             usage_markup_margin_micros (int):
             breakdowns (UsageAnalyticsResponseBreakdowns | Unset):
      """
@@ -51,6 +52,7 @@ class UsageAnalyticsResponse:
     total_billed_cost_micros: int
     total_events: int
     total_provider_cost_micros: int
+    unresolved_event_count: int
     usage_markup_margin_micros: int
     breakdowns: UsageAnalyticsResponseBreakdowns | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -107,6 +109,8 @@ class UsageAnalyticsResponse:
 
         total_provider_cost_micros = self.total_provider_cost_micros
 
+        unresolved_event_count = self.unresolved_event_count
+
         usage_markup_margin_micros = self.usage_markup_margin_micros
 
         breakdowns: dict[str, Any] | Unset = UNSET
@@ -125,6 +129,7 @@ class UsageAnalyticsResponse:
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_events": total_events,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unresolved_event_count": unresolved_event_count,
             "usage_markup_margin_micros": usage_markup_margin_micros,
         })
         if breakdowns is not UNSET:
@@ -199,6 +204,8 @@ class UsageAnalyticsResponse:
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
 
+        unresolved_event_count = d.pop("unresolved_event_count")
+
         usage_markup_margin_micros = d.pop("usage_markup_margin_micros")
 
         _breakdowns = d.pop("breakdowns", UNSET)
@@ -220,6 +227,7 @@ class UsageAnalyticsResponse:
             total_billed_cost_micros=total_billed_cost_micros,
             total_events=total_events,
             total_provider_cost_micros=total_provider_cost_micros,
+            unresolved_event_count=unresolved_event_count,
             usage_markup_margin_micros=usage_markup_margin_micros,
             breakdowns=breakdowns,
         )
