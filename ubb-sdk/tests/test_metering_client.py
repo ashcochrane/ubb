@@ -450,6 +450,11 @@ class MeteringClientTest(unittest.TestCase):
             "task_id": "task_1", "status": "completed",
             "total_billed_cost_micros": 2_500_000,
             "total_provider_cost_micros": 1_750_000,
+            # Closing a unit settles nothing UBB never learned (#328), so a
+            # closed unit's total is a floor on the same terms as a running
+            # one's. The fixture carries one so the field is exercised rather
+            # than merely present.
+            "unresolved_event_count": 3,
             "event_count": 12,
         })
         result = self.client.close_task("task_1")
@@ -460,6 +465,7 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
         self.assertEqual(result.total_provider_cost_micros, 1_750_000)
+        self.assertEqual(result.unresolved_event_count, 3)
         self.assertEqual(result.event_count, 12)
         self.assertIsNone(result.parent_task_id)
 
@@ -470,6 +476,7 @@ class MeteringClientTest(unittest.TestCase):
             "task_id": "sub_1", "parent_task_id": "task_1",
             "status": "completed",
             "total_billed_cost_micros": 100, "total_provider_cost_micros": 80,
+            "unresolved_event_count": 0,
             "event_count": 1,
         })
         result = self.client.close_task("sub_1")

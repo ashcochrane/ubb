@@ -7,6 +7,7 @@ from django.utils import timezone
 from ninja import Router
 
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.audit.ledger import record as audit_record
@@ -61,8 +62,16 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     cust = {c.id: c for c in Customer.objects.filter(
         id__in=[r["customer_id"] for r in rows], tenant=tenant)}
     total_provider = total_billed = total_sub = total_usage_rev = 0
+    # WHAT THE TENANT-WIDE COST TOTAL LEFT OUT, ADDED UP LIKE THE COST (#328).
+    # Each row the read contract returns carries its own count, and a loop that
+    # took the money and dropped the caveat would publish a floor as a figure —
+    # the same defect as an `or 0`, one product further out. This is the one
+    # place the count could go missing on this route, because the loop is where
+    # the rows stop being rows.
+    total_unresolved = 0
     for r in rows:
         total_provider += r["provider_cost_micros"]
+        total_unresolved += r[UNRESOLVED_EVENT_COUNT_KEY]
         total_billed += r["billed_cost_micros"]
         total_sub += RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
         if RevenueService.resolve_revenue_mode(tenant, cust[r["customer_id"]]) == "billed":
@@ -75,6 +84,7 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
         "usage_billed_micros": total_billed,
         "usage_revenue_micros": total_usage_rev,
         "provider_cost_micros": total_provider,
+        UNRESOLVED_EVENT_COUNT_KEY: total_unresolved,
         "total_revenue_micros": total_revenue,
         "gross_margin_micros": margin,
         "margin_percentage": round(margin / total_revenue * 100, 2) if total_revenue else 0.0,
@@ -125,6 +135,12 @@ def margin_unprofitable(request, period_start: date = None):
     return {"period_start": ps.isoformat(), "customers": [{
         "customer_id": str(r.customer_id), "external_id": r.customer.external_id,
         "gross_margin_micros": r.gross_margin_micros,
+        # A CEILING ON A MARGIN CAN ONLY GET WORSE, WHICH IS WHY THIS LIST OF
+        # ALL PLACES CARRIES THE COUNT (#328). The customers here are named as
+        # unprofitable on a margin computed from a cost total that excluded
+        # events — the true margin is lower still, so a non-zero count never
+        # means "maybe they are fine".
+        UNRESOLVED_EVENT_COUNT_KEY: r.unresolved_event_count,
         "margin_percentage": float(r.margin_percentage),
     } for r in rows]}
 
@@ -269,6 +285,9 @@ def margin_trend(request, customer_id: UUID, periods: int = 6):
     return {"customer_id": str(customer.id), "points": [{
         "period_start": r.period_start.isoformat(),
         "provider_cost_micros": r.provider_cost_micros,
+        # Per POINT: a trend whose completeness varied month to month and said
+        # so once at the top would be answering about the wrong months (#328).
+        UNRESOLVED_EVENT_COUNT_KEY: r.unresolved_event_count,
         "usage_billed_micros": r.usage_billed_micros,
         "subscription_revenue_micros": r.subscription_revenue_micros,
         "gross_margin_micros": r.gross_margin_micros,
@@ -313,6 +332,11 @@ def list_margin(request, start_date: date = None, end_date: date = None):
                     "usage_billed_micros": r["billed_cost_micros"],
                     "usage_revenue_micros": usage_rev,
                     "provider_cost_micros": r["provider_cost_micros"],
+                    # Per row, because one customer's unresolved cost says
+                    # nothing about another's (#327's shape, carried out to the
+                    # wire here). The margin beside it is a ceiling wherever
+                    # this is non-zero.
+                    UNRESOLVED_EVENT_COUNT_KEY: r[UNRESOLVED_EVENT_COUNT_KEY],
                     "gross_margin_micros": margin,
                     "margin_percentage": round(margin / revenue * 100, 2) if revenue else 0.0})
     return {"period": {"start": s.isoformat(), "end": e.isoformat()}, "customers": out}

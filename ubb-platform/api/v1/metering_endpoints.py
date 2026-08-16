@@ -459,6 +459,7 @@ def close_task(request, task_id: UUID):
         "status": completed.status,
         "total_billed_cost_micros": completed.total_billed_cost_micros,
         "total_provider_cost_micros": completed.total_provider_cost_micros,
+        "unresolved_event_count": completed.unresolved_event_count,
         "event_count": completed.event_count,
     }
 

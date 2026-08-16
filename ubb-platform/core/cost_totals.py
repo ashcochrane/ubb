@@ -71,6 +71,25 @@ SUPPLIER_COST_COLUMN = "provider_cost_micros"
 COSTING_STATUS_COLUMN = "costing_status"
 
 
+def counts_as_unresolved(costing_status: str) -> bool:
+    """Whether a posting with no amount is one this count is ABOUT (#328).
+
+    The module docstring's central ruling, as a function, because five readers
+    accumulate in Python rather than in SQL and each of them had written the
+    comparison out: ``unresolved`` is a cost UBB has not learned and belongs in
+    the count; ``not_applicable`` is a cost that does not exist and does not.
+    Both carry a `NULL` amount, so the amount cannot tell them apart and every
+    reader needs the status.
+
+    Named once because a rule restated in five places is a rule that will hold
+    in four of them. The SQL side never calls this — it filters on the same
+    constant inside :func:`cost_total_annotations`, which is the one other
+    place the comparison is made and the reason this returns a bool rather than
+    trying to serve both.
+    """
+    return costing_status == COSTING_STATUS_UNRESOLVED
+
+
 def cost_total_annotations(*, key: str) -> dict:
     """The two expressions a supplier-cost aggregation takes, in one dict.
 

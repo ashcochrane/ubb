@@ -18,7 +18,25 @@ EVENT_TYPE, or two subclasses claiming one, is an import-time error.
 import dataclasses
 import uuid as _uuid
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Annotated, ClassVar
+
+from pydantic import Field
+
+from core.vocabulary import COSTING_STATUS_KNOWN
+
+#: A payload field naming the closed set that says whether a supplier cost is
+#: settled (#328).
+#:
+#: The marker is the same one `api/v1/schemas.py` puts on the three RESPONSES
+#: that publish this concept, and it is spelled again here rather than imported
+#: because a product may not import the composition layer (ADR-001). What it
+#: buys is the same thing: the published document states the three values
+#: instead of `type: string`, so a subscriber writing a switch over this field
+#: can see the whole set. `tools/known_values/apply.py` walks the WHOLE document
+#: — the `webhooks` section included — so a marked payload field is annotated
+#: exactly as a marked response field is.
+CostingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "costing_status"})]
 
 
 class EventSchema:
@@ -80,18 +98,39 @@ class UsageRecorded(EventSchema):
     customer_id: str
     event_id: str
     cost_micros: int
-    # ⚠ A NULL HERE IS NOW AMBIGUOUS, AND NO TICKET HAS CLAIMED IT YET (#323).
-    # This field has always been nullable, but until #320 a null only ever
-    # meant "the recording path supplied nothing"; #320 taught the compute
-    # spine to leave the column NULL for a cost UBB could not settle, and this
-    # payload is filled straight from that column. So a subscriber now reads
-    # the same null for "no supplier cost" and "a supplier cost we have not
-    # learned yet" — the exact ambiguity slice 3 exists to end, surviving on a
-    # surface that is not a response. The three RESPONSES publishing this
-    # amount each carry `costing_status` beside it (#317) and its cause (#323);
-    # this payload carries neither. Carrying the completeness through the
-    # products is #328's, and this is the site it will want.
+    # A NULL HERE IS DISAMBIGUATED BY THE FIELD BELOW IT (#328). This field has
+    # always been nullable, but until #320 a null only ever meant "the recording
+    # path supplied nothing"; #320 taught the compute spine to leave the column
+    # NULL for a cost UBB could not settle, and this payload is filled straight
+    # from that column — so for three commits a subscriber read the same null
+    # for "no supplier cost" and "a supplier cost we have not learned yet".
     provider_cost_micros: int | None = None
+    # WHICH OF THOSE TWO THE NULL ABOVE MEANS, carried because two products
+    # accumulate off this payload and neither can count what it excluded without
+    # it. `not_applicable` also arrives as a null amount, and counting it as
+    # missing information would mark every metering-only tenant's every period
+    # partial forever (#327's ruling, inherited rather than re-made here).
+    #
+    # THE DEFAULT IS `known`, WHICH IS THE POSTING COLUMN'S OWN DEFAULT AND ITS
+    # OWN ARGUMENT (`usage/models.py`): "a writer that says nothing about
+    # supplier cost has recorded what UBB actually holds, and inventing an
+    # unknown it never observed would make every period partial". A payload
+    # queued before this field existed carries no key, so a reader falls to this
+    # default and counts no exclusion — which is what those events meant.
+    #
+    # It is a DECLARED value rather than an empty string for the reason the
+    # column is NOT NULL: a fourth state meaning "nobody said" is the ambiguity
+    # this slice exists to remove, and putting one on the wire would publish it
+    # to every subscriber. That also lets the field carry the concept marker
+    # below, so the document states the closed set rather than `type: string`.
+    costing_status: CostingStatus = COSTING_STATUS_KNOWN
+    #
+    # ⚠ THE CAUSE DOES NOT FOLLOW THE STATUS HERE, AND THAT IS A DECISION. The
+    # three RESPONSES carry `unresolved_reason` beside this (#323) because a
+    # tenant reading one event needs to know which input would settle it. This
+    # payload's readers are two accumulators counting HOW MANY costs they could
+    # not include; none of them asks why, and a field nothing reads is a field
+    # that goes stale. It joins the payload the day a subscriber needs it.
     billed_cost_micros: int | None = None
     event_type: str = ""
     provider: str = ""
@@ -248,6 +287,15 @@ class ProviderCostSpike(EventSchema):
     period_start: str
     prev_provider_cost_micros: int = 0
     current_provider_cost_micros: int = 0
+    #: How many of THIS period's events its cost total could not include
+    #: (#328). Non-zero means the rise announced here was computed from a
+    #: floor and is itself a lower bound — the real spike is at least this
+    #: steep, which is why the alarm fires anyway.
+    #:
+    #: The PREVIOUS period never carries one, because a previous cost that
+    #: excluded anything is not compared at all: it is the denominator, and too
+    #: small a denominator invents a spike rather than understating one.
+    unresolved_event_count: int = 0
     prev_margin_pct: float = 0.0
     current_margin_pct: float = 0.0
 
@@ -390,6 +438,11 @@ class TaskLimitExceeded(EventSchema):
     reason: str = ""
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
+    #: How many of this unit's events the provider total could not include
+    #: (#328). Non-zero means the crossing was measured against a FLOOR — the
+    #: unit spent at least the total above, so the kill is sound and the figure
+    #: understates it.
+    unresolved_event_count: int = 0
     provider_cost_limit_micros: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint — a repaired
     # delivery of the CURRENT state, never a fresh crossing. Consumers dedup
@@ -423,6 +476,8 @@ class SubtaskLimitExceeded(EventSchema):
     reason: str = ""
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
+    #: The SUBTASK's own count, like the totals beside it (#328).
+    unresolved_event_count: int = 0
     provider_cost_limit_micros: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
     # TaskLimitExceeded.re_announcement).

@@ -86,7 +86,18 @@ class MarkupCache:
     @staticmethod
     def apply(provider_cost_micros, *, tenant, customer):
         """MarkupService.apply semantics via the cache. No production caller
-        since #239 — see the module docstring."""
+        since #239 — see the module docstring.
+
+        Including its refusal of an unresolved cost (#328): "same semantics" has
+        to cover the case where the answer is that there is no answer, or the
+        two paths differ exactly where it matters.
+        """
+        # Imported here rather than at module scope, matching `resolve` above:
+        # this module is loaded early and the service module reaches the ORM.
+        from apps.metering.pricing.services.markup_service import (
+            refuse_an_unresolved_basis)
+
+        refuse_an_unresolved_basis(provider_cost_micros)
         markup = MarkupCache.resolve(tenant, customer)
         if markup is None:
             return provider_cost_micros

@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.aggregates import Aggregate
 
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from apps.platform.work.models import Task, TaskType
 
 
@@ -57,6 +58,20 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
     Aggregates ubb_task rows, never ubb_posting: per-unit costs are already
     materialized by the accumulate primitive, with subtask spend rolled into its
     parent. Top-level units only, so run_count counts JOBS not steps.
+
+    Each row carries its OWN ``unresolved_event_count`` (#328): the number of
+    events this KIND of work could not cost, summed over every unit in the
+    group. Non-zero makes every figure in the row a floor — the total, the mean
+    and the p95 alike, since each unit contributing to them is one. One kind of
+    job being incompletely costed says nothing about another's, which is why the
+    count is per row rather than one number for the answer.
+
+    ⚠ The columns summed here are the UNIT's materialized totals, which are NOT
+    NULL — so a grouped `Sum` over them can never answer `None` (a group exists
+    in the result only because a row produced it) and the coalesces that used to
+    decorate this block have gone rather than been left reading as though they
+    guarded something. The nullable column is the POSTING's, one layer down, and
+    the accumulate primitive is where its absence is turned into the count.
     """
     if group_by not in ("task_type", "subtask_type"):
         raise ValueError("group_by must be task_type or subtask_type")
@@ -81,6 +96,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                 run_count=Count("id"),
                 sum_provider_cost_micros=Sum("total_provider_cost_micros"),
                 sum_billed_cost_micros=Sum("total_billed_cost_micros"),
+                sum_unresolved=Sum("unresolved_event_count"),
                 avg_provider_cost_micros=Avg("total_provider_cost_micros"),
                 p95_provider_cost_micros=PercentileCont("total_provider_cost_micros"),
                 limit_hit_count=Count("id", filter=Q(
@@ -91,9 +107,10 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
 
     return [{"task_type": r[group_by],
              "run_count": r["run_count"],
-             "total_provider_cost_micros": r["sum_provider_cost_micros"] or 0,
-             "total_billed_cost_micros": r["sum_billed_cost_micros"] or 0,
-             "avg_provider_cost_micros": int(r["avg_provider_cost_micros"] or 0),
-             "p95_provider_cost_micros": int(r["p95_provider_cost_micros"] or 0),
+             "total_provider_cost_micros": r["sum_provider_cost_micros"],
+             UNRESOLVED_EVENT_COUNT_KEY: r["sum_unresolved"],
+             "total_billed_cost_micros": r["sum_billed_cost_micros"],
+             "avg_provider_cost_micros": int(r["avg_provider_cost_micros"]),
+             "p95_provider_cost_micros": int(r["p95_provider_cost_micros"]),
              "limit_hit_count": r["limit_hit_count"]}
             for r in rows]

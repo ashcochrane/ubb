@@ -121,6 +121,25 @@ class Task(BaseModel):
     total_billed_cost_micros = models.BigIntegerField(default=0)
     total_provider_cost_micros = models.BigIntegerField(default=0)
     event_count = models.IntegerField(default=0)
+    # HOW MANY OF THOSE EVENTS THE PROVIDER TOTAL COULD NOT INCLUDE (#328).
+    #
+    # Non-zero makes the total above a FLOOR: this unit really cost at least
+    # that much. `Posting.provider_cost_micros` is nullable and a null means UBB
+    # has not resolved that cost (#317), so the accumulate primitive adds the
+    # known part and increments this instead — the alternative, adding a zero,
+    # would produce a unit total indistinguishable from a complete one, which is
+    # the ambiguity the nullable column exists to remove.
+    #
+    # It is a COLUMN rather than something a reader derives, because this total
+    # is written on every recording and never rebuilt: a cost that arrives
+    # unresolved and is later settled elsewhere leaves no trace in a figure that
+    # was only ever added to. The count is written in the same UPDATE as the
+    # amount, so the pair cannot come apart.
+    #
+    # An event whose Event Type declares no supplier cost is NOT counted here.
+    # Nothing about it is missing (#327), and a caveat that is always on is a
+    # caveat nobody reads.
+    unresolved_event_count = models.IntegerField(default=0)
 
     # Signal-point snapshots — copied from the start call / tenant config at
     # task creation so a config change never affects an in-flight task.

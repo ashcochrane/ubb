@@ -16,6 +16,7 @@ const SUMMARY: MarginSummary = {
   usage_billed_micros: 5_000_000_000,
   usage_revenue_micros: 4_000_000_000,
   provider_cost_micros: 2_500_000_000,
+  unresolved_event_count: 0,
   total_revenue_micros: 5_000_000_000,
   gross_margin_micros: 2_500_000_000,
   margin_percentage: 50,
@@ -46,6 +47,7 @@ const ROW: MarginCustomerRow = {
   usage_billed_micros: 1_000_000_000,
   usage_revenue_micros: 0, // metered-only customer
   provider_cost_micros: 600_000_000,
+  unresolved_event_count: 0,
   gross_margin_micros: -400_000_000,
   margin_percentage: 0,
 };

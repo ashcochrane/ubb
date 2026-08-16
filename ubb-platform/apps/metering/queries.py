@@ -115,10 +115,18 @@ class PeriodTotals(TypedDict):
 #:     payable, not as a decision.
 class UsageEventCost(TypedDict):
     billed_cost_micros: int
-    #: `None` where UBB has not resolved the supplier's cost (#317). This is a
-    #: PER-EVENT row rather than a total, so it carries no count: the fact is
-    #: already in the value. Its readers are #328's.
+    #: `None` where UBB has not resolved the supplier's cost (#317) AND where
+    #: the Event Type declares there is none. This is a PER-EVENT row rather
+    #: than a total, so it carries no count — but the null alone does not say
+    #: which of the two it is, and a caller adding these up has to know
+    #: (#328). That is what the status beside it is for.
     provider_cost_micros: int | None
+    #: WHICH READING THE NULL ABOVE TAKES: `unresolved` is a cost UBB has yet to
+    #: learn, `not_applicable` is one that does not exist, and only the first is
+    #: missing information. A caller totalling these rows counts the first and
+    #: ignores the second — counting both would report every metering-only
+    #: tenant's every period as partial forever (#327).
+    costing_status: str
 
 
 def get_period_totals(tenant_id: str, period_start: date, period_end: date,
@@ -246,14 +254,20 @@ def get_customer_usage_for_period(
 ) -> list[UsageEventCost]:
     """Get per-event usage data for a customer in a period.
 
-    Returns list of dicts with billed_cost_micros, provider_cost_micros.
-    Used by referrals reconciliation.
+    Returns list of dicts with billed_cost_micros, provider_cost_micros and
+    costing_status. Used by referrals reconciliation.
 
-    ⚠ THESE ARE ROWS, NOT A TOTAL, so no count travels with them: a row whose
-    supplier cost is unresolved says so by carrying `None` there, which is the
-    same fact stated in the only place it can be stated per event. What a caller
-    may NOT do is add them up as though `None` were zero — that is the defect
-    this slice deletes, one step further out — and the callers that do are #328's.
+    ⚠ THESE ARE ROWS, NOT A TOTAL, so no count travels with them — a row states
+    its own completeness in the only place it can, in the value itself. What a
+    caller may NOT do is add them up as though `None` were zero: that is the
+    defect this slice deletes, one step further out.
+
+    ⚠ AND THE NULL NEEDS THE STATUS TO BE READ (#328). #327 described the null
+    as saying the cost is unresolved; that was half of it. A cost the Event Type
+    declares does not exist is null too, and the two must be totalled
+    differently — the first is excluded and counted, the second contributes a
+    genuine zero and is not. A caller with only the amount cannot tell them
+    apart, so the status travels with every row.
     """
     from apps.metering.usage.models import Posting
 
@@ -262,7 +276,7 @@ def get_customer_usage_for_period(
         customer_id=customer_id,
         effective_at__gte=period_start,
         effective_at__lt=period_end,
-    ).values("billed_cost_micros", "provider_cost_micros")
+    ).values("billed_cost_micros", "provider_cost_micros", "costing_status")
 
     return list(events)
 

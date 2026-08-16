@@ -323,6 +323,7 @@ export async function createCustomer(
     usage_billed_micros: 0,
     usage_revenue_micros: 0,
     provider_cost_micros: 0,
+    unresolved_event_count: 0,
     gross_margin_micros: 0,
     margin_percentage: 0,
   };

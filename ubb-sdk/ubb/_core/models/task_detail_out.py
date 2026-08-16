@@ -33,6 +33,7 @@ class TaskDetailOut:
             task_id (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
+            unresolved_event_count (int):
             completed_at (None | str | Unset):
             dimensions (TaskDetailOutDimensions | Unset):
             parent_task_id (None | str | Unset):
@@ -48,6 +49,7 @@ class TaskDetailOut:
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    unresolved_event_count: int
     completed_at: None | str | Unset = UNSET
     dimensions: TaskDetailOutDimensions | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
@@ -75,6 +77,8 @@ class TaskDetailOut:
         total_billed_cost_micros = self.total_billed_cost_micros
 
         total_provider_cost_micros = self.total_provider_cost_micros
+
+        unresolved_event_count = self.unresolved_event_count
 
         completed_at: None | str | Unset
         if isinstance(self.completed_at, Unset):
@@ -121,6 +125,7 @@ class TaskDetailOut:
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unresolved_event_count": unresolved_event_count,
         })
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
@@ -157,6 +162,8 @@ class TaskDetailOut:
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
+
+        unresolved_event_count = d.pop("unresolved_event_count")
 
         def _parse_completed_at(data: object) -> None | str | Unset:
             if data is None:
@@ -221,6 +228,7 @@ class TaskDetailOut:
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            unresolved_event_count=unresolved_event_count,
             completed_at=completed_at,
             dimensions=dimensions,
             parent_task_id=parent_task_id,

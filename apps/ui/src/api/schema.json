@@ -683,6 +683,10 @@
             "title": "Total Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_revenue_micros": {
             "title": "Usage Revenue Micros",
             "type": "integer"
@@ -692,6 +696,7 @@
           "subscription_revenue_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
+          "unresolved_event_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "event_count"
@@ -731,6 +736,10 @@
           "total_provider_cost_micros": {
             "title": "Total Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -738,6 +747,7 @@
           "status",
           "total_billed_cost_micros",
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "event_count"
         ],
         "title": "CloseTaskResponse",
@@ -1082,6 +1092,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_billed_micros": {
             "title": "Usage Billed Micros",
             "type": "integer"
@@ -1097,6 +1111,7 @@
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
+          "unresolved_event_count",
           "gross_margin_micros",
           "margin_percentage"
         ],
@@ -1144,6 +1159,10 @@
             "title": "Total Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_billed_micros": {
             "title": "Usage Billed Micros",
             "type": "integer"
@@ -1160,6 +1179,7 @@
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
+          "unresolved_event_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "margin_percentage",
@@ -2148,6 +2168,10 @@
             "title": "Total Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_billed_micros": {
             "title": "Usage Billed Micros",
             "type": "integer"
@@ -2163,6 +2187,7 @@
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
+          "unresolved_event_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "margin_percentage",
@@ -2259,6 +2284,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_billed_micros": {
             "title": "Usage Billed Micros",
             "type": "integer"
@@ -2267,6 +2296,7 @@
         "required": [
           "period_start",
           "provider_cost_micros",
+          "unresolved_event_count",
           "usage_billed_micros",
           "subscription_revenue_micros",
           "gross_margin_micros",
@@ -4974,6 +5004,17 @@
             ],
             "title": "Task Total Provider Cost Micros"
           },
+          "task_total_unresolved_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Total Unresolved Event Count"
+          },
           "uncosted_measurement_keys": {
             "default": [],
             "items": {
@@ -5518,6 +5559,10 @@
             "title": "Total Revenue Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_billed_micros": {
             "title": "Usage Billed Micros",
             "type": "integer"
@@ -5534,6 +5579,7 @@
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
+          "unresolved_event_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "margin_percentage",
@@ -5776,12 +5822,17 @@
           "total_provider_cost_micros": {
             "title": "Total Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "task_type",
           "run_count",
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "total_billed_cost_micros",
           "avg_provider_cost_micros",
           "p95_provider_cost_micros",
@@ -5870,12 +5921,17 @@
           "total_provider_cost_micros": {
             "title": "Total Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "task_id",
           "status",
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "total_billed_cost_micros",
           "event_count",
           "created_at"
@@ -5956,12 +6012,17 @@
           "total_provider_cost_micros": {
             "title": "Total Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "task_id",
           "status",
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "total_billed_cost_micros",
           "event_count",
           "created_at"
@@ -6681,12 +6742,17 @@
           "margin_percentage": {
             "title": "Margin Percentage",
             "type": "number"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "customer_id",
           "external_id",
           "gross_margin_micros",
+          "unresolved_event_count",
           "margin_percentage"
         ],
         "title": "UnprofitableCustomerRow",
@@ -16594,6 +16660,11 @@
                       "tenant_id": {
                         "title": "Tenant Id",
                         "type": "string"
+                      },
+                      "unresolved_event_count": {
+                        "default": 0,
+                        "title": "Unresolved Event Count",
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -17896,6 +17967,11 @@
                         "default": 0,
                         "title": "Total Provider Cost Micros",
                         "type": "integer"
+                      },
+                      "unresolved_event_count": {
+                        "default": 0,
+                        "title": "Unresolved Event Count",
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -18034,6 +18110,11 @@
                       "total_provider_cost_micros": {
                         "default": 0,
                         "title": "Total Provider Cost Micros",
+                        "type": "integer"
+                      },
+                      "unresolved_event_count": {
+                        "default": 0,
+                        "title": "Unresolved Event Count",
                         "type": "integer"
                       }
                     },
@@ -18604,6 +18685,17 @@
                       "cost_micros": {
                         "title": "Cost Micros",
                         "type": "integer"
+                      },
+                      "costing_status": {
+                        "default": "known",
+                        "enum": [
+                          "known",
+                          "unresolved",
+                          "not_applicable"
+                        ],
+                        "title": "Costing Status",
+                        "type": "string",
+                        "x-ubb-concept": "costing_status"
                       },
                       "customer_id": {
                         "title": "Customer Id",

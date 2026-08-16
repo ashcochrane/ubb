@@ -148,11 +148,17 @@ class Posting(BaseModel):
     # `full_clean` holds is a rule the writers that skip validation do not keep,
     # and most of what writes here skips it.
     #
-    # ⚠ SQL's aggregates skip NULL, so a bare `Sum` over this column now answers
-    # a number that looks complete and is not. Every total built on it becomes a
-    # pair — the resolved sum and its completeness — and that sweep is a later
-    # ticket of this slice; `or 0` is not the local fix, because `or 0`
-    # reproduces exactly the ambiguity this column just stopped having.
+    # ⚠ SQL's aggregates skip NULL, so a bare `Sum` over this column answers a
+    # number that looks complete and is not. Every total built on it is
+    # therefore a pair — the resolved sum and `unresolved_event_count` beside
+    # it, built together by `core.cost_totals` (#327) and carried through
+    # metering, platform, billing, subscriptions and referrals (#328). `or 0`
+    # was never the local fix, because `or 0` reproduces exactly the ambiguity
+    # this column stopped having.
+    #
+    # ⚠ AND A NULL HERE IS NOT ONE FACT. `costing_status` below says whether it
+    # means "not learned yet" or "there is none", and only the first is counted
+    # as excluded — every reader that adds these up takes both columns.
     provider_cost_micros = models.BigIntegerField(null=True, blank=True, default=0)
     # WHETHER THAT COST IS SETTLED. Not nullable: `unresolved` is a status, and a
     # null one would be a fourth state meaning "nobody said" — the ambiguity

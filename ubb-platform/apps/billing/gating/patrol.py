@@ -183,7 +183,17 @@ def sweep_over_limit_tasks(tenant):
     resumes. Rides the partial index on active limited tasks; the winning
     transition inside ``kill_and_announce`` keeps racing lanes exactly-once.
     A subtask over its OWN limit is killed alone; a parent's kill cascades
-    downward as ever."""
+    downward as ever.
+
+    ⚠ THE COMPARISON IS AGAINST A FLOOR, AND THAT IS THE SAFE DIRECTION (#328).
+    A unit's provider total excludes every cost UBB has not resolved, so a unit
+    this sweep passes over may really be past its limit — the sweep UNDER-fires,
+    never over-fires, and no unit is killed for spend UBB cannot demonstrate.
+    Firing on the floor plus its unresolved count would mean killing work on a
+    number nobody has stated, which is a worse trade than a late kill. What the
+    tenant gets instead is the count itself, on every read of the unit and on
+    the kill announcement, so a limit that has not fired is visibly not the same
+    as one that has been shown to be safe."""
     from apps.platform.work.models import Task
     from apps.platform.work.reasons import SUBTASK_LIMIT, TASK_LIMIT
     from apps.platform.work.services import TaskService
@@ -254,6 +264,10 @@ def _remint_kill(task, tenant):
         reason=task.metadata.get("kill_reason", ""),
         total_billed_cost_micros=task.total_billed_cost_micros,
         total_provider_cost_micros=task.total_provider_cost_micros,
+        # A re-mint publishes the unit's CURRENT state, so it publishes the
+        # current completeness too (#328) — a repaired delivery that dropped the
+        # caveat would say more than the original did.
+        unresolved_event_count=task.unresolved_event_count,
         provider_cost_limit_micros=task.provider_cost_limit_micros or 0,
         re_announcement=True)
     if task.parent_id is not None:

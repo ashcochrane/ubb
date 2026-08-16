@@ -579,6 +579,54 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(task_b.event_count, 0)
         self.assertEqual(task_b.status, "active")
 
+    # ---- what the recording path publishes about completeness (#328) -------
+    #
+    # Both live HERE rather than beside the rest of #328 because the recording
+    # request still requires the retired correlation key, and this module is one
+    # of the files already counted for it. The behaviour is metering's; the
+    # readers proved elsewhere are subscriptions', platform's and referrals'.
+
+    def test_the_emitted_payload_carries_the_status_the_posting_recorded(self):
+        """The one line four products depend on, and nothing else asserted it.
+
+        `usage.recorded` carries the supplier cost, and a null there means
+        EITHER "UBB has not learned it" or "there is none" — two facts a
+        subscriber must count differently. The status is what separates them,
+        and two products now accumulate off it. Delete the line that fills it
+        and every other test in this repository stays green while subscriptions
+        and referrals silently under-count, which is exactly the shape this
+        assertion exists to catch.
+        """
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import UsageRecorded
+        from core.vocabulary import COSTING_STATUS_UNRESOLVED
+
+        resp = self._record(provider_cost_micros=None)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["costing_status"],
+                         COSTING_STATUS_UNRESOLVED)
+        payload = OutboxEvent.objects.filter(
+            event_type=UsageRecorded.EVENT_TYPE).latest("created_at").payload
+        self.assertEqual(payload["costing_status"], COSTING_STATUS_UNRESOLVED)
+
+    def test_the_ack_says_what_the_units_running_total_left_out(self):
+        """A caller watching its own spend against a COGS limit (#328).
+
+        The unit total on the ack is a FLOOR wherever the count is non-zero:
+        the second event's cost never entered it, so a caller comparing the
+        total against its limit is comparing a lower bound. Without the count
+        beside it there is nothing on the ack that says so.
+        """
+        task = self._task()
+        first = self._record(task_id=str(task.id))
+        self.assertEqual(first.status_code, 200)
+        second = self._record(task_id=str(task.id), request_id="req_2",
+                              idempotency_key="idem_2",
+                              provider_cost_micros=None)
+        body = second.json()
+        self.assertEqual(body["task_total_provider_cost_micros"], 1_000_000)
+        self.assertEqual(body["task_total_unresolved_event_count"], 1)
+
 
 class MeteringUsageAnalyticsEndpointTest(TestCase):
     def setUp(self):

@@ -164,6 +164,7 @@ _UNRESOLVED = object()  # sentinel: _result should look the parent up itself
 
 
 def _result(event, *, task_total_billed=None, task_total_provider=None,
+            task_total_unresolved=None,
             stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None,
             parent_task_id=_UNRESOLVED):
@@ -204,6 +205,10 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "parent_task_id": str(parent_task_id) if parent_task_id else None,
         "task_total_billed_cost_micros": task_total_billed,
         "task_total_provider_cost_micros": task_total_provider,
+        # The unit total above is a FLOOR wherever this is non-zero (#328) — a
+        # caller watching its own spend against a COGS limit is watching a
+        # lower bound, and the limit has therefore not been shown to be safe.
+        "task_total_unresolved_event_count": task_total_unresolved,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
         # The itemized past-limit array (#41, spec §H) — read from the event
         # row, so idempotent replays return the ORIGINAL context unchanged.
@@ -474,6 +479,11 @@ class UsageService:
                     task, verdicts = TaskService.accumulate_cost(
                         inp.task_id, billed_cost_micros=billed_cost_micros,
                         provider_cost_micros=provider_cost_micros,
+                        # The spine's answer, carried rather than re-derived
+                        # (#328): the unit counts what it could not add, and
+                        # only the status tells an unresolved cost apart from
+                        # one the Event Type declares does not exist.
+                        costing_status=costing.costing_status,
                         tenant_id=tenant.id, customer_id=customer.id)
         except IntegrityError as exc:
             raise RecordingConflict(str(exc)) from exc
@@ -515,6 +525,11 @@ class UsageService:
             event_id=str(event.id),
             cost_micros=billed_cost_micros,
             provider_cost_micros=provider_cost_micros,
+            # Read off the row rather than re-derived from the amount (#328).
+            # A subscriber accumulating this payload has to tell a cost UBB has
+            # not learned from one that does not exist, and the amount alone
+            # cannot: both arrive as null.
+            costing_status=event.costing_status,
             billed_cost_micros=billed_cost_micros,
             event_type=inp.event_type, provider=inp.provider,
             task_id=str(inp.task_id) if inp.task_id else None,
@@ -635,5 +650,6 @@ class UsageService:
         return _result(outcome.event,
                        task_total_billed=task.total_billed_cost_micros if task else None,
                        task_total_provider=task.total_provider_cost_micros if task else None,
+                       task_total_unresolved=task.unresolved_event_count if task else None,
                        parent_task_id=task.parent_id if task else None,
                        stop=stop, stop_reason=stop_reason, stop_scope=stop_scope)

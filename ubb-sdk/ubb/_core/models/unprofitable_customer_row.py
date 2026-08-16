@@ -26,12 +26,14 @@ class UnprofitableCustomerRow:
             external_id (str):
             gross_margin_micros (int):
             margin_percentage (float):
+            unresolved_event_count (int):
      """
 
     customer_id: str
     external_id: str
     gross_margin_micros: int
     margin_percentage: float
+    unresolved_event_count: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -47,6 +49,8 @@ class UnprofitableCustomerRow:
 
         margin_percentage = self.margin_percentage
 
+        unresolved_event_count = self.unresolved_event_count
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -55,6 +59,7 @@ class UnprofitableCustomerRow:
             "external_id": external_id,
             "gross_margin_micros": gross_margin_micros,
             "margin_percentage": margin_percentage,
+            "unresolved_event_count": unresolved_event_count,
         })
 
         return field_dict
@@ -72,11 +77,14 @@ class UnprofitableCustomerRow:
 
         margin_percentage = d.pop("margin_percentage")
 
+        unresolved_event_count = d.pop("unresolved_event_count")
+
         unprofitable_customer_row = cls(
             customer_id=customer_id,
             external_id=external_id,
             gross_margin_micros=gross_margin_micros,
             margin_percentage=margin_percentage,
+            unresolved_event_count=unresolved_event_count,
         )
 
 
