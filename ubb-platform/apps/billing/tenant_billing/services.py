@@ -220,7 +220,7 @@ class TenantBillingService:
 
     @staticmethod
     def close_period(period):
-        """Reconcile then close a billing period, calculating platform fee.
+        """Refuse, reconcile, then close a period, calculating platform fee.
 
         Reconciliation runs outside the transaction to get accurate totals
         before locking and closing.
