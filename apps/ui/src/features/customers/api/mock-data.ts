@@ -7,6 +7,8 @@
 // nova-ai       — individual pinned to metered_only; usage tracked at cost.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
+import { knownCost, unknownCost } from "@/lib/economic-scenarios";
+
 import type {
   BalanceResponse,
   BookOut,
@@ -724,7 +726,10 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         events: [],
         event_count: 0,
         total_billed_cost_micros: 0,
+        // A marker episode marks no event at all, so there is nothing it could
+        // have left out — a genuine zero rather than a floor at zero.
         total_provider_cost_micros: 0,
+        unresolved_event_count: 0,
       },
       {
         family: "floor_stop",
@@ -741,27 +746,34 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
             event_id: "9c32c7a4-0000-4000-8000-000000000301",
             effective_at: "2026-07-02T09:14:00Z",
             billed_cost_micros: 1_450_000,
-            provider_cost_micros: 1_160_000,
+            ...knownCost(1_160_000),
             arrived_after: false,
           },
           {
             event_id: "9c32c7a4-0000-4000-8000-000000000302",
             effective_at: "2026-07-02T09:15:12Z",
             billed_cost_micros: 890_000,
-            provider_cost_micros: 712_000,
+            ...knownCost(712_000),
             arrived_after: true,
           },
           {
             event_id: "9c32c7a4-0000-4000-8000-000000000303",
             effective_at: "2026-07-02T09:16:44Z",
             billed_cost_micros: 640_000,
-            provider_cost_micros: 512_000,
+            // THE ONE ITEMIZED EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED
+            // (#330). It landed past a spend stop and it is still billed, so
+            // its row must not read as a free overrun: the amount is absent and
+            // the episode's total above it says "at least".
+            ...unknownCost("cost_rate_missing"),
             arrived_after: true,
           },
         ],
         event_count: 3,
         total_billed_cost_micros: 2_980_000,
-        total_provider_cost_micros: 2_384_000,
+        // Two of the three costs are known; the third is not, so this is a
+        // floor and the count beside it says by how many events.
+        total_provider_cost_micros: 1_872_000,
+        unresolved_event_count: 1,
       },
       {
         family: "task",
@@ -778,24 +790,27 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
             event_id: "9c32c7a4-0000-4000-8000-000000000304",
             effective_at: "2026-07-11T17:20:00Z",
             billed_cost_micros: 1_120_000,
-            provider_cost_micros: 896_000,
+            ...knownCost(896_000),
             arrived_after: false,
           },
         ],
         event_count: 1,
         total_billed_cost_micros: 1_120_000,
         total_provider_cost_micros: 896_000,
+        unresolved_event_count: 0,
       },
     ],
     totals_per_limit: {
       customer_floor: {
         billed_cost_micros: 2_980_000,
-        provider_cost_micros: 2_384_000,
+        provider_cost_micros: 1_872_000,
+        unresolved_event_count: 1,
         event_count: 3,
       },
       task_limit: {
         billed_cost_micros: 1_120_000,
         provider_cost_micros: 896_000,
+        unresolved_event_count: 0,
         event_count: 1,
       },
     },

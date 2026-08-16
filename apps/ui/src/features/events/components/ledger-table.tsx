@@ -16,12 +16,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SupplierCostAmount } from "@/components/shared/supplier-cost";
 import { formatDate } from "@/lib/format";
 import { stopReasonLabel } from "@/lib/labels";
-import {
-  COSTING_STATUS_EXPLANATIONS,
-  costingStatusLabel,
-} from "@/lib/supplier-cost";
 
 import { asStopContextEntries, type UsageEventRow } from "../api/types";
 import { formatEventMicros } from "../lib/money";
@@ -35,31 +32,6 @@ function money(
     : formatEventMicros(micros, currency);
 }
 
-/**
- * A row's supplier cost, or the NAME of the state that explains its absence.
- *
- * A bare dash is the right rendering for a value nobody asked about; it is the
- * wrong one here, because a supplier cost is absent for two opposite reasons —
- * UBB could not learn it, or the event's type never had one — and a column full
- * of identical dashes hides which rows are the tenant's to act on. Zero is not
- * an option in either case (#320): it would say the supplier charged nothing.
- *
- * The full sentence belongs to the receipt, which has room for it. This cell
- * has room for the name.
- */
-function SupplierCost({ row, currency }: { row: UsageEventRow; currency: string }) {
-  if (row.provider_cost_micros !== null && row.provider_cost_micros !== undefined) {
-    return <>{formatEventMicros(row.provider_cost_micros, currency)}</>;
-  }
-  return (
-    <span
-      className="text-text-muted"
-      title={COSTING_STATUS_EXPLANATIONS[row.costing_status]}
-    >
-      {costingStatusLabel(row.costing_status)}
-    </span>
-  );
-}
 
 function StoppedIndicator({ row }: { row: UsageEventRow }) {
   const entries = asStopContextEntries(row.stop_context);
@@ -147,8 +119,16 @@ export function LedgerTable({
             <TableCell className="text-right text-[13px] tabular-nums">
               {money(row.billed_cost_micros, currency)}
             </TableCell>
+            {/* An absent supplier cost is NAMED, never dashed or zeroed
+                (#320, #330): a column of identical dashes hides which rows a
+                tenant can act on. */}
             <TableCell className="text-right text-[13px] tabular-nums text-text-secondary">
-              <SupplierCost row={row} currency={currency} />
+              <SupplierCostAmount
+                micros={row.provider_cost_micros}
+                status={row.costing_status}
+                currency={currency}
+                format={formatEventMicros}
+              />
             </TableCell>
             <TableCell className="pr-3 text-right">
               <StoppedIndicator row={row} />

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
+import { supplierCostTotal } from "@/lib/supplier-cost";
 import {
   pastLimitFamilyLabel,
   stopReasonLabel,
@@ -85,11 +86,19 @@ function EpisodeRow({
           of provider cost.
         </div>
       )}
+      {/* The episode's supplier total is a floor wherever the events under it
+          hold a cost UBB never learned — and this is the report where a total
+          that reads whole is read as the full damage (#330). */}
       <div className="mt-1 text-[12px] text-text-primary">
         {episode.event_count} event{episode.event_count === 1 ? "" : "s"} landed
         past the stop · billed{" "}
         {formatMicros(episode.total_billed_cost_micros, currency)} · provider
-        cost {formatMicros(episode.total_provider_cost_micros, currency)}
+        cost{" "}
+        {supplierCostTotal(
+          episode.total_provider_cost_micros,
+          episode,
+          currency,
+        )}
       </div>
     </li>
   );
@@ -188,7 +197,11 @@ export function PastLimitPanel({
                       {formatMicros(row.billed_cost_micros, currency)}
                     </TableCell>
                     <TableCell className="text-right text-[13px] tabular-nums">
-                      {formatMicros(row.provider_cost_micros, currency)}
+                      {supplierCostTotal(
+                        row.provider_cost_micros,
+                        row,
+                        currency,
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,562 of 1,943 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,566 of 1,947 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -582,12 +582,23 @@ measurement_key:
     # the undeclared name is the cause. The receipt's contents stay asserted at
     # the pricing spine, where the answered value has a live spelling.
     #
-    # #330 MOVED THE DENOMINATOR ONLY, BY TWO, WITH NO EXCLUSION MOVING
-    # (1,560 → 1,562 swept, 1,941 → 1,943 tracked, 50/126 unchanged). TWO new
+    # #330 MOVED THE DENOMINATOR ONLY, BY SIX, WITH NO EXCLUSION MOVING
+    # (1,560 → 1,566 swept, 1,941 → 1,947 tracked, 50/126 unchanged). SIX new
     # swept files — the console module that decides what a supplier-cost total
-    # may say when some of the costs under it were never learned, and its test —
-    # and no migration, so the exclusion counts are untouched and the tracked
-    # total rises by exactly the swept total. #329's case again, twice.
+    # may say when some of the costs under it were never learned, the shared
+    # components that draw it, and four test modules — and no migration, so the
+    # exclusion counts are untouched and the tracked total rises by exactly the
+    # swept total. #329's case again, six times over.
+    #
+    # ⚠ AND THE SWEEP CAUGHT ONE, AS A VERB. `tags` is retired (`metadata_key`
+    # replaced it) and a review-pass comment read "a marker episode tags no
+    # events" — ordinary English about MARKING something, nowhere near the open
+    # bag the noun names, and matched all the same because the sweep reads
+    # tokens rather than senses. It is the counterpart of #328's `units` lesson
+    # and generalises it: a retired NOUN can be tripped by its own live VERB,
+    # and no amount of care about the retired sense helps. Re-running the sweep
+    # after the review pass is what found it; running it only after the build
+    # would not have.
     #
     # A CONSOLE-ONLY COMMIT PASSES NEAR A DIFFERENT SET OF WORDS, and the one it
     # passed nearest is this entry's own. The plural is the console's live
@@ -597,12 +608,12 @@ measurement_key:
     # currency: it renders a total that is already in micros. The near-miss
     # worth recording is prose rather than code: "summed over the units in the
     # group" is the sentence #328 wrote and paid for, and the same sentence was
-    # available at every one of the fifteen call sites below. Say "every event".
+    # available at every call site this commit touched. Say "every event".
     #
     # THE OTHER THREE WERE AVOIDED BY WHAT THE COMMIT IS ABOUT rather than by
     # care. `dimension(s)` (slice 7, the analytics grouping vocabulary) is
-    # spelled by `dimensionLabel` and `BREAKDOWN_DIMENSIONS` in two files this
-    # commit touches — both already counted, and neither gained an occurrence,
+    # spelled by `dimensionLabel` and `BREAKDOWN_DIMENSIONS` in three files this
+    # commit touches — all three already counted, and none gained an occurrence,
     # because the breakdown card renders BILLED cost and is out of this rule's
     # extent by construction. `metric` and `budget` sit on surfaces this commit
     # does not reach at all.

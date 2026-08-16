@@ -11,81 +11,24 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCalendarDate, formatCostMicros, formatMicros } from "@/lib/format";
 import {
-  marginBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
 import type { MarginTrendPointOut } from "../api/types";
 
-interface TipEntry {
-  dataKey?: string | number;
-  name?: string | number;
-  value?: number | string;
-  color?: string;
-  payload?: MarginTrendPointOut;
-}
-
-/**
- * One tooltip row's amount, bounded by that PERIOD'S own completeness.
- *
- * A trend line is a sequence of positions and cannot say "at least"; the
- * tooltip is where the reader asks for a period's number, so it is where the
- * bound belongs. Keyed on `dataKey`, never on the display name.
- */
-function seriesAmount(entry: TipEntry, currency: string): string {
-  if (typeof entry.value !== "number") return String(entry.value ?? "");
-  const point = entry.payload;
-  if (!point) return formatMicros(entry.value, currency);
-  if (entry.dataKey === "provider_cost_micros") {
-    return supplierCostTotal(entry.value, point, currency);
-  }
-  if (entry.dataKey === "gross_margin_micros") {
-    return marginBound(entry.value, point, currency);
-  }
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  if (dataKey === "provider_cost_micros") return "supplier-cost";
+  if (dataKey === "gross_margin_micros") return "margin";
   // Usage billed is NOT NULL at the column and whole by construction.
-  return formatMicros(entry.value, currency);
+  return "whole";
 }
 
-function TrendTooltip({
-  active,
-  payload,
-  label,
-  currency,
-}: {
-  active?: boolean;
-  payload?: TipEntry[];
-  label?: string | number;
-  currency: string;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const point = payload[0]?.payload;
-  const note = point ? partialTotalNote(point.unresolved_event_count) : null;
-  return (
-    <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
-      <div className="mb-1 font-medium text-text-primary">
-        {formatCalendarDate(String(label))}
-      </div>
-      {payload.map((entry) => (
-        <div
-          key={String(entry.dataKey)}
-          className="flex items-center justify-between gap-4 text-text-secondary"
-        >
-          <span>{entry.name}</span>
-          <span className="font-medium text-text-primary">
-            {seriesAmount(entry, currency)}
-          </span>
-        </div>
-      ))}
-      {note && (
-        <div className="mt-1 border-t border-border pt-1 text-text-muted">
-          {note}
-        </div>
-      )}
-    </div>
-  );
+function periodLabel(label: string | number | undefined): string {
+  return formatCalendarDate(String(label));
 }
 
 export default function MarginTrendChart({
@@ -116,7 +59,15 @@ export default function MarginTrendChart({
             tickLine={false}
             width={72}
           />
-          <Tooltip content={<TrendTooltip currency={currency} />} />
+          <Tooltip
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={periodLabel}
+                roleOf={roleOf}
+              />
+            }
+          />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Line
             dataKey="gross_margin_micros"

@@ -83,6 +83,13 @@ describe("OverviewPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("nova-ai")).toBeInTheDocument();
     expect(screen.getByText("luna-labs")).toBeInTheDocument();
+    // ONE PAGE MUST NOT DISAGREE WITH ITSELF ABOUT ONE CUSTOMER (#330). The
+    // economics table below already bounds nova-ai's margin, and this alert
+    // reads the same customer from a response carrying the same count — an
+    // alert about unprofitability is the last place to overstate a margin.
+    expect(screen.getByText("at most -$88.00 margin")).toBeInTheDocument();
+    // luna-labs' costs are all known, so its margin is the figure it is.
+    expect(screen.getByText("-$14.70 margin")).toBeInTheDocument();
     // Threshold-aware copy links to the margin-alert settings.
     expect(
       screen.getByRole("link", { name: "Review the threshold in settings" }),

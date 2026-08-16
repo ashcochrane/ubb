@@ -2,7 +2,8 @@ import { Link } from "@tanstack/react-router";
 import { TrendingDown } from "lucide-react";
 
 import { ErrorCard } from "@/components/shared/error-card";
-import { formatPercent, formatSignedMicros } from "@/lib/format";
+import { formatSignedMicros } from "@/lib/format";
+import { marginBound, marginPercentBound } from "@/lib/supplier-cost";
 
 import { useUnprofitable } from "../api/queries";
 
@@ -69,11 +70,25 @@ export function UnprofitableAlert({ currency }: { currency: string }) {
                 >
                   {row.external_id}
                 </Link>
+                {/* THE SAME ROW'S MARGIN AS THE TABLE ABOVE IT, AND THEY SIT
+                    ON ONE PAGE (#330). `/margin/unprofitable` carries its own
+                    completeness count, so a customer whose costs are still
+                    unresolved has a margin that can only be LOWER than this —
+                    and an alert about unprofitability is the last place to
+                    overstate it. Rendering the figure here while the economics
+                    table renders the bound would be one page disagreeing with
+                    itself about one customer. */}
                 <span className="text-destructive">
-                  {formatSignedMicros(row.gross_margin_micros, currency)} margin
+                  {marginBound(
+                    row.gross_margin_micros,
+                    row,
+                    currency,
+                    formatSignedMicros,
+                  )}{" "}
+                  margin
                 </span>
                 <span className="text-text-muted">
-                  {formatPercent(row.margin_percentage)}
+                  {marginPercentBound(row.margin_percentage, row)}
                 </span>
               </li>
             ))}

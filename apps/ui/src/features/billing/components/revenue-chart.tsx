@@ -12,12 +12,11 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
 import {
-  marginBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCostMicros, formatShortDate } from "@/lib/format";
 
 import type { RevenueDailyRow } from "../api/types";
 
@@ -31,71 +30,16 @@ const SERIES: { key: keyof ChartRow; label: string; color: string }[] = [
   { key: "markup_micros", label: "Markup", color: "var(--chart-3)" },
 ];
 
-/**
- * One tooltip row's amount, bounded by the DAY'S own completeness.
- *
- * The plotted line is a position and cannot say "at least"; the tooltip is
- * where the reader asks for the number, so it is where the number has to be
- * honest. Keyed on the series' data key — display copy moves, keys do not.
- */
-function seriesAmount(
-  key: keyof ChartRow,
-  micros: number,
-  point: ChartRow,
-  currency: string,
-): string {
-  if (key === "provider_cost_micros") {
-    return supplierCostTotal(micros, point, currency);
-  }
-  if (key === "markup_micros") return marginBound(micros, point, currency);
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  if (dataKey === "provider_cost_micros") return "supplier-cost";
+  if (dataKey === "markup_micros") return "margin";
   // Billed is NOT NULL at the column and whole by construction.
-  return formatMicros(micros, currency);
+  return "whole";
 }
 
-function RevenueTooltip({
-  active,
-  payload,
-  label,
-  currency,
-}: {
-  active?: boolean;
-  payload?: {
-    dataKey?: string | number;
-    value?: number | string;
-    payload?: ChartRow;
-  }[];
-  label?: string | number;
-  currency: string;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const row = new Map(payload.map((entry) => [String(entry.dataKey), entry.value]));
-  const point = payload[0]?.payload;
-  return (
-    <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
-      <div className="mb-1 font-medium text-text-primary">
-        {typeof label === "string" ? formatShortDate(label) : label}
-      </div>
-      {SERIES.map((series) => {
-        const value = row.get(series.key);
-        if (typeof value !== "number") return null;
-        return (
-          <div key={series.key} className="flex items-center justify-between gap-4">
-            <span className="text-text-secondary">{series.label}</span>
-            <span className="font-medium text-text-primary">
-              {point
-                ? seriesAmount(series.key, value, point, currency)
-                : formatMicros(value, currency)}
-            </span>
-          </div>
-        );
-      })}
-      {point && partialTotalNote(point.unresolved_event_count) && (
-        <div className="mt-1 border-t border-border pt-1 text-text-muted">
-          {partialTotalNote(point.unresolved_event_count)}
-        </div>
-      )}
-    </div>
-  );
+function dayLabel(label: string | number | undefined): string {
+  return typeof label === "string" ? formatShortDate(label) : String(label ?? "");
 }
 
 export default function RevenueChart({
@@ -131,7 +75,13 @@ export default function RevenueChart({
             width={64}
           />
           <Tooltip
-            content={<RevenueTooltip currency={currency} />}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={dayLabel}
+                roleOf={roleOf}
+              />
+            }
             cursor={{ stroke: "var(--chart-grid)" }}
           />
           {SERIES.map((series) => (
