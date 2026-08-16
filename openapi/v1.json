@@ -1878,10 +1878,15 @@
           "provider_cost_micros": {
             "title": "Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "provider_cost_micros",
+          "unresolved_event_count",
           "billed_cost_micros",
           "margin_micros",
           "event_count"
@@ -5337,10 +5342,15 @@
           "total_provider_cost_micros": {
             "title": "Total Provider Cost Micros",
             "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
           }
         },
         "required": [
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "total_billed_cost_micros",
           "total_markup_micros",
           "daily"
@@ -6763,6 +6773,10 @@
             "title": "Total Provider Cost Micros",
             "type": "integer"
           },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
           "usage_markup_margin_micros": {
             "title": "Usage Markup Margin Micros",
             "type": "integer"
@@ -6772,6 +6786,7 @@
           "total_events",
           "total_billed_cost_micros",
           "total_provider_cost_micros",
+          "unresolved_event_count",
           "usage_markup_margin_micros",
           "by_provider",
           "by_event_type",

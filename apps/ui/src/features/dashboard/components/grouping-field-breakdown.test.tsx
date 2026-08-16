@@ -72,6 +72,7 @@ describe("GroupingFieldBreakdown", () => {
       total_events: 0,
       total_billed_cost_micros: 0,
       total_provider_cost_micros: 0,
+      unresolved_event_count: 0,
       usage_markup_margin_micros: 0,
       by_provider: [],
       by_event_type: [],

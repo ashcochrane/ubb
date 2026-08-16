@@ -140,7 +140,10 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
     that. It is deliberately NOT imported below for the same reason.
 
     The seed is deliberately ONE posting on ONE day: a whole-row assertion is
-    only readable if every number in it is a value somebody chose.
+    only readable if every number in it is a value somebody chose. The one test
+    that needs a second and a third posting writes them itself, for the same
+    reason — a row saying it excluded an event is only readable next to a row
+    that excluded none.
     """
 
     def setup_method(self):
@@ -167,6 +170,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
             "grouping_field_value": "eu-west-1",
             "event_count": 1,
             "total_provider_cost_micros": 1_000,
+            "unresolved_event_count": 0,
             "total_billed_cost_micros": 3_000,
         }]}
 
@@ -187,6 +191,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
             "bucket": "2026-05-04",
             "grouping_field_value": "eu-west-1",
             "provider_cost_micros": 1_000,
+            "unresolved_event_count": 0,
             "billed_cost_micros": 3_000,
             "markup_micros": 2_000,
             "event_count": 1,
@@ -205,7 +210,54 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
         assert r.json()["series"] == [{
             "bucket": "2026-05-04",
             "provider_cost_micros": 1_000,
+            "unresolved_event_count": 0,
             "billed_cost_micros": 3_000,
             "markup_micros": 2_000,
             "event_count": 1,
         }]
+
+    def test_the_breakdown_row_reports_what_its_own_group_excluded(self):
+        """The completeness pin for the one rollup addressed by a declared key.
+
+        #327 gave every supplier-cost total the count of postings it could not
+        include, and the sibling module asserts that for every other block. This
+        one lives here because reaching it means naming the request parameter
+        that carries a declared key, which is retired under slice 7's ledger
+        entry — this module already carries that word, so the assertion costs
+        the recorded extent nothing by sitting beside the rows it is about.
+
+        The count is a PER-GROUP fact: the region holding the unresolved cost is
+        partial and the region beside it is not.
+        """
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r1",
+            idempotency_key="k1", provider="aws_textract", event_type="ocr_page",
+            grouping_field_1="eu-west-1",
+            effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
+            provider_cost_micros=None, billed_cost_micros=5_000,
+            costing_status="unresolved", unresolved_reason="cost_rate_missing")
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r2",
+            idempotency_key="k2", provider="aws_textract", event_type="ocr_page",
+            grouping_field_1="us-east-1",
+            effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
+            provider_cost_micros=7_000, billed_cost_micros=9_000)
+
+        r = self._get("/api/v1/metering/analytics/usage?dimensions=region")
+        assert r.status_code == 200
+        assert r.json()["breakdowns"] == {"region": [
+            {
+                "grouping_field_value": "us-east-1",
+                "event_count": 1,
+                "total_provider_cost_micros": 7_000,
+                "unresolved_event_count": 0,
+                "total_billed_cost_micros": 9_000,
+            },
+            {
+                "grouping_field_value": "eu-west-1",
+                "event_count": 2,
+                "total_provider_cost_micros": 1_000,
+                "unresolved_event_count": 1,
+                "total_billed_cost_micros": 8_000,
+            },
+        ]}

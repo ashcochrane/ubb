@@ -595,6 +595,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     total_events: 48_213,
     total_billed_cost_micros: 342_500_000,
     total_provider_cost_micros: 274_000_000,
+    unresolved_event_count: 0,
     usage_markup_margin_micros: 68_500_000,
     by_provider: [
       {
@@ -620,6 +621,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     total_events: 6_054,
     total_billed_cost_micros: 41_200_000,
     total_provider_cost_micros: 55_900_000,
+    unresolved_event_count: 0,
     usage_markup_margin_micros: -14_700_000,
     by_provider: [],
     by_event_type: [],

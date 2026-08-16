@@ -25,7 +25,28 @@ def get_customer_economics(tenant_id, customer_id, period_start: date, period_en
 
 
 def get_economics_summary(tenant_id, period_start: date, period_end: date):
-    """Returns aggregated economics for all customers."""
+    """Returns aggregated economics for all customers.
+
+    ⚠ THIS TOTAL IS NOT A PAIR, AND THE REASON IS THAT IT CANNOT HONESTLY BE ONE
+    YET (#327).
+
+    Every other supplier-cost total in the tree now travels with the count of
+    postings it excluded, because `Posting.provider_cost_micros` is nullable and
+    a bare `Sum` over it silently skips the unresolved rows. **This `Sum` is not
+    over that column.** `CustomerEconomics.provider_cost_micros` is a monthly
+    SNAPSHOT, `NOT NULL` with a default of zero, so SQL's null-skipping cannot
+    reach it — its `Sum` is `None` only when no snapshot matched, which is the
+    empty sum and is exactly complete.
+
+    What it CAN inherit is a partiality from upstream: the accumulator these
+    snapshots are built from adds the posting's cost up in Python, and that
+    reader is #328's, as is the snapshot recording what it excluded. Publishing
+    an `unresolved_event_count` here today would mean publishing a zero nothing
+    computes — a number indistinguishable from a real one, which is the defect
+    this slice exists to end. So the count arrives with the fact, not before it.
+    `apps/subscriptions/tests/test_queries.py` holds the column to `NOT NULL`,
+    so the claim above fails rather than ages.
+    """
     from apps.subscriptions.economics.models import CustomerEconomics
     from django.db.models import Sum
 

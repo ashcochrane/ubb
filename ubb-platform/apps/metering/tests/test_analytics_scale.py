@@ -469,46 +469,72 @@ class TagGroupByPushdownTest(TestCase):
 
     @staticmethod
     def _old_get_dimensional_margin_tag(tenant_id, tag_key):
-        """Inline replica of the pre-rewrite tag_key branch."""
+        """Grouping the same rows in Python, as the pre-rewrite branch did.
+
+        ⚠ IT ACCUMULATES THE PAIR, because the rule it is a reference for
+        changed (#327). The pre-rewrite loop added `provider or 0` into the
+        total, which was harmless while the column was NOT NULL and is the
+        silent-zero defect since #317 — so a reference still written that way
+        would be asserting that the SQL pushdown reproduces a defect. What is
+        held constant is what this class is for: grouping in SQL answers what
+        grouping in Python answers.
+        """
         from collections import defaultdict
         from apps.metering.usage.models import Posting as UE
+        from core.vocabulary import COSTING_STATUS_UNRESOLVED
 
-        def _row(dim, provider, billed, count):
-            return {"grouping_field_value": dim, "provider_cost_micros": provider or 0,
-                    "billed_cost_micros": billed or 0,
-                    "margin_micros": (billed or 0) - (provider or 0),
+        def _row(dim, provider, billed, unresolved, count):
+            return {"grouping_field_value": dim, "provider_cost_micros": provider,
+                    "unresolved_event_count": unresolved,
+                    "billed_cost_micros": billed,
+                    "margin_micros": billed - provider,
                     "event_count": count}
 
-        agg = defaultdict(lambda: {"p": 0, "b": 0, "n": 0})
-        for bag, p, b in UE.objects.filter(
+        agg = defaultdict(lambda: {"p": 0, "b": 0, "u": 0, "n": 0})
+        for bag, p, b, status in UE.objects.filter(
                 tenant_id=tenant_id, metadata__has_key=tag_key
-        ).values_list("metadata", "provider_cost_micros", "billed_cost_micros"):
+        ).values_list("metadata", "provider_cost_micros", "billed_cost_micros",
+                      "costing_status"):
             k = (bag or {}).get(tag_key)
-            agg[k]["p"] += p or 0
+            if p is not None:
+                agg[k]["p"] += p
+            if status == COSTING_STATUS_UNRESOLVED:
+                agg[k]["u"] += 1
             agg[k]["b"] += b or 0
             agg[k]["n"] += 1
-        rows = [_row(k, v["p"], v["b"], v["n"]) for k, v in agg.items()]
+        rows = [_row(k, v["p"], v["b"], v["u"], v["n"]) for k, v in agg.items()]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
     @staticmethod
     def _old_by_tag(tenant_id, tag_key):
-        """Inline replica of the pre-rewrite by_tag block."""
+        """Grouping the same rows in Python, as the pre-rewrite block did.
+
+        ⚠ It accumulates the pair — see the sibling helper above for why a
+        reference that still coalesced would be pinning the wrong thing.
+        """
         from collections import defaultdict
         from apps.metering.usage.models import Posting as UE
+        from core.vocabulary import COSTING_STATUS_UNRESOLVED
 
         agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
-                                   "total_provider_cost_micros": 0})
-        for bag, billed, provider in UE.objects.filter(
+                                   "total_provider_cost_micros": 0,
+                                   "unresolved_event_count": 0})
+        for bag, billed, provider, status in UE.objects.filter(
                 tenant_id=tenant_id, metadata__has_key=tag_key
-        ).values_list("metadata", "billed_cost_micros", "provider_cost_micros"):
+        ).values_list("metadata", "billed_cost_micros", "provider_cost_micros",
+                      "costing_status"):
             val = (bag or {}).get(tag_key)
             agg[val]["event_count"] += 1
             agg[val]["total_cost_micros"] += billed or 0
-            agg[val]["total_provider_cost_micros"] += provider or 0
+            if provider is not None:
+                agg[val]["total_provider_cost_micros"] += provider
+            if status == COSTING_STATUS_UNRESOLVED:
+                agg[val]["unresolved_event_count"] += 1
         return [
             {"tag_value": k, "event_count": v["event_count"],
              "total_cost_micros": v["total_cost_micros"],
-             "total_provider_cost_micros": v["total_provider_cost_micros"]}
+             "total_provider_cost_micros": v["total_provider_cost_micros"],
+             "unresolved_event_count": v["unresolved_event_count"]}
             for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
         ]
 
@@ -667,3 +693,44 @@ class TagGroupByPushdownTest(TestCase):
         # Normalise: old loop returns Python dicts; new returns dicts from JSON.
         self.assertEqual(new_by_tag, old_by_tag,
                          "SQL pushdown by_tag result differs from old Python-loop reference")
+
+    # ------------------------------------------------------------------
+    # Completeness — both keyed rollups report what they excluded (#327)
+    # ------------------------------------------------------------------
+
+    def test_both_keyed_rollups_report_what_they_excluded(self):
+        """A cost UBB has not resolved is counted, per group, on both surfaces.
+
+        ⚠ THIS LIVES HERE RATHER THAN WITH ITS SIBLINGS, and the reason is the
+        sweep. Every other total's completeness is asserted in
+        `api/v1/tests/test_a_cost_total_says_what_it_excluded.py`, from one
+        fixture; reaching THESE two means naming the request parameter that
+        carries a key out of the open bag, which is retired under slice 7's
+        ledger entry at eight files. A ninth would fail the sweep with
+        `term_spread`. This module already carries the word and already owns
+        both keyed rollups, including the fixture with an empty-string key —
+        so the assertion costs the recorded extent nothing by sitting here.
+
+        The row for `prod` is the partial one; `staging` beside it is whole,
+        which is what makes the first number mean anything.
+        """
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="req_f23_E", idempotency_key="idem_f23_E",
+            billed_cost_micros=7_000_000, provider_cost_micros=None,
+            costing_status="unresolved", unresolved_reason="cost_rate_missing",
+            metadata={"env": "prod"})
+
+        margin = {r["grouping_field_value"]: r for r in
+                  queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)}
+        self.assertEqual(margin["prod"]["provider_cost_micros"], 1_500_000)
+        self.assertEqual(margin["prod"]["unresolved_event_count"], 1)
+        self.assertEqual(margin["staging"]["unresolved_event_count"], 0)
+
+        resp = Client().get(
+            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        by_tag = {r["tag_value"]: r for r in resp.json()["by_tag"]}
+        self.assertEqual(by_tag["prod"]["total_provider_cost_micros"], 1_500_000)
+        self.assertEqual(by_tag["prod"]["unresolved_event_count"], 1)
+        self.assertEqual(by_tag["staging"]["unresolved_event_count"], 0)

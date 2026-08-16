@@ -79,6 +79,25 @@ class TestGetEconomicsSummary:
             "customer_count": 2,
         }
 
+    def test_the_column_this_total_sums_cannot_be_unknown(self):
+        """Why this one total is not a pair (#327).
+
+        Every other supplier-cost total in the tree now reports the count of
+        postings it excluded, because the posting's column is nullable and SQL
+        skips nulls silently. This total sums a monthly SNAPSHOT of that cost,
+        and a snapshot cannot be unknown — so there is nothing for a count to
+        report, and publishing a zero nothing computes would be the very number
+        this slice exists to stop producing.
+
+        The claim is `NOT NULL`, so the day the snapshot learns to say "I
+        excluded some" this test goes red and the read contract's docstring gets
+        read rather than believed.
+        """
+        from apps.subscriptions.economics.models import CustomerEconomics
+
+        column = CustomerEconomics._meta.get_field("provider_cost_micros")
+        assert column.null is False
+
 
 @pytest.mark.django_db
 class TestGetCustomerSubscription:

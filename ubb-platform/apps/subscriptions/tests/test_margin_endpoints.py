@@ -75,6 +75,35 @@ class MarginEndpointsTest(TestCase):
         r = self.http.get("/api/v1/margin/by-grouping-field?group_by=nope", **self._auth())
         assert r.status_code == 422
 
+    def test_by_grouping_field_publishes_what_the_margin_excluded(self):
+        """The DECLARED row of the three rollups reaches the tenant whole (#327).
+
+        A margin over a cost total missing an event is a ceiling on a margin,
+        and this is the only one of the three rollups over these axes whose row
+        is a schema — so it is the only one where an unnamed key is silently
+        DROPPED rather than merely undocumented. Both review axes found this
+        row shedding the count on the way out.
+
+        The provider group is partial and the row still states the margin it
+        can: 1,300,000 billed against the 1,000,000 UBB knows it paid, with one
+        event's cost excluded.
+        """
+        from apps.metering.usage.models import Posting
+
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, idempotency_key="i3",
+            provider="openai", billed_cost_micros=0, provider_cost_micros=None,
+            costing_status="unresolved", unresolved_reason="cost_rate_missing")
+
+        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=provider",
+                          **self._auth())
+        assert r.status_code == 200
+        row = next(x for x in r.json()["rows"]
+                   if x["grouping_field_value"] == "openai")
+        assert row["provider_cost_micros"] == 1_000_000
+        assert row["margin_micros"] == 300_000
+        assert row["unresolved_event_count"] == 1
+
     def test_threshold_get_default_and_put(self):
         r = self.http.get("/api/v1/margin/threshold", **self._auth())
         assert r.status_code == 200 and r.json()["provider_cost_spike_pct"] == 25.0

@@ -9,6 +9,9 @@ from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
+from core.cost_totals import (
+    UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total, cost_total_annotations,
+)
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
@@ -729,42 +732,42 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
     qs = _apply_task_filter(qs, tenant, task_id, include_subtasks)
 
-    totals = qs.aggregate(
+    # EVERY SUPPLIER-COST TOTAL BELOW IS A PAIR (#327), and each breakdown row
+    # carries its OWN count: a provider whose costs are all resolved is not made
+    # partial by another provider's that are not.
+    totals = carry_cost_total(qs.aggregate(
         total_events=Count("id"),
         total_billed_cost_micros=Sum("billed_cost_micros"),
-        total_provider_cost_micros=Sum("provider_cost_micros"),
-    )
+        **cost_total_annotations(key="total_provider_cost_micros"),
+    ), key="total_provider_cost_micros")
     total_billed = totals["total_billed_cost_micros"] or 0
-    total_provider = totals["total_provider_cost_micros"] or 0
+    total_provider = totals["total_provider_cost_micros"]
 
-    by_provider = list(
-        qs.exclude(provider="").values("provider").annotate(
+    def _paired(grouped):
+        """Resolve each grouped row's cost pair. Every block goes through here,
+        including the two below that build their own query."""
+        return [carry_cost_total(row, key="total_provider_cost_micros")
+                for row in grouped]
+
+    def _rollup(column, *, skip_blank=False):
+        """One breakdown block: group by `column`, largest billed first, every
+        row carrying the count of what its own group excluded.
+
+        Four blocks differed only in the column they group and whether an
+        unattributed value is dropped, and the completeness pair would have been
+        a fifth copy of the same four lines in each.
+        """
+        rows = qs.exclude(**{column: ""}) if skip_blank else qs
+        return _paired(rows.values(column).annotate(
             event_count=Count("id"),
             total_cost_micros=Sum("billed_cost_micros"),
-            total_provider_cost_micros=Sum("provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_event_type = list(
-        qs.exclude(event_type="").values("event_type").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            total_provider_cost_micros=Sum("provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_customer = list(
-        qs.values("customer__external_id").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            total_provider_cost_micros=Sum("provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
-    by_task_type = list(
-        qs.exclude(task_type="").values("task_type").annotate(
-            event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
-            total_provider_cost_micros=Sum("provider_cost_micros"),
-        ).order_by("-total_cost_micros")
-    )
+            **cost_total_annotations(key="total_provider_cost_micros"),
+        ).order_by("-total_cost_micros"))
+
+    by_provider = _rollup("provider", skip_blank=True)
+    by_event_type = _rollup("event_type", skip_blank=True)
+    by_customer = _rollup("customer__external_id")
+    by_task_type = _rollup("task_type", skip_blank=True)
 
     by_tag = []
     if tag_key:
@@ -774,14 +777,14 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         # is what migrates the capability onto the declared grouping contract.
         # All that moved here is the column underneath, because the bag this
         # read folded into the survivor.
-        by_tag = list(
+        by_tag = _paired(
             qs.filter(metadata__has_key=tag_key)
             .annotate(tag_value=KeyTextTransform(tag_key, "metadata"))
             .values("tag_value")
             .annotate(
                 event_count=Count("id"),
                 total_cost_micros=Sum("billed_cost_micros"),
-                total_provider_cost_micros=Sum("provider_cost_micros"),
+                **cost_total_annotations(key="total_provider_cost_micros"),
             )
             .order_by("-total_cost_micros")
         )
@@ -795,11 +798,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             col = _resolve_dimension(tenant, dim)
             # Run over the FULL qs (no exclusion) so every event is counted.
             # customer always has an external_id so no "(unattributed)" needed there.
-            rows = list(
+            rows = _paired(
                 qs.values(col)
                 .annotate(
                     event_count=Count("id"),
-                    total_provider_cost_micros=Sum("provider_cost_micros"),
+                    **cost_total_annotations(key="total_provider_cost_micros"),
                     total_billed_cost_micros=Sum("billed_cost_micros"),
                 )
                 .order_by("-total_billed_cost_micros")
@@ -823,6 +826,10 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "total_events": totals["total_events"] or 0,
         "total_billed_cost_micros": total_billed,
         "total_provider_cost_micros": total_provider,
+        UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
+        # Billed minus what UBB knows it paid, bounded by the same count: where
+        # events were excluded this is the LARGEST the margin can be, never the
+        # margin. One fact, stated once.
         "usage_markup_margin_micros": total_billed - total_provider,
         "by_provider": by_provider,
         "by_event_type": by_event_type,
