@@ -23,6 +23,7 @@ from django.test import Client
 
 from apps.metering.pricing.models import Rate
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -53,7 +54,8 @@ class TestNegativeMetricSchemaRejection:
         """Schema rejects the negative quantity before pricing runs."""
         tenant, customer, http, auth = _setup_http()
         Rate.objects.create(
-            tenant=tenant, card_type="price", measurement_key="calls",
+            tenant=tenant, card_type="price",
+            measurement=declares_a_quantity(tenant, "calls"),
             pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )
         resp = _post(http, auth, customer, {

@@ -46,6 +46,7 @@ from apps.platform.audit.marker import records_audit
 from apps.metering.queries import GROUPED_VALUE_KEY
 from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
+from apps.platform.event_types.quantities import declaration_named
 from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
@@ -956,7 +957,13 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
     (point-in-time)."""
     _product_check(request)
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
-    qs = Rate.objects.filter(tenant=request.auth.tenant, rate_card=book)
+    # The declaration is joined, not fetched per row: `rate_out` reads the
+    # quantity's name off it since #326, and a page of fifty rates would
+    # otherwise be fifty-one queries. A deactivated rate references nothing and
+    # answers from its own column, which `select_related` handles without a
+    # second path — it is a LEFT JOIN, not a filter.
+    qs = Rate.objects.filter(
+        tenant=request.auth.tenant, rate_card=book).select_related("measurement")
     if as_of is not None:
         qs = qs.filter(valid_from__lte=as_of).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
@@ -984,11 +991,29 @@ def add_rate(request, book_id: UUID, payload: RateIn):
     if payload.pricing_model not in valid_models:
         raise Problem("validation_error",
                       f"pricing_model must be one of {sorted(valid_models)}")
+    # WHICH DECLARED QUANTITY THIS RATE PRICES, RESOLVED BEFORE ANYTHING IS
+    # WRITTEN (#326). A name this tenant has not declared has no record to
+    # reference, and a priced rule against a name nobody declared is the typo
+    # this slice exists to make impossible — it matches nothing, costs nothing
+    # and looks configured.
+    #
+    # The lookup is a pure read and every statement below it writes, which is
+    # why it sits here rather than beside the create: a refusal placed under a
+    # write spends what it refuses, and this route's writes are a rate and an
+    # audit record.
+    declaration = declaration_named(tenant=request.auth.tenant,
+                                    measurement_key=payload.measurement_key)
+    if declaration is None:
+        raise Problem(
+            "validation_error",
+            f"no declared quantity is called {payload.measurement_key!r}. A "
+            f"rate prices a quantity this tenant has declared on an Event "
+            f"Type; declare it first, then price it.")
     try:
         with transaction.atomic():
             rate = Rate.objects.create(
                 tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
-                measurement_key=payload.measurement_key, provider=payload.provider,
+                measurement=declaration, provider=payload.provider,
                 event_type=payload.event_type, task_type=payload.task_type,
                 subtask_type=payload.subtask_type,
                 # Six published properties onto six of the ten columns (#276);

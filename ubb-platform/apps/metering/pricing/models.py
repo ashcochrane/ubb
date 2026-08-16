@@ -49,6 +49,14 @@ class TenantMarkup(BaseModel):
         return result
 
 
+#: The check that makes a rate say which quantity it prices, exactly once
+#: (#326). Named here rather than spelled at each site because every test of it
+#: asserts the MESSAGE: several mechanisms on this table answer
+#: `IntegrityError` — the partial unique index, this check, the reference's own
+#: foreign key and the two triggers `0018` and `0020` install — and "the write
+#: was rejected" stopped being evidence the moment there was more than one.
+NAMES_ONE_QUANTITY_CHECK = "ck_rate_names_one_quantity"
+
 CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
 # per_unit/flat only: ADR-0003 — the MVP launches without tiered pricing
 # (graduated/package deleted end to end, not gated), so every arrival-time
@@ -90,17 +98,43 @@ class Rate(BaseModel):
     grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
-    # WHICH DECLARED QUANTITY THIS RATE PRICES, BY NAME — and free text on
-    # purpose, not by omission. Slice 2 pays the word; slice 3 replaces this
-    # with a reference to the declared record the name is a name *of*, at which
-    # point a rate naming a quantity nobody declared stops being writable.
-    # Until then the two sides agree by spelling alone, exactly as they did
-    # under the retired name. ADR-0007 §3 is what sanctions shipping the final
-    # name over a half-built implementation, and
-    # `tests/test_the_rates_quantity_name_takes_the_canonical_name.py` is where
-    # the boundary is held to the tree so the free text is not read as an
-    # oversight.
-    measurement_key = models.CharField(max_length=100)
+    # WHICH DECLARED QUANTITY THIS RATE PRICES — the record itself since #326,
+    # where it was the record's NAME as free text. Slice 2 paid the word and
+    # said in three places that slice 3 would pay the referential integrity;
+    # this is that payment. A typo can no longer sit here costing nothing and
+    # looking configured, because there is nothing for it to point at.
+    #
+    # NULLABLE FOR ONE POPULATION AND NO LIVE WRITER MAY PRODUCE IT: the rows
+    # the conversion found naming a quantity no declaration matched. They keep
+    # their row and their name (below) and stop resolving, because deleting them
+    # would destroy the evidence a tenant needs to fix them and repointing them
+    # would invent a declaration the tenant never made. `ck_rate_names_one_
+    # quantity` is what stops that null being a door anything else can walk
+    # through.
+    #
+    # PROTECT, for the reason `Measurement.concept` gives for its own: a record
+    # deleted out from under the thing that points at it silently changes what
+    # historical numbers mean. Here it would stop a rule pricing work that is
+    # still being metered. Withdrawing a declaration a rate names is refused,
+    # and the route renders that refusal rather than a 500
+    # (`api/v1/event_type_endpoints.py`).
+    measurement = models.ForeignKey(
+        "event_types.Measurement", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="rates")
+    # THE NAME A CONVERSION COULD NOT PLACE, AND NOTHING ELSE. It is not a
+    # second spelling of the reference above — the check below makes the two
+    # mutually exclusive, so exactly one of them says which quantity a rate
+    # names and no row has both.
+    #
+    # ITS ONLY WRITER IS MIGRATION `0019`, AND THAT IS ENFORCED RATHER THAN
+    # ASSERTED. The check cannot do it: it is evaluated against one row and
+    # cannot tell the conversion's UPDATE from a fresh INSERT carrying a loose
+    # name, which is the same defect wearing the new column. `0020` installs a
+    # `BEFORE INSERT` trigger refusing any rate that references no declaration,
+    # and that is what makes a rate naming an undeclared quantity unwritable at
+    # every door rather than only at the route.
+    undeclared_measurement_key = models.CharField(max_length=100, blank=True,
+                                                  default="")
     pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
     rate_per_unit_micros = models.BigIntegerField(default=0)
     unit_quantity = models.BigIntegerField(default=1_000_000)
@@ -169,12 +203,12 @@ class Rate(BaseModel):
     class Meta:
         db_table = "ubb_rate_card"
         indexes = [
-            models.Index(fields=["tenant", "card_type", "provider", "event_type", "measurement_key"],
+            models.Index(fields=["tenant", "card_type", "provider", "event_type", "measurement"],
                          name="idx_ratecard_lookup"),
         ]
         constraints = [
             models.UniqueConstraint(
-                fields=["rate_card", "measurement_key", "currency", "provider",
+                fields=["rate_card", "measurement", "currency", "provider",
                         "event_type", "task_type", "subtask_type",
                         "grouping_field_1", "grouping_field_2", "grouping_field_3",
                         "grouping_field_4", "grouping_field_5", "grouping_field_6",
@@ -182,7 +216,44 @@ class Rate(BaseModel):
                         "grouping_field_10"],
                 condition=models.Q(valid_to__isnull=True),
                 name="uq_rate_active_in_book"),
+            # EXACTLY ONE OF THE TWO SAYS WHICH QUANTITY (#326). A live rate
+            # references a declaration and carries no loose name; a rate the
+            # conversion could not place carries its name and references
+            # nothing. Neither both nor neither.
+            #
+            # This holds the SHAPE of a row, at all times, including across an
+            # update that would blank a placeless rate's name and leave it
+            # pricing nothing and saying nothing. WHO MAY BE BORN is a
+            # different question and a check cannot answer it — see `0020`.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(measurement__isnull=False,
+                             undeclared_measurement_key="")
+                    | (models.Q(measurement__isnull=True)
+                       & ~models.Q(undeclared_measurement_key=""))),
+                name=NAMES_ONE_QUANTITY_CHECK),
         ]
+
+    @property
+    def measurement_key(self):
+        """The name of the quantity this rate prices.
+
+        DERIVED, NEVER STORED (#326), which is the whole of what the conversion
+        bought: the name is the declaration's, so a rate cannot hold a spelling
+        the catalogue does not. It is still what the wire carries — `RateIn`,
+        `RateChangeIn` and `RateOut` all publish this key and none of them
+        moved — and still what the pricing receipt and the audit record write,
+        so the published surface of this entity is unchanged by the move
+        underneath it.
+
+        A deactivated rate answers with the name it was written with, off the
+        column that preserved it. That is the point of preserving it: a rate
+        that answered `""` would be a rate a tenant cannot recognise, cannot
+        fix, and would reasonably delete.
+        """
+        if self.measurement_id is None:
+            return self.undeclared_measurement_key
+        return self.measurement.code
 
     #: The slot half is read off the registry rather than restated, so a rate
     #: cannot end up selecting on a different set of slots from the one a tenant

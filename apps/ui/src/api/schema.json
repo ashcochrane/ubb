@@ -9467,7 +9467,7 @@
     },
     "/api/v1/event-types/{key}/measurements/{code}": {
       "delete": {
-        "description": "Withdraw one declared quantity. This revises the publication too.\n\nA real delete rather than the data plane's soft delete: that rule protects\nrows carrying money history, and a part of a declaration carries none.",
+        "description": "Withdraw one declared quantity, unless a rate still prices it.\n\nA real delete rather than the data plane's soft delete: that rule protects\nrows carrying money history, and a part of a declaration carries none.\n\nRefused while a rate names it: a priced rule against a quantity you no\nlonger declare is a rule that can price nothing, so either the rule goes\nfirst or the declaration stays.",
         "operationId": "api_v1_event_type_endpoints_withdraw_measurement",
         "parameters": [
           {
@@ -9502,6 +9502,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "security": [

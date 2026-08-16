@@ -65,6 +65,7 @@ from api.v1.schemas import (
     ReportedCostMappingOut, event_category_out, event_type_out,
     measurement_out, provider_out, reported_cost_mapping_out,
 )
+from apps.metering.pricing.models import Rate
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.event_types.models import (
@@ -598,14 +599,19 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
 
 
 @event_type_router.delete("/event-types/{key}/measurements/{code}",
-                          response={204: None, 404: ProblemOut})
+                          response={204: None, 404: ProblemOut,
+                                    409: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("measurement.withdrawn")
 def withdraw_measurement(request, key: str, code: str):
-    """Withdraw one declared quantity. This revises the publication too.
+    """Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
     """
     _product_check(request)
     tenant = request.auth.tenant
@@ -616,6 +622,25 @@ def withdraw_measurement(request, key: str, code: str):
         raise Problem(
             "not_found",
             f"event type '{key}' declares no measurement with code '{code}'")
+    # The same shape `withdraw_event_category` above states, and checked ahead
+    # of the delete for the same reason: `PROTECT` on the rate's reference
+    # (#326) would otherwise surface as a 500. Withdrawing the declaration and quietly deactivating the
+    # tenant's rates was the alternative — and beyond rewriting their pricing on
+    # their behalf, it is not even available: `SET_NULL` would leave a row
+    # referencing nothing and carrying no name, which `ck_rate_names_one_quantity`
+    # refuses, so the 500 would simply move.
+    #
+    # NOT SCOPED TO THIS TENANT, deliberately: what must be refused is exactly
+    # what `PROTECT` would block, and that is every rate pointing here whoever
+    # owns it. No supported path creates a cross-tenant one — the route and the
+    # conversion both resolve within the tenant — and the detail below carries no
+    # count, so a row this repository cannot create still cannot leak a number.
+    if Rate.objects.filter(measurement=measurement).exists():
+        raise Problem(
+            "conflict",
+            f"a rate prices '{code}'. Delete it first, or keep the "
+            f"declaration: a rate names the quantity it prices, so a quantity "
+            f"nobody declares is a rate that prices nothing.")
     _withdrawn(measurement, action="measurement.withdrawn", tenant=tenant,
                resource_type="measurement",
                resource_id=f"{event_type.key}:{code}",

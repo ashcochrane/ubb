@@ -22,6 +22,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate, TenantMarkup
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 
 
 @pytest.mark.django_db
@@ -154,7 +155,7 @@ def test_unassigned_customer_uses_provider_default_book(db):
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True)
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                            measurement_key="input_tokens", currency="usd",
+                            measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                             rate_per_unit_micros=10, rate_card=book)
     got = PricingService._resolve_card(t, c, "price", {"provider": "gemini"},
                                        "input_tokens", "usd", timezone.now())
@@ -176,16 +177,16 @@ def test_assigned_book_wins_then_falls_back_to_default(db):
     RateCardAssignment.objects.create(tenant=t, customer=c, rate_card=ent, currency="usd")
     # Enterprise overrides input_tokens; output_tokens only exists in default.
     ent_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                 measurement_key="input_tokens", currency="usd",
+                                 measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                                  rate_per_unit_micros=5, rate_card=ent)
     def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                  measurement_key="output_tokens", currency="usd",
+                                  measurement=declares_a_quantity(t, "output_tokens"), currency="usd",
                                   rate_per_unit_micros=30, rate_card=default)
     # Conflicting default-book rate for the SAME quantity as ent_in — proves the
     # assigned book shadows the default book rather than resolving by
     # elimination (only possible because Rate uniqueness is now per-book).
     def_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
-                                 measurement_key="input_tokens", currency="usd",
+                                 measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                                  rate_per_unit_micros=99, rate_card=default)
     now = timezone.now()
     selectors = {"provider": "gemini"}

@@ -46,6 +46,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -70,10 +77,14 @@ def sync_detailed(
 ) -> Response[Any | ProblemOut]:
     """ Withdraw Measurement
 
-     Withdraw one declared quantity. This revises the publication too.
+     Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
 
     Args:
         key (str):
@@ -109,10 +120,14 @@ def sync(
 ) -> Any | ProblemOut | None:
     """ Withdraw Measurement
 
-     Withdraw one declared quantity. This revises the publication too.
+     Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
 
     Args:
         key (str):
@@ -143,10 +158,14 @@ async def asyncio_detailed(
 ) -> Response[Any | ProblemOut]:
     """ Withdraw Measurement
 
-     Withdraw one declared quantity. This revises the publication too.
+     Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
 
     Args:
         key (str):
@@ -182,10 +201,14 @@ async def asyncio(
 ) -> Any | ProblemOut | None:
     """ Withdraw Measurement
 
-     Withdraw one declared quantity. This revises the publication too.
+     Withdraw one declared quantity, unless a rate still prices it.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
+
+    Refused while a rate names it: a priced rule against a quantity you no
+    longer declare is a rule that can price nothing, so either the rule goes
+    first or the declaration stays.
 
     Args:
         key (str):

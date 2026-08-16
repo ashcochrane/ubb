@@ -135,6 +135,24 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Existing customer: {customer.id}")
 
+        # Declare the quantity the printed curl below prices (#326). A rate
+        # names the declared record now, so without this the seeded tenant's
+        # first rate is a 422 and the walkthrough stops at step two — which is
+        # a worse first hour than one extra seeded row.
+        from apps.platform.event_types.models import EventType, Measurement
+        from core.vocabulary import (
+            COSTING_METHOD_CALCULATED, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN)
+        event_type, _ = EventType.objects.get_or_create(
+            tenant=tenant, key="dev.call",
+            defaults={"costing_method": COSTING_METHOD_CALCULATED})
+        _, quantity_created = Measurement.objects.get_or_create(
+            event_type=event_type, code="input_tokens",
+            defaults={"unit": UNIT_TOKEN,
+                      "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+        self.stdout.write(
+            f"{'Declared' if quantity_created else 'Existing'} quantity: "
+            f"{event_type.key}/input_tokens")
+
         # Generate widget JWT
         from core.widget_auth import create_widget_token
         widget_token = create_widget_token(tenant.widget_secret, str(customer.id), str(tenant.id))

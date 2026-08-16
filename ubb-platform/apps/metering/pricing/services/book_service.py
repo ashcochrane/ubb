@@ -8,7 +8,10 @@ _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
     "task_type", "subtask_type",
     *(f"grouping_field_{i}" for i in range(1, 11)),
-    "measurement_key", "pricing_model", "rate_per_unit_micros",
+    # The REFERENCE, not the name (#326). A reprice copies which declaration the
+    # outgoing rate priced; it never re-resolves the name, so a publish cannot
+    # quietly move a rate onto a different declaration between versions.
+    "measurement_id", "pricing_model", "rate_per_unit_micros",
     "unit_quantity", "fixed_micros", "currency",
     "lineage_id", "rate_card_id",
 )
@@ -58,9 +61,22 @@ class BookService:
             locked = RateCard.objects.select_for_update().get(id=book.id)
             new_version = locked.version + 1
             for ch in changes:
-                old = Rate.objects.select_for_update().filter(
+                # Matched on the NAME the change body carries, read through the
+                # reference (#326) — a reprice body names a quantity, not a
+                # declaration id, and nothing published gives a caller one to
+                # name. A rate the conversion deactivated references nothing and
+                # is therefore unmatchable here, which is the same answer it
+                # gives resolution: it cannot be repriced, and the refusal below
+                # says so with the name in it.
+                #
+                # `of=("self",)` locks the RATE and not the row it joins. The
+                # lock is here to serialise reprices of one rate; a declaration
+                # is read-only on this path, and locking it would make two
+                # publishes of two different rates that happen to price one
+                # quantity wait for each other.
+                old = Rate.objects.select_for_update(of=("self",)).filter(
                     rate_card=locked, valid_to__isnull=True,
-                    measurement_key=ch["measurement_key"],
+                    measurement__code=ch["measurement_key"],
                     **{s: ch.get(s, "") for s in Rate.SELECTORS},
                 ).first()
                 if old is None:

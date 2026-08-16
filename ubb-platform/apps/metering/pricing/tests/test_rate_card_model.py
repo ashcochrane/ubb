@@ -1,4 +1,5 @@
 import pytest
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 
 
@@ -9,19 +10,19 @@ class TestRateCard:
         t = Tenant.objects.create(name="T")
         c = Rate.objects.create(
             tenant=t, card_type="cost", provider="openai", event_type="chat",
-            measurement_key="input_tokens", grouping_field_1="gpt-4",
+            measurement=declares_a_quantity(t, "input_tokens"), grouping_field_1="gpt-4",
             pricing_model="per_unit", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         # provider, event_type and the first slot.
         assert c.grouping_field_1 == "gpt-4" and c.specificity == 3
         assert c.compute(1000) == 5  # (1000*5000 + 500000)//1000000 = 5
-        c2 = Rate.objects.create(tenant=t, card_type="cost", measurement_key="m",
+        c2 = Rate.objects.create(tenant=t, card_type="cost", measurement=declares_a_quantity(t, "m"),
                                      rate_per_unit_micros=1, unit_quantity=2)
         assert c2.compute(1) == 1 and c2.compute(0) == 0  # round-half-up midpoint
 
     def test_flat_compute_uses_fixed(self):
         from apps.metering.pricing.models import Rate
         t = Tenant.objects.create(name="T")
-        c = Rate.objects.create(tenant=t, card_type="price", measurement_key="seats",
+        c = Rate.objects.create(tenant=t, card_type="price", measurement=declares_a_quantity(t, "seats"),
                                     pricing_model="flat", fixed_micros=2_000_000)
         assert c.compute(5) == 2_000_000
 
@@ -35,10 +36,10 @@ class TestRateCard:
         t = Tenant.objects.create(name="T")
         book = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="default")
         Rate.objects.create(tenant=t, card_type="cost", provider="openai",
-                                event_type="chat", measurement_key="input_tokens", rate_card=book)
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book)
         with pytest.raises(IntegrityError):
             Rate.objects.create(tenant=t, card_type="cost", provider="openai",
-                                    event_type="chat", measurement_key="input_tokens", rate_card=book)
+                                    event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book)
 
     def test_same_metric_slice_in_different_books_does_not_conflict(self):
         # The entire point of book-scoped uniqueness: the SAME quantity may have
@@ -49,7 +50,7 @@ class TestRateCard:
         book_a = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="a")
         book_b = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="b")
         Rate.objects.create(tenant=t, card_type="cost", provider="openai",
-                                event_type="chat", measurement_key="input_tokens", rate_card=book_a)
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book_a)
         # No IntegrityError: different rate_card, so the constraint doesn't fire.
         Rate.objects.create(tenant=t, card_type="cost", provider="openai",
-                                event_type="chat", measurement_key="input_tokens", rate_card=book_b)
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book_b)

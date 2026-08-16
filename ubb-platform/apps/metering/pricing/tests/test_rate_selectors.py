@@ -34,7 +34,7 @@ class TestRateSelectors:
         # Same book, same quantity, DIFFERENT dim1 -> allowed.
         rate_in_default_book(t, card_type="cost", provider="openai",
                              measurement_key="input_tokens", grouping_field_1="us")
-        assert Rate.objects.filter(measurement_key="input_tokens").count() == 2
+        assert Rate.objects.filter(measurement__code="input_tokens").count() == 2
 
     def test_duplicate_selector_set_is_rejected(self):
         t = self._t()

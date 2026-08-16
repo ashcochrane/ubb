@@ -7,6 +7,7 @@ import json
 
 from django.test import TestCase, Client
 
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.metering.pricing.models import Rate
 
@@ -38,6 +39,10 @@ class RateCardCRUDTest(TestCase):
             name="Full Tenant", products=["metering", "billing"]
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        # The quantity `COST_RATE` prices, declared: since #326 a rate names the
+        # declared record, so the catalogue entry comes first. What the route
+        # answers WITHOUT it is `test_a_rate_names_a_declared_quantity.py`'s.
+        declares_a_quantity(self.tenant, COST_RATE["measurement_key"])
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

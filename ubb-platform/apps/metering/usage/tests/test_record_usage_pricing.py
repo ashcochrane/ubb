@@ -5,7 +5,7 @@ from django.test import Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
-    DECLARED, declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
 from apps.metering.usage.models import Posting
@@ -176,7 +176,8 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         """
         return Rate.objects.create(
             tenant=tenant, card_type="cost", provider="", event_type="",
-            measurement_key="dummy_covered", rate_per_unit_micros=1, unit_quantity=1)
+            measurement=declares_a_quantity(tenant, "dummy_covered"),
+            rate_per_unit_micros=1, unit_quantity=1)
 
     def test_an_uncosted_quantity_is_recorded_and_the_body_says_so(self):
         """The inversion of the refusal (#320), at the route.

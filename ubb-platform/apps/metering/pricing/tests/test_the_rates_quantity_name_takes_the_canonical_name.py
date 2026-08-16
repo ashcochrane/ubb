@@ -22,6 +22,19 @@ slice 4 — which looks exactly like the "renaming a table a later slice deletes
 work the migration decision warns against. The ledger owns it at slice 2, an
 owner may move earlier but never later, and there is no re-owning mechanism.
 
+**ONE CLASS LEFT THIS MODULE WHEN THE COLUMN DID (#326).**
+`ARowWrittenBeforeTheRenameStillReadsAfterItTest` wrote a row, drove the rename
+backwards over the live table and read the value under the old name, which is
+ADR-0007 §1's claim asked of a database rather than of a migration file. The
+column it round-tripped no longer exists — slice 3 replaced it with a reference
+and dropped it — so keeping the class would have meant rebuilding a table shape
+this repository deliberately removed, in order to assert something about it.
+**The claim is still made, by the migration that removed the column:**
+``test_a_rate_names_a_declared_quantity.py`` runs that migration's own data
+function forwards and backwards over real rows, including the ones it could not
+place. What remains here is what can still be asked: the operation list, the two
+database objects, and the published name.
+
 **THE RETIRED NAME IS NEVER SPELLED HERE.** It is read off the rename operation
 instead, exactly as #274 does. A test module is a living surface, so spelling it
 would re-open an extent this same commit is paying off, and the choice would
@@ -37,15 +50,18 @@ from functools import cache
 from importlib import import_module
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import connection, migrations as operations
+from django.db import (IntegrityError, connection, migrations as operations,
+                       transaction)
 from django.db.migrations.loader import MigrationLoader
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
 from api.v1.schemas import RateIn
-from apps.metering.pricing.models import Rate
+from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.platform.event_types.models import Measurement
+from apps.platform.event_types.quantities import declaration_named
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 
 APP_LABEL = "pricing"
@@ -65,8 +81,19 @@ PARENT_MIGRATION = "0015_remove_rate_uq_rate_active_in_book_rate_dim1_and_more"
 RETIRED_COLUMN = _RENAME.old_name
 CANONICAL_COLUMN = _RENAME.new_name
 
-#: The two database objects built over the column. Both survive the rename
-#: untouched, which is the claim the state-only half of the migration makes.
+#: WHAT THE NAME BECAME (#326). Spelled rather than read off an operation,
+#: because the move that replaced the text with a reference is not a rename and
+#: carries no operation holding both names. `CANONICAL_COLUMN` above is still
+#: the name a tenant writes and reads on the wire — that is the whole reason
+#: this module's contract assertions below did not move — and this is the field
+#: the rate now holds it BY.
+DECLARATION_FIELD = "measurement"
+
+#: The two database objects over the quantity a rate prices. They survived the
+#: RENAME untouched — the claim the state-only half of `0016` makes — and were
+#: REBUILT by the conversion that replaced the column with a reference, because
+#: an index over a text column and one over a foreign key are not the same
+#: object. Their names did not change, which is why these two constants did not.
 LOOKUP_INDEX = "idx_ratecard_lookup"
 ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
 
@@ -158,117 +185,104 @@ class TheDatabaseObjectsFollowedTheColumnTest(TestCase):
     would be the last place to find out. So both are read back off the live
     table by introspection.
 
+    **BOTH OBJECTS MOVED A SECOND TIME (#326)**, and this class moved with them
+    rather than being left asserting the previous shape. The rename carried them
+    across a spelling; the conversion to a reference REWROTE them, because a
+    partial unique index and a lookup index over a text column are not the same
+    database objects over a foreign key. Their job is unchanged and that is what
+    is asserted: each still names the column that says which quantity a rate
+    prices, and neither still names one that is gone.
+
     That the unique constraint still *fires* is `test_rate_card_model.py`'s,
     which drives it with a duplicate insert. Asserting it twice would fail in
     two places for one cause, and this is the copy that would rot.
     """
 
-    def test_the_lookup_index_covers_the_canonical_column(self):
+    def setUp(self):
+        self.reference_column = Rate._meta.get_field(DECLARATION_FIELD).column
+
+    def test_the_lookup_index_covers_the_reference(self):
         columns = _table_constraints()[LOOKUP_INDEX]["columns"]
-        self.assertIn(CANONICAL_COLUMN, columns)
+        self.assertIn(self.reference_column, columns)
+        self.assertNotIn(CANONICAL_COLUMN, columns)
         self.assertNotIn(RETIRED_COLUMN, columns)
 
-    def test_the_active_row_uniqueness_covers_the_canonical_column(self):
+    def test_the_active_row_uniqueness_covers_the_reference(self):
         columns = _table_constraints()[ACTIVE_ROW_UNIQUE]["columns"]
-        self.assertIn(CANONICAL_COLUMN, columns)
+        self.assertIn(self.reference_column, columns)
+        self.assertNotIn(CANONICAL_COLUMN, columns)
         self.assertNotIn(RETIRED_COLUMN, columns)
 
-    def test_the_table_carries_the_canonical_column_and_not_the_retired_one(self):
+    def test_the_table_carries_the_reference_and_neither_text_column(self):
         """The model and the table are two separate claims.
 
-        A field renamed on the model with no migration behind it leaves the old
-        column in the database, where a raw query would still find it.
+        A field replaced on the model with no migration behind it leaves the old
+        column in the database, where a raw query would still find it — and a
+        text column left beside the reference is a second answer to "which
+        quantity does this rate price" for anything reading the table directly.
         """
         with connection.cursor() as cursor:
             columns = {column.name for column in
                        connection.introspection.get_table_description(
                            cursor, Rate._meta.db_table)}
-        self.assertIn(CANONICAL_COLUMN, columns)
+        self.assertIn(self.reference_column, columns)
+        self.assertNotIn(CANONICAL_COLUMN, columns)
         self.assertNotIn(RETIRED_COLUMN, columns)
 
 
-class ARowWrittenBeforeTheRenameStillReadsAfterItTest(TestCase):
-    """THE CLAIM ADR-0007 §1 IS ACTUALLY MAKING, run against a real table.
+class TheNameIsAReferenceAndSliceThreePaidItTest(TestCase):
+    """THE WINDOW SLICE 2 OPENED, CLOSED BY SLICE 3 (#326).
 
-    `assertTrue(op.reversible)` would look like this test and prove nothing:
-    `reversible` is a class attribute on `Operation` that `RenameField` never
-    overrides, so it is `assertTrue(True)`, and the operation list is already
-    pinned above.
+    This class was `TheNameIsStillFreeTextAndThatIsSliceThreesTest` and said
+    what slice 2 deliberately did not build: the rate and the declaration agreed
+    by spelling alone, and a rate naming a quantity nobody declared was
+    writable. Its two tests were written to FAIL when slice 3 landed, and this
+    is that landing — so each is replaced by its successor at its own address
+    rather than deleted, and the class name follows the claim it now makes.
+    Relaxing either would leave this file green while proving the opposite of
+    what it was written to prove.
 
-    So this drives the operation itself. A row is written, the column is renamed
-    back to what it was before this migration, the row is read under the OLD
-    name through a raw cursor — deliberately bypassing the model, which is the
-    only thing that knows the new name — and then the rename is re-applied and
-    the value is read under the new one. An add-plus-remove wearing a rename's
-    clothes fails at the first read, which is the failure the rule exists to
-    catch.
-
-    PostgreSQL runs DDL inside the transaction this `TestCase` rolls back, so
-    the column ends where it started no matter how this test exits.
+    The third test between them is untouched: what it asserts about the retired
+    name is as true after the conversion as before it, and it is the one
+    assertion here that neither slice's work can weaken.
     """
 
-    def test_the_value_survives_the_round_trip(self):
-        tenant = Tenant.objects.create(name="T")
-        rate = Rate.objects.create(
-            tenant=tenant, **{CANONICAL_COLUMN: "input_tokens"})
+    def test_the_column_is_a_reference_rather_than_free_text(self):
+        """The successor to `test_the_column_is_free_text_rather_than_a_reference`.
 
-        loader = MigrationLoader(connection)
-        before = loader.project_state((APP_LABEL, PARENT_MIGRATION))
-        after = before.clone()
-        _RENAME.state_forwards(APP_LABEL, after)
-
-        table = Rate._meta.db_table
-        with connection.schema_editor() as editor:
-            _RENAME.database_backwards(APP_LABEL, editor, after, before)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT {connection.ops.quote_name(RETIRED_COLUMN)} "
-                f"FROM {connection.ops.quote_name(table)} WHERE id = %s",
-                [rate.id])
-            (carried,) = cursor.fetchone()
-        self.assertEqual(carried, "input_tokens")
-
-        with connection.schema_editor() as editor:
-            _RENAME.database_forwards(APP_LABEL, editor, before, after)
-        self.assertEqual(
-            getattr(Rate.objects.get(id=rate.id), CANONICAL_COLUMN),
-            "input_tokens")
-
-
-class TheNameIsStillFreeTextAndThatIsSliceThreesTest(TestCase):
-    """WHAT THIS SLICE DELIBERATELY DID NOT BUILD.
-
-    Read this before treating the `CharField` below as an oversight. Slice 2
-    pays the **word**; it does not pay the referential integrity. The rate and
-    the declaration agree by spelling alone, exactly as they did under the
-    retired name, and slice 3 is where the text becomes a reference to the
-    declared record — at which point a rate naming a quantity nobody declared
-    stops being writable at all.
-
-    That split is ADR-0007 §3 working as designed rather than around: shipping
-    the final name on the final contract now is what stops the published
-    property being renamed a second time later, and it costs a window in which
-    the name means less than its spelling suggests. Both tests below are about
-    that window, and both should FAIL when slice 3 lands — which is the point.
-    """
-
-    def test_the_column_is_free_text_rather_than_a_reference(self):
-        field = Rate._meta.get_field(CANONICAL_COLUMN)
-        self.assertEqual(field.get_internal_type(), "CharField")
-        self.assertFalse(field.is_relation)
+        That test asserted a `CharField` whose `is_relation` was false. The same
+        two questions are asked here and answered the other way, plus the one
+        the predecessor could not ask: WHAT it references. A relation to some
+        other record would satisfy "is a relation" and price nothing a tenant
+        declared.
+        """
+        field = Rate._meta.get_field(DECLARATION_FIELD)
+        self.assertTrue(field.is_relation)
+        self.assertIs(field.related_model, Measurement)
 
     def test_the_retired_name_is_gone_from_the_model(self):
         with self.assertRaises(FieldDoesNotExist):
             Rate._meta.get_field(RETIRED_COLUMN)
 
-    def test_a_rate_may_still_name_a_quantity_nobody_declared(self):
-        """Run, not asserted from the field type.
+    def test_a_rate_may_not_name_a_quantity_nobody_declared(self):
+        """The inversion of `test_a_rate_may_still_name_a_quantity_nobody_declared`.
 
-        A `CharField` proves there is no database-level reference. It does not
-        prove nothing ELSE refuses the write — a `clean()`, a signal or a
-        service-layer check could hold the same line and would make this window
-        smaller than the docstring above claims. So the write is performed
-        against a name no declaration in the tree carries.
+        That test performed a write against a name no declaration carries and
+        asserted it SUCCEEDED. The write performed here is the same one — the
+        same name, and a name rather than an absence, because "a rate carrying
+        no quantity at all is refused" is a weaker claim that would pass while
+        the defect stood. It is refused by the database rather than by a
+        `clean()` a caller can skip, which is the difference between a rule and
+        a habit (ADR-0007 §2).
+
+        THE PREMISE GUARD BELOW IS UNCHANGED, and it is what makes the refusal
+        mean something. Without it a fixture that seeded the name would leave
+        this test refusing a write for some other reason entirely and reporting
+        it as this one.
+
+        The lookup is asserted beside it because the two answer different
+        questions: nothing to reference is why the route answers 422, and the
+        refusal below is why the ORM is not a way around the route.
         """
         tenant = Tenant.objects.create(name="T")
         undeclared = "a_quantity_no_declaration_carries"
@@ -278,10 +292,13 @@ class TheNameIsStillFreeTextAndThatIsSliceThreesTest(TestCase):
         # accidentally legitimate without this line going red first.
         self.assertFalse(Measurement.objects.filter(code=undeclared).exists())
 
-        rate = Rate.objects.create(tenant=tenant, **{CANONICAL_COLUMN: undeclared})
+        self.assertIsNone(
+            declaration_named(tenant=tenant, measurement_key=undeclared))
 
-        self.assertEqual(getattr(Rate.objects.get(id=rate.id), CANONICAL_COLUMN),
-                         undeclared)
+        with transaction.atomic(), \
+                self.assertRaisesRegex(IntegrityError, undeclared):
+            Rate.objects.create(tenant=tenant,
+                                undeclared_measurement_key=undeclared)
 
 
 class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
@@ -305,7 +322,7 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
         tenant = Tenant.objects.create(name="T")
         rate = Rate.objects.create(
             tenant=tenant, rate_per_unit_micros=2_000_000, unit_quantity=1_000_000,
-            **{CANONICAL_COLUMN: "input_tokens"})
+            measurement=declares_a_quantity(tenant, "input_tokens"))
 
         receipt = PricingService._compute(
             measurements={"input_tokens": 3},

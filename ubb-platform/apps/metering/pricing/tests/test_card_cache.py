@@ -14,6 +14,7 @@ from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.card_cache import CardCache
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db
@@ -38,7 +39,7 @@ def price_card_fixture(tenant):
         key="openai", is_default=True, version=1)
     rate = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        measurement_key="tokens", currency="usd", pricing_model="per_unit",
+        measurement=declares_a_quantity(tenant, "tokens"), currency="usd", pricing_model="per_unit",
         rate_per_unit_micros=10_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     return book, rate
@@ -99,12 +100,12 @@ def test_dimensioned_card_is_cached_per_selector_set(tenant, customer):
         key="dimensioned", is_default=True, version=1)
     rate_gpt4 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        measurement_key="tokens", currency="usd", grouping_field_1="gpt-4",
+        measurement=declares_a_quantity(tenant, "tokens"), currency="usd", grouping_field_1="gpt-4",
         rate_per_unit_micros=20_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     rate_gpt35 = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        measurement_key="tokens", currency="usd", grouping_field_1="gpt-3.5",
+        measurement=declares_a_quantity(tenant, "tokens"), currency="usd", grouping_field_1="gpt-3.5",
         rate_per_unit_micros=5_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
 
@@ -184,7 +185,7 @@ def test_publish_bumps_card_version_on_commit(tenant, django_capture_on_commit_c
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="openai", is_default=True, version=1)
     Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai", measurement_key="tokens",
+        tenant=tenant, card_type="price", provider="openai", measurement=declares_a_quantity(tenant, "tokens"),
         currency="usd", rate_per_unit_micros=10_000_000, rate_card=book,
         book_version_from=1)
     r = redis.from_url(settings.REDIS_URL)

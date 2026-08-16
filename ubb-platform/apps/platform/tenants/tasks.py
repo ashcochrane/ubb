@@ -35,6 +35,20 @@ _SKIP_LABELS = frozenset({
 CONFIG_MODEL_LABELS = frozenset({
     "pricing.Rate",
     "pricing.TenantMarkup",
+    # THE EVENT TYPE CATALOGUE — configuration, and the four arrive together
+    # rather than one at a time (#326). A rate is already kept here, and a rate
+    # names the declared quantity it prices, so keeping the rate while wiping
+    # the declaration is not a policy this reset can carry out: `PROTECT`
+    # refuses it and the whole reset fails. From there the set closes itself —
+    # the declaration lives under an Event Type, which PROTECTs its supplier and
+    # its category, and its quantities PROTECT the analytics heading they are
+    # filed under. What a tenant DECLARES is configuration; what their traffic
+    # produced — including a held name awaiting their decision — is not, and is
+    # still wiped.
+    "event_types.Provider",
+    "event_types.EventCategory",
+    "event_types.EventType",
+    "event_types.MeasurementConcept",
     "plans.Plan",
     "subscriptions.MarginThresholdConfig",
     "gating.BudgetConfig",
@@ -116,7 +130,21 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     _wipe("events.OutboxEvent",
           lambda: OutboxEvent.objects.filter(tenant_id=tenant.id).delete())
 
-    # 3. Generic sweep: every remaining concrete model with a FK/O2O to Tenant.
+    # 3. Rates BEFORE declarations, for the reason seats go before their parent
+    #    above: a rate names the declared quantity it prices and holds it with
+    #    PROTECT (#326), so taking the declaration first is refused. The generic
+    #    sweep below walks the app registry in its own order, which is not this
+    #    one and has no reason to be — an ordering that happened to work would
+    #    be an ordering nobody chose. Only when config is going too: with
+    #    `keep_config` both sides stay, which is why the catalogue joined the
+    #    set above rather than this step gaining a condition it cannot honour.
+    if not keep_config:
+        Rate = django_apps.get_model("pricing", "Rate")
+        manager = _wipe_manager(Rate)
+        _wipe("pricing.Rate",
+              lambda m=manager: m.filter(tenant=tenant).delete())
+
+    # 4. Generic sweep: every remaining concrete model with a FK/O2O to Tenant.
     for model in django_apps.get_models():
         label = model._meta.label
         if label in _SKIP_LABELS:
