@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from apps.referrals.models import Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
+from core.amount_status_pairs import SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from apps.referrals.rewards.services import RewardService
 
@@ -52,7 +53,7 @@ def reconcile_referral(referral, period_start, period_end):
         if raw_cost is not None:
             total_raw_cost += raw_cost
             has_actual_cost = True
-        elif counts_as_unresolved(event.get("costing_status")):
+        elif counts_as_unresolved(SUPPLIER_COST, event.get("costing_status")):
             unresolved_events += 1
 
         reward = RewardService.calculate_reward(

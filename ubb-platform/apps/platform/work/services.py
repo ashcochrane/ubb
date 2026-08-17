@@ -2,6 +2,7 @@ import logging
 
 from django.utils import timezone
 
+from core.amount_status_pairs import SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from core.vocabulary import COSTING_STATUS_KNOWN
 from apps.platform.work.models import Task
@@ -161,7 +162,7 @@ class TaskService:
             # spend UBB cannot demonstrate.
             if provider_cost_micros is not None:
                 unit.total_provider_cost_micros += int(provider_cost_micros)
-            elif counts_as_unresolved(costing_status):
+            elif counts_as_unresolved(SUPPLIER_COST, costing_status):
                 unit.unresolved_event_count += 1
             unit.event_count += 1
             # Tier-2 (D10): stamp the heartbeat in the SAME write so the
