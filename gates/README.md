@@ -103,6 +103,29 @@ rather than observed.
 A slice that lands while still named by an `owned_by_slice_N` row turns CI red:
 a landed slice cannot owe an installation.
 
+**And whichever way the flip goes, check the controls that stayed green.** A flag
+that starts being true turns some controls red and others VACUOUS, and only the
+red ones announce themselves — slice 2 landing (#285) turned five of
+`tests/contracts/test_migration_ledger.py`'s controls red and left a sixth passing
+with its mutation line deletable outright. So after flipping any declared flag,
+take each negative control that survived, **delete its mutation, and confirm the
+control now FAILS.** Two things learned doing it for slice 3 (#331), where nothing
+went red at all:
+
+- **A flip that turns nothing red has not thereby proved anything.** It is the
+  expected outcome once a control DERIVES its subject from `slices.yaml` instead of
+  naming a slice, which is the durable fix — re-pointing at another named slice
+  only moves the expiry date. Deriving is why slice 3's flip was free; deleting the
+  mutations is how that was established rather than assumed.
+- **A fault with two causes reads exactly like a vacuous control, and is repaired
+  differently.** `test_a_baseline_that_cannot_be_resolved_fails_rather_than_skipping`
+  asserts `BASE_UNREADABLE` for a ref that does not exist — but its repository held
+  one commit, so the fall-back to the parent was unresolvable too and any ref
+  faulted identically. Twenty-one of slice 3's twenty-two controls failed at once;
+  this one passed, and removing its mutation took three attempts before it went
+  red. A vacuous control needs its subject derived; this one needed its premise
+  established first, in the test.
+
 ## The ledger, and its three rules
 
 Every current violation of an installed gate, as an **individually identified
