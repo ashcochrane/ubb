@@ -11,7 +11,11 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCalendarDate, formatCostMicros, formatMicros } from "@/lib/format";
+import {
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
 import type { TimeseriesPoint } from "../api/types";
 
@@ -19,6 +23,12 @@ import type { TimeseriesPoint } from "../api/types";
  * to the calendar day and format in UTC so the day never shifts locally. */
 function bucketDay(bucket: unknown): string {
   return formatCalendarDate(String(bucket).slice(0, 10));
+}
+
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  // Billed is NOT NULL at the column and whole by construction.
+  return dataKey === "provider_cost_micros" ? "supplier-cost" : "whole";
 }
 
 export default function UsageTimeseriesChart({
@@ -48,9 +58,13 @@ export default function UsageTimeseriesChart({
             width={72}
           />
           <Tooltip
-            formatter={(value) => formatMicros(Number(value), currency)}
-            labelFormatter={bucketDay}
-            contentStyle={{ fontSize: 12 }}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={bucketDay}
+                roleOf={roleOf}
+              />
+            }
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Line

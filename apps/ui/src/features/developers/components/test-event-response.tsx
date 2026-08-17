@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate, formatMicros } from "@/lib/format";
 import { stopReasonLabel, stopScopeLabel } from "@/lib/labels";
 import { tenantDefinedLabel } from "@/lib/localisation";
+import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 
 import type { RecordUsageResponse } from "../api/types";
 import { formatEventMicros } from "../lib/money";
@@ -63,14 +64,24 @@ export function TestEventResponseCard({
               : "—"
           }
         />
+        {/* An absent supplier cost is NAMED here, never zeroed (#320, #330).
+            This card is what an integrator reads to learn what UBB recorded, so
+            a dash that could mean "could not learn it" or "never had one" is
+            the one place those must not look alike. */}
         <ResponseStat
           label="Provider cost"
           value={
             response.provider_cost_micros != null
               ? formatEventMicros(response.provider_cost_micros, currency)
-              : "—"
+              : costingStatusLabel(response.costing_status)
           }
         />
+        {response.costing_status === "unresolved" && (
+          <ResponseStat
+            label="Missing input"
+            value={unresolvedReasonLabel(response.unresolved_reason)}
+          />
+        )}
         {response.new_balance_micros != null && (
           <ResponseStat
             label="Balance after"

@@ -11,9 +11,25 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCalendarDate, formatCostMicros, formatMicros } from "@/lib/format";
+import {
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
 import type { MarginTrendPointOut } from "../api/types";
+
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  if (dataKey === "provider_cost_micros") return "supplier-cost";
+  if (dataKey === "gross_margin_micros") return "margin";
+  // Usage billed is NOT NULL at the column and whole by construction.
+  return "whole";
+}
+
+function periodLabel(label: string | number | undefined): string {
+  return formatCalendarDate(String(label));
+}
 
 export default function MarginTrendChart({
   points,
@@ -44,9 +60,13 @@ export default function MarginTrendChart({
             width={72}
           />
           <Tooltip
-            formatter={(value) => formatMicros(Number(value), currency)}
-            labelFormatter={(label) => formatCalendarDate(String(label))}
-            contentStyle={{ fontSize: 12 }}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={periodLabel}
+                roleOf={roleOf}
+              />
+            }
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Line

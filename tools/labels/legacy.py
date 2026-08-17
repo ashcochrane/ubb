@@ -117,6 +117,7 @@ DECLARED_NON_LABEL_EXPORTS = {
         "no words, so there is nothing for a catalogue to own"),
     "BILLING_MODES": _VALUE_SET,
     "COSTING_METHODS": _BY_REFERENCE,
+    "COSTING_STATUSES": _BY_REFERENCE,
     "PRODUCTS": _BY_REFERENCE,
     "ROLES": _VALUE_SET,
     "ANALYTICS_DIMENSIONS": _VALUE_SET,

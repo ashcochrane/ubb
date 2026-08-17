@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, ShieldCheck } from "lucide-react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
+import { SupplierCostAmount } from "@/components/shared/supplier-cost";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,7 @@ import {
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { pastLimitFamilyLabel, stopReasonLabel, stopScopeLabel } from "@/lib/labels";
+import { supplierCostTotal } from "@/lib/supplier-cost";
 
 import { usePastLimitReport } from "../api/queries";
 import type { PastLimitEpisode } from "../api/types";
@@ -87,8 +89,15 @@ export function PastLimitSection({ customerId }: { customerId: string }) {
                           <TableCell className="text-right tabular-nums">
                             {formatMicros(totals.billed_cost_micros, currency)}
                           </TableCell>
+                          {/* A per-limit total is a floor wherever the events
+                              under it hold a cost UBB never learned (#328
+                              publishes the count; #330 renders it). */}
                           <TableCell className="text-right tabular-nums">
-                            {formatMicros(totals.provider_cost_micros, currency)}
+                            {supplierCostTotal(
+                              totals.provider_cost_micros,
+                              totals,
+                              currency,
+                            )}
                           </TableCell>
                         </TableRow>
                       ),
@@ -159,7 +168,12 @@ function EpisodeRow({
           <span className="ml-auto text-[12px] tabular-nums text-text-secondary">
             {episode.event_count.toLocaleString()} events ·{" "}
             {formatMicros(episode.total_billed_cost_micros, currency)} billed ·{" "}
-            {formatMicros(episode.total_provider_cost_micros, currency)} cost
+            {supplierCostTotal(
+              episode.total_provider_cost_micros,
+              episode,
+              currency,
+            )}{" "}
+            cost
           </span>
         )}
       </button>
@@ -202,8 +216,15 @@ function EpisodeRow({
                   <TableCell className="text-right tabular-nums">
                     {formatMicros(event.billed_cost_micros, currency)}
                   </TableCell>
+                  {/* This is the one report where a zeroed unknown cost would
+                      be read as exoneration: it itemizes the events that
+                      overran a spend stop. The absence is named (#330). */}
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(event.provider_cost_micros, currency)}
+                    <SupplierCostAmount
+                      micros={event.provider_cost_micros}
+                      status={event.costing_status}
+                      currency={currency}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

@@ -43,12 +43,19 @@ export type BreakdownDimension = (typeof BREAKDOWN_DIMENSIONS)[number];
 // Untyped-in-schema responses — hand-typed + narrowed
 // [backend-verified shape — see discovery spec]
 
-/** One row of `RevenueAnalyticsResponse.daily` (ordered by day asc). */
+/**
+ * One row of `RevenueAnalyticsResponse.daily` (ordered by day asc).
+ *
+ * `unresolved_event_count` is that day's OWN completeness — how many of its
+ * events carry a supplier cost UBB never learned. Per row rather than per
+ * window because a reader hovering one point is asking about that point.
+ */
 export interface RevenueDailyRow {
   day: string; // YYYY-MM-DD
   provider_cost_micros: number;
   billed_cost_micros: number;
   event_count: number;
+  unresolved_event_count: number;
 }
 
 /** One row of `UsageTimeseriesResponse.series` (ordered by bucket asc). */
@@ -58,6 +65,7 @@ export interface TimeseriesRow {
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
+  unresolved_event_count: number;
 }
 
 /** One row of a `UsageAnalyticsResponse.breakdowns` entry. */
@@ -119,6 +127,11 @@ export function toRevenueDailyRows(response: RevenueAnalytics): RevenueDailyRow[
     provider_cost_micros: num(row["provider_cost_micros"]),
     billed_cost_micros: num(row["billed_cost_micros"]),
     event_count: num(row["event_count"]),
+    // `num`'s zero default means "this row left nothing out" — a claim, not a
+    // shrug. It stands only because the server writes the count on every row
+    // it emits; a row arriving without one is a backend regression rather than
+    // a shape this narrowing is entitled to answer for.
+    unresolved_event_count: num(row["unresolved_event_count"]),
   }));
 }
 
@@ -130,6 +143,7 @@ export function toTimeseriesRows(response: UsageTimeseries): TimeseriesRow[] {
     billed_cost_micros: num(row["billed_cost_micros"]),
     markup_micros: num(row["markup_micros"]),
     event_count: num(row["event_count"]),
+    unresolved_event_count: num(row["unresolved_event_count"]),
   }));
 }
 

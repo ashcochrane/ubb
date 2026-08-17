@@ -3,6 +3,11 @@ import { render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  COSTING_STATUS_EXPLANATIONS,
+  costingStatusLabel,
+} from "@/lib/supplier-cost";
+
 import { CUSTOMER_A_ID } from "../api/mock-data";
 import type { EventsSearch } from "../lib/search";
 import { EventsPage } from "./events-page";
@@ -72,5 +77,37 @@ describe("EventsPage", () => {
     renderPage({ customer_id: CUSTOMER_A_ID, past_limit: true });
     const stopped = await screen.findAllByText("Stopped");
     expect(stopped.length).toBeGreaterThan(0);
+  });
+
+  // #330: the window holds one event whose supplier cost UBB never learned, so
+  // the strip's total can only be higher and its markup only lower. Both say
+  // so, and the note says how many events are behind it.
+  it("says the window's supplier total is a floor, and its markup a ceiling", async () => {
+    // An explicit July window: this fixture's story is July 2026, and the
+    // page's own default is month-to-date, which selects none of it.
+    renderPage({
+      customer_id: CUSTOMER_A_ID,
+      start_date: "2026-07-01",
+      end_date: "2026-07-31",
+    });
+
+    expect(await screen.findByText(/^at least \$/)).toBeInTheDocument();
+    expect(screen.getByText(/^at most \$/)).toBeInTheDocument();
+    expect(screen.getByText(/1 event has a supplier cost/)).toBeInTheDocument();
+  });
+
+  // The ledger cell for that same event. A bare dash is the right rendering for
+  // a value nobody asked about and the wrong one here: a supplier cost is
+  // absent for two opposite reasons, and a column of identical dashes hides
+  // which rows the tenant can act on. Zero is not an option either way.
+  it("names an unlearned cost in the ledger instead of dashing or zeroing it", async () => {
+    renderPage({ customer_id: CUSTOMER_A_ID });
+
+    const cells = await screen.findAllByText(costingStatusLabel("unresolved"));
+    expect(cells.length).toBeGreaterThan(0);
+    expect(cells[0]).toHaveAttribute(
+      "title",
+      COSTING_STATUS_EXPLANATIONS.unresolved,
+    );
   });
 });

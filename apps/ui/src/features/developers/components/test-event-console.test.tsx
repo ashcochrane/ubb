@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
+
 import { TestEventConsole } from "./test-event-console";
 
 const CUSTOMER_UUID = "c1a2b3d4-0001-4abc-9def-000000000001";
@@ -89,6 +91,30 @@ describe("TestEventConsole", () => {
       await screen.findByText("Measurements without a cost card"),
     ).toBeInTheDocument();
     expect(screen.getByText("gpu_seconds")).toBeInTheDocument();
+  });
+
+  // #330: the same response, read from the money row. An integrator learning
+  // what UBB recorded must not be shown a supplier cost of zero for a cost UBB
+  // never learned — and a bare dash would leave them unable to tell that from
+  // an event whose type has no supplier cost at all.
+  it("names an unlearned supplier cost rather than zeroing or dashing it", async () => {
+    renderConsole();
+    await sendEvent({ measurementKey: "gpu_seconds" });
+
+    expect(
+      await screen.findByText(costingStatusLabel("unresolved")),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Missing input")).toBeInTheDocument();
+    expect(
+      screen.getByText(unresolvedReasonLabel("cost_rate_missing")),
+    ).toBeInTheDocument();
+
+    // Scoped to the supplier-cost stat, not the card: the BILLED zero beside it
+    // is a real, resolved zero — this request priced nothing because nothing
+    // priced its measurement — and must stay readable as one.
+    const stat = screen.getByText("Provider cost").closest("div");
+    expect(stat?.textContent ?? "").not.toContain("$0.00");
+    expect(stat?.textContent ?? "").toContain(costingStatusLabel("unresolved"));
   });
 
   it("shows the stop verdict block when the response says stop", async () => {

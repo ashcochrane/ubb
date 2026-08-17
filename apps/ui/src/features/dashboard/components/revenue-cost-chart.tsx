@@ -12,68 +12,36 @@ import {
 } from "recharts";
 
 import {
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import {
   formatCalendarDate,
   formatCostMicros,
   formatEventCount,
-  formatMicros,
 } from "@/lib/format";
 
 import type { RevenueCostPoint } from "../lib/economics";
 
-interface TipEntry {
-  dataKey?: string | number;
-  name?: string | number;
-  value?: number | string;
-  color?: string;
-  payload?: RevenueCostPoint;
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  if (dataKey === "provider_micros") return "supplier-cost";
+  if (dataKey === "margin_micros") return "margin";
+  // Billed is NOT NULL at the column and whole by construction.
+  return "whole";
 }
 
-function ChartTip({
-  active,
-  payload,
-  label,
-  currency,
-}: {
-  active?: boolean;
-  payload?: TipEntry[];
-  label?: string | number;
-  currency: string;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const point = payload[0]?.payload;
-  return (
-    <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
-      <div className="mb-1 font-medium text-text-primary">
-        {/* Day buckets are calendar dates (YYYY-MM-DD) — format in UTC so
-            the day never shifts for viewers west of Greenwich. */}
-        {typeof label === "string" ? formatCalendarDate(label) : label}
-      </div>
-      {payload.map((entry) => (
-        <div
-          key={String(entry.dataKey)}
-          className="flex items-center justify-between gap-4 text-text-secondary"
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className="block h-[7px] w-[7px] rounded-full"
-              style={{ backgroundColor: entry.color }}
-            />
-            {entry.name}
-          </span>
-          <span className="font-medium text-text-primary">
-            {typeof entry.value === "number"
-              ? formatMicros(entry.value, currency)
-              : entry.value}
-          </span>
-        </div>
-      ))}
-      {point && (
-        <div className="mt-1 border-t border-border pt-1 text-text-muted">
-          {formatEventCount(point.event_count)} events
-        </div>
-      )}
-    </div>
-  );
+/** Day buckets are calendar dates (YYYY-MM-DD) — format in UTC so the day
+ * never shifts for viewers west of Greenwich. */
+function dayLabel(label: string | number | undefined): string {
+  return typeof label === "string"
+    ? formatCalendarDate(label)
+    : String(label ?? "");
+}
+
+function eventCountLine(row: Record<string, unknown>): string | null {
+  const count = row["event_count"];
+  return typeof count === "number" ? `${formatEventCount(count)} events` : null;
 }
 
 export default function RevenueCostChart({
@@ -108,7 +76,14 @@ export default function RevenueCostChart({
             width={58}
           />
           <Tooltip
-            content={<ChartTip currency={currency} />}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={dayLabel}
+                roleOf={roleOf}
+                footer={eventCountLine}
+              />
+            }
             cursor={{ stroke: "var(--chart-grid)" }}
           />
           <Line

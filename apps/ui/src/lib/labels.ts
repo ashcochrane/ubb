@@ -31,6 +31,7 @@
 
 import {
   COSTING_METHOD_VALUES,
+  COSTING_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
@@ -208,6 +209,19 @@ export const preCheckReasonLabel = legacyLabelMap({
 // one binds `labelMap(COSTING_METHOD_LABEL_KEYS)` in its own module — the
 // `@/lib/products` shape — and never a map here.
 export const COSTING_METHODS = COSTING_METHOD_VALUES;
+
+// Whether a supplier cost is settled, and the third of `costing_method`'s
+// neighbours to be held by reference here. `domain-vocabulary/` has named this
+// file the console's consumer of `costing_status` since #316; until now it held
+// none of the three values, which is what `g2-console-costing_status` recorded
+// and what this line pays off.
+//
+// The WORDS are in the catalogue under `costing_status.*` and the rendering
+// rule is `@/lib/supplier-cost` — the module that decides what a total may say
+// when some of the costs under it were never learned. Nothing here, and no map:
+// this file is the legacy adapter, and a concept that has been migrated leaves
+// behind its value list and nothing else.
+export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 
 export const cardTypeLabel = legacyLabelMap({ cost: "Cost card", price: "Price card" });
 export const pricingModelLabel = legacyLabelMap({ per_unit: "Per unit", flat: "Flat" });

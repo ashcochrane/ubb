@@ -11,7 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveRange } from "@/lib/date-range";
 
-import { buildDailyRows, buildUsageInvoices, rowsInRange } from "./mock-data";
+import {
+  UNRESOLVED_TODAY,
+  buildDailyRows,
+  buildUsageInvoices,
+  rowsInRange,
+} from "./mock-data";
 
 // Clocks chosen for the edges that break span arithmetic. The first of a month
 // matters most: it is the narrowest month-to-date window there is (one day), so
@@ -62,7 +67,38 @@ describe("buildDailyRows", () => {
       provider_cost_micros: expect.any(Number),
       billed_cost_micros: expect.any(Number),
       event_count: expect.any(Number),
+      unresolved_event_count: expect.any(Number),
     });
+  });
+
+  // #330: the console has to be able to show a PARTIAL total in mock mode, and
+  // the day it is partial on has to be one the default window always selects.
+  // Every clock above resolves a month-to-date window ending today, including
+  // the one where that window is a single day — so putting the uncosted events
+  // on today is the only placement this fixture's own span arithmetic keeps
+  // reachable.
+  it.each(CLOCKS)(
+    "leaves the default window's total incomplete when today is %s",
+    (clock) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(clock));
+
+      const selected = rowsInRange(buildDailyRows(), resolveRange({}));
+      const unresolved = selected.reduce(
+        (sum, row) => sum + row.unresolved_event_count,
+        0,
+      );
+
+      expect(unresolved).toBe(UNRESOLVED_TODAY);
+    },
+  );
+
+  it("leaves every day but today complete, so a per-day read is testable", () => {
+    const rows = buildDailyRows();
+    const partial = rows.filter((row) => row.unresolved_event_count > 0);
+
+    expect(partial).toHaveLength(1);
+    expect(partial[0]).toBe(rows[rows.length - 1]);
   });
 
   it("keeps the narrative: contiguous days, every one billed above provider cost", () => {

@@ -27,13 +27,14 @@
 // alternative looks tidier. A scenario returns the ambiguous fact and the fact
 // that DISAMBIGUATES IT as one object, so a fixture cannot take half.
 //
-// §9.4 names six scenarios and this module holds none of them yet by those
+// §9.4 names six scenarios and this module now holds two of them by those
 // names. `known_economics` is the ordinary case every existing fixture already
-// is; the other five — `unknown_cost`, `waived_revenue`,
-// `pricing_not_applicable`, `incomplete_total`, `indeterminate_ceiling` — are
-// owned by slices 3, 4, 6 and 7 under §9.3, each arriving with the slice that
-// introduces its state. The measurement trio below is a seventh the list does
-// not name, which is the whole reason slice 2 owed a fixture at all.
+// is; of the other five, slice 3 owns `unknown_cost` and `incomplete_total` and
+// both arrive below. `waived_revenue`, `pricing_not_applicable` and
+// `indeterminate_ceiling` are slices 4, 6 and 7's under §9.3, each arriving
+// with the slice that introduces its state. The measurement trio below is a
+// seventh the list does not name, which is the whole reason slice 2 owed a
+// fixture at all.
 //
 // This module is fixture material, and it sits in `lib/` because the SET spans
 // features even where a single scenario does not: §9.3 puts unresolved cost on
@@ -48,7 +49,11 @@
 // asked for, the other whether the RECORD of what was measured is still there
 // to read a number from. Do not merge them here on the strength of the names.
 
-import type { MeasurementsStatus } from "@/lib/vocabulary";
+import type {
+  CostingStatus,
+  MeasurementsStatus,
+  UnresolvedReason,
+} from "@/lib/vocabulary";
 
 /**
  * A posting's measured quantities, and what their absence would mean.
@@ -102,4 +107,102 @@ export function prunedMeasurements(): MeasurementScenario {
  */
 export function measurementsNotApplicable(): MeasurementScenario {
   return { measurements: {}, measurements_status: "not_applicable" };
+}
+
+// ---------------------------------------------------------------------------
+// `unknown_cost` — one posting's supplier cost, §9.4's name, slice 3's to own.
+
+/**
+ * One posting's supplier cost, and what its absence means.
+ *
+ * THE THREE FIELDS TRAVEL TOGETHER because the database refuses any other
+ * combination of them: `ck_posting_costing_status_agrees_with_the_cost` admits
+ * exactly a resolved amount with no reason, a NULL amount with a reason, and a
+ * NULL amount with neither. A fixture that set the amount without the status
+ * would be describing a row that cannot exist, and the console would then be
+ * tested against a state it will never be sent.
+ *
+ * A NULL amount is TWO states, which is the whole reason the status is here: a
+ * cost UBB could not learn, and a cost there was never going to be. A reader
+ * that guesses tells a tenant their supplier charged nothing.
+ */
+export interface SupplierCostScenario {
+  readonly provider_cost_micros: number | null;
+  readonly costing_status: CostingStatus;
+  readonly unresolved_reason: UnresolvedReason | null;
+}
+
+/** A posting whose supplier cost UBB knows. The ordinary case. */
+export function knownCost(micros: number): SupplierCostScenario {
+  return {
+    provider_cost_micros: micros,
+    costing_status: "known",
+    unresolved_reason: null,
+  };
+}
+
+/**
+ * A posting whose supplier cost UBB could not settle, and the input that would.
+ *
+ * The scenario this slice owes, and the reason it takes an argument: a status
+ * saying a cost is missing without saying WHAT would settle it is a shrug
+ * rather than something a tenant can act on, so there is no way to compose this
+ * state without choosing one.
+ */
+export function unknownCost(reason: UnresolvedReason): SupplierCostScenario {
+  return {
+    provider_cost_micros: null,
+    costing_status: "unresolved",
+    unresolved_reason: reason,
+  };
+}
+
+/**
+ * A posting whose Event Type declares no supplier cost at all.
+ *
+ * Its amount is absent for a reason no Cost Rate was ever going to supply,
+ * which is why it is not counted as missing from any total — nothing about it
+ * is. The same argument `measurementsNotApplicable` makes one field over.
+ */
+export function costNotApplicable(): SupplierCostScenario {
+  return {
+    provider_cost_micros: null,
+    costing_status: "not_applicable",
+    unresolved_reason: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// `incomplete_total` — an aggregate over those postings, §9.4's other name.
+
+/**
+ * A total built over supplier costs, and how many of them it had to skip.
+ *
+ * The aggregate face of the state above, and a separate scenario rather than a
+ * derived one because a total is not a posting: it carries a COUNT, never a
+ * status, and there is no fourth value of anything to look up. Non-zero means
+ * the amount beside it is a floor.
+ */
+export interface CostTotalScenario {
+  readonly micros: number;
+  readonly unresolved_event_count: number;
+}
+
+/** A total that left nothing out. */
+export function completeTotal(micros: number): CostTotalScenario {
+  return { micros, unresolved_event_count: 0 };
+}
+
+/**
+ * A total that left events out, and how many.
+ *
+ * Both arguments are required, and the count has no default, because a default
+ * of zero here would be the silent completeness claim this scenario exists to
+ * make impossible to write by accident.
+ */
+export function incompleteTotal(
+  micros: number,
+  unresolvedEventCount: number,
+): CostTotalScenario {
+  return { micros, unresolved_event_count: unresolvedEventCount };
 }

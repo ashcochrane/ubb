@@ -50,13 +50,28 @@ const MOCK_PAGE_SIZE = 25;
  * two differ exactly where it matters: a coalesce produces a number that cannot
  * be told apart from a complete one.
  *
- * The totals below are therefore floors, and none of them yet says how many
- * rows it left out. Answering with the PAIR — the resolved sum and its
- * completeness — is #327's for the read contract and #328's for its readers,
- * and no fixture in this mock is unresolved today, so nothing here is short.
+ * The totals below are therefore floors, and every one of them now says how
+ * many rows it left out: `countUnresolved` is the other half of the pair, and
+ * the two are computed over the same event list in the same pass so a total and
+ * its completeness cannot come from different sets of rows.
  */
 function addKnownCost(total: number, micros: number | null | undefined): number {
   return micros == null ? total : total + micros;
+}
+
+/**
+ * How many of these events carry a supplier cost UBB never learned.
+ *
+ * DERIVED, never stated. A mock that wrote its own number would go on saying
+ * "nothing was excluded" whatever its fixtures held — which is the shape of a
+ * fixture that agrees with the code it is meant to check. Reads the STATUS
+ * rather than testing the amount for null: `not_applicable` also has no amount,
+ * and nothing is missing from a total that never had one to include.
+ */
+function countUnresolved(events: MockEvent[]): number {
+  return events.filter(
+    (event) => event.detail.costing_status === "unresolved",
+  ).length;
 }
 
 function notFound(detail: string): ApiProblem {
@@ -219,7 +234,7 @@ export async function getUsageAnalytics(
     total_events: events.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
-    unresolved_event_count: 0,
+    unresolved_event_count: countUnresolved(events),
     usage_markup_margin_micros: billed - provider,
     by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
     by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),
@@ -375,7 +390,7 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
     event_count: taskEvents.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
-    unresolved_event_count: 0,
+    unresolved_event_count: countUnresolved(taskEvents),
   };
   closedTasks.set(taskId, result);
   return result;

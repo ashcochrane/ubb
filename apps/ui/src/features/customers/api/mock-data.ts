@@ -7,6 +7,8 @@
 // nova-ai       — individual pinned to metered_only; usage tracked at cost.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
+import { knownCost, unknownCost } from "@/lib/economic-scenarios";
+
 import type {
   BalanceResponse,
   BookOut,
@@ -104,12 +106,18 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     margin_percentage: -35.7,
   },
   {
+    // THE ONE CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE (#330). Four of
+    // nova-ai's events carry a supplier cost UBB never learned, so its provider
+    // total is a floor and its margin a ceiling. Kept in sync by hand with the
+    // dashboard feature's roster, which carries byte-identical economics; the
+    // count is a fact about the events behind these figures and cannot differ
+    // between two views of them.
     customer_id: CUS_NOVA,
     subscription_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: 88_000_000,
-    unresolved_event_count: 0,
+    unresolved_event_count: 4,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
   },
@@ -178,7 +186,8 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: 88_000_000,
-    unresolved_event_count: 0,
+    // Same four events as the list row above — one customer, one fact.
+    unresolved_event_count: 4,
     total_revenue_micros: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
@@ -229,7 +238,7 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
   "2026-05-01",
   "2026-06-01",
   "2026-07-01",
-].map((period_start, index) => {
+].map((period_start, index, all) => {
   const billed = 180_000_000 + index * 16_000_000;
   const provider = 150_000_000 + index * 11_000_000;
   const subscription = index >= 5 ? 199_000_000 : 0;
@@ -237,7 +246,12 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
   return {
     period_start,
     provider_cost_micros: provider,
-    unresolved_event_count: 0,
+    // ONLY THE MOST RECENT PERIOD IS INCOMPLETE, which is the shape a real
+    // trend has: a supplier invoice that has not arrived is a fact about the
+    // month still in progress, and every earlier month has long since settled.
+    // A fixture that marked all twelve could not tell a per-period read from a
+    // series-wide one (#330).
+    unresolved_event_count: index === all.length - 1 ? 4 : 0,
     usage_billed_micros: billed,
     subscription_revenue_micros: subscription,
     gross_margin_micros: margin,
@@ -644,7 +658,34 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     by_tag: [],
     breakdowns: {},
   },
+  // nova-ai — the same window the margin detail reports, and the same four
+  // events it could not cost (#330). Two views of one set of postings may not
+  // disagree about what is missing from them, so the count is the same number
+  // here as it is on the margin row.
+  [CUS_NOVA]: {
+    total_events: 12_882,
+    total_billed_cost_micros: 88_000_000,
+    total_provider_cost_micros: 88_000_000,
+    unresolved_event_count: 4,
+    usage_markup_margin_micros: 0,
+    by_provider: [],
+    by_event_type: [],
+    by_customer: [],
+    by_task_type: [],
+    by_tag: [],
+    breakdowns: {},
+  },
 };
+
+/**
+ * Which of nova-ai's daily buckets hold an uncosted event, and how many.
+ *
+ * The four the margin row counts, landing on two days rather than spread over
+ * fourteen: the point of a per-bucket count is that a reader hovering one day
+ * is told about THAT day, and a fixture that gave every bucket one could not
+ * tell a working per-bucket read from a window-wide one.
+ */
+const NOVA_UNRESOLVED_BY_BUCKET: Record<number, number> = { 11: 3, 12: 1 };
 
 export function buildMockTimeseries(customerId: string): UsageTimeseriesResponse {
   const scale = customerId === CUS_ACME ? 1 : 0.15;
@@ -658,6 +699,8 @@ export function buildMockTimeseries(customerId: string): UsageTimeseriesResponse
       billed_cost_micros: billed,
       markup_micros: billed - provider,
       event_count: Math.round((1_800 + index * 120) * scale),
+      unresolved_event_count:
+        customerId === CUS_NOVA ? (NOVA_UNRESOLVED_BY_BUCKET[index] ?? 0) : 0,
     };
   });
   return { granularity: "day", group_by: "", series };
@@ -683,7 +726,10 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         events: [],
         event_count: 0,
         total_billed_cost_micros: 0,
+        // A marker episode marks no event at all, so there is nothing it could
+        // have left out — a genuine zero rather than a floor at zero.
         total_provider_cost_micros: 0,
+        unresolved_event_count: 0,
       },
       {
         family: "floor_stop",
@@ -700,27 +746,34 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
             event_id: "9c32c7a4-0000-4000-8000-000000000301",
             effective_at: "2026-07-02T09:14:00Z",
             billed_cost_micros: 1_450_000,
-            provider_cost_micros: 1_160_000,
+            ...knownCost(1_160_000),
             arrived_after: false,
           },
           {
             event_id: "9c32c7a4-0000-4000-8000-000000000302",
             effective_at: "2026-07-02T09:15:12Z",
             billed_cost_micros: 890_000,
-            provider_cost_micros: 712_000,
+            ...knownCost(712_000),
             arrived_after: true,
           },
           {
             event_id: "9c32c7a4-0000-4000-8000-000000000303",
             effective_at: "2026-07-02T09:16:44Z",
             billed_cost_micros: 640_000,
-            provider_cost_micros: 512_000,
+            // THE ONE ITEMIZED EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED
+            // (#330). It landed past a spend stop and it is still billed, so
+            // its row must not read as a free overrun: the amount is absent and
+            // the episode's total above it says "at least".
+            ...unknownCost("cost_rate_missing"),
             arrived_after: true,
           },
         ],
         event_count: 3,
         total_billed_cost_micros: 2_980_000,
-        total_provider_cost_micros: 2_384_000,
+        // Two of the three costs are known; the third is not, so this is a
+        // floor and the count beside it says by how many events.
+        total_provider_cost_micros: 1_872_000,
+        unresolved_event_count: 1,
       },
       {
         family: "task",
@@ -737,24 +790,27 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
             event_id: "9c32c7a4-0000-4000-8000-000000000304",
             effective_at: "2026-07-11T17:20:00Z",
             billed_cost_micros: 1_120_000,
-            provider_cost_micros: 896_000,
+            ...knownCost(896_000),
             arrived_after: false,
           },
         ],
         event_count: 1,
         total_billed_cost_micros: 1_120_000,
         total_provider_cost_micros: 896_000,
+        unresolved_event_count: 0,
       },
     ],
     totals_per_limit: {
       customer_floor: {
         billed_cost_micros: 2_980_000,
-        provider_cost_micros: 2_384_000,
+        provider_cost_micros: 1_872_000,
+        unresolved_event_count: 1,
         event_count: 3,
       },
       task_limit: {
         billed_cost_micros: 1_120_000,
         provider_cost_micros: 896_000,
+        unresolved_event_count: 0,
         event_count: 1,
       },
     },

@@ -7,6 +7,7 @@
 import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
+import { knownCost, unknownCost } from "@/lib/economic-scenarios";
 
 import {
   MOCK_API_KEYS,
@@ -181,9 +182,15 @@ export async function sendTestEvent(
   // answered `known` whatever the measurements say, which is the backend's own
   // order: the supplied figure is the answer and no declaration is consulted.
   const resolved = body.provider_cost_micros != null || uncosted.length === 0;
-  const provider = resolved
-    ? (body.provider_cost_micros ?? Math.round(billed * 0.62))
-    : null;
+  // COMPOSED, NEVER ASSEMBLED FIELD BY FIELD (#330). The amount, the status and
+  // the missing input are one fact in three properties, and the posting's own
+  // check constraint admits only three combinations of them; taking them from
+  // the canonical scenarios is what stops this mock inventing a fourth. The
+  // reason is `cost_rate_missing` because that is precisely what happened above:
+  // a measurement reached the rate lookup and nothing there priced it.
+  const cost = resolved
+    ? knownCost(body.provider_cost_micros ?? Math.round(billed * 0.62))
+    : unknownCost("cost_rate_missing");
 
   balanceMicros -= billed;
   const stopped = balanceMicros < 0;
@@ -197,12 +204,12 @@ export async function sendTestEvent(
     // rather than the two arbitrary slot properties this replaces.
     grouping_fields: {},
     billed_cost_micros: billed,
-    provider_cost_micros: provider,
     // The status and the amount are ONE fact and travel together: an absent
-    // amount reads `unresolved` and never `known` at zero (#317, #320). The
-    // literal is checked against the generated response union, so a value the
-    // registry renames fails to compile here.
-    costing_status: resolved ? "known" : "unresolved",
+    // amount reads `unresolved` and never `known` at zero (#317, #320), and it
+    // names the input that would settle it (#330).
+    provider_cost_micros: cost.provider_cost_micros,
+    costing_status: cost.costing_status,
+    unresolved_reason: cost.unresolved_reason,
     new_balance_micros: balanceMicros,
     measurements: body.measurements ?? null,
     // EMPTY WHENEVER THE COST RESOLVED, because that is what the real response

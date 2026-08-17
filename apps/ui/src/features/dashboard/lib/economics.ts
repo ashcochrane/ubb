@@ -101,6 +101,13 @@ export interface RevenueCostPoint {
   provider_micros: number;
   margin_micros: number;
   event_count: number;
+  /**
+   * That day's own uncosted events. It rides the point rather than the chart
+   * because the two sources below both answer per bucket, and because the
+   * point is what the tooltip is handed: a count kept beside the series would
+   * caveat every day for one day's missing invoice.
+   */
+  unresolved_event_count: number;
 }
 
 /** Chart points from the billing revenue analytics (billing tenants). */
@@ -111,6 +118,7 @@ export function revenuePoints(response: RevenueAnalytics): RevenueCostPoint[] {
     provider_micros: row.provider_cost_micros,
     margin_micros: row.billed_cost_micros - row.provider_cost_micros,
     event_count: row.event_count,
+    unresolved_event_count: row.unresolved_event_count,
   }));
 }
 
@@ -122,6 +130,7 @@ export function timeseriesPoints(response: UsageTimeseries): RevenueCostPoint[] 
     provider_micros: row.provider_cost_micros,
     margin_micros: row.markup_micros,
     event_count: row.event_count,
+    unresolved_event_count: row.unresolved_event_count,
   }));
 }
 

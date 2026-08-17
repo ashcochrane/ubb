@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SupplierCostAmount } from "@/components/shared/supplier-cost";
 import { formatDate } from "@/lib/format";
 import { stopReasonLabel } from "@/lib/labels";
 
@@ -30,6 +31,7 @@ function money(
     ? "—"
     : formatEventMicros(micros, currency);
 }
+
 
 function StoppedIndicator({ row }: { row: UsageEventRow }) {
   const entries = asStopContextEntries(row.stop_context);
@@ -117,8 +119,16 @@ export function LedgerTable({
             <TableCell className="text-right text-[13px] tabular-nums">
               {money(row.billed_cost_micros, currency)}
             </TableCell>
+            {/* An absent supplier cost is NAMED, never dashed or zeroed
+                (#320, #330): a column of identical dashes hides which rows a
+                tenant can act on. */}
             <TableCell className="text-right text-[13px] tabular-nums text-text-secondary">
-              {money(row.provider_cost_micros, currency)}
+              <SupplierCostAmount
+                micros={row.provider_cost_micros}
+                status={row.costing_status}
+                currency={currency}
+                format={formatEventMicros}
+              />
             </TableCell>
             <TableCell className="pr-3 text-right">
               <StoppedIndicator row={row} />

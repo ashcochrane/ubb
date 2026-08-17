@@ -28,6 +28,15 @@ function isoDay(epochMs: number): string {
   return new Date(epochMs).toISOString().slice(0, 10);
 }
 
+/**
+ * How many of today's events are still waiting on a supplier cost.
+ *
+ * Exported so a test asserting "the window's total renders as a floor" names
+ * this rather than a literal, and so the provider that sums the rows and the
+ * fixture that seeds them cannot disagree about the number.
+ */
+export const UNRESOLVED_TODAY = 3;
+
 /** Deterministic pseudo-random in [0, 1) so charts look organic but stable. */
 function noise(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -59,6 +68,13 @@ export function buildDailyRows(): RevenueDailyRow[] {
       provider_cost_micros: provider,
       billed_cost_micros: billed,
       event_count: Math.round((provider / 1200) * (0.8 + noise(i + 900) * 0.4)),
+      // TODAY IS THE ONE INCOMPLETE DAY, and it is today on purpose (#330).
+      // A supplier cost that has not arrived is a fact about the day still in
+      // progress, so putting it on the last row is both the realistic story and
+      // the only placement that survives the window arithmetic this file exists
+      // to protect: the narrowest default window there is — the 1st of a month
+      // — is a single day, and that day is this one.
+      unresolved_event_count: t === end ? UNRESOLVED_TODAY : 0,
     });
   }
   return rows;

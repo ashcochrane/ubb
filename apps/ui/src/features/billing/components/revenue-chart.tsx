@@ -12,7 +12,11 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import {
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCostMicros, formatShortDate } from "@/lib/format";
 
 import type { RevenueDailyRow } from "../api/types";
 
@@ -26,38 +30,16 @@ const SERIES: { key: keyof ChartRow; label: string; color: string }[] = [
   { key: "markup_micros", label: "Markup", color: "var(--chart-3)" },
 ];
 
-function RevenueTooltip({
-  active,
-  payload,
-  label,
-  currency,
-}: {
-  active?: boolean;
-  payload?: { dataKey?: string | number; value?: number | string }[];
-  label?: string | number;
-  currency: string;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
-  const row = new Map(payload.map((entry) => [String(entry.dataKey), entry.value]));
-  return (
-    <div className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] shadow-md">
-      <div className="mb-1 font-medium text-text-primary">
-        {typeof label === "string" ? formatShortDate(label) : label}
-      </div>
-      {SERIES.map((series) => {
-        const value = row.get(series.key);
-        if (typeof value !== "number") return null;
-        return (
-          <div key={series.key} className="flex items-center justify-between gap-4">
-            <span className="text-text-secondary">{series.label}</span>
-            <span className="font-medium text-text-primary">
-              {formatMicros(value, currency)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
+/** Which bounding rule each plotted series obeys (#330). */
+function roleOf(dataKey: string): SeriesRole {
+  if (dataKey === "provider_cost_micros") return "supplier-cost";
+  if (dataKey === "markup_micros") return "margin";
+  // Billed is NOT NULL at the column and whole by construction.
+  return "whole";
+}
+
+function dayLabel(label: string | number | undefined): string {
+  return typeof label === "string" ? formatShortDate(label) : String(label ?? "");
 }
 
 export default function RevenueChart({
@@ -93,7 +75,13 @@ export default function RevenueChart({
             width={64}
           />
           <Tooltip
-            content={<RevenueTooltip currency={currency} />}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={dayLabel}
+                roleOf={roleOf}
+              />
+            }
             cursor={{ stroke: "var(--chart-grid)" }}
           />
           {SERIES.map((series) => (

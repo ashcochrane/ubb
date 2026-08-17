@@ -18,9 +18,14 @@ import {
   formatCalendarDate,
   formatEventCount,
   formatMicros,
-  formatPercent,
 } from "@/lib/format";
 import { revenueModeLabel } from "@/lib/labels";
+import {
+  marginBound,
+  marginPercentBound,
+  partialTotalNote,
+  supplierCostTotal,
+} from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
 import { useMarginTrend } from "../api/queries";
@@ -53,17 +58,24 @@ export function OverviewTab({
           variant="raised"
           subtitle={`Resolved revenue mode: ${revenueModeLabel(margin.revenue_mode)}`}
         />
+        {/* The cost card's subtitle already carries a count — the events in
+            the window — so the one that says how many of them went uncosted
+            replaces it while it has something to say. Two counts on one card
+            is where a reader stops reading either. */}
         <StatCard
           label="Provider cost (COGS)"
-          value={formatMicros(margin.provider_cost_micros, currency)}
+          value={supplierCostTotal(margin.provider_cost_micros, margin, currency)}
           variant="raised"
-          subtitle={`${formatEventCount(margin.event_count)} events in window`}
+          subtitle={
+            partialTotalNote(margin.unresolved_event_count) ??
+            `${formatEventCount(margin.event_count)} events in window`
+          }
         />
         <StatCard
           label="Gross margin"
           value={
             <span className={cn(negative && "text-danger-dark")}>
-              {formatMicros(margin.gross_margin_micros, currency)}
+              {marginBound(margin.gross_margin_micros, margin, currency)}
             </span>
           }
           variant="raised"
@@ -73,7 +85,7 @@ export function OverviewTab({
           label="Margin %"
           value={
             <span className={cn(margin.margin_percentage < 0 && "text-danger-dark")}>
-              {formatPercent(margin.margin_percentage)}
+              {marginPercentBound(margin.margin_percentage, margin)}
             </span>
           }
           variant="raised"

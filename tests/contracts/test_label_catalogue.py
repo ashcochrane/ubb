@@ -363,7 +363,8 @@ def test_every_adapter_export_is_classified(legacy):
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
         HUMANISER, "roleRank",
-        "BILLING_MODES", "COSTING_METHODS", "PRODUCTS", "ROLES",
+        "BILLING_MODES", "COSTING_METHODS", "COSTING_STATUSES", "PRODUCTS",
+        "ROLES",
         "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "

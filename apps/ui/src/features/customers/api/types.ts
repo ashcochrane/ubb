@@ -8,6 +8,8 @@ import type {
   PlatformSchemas,
   SubscriptionSchemas,
 } from "@/api/types";
+import { asCostingStatus } from "@/lib/supplier-cost";
+import type { CostingStatus } from "@/lib/vocabulary";
 
 // ---------------------------------------------------------------------------
 // Margin (list + detail workbench overview)
@@ -90,14 +92,28 @@ export interface TimeseriesPoint {
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
+  /** This bucket's own uncosted events — the server answers it per bucket. */
+  unresolved_event_count: number;
 }
 
-/** One itemized event inside a past-limit episode. */
+/**
+ * One itemized event inside a past-limit episode.
+ *
+ * ⚠ `provider_cost_micros` IS NULLABLE ON THE WIRE and this report is UNTYPED
+ * in the contract, so nothing but this interface says so. `api/v1/past_limit.py`
+ * emits the posting's own column, which has been nullable since #317, and it
+ * carries `costing_status` beside it precisely because a `null` there means two
+ * different things. Narrowing the amount with the module's `num()` would turn
+ * both into `$0.00` — a report about money already spent, telling a tenant their
+ * supplier charged nothing for the events that tripped their own spend stop.
+ */
 export interface PastLimitEpisodeEvent {
   event_id: string;
   effective_at: string;
   billed_cost_micros: number;
-  provider_cost_micros: number;
+  provider_cost_micros: number | null;
+  /** `null` where the row carried no status — see `asCostingStatus`. */
+  costing_status: CostingStatus | null;
   arrived_after: boolean;
 }
 
@@ -116,11 +132,20 @@ export interface PastLimitEpisode {
   event_count: number;
   total_billed_cost_micros: number;
   total_provider_cost_micros: number;
+  /**
+   * How many of this episode's events carry a cost UBB never learned (#328).
+   *
+   * Present on the wire since #328 and invisible to any schema-derived scan,
+   * because the whole report is `additionalProperties: true` — which is how
+   * this surface came to be read as one with no completeness at all.
+   */
+  unresolved_event_count: number;
 }
 
 export interface PastLimitLimitTotals {
   billed_cost_micros: number;
   provider_cost_micros: number;
+  unresolved_event_count: number;
   event_count: number;
 }
 
@@ -171,6 +196,7 @@ export function narrowTimeseriesPoints(
     billed_cost_micros: num(row.billed_cost_micros),
     markup_micros: num(row.markup_micros),
     event_count: num(row.event_count),
+    unresolved_event_count: num(row.unresolved_event_count),
   }));
 }
 
@@ -192,13 +218,17 @@ function narrowEpisode(raw: Record<string, unknown>): PastLimitEpisode {
         event_id: str(record.event_id),
         effective_at: str(record.effective_at),
         billed_cost_micros: num(record.billed_cost_micros),
-        provider_cost_micros: num(record.provider_cost_micros),
+        // `numOrNull`, NOT `num`: an absent supplier cost stays absent all the
+        // way to the cell that renders it (#330). See the interface above.
+        provider_cost_micros: numOrNull(record.provider_cost_micros),
+        costing_status: asCostingStatus(record.costing_status),
         arrived_after: record.arrived_after === true,
       };
     }),
     event_count: num(raw.event_count),
     total_billed_cost_micros: num(raw.total_billed_cost_micros),
     total_provider_cost_micros: num(raw.total_provider_cost_micros),
+    unresolved_event_count: num(raw.unresolved_event_count),
   };
 }
 
@@ -211,6 +241,7 @@ export function narrowPastLimitReport(
     totals[limit] = {
       billed_cost_micros: num(record.billed_cost_micros),
       provider_cost_micros: num(record.provider_cost_micros),
+      unresolved_event_count: num(record.unresolved_event_count),
       event_count: num(record.event_count),
     };
   }

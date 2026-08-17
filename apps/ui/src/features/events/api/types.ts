@@ -9,6 +9,8 @@ import type {
   MarginSchemas,
   MeteringSchemas,
 } from "@/api/types";
+import { asCostingStatus } from "@/lib/supplier-cost";
+import type { CostingStatus } from "@/lib/vocabulary";
 
 export type UsageEventRow = MeteringSchemas["UsageEventOut"];
 export type UsageEventDetail = MeteringSchemas["UsageEventDetailOut"];
@@ -126,6 +128,8 @@ export interface TimeseriesPoint {
   billed_cost_micros: number;
   markup_micros: number;
   event_count: number;
+  /** This bucket's own uncosted events — the server answers it per bucket. */
+  unresolved_event_count: number;
   /** Present only when group_by was requested; "(unattributed)" for empties. */
   group_value?: string;
 }
@@ -164,6 +168,7 @@ export function asTimeseriesPoints(
       billed_cost_micros: num(row.billed_cost_micros),
       markup_micros: num(row.markup_micros),
       event_count: num(row.event_count),
+      unresolved_event_count: num(row.unresolved_event_count),
     };
     const groupValue = str(row[WIRE_GROUP_VALUE_KEY]);
     if (groupValue !== null) point.group_value = groupValue;
@@ -180,7 +185,17 @@ export interface PastLimitEpisodeEvent {
   event_id: string;
   effective_at: string;
   billed_cost_micros: number;
-  provider_cost_micros: number;
+  /**
+   * ⚠ NULLABLE ON THE WIRE, and this report is untyped in the contract, so
+   * nothing but this line says so. `api/v1/past_limit.py` emits the posting's
+   * own column, nullable since #317, and carries `costing_status` beside it
+   * because a `null` there means two different things. Coalescing to zero would
+   * tell a tenant their supplier charged nothing for the very events that
+   * tripped their spend stop (#330).
+   */
+  provider_cost_micros: number | null;
+  /** `null` where the row carried no status — see `asCostingStatus`. */
+  costing_status: CostingStatus | null;
   arrived_after: boolean;
 }
 
@@ -201,6 +216,14 @@ export interface PastLimitEpisode {
   event_count: number;
   total_billed_cost_micros: number;
   total_provider_cost_micros: number;
+  /**
+   * How many of this episode's events carry a cost UBB never learned (#328).
+   *
+   * On the wire, and invisible to any scan of the contract's typed schemas —
+   * this whole report is `additionalProperties: true`, which is how the surface
+   * came to be read as one with no completeness at all (#330).
+   */
+  unresolved_event_count: number;
 }
 
 export function asPastLimitEpisodes(
@@ -221,7 +244,8 @@ export function asPastLimitEpisodes(
           event_id: eventId,
           effective_at: str(record.effective_at) ?? "",
           billed_cost_micros: num(record.billed_cost_micros),
-          provider_cost_micros: num(record.provider_cost_micros),
+          provider_cost_micros: numOrNull(record.provider_cost_micros),
+          costing_status: asCostingStatus(record.costing_status),
           arrived_after: record.arrived_after === true,
         });
       }
@@ -240,6 +264,7 @@ export function asPastLimitEpisodes(
       event_count: num(row.event_count),
       total_billed_cost_micros: num(row.total_billed_cost_micros),
       total_provider_cost_micros: num(row.total_provider_cost_micros),
+      unresolved_event_count: num(row.unresolved_event_count),
     });
   }
   return out;
@@ -249,6 +274,7 @@ export interface LimitTotalsRow {
   limit: string;
   billed_cost_micros: number;
   provider_cost_micros: number;
+  unresolved_event_count: number;
   event_count: number;
 }
 
@@ -263,6 +289,7 @@ export function asTotalsPerLimit(
       limit,
       billed_cost_micros: num(record.billed_cost_micros),
       provider_cost_micros: num(record.provider_cost_micros),
+      unresolved_event_count: num(record.unresolved_event_count),
       event_count: num(record.event_count),
     });
   }

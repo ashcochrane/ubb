@@ -2207,19 +2207,6 @@ entries:
       #210 splits the two. #150's four families replace one word that named
       all of them at once. Slice 6 is where they become real.
 
-  - id: g2-console-costing_status
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::costing_status
-    expected: costing_status
-    found: 0 of 3 values
-    owner_slice: slice_3
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. `unresolved` with a NULL cost that is never zero is
-      #146's central rule, and slice 3 is where the cost record is rebuilt to
-      carry it.
-
   - id: g2-console-customer_billing_mode
     gate: G2
     site: apps/ui/src/lib/labels.ts::customer_billing_mode

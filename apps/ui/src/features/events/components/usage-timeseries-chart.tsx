@@ -11,9 +11,25 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCostMicros, formatMicros, formatShortDate } from "@/lib/format";
+import {
+  BoundedCostTooltip,
+  type SeriesRole,
+} from "@/components/shared/supplier-cost";
+import { formatCostMicros, formatShortDate } from "@/lib/format";
 
 import type { ChartSeries } from "../lib/timeseries";
+
+/**
+ * Which bounding rule each plotted series obeys (#330).
+ *
+ * Only the UNGROUPED pivot plots a supplier cost, under the key `provider`.
+ * Every grouped series sums BILLED cost per group, which is NOT NULL at the
+ * column and whole by construction — and the grouped rows carry no count, so
+ * the tooltip has nothing to bound them with either.
+ */
+function roleOf(dataKey: string): SeriesRole {
+  return dataKey === "provider" ? "supplier-cost" : "whole";
+}
 
 /**
  * Buckets arrive as day-truncated UTC datetimes ("2026-07-01T00:00:00Z").
@@ -56,17 +72,13 @@ export default function UsageTimeseriesChart({
             width={64}
           />
           <Tooltip
-            formatter={(value, name) => [
-              formatMicros(typeof value === "number" ? value : 0, currency),
-              typeof name === "string" ? name : "",
-            ]}
-            labelFormatter={bucketLabel}
-            contentStyle={{
-              background: "var(--color-bg-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: 8,
-              fontSize: 12,
-            }}
+            content={
+              <BoundedCostTooltip
+                currency={currency}
+                labelFormatter={bucketLabel}
+                roleOf={roleOf}
+              />
+            }
           />
           {series.map((entry) => (
             <Line
