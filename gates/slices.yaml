@@ -19,11 +19,14 @@
 #
 # Slices 0 and 1 were flipped together, after the fact, rather than by their own
 # last ticket: neither slice's ticket chain named the flip, so both closed (#191,
-# #192) with it still `false`. Nothing was owed to either — the ledger's earliest
-# owner is `slice_2` and the manifest's is `slice_3` — so the two declarations
-# were provable on the spot and cost nothing to make. Later slices should flip
-# their own flag in their last ticket, which is what makes the declaration a
-# check rather than a formality.
+# #192) with it still `false`. Nothing was owed to either — when #256 made those
+# two declarations the ledger's earliest owner was `slice_2` and the manifest's
+# was `slice_3`, so neither flag had anything to fail on and both were provable
+# on the spot. Each of those two owners has since been discharged, and naming
+# today's earliest is deliberately left out: it moves every time a slice lands,
+# and the reasoning is the part that survives. Later slices should flip their own
+# flag in their last ticket, which is what makes the declaration a check rather
+# than a formality.
 #
 # Slice 2 is the first to flip its own flag, in its own last ticket (#285), and
 # the declaration did cost something — which is the whole argument for doing it
@@ -42,6 +45,21 @@
 # sentinel that `test_gate_manifest.py` already guards by name. A filter over
 # `landed: false` cannot name a slice that has landed, so the next flip cannot
 # repeat this.
+#
+# Slice 3's own last ticket (#331) is the next flip, and it turned NOTHING red.
+# Nothing was owed: the last of its three ledger entries died in #330 and G19 read
+# `installed` from #319, so the flag moved only `unlanded[0]`, from slice 3 to
+# slice 4 — the derivation above doing exactly what it was built for, with no
+# control re-pointed or re-typed to follow it. But a flip that turns nothing red
+# has not thereby proved anything, so that ticket deleted the mutation of all
+# twenty-two controls in `test_migration_ledger.py` that assert a refusal or a
+# fault. TWENTY-ONE failed without it. ONE PASSED — the unreadable-baseline
+# control, not because it was vacuous but because the fault it asserts has a
+# SECOND cause its own fixture supplied — and it was repaired, after which
+# deleting the mutation reddens it in one edit. A fault with two causes reads
+# exactly like a vacuous control until you look, and the two are repaired
+# differently. That method now lives in `gates/README.md`, under *Flipping a
+# row*, because it belongs to every flip rather than to this one.
 
 version: 1
 
@@ -68,7 +86,7 @@ slices:
     issue: 185
     title: Cost
     order: 3
-    landed: false
+    landed: true
 
   slice_4:
     issue: 186

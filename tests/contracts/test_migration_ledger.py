@@ -428,16 +428,24 @@ def repository(tmp_path):
     git(tmp_path, "init", "-b", "main", str(tmp_path))
     git(tmp_path, "config", "user.email", "ci@example.invalid")
     git(tmp_path, "config", "user.name", "CI")
-    write(tmp_path, ledger([entry("L001")]))
-    git(tmp_path, "add", "-A")
-    git(tmp_path, "commit", "-m", "the ledger as it stands")
+    commit(tmp_path, ledger([entry("L001")]), "the ledger as it stands")
     return tmp_path
 
 
 def write(repository, document):
+    """The ledger as an author has it: edited, not yet committed."""
     path = repository / LEDGER_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def commit(repository, document, message):
+    """The ledger as a revision. Separate from :func:`write` because half the
+    controls here turn on the difference: an edited ledger is compared against
+    HEAD, a committed one against HEAD's parent."""
+    write(repository, document)
+    git(repository, "add", "-A")
+    git(repository, "commit", "-m", message)
 
 
 def test_a_branch_that_adds_an_entry_fails_against_its_base(repository, slices):
@@ -468,9 +476,8 @@ def test_on_the_base_branch_itself_the_comparison_is_against_the_parent(
     against the change itself and prove nothing. It falls back to the parent,
     which makes the question "did this commit add entries?" — so a direct push
     is gated too."""
-    write(repository, ledger([entry("L001"), entry("L002", site="b.py::Two")]))
-    git(repository, "add", "-A")
-    git(repository, "commit", "-m", "a debt added straight to main")
+    commit(repository, ledger([entry("L001"), entry("L002", site="b.py::Two")]),
+           "a debt added straight to main")
     comparison = run(repository, slices, base="main")
     assert {fault.code for fault in comparison.faults} == {codes.LEDGER_GREW}
 
@@ -478,7 +485,28 @@ def test_on_the_base_branch_itself_the_comparison_is_against_the_parent(
 def test_a_baseline_that_cannot_be_resolved_fails_rather_than_skipping(
         repository, slices):
     """A silently skipped comparison is how a debt reaches main unreviewed —
-    openapi/contract_gate.py made the same call for its tag."""
+    openapi/contract_gate.py made the same call for its tag.
+
+    THIS FAULT HAS A SECOND CAUSE, AND THE PREMISE BELOW IS WHAT KEEPS THE
+    ASSERTION ABOUT THE REF NAME. `repository` holds exactly ONE commit, so on
+    the base branch the fall-back to the parent is unresolvable as well — which
+    means that before the second commit here, naming a base that *does* exist
+    faulted identically. #331 found it while deleting every control's mutation to
+    confirm the control fails without it: swapping the ref alone left this green
+    twice over, and only a genuinely resolvable base made it red. So the
+    resolvable case is established FIRST, on this same repository, and the
+    unreadable ref is the only thing that changes afterwards.
+    """
+    git(repository, "checkout", "-b", "feature")
+    commit(repository, ledger([entry("L999")]),
+           "a relabelling, neither a payment nor a debt")
+    premise = run(repository, slices, base="main")
+    assert codes.BASE_UNREADABLE not in {fault.code for fault in premise.faults}, (
+        "this repository cannot resolve `main` either, so the assertion below "
+        "would hold whatever the ref name said. Asserted narrowly rather than as "
+        "`.ok`, which any other fault would also satisfy while proving nothing "
+        "about resolution")
+
     comparison = run(repository, slices, base="origin/nonexistent")
     assert {fault.code for fault in comparison.faults} == {codes.BASE_UNREADABLE}
 
@@ -496,9 +524,8 @@ def test_a_ref_whose_tree_has_no_ledger_reads_as_an_empty_one(repository):
 def test_a_committed_proposal_is_never_compared_against_itself(repository):
     """The merge base with `main` IS HEAD once a change lands there. Comparing
     HEAD against HEAD would make the gate pass on everything."""
-    write(repository, ledger([entry("L001"), entry("L002", site="b.py::Two")]))
-    git(repository, "add", "-A")
-    git(repository, "commit", "-m", "a second commit on main")
+    commit(repository, ledger([entry("L001"), entry("L002", site="b.py::Two")]),
+           "a second commit on main")
 
     reference, problem = resolve_base(repository, base="main")
     assert problem is None
