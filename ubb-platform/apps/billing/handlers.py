@@ -34,7 +34,8 @@ def handle_usage_recorded_billing(event_id, payload):
     # not price would have taken this handler down, and an outbox handler that
     # raises retries with backoff rather than failing a request. Nothing beyond
     # this branch applies to an event with no resolved price: there is no amount
-    # to draw down, none to accumulate, and none to count against a budget.
+    # to draw down, none to accumulate, and none to count towards the owner's
+    # live spend.
     if billed_cost_micros is not None and billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)

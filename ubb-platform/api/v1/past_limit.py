@@ -131,64 +131,48 @@ def _signal_episodes(tenant, owner, opened_type, closed_type, family):
     return eps
 
 
-def _supplier_cost_of(events):
-    """The pair, over itemized rows: what can be added up, and what cannot.
+def _pair_total_of(events, pair):
+    """One amount/status pair's total over itemized rows: what can be added up,
+    and what cannot.
 
-    ⚠ THIS SUM USED TO RAISE (#328). ``sum(e["provider_cost_micros"] …)`` over a
-    posting whose supplier cost UBB has not resolved is ``int + None`` — a 500
-    on a report about money already spent, reachable the moment a tenant's cost
-    rates fall behind their traffic. The failure was inherited from #317 making
-    the column nullable; it was a `TypeError` rather than a wrong number, which
-    is the one thing to be grateful for.
+    ⚠ THE SUPPLIER HALF OF THIS USED TO RAISE (#328), AND THE PRICE HALF WAS THE
+    NEXT ONE TO (#351). ``sum(e[column] …)`` over a posting whose amount UBB has
+    not resolved is ``int + None`` — a 500 on a report about money already
+    spent. The cost side became reachable the moment #317 made its column
+    nullable; the price side the moment #351 made its own, and #153 §17.6
+    predicted that one in advance. This is also the surface a contract-derived
+    enumeration has already missed once, because the response is untyped and no
+    schema names its rows.
 
-    An unresolved cost is skipped and COUNTED, so the total is a floor that says
-    how far it falls short. A cost the Event Type declares does not exist is
-    skipped and not counted: it contributes a genuine zero, and there is nothing
-    about it to report (#327). The two look identical on the row — both carry
-    `None` — so the status is what tells them apart.
+    **ONE FUNCTION FOR BOTH PAIRS, and that is the point.** It was two, differing
+    only in which column and which key — which is how a repair applied to one
+    half comes to be missing from the other, twice over. What differs between
+    the pairs is entirely inside the pair: its columns, and the single status
+    that means *not learned*.
+
+    An unresolved amount is skipped and COUNTED, so the total is a floor that
+    says how far it falls short. Every OTHER absent amount is skipped and not
+    counted — a cost the Event Type declares does not exist, a price that was
+    waived, a subject with no customer revenue at this level — because each
+    contributes a genuine zero and nothing about it is missing. They are
+    indistinguishable on the row, all carrying `None`, which is why the status
+    tells them apart and why the predicate is asked of the PAIR rather than
+    spelled here.
     """
-    resolved = sum(e["provider_cost_micros"] for e in events
-                   if e["provider_cost_micros"] is not None)
+    column = pair.amount_column
+    resolved = sum(e[column] for e in events if e[column] is not None)
     unresolved = sum(1 for e in events
-                     if counts_as_unresolved(SUPPLIER_COST, e["costing_status"]))
-    return cost_total(SUPPLIER_COST, key="provider_cost_micros",
-                      resolved_micros=resolved, unresolved_events=unresolved)
-
-
-def _customer_price_of(events):
-    """The same pair over the same rows, for the other side of the margin (#351).
-
-    ⚠ AND THIS SUM WAS THE NEXT ONE TO RAISE. #328 repaired the supplier half
-    above and left this one reading `sum(e["billed_cost_micros"] …)` over a
-    column that was still NOT NULL. The moment it went nullable that became
-    `int + None` — a 500 on a report about money already spent, and #153 §17.6
-    predicted this exact failure in advance. It is also the site a
-    contract-derived surface enumeration has already missed once, because this
-    response is untyped and no schema names its rows.
-
-    **The rule is the one above, applied to a value set that splits differently.**
-    A price UBB does not have is `unknown`: skipped and COUNTED, so the total is
-    a floor saying how far it falls short. A price that was `waived` or that is
-    `not_applicable` is skipped and NOT counted — a waive is a decision reported
-    as a loss and a subject with no customer revenue contributes a genuine zero,
-    so neither is missing information. All three carry `None` on the row, which
-    is why the status is what tells them apart and why the predicate is asked of
-    the PAIR rather than spelled here.
-    """
-    resolved = sum(e["billed_cost_micros"] for e in events
-                   if e["billed_cost_micros"] is not None)
-    unpriced = sum(1 for e in events
-                   if counts_as_unresolved(CUSTOMER_PRICE, e["pricing_status"]))
-    return cost_total(CUSTOMER_PRICE, key="billed_cost_micros",
-                      resolved_micros=resolved, unresolved_events=unpriced)
+                     if counts_as_unresolved(pair, e[pair.status_column]))
+    return cost_total(pair, key=column, resolved_micros=resolved,
+                      unresolved_events=unresolved)
 
 
 def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
                  subtask_id, provider_cost_limit_micros, tripped_at,
                  resumed_at, bucket):
     events = bucket["events"] if bucket else []
-    supplier = _supplier_cost_of(events)
-    price = _customer_price_of(events)
+    supplier = _pair_total_of(events, SUPPLIER_COST)
+    price = _pair_total_of(events, CUSTOMER_PRICE)
     return {
         "family": family, "limit": limit, "stop_scope": stop_scope,
         "episode_seq": episode_seq,

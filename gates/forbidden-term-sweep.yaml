@@ -144,7 +144,11 @@ exclusions:
 
   - id: historical-migrations
     permanence: until_slice_8
-    files: 214
+    # 214 → 218 in #351: the four migrations that make the customer price
+    # nullable and give three accumulators the count of what they could not
+    # price. The number moves with the tree, and moving it is the whole
+    # mechanism — a reviewer sees the widening in the diff.
+    files: 218
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

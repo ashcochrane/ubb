@@ -67,6 +67,34 @@ STATUS = "pricing_status"
 REASON = "not_applicable_reason"
 
 
+#: The four combinations `ck_posting_pricing_status_agrees_with_the_price`
+#: admits, as (status, amount, reason). `0` and a real declared reason stand for
+#: "an amount is present" and "a reason is present" — the constraint is about
+#: presence, and using a legal value keeps every refusal below attributable to
+#: the disjunction rather than to one of the two value-set checks.
+THE_FOUR_LEGAL_COMBINATIONS = (
+    (PRICING_STATUS_KNOWN, 0, None),
+    (PRICING_STATUS_WAIVED, None, None),
+    (PRICING_STATUS_UNKNOWN, None, None),
+    (PRICING_STATUS_NOT_APPLICABLE, None,
+     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING),
+)
+
+#: Everything else in the space — DERIVED, so the set cannot fall behind the
+#: rule. Four statuses × amount present/absent × reason present/absent is
+#: sixteen; take the four above away and twelve must be refused.
+THE_TWELVE_ILLEGAL_COMBINATIONS = tuple(
+    combination
+    for combination in (
+        (status, amount, reason)
+        for status in sorted(PRICING_STATUS_VALUES)
+        for amount in (0, None)
+        for reason in (NOT_APPLICABLE_REASON_FIXED_TASK_PRICING, None)
+    )
+    if combination not in THE_FOUR_LEGAL_COMBINATIONS
+)
+
+
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
     return tenant, Customer.objects.create(tenant=tenant, external_id="c1")
@@ -250,9 +278,16 @@ class TheFourLegalCombinationsAreAdmittedTest(TestCase):
 class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
     """The rows Postgres must refuse, each one an `INSERT`.
 
-    Seven combinations outside the four legal ones, plus a status and a reason
-    that name nothing the registry declares. None of them travels through model
-    validation, which is the point: the guarantee is a property of the table.
+    ⚠ **THE WHOLE SPACE, NOT A SELECTION.** Four statuses × amount present or
+    absent × reason present or absent is SIXTEEN combinations; four are legal,
+    so twelve must be refused. `THE_TWELVE_ILLEGAL_COMBINATIONS` below is
+    derived from the space rather than hand-listed, because a hand-listed set
+    is one somebody stops adding to — an earlier draft of this class asserted
+    eight of the twelve and read as though it were exhaustive.
+
+    Plus a status and a reason that name nothing the registry declares. None of
+    it travels through model validation, which is the point: the guarantee is a
+    property of the table.
 
     **Each case names the constraint it expects to be refused by**, because this
     table carries two mechanisms and "something refused this" is not evidence
@@ -284,59 +319,60 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
             **{PRICE: 7, STATUS: PRICING_STATUS_KNOWN})
         assert getattr(posting, PRICE) == 7
 
-    def test_known_without_an_amount_is_refused(self):
-        self._refused(self.COMBINATION,
-                      **{PRICE: None, STATUS: PRICING_STATUS_KNOWN, REASON: None})
+    def test_the_twelve_illegal_combinations_are_each_refused(self):
+        """Every combination outside the four legal ones, derived not listed.
 
-    def test_known_with_a_reason_is_refused(self):
-        self._refused(self.COMBINATION,
-                      **{PRICE: 1, STATUS: PRICING_STATUS_KNOWN,
-                         REASON: NOT_APPLICABLE_REASON_FIXED_TASK_PRICING})
+        Each is driven as its own `subTest`, so a failure names the row rather
+        than the first row of twelve. The amounts are `0` and the reasons are a
+        real declared value on purpose: this class is about the DISJUNCTION, and
+        a bogus reason or an out-of-set status would be refused by one of the
+        value-set checks instead — those two cases are below, isolated.
 
-    def test_waived_with_an_amount_is_refused(self):
-        """A charge somebody decided not to pursue is not a charge of zero.
-
-        Writing `0` here would put the waive back into the column the waive
-        exists to keep out of.
+        ⚠ `0` IS THE AMOUNT THAT MATTERS HERE. `waived` with `0` is the row a
+        writer reaches for when it wants to record a charge nobody will pursue
+        as "nothing", which is precisely the reading the waive exists to keep
+        out of the column.
         """
-        self._refused(self.COMBINATION,
-                      **{PRICE: 0, STATUS: PRICING_STATUS_WAIVED, REASON: None})
+        for status, amount, reason in THE_TWELVE_ILLEGAL_COMBINATIONS:
+            with self.subTest(status=status, amount=amount, reason=reason):
+                self._refused(self.COMBINATION,
+                              **{PRICE: amount, STATUS: status, REASON: reason})
 
-    def test_waived_with_a_reason_is_refused(self):
-        self._refused(self.COMBINATION,
-                      **{PRICE: None, STATUS: PRICING_STATUS_WAIVED,
-                         REASON: NOT_APPLICABLE_REASON_FIXED_TASK_PRICING})
+    def test_the_derived_set_is_the_whole_space_minus_the_legal_four(self):
+        """The vacuity guard on the loop above.
 
-    def test_unknown_with_an_amount_is_refused(self):
-        self._refused(self.COMBINATION,
-                      **{PRICE: 1, STATUS: PRICING_STATUS_UNKNOWN, REASON: None})
-
-    def test_unknown_with_a_reason_is_refused(self):
-        """The reason belongs to `not_applicable` alone.
-
-        An unknown price has no cause to name — that is what unknown means —
-        and letting it borrow one would make the reason column answer two
-        different questions.
+        A derived set that derived nothing would make the loop pass by iterating
+        over an empty list. This pins the arithmetic: sixteen combinations, four
+        legal, twelve refused.
         """
-        self._refused(self.COMBINATION,
-                      **{PRICE: None, STATUS: PRICING_STATUS_UNKNOWN,
-                         REASON: NOT_APPLICABLE_REASON_FIXED_TASK_PRICING})
+        assert len(THE_FOUR_LEGAL_COMBINATIONS) == 4
+        assert len(THE_TWELVE_ILLEGAL_COMBINATIONS) == 12
+        assert not (set(THE_TWELVE_ILLEGAL_COMBINATIONS)
+                    & set(THE_FOUR_LEGAL_COMBINATIONS))
 
-    def test_not_applicable_with_an_amount_is_refused(self):
-        self._refused(self.COMBINATION,
-                      **{PRICE: 0, STATUS: PRICING_STATUS_NOT_APPLICABLE,
-                         REASON: NOT_APPLICABLE_REASON_FIXED_TASK_PRICING})
+    def test_an_illegal_combination_written_as_literal_sql_is_refused(self):
+        """The AC's own words: refused "through raw SQL", not only the model.
 
-    def test_not_applicable_without_a_reason_is_refused(self):
-        """The half that keeps the status honest.
+        Everything above is an ORM `INSERT`, which sends the statement without
+        `full_clean` and is what slice 3's equivalent class settled on — a
+        hand-written `INSERT` would otherwise have to name every NOT NULL column
+        and would then be testing that list rather than the constraint.
 
-        A status saying no customer revenue arises here, without saying which of
-        the two causes produced it, sends a reader looking for a number nobody
-        wrote — which is the whole argument for the reason existing.
+        This one case pays the difference anyway, on the cheapest possible
+        statement: an `UPDATE` of the three columns on a row the ORM already
+        committed. Nothing Django knows about is between it and the table.
         """
-        self._refused(self.COMBINATION,
-                      **{PRICE: None, STATUS: PRICING_STATUS_NOT_APPLICABLE,
-                         REASON: None})
+        posting = _posting_for_a_new_customer(
+            idempotency_key="raw", **{PRICE: 5, STATUS: PRICING_STATUS_KNOWN})
+        with self.assertRaises(IntegrityError) as refusal:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"UPDATE {Posting._meta.db_table} "
+                        f"SET {PRICE} = 0, {STATUS} = %s, {REASON} = NULL "
+                        f"WHERE id = %s",
+                        [PRICING_STATUS_WAIVED, str(posting.pk)])
+        assert self.COMBINATION in str(refusal.exception), str(refusal.exception)
 
     def test_a_reason_outside_the_declared_set_is_refused(self):
         """Isolated on purpose: the rest of this row is legal.

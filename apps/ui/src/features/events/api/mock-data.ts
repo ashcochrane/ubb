@@ -11,9 +11,11 @@ import {
   knownCost,
   knownPrice,
   measurementsNotApplicable,
+  priceNotApplicable,
   prunedMeasurements,
   unknownCost,
   unknownPrice,
+  waivedPrice,
   type CustomerPriceScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
@@ -64,6 +66,14 @@ export const EVENT_UNRESOLVED_ID = "6b2f8c30-4d71-4e59-9c18-5a3e7d0f4b92";
  * supplier cost beside it (#351). The crossed case: the two completeness counts
  * are about different postings, and this is the row that proves it. */
 export const EVENT_UNPRICED_ID = "1e7d4b09-8a36-4c52-b0f7-9d2c6e5a3f81";
+/** A charge somebody decided not to pursue (#351). Same column shape as the
+ * row above and a different meaning: reported as a loss, so no total is a floor
+ * because of it. */
+export const EVENT_WAIVED_ID = "9f3a5c28-7b14-4e60-8d29-4c1e6b0a7d53";
+/** An event inside a Task sold for one agreed price, so it generates no
+ * customer revenue at this level at all (#351). */
+export const EVENT_PRICE_NOT_APPLICABLE_ID =
+  "5c8b2e41-0d97-4a36-b1e5-7f3a9d2c6b84";
 /** The killed task's other event, costed by CALCULATION where the kill event
  * beside it was REPORTED (#330). Two derivations, one complete task. */
 export const EVENT_TASK_RATED_ID = "4f9a2d68-7c05-4b31-8e72-1b6d9a3f5c04";
@@ -472,6 +482,57 @@ const FEATURE_EVENTS: MockEvent[] = [
       pricing_provenance: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "unresolved",
+        cost_source: "cost_rate",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // The OTHER two absent price states, so all three of them have a fixture
+      // and a rendering assertion (#155 §9.2). They share a column shape with
+      // the row above — a null amount — and differ only by status, which is the
+      // whole reason the console cannot read the amount and guess.
+      //
+      // A charge somebody decided not to pursue. Reported as a loss, so the
+      // revenue really is nothing and no total is a floor because of it.
+      id: EVENT_WAIVED_ID,
+      effective_at: "2026-06-12T09:41:55Z",
+      created_at: "2026-06-12T09:41:56Z",
+      event_type: "chat.completion",
+      provider: "openai",
+      dim1: "support-bot",
+      price: waivedPrice(),
+      cost: knownCost(12_500),
+      measurements: { input_tokens: 900, output_tokens: 140 },
+      metadata: { env: "prod", team: "support" },
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "waived",
+        cost_source: "cost_rate",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // An event inside a Task sold for one agreed price: the revenue is the
+      // Task's and none of it is this event's, so there is no customer price
+      // here to resolve or to miss.
+      id: EVENT_PRICE_NOT_APPLICABLE_ID,
+      effective_at: "2026-06-13T16:08:22Z",
+      created_at: "2026-06-13T16:08:23Z",
+      event_type: "chat.completion",
+      provider: "anthropic",
+      dim1: "onboarding",
+      price: priceNotApplicable(),
+      cost: knownCost(8_400),
+      measurements: { input_tokens: 610, output_tokens: 95 },
+      metadata: { env: "prod", team: "onboarding" },
+      task_id: TASK_FIXED_PRICE_ID,
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "not_applicable",
         cost_source: "cost_rate",
       },
     }),

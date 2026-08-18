@@ -325,7 +325,24 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
                           "reason": payload.reason,
                           "transaction_id": result.transaction_id})
     # Raised OUTSIDE the atomic: any lazy-expiry side effects commit.
+    #
+    # ⚠ THE REFUSAL CODE IS READ, NOT COLLAPSED (#351). Every refusal used to
+    # answer `not_found`, which was true while the seam had one refusal — and
+    # became a lie the moment it gained a second: a posting that EXISTS and
+    # whose customer price UBB could not resolve would have been reported to
+    # the tenant as a posting that does not exist, sending them to look for a
+    # record that is sitting right there.
+    #
+    # `conflict` rather than a new code: the request is well formed and the
+    # posting is real, so what refuses it is the resource's current state —
+    # 409 in `docs/conventions/api-contract.md`'s own terms. Minting a public
+    # code for it would be a contract addition this ticket was not asked for.
     if result.outcome == "refused":
+        if result.refusal_code == wallet_ops.USAGE_EVENT_PRICE_UNRESOLVED:
+            raise Problem(
+                "conflict",
+                "this usage event has no resolved customer price, so there is "
+                "nothing to refund")
         raise Problem("not_found", "usage event not found")
     if result.outcome == "replayed":
         # Replay quirk (preserved at the seam): the stored row's reference —

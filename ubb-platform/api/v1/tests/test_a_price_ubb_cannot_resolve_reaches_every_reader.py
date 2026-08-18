@@ -196,12 +196,12 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
         from apps.billing.handlers import handle_usage_recorded_billing
         handle_usage_recorded_billing("e1", self._payload(None, PRICING_STATUS_UNKNOWN))
 
-    def test_it_accumulates_nothing_for_a_price_it_does_not_have(self):
+    def test_it_accumulates_no_money_for_a_price_it_does_not_have(self):
         """Not merely "does not raise": there is no amount to accumulate.
 
-        Without this the handler could have been "fixed" by coalescing to zero,
-        which raises nothing and puts the silent zero back one product further
-        out.
+        The handler's branch is about MONEY — the drawdown, the accumulation
+        and the live spend counters all take an amount, and there is none. What
+        it must not do is invent one.
         """
         from apps.billing.handlers import handle_usage_recorded_billing
         handle_usage_recorded_billing("e1", self._payload(None, PRICING_STATUS_UNKNOWN))
@@ -250,14 +250,32 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
         assert period.total_usage_cost_micros is not None
         assert period.total_usage_cost_micros == KNOWN_PRICE_MICROS
 
-    def test_it_does_not_advance_the_event_count_either(self):
-        """The pair moves together or the row disagrees with itself.
+    def test_the_event_is_still_counted_though_its_price_is_not_added(self):
+        """⚠ WHY THIS COALESCES RATHER THAN RETURNING EARLY.
 
-        Counting the event while adding nothing to the total would produce a
-        period whose average spend per event is wrong by exactly the postings
-        UBB could not price — a second, quieter version of the same defect.
+        The first draft of the repair skipped the whole `UPDATE` on a `None`,
+        which fixed the null and quietly broke something else: the event count
+        stopped moving. The event HAPPENED — what is absent is its price — so a
+        period that dropped it would undercount its own traffic, and a reader
+        dividing spend by events would get an answer wrong by exactly the
+        postings UBB could not price.
         """
         TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS)
         TenantBillingService.accumulate_usage(self.tenant, None)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
+        assert period.event_count == 2
+        assert period.total_usage_cost_micros == KNOWN_PRICE_MICROS
+
+    def test_a_period_whose_first_posting_is_unpriced_still_opens(self):
+        """The other half of what an early return broke.
+
+        `get_or_create_current_period` sat below the guard, so a tenant whose
+        first postings of the month were all unpriced would have had no open
+        billing period at all — and the next priced posting would have opened
+        one that silently began mid-month.
+        """
+        TenantBillingService.accumulate_usage(self.tenant, None)
+        period = TenantBillingPeriod.objects.get(tenant=self.tenant)
+        assert period.status == "open"
+        assert period.total_usage_cost_micros == 0
         assert period.event_count == 1

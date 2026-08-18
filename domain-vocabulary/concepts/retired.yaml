@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,572 of 1,953 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,582 of 1,967 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -725,6 +725,31 @@ measurement_key:
     # reason is now written where it sits. The generalisation is #349's, in the
     # other direction: a retired word can be tripped by REMOVING it, and a near
     # miss can be tripped by IMPROVING it.
+    #
+    # #351 MOVED THE DENOMINATOR ONLY, UPWARD (1,572 → 1,582 swept, 1,953 →
+    # 1,967 tracked, 52/128 unchanged) — the "needs no story" direction, back
+    # after #350's first-ever numerator rise. TEN new modules in the swept set
+    # and FOURTEEN in the tracked one, and the gap is exactly the four
+    # migrations, which are tracked and excluded.
+    #
+    # The ten: the price-applicability rule and its test, the two test modules
+    # for the nullable price column and its 39 readers, and six generated SDK
+    # model files for the two value sets the contract now advertises.
+    #
+    # NOTHING HERE IS ABOUT THE QUANTITY. #351 is the customer-price half of the
+    # money model — a nullable amount, its status, and the readers that must
+    # stop reading its absence as zero — and it touches no per-quantity
+    # arithmetic at all. A numerator that had moved would have meant the word
+    # arrived in a commit with no business writing it, which is exactly the
+    # reading #350's paragraph above establishes.
+    #
+    # ⚠ AND THE COMMIT DID TRIP THE SWEEP, ON A DIFFERENT TERM: a docstring
+    # explaining what the billing handler's branch does wrote `budget`, which is
+    # slice 6's retired spend-control family name, into one file that did not
+    # have it. `term_spread` caught it — 36 files declared, 37 found. The word
+    # was reworded to "the live spend counters", not admitted to the ledger:
+    # a ledger entry is a finite migration plan, and prose is never the thing
+    # that has to widen it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

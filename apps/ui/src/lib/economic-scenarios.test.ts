@@ -6,12 +6,20 @@ import {
   costNotApplicable,
   incompleteTotal,
   knownCost,
+  knownPrice,
   measurementsNotApplicable,
+  priceNotApplicable,
   prunedMeasurements,
   unknownCost,
+  unknownPrice,
+  waivedPrice,
 } from "./economic-scenarios";
 import { isPartial, supplierCostTotal } from "./supplier-cost";
-import { COSTING_STATUS_VALUES, MEASUREMENTS_STATUS_VALUES } from "./vocabulary";
+import {
+  COSTING_STATUS_VALUES,
+  MEASUREMENTS_STATUS_VALUES,
+  PRICING_STATUS_VALUES,
+} from "./vocabulary";
 
 describe("measurement scenarios", () => {
   it("carries the recorded quantities, and says they can be read", () => {
@@ -155,6 +163,75 @@ describe("supplier cost scenarios", () => {
     ].map((scenario) => scenario.costing_status);
 
     expect([...produced].sort()).toEqual([...COSTING_STATUS_VALUES].sort());
+  });
+});
+
+describe("customer price scenarios", () => {
+  it("carries the amount, and says UBB resolved it", () => {
+    const scenario = knownPrice(4_200_000);
+
+    expect(scenario.billed_cost_micros).toBe(4_200_000);
+    expect(scenario.pricing_status).toBe("known");
+  });
+
+  // ⚠ THE PROPERTY THE FOUR EXIST FOR, and the one that differs from the cost
+  // side: THREE of the four states carry the same NULL amount, not two. The
+  // amount cannot say which a fixture meant, and the three mean different
+  // things about whether anything is missing — only `unknown` is.
+  it("says a NULL amount is three different states, told apart by the status", () => {
+    const absent = [unknownPrice(), waivedPrice(), priceNotApplicable()];
+
+    for (const scenario of absent) {
+      expect(scenario.billed_cost_micros).toBeNull();
+    }
+    expect(absent.map((scenario) => scenario.pricing_status)).toEqual([
+      "unknown",
+      "waived",
+      "not_applicable",
+    ]);
+  });
+
+  it("never yields an amount without the status that says what it means", () => {
+    for (const scenario of [
+      knownPrice(1),
+      unknownPrice(),
+      waivedPrice(),
+      priceNotApplicable(),
+    ]) {
+      expect(Object.keys(scenario)).toEqual([
+        "billed_cost_micros",
+        "pricing_status",
+      ]);
+    }
+  });
+
+  // Every combination is one the database admits: the posting's own
+  // `ck_posting_pricing_status_agrees_with_the_price` refuses an amount beside
+  // any status but `known`.
+  it("composes only the rows the posting's constraint admits", () => {
+    for (const scenario of [
+      knownPrice(1),
+      unknownPrice(),
+      waivedPrice(),
+      priceNotApplicable(),
+    ]) {
+      const settled = scenario.pricing_status === "known";
+      expect(scenario.billed_cost_micros === null).toBe(!settled);
+    }
+  });
+
+  // Driven off the generated value list, for the reason its two siblings are:
+  // `pricing_status` is CLOSED, so a value arriving with no scenario behind it
+  // is a state no console fixture can represent.
+  it("covers every pricing status the registry declares, one scenario each", () => {
+    const produced = [
+      knownPrice(0),
+      unknownPrice(),
+      waivedPrice(),
+      priceNotApplicable(),
+    ].map((scenario) => scenario.pricing_status);
+
+    expect([...produced].sort()).toEqual([...PRICING_STATUS_VALUES].sort());
   });
 });
 

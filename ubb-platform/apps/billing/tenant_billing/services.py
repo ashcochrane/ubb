@@ -79,13 +79,21 @@ class TenantBillingService:
         repeat it. The rule belongs where the `F()` expression is built, which
         is the only place that can be sure of it.
 
-        A price UBB could not resolve contributes nothing and is not counted
-        here: this period's completeness is answered by the read contract's
+        ⚠ IT COALESCES RATHER THAN RETURNING EARLY, AND THE DIFFERENCE IS
+        `event_count`. An early return skips the whole `UPDATE`, so an unpriced
+        posting would stop incrementing the event count beside the money — and
+        a period whose first postings were all unpriced would never be created
+        at all. The event HAPPENED; what is absent is its price. So the amount
+        contributes nothing and the count still counts, which is also the shape
+        `apps/subscriptions/handlers.py` uses for the same pair of facts.
+        This is not the silent zero: there is no amount to add, and adding 0 to
+        a running total says exactly that.
+
+        The period's completeness is answered by the read contract's
         `unpriced_event_count` over the same window, which #329's reconcile
         already re-derives rather than trusting this accumulator.
         """
-        if billed_cost_micros is None:
-            return
+        billed_cost_micros = billed_cost_micros or 0
         period = TenantBillingService.get_or_create_current_period(tenant)
         rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
             total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,
