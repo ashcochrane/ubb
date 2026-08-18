@@ -8,34 +8,43 @@ ADR-0007's Consequences ask for this by name, of this decision specifically:
     measured rather than assumed.
 
 So this measures it, against the mechanisms actually installed, on a throwaway
-database of its own. **There are TWO rules on this table since #352**, one per
-declared pair, and both are installed and dropped together — a number for one
-of them measured with the other standing would be a measurement of the pair.
-Four statements are timed, with the rules installed and again with them dropped,
+database of its own. **There are THREE rules on this table since #353**, one per
+declared subject, and all of them are installed and dropped together — a number
+for one measured with the others standing would be a measurement of the set.
+Five statements are timed, with the rules installed and again with them dropped,
 each the median of `--runs` batches of `--rows`:
 
     insert      a posting, the hottest write in the system
     update      a column no rule says anything about — the ordinary write
     settlement  unresolved to known, the statement the supplier rule admits
     resolution  unknown to known, the statement the price rule admits
+    completion  an unresolved receipt section completed, which the third admits
 
-**The insert number is the one to read first.** Both triggers are `BEFORE
+**The insert number is the one to read first.** All three triggers are `BEFORE
 UPDATE`, so an insert should pay nothing at all; a number that says otherwise
-means the enforcement is not the shape `usage/migrations/0037` and `0039` claim.
+means the enforcement is not the shape `usage/migrations/0037`, `0039` and
+`0040` claim.
+
+**⚠ The completion column is the one to read second, and it is not comparable
+with the two beside it.** The other two permitted moves compare scalars; this
+one walks a `jsonb` record, rebuilds it and compares it whole. That is expected
+to cost more than a status comparison, and the question the number answers is
+whether it costs enough to matter on a statement that happens once per posting
+in a recovery path.
 
 **The unrelated-column update is where a badly-built rule would show up, and it
-is where a SECOND one shows up first.** It is the ordinary write on this table,
-and it is why each migration puts a `WHEN` clause on its trigger: without one,
-every update on the table would enter a `plpgsql` function to discover it had
-nothing to say. With two rules there are two `WHEN` clauses to evaluate per
-statement, so this is the column that answers whether a second rule taxed the
+is where each ADDITIONAL one shows up first.** It is the ordinary write on this
+table, and it is why each migration puts a `WHEN` clause on its trigger: without
+one, every update on the table would enter a `plpgsql` function to discover it
+had nothing to say. With three rules there are three `WHEN` clauses to evaluate
+per statement, so this is the column that answers whether a rule taxed the
 writes that have nothing to do with it. That number should still be flat.
 
-**The two permitted moves are the statements that should pay**, and each happens
-once per posting in a remediation path. A rule that made those measurably slower
-would still be worth having; a rule that made recording slower would not. They
-are timed separately because they are different rules over different columns:
-one number for "a transition" would hide either of them moving.
+**The three permitted moves are the statements that should pay**, and each
+happens once per posting in a remediation path. A rule that made those
+measurably slower would still be worth having; a rule that made recording slower
+would not. They are timed separately because they are different rules over
+different columns: one number for "a transition" would hide any of them moving.
 
 Run from `ubb-platform/`::
 
@@ -62,26 +71,38 @@ django.setup()
 
 from django.db import connection  # noqa: E402
 
+from apps.metering.usage.models import Posting  # noqa: E402
 from core.vocabulary import (  # noqa: E402
+    COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
+    PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
+#: The receipt's column, taken from the model rather than spelled — the statement
+#: below is living code, so the vocabulary rule applies to it in full and the
+#: ticket that re-spells the column carries this statement with it.
+RECEIPT_COLUMN = Posting.RECEIPT_COLUMN
+
 #: The rules on this table, each as (migration module, trigger name). ONE ENTRY
 #: PER RULE, and both halves matter: the trigger name is what is asked for by
 #: name below, and the migration is where the shipped SQL is imported from.
 #:
-#: #352 added the second. A script that knew about one of them would install and
-#: drop that one while the other stood, and every delta below would be the cost
-#: of half the table's enforcement measured against the other half.
+#: #352 added the second and #353 the third. A script that knew about some of
+#: them would install and drop those while the rest stood, and every delta below
+#: would be the cost of part of the table's enforcement measured against the
+#: remainder.
 RULES = (
     ("0037_a_cost_settles_once_and_the_table_holds_it",
      "trg_posting_declared_transitions"),
     ("0039_a_price_resolves_once_and_the_table_holds_it",
      "trg_posting_price_transitions"),
+    ("0040_a_receipt_seals_when_its_unresolved_fields_complete",
+     "trg_posting_receipt_sealing"),
 )
 
 #: **One statement per batch, not one per row.** Issuing a statement per row
@@ -127,6 +148,57 @@ UPDATE ubb_posting SET billed_cost_micros = 42,
    AND pricing_status = '{PRICING_STATUS_UNKNOWN}'
 """
 
+#: The receipt rule's own permitted move — one unresolved section completed.
+#:
+#: It touches ONLY the receipt column, so the two rules above never fire on it
+#: and this number is the third rule measured alone. Written as `jsonb` surgery
+#: rather than by handing over a whole record because a set-oriented statement
+#: is what fires a row-level trigger per row while paying for one round trip,
+#: which is the whole method of this script.
+#:
+#: The braces are doubled because this is an f-string: every `{{` below is one
+#: literal brace in the SQL.
+#:
+#: Read it against `settle` and `resolve` knowing it is not the same kind of
+#: work: those compare scalars, this walks a record, rebuilds it and compares it
+#: whole. It is the dearest of the three by construction, and the question the
+#: number answers is whether it is dear enough to matter on a statement that
+#: happens once per posting in a recovery path.
+COMPLETION = f"""
+UPDATE ubb_posting
+   SET {RECEIPT_COLUMN} = jsonb_set(
+         jsonb_set({RECEIPT_COLUMN}, '{{pricing}}',
+                   '{{"method": "{PRICING_METHOD_MARGIN_OVER_COST}",
+                      "status": "{PRICING_STATUS_KNOWN}", "detail": {{}}}}'),
+         '{{totals,billed_cost_micros}}', '42')
+ WHERE {RECEIPT_COLUMN} #>> '{{pricing,status}}' = '{PRICING_STATUS_UNKNOWN}'
+"""
+
+
+def _an_unpriced_receipt():
+    """A real receipt whose price section is unresolved, built at the boundary.
+
+    Through `build_receipt` rather than written out here, so the row this script
+    inserts is the record the rule is actually about — a hand-written dict could
+    drift into a shape the construction boundary would never have admitted, and
+    the completion above would then be timing a statement no rule would see.
+    """
+    from apps.metering.pricing.receipts import (
+        ReceiptSubject, Resolution, build_receipt)
+
+    return build_receipt(
+        subject=ReceiptSubject(
+            subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+            subject_id="11111111-1111-1111-1111-111111111111"),
+        effective_at="2026-08-18T09:00:00+00:00", currency="usd",
+        pricing_engine_version="2.1.0",
+        costing=Resolution(method=COSTING_METHOD_CALCULATED,
+                           status=COSTING_STATUS_KNOWN, amount_micros=1,
+                           detail={"components": []}),
+        pricing=Resolution(method=None, status=PRICING_STATUS_UNKNOWN,
+                           amount_micros=None, detail={}),
+        provenance={})
+
 
 def _execute(statement, params=None):
     with connection.cursor() as cursor:
@@ -154,17 +226,19 @@ def _timed(work):
     return (time.perf_counter() - start) * 1000
 
 
-def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False):
+def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False,
+          unpriced_receipt=False):
     """Unsaved postings, built OUTSIDE the timer that inserts them.
 
     Fresh each batch: `bulk_create` stamps primary keys onto the instances it
     is given, so a reused list would insert the same rows twice.
 
-    The two axes are independent because the two rules are: a batch is made
+    The three axes are independent because the three rules are: a batch is made
     unresolved to time the supplier settlement, unpriced to time the price
-    resolution, and neither to time the ordinary write. Each combination is a
-    legal row — the table's combination `CHECK`s admit all four — so the state
-    being timed is the one asked for rather than whatever survived insertion.
+    resolution, carrying an unresolved receipt to time the completion, and none
+    of them to time the ordinary write. Each combination is a legal row — the
+    table's combination `CHECK`s admit them all — so the state being timed is
+    the one asked for rather than whatever survived insertion.
     """
     from apps.metering.usage.models import Posting
 
@@ -177,8 +251,10 @@ def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False):
         billed_cost_micros=None,
         pricing_status=PRICING_STATUS_UNKNOWN) if unpriced \
         else dict(billed_cost_micros=1, pricing_status=PRICING_STATUS_KNOWN)
+    receipt = {RECEIPT_COLUMN: _an_unpriced_receipt()} if unpriced_receipt \
+        else {}
     return [Posting(tenant=tenant, customer=customer,
-                    idempotency_key=str(index), **cost, **price)
+                    idempotency_key=str(index), **cost, **price, **receipt)
             for index in range(rows)]
 
 
@@ -198,6 +274,10 @@ def _settle_batch():
 
 def _resolve_batch():
     _execute(RESOLUTION)
+
+
+def _complete_batch():
+    _execute(COMPLETION)
 
 
 def _rule_is_installed(trigger):
@@ -268,7 +348,11 @@ def _one_batch(tenant, customer, rows):
     _execute("TRUNCATE ubb_posting CASCADE")
     _insert(_rows(tenant, customer, rows, unpriced=True))
     resolve = _timed(_resolve_batch)
-    return insert, update, settle, resolve
+
+    _execute("TRUNCATE ubb_posting CASCADE")
+    _insert(_rows(tenant, customer, rows, unpriced_receipt=True))
+    complete = _timed(_complete_batch)
+    return insert, update, settle, resolve, complete
 
 
 def measure(rows, runs):
@@ -310,7 +394,8 @@ def main():
 
     print(f"{arguments.rows} rows x {arguments.runs} runs, "
           f"median ms per row")
-    print(f"{'':<18}{'insert':>10}{'update':>10}{'settle':>10}{'resolve':>10}")
+    print(f"{'':<18}{'insert':>10}{'update':>10}{'settle':>10}"
+          f"{'resolve':>10}{'complete':>10}")
     for state, numbers in results.items():
         print(f"  rules {state:<11}" + "".join(f"{n:>10.4f}" for n in numbers))
     print(f"  {'delta':<16}" + "".join(
@@ -320,10 +405,12 @@ def main():
     print("\n  A delta inside the noise floor is not a cost — it is this "
           "machine.\n  The insert column runs through `bulk_create` and carries "
           "the ORM's own\n  overhead in both states, so its absolute figure is "
-          "not comparable with\n  the three update columns; the delta is. See "
-          "`_rows` and the note above it.\n  Both rules are installed and "
-          "dropped together (`RULES`), so `settle` and\n  `resolve` each report "
-          "their own rule against a table carrying neither.")
+          "not comparable with\n  the four update columns; the delta is. See "
+          "`_rows` and the note above it.\n  All three rules are installed and "
+          "dropped together (`RULES`), so each\n  permitted move reports its "
+          "own rule against a table carrying none of them.\n  `complete` walks "
+          "a jsonb record where the other two compare scalars, so it is\n  the "
+          "dearest of the three by construction rather than by defect.")
 
 
 if __name__ == "__main__":

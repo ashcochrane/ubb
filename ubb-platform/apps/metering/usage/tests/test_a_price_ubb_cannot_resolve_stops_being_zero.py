@@ -548,15 +548,18 @@ class ThePriceIsDeclaredIntoADefendedClassTest(TestCase):
         """
         assert REASON not in Posting.transition_classes
 
-    def test_the_defended_set_is_slice_threes_three_and_this_pair(self):
+    def test_the_defended_set_is_slice_threes_three_this_pair_and_the_receipt(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         The same assertion `test_an_unknown_cost_stops_being_zero.py` makes, and
         deliberately duplicated rather than shared: that module pins the set
         from the supplier side, this one from the price side. A single shared
         assertion could be satisfied by either file being deleted.
+
+        The receipt column joined it in #353, which is the arrival this line was
+        built to make somebody read.
         """
         declared = columns_declared_into_defended_classes([Posting])
         assert [column for _, column, _ in declared] == [
             PRICE, "claimed_provider_cost_micros", "costing_status",
-            STATUS, "provider_cost_micros"]
+            Posting.RECEIPT_COLUMN, STATUS, "provider_cost_micros"]

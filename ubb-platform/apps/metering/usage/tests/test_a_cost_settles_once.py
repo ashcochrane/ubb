@@ -348,14 +348,14 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
     evidence that a file executed. What matters is what `pg_trigger` holds now,
     on the table the model actually uses.
 
-    **⚠ THIS CLASS ASKED FOR "THE TRIGGER" UNTIL #352, AND THERE ARE TWO.** It
-    counted the table's rules and then indexed the first row returned, which was
-    correct exactly while one existed: `pg_trigger` promises no order, so the
-    day slice 4 installed the price pair's rule beside this one, "the first row"
-    became whichever one Postgres happened to hand back. Both questions are now
-    asked **by name**, and the count is an exact set — so a third rule arriving,
-    or this one being dropped while another was added, is a decision somebody
-    makes here rather than a number that still looks right.
+    **⚠ THIS CLASS ASKED FOR "THE TRIGGER" UNTIL #352, AND THERE ARE THREE.**
+    It counted the table's rules and then indexed the first row returned, which
+    was correct exactly while one existed: `pg_trigger` promises no order, so
+    the day slice 4 installed the price pair's rule beside this one, "the first
+    row" became whichever one Postgres happened to hand back. Both questions are
+    now asked **by name**, and the count is an exact set — which is what made
+    the receipt's rule arriving in #353 a decision somebody makes here rather
+    than a number that still looks right.
     """
 
     def _trigger_row(self):
@@ -377,18 +377,25 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
                 "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
             return {name for (name,) in cursor.fetchall()}
 
-    def test_the_posting_table_carries_exactly_the_two_declared_rules(self):
-        """One rule per declared pair, and the set says which.
+    def test_the_posting_table_carries_exactly_the_three_declared_rules(self):
+        """One rule per declared subject, and the set says which.
 
         The price pair's rule is a SECOND trigger rather than a second branch
-        inside this one, and it is deliberately the same mechanism: the two
-        govern disjoint columns, each `WHEN` clause names only its own, and
-        dropping either leaves the other standing. What would have been wrong is
-        a second *kind* of mechanism — a `CHECK` or a `RULE` holding one pair
-        while a trigger holds the other.
+        inside this one, and the receipt's is a THIRD; all three are
+        deliberately the same mechanism. They govern disjoint columns, each
+        `WHEN` clause names only its own, and dropping any one leaves the others
+        standing. What would have been wrong is a second *kind* of mechanism —
+        a `CHECK` or a `RULE` holding one subject while a trigger holds another.
+
+        The set is spelled out here rather than imported from a shared constant,
+        for the reason the declaration set is: an assertion every module took
+        from one place could be satisfied by editing that place, and what this
+        line is for is making a rule's arrival on this table something a reader
+        of THIS module has to agree to.
         """
         self.assertEqual(self._triggers_on_the_table(),
-                         {TRIGGER, "trg_posting_price_transitions"})
+                         {TRIGGER, "trg_posting_price_transitions",
+                          "trg_posting_receipt_sealing"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -423,8 +430,8 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         historical model state, because a trigger is not model state — which is
         the same fact that keeps `makemigrations --check` quiet about it.
 
-        **The price pair's rule is asserted still standing while this one is
-        out**, because a reverse that dropped its neighbour too would otherwise
+        **The other two rules are asserted still standing while this one is
+        out**, because a reverse that dropped a neighbour too would otherwise
         show up as an unrelated failure in another module.
         """
         migration = MigrationLoader(connection).get_migration(
@@ -436,8 +443,9 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
         self.assertEqual(self._trigger_row(), [])
-        self.assertIn("trg_posting_price_transitions",
-                      self._triggers_on_the_table())
+        self.assertEqual(self._triggers_on_the_table(),
+                         {"trg_posting_price_transitions",
+                          "trg_posting_receipt_sealing"})
         _through_the_queryset(settled, **{COST: 999})
         settled.refresh_from_db()
         self.assertEqual(getattr(settled, COST), 999)

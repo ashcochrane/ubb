@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,584 of 1,970 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,585 of 1,972 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -767,6 +767,25 @@ measurement_key:
     # trigger over an amount and its status, and the tests that drive it through
     # three doors. It goes nowhere near `compute()`, which is where the
     # surviving rate-arithmetic sense lives.
+    #
+    # #353 MOVED THE DENOMINATOR ONLY, UPWARD (1,584 → 1,585 swept, 1,970 →
+    # 1,972 tracked, 52/128 unchanged) — the same "needs no story" direction and
+    # the same non-widening signature as #352 directly above:
+    # `historical-migrations` went 219 → 220 because this commit ADDS a
+    # migration to a directory the rule already covers. TWO new files, ONE OF
+    # THEM SWEPT — the migration installing the trigger that seals a receipt
+    # (excluded) and the module that proves the database holds it. No generated
+    # artifact: this commit publishes nothing.
+    #
+    # NOTHING HERE IS ABOUT THE QUANTITY, and #275's RATE ARITHMETIC caution
+    # still holds. #353 defends the Pricing Receipt's unresolved fields with a
+    # completion rule at the table. It reads the record's SECTIONS — the method,
+    # the status and the amount each carries — and goes nowhere near
+    # `compute()`, which is where the surviving rate-arithmetic sense lives.
+    # ⚠ The one place it came near this word is the receipt's own
+    # `REQUIRED_COMPONENT_KEYS`, which spells the retired plural as a component
+    # key; the trigger names the section and totals keys and never a component's,
+    # so no occurrence arrived with it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

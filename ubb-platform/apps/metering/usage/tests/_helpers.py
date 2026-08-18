@@ -52,10 +52,22 @@ def through_the_queryset(posting, **columns):
 
 
 def through_raw_sql(posting, **columns):
+    """Raw SQL, with each value prepared the way its own column takes it.
+
+    The door is *raw SQL*, not *raw Python objects*. A scalar column needs
+    nothing doing to it and the first two trios never noticed this line; a
+    `jsonb` column does, because handing the driver a `dict` asks it to guess a
+    type the column has already declared, and it refuses rather than guessing.
+    `get_db_prep_value` is the model field's own answer to that question, so
+    this door writes exactly what the ORM writes and differs from the other two
+    only in going around them — which is the whole point of it.
+    """
     assignments = ", ".join(f"{name} = %s" for name in columns)
+    values = [Posting._meta.get_field(name).get_db_prep_value(
+                  value, connection) for name, value in columns.items()]
     with connection.cursor() as cursor:
         cursor.execute(f"UPDATE {TABLE} SET {assignments} WHERE id = %s",
-                       [*columns.values(), str(posting.pk)])
+                       [*values, str(posting.pk)])
 
 
 def through_save(posting, **columns):

@@ -171,22 +171,31 @@ class TestWhatReachesTheColumn:
     def test_a_row_in_the_older_shape_is_read_back_exactly_as_written(self):
         """Historical receipts are READ, never rewritten.
 
-        The row is put into the older shape by an `UPDATE` rather than by an
-        insert, because that is the honest setup: no production path produces
-        this shape any more, so a test that built one through the recording
-        service would be asserting about a record the service cannot write. What
-        it stands in for is a row already on disk.
+        No production path produces this shape any more, so a row built through
+        the recording service would be asserting about a record the service
+        cannot write. What this stands in for is **a row already on disk**, and
+        it is now written the only way a row gets onto disk: at insert.
+
+        ⚠ It was an `UPDATE` until #353, and that stopped being available on the
+        commit that made this sentence true at the database rather than merely
+        intended. The receipt's sealing rule is a `BEFORE UPDATE` trigger, and a
+        record in a shape with no sections to complete has no move it admits —
+        so the setup that stood in for "already on disk" was the exact statement
+        the rule now refuses. That is #318's lesson a third time: installing a
+        trigger takes `UPDATE` away as a setup technique, and the repair is to
+        move the setup to `INSERT`, which the rule does not fire on and which is
+        what the sentence above always meant.
         """
         tenant, customer = _tenant_and_customer()
         older = {"engine_version": "2.1.0",
                  "uncosted_measurement_keys": ["image_pixels"],
                  "provider_cost_micros": 4_000, "billed_cost_micros": 4_800}
 
-        result = UsageService.record_usage(tenant, customer, "r-old", "k-old")
-        Posting.objects.filter(id=result["event_id"]).update(
-            **{Posting.RECEIPT_COLUMN: older})
-        posting = Posting.objects.get(id=result["event_id"])
-        stored = getattr(posting, Posting.RECEIPT_COLUMN)
+        posting = Posting.objects.create(
+            tenant=tenant, customer=customer, request_id="r-old",
+            idempotency_key="k-old", **{Posting.RECEIPT_COLUMN: older})
+        stored = getattr(Posting.objects.get(id=posting.id),
+                         Posting.RECEIPT_COLUMN)
 
         assert stored == older
         assert uncosted_quantity_keys(stored) == ["image_pixels"]
