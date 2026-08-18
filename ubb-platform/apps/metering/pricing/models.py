@@ -135,6 +135,22 @@ class Rate(BaseModel):
     # every door rather than only at the route.
     undeclared_measurement_key = models.CharField(max_length=100, blank=True,
                                                   default="")
+    #: WHICH COLUMN HOLDS THE RATE'S ARITHMETIC SHAPE, NAMED ONCE (#350).
+    #:
+    #: The shape decides which arithmetic produced an amount — so much per unit
+    #: of quantity, or a component that applies once regardless — and a reader
+    #: rebuilding an amount out of a Pricing Receipt has to know which.
+    #:
+    #: The column below still carries the retired spelling of the concept
+    #: (`rate_structure`), and re-spelling it is a later ticket's, with the rest
+    #: of the retired vocabulary. Until then this constant is how a module that
+    #: may not spell the word addresses the column — the same reason
+    #: `Posting.RECEIPT_COLUMN` exists, and the same payoff: a reader that goes
+    #: through it follows the rename instead of going quietly vacuous on the day
+    #: it lands. The two live spellings here are deliberately NOT routed through
+    #: it, because this file's own occurrences are what keep it inside the
+    #: ledger's counted set for that word.
+    STRUCTURE_COLUMN = "pricing_model"
     pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
     rate_per_unit_micros = models.BigIntegerField(default=0)
     unit_quantity = models.BigIntegerField(default=1_000_000)

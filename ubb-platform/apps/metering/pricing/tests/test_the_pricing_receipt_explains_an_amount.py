@@ -18,6 +18,7 @@ from apps.metering.pricing import receipts
 from apps.metering.pricing.receipts import (
     LEGACY_SCHEMA_VERSION,
     RECEIPT_SCHEMA_VERSION,
+    REQUIRED_COMPONENT_KEYS,
     SECTIONED_SCHEMA_VERSION,
     ReceiptShapeError,
     ReceiptSubject,
@@ -298,3 +299,117 @@ class TestProvenanceCarriesIdsAndNothingElse:
 
         assert receipt["provenance"]["cost_rate_ids"] == {
             "input_tokens": "rate-1"}
+
+
+#: A component carrying every term the record requires, BUILT FROM THE
+#: DECLARATION rather than transcribed beside it.
+#:
+#: Two spellings of one set drift, and the one that drifts is the one nobody is
+#: looking at — so the fixture that must satisfy the rule is derived from the
+#: rule. The values are placeholders: every assertion below is about which keys
+#: are present, and a fixture whose arithmetic had to be consistent would be
+#: asserting the engine rather than the boundary.
+A_WHOLE_COMPONENT = {key: 1 for key in REQUIRED_COMPONENT_KEYS}
+
+
+def _resolution_with(section, components):
+    """One section's settled resolution, with its components replaced.
+
+    Both are built here rather than one being derived from the other, because
+    the sections' value sets are deliberately not assumed to be spelled alike —
+    the same reason the boundary asks its rule of each section with that
+    section's own rules.
+    """
+    if section == "costing":
+        return Resolution(method=COSTING_METHOD_CALCULATED,
+                          status=COSTING_STATUS_KNOWN, amount_micros=4_000,
+                          detail={"components": components,
+                                  "uncosted_measurement_keys": []})
+    return Resolution(method=PRICING_METHOD_MARGIN_OVER_COST,
+                      status=PRICING_STATUS_KNOWN, amount_micros=4_800,
+                      detail={"components": components})
+
+
+class TestAComponentExplainsItsOwnAmount:
+    """The content obligation, at the boundary that refuses (#350).
+
+    The measured detail behind a posting expires and this record does not, so a
+    component that does not carry its terms is a line nobody can explain six
+    years from now. It is refused where the record is built, rather than left to
+    a reader to discover it cannot answer.
+    """
+
+    def test_the_declaration_names_the_denominator(self):
+        """The vacuity guard, and it names the term most easily forgotten.
+
+        Every case below is derived from `REQUIRED_COMPONENT_KEYS`, so an empty
+        or gutted declaration would make all of them pass while proving
+        nothing. The denominator is what the assertion anchors on because a
+        component holding a rate without the quantity it is per cannot be
+        recomputed at all — the rounding is half-up on that number, so the last
+        micro of the answer depends on it.
+        """
+        assert "unit_quantity" in REQUIRED_COMPONENT_KEYS
+        assert len(REQUIRED_COMPONENT_KEYS) > 1
+
+    @pytest.mark.parametrize("section", ["costing", "pricing"])
+    def test_a_whole_component_is_admitted(self, section):
+        receipt = a_receipt(**{section: _resolution_with(
+            section, [A_WHOLE_COMPONENT])})
+
+        assert receipt[section]["detail"]["components"] == [A_WHOLE_COMPONENT]
+
+    @pytest.mark.parametrize("section", ["costing", "pricing"])
+    @pytest.mark.parametrize("missing", sorted(REQUIRED_COMPONENT_KEYS))
+    def test_a_component_missing_any_term_is_refused_in_both_sections(
+            self, section, missing):
+        """One rule, asked of both sections.
+
+        The price side is not assumed to be checked because the cost side is:
+        the two are separate resolutions built in separate branches, and a rule
+        applied to one of them is exactly how the sides come to differ where a
+        reader compares them.
+        """
+        short = {key: value for key, value in A_WHOLE_COMPONENT.items()
+                 if key != missing}
+
+        with pytest.raises(ReceiptShapeError, match=missing):
+            a_receipt(**{section: _resolution_with(section, [short])})
+
+    def test_a_section_that_priced_no_quantity_is_not_a_fault(self):
+        """A cost the caller supplied, a declaration that says there is no cost
+        and a margin over one all reach an amount without pricing a single
+        quantity. What is refused is a component that claims to explain one and
+        does not — not the absence of components."""
+        receipt = a_receipt()
+
+        assert receipt["costing"]["detail"]["components"] == []
+        assert receipt["pricing"]["detail"]["components"] == []
+
+    @pytest.mark.parametrize(
+        "not_a_list", [{"input_tokens": 1}, {}, 0, False, "", None])
+    def test_something_that_is_not_a_list_of_components_is_refused(
+            self, not_a_list):
+        """⚠ THE FALSY ONES ARE THE POINT, AND A NON-EMPTY DICT CANNOT FIND THEM.
+
+        The first draft read the key as `detail.get("components") or []`, which
+        turns every falsy non-list into "this section priced nothing" on its way
+        past the refusal — so an empty record, a zero, a `False` and a `None` all
+        sailed through while a populated dict was caught. A control that only
+        ever passed the populated one would have been green over the hole.
+        """
+        with pytest.raises(ReceiptShapeError, match="components"):
+            a_receipt(costing=_resolution_with("costing", not_a_list))
+
+    def test_a_section_with_no_components_key_at_all_is_not_a_fault(self):
+        """Absent is not the same as malformed.
+
+        A caller-supplied cost prices no quantity and has nothing to say about
+        components; the rule above is about what a `components` key CONTAINS,
+        not about it being there.
+        """
+        receipt = a_receipt(costing=Resolution(
+            method=COSTING_METHOD_CALCULATED, status=COSTING_STATUS_KNOWN,
+            amount_micros=4_000, detail={"uncosted_measurement_keys": []}))
+
+        assert "components" not in receipt["costing"]["detail"]
