@@ -36,6 +36,13 @@ dead one come to look identical. Every refusal below therefore asserts **the
 message Postgres answers with**: the trigger names the transition class it is
 holding, and a `CHECK` names its own constraint.
 
+⚠ **AND SINCE #352 THE CLASS ALONE IS NOT ENOUGH.** The table carries a second
+rule over the customer price pair, declared `RESOLVE_ONCE` exactly as this one
+is — so both triggers' messages carry that token, and a refusal asserting only
+the class would be satisfied by the wrong rule refusing the write. Each class
+below states the COLUMN its refusals must name in `REFUSAL_NAMES`, and
+`_helpers.TransitionRefusalMixin` will not run without one.
+
 That distinction turned out sharper than expected, and it is worth knowing
 before reading further: **a `BEFORE` trigger runs before the table's constraints
 are evaluated**, so on an `UPDATE` the trigger answers first and the combination
@@ -50,13 +57,14 @@ case in this module red bar the `INSERT` one and the permitted-move control;
 dropping the combination `CHECK` turns the `INSERT` one red and leaves the rest
 green. Two mechanisms, two failure sets, neither carrying the other.
 """
-from django.db import IntegrityError, connection, migrations, models, transaction
+from django.db import IntegrityError, connection, migrations, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 
 from apps.metering.usage.models import Posting
-from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests._helpers import (
+    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
+    through_save, through_the_queryset)
 from core.transitions import FROZEN, RESOLVE_ONCE
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
@@ -79,12 +87,7 @@ TABLE = Posting._meta.db_table
 TRIGGER = "trg_posting_declared_transitions"
 
 
-def _posting(**columns):
-    """A committed posting, each with a tenant and customer of its own."""
-    tenant = Tenant.objects.create(name="T")
-    customer = Customer.objects.create(tenant=tenant, external_id="c1")
-    columns.setdefault("idempotency_key", "k")
-    return Posting.objects.create(tenant=tenant, customer=customer, **columns)
+_posting = committed_posting
 
 
 def _unresolved(**columns):
@@ -101,58 +104,9 @@ def _not_applicable(**columns):
                        **columns})
 
 
-# --- The three doors ADR-0007 §2 names, each writing the same columns --------
-#
-# A guard only one of them respects is the defect the rule exists to catch, so
-# every prohibited transition below is driven through all three.
-
-def _through_the_queryset(posting, **columns):
-    Posting.objects.filter(pk=posting.pk).update(**columns)
-
-
-def _through_raw_sql(posting, **columns):
-    assignments = ", ".join(f"{name} = %s" for name in columns)
-    with connection.cursor() as cursor:
-        cursor.execute(f"UPDATE {TABLE} SET {assignments} WHERE id = %s",
-                       [*columns.values(), str(posting.pk)])
-
-
-def _through_save(posting, **columns):
-    """`save()`, reaching around the model's own refusal on the way.
-
-    `Posting.save()` raises on any update, so a plain `save()` never reaches the
-    database and would prove nothing about it. Calling the base implementation is
-    what a writer that bypasses the override looks like — a `bulk_update`, a data
-    migration, a shell session — and it is the door ADR-0007 §2 means.
-    """
-    for name, value in columns.items():
-        setattr(posting, name, value)
-    models.Model.save(posting)
-
-
-DOORS = (("QuerySet.update()", _through_the_queryset),
-         ("raw SQL", _through_raw_sql),
-         ("save()", _through_save))
-
-
-class TransitionRefusalMixin:
-
-    def _refusal(self, door, posting, **columns):
-        """The message Postgres refused with, or `None` if it did not refuse."""
-        try:
-            with transaction.atomic():
-                door(posting, **columns)
-        except IntegrityError as refusal:
-            return str(refusal)
-        return None
-
-    def _refused_by_the_trigger(self, posting_factory, transition_class,
-                                **columns):
-        for name, door in DOORS:
-            with self.subTest(door=name):
-                message = self._refusal(door, posting_factory(), **columns)
-                self.assertIsNotNone(message, "the write was admitted")
-                self.assertIn(transition_class, message)
+_through_the_queryset = through_the_queryset
+_through_raw_sql = through_raw_sql
+_through_save = through_save
 
 
 class TheOnePermittedMoveIsAdmittedTest(TransitionRefusalMixin, TestCase):
@@ -211,6 +165,8 @@ class TheSettledAmountIsNotEditableTest(TransitionRefusalMixin, TestCase):
     the write — so every case in this class is the trigger's alone.
     """
 
+    REFUSAL_NAMES = COST
+
     def test_a_settled_amount_cannot_be_overwritten(self):
         self._refused_by_the_trigger(_settled, RESOLVE_ONCE, **{COST: 999})
 
@@ -234,6 +190,8 @@ class OnlyAnUnresolvedCostSettlesTest(TransitionRefusalMixin, TestCase):
     one. Settling it would invent a supplier charge for work no supplier billed
     for, and every combination involved is legal to the `CHECK` on both sides.
     """
+
+    REFUSAL_NAMES = COST
 
     def test_a_not_applicable_posting_cannot_be_settled(self):
         self._refused_by_the_trigger(
@@ -282,6 +240,7 @@ class TheAmountAndTheStatusNeverSeparateTest(TransitionRefusalMixin, TestCase):
     the one statement in this module that the trigger does not touch.
     """
 
+    REFUSAL_NAMES = COST
     COMBINATION = "ck_posting_costing_status_agrees_with_the_cost"
 
     def test_a_settlement_that_moves_the_amount_alone_is_refused(self):
@@ -324,6 +283,8 @@ class TheClaimedCostIsFrozenTest(TransitionRefusalMixin, TestCase):
     It is never COGS and is never summed into one. Its value is evidence about a
     moment, so it does not acquire a value after insert and does not change one.
     """
+
+    REFUSAL_NAMES = CLAIMED
 
     def test_a_claimed_cost_cannot_be_edited(self):
         self._refused_by_the_trigger(

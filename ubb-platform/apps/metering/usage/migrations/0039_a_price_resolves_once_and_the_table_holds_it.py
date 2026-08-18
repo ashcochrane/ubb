@@ -17,9 +17,10 @@ the question `0037` did not face — whether this pair's rule belongs *inside*
 that trigger's function or beside it in one of its own. It is beside it, and
 the argument is that the two rules govern **disjoint columns**:
 
-* each `WHEN` clause names only its own three columns, so a supplier settlement
-  never enters the price function and a price resolution never enters the cost
-  one. Merged, every write touching either pair would evaluate both bodies.
+* each `WHEN` clause names only its own pair's columns — `0037`'s four, this
+  one's three — so a supplier settlement never enters the price function and a
+  price resolution never enters the cost one. Merged, every write touching
+  either pair would evaluate both bodies.
 * the two pairs' permitted moves are different statements — `unresolved` →
   `known` on one side, `unknown` → `known` on the other — and a single function
   carrying both would need each branch to establish which pair it was looking
@@ -107,17 +108,25 @@ BEGIN
     -- statement completes the amount and moves the status to known at once,
     -- from a posting whose price UBB could not resolve.
     --
-    -- The four refusals this one condition carries, each named in
-    -- test_a_price_resolves_once.py:
+    -- FIVE conditions, FOUR of which a test in test_a_price_resolves_once.py
+    -- drives directly:
     --   OLD.pricing_status <> 'unknown'  -- waived and not_applicable are
     --                                       terminal; known is a correction
-    --   OLD.billed_cost_micros IS NOT NULL  -- a resolved amount is not
-    --                                          re-resolved
     --   NEW.pricing_status <> 'known'    -- unknown does not become waived or
     --                                       not_applicable by relabelling
     --   NEW.billed_cost_micros IS NULL   -- half a resolution is not one
     --   NEW.not_applicable_reason IS NOT NULL  -- a priced row never carries
-    --                                             a reason it has no price
+    --                                             a reason saying it has none
+    --
+    -- The fifth, OLD.billed_cost_micros IS NOT NULL, is DEFENCE IN DEPTH and no
+    -- test can reach it: a committed row with pricing_status 'unknown' has a
+    -- NULL amount because ck_posting_pricing_status_agrees_with_the_price says
+    -- so, which the first condition has already established by the time this
+    -- one is evaluated. It is here because this rule should not depend on that
+    -- CHECK standing — the two mechanisms are dropped and altered by different
+    -- migrations — and it is written down as unreachable rather than left to
+    -- look like a case somebody forgot to test. 0037 carries the same shape,
+    -- for the same reason.
     IF NEW.billed_cost_micros IS DISTINCT FROM OLD.billed_cost_micros
        OR NEW.pricing_status IS DISTINCT FROM OLD.pricing_status
        OR NEW.not_applicable_reason IS DISTINCT FROM OLD.not_applicable_reason

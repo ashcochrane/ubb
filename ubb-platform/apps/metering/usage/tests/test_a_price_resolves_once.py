@@ -47,8 +47,12 @@ prohibited moves are also impossible under #351's combination `CHECK`. Every
 refusal below therefore asserts **the message Postgres answers with**: the
 trigger names the transition class it is holding, and a `CHECK` names its own
 constraint. That distinction has teeth here, because this table now carries
-**two** triggers and three `CHECK`s over two sibling pairs, and "something
-refused this" stopped being evidence the moment the second one landed.
+**two** triggers and **six** `CHECK`s over two sibling pairs, and "something
+refused this" stopped being evidence the moment the second trigger landed.
+⚠ Naming the transition CLASS is not enough on its own either: `resolve_once` is
+the class both pairs are declared into, so both triggers' messages carry that
+token. Every refusal below therefore also asserts the COLUMN the rule is about,
+which is what separates this rule from the one beside it.
 
 **A `BEFORE` trigger runs before the table's constraints are evaluated**, so on
 an `UPDATE` the trigger answers first and the combination `CHECK` is never
@@ -58,24 +62,29 @@ whole subject, and it is why every case in that module is an `INSERT`.
 """
 import re
 
-from django.db import IntegrityError, connection, migrations, models, transaction
+from django.apps import apps
+from django.db import IntegrityError, connection, migrations, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 
 from apps.metering.usage.models import Posting
-from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests._helpers import (
+    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
+    through_save, through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.transitions import (
     RESOLVE_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
+    COSTING_STATUS_UNRESOLVED,
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
 PRICE = "billed_cost_micros"
@@ -94,12 +103,7 @@ FUNCTION = "ubb_posting_price_transitions"
 MIGRATION = "0039_a_price_resolves_once_and_the_table_holds_it"
 
 
-def _posting(**columns):
-    """A committed posting, each with a tenant and customer of its own."""
-    tenant = Tenant.objects.create(name="T")
-    customer = Customer.objects.create(tenant=tenant, external_id="c1")
-    columns.setdefault("idempotency_key", "k")
-    return Posting.objects.create(tenant=tenant, customer=customer, **columns)
+_posting = committed_posting
 
 
 def _unknown(**columns):
@@ -122,61 +126,9 @@ def _not_applicable(reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING, **columns):
                        REASON: reason, **columns})
 
 
-# --- The three doors ADR-0007 §2 names, each writing the same columns --------
-#
-# A guard only one of them respects is the defect the rule exists to catch, so
-# every prohibited transition below is driven through all three. They are spelled
-# again here rather than imported from the cost module: that module is slice 3's
-# record and a shared helper would let either file's deletion take both trios
-# down with it.
-
-def _through_the_queryset(posting, **columns):
-    Posting.objects.filter(pk=posting.pk).update(**columns)
-
-
-def _through_raw_sql(posting, **columns):
-    assignments = ", ".join(f"{name} = %s" for name in columns)
-    with connection.cursor() as cursor:
-        cursor.execute(f"UPDATE {TABLE} SET {assignments} WHERE id = %s",
-                       [*columns.values(), str(posting.pk)])
-
-
-def _through_save(posting, **columns):
-    """`save()`, reaching around the model's own refusal on the way.
-
-    `Posting.save()` raises on any update, so a plain `save()` never reaches the
-    database and would prove nothing about it. Calling the base implementation is
-    what a writer that bypasses the override looks like — a `bulk_update`, a data
-    migration, a shell session — and it is the door ADR-0007 §2 means.
-    """
-    for name, value in columns.items():
-        setattr(posting, name, value)
-    models.Model.save(posting)
-
-
-DOORS = (("QuerySet.update()", _through_the_queryset),
-         ("raw SQL", _through_raw_sql),
-         ("save()", _through_save))
-
-
-class TransitionRefusalMixin:
-
-    def _refusal(self, door, posting, **columns):
-        """The message Postgres refused with, or `None` if it did not refuse."""
-        try:
-            with transaction.atomic():
-                door(posting, **columns)
-        except IntegrityError as refusal:
-            return str(refusal)
-        return None
-
-    def _refused_by_the_trigger(self, posting_factory, transition_class,
-                                **columns):
-        for name, door in DOORS:
-            with self.subTest(door=name):
-                message = self._refusal(door, posting_factory(), **columns)
-                self.assertIsNotNone(message, "the write was admitted")
-                self.assertIn(transition_class, message)
+_through_the_queryset = through_the_queryset
+_through_raw_sql = through_raw_sql
+_through_save = through_save
 
 
 class ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest(
@@ -220,6 +172,20 @@ class ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest(
         posting.refresh_from_db()
         self.assertEqual(getattr(posting, PRICE), 0)
 
+
+class ThisRuleGuardsItsOwnColumnsAndNoOthersTest(TestCase):
+    """The scoping half, which the admitted move above does not cover.
+
+    A rule can admit its own permitted move and still be wrong, by refusing
+    writes that are none of its business. Both ways that could happen on this
+    table are exercised here: a column no declared rule mentions, and the
+    NEIGHBOURING rule's own permitted move. The second is the one a second
+    trigger makes possible for the first time — a badly-scoped `WHEN` clause
+    would fire this rule on a supplier settlement and refuse it, and no test in
+    slice 3's module would notice, because it was written when this table
+    carried one rule.
+    """
+
     def test_a_column_the_rule_says_nothing_about_still_writes(self):
         """The trigger guards three columns, not the table.
 
@@ -235,17 +201,11 @@ class ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest(
     def test_the_supplier_side_still_settles_beside_it(self):
         """The two rules govern disjoint columns, and neither eats the other.
 
-        This table now carries two triggers over two sibling pairs. The failure
-        that would make installing a second one a mistake is a rule that fires
-        on the other's statement and refuses it, and a settlement is the write
-        most likely to trip a badly-scoped `WHEN` clause — so the cost side's
-        one admitted move is exercised here too, against the table as it stands
-        after this ticket rather than as slice 3 left it.
+        A settlement is the write most likely to trip a badly-scoped `WHEN`
+        clause, so the cost side's one admitted move is exercised here too —
+        against the table as it stands after this ticket rather than as slice 3
+        left it.
         """
-        from core.vocabulary import (
-            COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED,
-            UNRESOLVED_REASON_COST_RATE_MISSING)
-
         posting = _posting(**{"provider_cost_micros": None,
                               "costing_status": COSTING_STATUS_UNRESOLVED,
                               "unresolved_reason":
@@ -264,6 +224,8 @@ class TheResolvedPriceIsNotEditableTest(TransitionRefusalMixin, TestCase):
     A `CHECK` cannot see this — `known` with an amount is legal on both sides of
     the write — so every case in this class is the trigger's alone.
     """
+
+    REFUSAL_NAMES = PRICE
 
     def test_a_resolved_price_cannot_be_overwritten(self):
         self._refused_by_the_trigger(_resolved, RESOLVE_ONCE, **{PRICE: 999})
@@ -303,6 +265,8 @@ class OnlyAnUnknownPriceResolvesTest(TransitionRefusalMixin, TestCase):
     resolution source, the difference would survive only as long as everyone
     remembered the selector.
     """
+
+    REFUSAL_NAMES = PRICE
 
     def test_a_waived_posting_is_never_a_resolution_candidate(self):
         self._refused_by_the_trigger(
@@ -365,6 +329,8 @@ class TheAmountAndTheStatusNeverSeparateTest(TransitionRefusalMixin, TestCase):
     own combination cases are `INSERT`s: on `UPDATE` they would have been
     evidence about this trigger instead.
     """
+
+    REFUSAL_NAMES = PRICE
 
     def test_a_resolution_that_moves_the_amount_alone_is_refused(self):
         self._refused_by_the_trigger(_unknown, RESOLVE_ONCE, **{PRICE: 50})
@@ -609,16 +575,27 @@ class AGreenDeclarationCheckDoesNotProveTheRuleHoldsTest(TestCase):
         self.assertEqual(declared[PRICE], RESOLVE_ONCE)
         self.assertEqual(declared[STATUS], RESOLVE_ONCE)
 
+    def _the_declaration_check_over_the_whole_tree(self):
+        """G19's check exactly as the gate runs it — every declarer, not this one.
+
+        `apps.get_models()` rather than `[Posting]`: the claim being made is
+        about the GATE's answer, and a gate asked about one model is not the
+        gate. It also means a second declarer whose rule stopped holding would
+        show up here, which is the only reading under which "the board is clean"
+        means anything.
+        """
+        return columns_the_database_does_not_defend(
+            columns_declared_into_defended_classes(apps.get_models()),
+            declaring_models_by_table())
+
     def test_the_shipped_rule_passes_the_declaration_check_and_holds(self):
         """Both halves true at once, which is the state to compare against."""
-        self.assertEqual(
-            columns_the_database_does_not_defend(
-                columns_declared_into_defended_classes([Posting]),
-                declaring_models_by_table()),
-            [])
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(_resolved(), **{PRICE: 999})
+        self.assertEqual(self._the_declaration_check_over_the_whole_tree(), [])
+        for name, door in DOORS:
+            with self.subTest(door=name):
+                with self.assertRaises(IntegrityError):
+                    with transaction.atomic():
+                        door(_resolved(), **{PRICE: 999})
 
     def test_a_rule_that_refuses_nothing_still_passes_the_declaration_check(self):
         """⚠ The sentence this ticket exists for, measured.
@@ -628,47 +605,61 @@ class AGreenDeclarationCheckDoesNotProveTheRuleHoldsTest(TestCase):
         false.
         """
         self._install_the_toothless_rule()
-        self.assertEqual(
-            columns_the_database_does_not_defend(
-                columns_declared_into_defended_classes([Posting]),
-                declaring_models_by_table()),
-            [])
+        self.assertEqual(self._the_declaration_check_over_the_whole_tree(), [])
 
     def test_and_the_trio_above_goes_red_against_that_same_rule(self):
-        """The other half — the refusals stop refusing, and the control stands.
+        """The other half — the refusals stop refusing, through every door.
 
-        Three of the trio's shapes are exercised against the toothless rule:
-        a correction, a resolution from a state that is not `unknown`, and a
-        half-resolution. Each is admitted, which is what "the trio goes red"
-        means in a test that must itself stay green.
+        Three shapes the trio refuses are driven against the toothless rule, and
+        each is ADMITTED: a correction of a resolved amount, a resolution from
+        `waived` (the state ruling 12c puts outside a run by construction), and
+        the un-resolving of a resolved row. All three go through **all three
+        doors**, because "the trio goes red" is a claim about the trio, and the
+        trio is three doors — a replay through two of them would leave the third
+        proving nothing in the one test whose subject is what the mutation costs.
 
-        The admitted move is checked here too, and it still works — because a
-        mutation that broke it would make the trio fail for a reason that has
-        nothing to do with the refusals, and that is the shape a two-cause
-        fault takes.
+        The admitted move is checked here too and still works: a mutation that
+        broke it would make the trio fail for a reason unrelated to the
+        refusals, which is exactly the two-cause fault that reads like a vacuous
+        control.
+
+        ⚠ **ONE SHAPE STAYS REFUSED, AND IT BELONGS TO THE OTHER MECHANISM.**
+        `unknown` with an amount is refused by
+        `ck_posting_pricing_status_agrees_with_the_price` whatever this trigger
+        does, because both mechanisms see that row. It is asserted below so the
+        two failure sets stay distinguishable: gutting the trigger does not gut
+        the `CHECK`, and a reader of this class should not come away thinking it
+        did.
         """
         self._install_the_toothless_rule()
 
-        correction = _resolved()
-        _through_the_queryset(correction, **{PRICE: 999})
-        correction.refresh_from_db()
-        self.assertEqual(getattr(correction, PRICE), 999)
+        for name, door in DOORS:
+            with self.subTest(door=name):
+                correction = _resolved()
+                door(correction, **{PRICE: 999})
+                correction.refresh_from_db()
+                self.assertEqual(getattr(correction, PRICE), 999)
 
-        waived = _waived()
-        _through_the_queryset(waived, **{PRICE: 1, STATUS: PRICING_STATUS_KNOWN})
-        waived.refresh_from_db()
-        self.assertEqual(getattr(waived, STATUS), PRICING_STATUS_KNOWN)
+                waived = _waived()
+                door(waived, **{PRICE: 1, STATUS: PRICING_STATUS_KNOWN})
+                waived.refresh_from_db()
+                self.assertEqual(getattr(waived, STATUS), PRICING_STATUS_KNOWN)
 
-        half = _resolved()
-        _through_raw_sql(half, **{PRICE: 3})
-        half.refresh_from_db()
-        self.assertEqual(getattr(half, PRICE), 3)
+                unresolved = _resolved()
+                door(unresolved, **{PRICE: None, STATUS: PRICING_STATUS_UNKNOWN})
+                unresolved.refresh_from_db()
+                self.assertIsNone(getattr(unresolved, PRICE))
 
-        admitted = _unknown()
-        _through_the_queryset(admitted, **{PRICE: 7,
-                                           STATUS: PRICING_STATUS_KNOWN})
-        admitted.refresh_from_db()
-        self.assertEqual(getattr(admitted, PRICE), 7)
+                admitted = _unknown()
+                door(admitted, **{PRICE: 7, STATUS: PRICING_STATUS_KNOWN})
+                admitted.refresh_from_db()
+                self.assertEqual(getattr(admitted, PRICE), 7)
+
+        with self.assertRaises(IntegrityError) as refusal:
+            with transaction.atomic():
+                _through_the_queryset(_unknown(), **{PRICE: 50})
+        self.assertIn("ck_posting_pricing_status_agrees_with_the_price",
+                      str(refusal.exception))
 
     def test_the_column_is_named_by_the_shipped_rule_in_a_refusing_branch(self):
         """The distinction the check cannot draw, drawn here by hand.

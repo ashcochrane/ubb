@@ -118,6 +118,41 @@ def _posting_for_a_new_customer(**kwargs):
     return Posting.objects.create(tenant=tenant, customer=customer, **kwargs)
 
 
+def _copy_row_as_literal_sql(source, *, literals, parameters):
+    """Insert a copy of `source` through a literal statement, altering columns.
+
+    **The column list is DERIVED, not written out.** A hand-written list would be
+    the thing under test the first time a column is added to this table — the
+    objection that kept the raw-SQL case an `UPDATE` before #352. Django's own
+    concrete fields supply the names and the source row supplies every value it
+    is not asked to change, so the only literals in the statement are the ones a
+    caller names. Copying inside the database also keeps `JSONB` columns out of
+    a Python round trip that would need an adapter each.
+
+    `literals` are spliced into the SQL and `parameters` are bound, in the order
+    the column list puts them — the two are separate because `NULL` and a bare
+    `0` cannot be bound, and because a caller supplying a status wants it
+    escaped.
+    """
+    columns = [field.column for field in Posting._meta.concrete_fields]
+    selected, values = [], []
+    for column in columns:
+        if column in literals:
+            selected.append(literals[column])
+        elif column in parameters:
+            selected.append("%s")
+            values.append(parameters[column])
+        else:
+            selected.append(column)
+    values.append(str(source.pk))
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {Posting._meta.db_table} ({', '.join(columns)}) "
+            f"SELECT {', '.join(selected)} "
+            f"FROM {Posting._meta.db_table} WHERE id = %s", values)
+
+
 class TheColumnsAreShapedAsRuledTest(TestCase):
     """The three shapes, read off the model rather than off the migration."""
 
@@ -381,41 +416,19 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
         on `INSERT`, which is what makes the statement below the constraint's
         alone.
 
-        **The column list is derived, not written out.** A hand-written list
-        would be the thing under test the first time a column is added to this
-        table — the objection the `UPDATE` form existed to avoid. Django's own
-        concrete fields supply the names, a legal committed row supplies every
-        value through `SELECT`, and the only literals in the statement are the
-        three columns this class is about. Copying inside the database also
-        keeps `JSONB` and array columns out of a Python round trip that would
-        need an adapter each.
+        The statement is built by `_copy_row_as_literal_sql`, whose docstring
+        explains why its column list is derived rather than written out.
         """
         legal = _posting_for_a_new_customer(
             idempotency_key="raw", **{PRICE: 5, STATUS: PRICING_STATUS_KNOWN})
-        columns = [field.column for field in Posting._meta.concrete_fields]
-        literals = {PRICE: "0", REASON: "NULL"}
-        parameters = {"id": str(uuid4()), "idempotency_key": "raw-sql",
-                      STATUS: PRICING_STATUS_WAIVED}
-
-        selected, values = [], []
-        for column in columns:
-            if column in literals:
-                selected.append(literals[column])
-            elif column in parameters:
-                selected.append("%s")
-                values.append(parameters[column])
-            else:
-                selected.append(column)
-        values.append(str(legal.pk))
-
         with self.assertRaises(IntegrityError) as refusal:
             with transaction.atomic():
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        f"INSERT INTO {Posting._meta.db_table} "
-                        f"({', '.join(columns)}) "
-                        f"SELECT {', '.join(selected)} "
-                        f"FROM {Posting._meta.db_table} WHERE id = %s", values)
+                _copy_row_as_literal_sql(
+                    legal,
+                    literals={PRICE: "0", REASON: "NULL"},
+                    parameters={"id": str(uuid4()),
+                                "idempotency_key": "raw-sql",
+                                STATUS: PRICING_STATUS_WAIVED})
         assert self.COMBINATION in str(refusal.exception), str(refusal.exception)
 
     def test_that_literal_statement_inserts_a_row_when_it_is_legal(self):
