@@ -21,8 +21,13 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate, TenantMarkup
 from apps.metering.pricing.services.pricing_service import PricingService
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import rate_in_default_book, a_usage_event_subject
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from core.vocabulary import (
+    COSTING_METHOD_REPORTED,
+    PRICING_METHOD_DIRECT_EVENT_PRICE,
+    PRICING_METHOD_MARGIN_OVER_COST,
+)
 
 
 @pytest.mark.django_db
@@ -34,12 +39,14 @@ class TestPricing:
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         TenantMarkup.objects.create(tenant=t, markup_percentage_micros=20_000_000)
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
             measurements=None, currency="usd",
             caller_provider_cost=1_000_000, caller_billed=None)
         assert costing.provider_cost_micros == 1_000_000
         assert costing.billed_cost_micros == 1_200_000
-        assert costing.pricing_receipt["price_source"] == "markup"
+        assert (costing.pricing_receipt["pricing"]["method"]
+                == PRICING_METHOD_MARGIN_OVER_COST)
 
     def test_cost_card_computes_provider_when_no_caller_cost(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
@@ -47,6 +54,7 @@ class TestPricing:
             measurement_key="input_tokens", grouping_field_1="gpt-4",
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c,
             selectors={"event_type": "chat", "provider": "openai",
                        "grouping_field_1": "gpt-4"},
@@ -68,12 +76,14 @@ class TestPricing:
         rate_in_default_book(t, card_type="price", provider="openai", event_type="chat",
             measurement_key="seats", pricing_model="flat", fixed_micros=9_000_000)
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
             measurements={"input_tokens": 1000, "seats": 3}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
         assert costing.provider_cost_micros == 5
         assert costing.billed_cost_micros == 9_000_000
-        assert costing.pricing_receipt["price_source"] == "rate_card"
+        assert (costing.pricing_receipt["pricing"]["method"]
+                == PRICING_METHOD_DIRECT_EVENT_PRICE)
 
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
@@ -82,6 +92,7 @@ class TestPricing:
         rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
             measurement_key="tok", grouping_field_1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "gpt-4"},
@@ -89,6 +100,7 @@ class TestPricing:
             caller_provider_cost=None, caller_billed=None)
         assert costing.provider_cost_micros == 9_000
         fallback = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "other"},
@@ -106,12 +118,14 @@ class TestPricing:
         t = self._t()
         c = Customer.objects.create(tenant=t, external_id="c3")
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             measurements={"unmatched_metric": 100}, currency="usd",
             caller_provider_cost=500, caller_billed=None,
         )
         assert costing.provider_cost_micros == 500
-        assert costing.pricing_receipt["cost_source"] == "caller"
+        assert (costing.pricing_receipt["costing"]["method"]
+                == COSTING_METHOD_REPORTED)
 
     def test_nothing_to_price_is_a_marker_event(self):
         """No quantities and no caller cost → accepted at zero.
@@ -126,6 +140,7 @@ class TestPricing:
         t = self._t()
         c = Customer.objects.create(tenant=t, external_id="c5")
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o"},
             measurements=None, currency="usd",
@@ -137,11 +152,13 @@ class TestPricing:
         t = self._t()
         c = Customer.objects.create(tenant=t, external_id="c7")
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             measurements=None, currency="usd",
             caller_provider_cost=123, caller_billed=None)
         assert costing.provider_cost_micros == 123
-        assert costing.pricing_receipt["cost_source"] == "caller"
+        assert (costing.pricing_receipt["costing"]["method"]
+                == COSTING_METHOD_REPORTED)
 
 
 def test_unassigned_customer_uses_provider_default_book(db):

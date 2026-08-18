@@ -4,12 +4,17 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
+from apps.metering.pricing.receipts import Resolution, build_receipt
 from apps.platform.event_types.costing import cost_declaration
 from core.vocabulary import (
+    COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    PRICING_METHOD_DIRECT_EVENT_PRICE,
+    PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_STATUS_KNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
@@ -38,10 +43,12 @@ class Costing(NamedTuple):
     #: derived by markup from an incomplete cost is a floor, exactly as it was
     #: before this ticket.
     billed_cost_micros: int
-    #: The Pricing Receipt: engine version, per-quantity lines, sources. Named
+    #: The Pricing Receipt — the authoritative record of why these amounts are
+    #: what they are (#349), built and validated by
+    #: `apps.metering.pricing.receipts.build_receipt` and by nothing else. Named
     #: for the record it is (ADR-0006) — the column and the wire key it is
     #: eventually stored under still carry the retired word, and re-spelling
-    #: either belongs to the slice that owns them.
+    #: either belongs to the ticket that owns them.
     pricing_receipt: dict
     #: `known` · `unresolved` · `not_applicable`, held by reference from
     #: `core.vocabulary`.
@@ -132,7 +139,8 @@ class PricingService:
             wildcard_book, selectors, measurement_key, currency, as_of)
 
     @staticmethod
-    def _compute(*, measurements, caller_provider_cost, caller_billed,
+    def _compute(*, subject, currency, effective_at, measurements,
+                 caller_provider_cost, caller_billed,
                  resolve_declaration, resolve_card, apply_markup):
         """The ONE compute spine (#112): cost → status → price → markup
         fallback. ``price`` is this spine under one card resolver —
@@ -167,6 +175,20 @@ class PricingService:
         receipt below, which is where the floor lives. Storing the partial sum
         is the ambiguity #317's column exists to remove, one layer up.
 
+        **THE SPINE DECIDES THE STATUSES AND THE RECEIPT RECORDS THEM (#349).**
+        Nothing here assembles the stored record by hand: the two sides are
+        collected as :class:`~apps.metering.pricing.receipts.Resolution`s and
+        handed to the one construction boundary at the foot of this method,
+        which validates them together before anybody can persist the result.
+        The method beside each status is *how that amount was arrived at*, so it
+        is null wherever no amount was — the rule the boundary enforces for both
+        sides at once.
+
+        `effective_at` is a PARAMETER and no clock is read below it: this method
+        resolves as of an instant the caller names, and everything
+        configuration-dependent arrives through `resolve_card` /
+        `resolve_declaration`.
+
         Always returns a :class:`Costing`."""
         measurements = measurements or {}
         # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
@@ -175,21 +197,24 @@ class PricingService:
         # exist when it was written would make it a worse record, not a better
         # one.
         #
-        # `engine_version` DOES NOT SEPARATE THE TWO SHAPES and is deliberately
-        # not bumped for this: it describes what the engine COMPUTED, and the
-        # arithmetic, the resolution order and every amount are identical either
-        # side of the rename. Moving it for a spelling would spend the one signal
-        # that means "the numbers were produced differently" on a change where
-        # they were not. A reader tells the shapes apart by which key the line
-        # carries, which is the honest discriminator because it is the only thing
-        # that actually differs.
+        # `pricing_engine_version` DOES NOT SEPARATE THOSE TWO SHAPES and is
+        # deliberately not bumped for a spelling: it describes what the engine
+        # COMPUTED, and the arithmetic, the resolution order and every amount
+        # are identical either side of the rename. Moving it would spend the one
+        # signal that means "the numbers were produced differently" on a change
+        # where they were not. What separates a record's SHAPE from its
+        # behaviour is `receipt_schema_version`, which is the other half of the
+        # pair the receipt carries and the half a rename moves.
         #
-        # That costs nobody a lookup, because nothing in the tree reads this key.
-        # What IS read off the receipt is the uncosted-quantity list — by the
-        # endpoint below and by the console's test-event panel — and #320 took
-        # the canonical word for a declared quantity into that key's name, in
-        # the break the recording response was already making.
-        receipt = {"engine_version": PRICING_ENGINE_VERSION, "metrics": []}
+        # The per-quantity lines below are the receipt's components: what the
+        # engine actually charged for, by value, in the section that produced
+        # them. The ids they used to carry ride in `provenance` instead, in one
+        # place, so a reader asking "which records was this resolved against"
+        # does not reassemble the answer out of the components — and so that
+        # nothing in a component is a pointer somebody could follow for a figure.
+        cost_components, price_components = [], []
+        cost_rate_ids, price_rate_ids = {}, {}
+        uncosted_keys = []
 
         # ---- COST ----
         unresolved_reason = None
@@ -201,16 +226,23 @@ class PricingService:
             # Costing a figure that arrived is this one.
             computed_micros = caller_provider_cost
             costing_status = COSTING_STATUS_KNOWN
-            receipt["cost_source"] = "caller"
+            # A FIGURE THAT ARRIVED IS A REPORTED COST, whoever declared what.
+            # The method names how UBB came by the amount, and it came by being
+            # told; the declaration is not consulted on this branch at all, so
+            # reading `calculated` off one would be recording something this
+            # branch never did.
+            costing_method = COSTING_METHOD_REPORTED
         elif (declaration := resolve_declaration()) is not None \
                 and declaration.declares_no_cost:
-            # Not an outstanding task. `cost_source` is deliberately absent
-            # through here and the branch below: the key names which source
-            # produced the amount, and no source produced one.
+            # Not an outstanding task. The method is deliberately null through
+            # here and the branch below: it names how an amount was arrived at,
+            # and neither branch arrives at one.
+            costing_method = None
             computed_micros = 0
             costing_status = COSTING_STATUS_NOT_APPLICABLE
         elif declaration is not None \
                 and declaration.costing_method == COSTING_METHOD_REPORTED:
+            costing_method = None
             computed_micros = 0
             costing_status = COSTING_STATUS_UNRESOLVED
             unresolved_reason = UNRESOLVED_REASON_REPORTED_COST_MISSING
@@ -250,21 +282,27 @@ class PricingService:
                     continue
                 amt = card.compute(units_val)
                 computed_micros += amt
-                receipt["metrics"].append({"measurement_key": measurement_key,
-                    "units": units_val, "card_type": "cost",
-                    "rate_card_id": str(card.id), "pricing_model": card.pricing_model, "micros": amt})
-            receipt["cost_source"] = "rate_card"
+                cost_components.append({"measurement_key": measurement_key,
+                    "units": units_val,
+                    "pricing_model": card.pricing_model, "micros": amt})
+                cost_rate_ids[measurement_key] = str(card.id)
             if uncosted:
-                receipt["uncosted_measurement_keys"] = uncosted
+                uncosted_keys = uncosted
+                costing_method = None
                 costing_status = COSTING_STATUS_UNRESOLVED
                 unresolved_reason = UNRESOLVED_REASON_COST_RATE_MISSING
             else:
+                costing_method = COSTING_METHOD_CALCULATED
                 costing_status = COSTING_STATUS_KNOWN
 
         # ---- PRICE ----
         if caller_billed is not None:
             billed = caller_billed
-            receipt["price_source"] = "caller"
+            # A PRICE THE CALLER STATED IS A PRICE ATTACHED TO THE EVENT, which
+            # is what `direct_event_price` names — the ratified concept has two
+            # values and the distinction it draws is margin-over-cost versus
+            # a price of its own, not which door the price came through.
+            pricing_method = PRICING_METHOD_DIRECT_EVENT_PRICE
         else:
             price_total, matched = 0, False
             for measurement_key, units_val in sorted(measurements.items()):
@@ -273,15 +311,15 @@ class PricingService:
                     continue
                 matched = True
                 entry = {"measurement_key": measurement_key, "units": units_val,
-                         "card_type": "price",
-                         "rate_card_id": str(card.id), "pricing_model": card.pricing_model}
+                         "pricing_model": card.pricing_model}
                 amt = card.compute(units_val)
                 entry["micros"] = amt
                 price_total += amt
-                receipt["metrics"].append(entry)
+                price_components.append(entry)
+                price_rate_ids[measurement_key] = str(card.id)
             if matched:
                 billed = price_total
-                receipt["price_source"] = "rate_card"
+                pricing_method = PRICING_METHOD_DIRECT_EVENT_PRICE
             else:
                 # MARKUP APPLIES TO WHAT THE COST BRANCH ARRIVED AT, AND THAT
                 # MOVES FOR EXACTLY ONE POPULATION (#320).
@@ -310,37 +348,67 @@ class PricingService:
                 # `markup(figure)`; until then the basis is missing and the
                 # price built on it is a floor, on a posting already marked
                 # `unresolved` so nobody reads it as settled. Whether such a
-                # price may call ITSELF unsettled is `pricing_status`, which is
-                # slice 4's word and not one this slice may coin (spec §3.12) —
-                # and re-pricing after a settlement is that slice's too.
+                # price may call ITSELF unsettled is `pricing_status`, and #349
+                # gave the receipt a place to say so without yet moving the
+                # answer: the record below reports `known` for every price this
+                # engine derives, because there is no price status column and no
+                # rule that writes another value. The tickets that add both are
+                # where this branch's floor stops reporting itself as settled —
+                # and re-pricing after a settlement is theirs too.
                 #
                 # Pinned by `TestNoBilledFigureMoves` for the population that
                 # does not move, and by the two cases below it for the one that
                 # does. Both halves are asserted; neither is left to a comment.
                 billed = apply_markup(computed_micros)
-                receipt["price_source"] = "markup"
+                pricing_method = PRICING_METHOD_MARGIN_OVER_COST
 
         # The receipt records what the engine DID; the columns record what UBB
-        # KNOWS. Where the two differ the receipt keeps its resolved lines and
-        # the amount below is None — see the `_compute` docstring.
+        # KNOWS. Where the two differ the receipt keeps its resolved components
+        # and the amount below is None — see the `_compute` docstring.
         recorded_cost = (computed_micros if costing_status == COSTING_STATUS_KNOWN
                          else None)
-        receipt["provider_cost_micros"] = recorded_cost
-        receipt["billed_cost_micros"] = billed
+        # ⚠ EVERY PRICE THIS ENGINE DERIVES IS `known` TODAY, AND THAT IS A
+        # STATEMENT WITH AN EXPIRY DATE. There is no price status column yet:
+        # the price is never null, so the receipt's price side reports the only
+        # answer the system currently holds. The three other price statuses —
+        # and in particular the ruling that a margin over a supplier cost UBB
+        # never learned is `waived` rather than a settled figure — arrive with
+        # the nullable price column and the rules that write it, in the tickets
+        # that follow this one. When they do, this line is the one that moves,
+        # and the receipt's shape already admits every answer they need.
+        pricing_receipt = build_receipt(
+            subject=subject, effective_at=effective_at, currency=currency,
+            pricing_engine_version=PRICING_ENGINE_VERSION,
+            costing=Resolution(method=costing_method, status=costing_status,
+                               amount_micros=recorded_cost,
+                               detail={"components": cost_components,
+                                       "uncosted_measurement_keys": uncosted_keys}),
+            pricing=Resolution(method=pricing_method, status=PRICING_STATUS_KNOWN,
+                               amount_micros=billed,
+                               detail={"components": price_components}),
+            provenance={"cost_rate_ids": cost_rate_ids,
+                        "price_rate_ids": price_rate_ids})
         return Costing(provider_cost_micros=recorded_cost,
                        billed_cost_micros=billed,
-                       pricing_receipt=receipt,
+                       pricing_receipt=pricing_receipt,
                        costing_status=costing_status,
                        unresolved_reason=unresolved_reason)
 
     @staticmethod
-    def price(*, tenant, customer, selectors, measurements, currency,
+    def price(*, subject, tenant, customer, selectors, measurements, currency,
               caller_provider_cost, caller_billed, as_of=None):
         """Exact pricing: the compute spine over as_of-exact ORM card
-        resolution (the full provenance receipt is persisted with the event)
+        resolution (the Pricing Receipt it builds is persisted with the event)
         and live-ORM markup. ``selectors`` is the full {provider, event_type,
         task_type, subtask_type, the ten slots} map (Rate.SELECTORS keys) — an
-        absent/"" value wildcards against a rate that leaves it unpinned."""
+        absent/"" value wildcards against a rate that leaves it unpinned.
+
+        ``subject`` is a :class:`~apps.metering.pricing.receipts.ReceiptSubject`
+        and is REQUIRED, with no default. A receipt explains one named thing,
+        and a default here would hand every caller who omitted the argument one
+        subject's answer — the same defect a default column name is, one level
+        up. It is an input rather than a stamp applied afterwards, which is why
+        the caller generates the row's id before it records the row."""
         as_of = as_of or timezone.now()
 
         def resolve_card(card_type, measurement_key):
@@ -365,6 +433,8 @@ class PricingService:
             return MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
 
         return PricingService._compute(
+            subject=subject, currency=currency,
+            effective_at=as_of.isoformat(),
             measurements=measurements,
             caller_provider_cost=caller_provider_cost,
             caller_billed=caller_billed,

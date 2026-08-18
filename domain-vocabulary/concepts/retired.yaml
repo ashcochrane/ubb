@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,568 of 1,949 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,571 of 1,952 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -647,6 +647,36 @@ measurement_key:
     # is to write about a PAIR and a COLUMN rather than about a model — and to
     # read the diff for spaces and hyphens AFTER running the sweep, not instead
     # of it.
+    #
+    # #349 MOVED THE DENOMINATOR ONLY, UPWARD, BY THREE (1,568 → 1,571 swept,
+    # 1,949 → 1,952 tracked, 50/126 unchanged). THREE new swept files — the
+    # module that holds the Pricing Receipt's shape and the one function
+    # permitted to build it, and the two test modules over it — and no
+    # migration, so the exclusion counts are untouched and the tracked total
+    # rises by exactly the swept total. #329's, #330's and #348's case again.
+    #
+    # ⚠ THE NEAR MISS WAS THE PLURAL AS A RECEIPT KEY, AND IT SURVIVED ON
+    # PURPOSE. The receipt's per-quantity components carry `"units"` as the key
+    # for how much was measured, written in the compute spine — and that spine
+    # is the ONLY backend file where the token appears for rate arithmetic in
+    # this area. Restructuring the record was the obvious moment to re-spell
+    # it, and re-spelling it would have taken the file out of the counted set
+    # and the numerator to 49, which this entry's own denominator arithmetic
+    # would have reported as a word leaving the tree in a commit that is not
+    # about the word. The key stays; the component shape is the ticket that
+    # owns it. **A retired term can be tripped by REMOVING it**, which is the
+    # direction neither #328's lesson nor #330's records.
+    #
+    # THE TWO NEW TEST MODULES WERE WRITTEN AGAINST THIS RULE RATHER THAN
+    # AROUND IT. Neither says `units` at all — a receipt's component is asserted
+    # by its `measurement_key` and its `micros`, which is the stronger claim
+    # anyway — and neither spells the receipt column, addressing it through
+    # `Posting.RECEIPT_COLUMN` because its extent is capped at nine backend
+    # files. ⚠ Two masking edits in EXISTING parity tests did spell it and put
+    # the count at eleven; the sweep caught both, and the fix was the same
+    # constant. The lesson is #328's shape one layer out: the file that trips a
+    # ceiling is not the new module you were careful about, it is the old one
+    # you edited two lines of.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

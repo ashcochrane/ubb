@@ -2,12 +2,13 @@ import logging
 from collections import namedtuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone as dt_timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
+from core.vocabulary import PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
@@ -403,6 +404,7 @@ class UsageService:
         protocol is now structurally impossible. Registered AFTER write_event so
         the callback order stays outbox-dispatch → kills, exactly as it was
         when the endpoint executed kills after the commit."""
+        from apps.metering.pricing.receipts import ReceiptSubject
         from apps.metering.pricing.services.pricing_service import PricingService
         tenant, customer = inp.tenant, inp.customer
         task = None
@@ -415,7 +417,18 @@ class UsageService:
                              "task_type": inp.task_type,
                              "subtask_type": inp.subtask_type,
                              **{slot: getattr(inp, slot) for slot in SLOTS}}
+                # THE ROW'S IDENTITY IS DECIDED BEFORE THE ROW IS (#349). A
+                # receipt explains one named subject, and the subject is an
+                # input to resolution rather than something stamped on
+                # afterwards — so the posting's id is generated here and handed
+                # to both the pricer and the insert below. Nothing changes about
+                # the insert: the column's own default is a fresh UUID4 and this
+                # is the same value, decided one statement earlier.
+                posting_id = uuid4()
                 costing = PricingService.price(
+                    subject=ReceiptSubject(
+                        subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+                        subject_id=str(posting_id)),
                     tenant=tenant, customer=customer, selectors=selectors,
                     measurements=inp.measurements,
                     currency=inp.currency,
@@ -428,11 +441,16 @@ class UsageService:
                 # exactly how the two come to disagree.
                 provider_cost_micros = costing.provider_cost_micros
                 billed_cost_micros = costing.billed_cost_micros
-                provenance = costing.pricing_receipt
+                # The whole record, not one of its sections: `provenance` is now
+                # the name of the ids section INSIDE a receipt (#349, ADR-0006),
+                # so calling the record that here would be the retired reading
+                # of the word surviving as a local.
+                receipt = costing.pricing_receipt
                 create_kwargs = {}
                 if inp.effective_at is not None:
                     create_kwargs["effective_at"] = inp.effective_at
                 event = Posting.objects.create(
+                    id=posting_id,
                     tenant=tenant, customer=customer, request_id=inp.request_id,
                     idempotency_key=inp.idempotency_key, metadata=inp.metadata,
                     event_type=inp.event_type, provider=inp.provider,
@@ -448,7 +466,7 @@ class UsageService:
                     claimed_provider_cost_micros=inp.claimed_provider_cost,
                     billed_cost_micros=billed_cost_micros,
                     currency=inp.currency,
-                    pricing_provenance=provenance,
+                    pricing_provenance=receipt,
                     task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
                     task_type=inp.task_type, subtask_type=inp.subtask_type,

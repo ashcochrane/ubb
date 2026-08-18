@@ -195,9 +195,14 @@ class TestHistoricalPricing:
             t, c, "r1", "k1", measurements={"tok": 100},
             effective_at=now - timedelta(days=20))
         assert r_old["billed_cost_micros"] == 1_000  # 100 @ v1's 10
-        entry = [m for m in r_old["pricing_provenance"]["metrics"]
-                 if m["card_type"] == "price"][0]
-        assert entry["rate_card_id"] == str(v1.id)
+        # The rule this resolved against, read out of the receipt's own
+        # cross-reference index (#349) — the ids left the per-quantity
+        # components and live in one place, keyed by the quantity they priced,
+        # so a reader asking "which rule was this" does not reassemble the
+        # answer out of the components and no component carries a pointer
+        # somebody could follow for a figure.
+        assert (r_old["pricing_provenance"]["provenance"]["price_rate_ids"]
+                == {"tok": str(v1.id)})
 
         r_new = UsageService.record_usage(
             t, c, "r2", "k2", measurements={"tok": 100})

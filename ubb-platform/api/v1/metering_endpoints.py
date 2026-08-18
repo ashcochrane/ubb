@@ -8,6 +8,7 @@ from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
+from apps.metering.pricing.receipts import uncosted_quantity_keys
 from core.amount_status_pairs import SUPPLIER_COST
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.cost_totals import (
@@ -182,16 +183,22 @@ def usage_error(e):
 
 
 def with_uncosted(result):
-    """Surface the provenance receipt's uncosted-quantity list on a success
-    body — both recording surfaces return it.
+    """Surface the receipt's uncosted-quantity list on a success body — both
+    recording surfaces return it.
 
     The list says WHICH declared quantities went uncosted; `costing_status` on
     the same body says THAT the cost is unresolved. Neither is the other: a
     tenant fixing this needs the specific declaration, and a reader totalling a
-    column needs the status."""
-    provenance = result.get("pricing_provenance") or {}
-    result["uncosted_measurement_keys"] = provenance.get(
-        "uncosted_measurement_keys", [])
+    column needs the status.
+
+    **THE RECEIPT'S SHAPE IS ASKED FOR, NOT ASSUMED (#349).** An idempotent
+    replay answers with the receipt the posting was recorded with, so this is a
+    live read over rows written in the older shape as well as the current one —
+    a read-path obligation rather than a migration, since old receipts are read
+    and never rewritten. The tolerance is expressed once, in the receipts
+    module, because a second copy of it here is a second thing to repair."""
+    result["uncosted_measurement_keys"] = uncosted_quantity_keys(
+        result.get("pricing_provenance"))
     return result
 
 
@@ -380,12 +387,14 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
 def get_usage_event(request, event_id: UUID):
     """Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
-    Returns every priced field plus pricing_provenance — the recorded
-    "why this amount" (engine version, price source, the card that priced each
-    named quantity, and tier-by-tier breakdown). The usage list omits
-    provenance to stay lean;
-    this is where it is read back. Tenant-scoped; 404 for an unknown or
-    foreign event id."""
+    Returns every priced field plus the Pricing Receipt — the authoritative
+    record of the economic resolution behind those amounts, not a guarantee
+    that customer revenue exists. It carries its own shape version and the
+    version of the engine that computed it, the subject it explains, a costing
+    and a pricing section holding their method, status and detail by value, the
+    totals, and cross-reference ids nothing reads to reconstruct an amount. The
+    usage list omits the receipt to stay lean; this is where it is read back.
+    Tenant-scoped; 404 for an unknown or foreign event id."""
     _product_check(request)
     from apps.metering.usage.grouping import grouping_fields_for
     from apps.metering.usage.measurements import measurements_status_for

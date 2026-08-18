@@ -42,7 +42,13 @@ class RecordUsageResponse:
             measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
             parent_task_id (None | str | Unset):
-            pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset):
+            pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset): The Pricing Receipt: the
+                authoritative record of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of
+                when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a
+                metering-only tenant has a receipt for every event it records. The record carries its own shape version
+                (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it
+                explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a
+                provenance section of cross-reference ids that nothing reads to reconstruct an amount.
             provider_cost_micros (int | None | Unset):
             stop (bool | Unset):  Default: False.
             stop_context (list[Any] | None | Unset):

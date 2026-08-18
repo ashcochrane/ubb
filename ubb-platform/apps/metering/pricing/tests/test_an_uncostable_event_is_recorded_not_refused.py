@@ -21,6 +21,7 @@ import pytest
 
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
+    a_usage_event_subject,
     cost_rate_in_default_book,
     rate_in_default_book,
 )
@@ -44,6 +45,7 @@ from core.vocabulary import (
     UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
+    PRICING_METHOD_MARGIN_OVER_COST,
 )
 
 EVENT_TYPE_KEY = "acme.embed"
@@ -84,8 +86,9 @@ def _price(tenant, customer, **kwargs):
     kwargs.setdefault("measurements", {"prompt_tokens": 1_000})
     kwargs.setdefault("caller_provider_cost", None)
     kwargs.setdefault("caller_billed", None)
-    return PricingService.price(tenant=tenant, customer=customer,
-                                currency="usd", **kwargs)
+    return PricingService.price(
+        subject=a_usage_event_subject(),
+        tenant=tenant, customer=customer, currency="usd", **kwargs)
 
 
 def _cost_rate(tenant, *, measurement_key="prompt_tokens", micros=5_000):
@@ -125,7 +128,7 @@ class TestTheComputeSpineDecidesTheStatus:
                                        "image_pixels": 40})
 
         assert costing.costing_status == COSTING_STATUS_UNRESOLVED
-        assert (costing.pricing_receipt["uncosted_measurement_keys"]
+        assert (costing.pricing_receipt["costing"]["detail"]["uncosted_measurement_keys"]
                 == ["image_pixels"])
 
     def test_a_partly_rated_event_records_no_amount_at_all(self):
@@ -149,7 +152,7 @@ class TestTheComputeSpineDecidesTheStatus:
         # exists in this fixture, so every line is a cost line, and asserting on
         # all of them catches a line that arrived with the wrong key instead of
         # filtering it silently away.
-        rated = costing.pricing_receipt["metrics"]
+        rated = costing.pricing_receipt["costing"]["detail"]["components"]
         assert [line["measurement_key"] for line in rated] == ["prompt_tokens"]
         assert rated[0]["micros"] == 5_000
 
@@ -292,7 +295,8 @@ class TestNoBilledFigureMovesOnTheRateCardBranch:
 
         assert costing.provider_cost_micros is None
         assert costing.billed_cost_micros == 6_000
-        assert costing.pricing_receipt["price_source"] == "markup"
+        assert (costing.pricing_receipt["pricing"]["method"]
+                == PRICING_METHOD_MARGIN_OVER_COST)
 
     def test_a_price_rate_is_unaffected_by_an_unresolved_cost(self):
         tenant = _tenant()
@@ -347,7 +351,8 @@ class TestTheOneBilledFigureThatDoesMove:
 
         assert costing.costing_status == COSTING_STATUS_UNRESOLVED
         assert costing.billed_cost_micros == 0
-        assert costing.pricing_receipt["price_source"] == "markup"
+        assert (costing.pricing_receipt["pricing"]["method"]
+                == PRICING_METHOD_MARGIN_OVER_COST)
 
     def test_the_same_event_bills_over_the_figure_once_it_arrives(self):
         """The positive control, and what makes the zero above a floor rather

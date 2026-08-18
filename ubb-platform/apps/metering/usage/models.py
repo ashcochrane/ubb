@@ -192,6 +192,22 @@ class Posting(BaseModel):
     # ordinary state of a call rather than a contradiction.
     claimed_provider_cost_micros = models.BigIntegerField(null=True, blank=True)
     billed_cost_micros = models.BigIntegerField(default=0)
+    #: WHICH COLUMN HOLDS THE PRICING RECEIPT, NAMED ONCE (#349).
+    #:
+    #: The receipt is the authoritative record of an ECONOMIC RESOLUTION for
+    #: this posting — why the amounts above are what they are — and it is NOT a
+    #: guarantee that customer revenue exists: a metering-only tenant records a
+    #: receipt for every event and bills nobody through UBB.
+    #:
+    #: The column below still carries the retired spelling of the concept, and
+    #: re-spelling it is a later ticket's, in one contiguous block with the rest
+    #: of the retired vocabulary. Until then this constant is how everything
+    #: else addresses the column — the gate over the construction boundary
+    #: included — so a gate that would otherwise hold its own copy of the name
+    #: follows the rename instead of going quietly vacuous on the day it lands.
+    #: The shape stored here, and the one function permitted to build it, are
+    #: `apps/metering/pricing/receipts.py`.
+    RECEIPT_COLUMN = "pricing_provenance"
     pricing_provenance = models.JSONField(default=dict, blank=True)
     # The exact unit of work this event belongs to. The ONLY unit attribution
     # — the open bag above is free-form labelling and never silently becomes a

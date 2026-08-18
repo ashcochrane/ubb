@@ -27,6 +27,8 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 
+from apps.metering.pricing.tests._helpers import (
+    receipt_without_its_per_event_facts)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
@@ -296,8 +298,21 @@ class TestAnalyticsOnly:
         # Every recorded field, compared whole rather than one at a time: a
         # comparison that named the fields would go on passing when the wiring
         # arrives and adds one.
-        assert {k: v for k, v in grouped.items() if k != "event_id"} \
-            == {k: v for k, v in ungrouped.items() if k != "event_id"}
+        #
+        # Two things inside the Pricing Receipt are masked, and only two: the
+        # subject it names and the instant it resolved as of are per-event by
+        # construction (#349), the way `event_id` beside them always was. The
+        # rest of the record — both methods, both statuses, the components and
+        # the totals — is compared whole, which is where "identical with and
+        # without a grouping" actually bites. The helper says which two facts
+        # are masked and why; it also addresses the receipt through the model's
+        # own constant, for the same reason the first four arguments above are
+        # positional.
+        def _comparable(result):
+            return receipt_without_its_per_event_facts(
+                {k: v for k, v in result.items() if k != "event_id"})
+
+        assert _comparable(grouped) == _comparable(ungrouped)
         rows = [Posting.objects.get(id=result["event_id"])
                 for result in (ungrouped, grouped)]
         assert [row.event_type for row in rows] == [event_type.key] * 2
