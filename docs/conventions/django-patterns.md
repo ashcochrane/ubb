@@ -88,6 +88,34 @@ wire and validate.
   `usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py` — a `CHECK` cannot see the
   previous row, so it can carry a column's legal values but never a transition rule. A model-level
   `save()` guard is not enforcement and is never shipped as one (ADR-0007 §2).
+- **A second pair on the same table gets a second rule, in the same mechanism** — `Posting`'s
+  customer price pair (#352), in
+  `usage/migrations/0039_a_price_resolves_once_and_the_table_holds_it.py`. Another `BEFORE UPDATE`
+  trigger with its own `WHEN` clause over its own columns, rather than a branch inside the first:
+  the two govern disjoint columns, neither enters the other's function, and dropping either leaves
+  the other standing. What is refused is a second *kind* of mechanism — a `CHECK` or a Postgres
+  `RULE` holding one pair while a trigger holds the other, which is how two rules over sibling pairs
+  come to disagree about one write. ⚠ **Once a table carries two, address every trigger BY NAME**:
+  `pg_trigger` promises no order, so "the table's trigger" and any count are reading whichever row
+  came back first. Assert the table's rules as an exact SET.
+- ⚠ **A green G19 proves a declared column is NAMED by a rule, never that the rule HOLDS.** Its
+  declaration check is a word-boundary search for the column over the concatenated trigger bodies on
+  its table, so it goes green on a branch that refuses nothing (#325 measured this; #352 has it as a
+  test). **Every declared pair therefore owes a behavioural trio** — a refusal per declared class
+  **plus the one admitted move**, each driven through `save()`, `QuerySet.update()` and raw SQL. The
+  admitted move is not optional: a trigger that refused every write would satisfy the refusals
+  alone. `usage/tests/test_a_cost_settles_once.py` and `usage/tests/test_a_price_resolves_once.py`
+  are the two worked examples.
+- ⚠ **A `BEFORE` trigger runs ahead of the table's `CHECK` constraints**, so installing one turns
+  every `UPDATE`-driven constraint test on that table into a test of the trigger. Drive constraint
+  cases through `INSERT` (a `BEFORE UPDATE` trigger never fires on one), and make **every** refusal
+  assert the MESSAGE — "something refused this" stops being evidence the moment a table has two
+  mechanisms. #318 hit this for the cost pair and #352 hit it again for the price pair.
+- **A new rule on a hot table owes a measurement, not an assumption** (ADR-0007's Consequences).
+  `scripts/measure_posting_transition_cost.py` is the worked example: it asks for each rule **by
+  name** rather than counting, installs and drops them together, times each permitted move
+  separately, alternates the states per run and prints a **noise floor** — because the first version
+  of it reported a trigger that made every statement faster.
 
 ## Migrations
 

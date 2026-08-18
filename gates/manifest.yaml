@@ -759,6 +759,30 @@ gates:
       Slice 3 is the first slice with protected columns, not the last. Later
       slices adding FROZEN, SET_ONCE or PRUNABLE columns extend the installed
       gate rather than re-owning this row.
+      EXTENDED BY SLICE 4 (#352), which is what that sentence anticipated: the
+      customer price pair — a nullable `billed_cost_micros` resolving atomically
+      with `pricing_status`, RESOLVE_ONCE, the one permitted move `unknown` to
+      `known` — declared on the same model and held by a SECOND `BEFORE UPDATE`
+      trigger on the same table. A second RULE, not a second MECHANISM: the two
+      govern disjoint columns, each `WHEN` clause names only its own, and
+      dropping either leaves the other standing, which is what makes each
+      measurable and reversible on its own. A `CHECK` or a Postgres `RULE`
+      holding one pair while a trigger held the other is what was refused —
+      two mechanisms over sibling pairs on one table is how the two rules come
+      to disagree about the same write. Its per-write cost was re-measured by
+      `ubb-platform/scripts/measure_posting_transition_cost.py`, which asks for
+      BOTH triggers by name and times a price resolution beside the supplier
+      settlement (ADR-0007's Consequences).
+      ⚠ THE FIRST NODE BELOW PROVES ONLY THAT A COLUMN IS *NAMED* BY A RULE.
+      It is a word-boundary search for the column name over the concatenated
+      trigger bodies on its table, so it goes green the moment any rule spells
+      the column — including a branch that refuses nothing, which #325 measured
+      on the cost side. That is still worth having, because it judges a new
+      declaration on the day it is made with no edit here. It is not evidence
+      that a rule HOLDS, and the behavioural nodes below are what is. The last
+      node is that distinction measured rather than asserted: it replaces the
+      shipped price rule with one naming both columns and refusing nothing, and
+      watches this gate's own check report a clean board over it.
       One obligation is deferred, by name — `PostingMeasurement`'s whole-record
       `DELETE` rule, permitted only at or after `prunable_at` and only while its
       parent posting is not `unresolved`, reads a status that lands in slice 4,
@@ -776,6 +800,14 @@ gates:
         node: ubb-platform/apps/metering/usage/tests/test_a_cost_settles_once.py::TheClaimedCostIsFrozenTest::test_a_claimed_cost_cannot_be_edited
       - suite: platform
         node: ubb-platform/apps/metering/usage/tests/test_a_cost_settles_once.py::TheOnePermittedMoveIsAdmittedTest::test_an_unresolved_cost_settles_through_every_door
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_price_resolves_once.py::TheResolvedPriceIsNotEditableTest::test_a_resolved_price_cannot_be_overwritten
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_price_resolves_once.py::OnlyAnUnknownPriceResolvesTest::test_a_waived_posting_is_never_a_resolution_candidate
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_price_resolves_once.py::ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest::test_an_unknown_price_resolves_through_every_door
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_price_resolves_once.py::AGreenDeclarationCheckDoesNotProveTheRuleHoldsTest::test_a_rule_that_refuses_nothing_still_passes_the_declaration_check
 
   G20:
     statement: Migrations carry their data — a rename, never an add-and-remove pair.

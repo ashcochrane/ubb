@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,582 of 1,967 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,584 of 1,970 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -750,6 +750,23 @@ measurement_key:
     # was reworded to "the live spend counters", not admitted to the ledger:
     # a ledger entry is a finite migration plan, and prose is never the thing
     # that has to widen it.
+    #
+    # #352 MOVED THE DENOMINATOR ONLY, UPWARD (1,582 → 1,584 swept, 1,967 →
+    # 1,970 tracked, 52/128 unchanged) — the "needs no story" direction, with
+    # the non-widening signature #312, #317 and #318 all record:
+    # `historical-migrations` went 218 → 219 because this commit ADDS a
+    # migration to a directory the rule already covers. THREE new files, TWO OF
+    # THEM SWEPT — the migration installing the price pair's transition trigger
+    # (excluded), the module that proves the database holds it, and the shared
+    # `tests/_helpers.py` the second trio made necessary. No generated artifact
+    # of any kind: this commit publishes nothing, so the #277/#317 hazard of
+    # taking the count before a regeneration does not arise.
+    #
+    # NOTHING HERE IS ABOUT THE QUANTITY, and #275's RATE ARITHMETIC caution
+    # holds. #352 is the enforcement half of #351's customer-price columns — a
+    # trigger over an amount and its status, and the tests that drive it through
+    # three doors. It goes nowhere near `compute()`, which is where the
+    # surviving rate-arithmetic sense lives.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

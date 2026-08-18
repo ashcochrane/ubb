@@ -15,9 +15,19 @@ holds the first columns declared here across ``save()``, ``QuerySet.update()``
 and raw SQL alike, and
 ``apps/platform/tests/test_transition_class_declarations.py`` walks
 every declaration in the tree and fails on any column the database does not
-actually defend. Nothing *here* installs a trigger, a rule or a ``CHECK`` — this
-module is the vocabulary, and the gate that holds a column to what it says lives
-with the table.
+actually defend. Slice 4 **extended** that gate rather than re-owning it: the
+posting's customer price pair is held by a second trigger, in
+``…/migrations/0039_a_price_resolves_once_and_the_table_holds_it.py``, over
+disjoint columns and in the same mechanism. Nothing *here* installs a trigger, a
+rule or a ``CHECK`` — this module is the vocabulary, and the gates that hold a
+column to what it says live with the table.
+
+**⚠ And the walk that reads these declarations cannot tell you a rule holds.**
+It asks whether each declared column is *named* by a rule on its table — a
+word-boundary search over the trigger bodies — which is exactly what lets it
+judge a new declaration on the day it is made, and exactly why it goes green
+over a branch that refuses nothing. What a declaration here promises is proved
+behaviourally, per pair, in the usage app's two transition modules.
 
 **A different rule is genuinely deferred, and the comment this replaces
 conflated the two.** ``PostingMeasurement``'s whole-record ``DELETE`` condition

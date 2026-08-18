@@ -81,6 +81,14 @@ STATUS = "costing_status"
 REASON = "unresolved_reason"
 CLAIMED = "claimed_provider_cost_micros"
 
+#: The price pair, named here for one assertion only — the exact set of columns
+#: this model declares into a defended class, which is a statement about the
+#: MODEL rather than about either pair. Everything else in this module is the
+#: supplier side; what the price pair's rule does is
+#: `test_a_price_resolves_once.py`.
+PRICE = "billed_cost_micros"
+PRICING_STATUS = "pricing_status"
+
 
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
@@ -397,6 +405,13 @@ class ThePostingDeclaresWhatMayHappenToItsCostTest(TestCase):
     about this model rather than about the whole registry so that this and the
     walk in `apps/platform/tests/` fail for different reasons.
 
+    **#352 moved the last assertion here and no other.** The exact-set case
+    below is about the MODEL — every column it declares into a class the
+    database must defend — so slice 4's price pair joining it is a line a reader
+    edits, which is what that case was scheduled to force. The two cases above
+    it are about the supplier side and are untouched; what the price pair's rule
+    permits and refuses is `test_a_price_resolves_once.py`, not this module.
+
     **Relaxing it to "the posting may declare classes" would have been the
     failure it was built to catch** — a test that passes whether or not the
     declaration exists is not a weaker version of this one, it is a different
@@ -411,14 +426,25 @@ class ThePostingDeclaresWhatMayHappenToItsCostTest(TestCase):
     def test_the_claimed_cost_is_declared_frozen(self):
         assert Posting.transition_classes[CLAIMED] == FROZEN
 
-    def test_the_new_columns_are_the_defended_ones(self):
+    def test_the_defended_columns_are_exactly_the_two_pairs_and_the_claim(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         A column added to this model's declarations moves this line, which is
-        the point: slice 4 declares its own pair here, and it should arrive past
-        a reader rather than alongside one.
+        the point: it was slice 3's three until #352, and slice 4's pair had to
+        arrive past a reader rather than alongside one. It did, and this is that
+        reader — the assertion is unchanged in kind, and the set it names is the
+        decision.
+
+        **Equality in both directions, deliberately.** A subset assertion would
+        admit a sixth column nobody chose a class for, and a superset one would
+        stay green if a declaration were dropped — which is the more likely
+        accident, because dropping a declaration is what a model rewritten
+        around a new published shape does. The name says two pairs and a claim
+        so that a reader can count them here before reading the list.
         """
         declared = columns_declared_into_defended_classes([Posting])
-        assert declared == [("Posting", CLAIMED, FROZEN),
+        assert declared == [("Posting", PRICE, RESOLVE_ONCE),
+                            ("Posting", CLAIMED, FROZEN),
                             ("Posting", STATUS, RESOLVE_ONCE),
+                            ("Posting", PRICING_STATUS, RESOLVE_ONCE),
                             ("Posting", COST, RESOLVE_ONCE)]
