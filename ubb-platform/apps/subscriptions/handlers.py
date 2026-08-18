@@ -4,6 +4,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.platform.events.schemas import UsageRecorded
+from core.amount_status_pairs import SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 
 logger = logging.getLogger("ubb.events")
@@ -47,7 +48,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     # The status decides, never the amount: `not_applicable` is null too, and
     # counting it would mark every metering-only tenant's every period partial
     # forever (#327's ruling, inherited).
-    unresolved = 1 if counts_as_unresolved(evt.costing_status) else 0
+    unresolved = 1 if counts_as_unresolved(SUPPLIER_COST, evt.costing_status) else 0
     provider = evt.provider_cost_micros if evt.provider_cost_micros is not None else 0
     # billed_cost_micros is None on a legacy payload predating the split —
     # the billed total then IS cost_micros.

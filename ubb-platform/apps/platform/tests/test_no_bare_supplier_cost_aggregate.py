@@ -13,14 +13,15 @@ written next week, in the shape that reads perfectly and reports a floor as a
 figure. So the walker below fails on ANY `Sum` spelling that column outside the
 one file that sums a column of that name which cannot be unknown.
 
-**It asks the seam which column it is defending** rather than holding a copy of
-the name. A gate that spells its own subject is a gate that goes quietly vacuous
-the day the column is renamed — the failure this repository has now shipped
-twice (#256 in the manifest, #285 in the ledger), and both times the surviving
-control looked exactly like a passing one. The seam itself never appears in the
-results: it takes the column as an argument, which is why the count below is
-zero rather than one, and the vacuity guard is written against the walk having
-happened rather than against a permitted site existing.
+**It asks the declared pair which column it is defending** rather than holding a
+copy of the name. A gate that spells its own subject is a gate that goes quietly
+vacuous the day the column is renamed — the failure this repository has now
+shipped twice (#256 in the manifest, #285 in the ledger), and both times the
+surviving control looked exactly like a passing one. The seam itself never
+appears in the results: since #348 it takes the pair as an argument and spells
+neither of that pair's columns, which is why the count below is zero rather than
+one, and the vacuity guard is written against the walk having happened rather
+than against a permitted site existing.
 
 **The one exemption is DERIVED, not asserted.** `CustomerEconomics` — the
 monthly margin snapshot — has a column of the same name that is `NOT NULL`, so
@@ -47,7 +48,7 @@ from pathlib import Path
 
 import pytest
 
-from core.cost_totals import SUPPLIER_COST_COLUMN
+from core.amount_status_pairs import SUPPLIER_COST
 
 # apps/platform/tests/test_no_bare_supplier_cost_aggregate.py -> ubb-platform/
 PLATFORM_ROOT = Path(__file__).resolve().parents[3]
@@ -97,7 +98,7 @@ def _walk():
                 continue
             yield (path.relative_to(PLATFORM_ROOT).as_posix(),
                    _aggregate_sites(path.read_text(encoding="utf-8"),
-                                    SUPPLIER_COST_COLUMN))
+                                    SUPPLIER_COST.amount_column))
 
 
 def test_the_supplier_cost_is_summed_only_where_it_cannot_be_unknown():
@@ -106,7 +107,7 @@ def test_the_supplier_cost_is_summed_only_where_it_cannot_be_unknown():
     assert {path: len(sites) for path, sites in found.items()} == expected, (
         f"A supplier-cost total must carry the count of postings it excluded. "
         f"Build it with core.cost_totals.cost_total_annotations() rather than a "
-        f"bare Sum({SUPPLIER_COST_COLUMN!r}). Found: {found}"
+        f"bare Sum({SUPPLIER_COST.amount_column!r}). Found: {found}"
     )
 
 
@@ -117,9 +118,9 @@ def test_every_exemption_is_still_true():
 
     for path, (app_label, model_name, _) in NON_POSTING_AGGREGATES.items():
         column = django_apps.get_model(app_label, model_name)._meta.get_field(
-            SUPPLIER_COST_COLUMN)
+            SUPPLIER_COST.amount_column)
         assert column.null is False, (
-            f"{path} is exempt because {model_name}.{SUPPLIER_COST_COLUMN} "
+            f"{path} is exempt because {model_name}.{SUPPLIER_COST.amount_column} "
             f"cannot be unknown. It can now — the aggregate there has to become "
             f"a pair, or the exemption has to say something else that is true.")
 
@@ -130,7 +131,7 @@ def test_the_walk_reached_the_modules_this_rule_is_about():
     The rule above passes trivially if the walker never looks at anything — a
     bad glob, a moved root, a search path that stopped matching. Nothing proves
     the walk happened, because the answer it wants is an empty one: the seam
-    takes the column as an argument and never spells it, so there is no
+    takes the pair as an argument and never spells a column, so there is no
     permitted site to find. What is checked instead is that the three modules
     the sweep actually rewrote were read, and read as Python.
     """
@@ -146,13 +147,12 @@ def test_the_walker_would_see_one_that_was_reintroduced():
     Written as text because the tree is (correctly) clean: with no offender to
     point at, the only way to show the detector fires is to hand it one.
     """
-    planted = f'total = qs.aggregate(cost=Sum("{SUPPLIER_COST_COLUMN}"))'
-    assert _aggregate_sites(planted, SUPPLIER_COST_COLUMN) == [1]
-    assert _aggregate_sites(
-        f'models.Sum("{SUPPLIER_COST_COLUMN}")', SUPPLIER_COST_COLUMN) == [1]
+    column = SUPPLIER_COST.amount_column
+    planted = f'total = qs.aggregate(cost=Sum("{column}"))'
+    assert _aggregate_sites(planted, column) == [1]
+    assert _aggregate_sites(f'models.Sum("{column}")', column) == [1]
     # A different column, and the ORM's other aggregates over this one, are not
     # this rule's business — a Count or an Avg is not a total a tenant reads as
     # money.
-    assert _aggregate_sites('Sum("billed_cost_micros")', SUPPLIER_COST_COLUMN) == []
-    assert _aggregate_sites(
-        f'Avg("{SUPPLIER_COST_COLUMN}")', SUPPLIER_COST_COLUMN) == []
+    assert _aggregate_sites('Sum("billed_cost_micros")', column) == []
+    assert _aggregate_sites(f'Avg("{column}")', column) == []

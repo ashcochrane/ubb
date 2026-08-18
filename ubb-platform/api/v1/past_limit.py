@@ -34,6 +34,7 @@ from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
+from core.amount_status_pairs import SUPPLIER_COST
 from core.cost_totals import (
     UNRESOLVED_EVENT_COUNT_KEY, cost_total, counts_as_unresolved)
 
@@ -143,7 +144,7 @@ def _supplier_cost_of(events):
     resolved = sum(e["provider_cost_micros"] for e in events
                    if e["provider_cost_micros"] is not None)
     unresolved = sum(1 for e in events
-                     if counts_as_unresolved(e["costing_status"]))
+                     if counts_as_unresolved(SUPPLIER_COST, e["costing_status"]))
     return cost_total(key="provider_cost_micros", resolved_micros=resolved,
                       unresolved_events=unresolved)
 
@@ -192,7 +193,7 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             # about one set of events.
             if ev["provider_cost_micros"] is not None:
                 t["provider_cost_micros"] += ev["provider_cost_micros"]
-            elif counts_as_unresolved(ev["costing_status"]):
+            elif counts_as_unresolved(SUPPLIER_COST, ev["costing_status"]):
                 t[UNRESOLVED_EVENT_COUNT_KEY] += 1
             t["event_count"] += 1
 

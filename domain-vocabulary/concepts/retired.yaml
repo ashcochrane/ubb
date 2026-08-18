@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,566 of 1,947 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,568 of 1,949 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -617,6 +617,36 @@ measurement_key:
     # because the breakdown card renders BILLED cost and is out of this rule's
     # extent by construction. `metric` and `budget` sit on surfaces this commit
     # does not reach at all.
+    #
+    # #348 MOVED THE DENOMINATOR ONLY, BY TWO, WITH NO EXCLUSION MOVING
+    # (1,566 → 1,568 swept, 1,947 → 1,949 tracked, 50/126 unchanged). TWO new
+    # swept files — the module stating which tables carry a nullable amount and
+    # the status column beside it, and the test module proving the shared total
+    # answers for two different such pairs — and no migration, so the exclusion
+    # counts are untouched and the tracked total rises by exactly the swept
+    # total. #329's and #330's case, twice over.
+    #
+    # A PREFACTOR CANNOT MOVE THE NUMERATOR BY DOING ITS JOB, and this one did
+    # not. No behaviour changes, no column is added or renamed, and the two
+    # column names that move out of the shared seam — the posting's supplier
+    # cost and its costing status — are neither retired nor near a retired
+    # spelling. What the commit is about is MONEY, and a posting's measured
+    # quantity lives on its child record keyed by `measurement_key`. #275's
+    # RATE ARITHMETIC caution holds: nothing here goes near `compute(units)`.
+    #
+    # ⚠ THE HAZARD HERE IS THE ONE THE SWEEP CANNOT SEE, and it is the mirror
+    # of #330's. This commit's whole subject is the second pair arriving in
+    # slice 4 — a customer price and the status beside it — so its docstrings
+    # are written about pricing, and the English two-word form of
+    # `backend::pricing_model` (21 files) is a phrase such prose reaches for
+    # without ever meaning the column. A SPACE IS NOT AN IDENTIFIER CHARACTER,
+    # so the matcher never sees that form: the sweep would have stayed green
+    # while the retired term went back into the tree in English. #330 records a
+    # retired noun caught BY the sweep through its own live verb; this records
+    # the other direction, where reading is the only instrument. The avoidance
+    # is to write about a PAIR and a COLUMN rather than about a model — and to
+    # read the diff for spaces and hyphens AFTER running the sweep, not instead
+    # of it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

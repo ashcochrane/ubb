@@ -29,6 +29,7 @@ from django.db.models import Sum, Count
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate
 
+from core.amount_status_pairs import SUPPLIER_COST
 from core.cost_totals import (
     UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total, cost_total_annotations,
 )
@@ -52,8 +53,11 @@ SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 # contributed at all — the empty sum, with no second reading to be confused
 # with. Those totals stay single figures, and that is the difference rather than
 # an oversight: there is no completeness to report about a column that cannot be
-# unknown. Slice 4 owns that column, and the commit that makes it nullable is
-# the one that finds out what the two columns have in common.
+# unknown. Slice 4 owns that column. What the two columns have in common is
+# settled already — since #348 `core.cost_totals` takes the amount/status pair
+# as a parameter and names no table — so the commit that makes this one nullable
+# is the one that hands the seam a second pair, not the one that discovers what
+# a pair is.
 #
 # ⚠ AND ITS `or 0` SURVIVES ONLY WHERE THE AGGREGATE IS UNGROUPED. A GROUPED
 # `Sum` cannot answer `None` over a NOT NULL column: a group exists in the
@@ -170,7 +174,7 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
     ).aggregate(
         total_cost=Sum("billed_cost_micros"),
         event_count=Count("id"),
-        **cost_total_annotations(key="total_provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
     ), key="total_provider_cost_micros")
 
     return {
@@ -232,7 +236,7 @@ def get_revenue_analytics(
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
     totals = carry_cost_total(qs.aggregate(
-        **cost_total_annotations(key="total_provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
         total_billed_cost_micros=Sum("billed_cost_micros"),
     ), key="total_provider_cost_micros")
 
@@ -242,7 +246,7 @@ def get_revenue_analytics(
     daily = [
         carry_cost_total(entry, key="provider_cost_micros")
         for entry in qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
-            **cost_total_annotations(key="provider_cost_micros"),
+            **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
             billed_cost_micros=Sum("billed_cost_micros"),
             event_count=Count("id"),
         ).order_by("day")
@@ -370,7 +374,7 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
     ).aggregate(
-        **cost_total_annotations(key="provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
         billed=Sum("billed_cost_micros"), count=Count("id"),
     ), key="provider_cost_micros")
     return {
@@ -433,7 +437,7 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
         cols.append(group_by)
 
     rows = (qs.annotate(bucket=trunc("effective_at")).values(*cols).annotate(
-        **cost_total_annotations(key="provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
         billed_cost_micros=Sum("billed_cost_micros"),
         event_count=Count("id")).order_by("bucket"))
 
@@ -469,7 +473,7 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
     ).values("customer_id").annotate(
-        **cost_total_annotations(key="provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
         billed_cost_micros=Sum("billed_cost_micros"),
         event_count=Count("id"),
     ).order_by("-billed_cost_micros"))
@@ -515,7 +519,7 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     #: names directly, so the only thing left to do per row is name the value it
     #: groups and subtract — no second vocabulary of aliases in between.
     _AGGREGATE = {
-        **cost_total_annotations(key="provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
         "billed_cost_micros": Sum("billed_cost_micros"),
         "event_count": Count("id"),
     }

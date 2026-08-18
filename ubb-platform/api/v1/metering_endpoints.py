@@ -8,6 +8,7 @@ from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
+from core.amount_status_pairs import SUPPLIER_COST
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.cost_totals import (
     UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total, cost_total_annotations,
@@ -739,7 +740,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     totals = carry_cost_total(qs.aggregate(
         total_events=Count("id"),
         total_billed_cost_micros=Sum("billed_cost_micros"),
-        **cost_total_annotations(key="total_provider_cost_micros"),
+        **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
     ), key="total_provider_cost_micros")
     total_billed = totals["total_billed_cost_micros"] or 0
     total_provider = totals["total_provider_cost_micros"]
@@ -762,7 +763,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         return _paired(rows.values(column).annotate(
             event_count=Count("id"),
             total_cost_micros=Sum("billed_cost_micros"),
-            **cost_total_annotations(key="total_provider_cost_micros"),
+            **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
         ).order_by("-total_cost_micros"))
 
     by_provider = _rollup("provider", skip_blank=True)
@@ -785,7 +786,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             .annotate(
                 event_count=Count("id"),
                 total_cost_micros=Sum("billed_cost_micros"),
-                **cost_total_annotations(key="total_provider_cost_micros"),
+                **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
             )
             .order_by("-total_cost_micros")
         )
@@ -803,7 +804,7 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                 qs.values(col)
                 .annotate(
                     event_count=Count("id"),
-                    **cost_total_annotations(key="total_provider_cost_micros"),
+                    **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
                     total_billed_cost_micros=Sum("billed_cost_micros"),
                 )
                 .order_by("-total_billed_cost_micros")
