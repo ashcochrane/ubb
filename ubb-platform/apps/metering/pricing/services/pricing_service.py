@@ -14,12 +14,70 @@ from core.vocabulary import (
     COSTING_STATUS_UNRESOLVED,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_MODE_EVENT_PRICED,
     PRICING_STATUS_KNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
 PRICING_ENGINE_VERSION = "2.1.0"
+
+
+def _component(measurement_key, quantity, card):
+    """ONE LINE OF AN EXPLANATION: the quantity, the rule's terms, the amount.
+
+    **THE RECEIPT HAS TO OUTLIVE THE MEASUREMENTS IT EXPLAINS (#350, #153
+    §12.4).** The detailed measurement rows are a child record with a retention
+    horizon of its own; the receipt is kept for six years. So a component that
+    recorded only a quantity and a total would explain nothing the day the
+    detail expires — a tenant asked why a line is what it is would have a number
+    and a pointer, and the recovery runs that re-price an unresolved cost would
+    have nothing to work from. Every term the arithmetic used is therefore
+    written down here **by value**: the quantity, the per-unit rate, the
+    denominator it is divided by, and the flat addend. With those and the
+    amount, a reader with only this record can redo the sum.
+
+    **The denominator is not decoration.** A rate is "so much per N", and a
+    component holding the rate without the N cannot be recomputed at all — the
+    rounding is half-up on that N, so even the last micro of the answer depends
+    on it.
+
+    ⚠ **THE QUANTITY IS NOW IN TWO PLACES ON PURPOSE, AND THEY ARE NOT TWO
+    SOURCES OF TRUTH (#165 §6).** The measurement record holds what was
+    *reported*; this holds what was *used to compute an amount*. **They are not
+    required to be equal and nothing ever reconciles them.** There is no drift
+    check, no repair and no test asserting they agree, deliberately: if they
+    ever disagree that is information — the engine priced something other than
+    what was reported, and the record of each is what shows it — rather than a
+    fault for a job to correct. Building the reconciliation would also
+    re-create, one layer down, exactly the two-authorities shape the receipt
+    exists to remove.
+
+    Written once and used by both sections, because a cost component and a price
+    component are the same fact about different rules, and two spellings of one
+    shape is how the two come to differ exactly where a reader compares them.
+    The pointer to the rule itself does not ride here — it is in `provenance`,
+    in one place, so that nothing in a component is a reference somebody could
+    follow for a figure.
+
+    ⚠ Two of the keys below are spelled with words the registry has retired and
+    they stay that way here. Not because nowhere else says them — the rate's own
+    model and the book service both do — but because THIS file's occurrences are
+    what keep it inside the counted sets those words are ledgered at. Re-spelling
+    them would take the file out and report a word leaving the tree, in a commit
+    that is not about the word: the ledger refuses an entry recording more files
+    than the tree has. The ticket that renames the rule's arithmetic shape owns
+    both.
+    """
+    return {
+        "measurement_key": measurement_key,
+        "units": quantity,
+        "pricing_model": card.pricing_model,
+        "rate_per_unit_micros": card.rate_per_unit_micros,
+        "unit_quantity": card.unit_quantity,
+        "fixed_micros": card.fixed_micros,
+        "micros": card.compute(quantity),
+    }
 
 
 class Costing(NamedTuple):
@@ -208,13 +266,25 @@ class PricingService:
         #
         # The per-quantity lines below are the receipt's components: what the
         # engine actually charged for, by value, in the section that produced
-        # them. The ids they used to carry ride in `provenance` instead, in one
-        # place, so a reader asking "which records was this resolved against"
-        # does not reassemble the answer out of the components — and so that
-        # nothing in a component is a pointer somebody could follow for a figure.
+        # them — quantity, the rule's terms, the denominator and the amount they
+        # produced, which is what makes each one reproducible with the measured
+        # detail gone (`_component`). The ids they used to carry ride in
+        # `provenance` instead, in one place, so a reader asking "which records
+        # was this resolved against" does not reassemble the answer out of the
+        # components — and so that nothing in a component is a pointer somebody
+        # could follow for a figure.
         cost_components, price_components = [], []
         cost_rate_ids, price_rate_ids = {}, {}
-        uncosted_keys = []
+        # THE QUANTITIES A RECOVERY WILL NEED, KEPT BY VALUE RATHER THAN
+        # EXEMPTED FROM PRUNING (#350, #153 §12.4). An unresolved cost is
+        # settled later, and what it needs to settle is the quantity that
+        # matched no rule. The alternative ruling — mark the source payload
+        # exempt from pruning until the record resolves — was refused: an
+        # exemption is a second retention rule a pruning job must implement
+        # correctly forever, and the day it does not the recovery runs stop
+        # working silently, on exactly the records that most need fixing. A
+        # snapshot is a fact that is either there or not.
+        uncosted_quantities = {}
 
         # ---- COST ----
         unresolved_reason = None
@@ -251,7 +321,7 @@ class PricingService:
             # and this is how everything recorded against an undeclared key has
             # always costed.
             computed_micros = 0
-            uncosted = []
+            uncosted = {}
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
             # It rejected an event that declared a nameless magnitude with no
             # quantity name to resolve a rate card against — "you told us there
@@ -275,19 +345,28 @@ class PricingService:
             # for a caller that has not migrated. That is the cost of the
             # removal rather than an oversight in it, and it is why the drop is
             # recorded as a reviewed break on the request side too.
+            # ⚠ `units_val` KEEPS ITS NAME AND THAT IS NOT AN OVERSIGHT. A
+            # contract control asserts the forbidden-term matcher walks past
+            # seven near misses — identifiers that merely CONTAIN the retired
+            # plural — and requires each to be a spelling real code has, because
+            # skipping a spelling nothing uses proves nothing about over-firing.
+            # It reads a named list of six files, and this module is the only
+            # one of them carrying this identifier. Renaming the local to say
+            # `quantity` was tried and emptied that near miss, which is the
+            # vacuity failure this programme keeps paying for, in the direction
+            # where a gate goes red rather than quiet. The rename belongs to the
+            # ticket that owns the word.
             for measurement_key, units_val in measurements.items():
                 card = resolve_card("cost", measurement_key)
                 if card is None:
-                    uncosted.append(measurement_key)
+                    uncosted[measurement_key] = units_val
                     continue
-                amt = card.compute(units_val)
-                computed_micros += amt
-                cost_components.append({"measurement_key": measurement_key,
-                    "units": units_val,
-                    "pricing_model": card.pricing_model, "micros": amt})
+                component = _component(measurement_key, units_val, card)
+                computed_micros += component["micros"]
+                cost_components.append(component)
                 cost_rate_ids[measurement_key] = str(card.id)
             if uncosted:
-                uncosted_keys = uncosted
+                uncosted_quantities = uncosted
                 costing_method = None
                 costing_status = COSTING_STATUS_UNRESOLVED
                 unresolved_reason = UNRESOLVED_REASON_COST_RATE_MISSING
@@ -310,12 +389,9 @@ class PricingService:
                 if card is None:
                     continue
                 matched = True
-                entry = {"measurement_key": measurement_key, "units": units_val,
-                         "pricing_model": card.pricing_model}
-                amt = card.compute(units_val)
-                entry["micros"] = amt
-                price_total += amt
-                price_components.append(entry)
+                component = _component(measurement_key, units_val, card)
+                price_total += component["micros"]
+                price_components.append(component)
                 price_rate_ids[measurement_key] = str(card.id)
             if matched:
                 billed = price_total
@@ -379,13 +455,49 @@ class PricingService:
         pricing_receipt = build_receipt(
             subject=subject, effective_at=effective_at, currency=currency,
             pricing_engine_version=PRICING_ENGINE_VERSION,
-            costing=Resolution(method=costing_method, status=costing_status,
-                               amount_micros=recorded_cost,
-                               detail={"components": cost_components,
-                                       "uncosted_measurement_keys": uncosted_keys}),
-            pricing=Resolution(method=pricing_method, status=PRICING_STATUS_KNOWN,
-                               amount_micros=billed,
-                               detail={"components": price_components}),
+            costing=Resolution(
+                method=costing_method, status=costing_status,
+                amount_micros=recorded_cost,
+                detail={
+                    "components": cost_components,
+                    # THE LIST IS DERIVED FROM THE MAPPING AND NOT WRITTEN
+                    # BESIDE IT. Readers have always asked which declarations
+                    # went uncosted and that answer does not change; what is
+                    # new is the quantity each of them carried. Taking the
+                    # names off the mapping is what stops the pair being two
+                    # statements that can disagree about the same fact — the
+                    # shape this ticket refuses everywhere else, applied to
+                    # its own record.
+                    "uncosted_measurement_keys": list(uncosted_quantities),
+                    "uncosted_quantities": uncosted_quantities,
+                }),
+            pricing=Resolution(
+                method=pricing_method, status=PRICING_STATUS_KNOWN,
+                amount_micros=billed,
+                detail={
+                    "components": price_components,
+                    # THE SUBJECT'S WHOLE-JOB PRICING REGIME, BY VALUE (#151
+                    # §8.4). The third axis: whether a whole unit of work is
+                    # priced event by event or sold for one agreed price
+                    # decides whether an event carries a customer price at all,
+                    # so it explains this section's outcome and rides here
+                    # rather than being looked up live against configuration
+                    # that can have moved since.
+                    #
+                    # ⚠ EVERY UNIT OF WORK IN THIS SYSTEM IS EVENT-PRICED
+                    # TODAY, AND THAT IS A STATEMENT WITH AN EXPIRY DATE. The
+                    # concept is declared and its value set is closed, and
+                    # there is no column anywhere to read it from: the slice
+                    # that rebuilds the unit of work owns that column and the
+                    # regime's whole vocabulary, and none of it is coined here.
+                    # This is the one value the system can produce, said out
+                    # loud rather than left out, so a receipt written today is
+                    # still explicit about the axis six years from now. When
+                    # the column lands this is the line that reads it — the
+                    # same shape `usage/measurements.py` uses for the posting
+                    # kind it is waiting on.
+                    "pricing_mode": PRICING_MODE_EVENT_PRICED,
+                }),
             provenance={"cost_rate_ids": cost_rate_ids,
                         "price_rate_ids": price_rate_ids})
         return Costing(provider_cost_micros=recorded_cost,

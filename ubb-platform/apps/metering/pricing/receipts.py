@@ -84,14 +84,50 @@ where the content obligation (#153 §12.4 — the quantities, rates, denominator
 and components a receipt must outlive its measurements to keep) is written,
 without the record being reshaped a second time to receive it.
 
+**THE CONTENT OBLIGATION IS WRITTEN THERE NOW (#350).** The measured detail
+behind a posting is a child record with a retention horizon of its own; this
+record is kept for six years, so a receipt holding a total and a pointer would
+leave a tenant nothing to show a customer and a recovery run nothing to work
+from. Two obligations, and **only the first of them is enforced here**:
+
+- **A calculated amount's components each explain themselves** — the quantity,
+  the rule's terms and the denominator, by value. That is a claim about every
+  component that exists, so it is :data:`REQUIRED_COMPONENT_KEYS`, refused at
+  this boundary like everything else in this module.
+- **An unresolved cost carries the quantities a recovery will need.** Written by
+  the spine and **not refused here**, because this boundary cannot express the
+  rule correctly: `unresolved` has two causes and the record does not carry
+  which. A cost whose quantities matched no rule has quantities to keep; a cost
+  the supplier has simply not reported yet has none to keep and never will, and
+  a rule demanding them of both would refuse a legitimate receipt. A refusal
+  that is wrong for half its subject is worse than no refusal, because the
+  half it is wrong about is the half nobody tests.
+
+⚠ **THAT ARRIVED WITHOUT MOVING** :data:`RECEIPT_SCHEMA_VERSION`, **and the
+reason is what the version is for.** It answers *can today's code read this
+record* — and every key already in a receipt is still there, still meaning what
+it meant, so a reader written before that commit reads a receipt written after
+it exactly as it did before. The keys that arrived are inside the open
+containers, which no reader may assume a fixed set of. A version bumped for an
+additive detail key would say a record had become unreadable when it had not,
+and would fork the one reader below for no question it could answer differently.
+
+⚠ **THE QUANTITIES NOW EXIST IN TWO PLACES ON PURPOSE AND THEY ARE NOT TWO
+SOURCES OF TRUTH** (#165 §6). The measurement record holds what was *reported*;
+this holds what was *used to compute an amount*. They are not required to be
+equal, **nothing ever reconciles them**, and nothing here compares them — see
+the note at the snapshot site in `services/pricing_service.py` for why building
+that comparison would re-create the very shape this record exists to remove.
+
 ⚠ **`detail` IS THE SECTION'S DETAIL, NOT ONLY ITS METHOD'S.** It holds whatever
 explains that side's method, status and amount by value — which is usually
 method-specific and is not required to be. The case that forces the distinction
-is already known: the subject's whole-job pricing regime decides whether an
-event carries a customer price at all, so it explains the PRICING side's outcome
-and belongs in `pricing.detail`, even though it is a fact about the subject
-rather than about a method. Reading `detail` narrowly would leave that value no
-home but a ninth top-level key, and the top-level shape is the ratified one.
+is already known and is now built: the subject's whole-job pricing regime
+decides whether an event carries a customer price at all, so it explains the
+PRICING side's outcome and rides in `pricing.detail`, even though it is a fact
+about the subject rather than about a method. Reading `detail` narrowly would
+have left that value no home but a ninth top-level key, and the top-level shape
+is the ratified one.
 
 **WHY HERE AND NOT IN `core/`.** The engine that resolves an amount is the thing
 that can explain it, and `pricing_engine_version` is the engine's own — passed in
@@ -150,6 +186,46 @@ SECTION_KEYS = frozenset({"method", "status", "detail"})
 
 TOTALS_KEYS = frozenset({"provider_cost_micros", "billed_cost_micros"})
 
+#: WHAT A PER-QUANTITY COMPONENT MUST CARRY FOR THE RECORD TO OUTLIVE THE
+#: MEASUREMENTS IT EXPLAINS (#350, #153 §12.4).
+#:
+#: The measured detail is a child record with a retention horizon of its own and
+#: this record is kept for six years, so a component that named a quantity and a
+#: total would explain nothing the day that detail expires. Each one therefore
+#: carries the quantity, the rule's per-unit rate, **the denominator it is
+#: divided by** and the flat addend, all by value, beside the amount they
+#: produced — enough for a reader holding only this record to redo the sum, and
+#: enough for a recovery to re-price the line.
+#:
+#: **A MINIMUM AND NOT AN EXACT SET, WHICH IS THE OPPOSITE OF THE TWO ABOVE.**
+#: The top-level and section key sets are exact because a field arriving in the
+#: record's *shape* should be a decision rather than a drift. `detail` is the
+#: open part by design — it holds whatever explains a section's outcome, which
+#: is usually method-specific — so what is asked of a component is that it
+#: explains its amount, never that it explains nothing else.
+#:
+#: ⚠ **ONE TERM IS MISSING FROM THIS SET DELIBERATELY AND ITS ABSENCE IS NOT AN
+#: OVERSIGHT.** A component also records which arithmetic shape its rule had —
+#: whether the amount is per unit of quantity or a component applying once — and
+#: `_component` writes it, so the record is complete. It is not required HERE
+#: because its key is spelled with a word the registry retired and the ratchet
+#: caps how many files may carry that word: this module is not one of them, and
+#: naming it here would put the count over its ledger entry and fail the sweep.
+#: The ticket that renames the rule's arithmetic shape is the one that adds it
+#: to this set. Until then the shape is asserted where a reader can reach it
+#: through `Rate.STRUCTURE_COLUMN` rather than by spelling it.
+#:
+#: ⚠ And this set spells the retired PLURAL, which is a different thing: that
+#: word is a retired SENSE rather than sweep input, so it costs an entry in the
+#: sense's own evidence block rather than a ledger seat. It is written here
+#: because the quantity is the first thing the obligation names, and a minimum
+#: that left it out would admit a component nobody can recompute.
+REQUIRED_COMPONENT_KEYS = frozenset({
+    "measurement_key", "units",
+    "rate_per_unit_micros", "unit_quantity", "fixed_micros",
+    "micros",
+})
+
 
 class ReceiptShapeError(ValueError):
     """A record that does not explain an amount, refused before persistence."""
@@ -185,8 +261,9 @@ class Resolution:
     status: str
     #: The denominated outcome, `None` wherever the status is not settled.
     amount_micros: Optional[int]
-    #: Method-specific, by value. Open on purpose; the content obligation is
-    #: written in here.
+    #: What explains this side's outcome, by value. Open on purpose — the
+    #: content obligation lives in here, and its minimum for a priced quantity
+    #: is :data:`REQUIRED_COMPONENT_KEYS`.
     detail: dict[str, Any] = field(default_factory=dict)
 
 
@@ -360,6 +437,46 @@ def _validate_section(name, section, amount, rules):
             f"totals.{rules.amount_key} is {amount!r} and {name}.status is "
             f"{status!r}: an amount is present exactly when the status is "
             f"{rules.settled!r}")
+
+    # ASKED ONLY WHERE THE KEY IS THERE, AND NEVER COERCED. A section that
+    # priced no quantity has no components and that is not a fault; a section
+    # whose `components` is a record, a zero or a `False` is a fault, and
+    # `x or []` would have turned every one of those into "no components" on
+    # its way past the refusal below.
+    if "components" in section["detail"]:
+        _validate_components(name, section["detail"]["components"])
+
+
+def _validate_components(name, components):
+    """THE CONTENT OBLIGATION, REFUSED AT THE BOUNDARY RATHER THAN ASSERTED.
+
+    A component that does not carry its terms is a line nobody can explain once
+    the measurement detail behind it is gone — and the whole reason this
+    function is reached from the one construction site is that a record which
+    explains nothing must not be able to reach the column at all. Asked of both
+    sections from the rule above, so the day somebody repairs it they repair it
+    for the price side as well as the cost side.
+
+    A section with no components is not a fault: a cost the caller supplied, a
+    declaration that says there is no cost, and a price derived as a margin over
+    one all arrive at an amount without pricing a single quantity. What is
+    refused is a component that claims to explain one and does not.
+    """
+    if not isinstance(components, list):
+        raise ReceiptShapeError(
+            f"{name}.detail.components is a list of priced quantities, not "
+            f"{components!r}")
+    for component in components:
+        if not isinstance(component, dict):
+            raise ReceiptShapeError(
+                f"a {name} component is a record of values, not {component!r}")
+        missing = REQUIRED_COMPONENT_KEYS - set(component)
+        if missing:
+            raise ReceiptShapeError(
+                f"a {name} component is missing {sorted(missing)}: a component "
+                f"carries the quantity, the rule's terms and the denominator "
+                f"by value, because the measurement detail behind it expires "
+                f"and this record does not")
 
 
 def _validate_provenance(provenance):

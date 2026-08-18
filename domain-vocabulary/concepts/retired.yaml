@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,571 of 1,952 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,572 of 1,953 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    50 files, 126 occurrences
+    #     units    52 files, 128 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -677,6 +677,54 @@ measurement_key:
     # constant. The lesson is #328's shape one layer out: the file that trips a
     # ceiling is not the new module you were careful about, it is the old one
     # you edited two lines of.
+    #
+    # ⚠ #350 MOVED THE NUMERATOR UPWARD, WHICH THIS ENTRY HAS NEVER RECORDED
+    # BEFORE (1,571 → 1,572 swept, 1,952 → 1,953 tracked, 50/126 → 52/128). It
+    # has fallen twice — #272 paying the sense, and #284's widened exclusion,
+    # both recorded above — and until now it had never risen. That is the
+    # entry's FIRST case: somebody wrote the word. So it is read here before it
+    # is rewritten, which is what the rule above asks for.
+    #
+    # THE SENSE IS RATE ARITHMETIC, WHICH IS THE ONE #275 SAID TO WATCH, AND
+    # THE COMMIT IS SQUARELY INSIDE IT. #350 makes the Pricing Receipt outlive
+    # the measurements it explains: each per-quantity component now carries the
+    # quantity, the rule's per-unit rate, the denominator and the flat addend by
+    # value, so an amount can be recomputed six years later with the measurement
+    # detail pruned. The quantity's key in that component is the plural, and it
+    # is the plural because #349 ruled it stays — re-spelling it would report a
+    # word leaving the tree in a commit that is not about the word.
+    #
+    # THE THREE PLACES, AND THEY NET TO TWO FILES AND TWO OCCURRENCES:
+    #
+    #   receipts.py            +1 file, +1 — the record's own declaration of
+    #                          what a component must carry, which is the
+    #                          minimum that makes it reproducible
+    #   the new test module    +1 file, +2 — reading the quantity back out of a
+    #                          component to redo the arithmetic, which is the
+    #                          claim the ticket exists to make
+    #   pricing_service.py      0 files, -1 — the two component literals became
+    #                          one shared builder, so the spine spells it once
+    #                          instead of twice and stays in the counted set
+    #
+    # NO SENSE MIGRATED AND NOTHING RETIRED CAME BACK. All three additions are
+    # the rate-arithmetic sense the entry already lists as surviving; the
+    # posting's own dropped field is not among them, and the numerator would
+    # have had to move for this commit to be honest about what it wrote.
+    #
+    # ⚠ AND THE OBVIOUS TIDY-UP IS THE ONE THAT TURNED A CONTROL RED. The
+    # spine's loop variable `units_val` was renamed to `quantity` in the first
+    # draft — a strict improvement in isolation — and
+    # `test_the_control_the_near_misses_are_spellings_the_tree_really_has` went
+    # red. That control asserts the matcher walks past seven near misses, and it
+    # reads a NAMED LIST OF SIX FILES rather than the tree: of those six, the
+    # compute spine is the only one carrying `units_val`, so renaming it there
+    # emptied the near miss the control requires to be a spelling real code has.
+    # (The token also sits in a frozen 2026-07-03 plan document, which is
+    # excluded from the sweep and is not one of the six the control reads — so
+    # "still in the tree" would not have saved it.) The name is kept and the
+    # reason is now written where it sits. The generalisation is #349's, in the
+    # other direction: a retired word can be tripped by REMOVING it, and a near
+    # miss can be tripped by IMPROVING it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every
