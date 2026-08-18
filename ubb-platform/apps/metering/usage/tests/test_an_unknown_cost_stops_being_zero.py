@@ -426,25 +426,27 @@ class ThePostingDeclaresWhatMayHappenToItsCostTest(TestCase):
     def test_the_claimed_cost_is_declared_frozen(self):
         assert Posting.transition_classes[CLAIMED] == FROZEN
 
-    def test_the_defended_columns_are_exactly_the_two_pairs_and_the_claim(self):
+    def test_the_defended_columns_are_the_two_pairs_the_claim_and_the_receipt(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         A column added to this model's declarations moves this line, which is
-        the point: it was slice 3's three until #352, and slice 4's pair had to
-        arrive past a reader rather than alongside one. It did, and this is that
-        reader — the assertion is unchanged in kind, and the set it names is the
-        decision.
+        the point: it was slice 3's three until #352, five until #353, and each
+        arrival had to come past a reader rather than alongside one. They did,
+        and this is that reader — the assertion is unchanged in kind, and the
+        set it names is the decision.
 
         **Equality in both directions, deliberately.** A subset assertion would
-        admit a sixth column nobody chose a class for, and a superset one would
-        stay green if a declaration were dropped — which is the more likely
-        accident, because dropping a declaration is what a model rewritten
-        around a new published shape does. The name says two pairs and a claim
-        so that a reader can count them here before reading the list.
+        admit a seventh column nobody chose a class for, and a superset one
+        would stay green if a declaration were dropped — which is the more
+        likely accident, because dropping a declaration is what a model
+        rewritten around a new published shape does. The name says two pairs, a
+        claim and the receipt so that a reader can count them here before
+        reading the list.
         """
         declared = columns_declared_into_defended_classes([Posting])
         assert declared == [("Posting", PRICE, RESOLVE_ONCE),
                             ("Posting", CLAIMED, FROZEN),
                             ("Posting", STATUS, RESOLVE_ONCE),
+                            ("Posting", Posting.RECEIPT_COLUMN, RESOLVE_ONCE),
                             ("Posting", PRICING_STATUS, RESOLVE_ONCE),
                             ("Posting", COST, RESOLVE_ONCE)]

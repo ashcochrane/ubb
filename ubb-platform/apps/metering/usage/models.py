@@ -337,19 +337,53 @@ class Posting(BaseModel):
     #: price rule is another `BEFORE UPDATE ... FOR EACH ROW` trigger with its
     #: own `WHEN` clause over its own columns.
     #:
-    #: ⚠ AND A GREEN G19 DOES NOT PROVE EITHER PAIR HOLDS. Its declaration check
-    #: is a word-boundary search for the column name over this table's trigger
-    #: bodies, so it goes green the moment a rule NAMES a column — including in
-    #: a branch that refuses nothing. What proves holding is behavioural, once
-    #: per pair: `tests/test_a_cost_settles_once.py` and
-    #: `tests/test_a_price_resolves_once.py`, each a refusal per declared class
-    #: plus the one admitted move, through all three doors.
+    #: **AND THE RECEIPT SEALS WHEN ITS LAST UNRESOLVED FIELD COMPLETES
+    #: (#353).** `RECEIPT_COLUMN` below is `RESOLVE_ONCE` too, and this is the
+    #: declaration that needs its argument written down, because the class is
+    #: made about a `jsonb` record rather than about a scalar. The record's own
+    #: boundary already holds each of its two sections to *an amount is present
+    #: exactly when the status says it is settled, and the method with it* — so
+    #: the fields that are null exactly while a section is unresolved are that
+    #: section's method and its amount, and the class is that sentence one level
+    #: up: **a section RECORDED AS UNRESOLVED completes exactly once, as a
+    #: whole, and nothing else in the record may ever move.**
+    #:
+    #: ⚠ Unresolved, not merely unsettled. `waived` and `not_applicable` null
+    #: the same two fields, so the record's shape cannot tell a decision
+    #: somebody made from information UBB is missing;
+    #: `core.amount_status_pairs` names the one completable status per side and
+    #: the rule whitelists it, as both sibling rules whitelist theirs.
+    #:
+    #: ⚠ So the COLUMN may see more than one statement — one per unresolved
+    #: section — and every one of them is a resolution rather than a correction,
+    #: which is the distinction ADR-0007 §2 draws and the only one this class
+    #: makes. A receipt with nothing left unresolved is sealed whole; so is one
+    #: written in a shape that has no sections to complete, which is what
+    #: `receipts.py`'s *old receipts are read, never rewritten* means at the
+    #: table.
+    #:
+    #: Its rule is a THIRD trigger (`migrations/0040`), for the reason the price
+    #: pair's is a second: disjoint columns, a `WHEN` clause naming only its
+    #: own, and a drop that leaves both neighbours standing. The receipt is a
+    #: column on THIS table rather than a table of its own, so what makes the
+    #: rule provable in isolation is that its refusals name this column — not
+    #: that it lives anywhere else.
+    #:
+    #: ⚠ AND A GREEN G19 DOES NOT PROVE ANY OF THE THREE HOLDS. Its declaration
+    #: check is a word-boundary search for the column name over this table's
+    #: trigger bodies, so it goes green the moment a rule NAMES a column —
+    #: including in a branch that refuses nothing. What proves holding is
+    #: behavioural, once per rule: `tests/test_a_cost_settles_once.py`,
+    #: `tests/test_a_price_resolves_once.py` and
+    #: `tests/test_a_receipt_seals_once_it_is_complete.py`, each a refusal per
+    #: declared class plus the one admitted move, through all three doors.
     transition_classes = {
         "provider_cost_micros": RESOLVE_ONCE,
         "costing_status": RESOLVE_ONCE,
         "claimed_provider_cost_micros": FROZEN,
         "billed_cost_micros": RESOLVE_ONCE,
         "pricing_status": RESOLVE_ONCE,
+        RECEIPT_COLUMN: RESOLVE_ONCE,
     }
 
     class Meta:

@@ -150,7 +150,9 @@ exclusions:
     # mechanism — a reviewer sees the widening in the diff.
     # 218 → 219 in #352: one migration, installing the trigger that holds the
     # price pair's declared transitions.
-    files: 219
+    # 219 → 220 in #353: one migration, installing the trigger that seals a
+    # receipt when its last unresolved field completes.
+    files: 220
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

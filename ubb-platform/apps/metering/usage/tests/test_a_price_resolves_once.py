@@ -47,12 +47,14 @@ prohibited moves are also impossible under #351's combination `CHECK`. Every
 refusal below therefore asserts **the message Postgres answers with**: the
 trigger names the transition class it is holding, and a `CHECK` names its own
 constraint. That distinction has teeth here, because this table now carries
-**two** triggers and **six** `CHECK`s over two sibling pairs, and "something
-refused this" stopped being evidence the moment the second trigger landed.
+**three** triggers and **six** `CHECK`s over three declared subjects, and
+"something refused this" stopped being evidence the moment the second trigger
+landed.
 ⚠ Naming the transition CLASS is not enough on its own either: `resolve_once` is
-the class both pairs are declared into, so both triggers' messages carry that
-token. Every refusal below therefore also asserts the COLUMN the rule is about,
-which is what separates this rule from the one beside it.
+the class all three are declared into — the two pairs and, since #353, the
+receipt column — so every trigger's message carries that token. Every refusal
+below therefore also asserts the COLUMN the rule is about, which is what
+separates this rule from the two beside it.
 
 **A `BEFORE` trigger runs before the table's constraints are evaluated**, so on
 an `UPDATE` the trigger answers first and the combination `CHECK` is never
@@ -69,8 +71,8 @@ from django.test import TestCase
 
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
-    through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
+    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.transitions import (
@@ -94,7 +96,7 @@ REASON = "not_applicable_reason"
 TABLE = Posting._meta.db_table
 
 #: The rule this module is about, addressed BY NAME rather than by counting.
-#: The table carries two now, and `pg_trigger` promises no order at all, so an
+#: The table carries three now, and `pg_trigger` promises no order at all, so an
 #: assertion reading "the first row" would be reading whichever one Postgres
 #: happened to hand back.
 TRIGGER = "trg_posting_price_transitions"
@@ -391,24 +393,12 @@ class TheModelGuardIsNotTheEnforcementTest(TestCase):
 
 
 def _triggers_on_the_table():
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgname FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-        return {name for (name,) in cursor.fetchall()}
+    return rules_on_the_table()
 
 
 def _this_trigger():
-    """This rule's row, asked for BY NAME. Module-level, so that the mutation
-    class below can read the shipped body without standing a test case up."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgtype, p.prosrc FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
-        return cursor.fetchone()
+    """This rule's row, asked for BY NAME — never "the table's trigger"."""
+    return rule_on_the_table(TRIGGER)
 
 
 class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
@@ -428,17 +418,19 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
     same error class, its own columns.
     """
 
-    def test_the_table_carries_exactly_the_two_declared_rules(self):
+    def test_the_table_carries_exactly_the_three_declared_rules(self):
         """An exact set, and it is addressed by name in both directions.
 
         Slice 3 asserted "exactly one trigger" here, which was true and is not.
-        A count is what would have gone quietly wrong: a third rule arriving, or
-        this one being dropped while another was added, keeps any count that was
-        merely bumped. Naming both is what makes a future arrival a decision.
+        A count is what would have gone quietly wrong: a rule arriving, or this
+        one being dropped while another was added, keeps any count that was
+        merely bumped. Naming each is what made the third — the receipt's
+        sealing rule in #353 — an arrival somebody had to agree to.
         """
         self.assertEqual(
             _triggers_on_the_table(),
-            {"trg_posting_declared_transitions", TRIGGER})
+            {"trg_posting_declared_transitions", TRIGGER,
+             "trg_posting_receipt_sealing"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -469,8 +461,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
         runs DDL inside the transaction this `TestCase` rolls back, so all of it
         leaves with the test and no other test sees a table without its rule.
 
-        **The cost side's trigger is left standing throughout**, and the set is
-        asserted at both ends, so a reverse that took the neighbouring rule down
+        **The other two rules are left standing throughout**, and the set is
+        asserted at both ends, so a reverse that took a neighbouring rule down
         with it would fail here rather than somewhere unrelated.
         """
         migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
@@ -481,7 +473,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions"})
+                         {"trg_posting_declared_transitions",
+                          "trg_posting_receipt_sealing"})
         _through_the_queryset(resolved, **{PRICE: 999})
         resolved.refresh_from_db()
         self.assertEqual(getattr(resolved, PRICE), 999)
@@ -489,7 +482,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
         with connection.schema_editor() as editor:
             run_python.code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions", TRIGGER})
+                         {"trg_posting_declared_transitions", TRIGGER,
+                          "trg_posting_receipt_sealing"})
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(resolved, **{PRICE: 1_000})
