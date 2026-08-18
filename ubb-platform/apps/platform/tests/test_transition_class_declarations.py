@@ -52,8 +52,12 @@ def _declaring_models():
             if getattr(model, "transition_classes", None)]
 
 
-def _tables():
+def declaring_models_by_table():
     """Model name to table, for the models that declare something.
+
+    Public alongside the check it feeds, and for the same reason: the two are
+    one call, and handing a caller the check without the map it takes would
+    invite a hand-built dictionary that could name the wrong table.
 
     Reached through the app registry: `apps/platform/**` never imports a product
     (`docs/conventions/coding-standards.md`), and a kernel-side gate whose
@@ -91,12 +95,20 @@ def _rules_on(table):
         return "\n".join(part for row in cursor.fetchall() for part in row)
 
 
-def _columns_the_database_does_not_defend(triples, tables):
+def columns_the_database_does_not_defend(triples, tables):
     """The check itself — the real one and the control both come through here.
 
     A gate whose failing path has never been run is an assertion rather than
     evidence, so there is one implementation and the positive control feeds it
     synthetic declarers.
+
+    **It is public because a third caller needs it, and needs THIS one** (#352).
+    `apps/metering/usage/tests/test_a_price_resolves_once.py` proves the
+    sentence this check cannot: that a rule NAMING a declared column and a rule
+    HOLDING it are different states of the database, and that this search
+    reports a clean board over both. A re-implementation of the regex there
+    would prove only that two copies of one search agree with each other, so it
+    asserts through the search the gate actually runs.
     """
     undefended = []
     for model_name, column, transition_class in triples:
@@ -114,7 +126,8 @@ class TransitionClassDeclarationsTest(TestCase):
 
     def test_every_declared_column_is_defended_by_the_database(self):
         self.assertEqual(
-            _columns_the_database_does_not_defend(self._declared(), _tables()),
+            columns_the_database_does_not_defend(self._declared(),
+                                                 declaring_models_by_table()),
             [])
 
     def test_at_least_one_column_is_actually_defended(self):
@@ -134,7 +147,8 @@ class TransitionClassDeclarationsTest(TestCase):
         """
         declared = self._declared()
         self.assertGreaterEqual(len(declared), 1)
-        undefended = _columns_the_database_does_not_defend(declared, _tables())
+        undefended = columns_the_database_does_not_defend(
+            declared, declaring_models_by_table())
         self.assertGreaterEqual(len(declared) - len(undefended), 1)
 
     def test_the_check_reports_a_violation_when_there_is_one(self):
@@ -153,9 +167,9 @@ class TransitionClassDeclarationsTest(TestCase):
         class Clean:
             transition_classes = {"recorded_at": RECORD_RULE}
 
-        guarded_table = _tables()[self._declared()[0][0]]
+        guarded_table = declaring_models_by_table()[self._declared()[0][0]]
         self.assertEqual(
-            _columns_the_database_does_not_defend(
+            columns_the_database_does_not_defend(
                 columns_declared_into_defended_classes([Protected, Clean]),
                 {"Protected": guarded_table, "Clean": guarded_table}),
             [("Protected", "a_column_no_rule_mentions", RESOLVE_ONCE)])

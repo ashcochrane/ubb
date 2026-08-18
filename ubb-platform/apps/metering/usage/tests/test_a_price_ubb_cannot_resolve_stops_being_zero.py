@@ -37,21 +37,34 @@ a `BEFORE UPDATE` trigger, and a `BEFORE` trigger runs before the table's
 constraints are evaluated, so a raw `UPDATE` would fail with the trigger's
 message and this class would go on passing with the `CHECK` dropped.
 
-**No transition class is declared here, and that is #352's work rather than an
-omission.** Declaring a column into a database-defended class *before* the
-database defends it is exactly what
+⚠ **#352 MADE THAT TRUE OF THE PRICE COLUMNS TOO, AND ONE CASE HERE HAD TO
+MOVE.** The raw-SQL case below was an `UPDATE` — the cheapest statement that
+reaches the table with nothing of Django's in the way — and the price pair's own
+`BEFORE UPDATE` trigger now answers it first, with a transition-class message
+instead of the constraint's. It did not go quietly green: every refusal in this
+module names the mechanism it expects, which is exactly the discipline that made
+a second mechanism visible rather than silent. It is now an `INSERT`, with its
+column list DERIVED from the model rather than hand-written.
+
+**The transition classes are declared, and #352 declared them with the rule that
+keeps them.** Declaring a column into a database-defended class *before* the
+database defends it is what
 `apps/platform/tests/test_transition_class_declarations.py` exists to catch, and
-slice 3 hit that edge. The declaration and its trigger land together, in one
-commit, in the ticket after this one — and this module pins the absence so that
-doing it here would go red rather than quietly turning G19.
+slice 3 hit that edge — so #351 shipped these columns undeclared on purpose and
+pinned the absence, and #352 inverted that pin in the commit that installed the
+trigger. `ThePriceIsDeclaredIntoADefendedClassTest` below is that pin, turned
+over. What the rule permits and refuses is `test_a_price_resolves_once.py`.
 """
+from uuid import uuid4
+
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
-from core.transitions import columns_declared_into_defended_classes
+from core.transitions import (
+    RESOLVE_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     NOT_APPLICABLE_REASON_VALUES,
@@ -354,25 +367,91 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
         """The AC's own words: refused "through raw SQL", not only the model.
 
         Everything above is an ORM `INSERT`, which sends the statement without
-        `full_clean` and is what slice 3's equivalent class settled on — a
-        hand-written `INSERT` would otherwise have to name every NOT NULL column
-        and would then be testing that list rather than the constraint.
+        `full_clean` and is what slice 3's equivalent class settled on. This one
+        case pays the difference: a literal `INSERT`, with nothing Django knows
+        about between it and the table.
 
-        This one case pays the difference anyway, on the cheapest possible
-        statement: an `UPDATE` of the three columns on a row the ORM already
-        committed. Nothing Django knows about is between it and the table.
+        ⚠ **IT WAS AN `UPDATE` UNTIL #352, WHICH IS THE CHEAPER STATEMENT AND IS
+        NO LONGER EVIDENCE ABOUT THIS CONSTRAINT.** The price pair's transition
+        trigger is `BEFORE UPDATE`, and a `BEFORE` trigger runs ahead of the
+        table's constraints — so every illegal price combination written as an
+        `UPDATE` is now refused by the trigger, and this case would have been
+        asserting the wrong mechanism. It failed rather than passing quietly
+        only because it asserts the refusal's MESSAGE. The trigger does not fire
+        on `INSERT`, which is what makes the statement below the constraint's
+        alone.
+
+        **The column list is derived, not written out.** A hand-written list
+        would be the thing under test the first time a column is added to this
+        table — the objection the `UPDATE` form existed to avoid. Django's own
+        concrete fields supply the names, a legal committed row supplies every
+        value through `SELECT`, and the only literals in the statement are the
+        three columns this class is about. Copying inside the database also
+        keeps `JSONB` and array columns out of a Python round trip that would
+        need an adapter each.
         """
-        posting = _posting_for_a_new_customer(
+        legal = _posting_for_a_new_customer(
             idempotency_key="raw", **{PRICE: 5, STATUS: PRICING_STATUS_KNOWN})
+        columns = [field.column for field in Posting._meta.concrete_fields]
+        literals = {PRICE: "0", REASON: "NULL"}
+        parameters = {"id": str(uuid4()), "idempotency_key": "raw-sql",
+                      STATUS: PRICING_STATUS_WAIVED}
+
+        selected, values = [], []
+        for column in columns:
+            if column in literals:
+                selected.append(literals[column])
+            elif column in parameters:
+                selected.append("%s")
+                values.append(parameters[column])
+            else:
+                selected.append(column)
+        values.append(str(legal.pk))
+
         with self.assertRaises(IntegrityError) as refusal:
             with transaction.atomic():
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        f"UPDATE {Posting._meta.db_table} "
-                        f"SET {PRICE} = 0, {STATUS} = %s, {REASON} = NULL "
-                        f"WHERE id = %s",
-                        [PRICING_STATUS_WAIVED, str(posting.pk)])
+                        f"INSERT INTO {Posting._meta.db_table} "
+                        f"({', '.join(columns)}) "
+                        f"SELECT {', '.join(selected)} "
+                        f"FROM {Posting._meta.db_table} WHERE id = %s", values)
         assert self.COMBINATION in str(refusal.exception), str(refusal.exception)
+
+    def test_that_literal_statement_inserts_a_row_when_it_is_legal(self):
+        """The control on the statement above, and it is not decoration.
+
+        A derived column list that had gone wrong — a missing column, a name
+        that no longer exists, values landing in the wrong order — would raise
+        `IntegrityError` or `ProgrammingError` for a reason that has nothing to
+        do with the combination check, and the assertion above cannot tell the
+        two apart from the exception type alone. It asserts the constraint's
+        name, which narrows it; this runs the same statement with a LEGAL
+        combination and requires a row.
+        """
+        legal = _posting_for_a_new_customer(
+            idempotency_key="control", **{PRICE: 5,
+                                          STATUS: PRICING_STATUS_KNOWN})
+        columns = [field.column for field in Posting._meta.concrete_fields]
+        new_id = str(uuid4())
+        parameters = {"id": new_id, "idempotency_key": "control-sql"}
+
+        selected, values = [], []
+        for column in columns:
+            if column in parameters:
+                selected.append("%s")
+                values.append(parameters[column])
+            else:
+                selected.append(column)
+        values.append(str(legal.pk))
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {Posting._meta.db_table} "
+                f"({', '.join(columns)}) "
+                f"SELECT {', '.join(selected)} "
+                f"FROM {Posting._meta.db_table} WHERE id = %s", values)
+        assert Posting.objects.filter(pk=new_id).exists()
 
     def test_a_reason_outside_the_declared_set_is_refused(self):
         """Isolated on purpose: the rest of this row is legal.
@@ -420,30 +499,51 @@ class EveryIllegalCombinationIsRefusedByTheDatabaseTest(TestCase):
             assert f"'{value}'" in definition[0], value
 
 
-class ThePriceIsNotYetDeclaredIntoADefendedClassTest(TestCase):
-    """#352 declares and enforces in one commit; this pins that it has not yet.
+class ThePriceIsDeclaredIntoADefendedClassTest(TestCase):
+    """#352 declared and enforced in one commit; this is the other end of it.
 
-    The transition-class walk holds every declaration in the tree to being
-    defended at the database, so declaring this pair here — with no trigger on
-    the table naming either column — would turn G19 red on this commit for no
-    reason at all. The declaration is not "nearly done" work left out; it is the
-    next ticket's subject, and the two land together or not at all.
+    **This class asserted the opposite until #352, and it was INVERTED rather
+    than deleted.** #351 added these three columns and deliberately declared no
+    transition class, because the walk in `apps/platform/tests/` holds every
+    declaration in the tree to being defended at the database — so declaring the
+    pair with no rule on the table naming either column would have turned G19
+    red on this commit for a rule nobody had written. That pin said "not yet",
+    and it was scheduled to fail on the commit that made it false.
+
+    Deleting it then would have left nothing saying the two halves must land
+    together. What it says now is that they did: the pair is declared, and
+    `test_a_price_resolves_once.py` is what proves the database holds it.
+
+    ⚠ **And this class is not that proof.** A declaration is a promise; G19's
+    walk asks only whether a rule NAMES the column. Neither is behaviour, and a
+    reader who stops here has read the half that a rule refusing nothing would
+    also satisfy.
     """
 
-    def test_neither_new_column_is_declared(self):
-        assert STATUS not in Posting.transition_classes
+    def test_the_price_and_its_status_are_declared_resolve_once(self):
+        """As a pair, because the amount and the status resolve together."""
+        assert Posting.transition_classes[PRICE] == RESOLVE_ONCE
+        assert Posting.transition_classes[STATUS] == RESOLVE_ONCE
+
+    def test_the_reason_declares_no_class_of_its_own(self):
+        """It has no lifecycle apart from the status it qualifies.
+
+        A class here would be a second, weaker statement of the pair's rule.
+        What keeps it is the same trigger, which refuses to see it move on any
+        statement at all — `not_applicable` is terminal, so unlike the cost
+        side's reason it is never cleared either.
+        """
         assert REASON not in Posting.transition_classes
 
-    def test_the_defended_set_is_still_slice_threes_three(self):
+    def test_the_defended_set_is_slice_threes_three_and_this_pair(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         The same assertion `test_an_unknown_cost_stops_being_zero.py` makes, and
         deliberately duplicated rather than shared: that module pins the set
-        slice 3 established, this one pins that slice 4's biggest schema commit
-        did not quietly join it. A single shared assertion could be satisfied by
-        either file being deleted.
+        from the supplier side, this one from the price side. A single shared
+        assertion could be satisfied by either file being deleted.
         """
         declared = columns_declared_into_defended_classes([Posting])
         assert [column for _, column, _ in declared] == [
-            "claimed_provider_cost_micros", "costing_status",
-            "provider_cost_micros"]
+            PRICE, "claimed_provider_cost_micros", "costing_status",
+            STATUS, "provider_cost_micros"]

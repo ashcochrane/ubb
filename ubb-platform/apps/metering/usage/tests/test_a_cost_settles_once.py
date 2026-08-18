@@ -73,6 +73,11 @@ CLAIMED = "claimed_provider_cost_micros"
 
 TABLE = Posting._meta.db_table
 
+#: This rule, addressed BY NAME. The table carries a second one since #352 —
+#: the price pair's, over disjoint columns — and `pg_trigger` promises no order,
+#: so every question below asks for this one rather than for "the trigger".
+TRIGGER = "trg_posting_declared_transitions"
+
 
 def _posting(**columns):
     """A committed posting, each with a tenant and customer of its own."""
@@ -381,20 +386,48 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
     A migration that ran is not evidence that a rule is installed — it is
     evidence that a file executed. What matters is what `pg_trigger` holds now,
     on the table the model actually uses.
+
+    **⚠ THIS CLASS ASKED FOR "THE TRIGGER" UNTIL #352, AND THERE ARE TWO.** It
+    counted the table's rules and then indexed the first row returned, which was
+    correct exactly while one existed: `pg_trigger` promises no order, so the
+    day slice 4 installed the price pair's rule beside this one, "the first row"
+    became whichever one Postgres happened to hand back. Both questions are now
+    asked **by name**, and the count is an exact set — so a third rule arriving,
+    or this one being dropped while another was added, is a decision somebody
+    makes here rather than a number that still looks right.
     """
 
     def _trigger_row(self):
+        """This rule's row, by name. Never "the table's trigger"."""
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT t.tgname, t.tgtype, p.prosrc "
                 "FROM pg_trigger t "
                 "JOIN pg_class c ON c.oid = t.tgrelid "
                 "JOIN pg_proc p ON p.oid = t.tgfoid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
+                "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
             return cursor.fetchall()
 
-    def test_exactly_one_trigger_guards_the_posting_table(self):
-        self.assertEqual(len(self._trigger_row()), 1)
+    def _triggers_on_the_table(self):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT t.tgname FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid = t.tgrelid "
+                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
+            return {name for (name,) in cursor.fetchall()}
+
+    def test_the_posting_table_carries_exactly_the_two_declared_rules(self):
+        """One rule per declared pair, and the set says which.
+
+        The price pair's rule is a SECOND trigger rather than a second branch
+        inside this one, and it is deliberately the same mechanism: the two
+        govern disjoint columns, each `WHEN` clause names only its own, and
+        dropping either leaves the other standing. What would have been wrong is
+        a second *kind* of mechanism — a `CHECK` or a `RULE` holding one pair
+        while a trigger holds the other.
+        """
+        self.assertEqual(self._triggers_on_the_table(),
+                         {TRIGGER, "trg_posting_price_transitions"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -428,6 +461,10 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         `apps` is passed as `None` deliberately: neither half consults the
         historical model state, because a trigger is not model state — which is
         the same fact that keeps `makemigrations --check` quiet about it.
+
+        **The price pair's rule is asserted still standing while this one is
+        out**, because a reverse that dropped its neighbour too would otherwise
+        show up as an unrelated failure in another module.
         """
         migration = MigrationLoader(connection).get_migration(
             "usage", "0037_a_cost_settles_once_and_the_table_holds_it")
@@ -438,6 +475,8 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
         self.assertEqual(self._trigger_row(), [])
+        self.assertIn("trg_posting_price_transitions",
+                      self._triggers_on_the_table())
         _through_the_queryset(settled, **{COST: 999})
         settled.refresh_from_db()
         self.assertEqual(getattr(settled, COST), 999)

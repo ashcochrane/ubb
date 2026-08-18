@@ -148,7 +148,9 @@ exclusions:
     # nullable and give three accumulators the count of what they could not
     # price. The number moves with the tree, and moving it is the whole
     # mechanism — a reviewer sees the widening in the diff.
-    files: 218
+    # 218 → 219 in #352: one migration, installing the trigger that holds the
+    # price pair's declared transitions.
+    files: 219
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -313,18 +313,43 @@ class Posting(BaseModel):
     #: `QuerySet.update()` and raw SQL alike, and
     #: `apps/platform/tests/test_transition_class_declarations.py` is what says
     #: no column may be declared here without that being true of it.
-    #: ⚠ THE PRICE PAIR IS DELIBERATELY ABSENT, AND #352 IS WHERE IT ARRIVES.
-    #: `billed_cost_micros`, `pricing_status` and `not_applicable_reason` land
-    #: nullable in #351 with no rule on the table naming them, and every class
-    #: nameable here is one the database is required to defend. Declaring them
-    #: now would turn G19 red on the commit that adds the columns, for a rule
-    #: nobody has written yet — which is the "declared ahead of its enforcement"
-    #: edge slice 3 hit and `test_transition_class_declarations.py` exists to
-    #: catch. #352 declares them and installs their trigger in ONE commit.
+    #:
+    #: **THE PRICE PAIR IS THE SAME DECLARATION ON THE OTHER SIDE OF THE MARGIN
+    #: (#352).** `billed_cost_micros` and `pricing_status` are `RESOLVE_ONCE` as
+    #: a pair, and the one permitted move is `unknown` → `known`: a price UBB
+    #: could not resolve, completed once, amount and status in one statement.
+    #: The other three statuses are terminal by construction — `waived` is a
+    #: decision somebody made and is never a resolution candidate, and
+    #: `not_applicable` says no customer revenue arises at this level at all.
+    #:
+    #: `not_applicable_reason` carries no class of its own, for the reason
+    #: `unresolved_reason` does not: it has no lifecycle apart from the status
+    #: it qualifies. What keeps it is the same trigger, which refuses to see it
+    #: move on any statement at all — the status it belongs to is terminal on
+    #: both sides, so unlike the cost side's reason it is never cleared either.
+    #:
+    #: **The price pair's enforcement is a SECOND rule, in a second trigger
+    #: (`migrations/0039`), and that is the same mechanism rather than a
+    #: different one.** A `CHECK` carries this pair's legal combinations — see
+    #: `Meta` below — and cannot carry a transition, because it never sees the
+    #: row that was there a moment ago. Two *different* mechanisms holding
+    #: sibling pairs on one table is how the two rules come to disagree, so the
+    #: price rule is another `BEFORE UPDATE ... FOR EACH ROW` trigger with its
+    #: own `WHEN` clause over its own columns.
+    #:
+    #: ⚠ AND A GREEN G19 DOES NOT PROVE EITHER PAIR HOLDS. Its declaration check
+    #: is a word-boundary search for the column name over this table's trigger
+    #: bodies, so it goes green the moment a rule NAMES a column — including in
+    #: a branch that refuses nothing. What proves holding is behavioural, once
+    #: per pair: `tests/test_a_cost_settles_once.py` and
+    #: `tests/test_a_price_resolves_once.py`, each a refusal per declared class
+    #: plus the one admitted move, through all three doors.
     transition_classes = {
         "provider_cost_micros": RESOLVE_ONCE,
         "costing_status": RESOLVE_ONCE,
         "claimed_provider_cost_micros": FROZEN,
+        "billed_cost_micros": RESOLVE_ONCE,
+        "pricing_status": RESOLVE_ONCE,
     }
 
     class Meta:
