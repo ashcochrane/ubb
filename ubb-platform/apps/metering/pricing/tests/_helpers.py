@@ -1,5 +1,10 @@
+from uuid import uuid4
+
 from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.receipts import ReceiptSubject
+from apps.metering.usage.models import Posting
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from core.vocabulary import PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT
 
 #: WHICH QUANTITY A RATE PRICES WHEN THE FIXTURE NEVER SAID (#326).
 #:
@@ -83,3 +88,42 @@ def cost_rate_in_default_book(tenant, **fields):
     ones, so the word stays here and callers say what they mean.
     """
     return rate_in_default_book(tenant, card_type="cost", **fields)
+
+
+def a_usage_event_subject(subject_id=None):
+    """A receipt subject for a test whose question is resolution, not identity.
+
+    `PricingService.price` requires its subject and gives it no default (#349):
+    a receipt explains one named thing, and a default would hand one subject's
+    answer to every caller who left the argument out. The tests that resolve a
+    price are almost all about WHAT was resolved rather than about which row it
+    was resolved for, so they say that here once instead of each inventing an
+    id. A test that IS about the identity passes its own.
+    """
+    return ReceiptSubject(
+        subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+        subject_id=str(subject_id or uuid4()))
+
+
+def receipt_without_its_per_event_facts(body):
+    """A recording result whose receipt can be compared with another's (#349).
+
+    Two parity tests ask whether two recordings produced the SAME body — the
+    batch endpoint against the single one, and a recording with a declared
+    grouping against one without. The Pricing Receipt names the row it explains
+    and the instant it resolved as of, and both are per-event by construction,
+    exactly as the event id beside them always was. Masking them is the only way
+    those questions stay askable.
+
+    **Everything else in the record is left alone deliberately**, because it is
+    where the parity actually bites: both methods, both statuses, the components
+    and the totals must still match byte for byte.
+
+    Lives here rather than in either caller because it was written twice before
+    it was written once, and the second copy is what put the receipt column's
+    retired spelling over its ceiling — a helper is also the answer to that,
+    since it addresses the column through the model's own constant in one place.
+    """
+    return {**body, Posting.RECEIPT_COLUMN: {
+        **body[Posting.RECEIPT_COLUMN],
+        "subject_id": "SUBJECT", "effective_at": "AS_OF"}}

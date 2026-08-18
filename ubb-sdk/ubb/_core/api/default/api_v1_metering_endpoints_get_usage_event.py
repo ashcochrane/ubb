@@ -71,16 +71,18 @@ def sync_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[ProblemOut | UsageEventDetailOut]:
-    r""" Get Usage Event
+    """ Get Usage Event
 
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
-    Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, the card that priced each
-    named quantity, and tier-by-tier breakdown). The usage list omits
-    provenance to stay lean;
-    this is where it is read back. Tenant-scoped; 404 for an unknown or
-    foreign event id.
+    Returns every priced field plus the Pricing Receipt — the authoritative
+    record of the economic resolution behind those amounts, not a guarantee
+    that customer revenue exists. It carries its own shape version and the
+    version of the engine that computed it, the subject it explains, a costing
+    and a pricing section holding their method, status and detail by value, the
+    totals, and cross-reference ids nothing reads to reconstruct an amount. The
+    usage list omits the receipt to stay lean; this is where it is read back.
+    Tenant-scoped; 404 for an unknown or foreign event id.
 
     Args:
         event_id (UUID):
@@ -111,16 +113,18 @@ def sync(
     client: AuthenticatedClient,
 
 ) -> ProblemOut | UsageEventDetailOut | None:
-    r""" Get Usage Event
+    """ Get Usage Event
 
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
-    Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, the card that priced each
-    named quantity, and tier-by-tier breakdown). The usage list omits
-    provenance to stay lean;
-    this is where it is read back. Tenant-scoped; 404 for an unknown or
-    foreign event id.
+    Returns every priced field plus the Pricing Receipt — the authoritative
+    record of the economic resolution behind those amounts, not a guarantee
+    that customer revenue exists. It carries its own shape version and the
+    version of the engine that computed it, the subject it explains, a costing
+    and a pricing section holding their method, status and detail by value, the
+    totals, and cross-reference ids nothing reads to reconstruct an amount. The
+    usage list omits the receipt to stay lean; this is where it is read back.
+    Tenant-scoped; 404 for an unknown or foreign event id.
 
     Args:
         event_id (UUID):
@@ -146,16 +150,18 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[ProblemOut | UsageEventDetailOut]:
-    r""" Get Usage Event
+    """ Get Usage Event
 
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
-    Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, the card that priced each
-    named quantity, and tier-by-tier breakdown). The usage list omits
-    provenance to stay lean;
-    this is where it is read back. Tenant-scoped; 404 for an unknown or
-    foreign event id.
+    Returns every priced field plus the Pricing Receipt — the authoritative
+    record of the economic resolution behind those amounts, not a guarantee
+    that customer revenue exists. It carries its own shape version and the
+    version of the engine that computed it, the subject it explains, a costing
+    and a pricing section holding their method, status and detail by value, the
+    totals, and cross-reference ids nothing reads to reconstruct an amount. The
+    usage list omits the receipt to stay lean; this is where it is read back.
+    Tenant-scoped; 404 for an unknown or foreign event id.
 
     Args:
         event_id (UUID):
@@ -186,16 +192,18 @@ async def asyncio(
     client: AuthenticatedClient,
 
 ) -> ProblemOut | UsageEventDetailOut | None:
-    r""" Get Usage Event
+    """ Get Usage Event
 
      Fetch one usage event's full pricing receipt (audit / dispute lookup).
 
-    Returns every priced field plus pricing_provenance — the recorded
-    \"why this amount\" (engine version, price source, the card that priced each
-    named quantity, and tier-by-tier breakdown). The usage list omits
-    provenance to stay lean;
-    this is where it is read back. Tenant-scoped; 404 for an unknown or
-    foreign event id.
+    Returns every priced field plus the Pricing Receipt — the authoritative
+    record of the economic resolution behind those amounts, not a guarantee
+    that customer revenue exists. It carries its own shape version and the
+    version of the engine that computed it, the subject it explains, a costing
+    and a pricing section holding their method, status and detail by value, the
+    totals, and cross-reference ids nothing reads to reconstruct an amount. The
+    usage list omits the receipt to stay lean; this is where it is read back.
+    Tenant-scoped; 404 for an unknown or foreign event id.
 
     Args:
         event_id (UUID):

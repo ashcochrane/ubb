@@ -634,11 +634,19 @@ entries:
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 23 files
+    found: 19 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
       and slice 4 is where it stops existing.
+
+      23 -> 19 in #349, and NOT as a rename: the receipt used to name the
+      source of an amount as `rate_card` and now names the METHOD that derived
+      it, from the registry's own two values, so four test modules that
+      asserted on that source stopped spelling the word. The debt is partly
+      paid rather than moved, and the gate refuses an entry that may overstate
+      because an excuse with no upper bound is not a migration plan. The
+      container itself is untouched and the rename is still #366's.
 
   - id: g7-backend-rate_card.assigned
     gate: G7
@@ -1765,11 +1773,17 @@ entries:
     gate: G7
     site: sdk::pricing_provenance
     expected: pricing_receipt_subject_type
-    found: 4 files
+    found: 3 files
     owner_slice: slice_4
     reason: >-
       What a price receipt is about. Slice 4 introduces Pricing Receipts
       with `receipt_schema_version` and the subject type takes its name.
+
+      4 -> 3 in #349, and not by anybody editing the SDK: the fourth file is
+      GENERATED from the detail route's docstring, which stopped describing the
+      record by its retired column name and started describing what the record
+      IS. The word survives in the three generated model modules, which take it
+      from the property name — and that is #370's, with the wire key.
 
   - id: g7-sdk-rate_card
     gate: G7

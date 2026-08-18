@@ -63,7 +63,7 @@ from apps.metering.pricing.models import Rate, RateCard
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    cost_rate_in_default_book, rate_in_default_book)
+    a_usage_event_subject, cost_rate_in_default_book, rate_in_default_book)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -291,6 +291,7 @@ class APastRateResolvesOnlyAfterItsMomentTest(TestCase):
 
     def _cost_at(self, as_of):
         return PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=self.tenant, customer=self.customer, selectors={},
             measurements={"tok": 100}, currency="usd",
             caller_provider_cost=None, caller_billed=None,
@@ -766,6 +767,7 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
         self.assertEqual(getattr(replacement, VALID_FROM), boundary)
 
         cost = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=tenant, customer=customer, selectors={},
             measurements={"tok": 100}, currency="usd",
             caller_provider_cost=None, caller_billed=None,

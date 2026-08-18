@@ -9,6 +9,8 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
+from apps.metering.pricing.tests._helpers import (
+    receipt_without_its_per_event_facts)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
@@ -290,6 +292,11 @@ class TestBatchOneRuleParity:
                      "subtask_id": "SUB" if ctx.get("subtask_id") else None,
                      "tripped_at": "T" if ctx.get("tripped_at") else None}
                     for ctx in d["stop_context"]]
+            if d.get(Posting.RECEIPT_COLUMN):
+                # Same volatile-field masking again, for the Pricing Receipt's
+                # own two per-event facts (#349). The helper says which two and
+                # why, once, for both parity tests that need it.
+                d = receipt_without_its_per_event_facts(d)
             return d
 
         for batch_item, single_body in zip(batch["results"], single_bodies):

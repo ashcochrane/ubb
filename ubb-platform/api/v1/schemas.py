@@ -11,6 +11,28 @@ from apps.platform.grouping_fields.models import SLOT_CHOICES, SLOT_MAX_LENGTH
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 
+#: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
+#:
+#: The qualification travels with the name wherever the name appears. Without
+#: it a metering-only tenant reads "pricing receipt" as "UBB charged my
+#: customer" — and files a support ticket about a charge nobody made.
+#:
+#: One constant on both schemas that publish the record, because two hand-typed
+#: copies of a sentence whose whole job is to be the same sentence is two
+#: sentences waiting to disagree.
+RECEIPT_DESCRIPTION = (
+    "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION "
+    "behind this event's amounts — what UBB resolved, how, and as of when. It "
+    "is not a guarantee that customer revenue exists and it is not evidence a "
+    "customer was charged: a metering-only tenant has a receipt for every "
+    "event it records. The record carries its own shape version "
+    "(receipt_schema_version) and the version of the engine that computed it "
+    "(pricing_engine_version), the subject it explains, a costing and a "
+    "pricing section holding their method, status and detail BY VALUE, the "
+    "totals, and a provenance section of cross-reference ids that nothing "
+    "reads to reconstruct an amount."
+)
+
 # Envelope + serializer conventions (#115): every list endpoint answers a
 # concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
 # name (ninja silently overwrites duplicate schema names in the one document,
@@ -330,7 +352,8 @@ class RecordUsageResponse(Schema):
     stop_context: Optional[list] = None
     # The quantities as recorded — see `RecordUsageRequest.measurements` (#274).
     measurements: Optional[dict] = None
-    pricing_provenance: Optional[dict] = None
+    pricing_provenance: Optional[dict] = Field(
+        None, description=RECEIPT_DESCRIPTION)
     # WHICH declared quantities went uncosted — the status above says THAT the
     # cost is unresolved, and this says which declaration to fix. Both, because
     # neither answers the other's question (#320).
@@ -434,9 +457,9 @@ MeasurementsStatus = Annotated[
 
 class UsageEventDetailOut(Schema):
     # Full pricing receipt for one event — the audit lookup. pricing_provenance
-    # is the recorded "why this amount" (engine version, price source, the card
-    # id that priced each named quantity, tier-by-tier breakdown) omitted from
-    # the lean list view.
+    # is the recorded "why this amount", omitted from the lean list view: the
+    # two versions, the typed subject, the costing and pricing sections by
+    # value, the totals and the cross-reference ids (#349).
     id: UUID
     request_id: str
     idempotency_key: str
@@ -509,7 +532,7 @@ class UsageEventDetailOut(Schema):
     # empty bag shows an end customer "no usage" for detail that was removed on
     # schedule. Required rather than optional: every posting has an answer.
     measurements_status: MeasurementsStatus
-    pricing_provenance: dict = {}
+    pricing_provenance: dict = Field({}, description=RECEIPT_DESCRIPTION)
     # The one open bag (#273) — see `RecordUsageRequest.metadata`.
     metadata: dict = {}
     task_id: Optional[str] = None

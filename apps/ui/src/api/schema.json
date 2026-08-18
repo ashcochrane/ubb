@@ -4915,6 +4915,7 @@
                 "type": "null"
               }
             ],
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
             "title": "Pricing Provenance"
           },
           "provider_cost_micros": {
@@ -6996,6 +6997,7 @@
           "pricing_provenance": {
             "additionalProperties": true,
             "default": {},
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
             "title": "Pricing Provenance",
             "type": "object"
           },
@@ -12578,7 +12580,7 @@
     },
     "/api/v1/metering/usage/{event_id}": {
       "get": {
-        "description": "Fetch one usage event's full pricing receipt (audit / dispute lookup).\n\nReturns every priced field plus pricing_provenance \u2014 the recorded\n\"why this amount\" (engine version, price source, the card that priced each\nnamed quantity, and tier-by-tier breakdown). The usage list omits\nprovenance to stay lean;\nthis is where it is read back. Tenant-scoped; 404 for an unknown or\nforeign event id.",
+        "description": "Fetch one usage event's full pricing receipt (audit / dispute lookup).\n\nReturns every priced field plus the Pricing Receipt \u2014 the authoritative\nrecord of the economic resolution behind those amounts, not a guarantee\nthat customer revenue exists. It carries its own shape version and the\nversion of the engine that computed it, the subject it explains, a costing\nand a pricing section holding their method, status and detail by value, the\ntotals, and cross-reference ids nothing reads to reconstruct an amount. The\nusage list omits the receipt to stay lean; this is where it is read back.\nTenant-scoped; 404 for an unknown or foreign event id.",
         "operationId": "api_v1_metering_endpoints_get_usage_event",
         "parameters": [
           {

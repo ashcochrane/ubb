@@ -59,6 +59,7 @@ from api.v1.openapi_export import GIT_ROOT
 from api.v1.schemas import RateIn
 from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
+from apps.metering.pricing.tests._helpers import a_usage_event_subject
 from apps.platform.event_types.models import Measurement
 from apps.platform.event_types.quantities import declaration_named
 from apps.platform.event_types.tests._helpers import declares_a_quantity
@@ -325,20 +326,26 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             measurement=declares_a_quantity(tenant, "input_tokens"))
 
         receipt = PricingService._compute(
+            subject=a_usage_event_subject(), currency="usd",
+            effective_at="2026-01-01T00:00:00+00:00",
             measurements={"input_tokens": 3},
             caller_provider_cost=None, caller_billed=None,
             resolve_declaration=lambda: None,
             resolve_card=lambda kind, key: rate,
             apply_markup=lambda provider_cost: provider_cost).pricing_receipt
 
-        # Every priced line, not one picked out by the cost/price discriminator:
-        # that discriminator is a retired word slice 4 owns, and naming it here
-        # would push its recorded extent up by this file. Asserting over the
-        # whole list is also the stronger claim — a line that kept the old key
-        # would leave a `None` in this set rather than being filtered away.
-        self.assertTrue(receipt["metrics"])
-        self.assertEqual({entry.get(CANONICAL_COLUMN)
-                          for entry in receipt["metrics"]},
+        # BOTH SECTIONS' COMPONENTS, not one of them. The two used to be one
+        # list told apart by a retired discriminator, and #349 made the sections
+        # themselves the answer — so the reason this reads every component is no
+        # longer that naming the discriminator would spread a retired word. It
+        # is the stronger claim, which is why it survived the reshape: a
+        # component that kept the old key would leave a `None` in this set
+        # rather than being filtered away, and asserting over both sections
+        # catches a rename applied to only one of them.
+        components = (receipt["costing"]["detail"]["components"]
+                      + receipt["pricing"]["detail"]["components"])
+        self.assertTrue(components)
+        self.assertEqual({entry.get(CANONICAL_COLUMN) for entry in components},
                          {"input_tokens"})
 
 

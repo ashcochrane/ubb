@@ -7,6 +7,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import rate_in_default_book
+from core.vocabulary import COSTING_METHOD_CALCULATED
 
 
 class RecordUsageProvenanceTest(TestCase):
@@ -53,5 +54,6 @@ class RecordUsageProvenanceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["provider_cost_micros"], 5)
-        self.assertEqual(body["pricing_provenance"]["cost_source"], "rate_card")
+        self.assertEqual(body["pricing_provenance"]["costing"]["method"],
+                         COSTING_METHOD_CALCULATED)
         self.assertEqual(body["measurements"], {"input_tokens": 1000})

@@ -22,6 +22,8 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import SLOT_CHOICES, GroupingField
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
+from apps.metering.pricing.tests._helpers import a_usage_event_subject
+from core.vocabulary import COSTING_METHOD_CALCULATED
 
 SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
@@ -208,6 +210,7 @@ class TestGroupingFieldInvariants:
                      "provider": "openai", "task_type": "invoice_batch",
                      "grouping_field_1": "eu-west-1"}
         costing = PricingService.price(
+            subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors=selectors,
             measurements={"input_tokens": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
@@ -215,4 +218,5 @@ class TestGroupingFieldInvariants:
         # The openai book's broad, specificity-1 rate wins over the ""
         # book's narrow, specificity-2 override — book tier beats specificity.
         assert costing.provider_cost_micros == 9_000
-        assert costing.pricing_receipt["cost_source"] == "rate_card"
+        assert (costing.pricing_receipt["costing"]["method"]
+                == COSTING_METHOD_CALCULATED)
