@@ -60,6 +60,10 @@ logger = logging.getLogger("ubb.billing")
 WOULD_OVERDRAW = "would_overdraw"
 INSUFFICIENT_WITHDRAWABLE = "insufficient_withdrawable"
 USAGE_EVENT_NOT_FOUND = "usage_event_not_found"
+#: The posting exists and has no resolved customer price (#351). Distinct from
+#: the code above on purpose: "we have no record of this" and "we have a record
+#: and no amount" send a tenant to different places.
+USAGE_EVENT_PRICE_UNRESOLVED = "usage_event_price_unresolved"
 IDEMPOTENCY_CONFLICT = "idempotency_conflict"
 GRANT_NOT_FOUND = "grant_not_found"
 
@@ -309,10 +313,20 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
         from apps.billing.wallets.models import WalletTransaction
         from apps.metering.queries import get_usage_event_cost
 
-        cost = get_usage_event_cost(usage_event_id, tenant_id=tenant.id)
-        if cost is None:
+        row = get_usage_event_cost(usage_event_id, tenant_id=tenant.id)
+        if row is None:
             return OpResult(outcome="refused", balance_micros=wallet.balance_micros,
                             refusal_code=USAGE_EVENT_NOT_FOUND)
+        cost = row["billed_cost_micros"]
+        # THERE IS NOTHING TO REFUND WHERE THERE WAS NEVER A RESOLVED PRICE
+        # (#351), and this refusal is its own code rather than the one above
+        # because the two are different facts a tenant would act on differently.
+        # Until this ticket the read contract answered `None` for both, so a
+        # posting that existed and could not be priced would have been reported
+        # as a posting that does not exist.
+        if cost is None:
+            return OpResult(outcome="refused", balance_micros=wallet.balance_micros,
+                            refusal_code=USAGE_EVENT_PRICE_UNRESOLVED)
 
         def settle(wallet, txn):
             # F4.3 lot-aware re-fund: find the original deduction via its

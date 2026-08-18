@@ -2,7 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics
 from apps.subscriptions.economics.revenue import RevenueService
-from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 
 
 def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
@@ -44,6 +44,7 @@ class MarginService:
             "usage_revenue_micros": usage_revenue,
             "provider_cost_micros": costs["provider_cost_micros"],
             UNRESOLVED_EVENT_COUNT_KEY: costs[UNRESOLVED_EVENT_COUNT_KEY],
+            UNPRICED_EVENT_COUNT_KEY: costs[UNPRICED_EVENT_COUNT_KEY],
             "total_revenue_micros": total_revenue,
             "gross_margin_micros": margin,
             "margin_percentage": float(pct),
@@ -58,7 +59,7 @@ class MarginService:
         # a business total that excluded one seat's cost has excluded it, and
         # summing the counts is the same arithmetic as summing the costs.
         keys = ["subscription_revenue_micros", "usage_revenue_micros", "provider_cost_micros",
-                UNRESOLVED_EVENT_COUNT_KEY,
+                UNRESOLVED_EVENT_COUNT_KEY, UNPRICED_EVENT_COUNT_KEY,
                 "total_revenue_micros", "gross_margin_micros", "event_count"]
         totals = {k: 0 for k in keys}
         for d in per_seat:
@@ -86,6 +87,11 @@ class MarginService:
         # is a complete answer rather than an unknown one.
         unresolved = acc.unresolved_event_count if acc else 0
         usage_billed = acc.total_billed_cost_micros if acc else 0
+        # And what the BILLED total excluded (#351), frozen on the same terms.
+        # Two counts because they bound the derived figures in opposite
+        # directions: an excluded cost makes the margin below a ceiling, an
+        # excluded price makes it a floor, and a snapshot can be both.
+        unpriced = acc.unpriced_event_count if acc else 0
         tenant = Tenant.objects.get(id=tenant_id)
         customer = Customer.objects.get(id=customer_id)
         mode = RevenueService.resolve_revenue_mode(tenant, customer)
@@ -101,6 +107,7 @@ class MarginService:
                 "usage_billed_micros": usage_billed,
                 "provider_cost_micros": provider_cost,
                 UNRESOLVED_EVENT_COUNT_KEY: unresolved,
+                UNPRICED_EVENT_COUNT_KEY: unpriced,
                 "total_revenue_micros": total_revenue,
                 "revenue_mode": mode,
                 "gross_margin_micros": margin,

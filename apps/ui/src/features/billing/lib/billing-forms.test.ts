@@ -92,6 +92,7 @@ describe("untyped revenue daily rows", () => {
         billed_cost_micros: 13,
         event_count: 2,
         unresolved_event_count: 1,
+        unpriced_event_count: 2,
       }),
     ).toEqual({
       day: "2026-07-01",
@@ -99,6 +100,10 @@ describe("untyped revenue daily rows", () => {
       billed_cost_micros: 13,
       event_count: 2,
       unresolved_event_count: 1,
+      // A DIFFERENT NUMBER FROM ITS SIBLING, deliberately (#351): the two
+      // counts are about different postings, so equal fixtures would pass
+      // against a narrower that read either key for both.
+      unpriced_event_count: 2,
     });
     expect(toRevenueDailyRow({ day: 42, provider_cost_micros: "x" })).toEqual({
       day: "",
@@ -106,6 +111,7 @@ describe("untyped revenue daily rows", () => {
       billed_cost_micros: 0,
       event_count: 0,
       unresolved_event_count: 0,
+      unpriced_event_count: 0,
     });
   });
 

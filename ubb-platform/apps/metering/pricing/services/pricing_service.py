@@ -96,11 +96,12 @@ class Costing(NamedTuple):
     #: is what the posting column stores and what its `CHECK` enforces (#317).
     #: Never a partial sum: a cost that is partly resolved is not resolved.
     provider_cost_micros: Optional[int]
-    #: What the customer is charged. Never `None` — the price half of an
-    #: uncosted event is slice 4's (`pricing_status`), and until then a price
-    #: derived by markup from an incomplete cost is a floor, exactly as it was
-    #: before this ticket.
-    billed_cost_micros: int
+    #: What the customer is charged — `None` when UBB could not resolve it,
+    #: which is what the posting column stores and what its `CHECK` enforces
+    #: (#351). It was `int` and documented as "never `None`" until this slice
+    #: gave the price half the same shape the cost half above has had since
+    #: #317.
+    billed_cost_micros: Optional[int]
     #: The Pricing Receipt — the authoritative record of why these amounts are
     #: what they are (#349), built and validated by
     #: `apps.metering.pricing.receipts.build_receipt` and by nothing else. Named
@@ -113,6 +114,22 @@ class Costing(NamedTuple):
     costing_status: str
     #: Which input did not arrive, and `None` unless the status is `unresolved`.
     unresolved_reason: Optional[str]
+    #: `known` · `waived` · `unknown` · `not_applicable`, held by reference from
+    #: `core.vocabulary` (#351).
+    #:
+    #: ⚠ EVERY PRICE THIS ENGINE DERIVES IS `known` TODAY, WHICH IS THE SAME
+    #: STATEMENT WITH AN EXPIRY DATE THE RECEIPT'S PRICE SIDE ALREADY CARRIES.
+    #: The column and its rule land in #351; the rules that PRODUCE the other
+    #: three — the waive, the direct price, and the ruling that a margin over a
+    #: supplier cost UBB never learned is `waived` rather than a settled figure
+    #: — arrive with the price resolver. It is a field rather than a constant at
+    #: the write site so that when they do, the one line that moves is inside
+    #: this service and every reader downstream is already carrying the answer.
+    pricing_status: str
+    #: Which of two mutually exclusive causes produced `not_applicable`, and
+    #: `None` for every other status. The rule is
+    #: `apps.metering.pricing.applicability.not_applicable_reason_for`.
+    not_applicable_reason: Optional[str] = None
 
 
 class PricingService:
@@ -504,7 +521,11 @@ class PricingService:
                        billed_cost_micros=billed,
                        pricing_receipt=pricing_receipt,
                        costing_status=costing_status,
-                       unresolved_reason=unresolved_reason)
+                       unresolved_reason=unresolved_reason,
+                       # The one value this engine can produce, said out loud
+                       # rather than left to the column's default — see the
+                       # field's own comment for when that stops being true.
+                       pricing_status=PRICING_STATUS_KNOWN)
 
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,

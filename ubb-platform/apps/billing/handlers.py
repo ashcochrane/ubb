@@ -28,7 +28,15 @@ def handle_usage_recorded_billing(event_id, payload):
     tenant = Tenant.objects.get(id=evt.tenant_id)
     billed_cost_micros = evt.cost_micros
 
-    if billed_cost_micros > 0:
+    # ⚠ `None > 0` IS A `TypeError`, AND THIS IS AN OUTBOX HANDLER (#351). The
+    # comparison read the payload's legacy billed field, which was typed `int`
+    # while the column filling it went nullable — so the first posting UBB could
+    # not price would have taken this handler down, and an outbox handler that
+    # raises retries with backoff rather than failing a request. Nothing beyond
+    # this branch applies to an event with no resolved price: there is no amount
+    # to draw down, none to accumulate, and none to count towards the owner's
+    # live spend.
+    if billed_cost_micros is not None and billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
         # Postpaid has no wallet to draw down, and (#39) its budget-cap

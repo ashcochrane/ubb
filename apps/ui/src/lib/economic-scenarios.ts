@@ -52,6 +52,7 @@
 import type {
   CostingStatus,
   MeasurementsStatus,
+  PricingStatus,
   UnresolvedReason,
 } from "@/lib/vocabulary";
 
@@ -170,6 +171,68 @@ export function costNotApplicable(): SupplierCostScenario {
     costing_status: "not_applicable",
     unresolved_reason: null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The CUSTOMER PRICE, which went nullable one slice after the supplier cost.
+
+/**
+ * A posting's customer price and the status that says which reading applies.
+ *
+ * The price half of `SupplierCostScenario` above, added by #351 for the same
+ * reason and under the same rule: the column went nullable, so an amount alone
+ * can no longer say what it means.
+ *
+ * ⚠ A NULL AMOUNT IS THREE STATES HERE, NOT TWO. `unknown` is a price UBB does
+ * not have, `waived` is a charge somebody decided not to pursue, and
+ * `not_applicable` is a subject that generates no customer revenue at this
+ * level. A reader that guesses tells a tenant they charged nothing — and only
+ * the first of the three makes a total a floor.
+ */
+export interface CustomerPriceScenario {
+  readonly billed_cost_micros: number | null;
+  readonly pricing_status: PricingStatus;
+}
+
+/** A posting whose customer price is settled. The ordinary case. */
+export function knownPrice(micros: number): CustomerPriceScenario {
+  return { billed_cost_micros: micros, pricing_status: "known" };
+}
+
+/**
+ * A posting whose customer price UBB could not resolve.
+ *
+ * The one of the three absences that is MISSING INFORMATION, and therefore the
+ * only one a completeness count is about. Takes no argument: unlike an
+ * unresolved supplier cost, there is no input to name — that is what `unknown`
+ * means, and the reason `not_applicable` is the state that carries a cause.
+ */
+export function unknownPrice(): CustomerPriceScenario {
+  return { billed_cost_micros: null, pricing_status: "unknown" };
+}
+
+/**
+ * A charge somebody decided not to pursue.
+ *
+ * Shares its column shape with `unknownPrice()` exactly, which is the point of
+ * having both: the difference is a decision rather than a shape, it is reported
+ * as a loss rather than queued, and only the status carries it. A fixture that
+ * used one for the other would be indistinguishable at every assertion about
+ * the amount.
+ */
+export function waivedPrice(): CustomerPriceScenario {
+  return { billed_cost_micros: null, pricing_status: "waived" };
+}
+
+/**
+ * A posting that generates no customer revenue at this level at all.
+ *
+ * The price-side twin of `costNotApplicable()`: absent for a reason no Pricing
+ * Rule was ever going to supply, so it is not counted as missing from any
+ * total — nothing about it is.
+ */
+export function priceNotApplicable(): CustomerPriceScenario {
+  return { billed_cost_micros: null, pricing_status: "not_applicable" };
 }
 
 // ---------------------------------------------------------------------------

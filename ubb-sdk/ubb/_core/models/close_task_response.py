@@ -29,6 +29,7 @@ class CloseTaskResponse:
             task_id (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
+            unpriced_event_count (int):
             unresolved_event_count (int):
             parent_task_id (None | str | Unset):
      """
@@ -38,6 +39,7 @@ class CloseTaskResponse:
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    unpriced_event_count: int
     unresolved_event_count: int
     parent_task_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -57,6 +59,8 @@ class CloseTaskResponse:
 
         total_provider_cost_micros = self.total_provider_cost_micros
 
+        unpriced_event_count = self.unpriced_event_count
+
         unresolved_event_count = self.unresolved_event_count
 
         parent_task_id: None | str | Unset
@@ -74,6 +78,7 @@ class CloseTaskResponse:
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
         if parent_task_id is not UNSET:
@@ -96,6 +101,8 @@ class CloseTaskResponse:
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
 
+        unpriced_event_count = d.pop("unpriced_event_count")
+
         unresolved_event_count = d.pop("unresolved_event_count")
 
         def _parse_parent_task_id(data: object) -> None | str | Unset:
@@ -114,6 +121,7 @@ class CloseTaskResponse:
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             parent_task_id=parent_task_id,
         )

@@ -343,6 +343,35 @@ class ItIsTheOnlyApplicationWriterOfACostResolutionTest(TestCase):
                         if isinstance(inner, ast.Constant)
                         and isinstance(inner.value, str)}) & self.COLUMNS]
 
+    @staticmethod
+    def _docstrings(tree):
+        """Every string constant that is a docstring, by node identity.
+
+        ⚠ THE THREE-TOKEN HEURISTIC BELOW CANNOT TELL SQL FROM ENGLISH, AND
+        DOCSTRINGS ARE WHERE THIS TABLE'S RULES ARE EXPLAINED (#351). One
+        docstring in `apps/platform/work/services.py` names `costing_status`
+        (it takes it as an argument), says "uses select_for_update" — which
+        supplies UPDATE — and the day it also said "a settled cost" it supplied
+        SET from inside the word "settled". Three tokens, no SQL, and a red
+        board.
+
+        Excluding prose does not weaken the check: a docstring cannot write to a
+        table. What it removes is the pressure to reword an explanation to keep
+        a gate quiet, which is how a gate stops being something people trust and
+        starts being something they route around.
+        """
+        found = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Module, ast.ClassDef,
+                                     ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr)
+                    and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                found.add(id(first.value))
+        return found
+
     def _raw_sql_writers(self, tree):
         """String constants that are an `UPDATE` statement setting a column.
 
@@ -350,10 +379,14 @@ class ItIsTheOnlyApplicationWriterOfACostResolutionTest(TestCase):
         with a cursor. Both `UPDATE` and `SET` are required so that prose
         mentioning a column in passing is not a finding, and a statement that
         updates this table without touching a cost column is not one either.
+        Docstrings are excluded outright; see :meth:`_docstrings` for why that
+        pair of guards turned out not to be enough on its own.
         """
+        docstrings = self._docstrings(tree)
         return [node.lineno for node in ast.walk(tree)
                 if isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
+                and id(node) not in docstrings
                 and "UPDATE" in node.value.upper()
                 and "SET" in node.value.upper()
                 and any(column in node.value for column in self.COLUMNS)]
@@ -392,6 +425,24 @@ class ItIsTheOnlyApplicationWriterOfACostResolutionTest(TestCase):
             (platform / self.MEASUREMENT_HARNESS).read_text(encoding="utf-8"))
         self.assertEqual(len(self._orm_writers(door)), 1)
         self.assertEqual(len(self._raw_sql_writers(harness)), 1)
+
+    def test_prose_is_not_a_writer_and_the_same_words_in_a_statement_are(self):
+        """Both arms of the docstring exclusion (#351), against source text.
+
+        The first arm alone would be satisfied by a detector that had stopped
+        finding anything at all — which is precisely how an exclusion added to
+        quiet one false positive silently becomes a hole. So the SAME three
+        tokens are handed to it twice: once as a docstring, where they are
+        English, and once as a statement, where they are SQL.
+        """
+        prose = ('def f():\n'
+                 '    """Uses select_for_update; a settled costing_status."""\n')
+        self.assertEqual(self._raw_sql_writers(ast.parse(prose)), [])
+
+        statement = ('def f():\n'
+                     '    cursor.execute("UPDATE ubb_posting '
+                     'SET costing_status = %s")\n')
+        self.assertEqual(len(self._raw_sql_writers(ast.parse(statement))), 1)
 
     def test_a_writer_cannot_hide_behind_save(self):
         """The third door, closed by the model rather than by this walk.

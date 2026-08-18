@@ -71,7 +71,7 @@ def _op_registry(tenant, customer, wallet):
     def seeded_refund():
         # A refund mirrors the looked-up cost: fake the metering read.
         with patch("apps.metering.queries.get_usage_event_cost",
-                   return_value=2_000_000):
+                   return_value={"billed_cost_micros": 2_000_000, "pricing_status": "known"}):
             return wallet_ops.refund_usage(
                 customer_id=customer.id, tenant=tenant,
                 usage_event_id=event_id, idempotency_key=str(uuid.uuid4()))
@@ -261,6 +261,30 @@ class TestRefusals:
         assert result.outcome == "refused"
         assert result.refusal_code == wallet_ops.USAGE_EVENT_NOT_FOUND
 
+    def test_refund_refuses_a_posting_whose_price_was_never_resolved(self):
+        """The refusal that was reported as `usage_event_not_found` (#351).
+
+        The read contract answered a bare amount until this slice, so `None`
+        meant "no such posting" AND "a posting whose price UBB could not
+        resolve" — and this path told a tenant their real event did not exist.
+        Two codes now, and the row is what tells them apart.
+
+        Refusing is still right: there is no amount to refund. What was wrong
+        was the reason given.
+        """
+        t = _tenant()
+        c = _customer(t)
+        _wallet(c, balance=1_000_000)
+        with patch("apps.metering.queries.get_usage_event_cost",
+                   return_value={"billed_cost_micros": None,
+                                 "pricing_status": "unknown"}):
+            result = wallet_ops.refund_usage(
+                customer_id=c.id, tenant=t, usage_event_id=uuid.uuid4(),
+                idempotency_key=str(uuid.uuid4()))
+        assert result.outcome == "refused"
+        assert result.refusal_code == wallet_ops.USAGE_EVENT_PRICE_UNRESOLVED
+        assert result.refusal_code != wallet_ops.USAGE_EVENT_NOT_FOUND
+
     def test_void_refuses_unknown_grant(self):
         t = _tenant()
         c = _customer(t)
@@ -341,7 +365,7 @@ class TestReplays:
         event_id = uuid.uuid4()
         key = str(uuid.uuid4())
         with patch("apps.metering.queries.get_usage_event_cost",
-                   return_value=2_000_000):
+                   return_value={"billed_cost_micros": 2_000_000, "pricing_status": "known"}):
             first = wallet_ops.refund_usage(
                 customer_id=c.id, tenant=t, usage_event_id=event_id,
                 idempotency_key=key)
@@ -457,7 +481,7 @@ class TestExpiryPlacement:
             wallet_ops.withdraw(amount_micros=1_000_000, **kwargs)
         elif op_name == "refund_usage":
             with patch("apps.metering.queries.get_usage_event_cost",
-                       return_value=1_000_000):
+                       return_value={"billed_cost_micros": 1_000_000, "pricing_status": "known"}):
                 wallet_ops.refund_usage(usage_event_id=uuid.uuid4(), **kwargs)
         elif op_name == "draw_down_usage":
             wallet_ops.draw_down_usage(
@@ -621,7 +645,7 @@ class TestMoneyRules:
                                    usage_event_id=event_id,
                                    billed_cost_micros=4_000_000)
         with patch("apps.metering.queries.get_usage_event_cost",
-                   return_value=4_000_000):
+                   return_value={"billed_cost_micros": 4_000_000, "pricing_status": "known"}):
             result = wallet_ops.refund_usage(
                 customer_id=c.id, tenant=t, usage_event_id=event_id,
                 idempotency_key=str(uuid.uuid4()))

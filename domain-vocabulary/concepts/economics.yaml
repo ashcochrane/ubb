@@ -372,6 +372,60 @@ pricing_status:
     - surface: openapi
       path: openapi/v1.json
 
+# COINED HERE, BECAUSE THE NAMING AUTHORITY LEFT IT UNSETTLED (#351).
+#
+# #151 §17 owed this field to #154 and #154 did not ratify it: it is absent from
+# §3's canonical-names tables, and before this entry it appeared ONLY in `docs/`
+# — zero occurrences in `domain-vocabulary/`, zero in code, re-verified across
+# `*.py`, `*.yaml`, `*.ts` and `*.json`. So this slice declares a public value
+# set the authority never delivered, and #191 story 15's rule is why it is
+# declared rather than simply written: a new public value must declare its kind
+# before it ships.
+#
+# A REASON AND NOT A FIFTH `pricing_status` (#151 §8.3). The status above is
+# already right — an event inside a Task sold for one agreed price genuinely has
+# no customer price of its own, and that is correct rather than a gap. What was
+# missing is which of two mutually exclusive causes produced it. This extends
+# the four the way `not_applicable` extended #147's three: adding a distinction
+# INSIDE a value, never reversing one.
+#
+# THE CONSOLE SURFACE IS NOT DECLARED, AND THAT IS #316'S RULING RATHER THAN AN
+# OVERSIGHT — the same one `unresolved_reason` above records at length. The
+# console consumer every concept here names is `apps/ui/src/lib/labels.ts`, the
+# legacy label adapter; nothing in it holds either value today, so declaring the
+# surface would report both missing at a path that genuinely holds none and
+# demand a G2 ledger entry that a ledger which only shrinks (#155 §3.2) could
+# not later take back. Whoever moves the list into `labels.ts` declares the
+# surface in the same commit. The label keys themselves already exist, because
+# G6 asks the catalogue for words for every value the registry requires, and
+# that question is not the census's.
+not_applicable_reason:
+  kind: closed
+  summary: >-
+    Why a subject generates no customer revenue at this level. Read only where
+    `pricing_status` is `not_applicable`, and never on its own: a status saying
+    a price does not apply without saying WHY sends a reader looking for a
+    number nobody wrote. The two values are mutually exclusive causes, and
+    where both are true POSTURE WINS — a metering-only tenant is
+    `tenant_not_billing` whatever the job's pricing regime, because no Charge
+    is created anywhere for that tenant and naming the job's regime would imply
+    revenue sits on a Charge that does not exist.
+  values:
+    # The event belongs to a Task sold for one agreed price, so the revenue is
+    # the Task's and none of it is this event's (#151 §8.2). The tenant DOES
+    # bill through UBB — the Charge exists, at the Task.
+    - fixed_task_pricing
+    # The tenant meters and does not bill through UBB at all, so no Charge is
+    # created anywhere and there is no customer price to resolve. Wins the
+    # tie-break against the value above.
+    - tenant_not_billing
+  label_key_prefix: not_applicable_reason
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
 usage_event_kind:
   kind: closed
   summary: >-

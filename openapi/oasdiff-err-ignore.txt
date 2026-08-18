@@ -433,3 +433,42 @@ GET /api/v1/metering/usage/{event_id} the response property `provider_cost_micro
 # field through generated code, regenerated here and in #322.
 GET /api/v1/tenant/config removed the required property `require_cost_card_coverage` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the required property `require_cost_card_coverage` from the response with the `200` status
+
+# --- #351: the customer price becomes an amount UBB may not have ------------
+#
+# ONE EDIT, TWO FINDINGS, AND THEY ARE THE SAME FACT SEEN TWICE. Widening
+# `UsageEventDetailOut.billed_cost_micros` from a required integer to an
+# optional nullable one is reported by oasdiff both as "became optional" and as
+# "list-of-types widened by adding `null`". Recording one and not the other
+# would leave the gate red on a break already reviewed, so both lines sit here
+# under one reason.
+#
+# WHY THE FIELD MOVED. `Posting.billed_cost_micros` is nullable as of this
+# commit, with `pricing_status` beside it saying which of four readings a NULL
+# takes. Before it, "we priced this at nothing" and "we could not price this"
+# were the same row: a customer who should have been charged and was not looked
+# exactly like one correctly charged nothing. A response that could not
+# serialise the absent case would have been a document contradicting its own
+# server the moment the resolver started writing it.
+#
+# ⚠ ONLY THE DETAIL RESPONSE IS A BREAK, AND THAT IS WORTH SAYING. The other
+# two responses carrying this amount — the recording ack and the list row —
+# have been `Optional` since long before this slice, while the COLUMN behind
+# them was NOT NULL with a default of zero. Their nullability was decorative:
+# no posting could produce a null to put through it. So this slice made the
+# absent case REACHABLE on all three and EXPRESSIBLE on only one. The exact
+# asymmetry #320 recorded for the supplier half, on the other amount.
+#
+# NOTHING WAS REMOVED AND NOTHING RENAMED. The property keeps its name, its
+# type and its position; what changed is that `null` joined the type list. The
+# two fields added beside it (`pricing_status`, `not_applicable_reason`) are
+# additive and are not breaks.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the two known consumers read this
+# field through generated code, both regenerated in this same commit — the SDK
+# core and the console's `src/api/generated/`. The console's own narrowing
+# layer was widened with it, so an unresolved price renders as an absence
+# rather than as a charge of nothing.
+GET /api/v1/metering/usage/{event_id} response property `billed_cost_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+GET /api/v1/metering/usage/{event_id} the response property `billed_cost_micros` became optional for the status `200`

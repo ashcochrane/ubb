@@ -73,6 +73,7 @@ from apps.billing.gating.crossing import (budget_stop_threshold, crossed_live,
                                           past_floor, recovered_floor,
                                           same_month)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 
 logger = logging.getLogger("ubb.billing")
 
@@ -223,6 +224,16 @@ class LiveCounter:
         (#149 §6.5). Returns the bare stop verdict READ from the
         durable-maintained flag so the ack carries the identical fields in
         both postures; detection happens on the durable drawdown lane."""
+        # ⚠ A PRICE UBB COULD NOT RESOLVE DEBITS NOTHING, AND `None <= 0` WAS A
+        # `TypeError` HERE (#351). Ordered before the comparison rather than
+        # folded into it because the two say different things: there is no
+        # amount to debit, which is not the same as an amount that happens to be
+        # zero. The counter this maintains races a spend limit, so what it must
+        # never do is invent a figure for a posting whose price is unknown —
+        # under-counting is the direction that under-fires, and the ceilings
+        # that read this are slice 6's.
+        if billed_cost_micros is None:
+            return None
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
         if not live_counter_maintenance_on(tenant):
@@ -735,7 +746,24 @@ class LiveCounter:
         now = now or timezone.now()
         label, start, end = month_label_bounds(now)
         try:
-            durable = int(get_billing_owner_billed_total(tenant.id, owner_id, start, end))
+            # THE READ CONTRACT ANSWERS A PAIR NOW (#351): the resolved total,
+            # and how many postings it could not include. The total is already
+            # coalesced by the shared helper, so the `int()` here is a type
+            # narrowing rather than a guard.
+            billed = get_billing_owner_billed_total(tenant.id, owner_id, start, end)
+            durable = int(billed["billed"])
+            if billed[UNPRICED_EVENT_COUNT_KEY]:
+                # A FLOOR MERGED INTO A COUNTER THAT DECIDES WHEN TO STOP WORK.
+                # The MAX-merge below takes the larger of live and durable, so
+                # an understated durable basis cannot overcharge anybody — it
+                # lets a limit be crossed later than it should be. That is a
+                # spend-control decision rather than a reporting one, it belongs
+                # to the slice that owns ceilings, and until then the one thing
+                # this lane must not do is be silent about it.
+                logger.warning("live_counter.durable_basis_incomplete", extra={
+                    "data": {"owner_id": str(owner_id), "mode": "postpaid",
+                             "unpriced_event_count":
+                                 billed[UNPRICED_EVENT_COUNT_KEY]}})
             before = None
             if maintenance_on:
                 try:
@@ -838,8 +866,14 @@ class LiveCounter:
         from django.utils import timezone
         from apps.metering.queries import get_customer_cost_totals
         label, start, end = month_label_bounds(now or timezone.now())
-        total = int(get_customer_cost_totals(
-            tenant_id, customer_id, start, end)["billed_cost_micros"] or 0)
+        # ⚠ THE `or 0` HERE IS GONE RATHER THAN MOVED (#351). It guarded a
+        # `None` the read contract could return before that contract coalesced
+        # through the shared helper; it cannot now, and a coalesce left in front
+        # of a value that is already an int reads as though it were still doing
+        # something. The completeness this total leaves out is reported by the
+        # postpaid reconcile above, which is the lane that owns this basis.
+        totals = get_customer_cost_totals(tenant_id, customer_id, start, end)
+        total = int(totals["billed_cost_micros"])
         _client().eval(_RECONCILE_MAX, 1, _budget_key(customer_id, label),
                        total, COUNTER_TTL_SECONDS)
         return total, label

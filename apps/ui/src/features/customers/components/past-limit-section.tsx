@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
+import { ABSENT_LABEL } from "@/lib/localisation";
 import { pastLimitFamilyLabel, stopReasonLabel, stopScopeLabel } from "@/lib/labels";
 import { supplierCostTotal } from "@/lib/supplier-cost";
 
@@ -213,8 +214,16 @@ function EpisodeRow({
                       {event.arrived_after ? "Late arrival" : "Tipping event"}
                     </Badge>
                   </TableCell>
+                  {/* An unresolved customer price renders as an absence, not
+                      as zero (#351) — on this report a zeroed price would say
+                      the tenant charged nothing for an event that overran
+                      their own spend stop. Naming WHICH absence is the pricing
+                      feature's, exactly as #330 named the supplier half's after
+                      #317 stopped its zero. */}
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(event.billed_cost_micros, currency)}
+                    {event.billed_cost_micros === null
+                      ? ABSENT_LABEL
+                      : formatMicros(event.billed_cost_micros, currency)}
                   </TableCell>
                   {/* This is the one report where a zeroed unknown cost would
                       be read as exoneration: it itemizes the events that

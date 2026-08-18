@@ -68,6 +68,7 @@ describe("buildDailyRows", () => {
       billed_cost_micros: expect.any(Number),
       event_count: expect.any(Number),
       unresolved_event_count: expect.any(Number),
+      unpriced_event_count: expect.any(Number),
     });
   });
 

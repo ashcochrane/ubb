@@ -9,11 +9,17 @@ from core.vocabulary import (
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
     COSTING_STATUS_VALUES,
+    NOT_APPLICABLE_REASON_VALUES,
+    PRICING_STATUS_KNOWN,
+    PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_UNKNOWN,
+    PRICING_STATUS_VALUES,
+    PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_VALUES,
 )
 
 
-# The two closed sets this model stores, DERIVED from the registry rather than
+# The four closed sets this model stores, DERIVED from the registry rather than
 # restated beside it. `choices=` is Django's own declaration that a column has a
 # closed value set, and it is worth having — it reaches forms, the admin and
 # `full_clean` — but a hand-typed list is the shape the migration ledger
@@ -28,6 +34,9 @@ from core.vocabulary import (
 COSTING_STATUS_CHOICES = [(value, value) for value in sorted(COSTING_STATUS_VALUES)]
 UNRESOLVED_REASON_CHOICES = [(value, value)
                              for value in sorted(UNRESOLVED_REASON_VALUES)]
+PRICING_STATUS_CHOICES = [(value, value) for value in sorted(PRICING_STATUS_VALUES)]
+NOT_APPLICABLE_REASON_CHOICES = [(value, value)
+                                 for value in sorted(NOT_APPLICABLE_REASON_VALUES)]
 
 
 class Posting(BaseModel):
@@ -191,7 +200,50 @@ class Posting(BaseModel):
     # supplier who has not billed yet and a caller who has an opinion are the
     # ordinary state of a call rather than a contradiction.
     claimed_provider_cost_micros = models.BigIntegerField(null=True, blank=True)
-    billed_cost_micros = models.BigIntegerField(default=0)
+    # WHAT THE CUSTOMER IS CHARGED, AND `NULL` WHERE UBB COULD NOT RESOLVE IT
+    # (#351). The mirror of the supplier cost above, one slice later: before
+    # this column could be null, "we priced this at nothing" and "we could not
+    # price this" were the same row, so a customer who should have been charged
+    # and was not looked exactly like a customer correctly charged nothing —
+    # and there was no queue of the first kind to work through. Zero keeps its
+    # own meaning: resolved, and it was exactly nothing.
+    #
+    # ⚠ SQL's aggregates skip NULL here too, so every total over this column is
+    # a pair — the resolved sum and `unpriced_event_count` beside it, built by
+    # `core.cost_totals` from the pair declared in `core.amount_status_pairs`.
+    # The count is its OWN key rather than the supplier side's, because the two
+    # exclusions are different sets of postings: an event can carry a settled
+    # cost and an unresolved price, and one key would let either answer for the
+    # other in the many queries that total both.
+    billed_cost_micros = models.BigIntegerField(null=True, blank=True, default=0)
+    # WHETHER THAT PRICE IS SETTLED, AND IF NOT, WHY NOT. Not nullable, for the
+    # reason `costing_status` is not: a null status would be a fifth state
+    # meaning "nobody said", which is the ambiguity these columns exist to
+    # remove rather than to move one place to the left.
+    #
+    # `waived` and `unknown` carry the SAME pair of absent fields on purpose.
+    # The difference between a charge somebody decided not to pursue and
+    # information UBB does not have is a decision rather than a shape, and this
+    # column is what carries it; a fifth combination invented to make them
+    # differ at the table would encode the same fact twice.
+    #
+    # The default is `known`, which is the reading the migration gives every row
+    # that already existed and for the same reason the cost side gives it: a
+    # writer that says nothing about customer price has recorded what UBB
+    # actually holds. The writers that produce the other three arrive with the
+    # price resolver — see `apps/metering/pricing/applicability.py` for the one
+    # rule of theirs that is decided already.
+    pricing_status = models.CharField(
+        max_length=32, choices=PRICING_STATUS_CHOICES,
+        default=PRICING_STATUS_KNOWN)
+    # WHICH OF TWO MUTUALLY EXCLUSIVE CAUSES PRODUCED `not_applicable`, and read
+    # only there. A status saying no customer revenue arises at this level,
+    # without saying whether that is because the tenant bills nobody through UBB
+    # or because the Task was sold for one agreed price, sends a reader looking
+    # for a number nobody wrote.
+    not_applicable_reason = models.CharField(
+        max_length=32, choices=NOT_APPLICABLE_REASON_CHOICES,
+        null=True, blank=True)
     #: WHICH COLUMN HOLDS THE PRICING RECEIPT, NAMED ONCE (#349).
     #:
     #: The receipt is the authoritative record of an ECONOMIC RESOLUTION for
@@ -261,6 +313,14 @@ class Posting(BaseModel):
     #: `QuerySet.update()` and raw SQL alike, and
     #: `apps/platform/tests/test_transition_class_declarations.py` is what says
     #: no column may be declared here without that being true of it.
+    #: ⚠ THE PRICE PAIR IS DELIBERATELY ABSENT, AND #352 IS WHERE IT ARRIVES.
+    #: `billed_cost_micros`, `pricing_status` and `not_applicable_reason` land
+    #: nullable in #351 with no rule on the table naming them, and every class
+    #: nameable here is one the database is required to defend. Declaring them
+    #: now would turn G19 red on the commit that adds the columns, for a rule
+    #: nobody has written yet — which is the "declared ahead of its enforcement"
+    #: edge slice 3 hit and `test_transition_class_declarations.py` exists to
+    #: catch. #352 declares them and installs their trigger in ONE commit.
     transition_classes = {
         "provider_cost_micros": RESOLVE_ONCE,
         "costing_status": RESOLVE_ONCE,
@@ -322,6 +382,53 @@ class Posting(BaseModel):
                                unresolved_reason__isnull=True)
                 ),
                 name="ck_posting_costing_status_agrees_with_the_cost",
+            ),
+            # The price side's two closed sets, same shape as the cost side's
+            # above and for the same reason: a closed concept that only
+            # `clean()` defends is open to anything that writes without
+            # validating, which is most of what writes.
+            models.CheckConstraint(
+                condition=models.Q(
+                    pricing_status__in=sorted(PRICING_STATUS_VALUES)),
+                name="ck_posting_pricing_status",
+            ),
+            models.CheckConstraint(
+                condition=(models.Q(not_applicable_reason__isnull=True)
+                           | models.Q(not_applicable_reason__in=sorted(
+                               NOT_APPLICABLE_REASON_VALUES))),
+                name="ck_posting_not_applicable_reason",
+            ),
+            # THE FOUR LEGAL COMBINATIONS, AND THERE ARE ONLY FOUR:
+            #
+            #   known           →  amount IS NOT NULL  and  reason IS NULL
+            #   waived          →  amount IS NULL      and  reason IS NULL
+            #   unknown         →  amount IS NULL      and  reason IS NULL
+            #   not_applicable  →  amount IS NULL      and  reason IS NOT NULL
+            #
+            # `waived` and `unknown` share a shape, which is why they are
+            # written as two branches rather than folded into one: the rule is
+            # about four statuses, and a disjunction that enumerated three would
+            # read as though one of them had been forgotten.
+            #
+            # This is what makes NULL and 0 stay distinguishable at the database
+            # rather than by convention: a row cannot claim to be priced and
+            # carry no amount, and cannot claim to be unpriced and carry one.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(pricing_status=PRICING_STATUS_KNOWN,
+                             billed_cost_micros__isnull=False,
+                             not_applicable_reason__isnull=True)
+                    | models.Q(pricing_status=PRICING_STATUS_WAIVED,
+                               billed_cost_micros__isnull=True,
+                               not_applicable_reason__isnull=True)
+                    | models.Q(pricing_status=PRICING_STATUS_UNKNOWN,
+                               billed_cost_micros__isnull=True,
+                               not_applicable_reason__isnull=True)
+                    | models.Q(pricing_status=PRICING_STATUS_NOT_APPLICABLE,
+                               billed_cost_micros__isnull=True,
+                               not_applicable_reason__isnull=False)
+                ),
+                name="ck_posting_pricing_status_agrees_with_the_price",
             ),
         ]
         indexes = [

@@ -34,9 +34,10 @@ from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import (
-    UNRESOLVED_EVENT_COUNT_KEY, cost_total, counts_as_unresolved)
+    UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, cost_total,
+    counts_as_unresolved)
 
 _UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 
@@ -80,6 +81,11 @@ def _bucket_events(customer, since, until):
                 "event_id": str(e.id),
                 "effective_at": e.effective_at.isoformat(),
                 "billed_cost_micros": e.billed_cost_micros,
+                # The price above is `None` where UBB could not resolve one
+                # (#351), and three statuses produce that null for different
+                # reasons — so the itemized row carries the status for exactly
+                # the reason the cost half does.
+                "pricing_status": e.pricing_status,
                 "provider_cost_micros": e.provider_cost_micros,
                 # The amount above is `None` both where UBB has not resolved
                 # this cost and where the Event Type declares none, and the two
@@ -125,27 +131,39 @@ def _signal_episodes(tenant, owner, opened_type, closed_type, family):
     return eps
 
 
-def _supplier_cost_of(events):
-    """The pair, over itemized rows: what can be added up, and what cannot.
+def _pair_total_of(events, pair):
+    """One amount/status pair's total over itemized rows: what can be added up,
+    and what cannot.
 
-    ⚠ THIS SUM USED TO RAISE (#328). ``sum(e["provider_cost_micros"] …)`` over a
-    posting whose supplier cost UBB has not resolved is ``int + None`` — a 500
-    on a report about money already spent, reachable the moment a tenant's cost
-    rates fall behind their traffic. The failure was inherited from #317 making
-    the column nullable; it was a `TypeError` rather than a wrong number, which
-    is the one thing to be grateful for.
+    ⚠ THE SUPPLIER HALF OF THIS USED TO RAISE (#328), AND THE PRICE HALF WAS THE
+    NEXT ONE TO (#351). ``sum(e[column] …)`` over a posting whose amount UBB has
+    not resolved is ``int + None`` — a 500 on a report about money already
+    spent. The cost side became reachable the moment #317 made its column
+    nullable; the price side the moment #351 made its own, and #153 §17.6
+    predicted that one in advance. This is also the surface a contract-derived
+    enumeration has already missed once, because the response is untyped and no
+    schema names its rows.
 
-    An unresolved cost is skipped and COUNTED, so the total is a floor that says
-    how far it falls short. A cost the Event Type declares does not exist is
-    skipped and not counted: it contributes a genuine zero, and there is nothing
-    about it to report (#327). The two look identical on the row — both carry
-    `None` — so the status is what tells them apart.
+    **ONE FUNCTION FOR BOTH PAIRS, and that is the point.** It was two, differing
+    only in which column and which key — which is how a repair applied to one
+    half comes to be missing from the other, twice over. What differs between
+    the pairs is entirely inside the pair: its columns, and the single status
+    that means *not learned*.
+
+    An unresolved amount is skipped and COUNTED, so the total is a floor that
+    says how far it falls short. Every OTHER absent amount is skipped and not
+    counted — a cost the Event Type declares does not exist, a price that was
+    waived, a subject with no customer revenue at this level — because each
+    contributes a genuine zero and nothing about it is missing. They are
+    indistinguishable on the row, all carrying `None`, which is why the status
+    tells them apart and why the predicate is asked of the PAIR rather than
+    spelled here.
     """
-    resolved = sum(e["provider_cost_micros"] for e in events
-                   if e["provider_cost_micros"] is not None)
+    column = pair.amount_column
+    resolved = sum(e[column] for e in events if e[column] is not None)
     unresolved = sum(1 for e in events
-                     if counts_as_unresolved(SUPPLIER_COST, e["costing_status"]))
-    return cost_total(key="provider_cost_micros", resolved_micros=resolved,
+                     if counts_as_unresolved(pair, e[pair.status_column]))
+    return cost_total(pair, key=column, resolved_micros=resolved,
                       unresolved_events=unresolved)
 
 
@@ -153,7 +171,8 @@ def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
                  subtask_id, provider_cost_limit_micros, tripped_at,
                  resumed_at, bucket):
     events = bucket["events"] if bucket else []
-    supplier = _supplier_cost_of(events)
+    supplier = _pair_total_of(events, SUPPLIER_COST)
+    price = _pair_total_of(events, CUSTOMER_PRICE)
     return {
         "family": family, "limit": limit, "stop_scope": stop_scope,
         "episode_seq": episode_seq,
@@ -162,8 +181,8 @@ def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
         "tripped_at": _iso(tripped_at), "resumed_at": _iso(resumed_at),
         "events": events,
         "event_count": len(events),
-        "total_billed_cost_micros": sum(
-            e["billed_cost_micros"] for e in events),
+        "total_billed_cost_micros": price["billed_cost_micros"],
+        UNPRICED_EVENT_COUNT_KEY: price[UNPRICED_EVENT_COUNT_KEY],
         "total_provider_cost_micros": supplier["provider_cost_micros"],
         UNRESOLVED_EVENT_COUNT_KEY: supplier[UNRESOLVED_EVENT_COUNT_KEY],
     }
@@ -184,13 +203,21 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
                 continue
             counted.add((limit, ev["event_id"]))
             t = totals.setdefault(limit, {
-                "billed_cost_micros": 0, "provider_cost_micros": 0,
+                "billed_cost_micros": 0, UNPRICED_EVENT_COUNT_KEY: 0,
+                "provider_cost_micros": 0,
                 UNRESOLVED_EVENT_COUNT_KEY: 0, "event_count": 0})
-            t["billed_cost_micros"] += ev["billed_cost_micros"]
-            # The same pair as the episode rows, on the same terms: add what is
-            # resolved, count what is not (#328). A per-limit total that read
-            # complete while its own episodes read partial would be two answers
-            # about one set of events.
+            # Both pairs on the same terms as the episode rows: add what is
+            # resolved, count what is not (#328, #351). A per-limit total that
+            # read complete while its own episodes read partial would be two
+            # answers about one set of events.
+            #
+            # ⚠ The billed line was a bare `+=` until #351 and is the second of
+            # this module's two `TypeError`s: `int += None` the first time a
+            # posting past a limit carried a price UBB could not resolve.
+            if ev["billed_cost_micros"] is not None:
+                t["billed_cost_micros"] += ev["billed_cost_micros"]
+            elif counts_as_unresolved(CUSTOMER_PRICE, ev["pricing_status"]):
+                t[UNPRICED_EVENT_COUNT_KEY] += 1
             if ev["provider_cost_micros"] is not None:
                 t["provider_cost_micros"] += ev["provider_cost_micros"]
             elif counts_as_unresolved(SUPPLIER_COST, ev["costing_status"]):

@@ -53,7 +53,47 @@ class TenantBillingService:
         Called synchronously in the usage recording hot path. The atomic
         UPDATE is fast (no select, just increment) so this does not add
         meaningful latency.
+
+        ⚠ `F("total_usage_cost_micros") + None` IS NOT A PYTHON ERROR. It
+        compiles to SQL, and SQL propagates `NULL` through addition, so one
+        posting UBB could not price would have made this `UPDATE` write `NULL`
+        over a tenant's running period total.
+
+        ⚠⚠ **AND WHAT ACTUALLY HAPPENS THEN IS AN `IntegrityError`, NOT A
+        SILENT NULL — MEASURED, NOT ASSUMED (#351).** The slice's spec files
+        this site under "a silently wrong number: no exception, no log line",
+        and that is the one thing it is not, because
+        `TenantBillingPeriod.total_usage_cost_micros` is NOT NULL. Postgres
+        refuses the row, and this accumulation runs under an outbox handler, so
+        the failure shape is a poisoned retry loop rather than a quiet total.
+        `CustomerCostAccumulator`'s two columns are NOT NULL for the same
+        reason and behave the same way.
+
+        The distinction is worth writing down rather than filing the site under
+        a shape it does not have: a reader who believed the silent version would
+        go looking for corrupted historical figures, and there are none — the
+        writes never landed.
+
+        **The guard is HERE, at the accumulation, and not at the one caller.**
+        There is one caller today; a second added next week would not know to
+        repeat it. The rule belongs where the `F()` expression is built, which
+        is the only place that can be sure of it.
+
+        ⚠ IT COALESCES RATHER THAN RETURNING EARLY, AND THE DIFFERENCE IS
+        `event_count`. An early return skips the whole `UPDATE`, so an unpriced
+        posting would stop incrementing the event count beside the money — and
+        a period whose first postings were all unpriced would never be created
+        at all. The event HAPPENED; what is absent is its price. So the amount
+        contributes nothing and the count still counts, which is also the shape
+        `apps/subscriptions/handlers.py` uses for the same pair of facts.
+        This is not the silent zero: there is no amount to add, and adding 0 to
+        a running total says exactly that.
+
+        The period's completeness is answered by the read contract's
+        `unpriced_event_count` over the same window, which #329's reconcile
+        already re-derives rather than trusting this accumulator.
         """
+        billed_cost_micros = billed_cost_micros or 0
         period = TenantBillingService.get_or_create_current_period(tenant)
         rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
             total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,

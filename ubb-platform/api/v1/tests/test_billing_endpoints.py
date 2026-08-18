@@ -1241,6 +1241,61 @@ class PooledSeatBillingSurfaceTest(TestCase):
         self.assertEqual(
             Wallet.objects.get(customer=self.individual).balance_micros, 6_000_000)
 
+    def test_refunding_an_unpriced_posting_says_so_rather_than_not_found(self):
+        """⚠ THE REFUSAL CODE IS READ AT THE ROUTE, NOT COLLAPSED (#351).
+
+        The wallet seam gained a second refusal when the customer price column
+        went nullable, and this route mapped EVERY refusal to
+        `not_found` — so a posting that plainly exists, and whose price UBB
+        could not resolve, would have been reported to the tenant as a posting
+        that does not exist. They would go looking for a record sitting right
+        there.
+
+        Asserted THROUGH THE ROUTE rather than at the seam, because the seam was
+        already right: the defect lived entirely in the collapse, and a test of
+        `refund_usage` would have passed throughout.
+        """
+        from apps.metering.usage.models import Posting
+        from core.vocabulary import PRICING_STATUS_UNKNOWN
+
+        Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
+        event = Posting.objects.create(
+            tenant=self.tenant, customer=self.individual, request_id="r_unpriced",
+            idempotency_key="idem_r_unpriced", provider_cost_micros=1_000,
+            billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN)
+
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.individual.id}/refund",
+            data=json.dumps({"usage_event_id": str(event.id),
+                             "idempotency_key": "rk_unpriced"}),
+            content_type="application/json", **self._auth())
+
+        self.assertEqual(r.status_code, 409)
+        body = r.json()
+        self.assertEqual(body["code"], "conflict")
+        self.assertIn("no resolved customer price", body["detail"])
+        # And the wallet did not move, which is the thing the refusal is for.
+        self.assertEqual(
+            Wallet.objects.get(customer=self.individual).balance_micros, 5_000_000)
+
+    def test_refunding_a_posting_that_really_is_absent_still_says_not_found(self):
+        """The other arm, and the reason the branch above is not a rename.
+
+        Without this, mapping every refusal to `conflict` would pass the test
+        above just as well — and the two answers would have swapped rather than
+        separated.
+        """
+        import uuid as _uuid
+        Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
+        r = self.http_client.post(
+            f"/api/v1/billing/customers/{self.individual.id}/refund",
+            data=json.dumps({"usage_event_id": str(_uuid.uuid4()),
+                             "idempotency_key": "rk_absent"}),
+            content_type="application/json", **self._auth())
+
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json()["code"], "not_found")
+
     def test_refund_audit_keeps_seat_as_subject_and_records_owner(self):
         from apps.platform.audit.models import AuditRecord
         Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)

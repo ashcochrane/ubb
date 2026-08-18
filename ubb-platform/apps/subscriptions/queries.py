@@ -55,13 +55,15 @@ def get_economics_summary(tenant_id, period_start: date, period_end: date):
         period_start__gte=period_start,
         period_end__lte=period_end,
     )
-    from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+    from core.cost_totals import (
+        UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY)
 
     totals = qs.aggregate(
         total_subscription_revenue=Sum("subscription_revenue_micros"),
         total_usage_billed=Sum("usage_billed_micros"),
         total_provider_cost=Sum("provider_cost_micros"),
         total_unresolved=Sum("unresolved_event_count"),
+        total_unpriced=Sum("unpriced_event_count"),
         total_margin=Sum("gross_margin_micros"),
     )
     return {
@@ -76,6 +78,7 @@ def get_economics_summary(tenant_id, period_start: date, period_end: date):
         # same 0 could also have meant "UBB has not learned this".
         "provider_cost_micros": totals["total_provider_cost"] or 0,
         UNRESOLVED_EVENT_COUNT_KEY: totals["total_unresolved"] or 0,
+        UNPRICED_EVENT_COUNT_KEY: totals["total_unpriced"] or 0,
         "total_margin_micros": totals["total_margin"] or 0,
         "customer_count": qs.count(),
     }

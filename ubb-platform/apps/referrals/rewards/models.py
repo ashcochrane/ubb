@@ -55,6 +55,14 @@ class ReferralRewardLedger(BaseModel):
     # would move if those costs arrived. An event whose Event Type declares no
     # supplier cost is not counted (#327).
     unresolved_event_count = models.IntegerField(default=0)
+    # HOW MANY OF THE PERIOD'S EVENTS THE SPEND TOTAL COULD NOT INCLUDE (#351).
+    #
+    # Non-zero makes `referred_spend_micros` a floor, and the reward computed
+    # from it a floor too — the referrer is owed at least this much. That is the
+    # opposite direction from the count above, which makes the reward a figure
+    # that could move either way, and the two are separate columns because a
+    # single number could not say which.
+    unpriced_event_count = models.IntegerField(default=0)
     reward_micros = models.BigIntegerField()
     calculation_method = models.CharField(
         max_length=20, choices=CALCULATION_METHOD_CHOICES

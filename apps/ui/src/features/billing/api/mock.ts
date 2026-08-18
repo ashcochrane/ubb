@@ -57,6 +57,14 @@ export async function getRevenueAnalytics(range: {
       0,
     ),
     total_billed_cost_micros: totalBilled,
+    // The price half's count, summed from the rows on the same argument
+    // (#351). The daily fixtures resolve every price, so this window is
+    // complete on the revenue side and a floor on the cost side — which is the
+    // asymmetry two counts exist to express.
+    unpriced_event_count: daily.reduce(
+      (sum, row) => sum + (row.unpriced_event_count ?? 0),
+      0,
+    ),
     total_markup_micros: totalBilled - totalProvider,
   };
 }

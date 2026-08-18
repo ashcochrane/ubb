@@ -718,6 +718,30 @@ MEASUREMENTS_STATUS_VALUES = frozenset({
 # generator lost.
 
 
+# --- not_applicable_reason ---------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Why a subject generates no customer revenue at this level. Read only where
+# `pricing_status` is `not_applicable`, and never on its own: a status saying a
+# price does not apply without saying WHY sends a reader looking for a number
+# nobody wrote. The two values are mutually exclusive causes, and where both
+# are true POSTURE WINS — a metering-only tenant is `tenant_not_billing`
+# whatever the job's pricing regime, because no Charge is created anywhere for
+# that tenant and naming the job's regime would imply revenue sits on a Charge
+# that does not exist.
+#
+# Declared in concepts/economics.yaml.
+
+NOT_APPLICABLE_REASON_FIXED_TASK_PRICING = 'fixed_task_pricing'
+NOT_APPLICABLE_REASON_TENANT_NOT_BILLING = 'tenant_not_billing'
+
+NOT_APPLICABLE_REASON_VALUES = frozenset({
+    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
+    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
+})
+
+
 # --- payment_rail ------------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

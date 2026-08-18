@@ -57,6 +57,7 @@ from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_n
     RETIRED_COLUMN as HISTORICAL_BAG)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.transitions import DATABASE_DEFENDED, RECORD_RULE
 from core.vocabulary import (
     MEASUREMENTS_STATUS_AVAILABLE,
@@ -342,29 +343,36 @@ class TheDerivedMeasurementsStatusTest(TestCase):
             USAGE_EVENT_KIND_METERED_USAGE)
 
 
-class TheNullabilityAsymmetryTest(TestCase):
-    """The measurements went optional here; the cost columns go one slice each.
+class EachAmountWentNullableInTheSliceThatOwnedItsMeaningTest(TestCase):
+    """The measurements went optional here; the two amounts went one slice each.
 
-    It reads like an inconsistency and it is the rule: **each field goes
-    nullable in the slice that owns its meaning.** Slice 2 owns whether a
-    posting has measurements, so the measurements became optional then. A cost
-    column that went nullable in the same change would have been saying
-    something no slice had decided — `NULL` for "not resolved" is exactly the
-    distinction `RESOLVE_ONCE` is built to carry, and pre-announcing it would
-    have been a second break to repair the first (ADR-0007 §3).
+    **THE ASYMMETRY THIS CLASS WAS BUILT TO GUARD IS NOW CLOSED, AND THE CLASS
+    IS REWRITTEN RATHER THAN RELAXED.** It was `TheNullabilityAsymmetryTest`,
+    and its whole subject was that ONE of the two money columns was nullable and
+    the other must not yet be. #351 made the second one nullable, on purpose and
+    with the status column, database rule and thirty-nine reader repairs that
+    entitle it to be — so the claim expired. Renamed to carry the claim it makes
+    now, which is not the same claim weakened: **each amount went nullable in
+    the slice that owned its meaning, and neither did so before.**
 
-    **The asymmetry did not go away in #317; it moved.** Slice 3 owns whether a
-    SUPPLIER cost is resolved, so `provider_cost_micros` is nullable now and
-    `NULL` there means *not resolved*, defended at the database by the three
-    legal combinations in `Posting.Meta`. Slice 4 owns whether a CUSTOMER price
-    is resolved — `pricing_status`, the waive and the direct price all land
-    there — so `billed_cost_micros` is untouched, for the same reason and by
-    the same rule that kept them both untouched here one slice ago.
+    Deleting it instead would have been the cheap move and the wrong one. The
+    rule it encodes is what stopped either column pre-announcing a distinction
+    no slice had decided — a second break to repair the first (ADR-0007 §3) —
+    and the rule outlives the two columns it has been applied to.
 
-    So this class is rewritten rather than relaxed, and it still fails in
-    exactly one direction each: a supplier cost that stopped being nullable
-    would have lost the distinction slice 3 exists to add, and a billed cost
-    that started being nullable would be slice 4 arriving early and unsigned.
+    * Slice 2 owns whether a posting has measurements, so the measurements
+      became optional then and neither amount did.
+    * Slice 3 (#317) owns whether a SUPPLIER cost is resolved, so
+      `provider_cost_micros` went nullable then, defended by the three legal
+      combinations in `Posting.Meta`.
+    * Slice 4 (#351) owns whether a CUSTOMER price is resolved, so
+      `billed_cost_micros` went nullable then, defended by four.
+
+    Each assertion below now fails in BOTH directions rather than one: a column
+    that stopped being nullable would lose the distinction its slice exists to
+    add, and the shape of each is pinned beside its defending constraint, so a
+    column made nullable with no rule behind it fails in the class that owns the
+    rule rather than quietly here.
     """
 
     def test_the_measurements_are_optional(self):
@@ -392,17 +400,38 @@ class TheNullabilityAsymmetryTest(TestCase):
         self.assertTrue(field.null)
         self.assertEqual(field.default, 0)
 
-    def test_the_billed_cost_column_is_untouched_and_still_non_nullable(self):
-        """Slice 4's, and it stays that way for slice 4's own reason.
+    def test_the_customer_price_is_nullable_now_that_a_slice_owns_the_meaning(self):
+        """#351, and the assertion is INVERTED rather than deleted.
 
-        Nothing in slice 3 decides what an unresolved customer PRICE means, and
-        a column that went nullable here would be announcing a distinction with
-        no status column to qualify it and no rule to defend it — which is what
-        this test refused for the supplier cost one slice ago.
+        This read `assertFalse(field.null)` for two slices, and it was right
+        both times: a column that went nullable before its slice would have
+        announced a distinction with no status column to qualify it and no rule
+        to defend it. Slice 4 supplies both, so the same line now says the
+        opposite — which is what makes the file's history readable as a rule
+        being followed rather than a check being dropped.
+
+        The default stays 0, as the supplier half's did and for the same reason:
+        a writer that says nothing about customer price has recorded what UBB
+        holds. What changed is that `NULL` became SAYABLE.
         """
         field = Posting._meta.get_field("billed_cost_micros")
-        self.assertFalse(field.null)
+        self.assertTrue(field.null)
         self.assertEqual(field.default, 0)
+
+    def test_neither_amount_went_nullable_without_a_status_beside_it(self):
+        """The rule itself, rather than the two instances of it.
+
+        The two assertions above are each about one column and would both pass
+        against a column made nullable with nothing to qualify it — which is the
+        thing the rule forbids, and the thing a third amount added next year
+        would be at risk of. This says it once, over both pairs, by asking the
+        declared pairs rather than by naming columns.
+        """
+        for pair in (SUPPLIER_COST, CUSTOMER_PRICE):
+            amount = Posting._meta.get_field(pair.amount_column)
+            status = Posting._meta.get_field(pair.status_column)
+            self.assertTrue(amount.null, pair.amount_column)
+            self.assertFalse(status.null, pair.status_column)
 
 
 class TheHorizonHasNoClockBehindItTest(TestCase):

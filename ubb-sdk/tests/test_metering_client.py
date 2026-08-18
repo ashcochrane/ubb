@@ -26,7 +26,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_basic(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_1", "new_balance_micros": 8_500_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r1", idempotency_key="i1",
@@ -45,7 +45,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_with_explicit_billed(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_2", "new_balance_micros": 9_000_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
             "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
         })
         result = self.client.record_usage(
@@ -74,7 +74,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_c", "new_balance_micros": 9_000_000,
-            "suspended": False, "costing_status": "unresolved",
+            "suspended": False, "costing_status": "unresolved", "pricing_status": "known",
             "unresolved_reason": "reported_cost_missing",
             "claimed_provider_cost_micros": 987_654,
         })
@@ -98,7 +98,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_d", "new_balance_micros": 9_000_000,
-            "suspended": False, "costing_status": "known"})
+            "suspended": False, "costing_status": "known", "pricing_status": "known"})
 
         self.client.record_usage(customer_id="cust_1", request_id="rd",
                                  idempotency_key="id")
@@ -110,7 +110,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_with_the_open_bag(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r3", idempotency_key="i3",
@@ -126,7 +126,7 @@ class MeteringClientTest(unittest.TestCase):
         way."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3b", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", request_id="r3b", idempotency_key="i3b",
@@ -139,7 +139,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_dimensions_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3c", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", request_id="r3c", idempotency_key="i3c",
@@ -154,7 +154,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_recorded_at_datetime_serialized(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_4", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
         self.client.record_usage(
@@ -169,7 +169,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_recorded_at_iso_string_passthrough(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_5", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", request_id="r5", idempotency_key="i5",
@@ -191,7 +191,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_recorded_at_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_7", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", request_id="r7", idempotency_key="i7",
@@ -264,7 +264,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
                 {"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1",
-                 "billed_cost_micros": 10000, "costing_status": "known",
+                 "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known",
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],
             "next_cursor": "cur_abc",
@@ -374,7 +374,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_with_measurements_no_cost(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_m1", "new_balance_micros": 9_000_000, "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
             customer_id="c", request_id="r", idempotency_key="i",
@@ -391,7 +391,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_full_server_body_with_extra_fields(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
             "provider_cost_micros": 2000, "billed_cost_micros": 2000,
             "measurements": {"input_tokens": 1000},
             "pricing_provenance": {"engine_version": "x"},
@@ -411,7 +411,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_task_id_on_wire_and_totals_parsed(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_t1", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
             "task_id": "task_1", "parent_task_id": None,
             "task_total_billed_cost_micros": 750_000,
             "task_total_provider_cost_micros": 500_000,
@@ -433,7 +433,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_task_id_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_t2", "suspended": False,
-            "costing_status": "known",
+            "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", request_id="rt2", idempotency_key="it2",
@@ -455,6 +455,7 @@ class MeteringClientTest(unittest.TestCase):
             # one's. The fixture carries one so the field is exercised rather
             # than merely present.
             "unresolved_event_count": 3,
+            "unpriced_event_count": 0,
             "event_count": 12,
         })
         result = self.client.close_task("task_1")
@@ -477,6 +478,7 @@ class MeteringClientTest(unittest.TestCase):
             "status": "completed",
             "total_billed_cost_micros": 100, "total_provider_cost_micros": 80,
             "unresolved_event_count": 0,
+            "unpriced_event_count": 0,
             "event_count": 1,
         })
         result = self.client.close_task("sub_1")

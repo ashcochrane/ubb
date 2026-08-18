@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.aggregates import Aggregate
 
-from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from apps.platform.work.models import Task, TaskType
 
 
@@ -97,6 +97,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                 sum_provider_cost_micros=Sum("total_provider_cost_micros"),
                 sum_billed_cost_micros=Sum("total_billed_cost_micros"),
                 sum_unresolved=Sum("unresolved_event_count"),
+                sum_unpriced=Sum("unpriced_event_count"),
                 avg_provider_cost_micros=Avg("total_provider_cost_micros"),
                 p95_provider_cost_micros=PercentileCont("total_provider_cost_micros"),
                 limit_hit_count=Count("id", filter=Q(
@@ -110,6 +111,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
              "total_provider_cost_micros": r["sum_provider_cost_micros"],
              UNRESOLVED_EVENT_COUNT_KEY: r["sum_unresolved"],
              "total_billed_cost_micros": r["sum_billed_cost_micros"],
+             UNPRICED_EVENT_COUNT_KEY: r["sum_unpriced"],
              "avg_provider_cost_micros": int(r["avg_provider_cost_micros"]),
              "p95_provider_cost_micros": int(r["p95_provider_cost_micros"]),
              "limit_hit_count": r["limit_hit_count"]}

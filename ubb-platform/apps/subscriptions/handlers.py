@@ -4,7 +4,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from apps.platform.events.schemas import UsageRecorded
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 
 logger = logging.getLogger("ubb.events")
@@ -50,16 +50,29 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     # forever (#327's ruling, inherited).
     unresolved = 1 if counts_as_unresolved(SUPPLIER_COST, evt.costing_status) else 0
     provider = evt.provider_cost_micros if evt.provider_cost_micros is not None else 0
-    # billed_cost_micros is None on a legacy payload predating the split —
-    # the billed total then IS cost_micros.
-    billed = (evt.billed_cost_micros
-              if evt.billed_cost_micros is not None else evt.cost_micros) or 0
+    # THE SAME TREATMENT FOR THE PRICE HALF, AND ITS `or 0` HAD TO GO (#351).
+    #
+    # `billed_cost_micros` is None on a legacy payload predating the split — the
+    # billed total then IS `cost_micros` — and BOTH of those are now nullable
+    # for a second reason: a price UBB could not resolve. The trailing `or 0`
+    # served the first meaning and silently absorbed the second, which is the
+    # silent-zero this slice exists to delete: a period that billed real money
+    # would have read complete with a charge missing from it.
+    #
+    # The status decides here too. `waived` and `not_applicable` also arrive as
+    # a null price and neither is missing information, so only `unknown` is
+    # counted — the same asymmetry the cost half has, over a different value
+    # set, asked of the pair rather than spelled out.
+    unpriced = 1 if counts_as_unresolved(CUSTOMER_PRICE, evt.pricing_status) else 0
+    raw_billed = (evt.billed_cost_micros
+                  if evt.billed_cost_micros is not None else evt.cost_micros)
+    billed = raw_billed if raw_billed is not None else 0
     # AN EVENT THAT COSTS NOTHING AND BILLS NOTHING IS STILL WORTH RECORDING
-    # WHEN ITS COST IS UNKNOWN. The early return is right for an event that
-    # moved no money; a cost UBB has not learned has not been shown to be zero,
-    # and dropping it here is how a period comes to read complete because the
-    # only thing missing from it was never counted.
-    if billed <= 0 and provider <= 0 and not unresolved:
+    # WHEN EITHER AMOUNT IS UNKNOWN. The early return is right for an event that
+    # moved no money; an amount UBB has not learned has not been shown to be
+    # zero, and dropping it here is how a period comes to read complete because
+    # the only thing missing from it was never counted.
+    if billed <= 0 and provider <= 0 and not unresolved and not unpriced:
         return
 
     # Fast path: parse the payload's effective_at (present on all F4.2+
@@ -93,6 +106,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         total_provider_cost_micros=F("total_provider_cost_micros") + provider,
         unresolved_event_count=F("unresolved_event_count") + unresolved,
         total_billed_cost_micros=F("total_billed_cost_micros") + billed,
+        unpriced_event_count=F("unpriced_event_count") + unpriced,
         event_count=F("event_count") + 1,
     )
 
@@ -107,6 +121,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 total_provider_cost_micros=provider,
                 unresolved_event_count=unresolved,
                 total_billed_cost_micros=billed,
+                unpriced_event_count=unpriced,
                 event_count=1,
             )
         except IntegrityError:

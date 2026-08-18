@@ -9,6 +9,8 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.usage_event_out_costing_status import UsageEventOutCostingStatus
+from ..models.usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
+from ..models.usage_event_out_pricing_status import UsageEventOutPricingStatus
 from ..models.usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -33,6 +35,7 @@ class UsageEventOut:
             effective_at (str):
             id (UUID):
             metadata (UsageEventOutMetadata):
+            pricing_status (UsageEventOutPricingStatus):
             request_id (str):
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
@@ -40,6 +43,7 @@ class UsageEventOut:
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
                 treats as cost.
             event_type (str | Unset):  Default: ''.
+            not_applicable_reason (None | Unset | UsageEventOutNotApplicableReasonType0):
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
@@ -50,10 +54,12 @@ class UsageEventOut:
     effective_at: str
     id: UUID
     metadata: UsageEventOutMetadata
+    pricing_status: UsageEventOutPricingStatus
     request_id: str
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     event_type: str | Unset = ''
+    not_applicable_reason: None | Unset | UsageEventOutNotApplicableReasonType0 = UNSET
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
@@ -74,6 +80,8 @@ class UsageEventOut:
 
         metadata = self.metadata.to_dict()
 
+        pricing_status = self.pricing_status.value
+
         request_id = self.request_id
 
         billed_cost_micros: int | None | Unset
@@ -89,6 +97,14 @@ class UsageEventOut:
             claimed_provider_cost_micros = self.claimed_provider_cost_micros
 
         event_type = self.event_type
+
+        not_applicable_reason: None | str | Unset
+        if isinstance(self.not_applicable_reason, Unset):
+            not_applicable_reason = UNSET
+        elif isinstance(self.not_applicable_reason, UsageEventOutNotApplicableReasonType0):
+            not_applicable_reason = self.not_applicable_reason.value
+        else:
+            not_applicable_reason = self.not_applicable_reason
 
         provider = self.provider
 
@@ -124,6 +140,7 @@ class UsageEventOut:
             "effective_at": effective_at,
             "id": id,
             "metadata": metadata,
+            "pricing_status": pricing_status,
             "request_id": request_id,
         })
         if billed_cost_micros is not UNSET:
@@ -132,6 +149,8 @@ class UsageEventOut:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
+        if not_applicable_reason is not UNSET:
+            field_dict["not_applicable_reason"] = not_applicable_reason
         if provider is not UNSET:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
@@ -166,6 +185,11 @@ class UsageEventOut:
 
 
 
+        pricing_status = UsageEventOutPricingStatus(d.pop("pricing_status"))
+
+
+
+
         request_id = d.pop("request_id")
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
@@ -189,6 +213,26 @@ class UsageEventOut:
 
 
         event_type = d.pop("event_type", UNSET)
+
+        def _parse_not_applicable_reason(data: object) -> None | Unset | UsageEventOutNotApplicableReasonType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                not_applicable_reason_type_0 = UsageEventOutNotApplicableReasonType0(data)
+
+
+
+                return not_applicable_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventOutNotApplicableReasonType0, data)
+
+        not_applicable_reason = _parse_not_applicable_reason(d.pop("not_applicable_reason", UNSET))
+
 
         provider = d.pop("provider", UNSET)
 
@@ -245,10 +289,12 @@ class UsageEventOut:
             effective_at=effective_at,
             id=id,
             metadata=metadata,
+            pricing_status=pricing_status,
             request_id=request_id,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             event_type=event_type,
+            not_applicable_reason=not_applicable_reason,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,

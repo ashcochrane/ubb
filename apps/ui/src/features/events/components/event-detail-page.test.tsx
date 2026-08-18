@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   COSTING_STATUS_EXPLANATIONS,
   costingStatusLabel,
@@ -15,8 +16,11 @@ import {
   EVENT_RICH_ID,
   EVENT_TASK_CHARGE_ID,
   EVENT_TASK_KILL_ID,
+  EVENT_PRICE_NOT_APPLICABLE_ID,
   EVENT_TIPPING_ID,
+  EVENT_UNPRICED_ID,
   EVENT_UNRESOLVED_ID,
+  EVENT_WAIVED_ID,
 } from "../api/mock-data";
 import {
   MEASUREMENTS_STATUS_EXPLANATIONS,
@@ -254,6 +258,48 @@ describe("EventDetailPage", () => {
     // about the supplier cost something the tenant can see rather than infer.
     expect(screen.getByText("$0.0310")).toBeInTheDocument();
   });
+
+  // #155 §9.2's owed rendering assertions for the states #351 introduces, and
+  // the mirror of the supplier-cost one above. `economic-scenarios.ts` composes
+  // all three; this is the surface that proves each renders as ITSELF — an
+  // absence — rather than as a charge of nothing.
+  //
+  // ⚠ EVERY SEED HERE HAS A SETTLED SUPPLIER COST, on purpose. A row missing
+  // both amounts would pass against a screen that read either status for both,
+  // so the crossed case is the only one that separates them — and the settled
+  // cost figure asserted below is what proves the absence is about the price
+  // rather than about the screen.
+  //
+  // NAMING which of the three it is remains the pricing feature's, exactly as
+  // #330 named the supplier half's after #317 stopped its zero. What this
+  // ticket owes, and what these assert, is that none of them renders as money.
+  it.each([
+    ["unresolved", EVENT_UNPRICED_ID, "$0.0190"],
+    ["waived", EVENT_WAIVED_ID, "$0.0125"],
+    ["not applicable", EVENT_PRICE_NOT_APPLICABLE_ID, "$0.0084"],
+  ])(
+    "renders a %s customer price AS ABSENT — never as zero",
+    async (_state, eventId, settledCost) => {
+      renderPage({ eventId, customerId: CUSTOMER_A_ID });
+
+      expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+
+      // Rendered as `$0.00` this would tell a tenant they charged their
+      // customer nothing — the unflattering direction of the identical mistake
+      // the cost half makes.
+      const billed = screen.getByText("Billed").closest("div");
+      expect(billed).not.toBeNull();
+      expect(billed?.textContent ?? "").not.toContain("$0.00");
+      expect(billed?.textContent ?? "").toContain(ABSENT_LABEL);
+
+      // The SUPPLIER cost on the same posting is settled and still a figure.
+      expect(screen.getByText(settledCost)).toBeInTheDocument();
+      expect(screen.getByText(costingStatusLabel("known"))).toBeInTheDocument();
+
+      // And with no price there is nothing to refund.
+      expect(screen.queryByText("Refund this charge")).not.toBeInTheDocument();
+    },
+  );
 
   it("names a settled cost as settled, and asks for no missing input", async () => {
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });

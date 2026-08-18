@@ -29,6 +29,7 @@ class TaskAnalyticsRow:
             task_type (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
+            unpriced_event_count (int):
             unresolved_event_count (int):
      """
 
@@ -39,6 +40,7 @@ class TaskAnalyticsRow:
     task_type: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    unpriced_event_count: int
     unresolved_event_count: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -61,6 +63,8 @@ class TaskAnalyticsRow:
 
         total_provider_cost_micros = self.total_provider_cost_micros
 
+        unpriced_event_count = self.unpriced_event_count
+
         unresolved_event_count = self.unresolved_event_count
 
 
@@ -74,6 +78,7 @@ class TaskAnalyticsRow:
             "task_type": task_type,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
 
@@ -98,6 +103,8 @@ class TaskAnalyticsRow:
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
 
+        unpriced_event_count = d.pop("unpriced_event_count")
+
         unresolved_event_count = d.pop("unresolved_event_count")
 
         task_analytics_row = cls(
@@ -108,6 +115,7 @@ class TaskAnalyticsRow:
             task_type=task_type,
             total_billed_cost_micros=total_billed_cost_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
         )
 

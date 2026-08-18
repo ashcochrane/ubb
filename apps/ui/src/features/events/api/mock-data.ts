@@ -9,9 +9,14 @@
 import {
   availableMeasurements,
   knownCost,
+  knownPrice,
   measurementsNotApplicable,
+  priceNotApplicable,
   prunedMeasurements,
   unknownCost,
+  unknownPrice,
+  waivedPrice,
+  type CustomerPriceScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
 
@@ -57,6 +62,18 @@ export const EVENT_TASK_CHARGE_ID = "7a4e9d15-3b60-4c28-8f91-0d6b3e7a2c58";
  * (#330). It is the only unresolved posting in this story, and the reason the
  * July totals over it are floors. */
 export const EVENT_UNRESOLVED_ID = "6b2f8c30-4d71-4e59-9c18-5a3e7d0f4b92";
+/** June traffic whose CUSTOMER PRICE UBB could not resolve, with a settled
+ * supplier cost beside it (#351). The crossed case: the two completeness counts
+ * are about different postings, and this is the row that proves it. */
+export const EVENT_UNPRICED_ID = "1e7d4b09-8a36-4c52-b0f7-9d2c6e5a3f81";
+/** A charge somebody decided not to pursue (#351). Same column shape as the
+ * row above and a different meaning: reported as a loss, so no total is a floor
+ * because of it. */
+export const EVENT_WAIVED_ID = "9f3a5c28-7b14-4e60-8d29-4c1e6b0a7d53";
+/** An event inside a Task sold for one agreed price, so it generates no
+ * customer revenue at this level at all (#351). */
+export const EVENT_PRICE_NOT_APPLICABLE_ID =
+  "5c8b2e41-0d97-4a36-b1e5-7f3a9d2c6b84";
 /** The killed task's other event, costed by CALCULATION where the kill event
  * beside it was REPORTED (#330). Two derivations, one complete task. */
 export const EVENT_TASK_RATED_ID = "4f9a2d68-7c05-4b31-8e72-1b6d9a3f5c04";
@@ -75,7 +92,16 @@ interface DetailSeed {
   dim1?: string;
   dim2?: string;
   dim3?: string;
-  billed_cost_micros: number;
+  /**
+   * The customer price and its status, as ONE object (#351).
+   *
+   * A bare `billed_cost_micros: number` sat here until the column went
+   * nullable, exactly as a bare `provider_cost_micros` sat here until #330 —
+   * and it stops being true the moment one seed does not carry a number. Three
+   * of the four statuses null the amount, so composing the pair is what stops a
+   * seed writing one half and letting a default invent the other.
+   */
+  price: CustomerPriceScenario;
   /**
    * The supplier cost, its status and — where there is one — the input that is
    * missing, as ONE object (#330).
@@ -136,7 +162,11 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     id: seed.id,
     request_id: seed.request_id ?? `req_${seed.id.slice(0, 8)}`,
     idempotency_key: seed.idempotency_key ?? `idem_${seed.id.slice(0, 8)}`,
-    billed_cost_micros: seed.billed_cost_micros,
+    // Both from the seed's one PRICE scenario object, for the same reason the
+    // cost trio below comes from its own: a constant `"known"` beside a null
+    // amount is the row the posting's check constraint refuses (#351).
+    billed_cost_micros: seed.price.billed_cost_micros,
+    pricing_status: seed.price.pricing_status,
     // All three from the seed's one scenario object. There is no default here
     // any more: the file now HAS an unresolved row to render, and a constant
     // `"known"` beside a null amount would be the exact row the posting's own
@@ -187,7 +217,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       dim1: "copilot",
       dim2: "realtime-api",
       dim3: "agent-7",
-      billed_cost_micros: 187_500,
+      price: knownPrice(187_500),
       cost: knownCost(142_300),
       // Composed rather than hand-built, because this is the event the
       // `available` rendering assertion runs against — so all three states the
@@ -237,7 +267,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       id: EVENT_TIPPING_ID,
       effective_at: "2026-07-18T14:02:11Z",
       created_at: "2026-07-18T14:02:12Z",
-      billed_cost_micros: 96_000,
+      price: knownPrice(96_000),
       cost: knownCost(75_000),
       measurements: { input_tokens: 2100, output_tokens: 940 },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
@@ -261,7 +291,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       id: EVENT_LATE_ID,
       effective_at: "2026-07-18T14:03:27Z",
       created_at: "2026-07-18T14:03:28Z",
-      billed_cost_micros: 54_000,
+      price: knownPrice(54_000),
       cost: knownCost(42_000),
       measurements: { input_tokens: 1200, output_tokens: 480 },
       metadata: { env: "prod", team: "assist" },
@@ -287,7 +317,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:05:45Z",
       provider: "anthropic",
       event_type: "messages.create",
-      billed_cost_micros: 31_000,
+      price: knownPrice(31_000),
       cost: knownCost(24_000),
       measurements: { input_tokens: 800, output_tokens: 260 },
       metadata: { env: "prod", team: "assist" },
@@ -313,7 +343,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-21T09:16:06Z",
       dim1: "batch",
       dim2: "batch-worker",
-      billed_cost_micros: 64_000,
+      price: knownPrice(64_000),
       cost: knownCost(50_000),
       measurements: { input_tokens: 1500, output_tokens: 620 },
       metadata: { env: "prod", team: "assist" },
@@ -349,7 +379,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       provider: "mistral",
       dim1: "batch",
       dim2: "batch-worker",
-      billed_cost_micros: 38_400,
+      price: knownPrice(38_400),
       cost: knownCost(30_000),
       measurements: { embedding_tokens: 7400 },
       metadata: { env: "prod", team: "assist" },
@@ -370,7 +400,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-20T10:04:15Z",
       event_type: "embedding.create",
       dim1: "search-api",
-      billed_cost_micros: 22_400,
+      price: knownPrice(22_400),
       cost: knownCost(17_500),
       measurements: { embedding_tokens: 5200 },
       metadata: {
@@ -404,7 +434,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       provider: "deepgram",
       dim1: "search-api",
       dim2: "realtime-api",
-      billed_cost_micros: 31_000,
+      price: knownPrice(31_000),
       // No Cost Rate matched this quantity at the moment it happened, so there
       // is nothing to record and the receipt says which input is missing —
       // never a zero, which would state that the supplier charged nothing.
@@ -418,6 +448,92 @@ const FEATURE_EVENTS: MockEvent[] = [
         engine_version: "pricing-engine/4.2.1",
         billed_source: "price_rule",
         cost_source: "unresolved",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // ⚠ THE MIRROR OF THE ROW ABOVE, AND #155 §9.2'S OWED FIXTURE FOR THE
+      // STATE #351 INTRODUCES: a posting whose SUPPLIER COST is settled and
+      // whose CUSTOMER PRICE UBB could not resolve.
+      //
+      // Deliberately the crossed case rather than a row missing both. The two
+      // completeness counts are about different postings, and a fixture that
+      // put both absences on one event would pass against a console that read
+      // either count for the other — which is the defect the second count
+      // exists to make impossible.
+      //
+      // Dated OUTSIDE the July window, like the two measurement fixtures
+      // below, so the coherent July story above keeps its totals and its
+      // counts. What it exercises is the detail view and the ledger row, which
+      // is where an unresolved price rendered as `$0.00` would say the tenant
+      // charged their customer nothing.
+      id: EVENT_UNPRICED_ID,
+      effective_at: "2026-06-11T11:27:03Z",
+      created_at: "2026-06-11T11:27:04Z",
+      event_type: "rerank.create",
+      provider: "cohere",
+      dim1: "search-api",
+      price: unknownPrice(),
+      cost: knownCost(19_000),
+      measurements: { rerank_documents: 240 },
+      metadata: { env: "prod", team: "search" },
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "unresolved",
+        cost_source: "cost_rate",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // The OTHER two absent price states, so all three of them have a fixture
+      // and a rendering assertion (#155 §9.2). They share a column shape with
+      // the row above — a null amount — and differ only by status, which is the
+      // whole reason the console cannot read the amount and guess.
+      //
+      // A charge somebody decided not to pursue. Reported as a loss, so the
+      // revenue really is nothing and no total is a floor because of it.
+      id: EVENT_WAIVED_ID,
+      effective_at: "2026-06-12T09:41:55Z",
+      created_at: "2026-06-12T09:41:56Z",
+      event_type: "chat.completion",
+      provider: "openai",
+      dim1: "support-bot",
+      price: waivedPrice(),
+      cost: knownCost(12_500),
+      measurements: { input_tokens: 900, output_tokens: 140 },
+      metadata: { env: "prod", team: "support" },
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "waived",
+        cost_source: "cost_rate",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // An event inside a Task sold for one agreed price: the revenue is the
+      // Task's and none of it is this event's, so there is no customer price
+      // here to resolve or to miss.
+      id: EVENT_PRICE_NOT_APPLICABLE_ID,
+      effective_at: "2026-06-13T16:08:22Z",
+      created_at: "2026-06-13T16:08:23Z",
+      event_type: "chat.completion",
+      provider: "anthropic",
+      dim1: "onboarding",
+      price: priceNotApplicable(),
+      cost: knownCost(8_400),
+      measurements: { input_tokens: 610, output_tokens: 95 },
+      metadata: { env: "prod", team: "onboarding" },
+      task_id: TASK_FIXED_PRICE_ID,
+      pricing_provenance: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "not_applicable",
+        cost_source: "cost_rate",
       },
     }),
   },
@@ -435,7 +551,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       effective_at: "2026-05-02T11:27:53Z",
       created_at: "2026-05-02T11:27:54Z",
       dim1: "copilot",
-      billed_cost_micros: 94_000,
+      price: knownPrice(94_000),
       cost: knownCost(73_000),
       metadata: { env: "prod", team: "search" },
       pricing_provenance: markupProvenance(73_000),
@@ -453,7 +569,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-06-11T08:14:03Z",
       event_type: "task.charge",
       dim1: "batch",
-      billed_cost_micros: 2_500_000,
+      price: knownPrice(2_500_000),
       cost: knownCost(1_840_000),
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_FIXED_PRICE_ID,
@@ -493,7 +609,7 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       dim1: PRODUCT_IDS[index % PRODUCT_IDS.length] ?? "copilot",
       dim2: index % 4 === 0 ? "batch-worker" : "realtime-api",
       dim3: index % 5 === 0 ? "agent-7" : "",
-      billed_cost_micros: billed,
+      price: knownPrice(billed),
       cost: knownCost(providerCost),
       measurements: {
         input_tokens: 900 + (index % 23) * 240,
@@ -542,6 +658,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 4_620_000,
     provider_cost_micros: 3_580_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 50_040_000,
     margin_percentage: 93.3,
   },
@@ -552,6 +669,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 410_000,
     provider_cost_micros: 320_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 19_090_000,
     margin_percentage: 98.4,
   },
@@ -562,6 +680,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 0,
     provider_cost_micros: 0,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 9_000_000,
     margin_percentage: 100,
   },
@@ -583,6 +702,7 @@ function marginDetail(
     usage_revenue_micros: row.usage_revenue_micros,
     provider_cost_micros: row.provider_cost_micros,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros:
       row.subscription_revenue_micros + row.usage_revenue_micros,
     gross_margin_micros: row.gross_margin_micros,

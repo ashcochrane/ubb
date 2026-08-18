@@ -108,7 +108,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_1", "new_balance_micros": 8_500_000,
-                "suspended": False, "costing_status": "known",
+                "suspended": False, "costing_status": "known", "pricing_status": "known",
                 "billed_cost_micros": 1_500_000,
             }
         )
@@ -136,7 +136,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_2", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known",
+                "suspended": False, "costing_status": "known", "pricing_status": "known",
                 "billed_cost_micros": 1_500_000,
             }
         )
@@ -156,7 +156,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_3", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known",
+                "suspended": False, "costing_status": "known", "pricing_status": "known",
                 "billed_cost_micros": 0,
             }
         )
@@ -175,7 +175,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_4", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known",
+                "suspended": False, "costing_status": "known", "pricing_status": "known",
             }
         )
         result = self.client.record_usage(

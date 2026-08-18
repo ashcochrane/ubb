@@ -47,6 +47,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: 274_000_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 267_500_000,
     margin_percentage: 49.4,
   },
@@ -58,6 +59,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: 55_900_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: -14_700_000,
     margin_percentage: -35.7,
   },
@@ -76,6 +78,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 0,
     provider_cost_micros: 88_000_000,
     unresolved_event_count: 4,
+    unpriced_event_count: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
   },
@@ -87,6 +90,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: 96_300_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 24_100_000,
     margin_percentage: 20,
   },
@@ -98,6 +102,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: 49_400_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 12_400_000,
     margin_percentage: 20.1,
   },
@@ -115,6 +120,7 @@ export function mockMarginSummary(window: Window): MarginSummary {
     // nova-ai holds uncosted events, so the window's total is a floor by the
     // same four.
     unresolved_event_count: 4,
+    unpriced_event_count: 0,
     total_revenue_micros: 764_900_000,
     gross_margin_micros: 201_300_000,
     margin_percentage: 26.32,
@@ -130,6 +136,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       external_id: "nova-ai",
       gross_margin_micros: -88_000_000,
       unresolved_event_count: 4,
+      unpriced_event_count: 0,
       margin_percentage: -100,
     },
     {
@@ -137,6 +144,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       external_id: "luna-labs",
       gross_margin_micros: -14_700_000,
       unresolved_event_count: 0,
+      unpriced_event_count: 0,
       margin_percentage: -35.7,
     },
   ],
@@ -154,6 +162,7 @@ const WINDOW_TOTALS = {
   // the same postings over the same window, so a story where they disagreed
   // would be a story no server could produce.
   unresolved_event_count: 4,
+  unpriced_event_count: 0,
   usage_markup_margin_micros: 90_300_000,
 };
 
@@ -246,6 +255,7 @@ export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
   total_provider_cost_micros: 6_690_150_000,
   // Lifetime spans the window, so it cannot count FEWER than the window does.
   unresolved_event_count: 4,
+  unpriced_event_count: 0,
   usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],
   by_event_type: [],

@@ -140,6 +140,18 @@ class Task(BaseModel):
     # Nothing about it is missing (#327), and a caveat that is always on is a
     # caveat nobody reads.
     unresolved_event_count = models.IntegerField(default=0)
+    # HOW MANY OF THOSE EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
+    #
+    # The mirror of the count above, for the other side of the margin, and it is
+    # a second column for the reason the two counts are two keys everywhere
+    # else: they are about different events. A unit can hold a settled cost and
+    # a price UBB could not resolve, and one number answering for both would let
+    # either caveat vanish behind the other.
+    #
+    # Only `unknown` is counted. A `waived` price and a `not_applicable` one are
+    # genuine zeroes rather than missing information — the same rule, and the
+    # same argument against a caveat that is always on, as the cost half above.
+    unpriced_event_count = models.IntegerField(default=0)
 
     # Signal-point snapshots — copied from the start call / tenant config at
     # task creation so a config change never affects an in-flight task.

@@ -18,6 +18,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.metering.queries import get_customer_usage_summary
+from core.vocabulary import PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN
 
 
 def _month_window():
@@ -32,11 +33,13 @@ class GetCustomerUsageSummaryTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.start, self.end = _month_window()
 
-    def _event(self, customer, key, *, event_type="", billed=0):
+    def _event(self, customer, key, *, event_type="", billed=0,
+               pricing_status=PRICING_STATUS_KNOWN):
         return Posting.objects.create(
             tenant=self.tenant, customer=customer,
             request_id=f"r-{key}", idempotency_key=f"i-{key}",
             event_type=event_type, billed_cost_micros=billed,
+            pricing_status=pricing_status,
         )
 
     def test_groups_by_event_type_and_totals_equal_sum_of_rows(self):
@@ -62,9 +65,14 @@ class GetCustomerUsageSummaryTest(TestCase):
         """
         self._event(self.customer, "1", event_type="calls", billed=300_000)
         s = get_customer_usage_summary(self.tenant.id, self.customer.id, self.start, self.end)
-        self.assertEqual(set(s), {"total_billed_micros", "event_count", "metrics"})
+        # `unpriced_event_count` joins both shapes in #351 and is NOT the
+        # quantity this test retired: it is a count of postings the money above
+        # it could not include, not a magnitude summed across Event Types.
+        self.assertEqual(set(s), {"total_billed_micros", "unpriced_event_count",
+                                  "event_count", "metrics"})
         self.assertEqual(set(s["metrics"][0]),
-                         {"event_type", "billed_cost_micros", "event_count"})
+                         {"event_type", "billed_cost_micros",
+                          "unpriced_event_count", "event_count"})
 
     def test_a_zero_billed_row_still_counts_its_events(self):
         """The other half of what the coalescing used to hide.
@@ -117,7 +125,28 @@ class GetCustomerUsageSummaryTest(TestCase):
             tenant=self.tenant, external_id="biz0", account_type="business")
         s = get_customer_usage_summary(self.tenant.id, business.id, self.start, self.end)
         self.assertEqual(s, {"total_billed_micros": 0,
+                             "unpriced_event_count": 0,
                              "event_count": 0, "metrics": []})
+
+    def test_the_grand_count_is_the_sum_of_the_rows_counts(self):
+        """The same "by construction" relation the totals have (#351).
+
+        A caveat that did not add up the way the money does would let a reader
+        reconcile the rows against the total and conclude the total was whole.
+        """
+        self._event(self.customer, "1", event_type="calls", billed=300_000)
+        self._event(self.customer, "2", event_type="calls", billed=None,
+                    pricing_status=PRICING_STATUS_UNKNOWN)
+        self._event(self.customer, "3", event_type="tokens", billed=None,
+                    pricing_status=PRICING_STATUS_UNKNOWN)
+        s = get_customer_usage_summary(
+            self.tenant.id, self.customer.id, self.start, self.end)
+        rows = {m["event_type"]: m for m in s["metrics"]}
+        self.assertEqual(rows["calls"]["unpriced_event_count"], 1)
+        self.assertEqual(rows["tokens"]["unpriced_event_count"], 1)
+        self.assertEqual(s["unpriced_event_count"], 2)
+        # And the money still only counts what UBB resolved.
+        self.assertEqual(s["total_billed_micros"], 300_000)
 
     def test_seat_sees_only_its_own_usage(self):
         business = Customer.objects.create(

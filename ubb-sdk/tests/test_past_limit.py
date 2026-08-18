@@ -23,7 +23,7 @@ class StopContextAckTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_carries_stop_context(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "costing_status": "known",
+            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known",
             "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "stop_context": _CTX})
         result = self.client.record_usage(customer_id="c1", request_id="r1",
@@ -34,7 +34,7 @@ class StopContextAckTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_stop_context_defaults_none(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "costing_status": "known"})
+            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known"})
         result = self.client.record_usage(customer_id="c1", request_id="r1",
                                           idempotency_key="i1")
         self.assertIsNone(result.stop_context)
@@ -53,7 +53,7 @@ class UsageFiltersTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [{"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1",
                       "metadata": {}, "effective_at": "2026-06-01T00:00:00Z",
-                      "costing_status": "known", "stop_context": _CTX}],
+                      "costing_status": "known", "pricing_status": "known", "stop_context": _CTX}],
             "next_cursor": None, "has_more": False})
         page = self.client.get_usage("c1", past_limit=True, stop_scope="task",
                                      episode_seq=3)

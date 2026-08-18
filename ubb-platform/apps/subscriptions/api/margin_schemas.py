@@ -79,6 +79,8 @@ class SeatMarginOut(Schema):
     usage_revenue_micros: int
     provider_cost_micros: int
     unresolved_event_count: int
+    #: The revenue half's own count (#351) — see `GroupingFieldMarginRow`.
+    unpriced_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
@@ -98,6 +100,7 @@ class CustomerMarginListRow(Schema):
     usage_revenue_micros: int
     provider_cost_micros: int
     unresolved_event_count: int
+    unpriced_event_count: int
     gross_margin_micros: int
     margin_percentage: float
 
@@ -116,6 +119,8 @@ class MarginSummaryOut(Schema):
     #: The tenant-wide count: every customer's, added up, because the cost above
     #: is every customer's added up.
     unresolved_event_count: int
+    #: The same, for the revenue half (#351): every customer's, added up.
+    unpriced_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
@@ -141,6 +146,17 @@ class GroupingFieldMarginRow(Schema):
     #: on the one surface of the three that a drift gate can see.
     unresolved_event_count: int
     billed_cost_micros: int
+    #: HOW MANY EVENTS THE BILLED TOTAL COULD NOT INCLUDE, for THIS row's group
+    #: (#351) — and it is declared here for the reason the count above it is,
+    #: which #351 was sent to apply a second time rather than to rediscover.
+    #: **A `Schema` that does not name a key DROPS it.** The read contract
+    #: attaches this to every row of all three rollups; the two untyped ones
+    #: carry it free, and this one — the only surface a drift gate can see —
+    #: would be the only one to lose it.
+    #:
+    #: It bounds the margin the OTHER way from its sibling: an excluded cost
+    #: makes `margin_micros` a ceiling, an excluded price makes it a floor.
+    unpriced_event_count: int
     margin_micros: int
     event_count: int
 
@@ -158,6 +174,12 @@ class UnprofitableCustomerRow(Schema):
     #: the count can never mean "perhaps they are fine" — only that they may be
     #: worse than the figure says.
     unresolved_event_count: int
+    #: ⚠ AND THIS ONE CAN MEAN EXACTLY THAT (#351). An excluded PRICE means
+    #: revenue was left out, so the true margin is HIGHER than the figure that
+    #: named this customer unprofitable. Publishing only the count above — the
+    #: one that cannot say it — would have made this list the more misleading of
+    #: the two surfaces.
+    unpriced_event_count: int
     margin_percentage: float
 
 
@@ -172,6 +194,8 @@ class MarginTrendPointOut(Schema):
     #: Per POINT, because completeness varies month to month and a trend that
     #: stated it once would be stating it about the wrong months.
     unresolved_event_count: int
+    #: The revenue half, per point, on the same argument (#351).
+    unpriced_event_count: int
     usage_billed_micros: int
     subscription_revenue_micros: int
     gross_margin_micros: int
@@ -192,6 +216,8 @@ class BusinessMarginTotals(Schema):
     #: The seats' counts added up, exactly as the cost above is: one seat's
     #: unresolved cost makes the business figure a floor too.
     unresolved_event_count: int
+    #: And the revenue half's, added up the same way (#351).
+    unpriced_event_count: int
     total_revenue_micros: int
     gross_margin_micros: int
     event_count: int

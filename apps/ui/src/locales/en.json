@@ -112,6 +112,8 @@
   "measurements_status.available": "Measurements available",
   "measurements_status.not_applicable": "No measurements apply",
   "measurements_status.pruned": "Measurements no longer retained",
+  "not_applicable_reason.fixed_task_pricing": "Priced at the task",
+  "not_applicable_reason.tenant_not_billing": "Metering only",
   "payment_rail.stripe": "Stripe",
   "payment_rail_environment.live": "Live",
   "payment_rail_environment.test": "Test",

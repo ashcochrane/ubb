@@ -22,7 +22,7 @@ from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from core.vocabulary import COSTING_STATUS_KNOWN
+from core.vocabulary import COSTING_STATUS_KNOWN, PRICING_STATUS_KNOWN
 
 #: A payload field naming the closed set that says whether a supplier cost is
 #: settled (#328).
@@ -37,6 +37,13 @@ from core.vocabulary import COSTING_STATUS_KNOWN
 #: exactly as a marked response field is.
 CostingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "costing_status"})]
+
+#: The same, for the closed set that says whether a customer PRICE is settled
+#: (#351). Same marker, same reason, same applier — and the marker sits on a
+#: plain `str` rather than on a nullable union because this field is never null:
+#: `unknown` is a status, not the absence of one.
+PricingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
 
 
 class EventSchema:
@@ -97,7 +104,19 @@ class UsageRecorded(EventSchema):
     tenant_id: str
     customer_id: str
     event_id: str
-    cost_micros: int
+    # ⚠ NULLABLE SINCE #351, AND IT WAS TYPED `int` WHILE THE COLUMN IT IS
+    # FILLED FROM WENT NULLABLE — which is the whole of the finding this ticket
+    # was sent to make. The recording path assigns this straight from
+    # `Posting.billed_cost_micros`, and a frozen dataclass does not enforce its
+    # own annotations at runtime, so the payload would have carried `null` under
+    # a field the published document declares `integer`: no exception, no failed
+    # write, and two products reading it. Both accumulators below it already
+    # took the same treatment for the supplier half in #328.
+    #
+    # `billed_cost_micros` further down is the newer spelling of this same
+    # number and has been nullable since it was added; retiring one of the two
+    # is not this ticket's.
+    cost_micros: int | None
     # A NULL HERE IS DISAMBIGUATED BY THE FIELD BELOW IT (#328). This field has
     # always been nullable, but until #320 a null only ever meant "the recording
     # path supplied nothing"; #320 taught the compute spine to leave the column
@@ -132,6 +151,18 @@ class UsageRecorded(EventSchema):
     # not include; none of them asks why, and a field nothing reads is a field
     # that goes stale. It joins the payload the day a subscriber needs it.
     billed_cost_micros: int | None = None
+    # WHICH READING THE TWO PRICE NULLS ABOVE TAKE (#351), carried for exactly
+    # the reason `costing_status` is: two products accumulate off this payload
+    # and neither can count what it excluded without it. `waived` and
+    # `not_applicable` arrive as a null amount too, and counting either as
+    # missing information would mark every metering-only tenant's every period
+    # partial forever.
+    #
+    # THE DEFAULT IS `known`, which is the posting column's own default and its
+    # own argument: a payload queued before this field existed carries no key,
+    # so a reader falls to this default and counts no exclusion — which is what
+    # those events meant.
+    pricing_status: PricingStatus = PRICING_STATUS_KNOWN
     event_type: str = ""
     provider: str = ""
     auto_topup_attempt_id: str | None = None

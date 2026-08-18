@@ -8,10 +8,13 @@ from apps.metering.queries import (
     get_period_totals, get_customer_usage_for_period,
     get_usage_event_cost, get_revenue_analytics,
 )
-from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.cost_totals import (
+    UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY)
 from core.vocabulary import (
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
@@ -191,7 +194,9 @@ class GetUsageEventCostTest(TestCase):
             tenant=self.tenant, customer=self.customer,
             request_id="r1", idempotency_key="i1", billed_cost_micros=1_000_000,
         )
-        self.assertEqual(get_usage_event_cost(event.id), 1_000_000)
+        self.assertEqual(get_usage_event_cost(event.id),
+                         {"billed_cost_micros": 1_000_000,
+                          "pricing_status": PRICING_STATUS_KNOWN})
 
     def test_prefers_billed_cost(self):
         event = Posting.objects.create(
@@ -199,11 +204,29 @@ class GetUsageEventCostTest(TestCase):
             request_id="r1", idempotency_key="i1",
             billed_cost_micros=1_500_000,
         )
-        self.assertEqual(get_usage_event_cost(event.id), 1_500_000)
+        self.assertEqual(get_usage_event_cost(event.id),
+                         {"billed_cost_micros": 1_500_000,
+                          "pricing_status": PRICING_STATUS_KNOWN})
 
     def test_returns_none_for_missing_event(self):
         import uuid
         self.assertIsNone(get_usage_event_cost(uuid.uuid4()))
+
+    def test_an_unresolved_price_is_a_row_and_not_a_missing_event(self):
+        """The distinction the row shape exists for (#351).
+
+        Both answers were `None` while this returned a bare amount, and the one
+        caller — the wallet's refund path — reported the second as
+        `usage_event_not_found`. A posting that exists is never `None` here,
+        whatever its price.
+        """
+        event = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            request_id="r2", idempotency_key="i2",
+            billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN)
+        self.assertEqual(get_usage_event_cost(event.id),
+                         {"billed_cost_micros": None,
+                          "pricing_status": PRICING_STATUS_UNKNOWN})
 
 
 class GetRevenueAnalyticsTest(TestCase):
@@ -363,7 +386,30 @@ class CrossProductReadContractTest(TestCase):
                                   request_id="r4", idempotency_key="i4", billed_cost_micros=7)
         totals = get_billed_totals_by_customer(
             self.tenant.id, [self.customer.id, other.id], self.start, self.end)
-        self.assertEqual(totals, {self.customer.id: 300, other.id: 0})
+        self.assertEqual(totals, {
+            self.customer.id: {"billed_cost_micros": 300,
+                               UNPRICED_EVENT_COUNT_KEY: 0},
+            other.id: {"billed_cost_micros": 0, UNPRICED_EVENT_COUNT_KEY: 0}})
+
+    def test_billed_totals_by_customer_counts_what_it_could_not_price(self):
+        """The pair, over the surface that builds postpaid invoice LINES (#351).
+
+        A seat whose every posting is unpriced billed exactly like a seat that
+        emitted nothing, and this is the number that tells them apart.
+        """
+        from apps.metering.queries import get_billed_totals_by_customer
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
+                               request_id="r1", idempotency_key="i1",
+                               billed_cost_micros=100)
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
+                               request_id="r2", idempotency_key="i2",
+                               billed_cost_micros=None,
+                               pricing_status=PRICING_STATUS_UNKNOWN)
+        totals = get_billed_totals_by_customer(
+            self.tenant.id, [self.customer.id], self.start, self.end)
+        self.assertEqual(totals[self.customer.id],
+                         {"billed_cost_micros": 100,
+                          UNPRICED_EVENT_COUNT_KEY: 1})
 
     def test_billed_breakdown_tag_empty_string_and_missing_merge_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
@@ -378,7 +424,8 @@ class CrossProductReadContractTest(TestCase):
                                   billed_cost_micros=3, metadata={})
         pairs = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, self.start, self.end, "tag:seat")
-        self.assertEqual(dict(pairs), {"alice": 100, "(other)": 23})
+        self.assertEqual({label: billed for label, billed, _ in pairs},
+                         {"alice": 100, "(other)": 23})
 
     def test_billed_breakdown_dim1_empty_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
@@ -390,7 +437,32 @@ class CrossProductReadContractTest(TestCase):
                                   billed_cost_micros=20, grouping_field_1="")
         pairs = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, self.start, self.end, "dim1")
-        self.assertEqual(dict(pairs), {"chat": 100, "(other)": 20})
+        self.assertEqual({label: billed for label, billed, _ in pairs},
+                         {"chat": 100, "(other)": 20})
+
+    def test_a_breakdown_line_carries_what_its_own_label_could_not_price(self):
+        """Per LINE (#351), because an invoice line is what a customer disputes.
+
+        One label complete and another a floor is the ordinary case, and a count
+        reported once for the whole breakdown would attach the caveat to the
+        wrong line as often as the right one.
+        """
+        from apps.metering.queries import get_customer_billed_breakdown
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
+                               request_id="r1", idempotency_key="i1",
+                               billed_cost_micros=100, grouping_field_1="chat")
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
+                               request_id="r2", idempotency_key="i2",
+                               billed_cost_micros=None, grouping_field_1="chat",
+                               pricing_status=PRICING_STATUS_UNKNOWN)
+        Posting.objects.create(tenant=self.tenant, customer=self.customer,
+                               request_id="r3", idempotency_key="i3",
+                               billed_cost_micros=50, grouping_field_1="batch")
+        rows = get_customer_billed_breakdown(
+            self.tenant.id, self.customer.id, self.start, self.end, "dim1")
+        self.assertEqual({label: (billed, unpriced)
+                          for label, billed, unpriced in rows},
+                         {"chat": (100, 1), "batch": (50, 0)})
 
     def test_iter_billable_usage_events_shape_and_basis(self):
         from datetime import timedelta

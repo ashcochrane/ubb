@@ -777,6 +777,34 @@ export const MEASUREMENTS_STATUS_LABEL_KEYS = {
 // generator lost.
 
 
+// --- not_applicable_reason --------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Why a subject generates no customer revenue at this level. Read only where
+// `pricing_status` is `not_applicable`, and never on its own: a status saying
+// a price does not apply without saying WHY sends a reader looking for a
+// number nobody wrote. The two values are mutually exclusive causes, and where
+// both are true POSTURE WINS — a metering-only tenant is `tenant_not_billing`
+// whatever the job's pricing regime, because no Charge is created anywhere for
+// that tenant and naming the job's regime would imply revenue sits on a Charge
+// that does not exist.
+//
+// Declared in concepts/economics.yaml.
+
+export const NOT_APPLICABLE_REASON_VALUES = [
+  "fixed_task_pricing",
+  "tenant_not_billing",
+] as const;
+
+export type NotApplicableReason = (typeof NOT_APPLICABLE_REASON_VALUES)[number];
+
+export const NOT_APPLICABLE_REASON_LABEL_KEYS = {
+  "fixed_task_pricing": "not_applicable_reason.fixed_task_pricing",
+  "tenant_not_billing": "not_applicable_reason.tenant_not_billing",
+} as const satisfies Record<NotApplicableReason, string>;
+
+
 // --- payment_rail -----------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.

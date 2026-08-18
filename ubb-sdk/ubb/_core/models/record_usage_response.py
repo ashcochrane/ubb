@@ -9,6 +9,8 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
+from ..models.record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
+from ..models.record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from ..models.record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -32,6 +34,7 @@ class RecordUsageResponse:
         Attributes:
             costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
+            pricing_status (RecordUsageResponsePricingStatus):
             suspended (bool):
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
@@ -41,6 +44,7 @@ class RecordUsageResponse:
             grouping_fields (RecordUsageResponseGroupingFields | Unset):
             measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
+            not_applicable_reason (None | RecordUsageResponseNotApplicableReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset): The Pricing Receipt: the
                 authoritative record of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of
@@ -57,6 +61,7 @@ class RecordUsageResponse:
             task_id (None | str | Unset):
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
+            task_total_unpriced_event_count (int | None | Unset):
             task_total_unresolved_event_count (int | None | Unset):
             uncosted_measurement_keys (list[str] | Unset):
             unresolved_reason (None | RecordUsageResponseUnresolvedReasonType0 | Unset):
@@ -64,12 +69,14 @@ class RecordUsageResponse:
 
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
+    pricing_status: RecordUsageResponsePricingStatus
     suspended: bool
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     grouping_fields: RecordUsageResponseGroupingFields | Unset = UNSET
     measurements: None | RecordUsageResponseMeasurementsType0 | Unset = UNSET
     new_balance_micros: int | None | Unset = UNSET
+    not_applicable_reason: None | RecordUsageResponseNotApplicableReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_provenance: None | RecordUsageResponsePricingProvenanceType0 | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
@@ -80,6 +87,7 @@ class RecordUsageResponse:
     task_id: None | str | Unset = UNSET
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
+    task_total_unpriced_event_count: int | None | Unset = UNSET
     task_total_unresolved_event_count: int | None | Unset = UNSET
     uncosted_measurement_keys: list[str] | Unset = UNSET
     unresolved_reason: None | RecordUsageResponseUnresolvedReasonType0 | Unset = UNSET
@@ -96,6 +104,8 @@ class RecordUsageResponse:
         costing_status = self.costing_status.value
 
         event_id = self.event_id
+
+        pricing_status = self.pricing_status.value
 
         suspended = self.suspended
 
@@ -128,6 +138,14 @@ class RecordUsageResponse:
             new_balance_micros = UNSET
         else:
             new_balance_micros = self.new_balance_micros
+
+        not_applicable_reason: None | str | Unset
+        if isinstance(self.not_applicable_reason, Unset):
+            not_applicable_reason = UNSET
+        elif isinstance(self.not_applicable_reason, RecordUsageResponseNotApplicableReasonType0):
+            not_applicable_reason = self.not_applicable_reason.value
+        else:
+            not_applicable_reason = self.not_applicable_reason
 
         parent_task_id: None | str | Unset
         if isinstance(self.parent_task_id, Unset):
@@ -191,6 +209,12 @@ class RecordUsageResponse:
         else:
             task_total_provider_cost_micros = self.task_total_provider_cost_micros
 
+        task_total_unpriced_event_count: int | None | Unset
+        if isinstance(self.task_total_unpriced_event_count, Unset):
+            task_total_unpriced_event_count = UNSET
+        else:
+            task_total_unpriced_event_count = self.task_total_unpriced_event_count
+
         task_total_unresolved_event_count: int | None | Unset
         if isinstance(self.task_total_unresolved_event_count, Unset):
             task_total_unresolved_event_count = UNSET
@@ -217,6 +241,7 @@ class RecordUsageResponse:
         field_dict.update({
             "costing_status": costing_status,
             "event_id": event_id,
+            "pricing_status": pricing_status,
             "suspended": suspended,
         })
         if billed_cost_micros is not UNSET:
@@ -229,6 +254,8 @@ class RecordUsageResponse:
             field_dict["measurements"] = measurements
         if new_balance_micros is not UNSET:
             field_dict["new_balance_micros"] = new_balance_micros
+        if not_applicable_reason is not UNSET:
+            field_dict["not_applicable_reason"] = not_applicable_reason
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
         if pricing_provenance is not UNSET:
@@ -249,6 +276,8 @@ class RecordUsageResponse:
             field_dict["task_total_billed_cost_micros"] = task_total_billed_cost_micros
         if task_total_provider_cost_micros is not UNSET:
             field_dict["task_total_provider_cost_micros"] = task_total_provider_cost_micros
+        if task_total_unpriced_event_count is not UNSET:
+            field_dict["task_total_unpriced_event_count"] = task_total_unpriced_event_count
         if task_total_unresolved_event_count is not UNSET:
             field_dict["task_total_unresolved_event_count"] = task_total_unresolved_event_count
         if uncosted_measurement_keys is not UNSET:
@@ -272,6 +301,11 @@ class RecordUsageResponse:
 
 
         event_id = d.pop("event_id")
+
+        pricing_status = RecordUsageResponsePricingStatus(d.pop("pricing_status"))
+
+
+
 
         suspended = d.pop("suspended")
 
@@ -333,6 +367,26 @@ class RecordUsageResponse:
             return cast(int | None | Unset, data)
 
         new_balance_micros = _parse_new_balance_micros(d.pop("new_balance_micros", UNSET))
+
+
+        def _parse_not_applicable_reason(data: object) -> None | RecordUsageResponseNotApplicableReasonType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                not_applicable_reason_type_0 = RecordUsageResponseNotApplicableReasonType0(data)
+
+
+
+                return not_applicable_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponseNotApplicableReasonType0 | Unset, data)
+
+        not_applicable_reason = _parse_not_applicable_reason(d.pop("not_applicable_reason", UNSET))
 
 
         def _parse_parent_task_id(data: object) -> None | str | Unset:
@@ -445,6 +499,16 @@ class RecordUsageResponse:
         task_total_provider_cost_micros = _parse_task_total_provider_cost_micros(d.pop("task_total_provider_cost_micros", UNSET))
 
 
+        def _parse_task_total_unpriced_event_count(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        task_total_unpriced_event_count = _parse_task_total_unpriced_event_count(d.pop("task_total_unpriced_event_count", UNSET))
+
+
         def _parse_task_total_unresolved_event_count(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -481,12 +545,14 @@ class RecordUsageResponse:
         record_usage_response = cls(
             costing_status=costing_status,
             event_id=event_id,
+            pricing_status=pricing_status,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             grouping_fields=grouping_fields,
             measurements=measurements,
             new_balance_micros=new_balance_micros,
+            not_applicable_reason=not_applicable_reason,
             parent_task_id=parent_task_id,
             pricing_provenance=pricing_provenance,
             provider_cost_micros=provider_cost_micros,
@@ -497,6 +563,7 @@ class RecordUsageResponse:
             task_id=task_id,
             task_total_billed_cost_micros=task_total_billed_cost_micros,
             task_total_provider_cost_micros=task_total_provider_cost_micros,
+            task_total_unpriced_event_count=task_total_unpriced_event_count,
             task_total_unresolved_event_count=task_total_unresolved_event_count,
             uncosted_measurement_keys=uncosted_measurement_keys,
             unresolved_reason=unresolved_reason,

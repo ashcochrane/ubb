@@ -324,6 +324,7 @@ export async function createCustomer(
     usage_revenue_micros: 0,
     provider_cost_micros: 0,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 0,
     margin_percentage: 0,
   };
@@ -359,6 +360,7 @@ export async function getUsageAnalytics(
       total_billed_cost_micros: 0,
       total_provider_cost_micros: 0,
       unresolved_event_count: 0,
+      unpriced_event_count: 0,
       usage_markup_margin_micros: 0,
       by_provider: [],
       by_event_type: [],

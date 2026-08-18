@@ -726,6 +726,30 @@ CONCEPTS_IN_THE_CONTRACT = {
     # Three nodes, for the same reason the status has three — a cause that does
     # not travel with the status it explains leaves the reader a shrug.
     "unresolved_reason": Published(3, ENUM),  # record + list row + detail
+    # #351 (slice 4) — the price half of both entries above, and the same four
+    # nodes for the same reasons. The customer price column went nullable with
+    # a status beside it, so every response that publishes a price says whether
+    # that price is settled, and the `usage.recorded` payload carries it too
+    # because both products accumulating off that payload need to tell a price
+    # UBB could not resolve from one that was waived or never applied.
+    #
+    # ⚠ THE PAYLOAD NODE IS THE ONE THIS SLICE WAS WARNED ABOUT BY NAME: a
+    # closed concept can reach the wire UNMARKED with the marker gate green,
+    # because a node that is not marked is not counted and the count is all the
+    # gate sees. Only this map — which says WHERE each marker sits — can catch
+    # it, and `apply.py` walks the `webhooks` section like any other.
+    "pricing_status": Published(4, ENUM),  # record + list row + detail + payload
+    # #351 — the second nullable marker on a response, following exactly the
+    # placement `unresolved_reason` above established: in the STRING MEMBER of
+    # the union, never on the union node, because `enum` and `anyOf` at one node
+    # are conjunctive and `null` is the answer on every priced posting.
+    #
+    # Three nodes rather than four: the reason does NOT ride the outbox payload.
+    # That payload's two readers are accumulators counting how many prices they
+    # could not include; neither asks which of the two causes produced a
+    # `not_applicable`, and a field nothing reads is a field that goes stale.
+    # The same ruling #328 made for `unresolved_reason` on the same payload.
+    "not_applicable_reason": Published(3, ENUM),  # record + list row + detail
 }
 
 
@@ -1417,7 +1441,17 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     all "for each entry" — and this is what would not.
 
     THE FLOOR MOVES DOWN BY ONE PER CONCEPT PAID, AND ONLY THEN. It went 25 →
-    24 in #317, which advertised `costing_status`. Lowering it is the correct
+    24 in #317, which advertised `costing_status`, and 24 → 23 in #351, which
+    advertised `pricing_status` — the same concept one slice later on the other
+    side of the margin, and the same single-entry step.
+
+    ⚠ #351 also COINED `not_applicable_reason`, and that moved the floor by
+    nothing at all. A concept whose backend consumer holds every value on the
+    day it is declared has never owed a G4 debt, so there is no entry to delete
+    and the seeding does not shrink. A floor lowered for it would have been
+    lowered for a deletion that never happened.
+
+    Lowering it is the correct
     response to a debt being paid and the WRONG response to a walk breaking,
     and the two are told apart by the assertion above it rather than by this
     one: the equality already holds the real claim — as many entries as owed
@@ -1427,6 +1461,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 24, (
+    assert len(_entries(programme)) >= 23, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

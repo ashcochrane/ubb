@@ -471,61 +471,71 @@ class TagGroupByPushdownTest(TestCase):
     def _old_get_dimensional_margin_tag(tenant_id, tag_key):
         """Grouping the same rows in Python, as the pre-rewrite branch did.
 
-        ⚠ IT ACCUMULATES THE PAIR, because the rule it is a reference for
-        changed (#327). The pre-rewrite loop added `provider or 0` into the
-        total, which was harmless while the column was NOT NULL and is the
-        silent-zero defect since #317 — so a reference still written that way
-        would be asserting that the SQL pushdown reproduces a defect. What is
-        held constant is what this class is for: grouping in SQL answers what
-        grouping in Python answers.
+        ⚠ IT ACCUMULATES BOTH PAIRS, because the rule it is a reference for
+        changed twice (#327, #351). The pre-rewrite loop added `provider or 0`
+        into the total, which was harmless while the column was NOT NULL and is
+        the silent-zero defect since #317 — so a reference still written that
+        way would be asserting that the SQL pushdown reproduces a defect. #351
+        did the same to `b or 0` on the line below it, and the same repair
+        applies. What is held constant is what this class is for: grouping in
+        SQL answers what grouping in Python answers.
         """
         from collections import defaultdict
         from apps.metering.usage.models import Posting as UE
-        from core.vocabulary import COSTING_STATUS_UNRESOLVED
+        from core.vocabulary import COSTING_STATUS_UNRESOLVED, PRICING_STATUS_UNKNOWN
 
-        def _row(dim, provider, billed, unresolved, count):
+        def _row(dim, provider, billed, unresolved, unpriced, count):
             return {"grouping_field_value": dim, "provider_cost_micros": provider,
                     "unresolved_event_count": unresolved,
                     "billed_cost_micros": billed,
+                    "unpriced_event_count": unpriced,
                     "margin_micros": billed - provider,
                     "event_count": count}
 
-        agg = defaultdict(lambda: {"p": 0, "b": 0, "u": 0, "n": 0})
-        for bag, p, b, status in UE.objects.filter(
+        agg = defaultdict(lambda: {"p": 0, "b": 0, "u": 0, "x": 0, "n": 0})
+        for bag, p, b, status, price_status in UE.objects.filter(
                 tenant_id=tenant_id, metadata__has_key=tag_key
         ).values_list("metadata", "provider_cost_micros", "billed_cost_micros",
-                      "costing_status"):
+                      "costing_status", "pricing_status"):
             k = (bag or {}).get(tag_key)
             if p is not None:
                 agg[k]["p"] += p
             if status == COSTING_STATUS_UNRESOLVED:
                 agg[k]["u"] += 1
-            agg[k]["b"] += b or 0
+            if b is not None:
+                agg[k]["b"] += b
+            if price_status == PRICING_STATUS_UNKNOWN:
+                agg[k]["x"] += 1
             agg[k]["n"] += 1
-        rows = [_row(k, v["p"], v["b"], v["u"], v["n"]) for k, v in agg.items()]
+        rows = [_row(k, v["p"], v["b"], v["u"], v["x"], v["n"])
+                for k, v in agg.items()]
         return sorted(rows, key=lambda r: -r["margin_micros"])
 
     @staticmethod
     def _old_by_tag(tenant_id, tag_key):
         """Grouping the same rows in Python, as the pre-rewrite block did.
 
-        ⚠ It accumulates the pair — see the sibling helper above for why a
+        ⚠ It accumulates BOTH pairs — see the sibling helper above for why a
         reference that still coalesced would be pinning the wrong thing.
         """
         from collections import defaultdict
         from apps.metering.usage.models import Posting as UE
-        from core.vocabulary import COSTING_STATUS_UNRESOLVED
+        from core.vocabulary import COSTING_STATUS_UNRESOLVED, PRICING_STATUS_UNKNOWN
 
         agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
+                                   "unpriced_event_count": 0,
                                    "total_provider_cost_micros": 0,
                                    "unresolved_event_count": 0})
-        for bag, billed, provider, status in UE.objects.filter(
+        for bag, billed, provider, status, price_status in UE.objects.filter(
                 tenant_id=tenant_id, metadata__has_key=tag_key
         ).values_list("metadata", "billed_cost_micros", "provider_cost_micros",
-                      "costing_status"):
+                      "costing_status", "pricing_status"):
             val = (bag or {}).get(tag_key)
             agg[val]["event_count"] += 1
-            agg[val]["total_cost_micros"] += billed or 0
+            if billed is not None:
+                agg[val]["total_cost_micros"] += billed
+            if price_status == PRICING_STATUS_UNKNOWN:
+                agg[val]["unpriced_event_count"] += 1
             if provider is not None:
                 agg[val]["total_provider_cost_micros"] += provider
             if status == COSTING_STATUS_UNRESOLVED:
@@ -533,6 +543,7 @@ class TagGroupByPushdownTest(TestCase):
         return [
             {"tag_value": k, "event_count": v["event_count"],
              "total_cost_micros": v["total_cost_micros"],
+             "unpriced_event_count": v["unpriced_event_count"],
              "total_provider_cost_micros": v["total_provider_cost_micros"],
              "unresolved_event_count": v["unresolved_event_count"]}
             for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])

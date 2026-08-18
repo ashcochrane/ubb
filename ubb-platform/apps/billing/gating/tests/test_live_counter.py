@@ -28,6 +28,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -143,7 +144,10 @@ class TestLiveCounterPostpaid:
         now = timezone.now()
         label, start, end = (lambda d: (None, d.replace(day=1),
                                         (d.replace(day=1) + datetime.timedelta(days=40)).replace(day=1)))(now.date())
-        assert get_billing_owner_billed_total(t.id, biz.id, start, end) == 10_000_000
+        # A PAIR SINCE #351: the resolved owner-aggregated total, and how many
+        # of the owner's postings it could not include.
+        assert get_billing_owner_billed_total(t.id, biz.id, start, end) == {
+            "billed": 10_000_000, UNPRICED_EVENT_COUNT_KEY: 0}
         # One seat already posted synchronously (owner-keyed); reconcile MAX-raises
         # to the full owner-aggregated total.
         LiveCounter.debit(biz.id, t, 5_000_000, now=now)  # live = 5M

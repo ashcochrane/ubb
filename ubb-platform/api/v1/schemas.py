@@ -293,6 +293,38 @@ UnresolvedReason = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "unresolved_reason"})]
 
 
+#: WHETHER A CUSTOMER PRICE IS SETTLED, AND IF NOT, WHY NOT (#351). `closed` —
+#: UBB owns all four — so the export writes a real `enum` here and this file
+#: spells none of the values.
+#:
+#: Never `Optional` on any response, so its marker sits on a plain string. That
+#: is not an oversight to be corrected later: `unknown` IS the status for a
+#: price UBB does not have, and a nullable status column would be a fifth state
+#: meaning "nobody said".
+PricingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
+
+
+#: WHY A SUBJECT GENERATES NO CUSTOMER REVENUE AT THIS LEVEL (#351). Read only
+#: where the status above is `not_applicable`.
+#:
+#: NULLABLE, WHICH IS WHY ITS MARKER SITS WHERE IT DOES — the argument
+#: `UnresolvedReason` above makes in full, and the trap this slice was warned
+#: about by name. Every field using this is `Optional`, so django-ninja renders
+#: `anyOf: [string, null]` and the marker travels into the STRING MEMBER. A
+#: marker on the union node itself would publish a document under which `null`
+#: is invalid, while the server returns `null` for every priced posting: `enum`
+#: and `anyOf` at ONE node are read conjunctively. The wire body would be
+#: unchanged and the export clean, so nothing but
+#: `test_openapi_known_values.py`'s placement check would see it.
+#:
+#: NO HAND-WRITTEN `description`, for the reason `UnresolvedReason` gives: the
+#: registry owns this concept's summary and generates its values, and a
+#: sentence restating either here would be a second copy no gate reads.
+NotApplicableReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "not_applicable_reason"})]
+
+
 class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
@@ -314,6 +346,14 @@ class RecordUsageResponse(Schema):
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None
+    # Whether the number above is settled (#351). See `PricingStatus`: without
+    # it a customer price of zero and one UBB could not resolve are the same
+    # answer on the wire — the ack's own version of the defect the supplier
+    # half fixed one slice ago.
+    pricing_status: PricingStatus
+    # WHICH OF TWO MUTUALLY EXCLUSIVE CAUSES produced `not_applicable`. Null
+    # otherwise — the other three statuses have no cause to name.
+    not_applicable_reason: Optional[NotApplicableReason] = None
     task_id: Optional[str] = None
     # Set when the named unit is a subtask — its parent task (#38).
     parent_task_id: Optional[str] = None
@@ -329,6 +369,11 @@ class RecordUsageResponse(Schema):
     # the number a caller watching its own spend against a limit needs. Null
     # exactly when the totals beside it are — no named unit, nothing to total.
     task_total_unresolved_event_count: Optional[int] = None
+    # And how many the BILLED total could not include (#351). Two counts and
+    # not one: a caller watching spend against a limit is watching the provider
+    # total, while a caller reconciling what it will be charged is watching the
+    # billed one, and the same event need not be missing from both.
+    task_total_unpriced_event_count: Optional[int] = None
     # One-rule stop verdict on a 200 body — the event was ALWAYS recorded +
     # charged; `stop` means "stop sending work for the named scope". The
     # scalar slot carries one verdict: a unit-scoped crossing wins over a
@@ -417,6 +462,11 @@ class UsageEventOut(Schema):
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, description=CLAIMED_PROVIDER_COST_MEANING)
     billed_cost_micros: Optional[int] = None
+    # On the lean list row for the same argument the cost half makes above it:
+    # a list is where a reader totals a column by eye, so this is exactly where
+    # a price UBB could not resolve reading as zero would be believed (#351).
+    pricing_status: PricingStatus
+    not_applicable_reason: Optional[NotApplicableReason] = None
     metadata: dict
     effective_at: str
     # #41: the immutable past-limit context array (see RecordUsageResponse).
@@ -436,6 +486,8 @@ def usage_event_out(e):
         "unresolved_reason": e.unresolved_reason,
         "claimed_provider_cost_micros": e.claimed_provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
+        "pricing_status": e.pricing_status,
+        "not_applicable_reason": e.not_applicable_reason,
         "metadata": e.metadata,
         "effective_at": e.effective_at.isoformat(),
         "stop_context": e.stop_context,
@@ -522,7 +574,20 @@ class UsageEventDetailOut(Schema):
     # exactly the confusion story 21 refuses.
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, description=CLAIMED_PROVIDER_COST_MEANING)
-    billed_cost_micros: int
+    # ⚠ WIDENED BY #351, AND IT IS THE PRICE HALF OF THE PARAGRAPH ABOVE. This
+    # was the last of the four amounts on this schema still typed non-nullable,
+    # on the argument the comment above records: the column behind it could not
+    # produce a null. It can now, and the absent case became EXPRESSIBLE and
+    # REACHABLE in the same commit rather than two — because unlike #317 this
+    # slice lands the column, the status and every reader together, so there is
+    # no window in which the schema could not serialise a row the table admits.
+    billed_cost_micros: Optional[int] = None
+    # Whether the number above is settled. Typed required, like the costing
+    # status above it and for the same reason: every posting has an answer.
+    pricing_status: PricingStatus
+    # The audit lookup is where a price that does not apply gets investigated,
+    # so the cause belongs on it. Null on any other status.
+    not_applicable_reason: Optional[NotApplicableReason] = None
     # The quantities this posting was measured by, keyed by declared code
     # (#274) — the field the status below has always been about.
     measurements: dict = {}
@@ -814,6 +879,9 @@ class CloseTaskResponse(Schema):
     #: on exactly the same terms as a running one's, and closing it settles
     #: nothing that was never learned.
     unresolved_event_count: int
+    #: And the price half (#351) — a closed unit's billed total is a floor on
+    #: the same terms, and closing it prices nothing that was never resolved.
+    unpriced_event_count: int
     event_count: int
 
 
@@ -836,6 +904,16 @@ class TaskOut(Schema):
     #: is nothing missing about a cost that does not exist.
     unresolved_event_count: int
     total_billed_cost_micros: int
+    #: HOW MANY OF THIS UNIT'S EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
+    #:
+    #: The mirror of the count above, and it bounds the unit in the other
+    #: direction: non-zero means the unit will be charged AT LEAST that much.
+    #: The accumulate primitive adds a customer price only where UBB resolved
+    #: one and counts the rest here rather than adding a zero.
+    #:
+    #: A `waived` price and a `not_applicable` one are not counted: neither is
+    #: missing information, and a caveat that is always on is one nobody reads.
+    unpriced_event_count: int
     event_count: int
     provider_cost_limit_micros: Optional[int] = None
     dimensions: dict = Field(default_factory=dict)
@@ -854,6 +932,7 @@ def task_out(t):
         "total_provider_cost_micros": t.total_provider_cost_micros,
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
+        "unpriced_event_count": t.unpriced_event_count,
         "event_count": t.event_count,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
         # A FREE-FORM OBJECT, so its keys are data and not contract: the
@@ -898,6 +977,12 @@ class UsageAnalyticsResponse(Schema):
     #: carries the same key for its own group. No schema holds those rows, so
     #: `api/v1/tests/test_a_cost_total_says_what_it_excluded.py` asserts them.
     unresolved_event_count: int
+    #: And how many the BILLED total could not include (#351). It bounds the
+    #: margin below in the OPPOSITE direction from the count above: an excluded
+    #: cost makes the margin a ceiling, an excluded price makes it a floor, and
+    #: an answer can be both at once. That is why they are two properties and
+    #: not one — a single number could not say which way the figure is wrong.
+    unpriced_event_count: int
     usage_markup_margin_micros: int
     by_provider: list[dict]
     by_event_type: list[dict]
@@ -913,6 +998,9 @@ class RevenueAnalyticsResponse(Schema):
     #: total. Each row of `daily` carries its own count for its own day.
     unresolved_event_count: int
     total_billed_cost_micros: int
+    #: The price half of the same pair (#351), tenant-wide. Each row of `daily`
+    #: carries its own, for its own day.
+    unpriced_event_count: int
     total_markup_micros: int
     daily: list[dict]
 
@@ -932,6 +1020,10 @@ class TaskAnalyticsRow(Schema):
     #: each unit they are built from is one.
     unresolved_event_count: int
     total_billed_cost_micros: int
+    #: And how many this KIND of work could not PRICE (#351), bounding the
+    #: billed total the same way. Two counts because a kind of job can be fully
+    #: costed and partly unpriced, or the reverse.
+    unpriced_event_count: int
     avg_provider_cost_micros: int
     p95_provider_cost_micros: int
     limit_hit_count: int
