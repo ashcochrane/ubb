@@ -71,8 +71,8 @@ from django.test import TestCase
 
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
-    through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
+    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.transitions import (
@@ -393,24 +393,12 @@ class TheModelGuardIsNotTheEnforcementTest(TestCase):
 
 
 def _triggers_on_the_table():
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgname FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-        return {name for (name,) in cursor.fetchall()}
+    return rules_on_the_table()
 
 
 def _this_trigger():
-    """This rule's row, asked for BY NAME. Module-level, so that the mutation
-    class below can read the shipped body without standing a test case up."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgtype, p.prosrc FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
-        return cursor.fetchone()
+    """This rule's row, asked for BY NAME — never "the table's trigger"."""
+    return rule_on_the_table(TRIGGER)
 
 
 class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):

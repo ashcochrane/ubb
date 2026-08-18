@@ -426,7 +426,7 @@ class ThePostingDeclaresWhatMayHappenToItsCostTest(TestCase):
     def test_the_claimed_cost_is_declared_frozen(self):
         assert Posting.transition_classes[CLAIMED] == FROZEN
 
-    def test_the_defended_columns_are_exactly_the_two_pairs_the_claim_and_the_receipt(self):
+    def test_the_defended_columns_are_the_two_pairs_the_claim_and_the_receipt(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         A column added to this model's declarations moves this line, which is

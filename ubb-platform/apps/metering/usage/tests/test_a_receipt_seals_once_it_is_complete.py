@@ -24,7 +24,13 @@ resolution is settled, and the method is present on exactly the same condition*.
 So the fields that are null exactly while a section is unresolved are that
 section's `method` and its amount under `totals`, and its `status` is the
 discriminator that moves with them. The rule under test is that sentence one
-level up: **a section whose status is not settled completes once, as a whole.**
+level up: **a section RECORDED AS UNRESOLVED completes once, as a whole.**
+
+⚠ *Unresolved*, not *unsettled*. `waived` and `not_applicable` null the same two
+fields, so the shape cannot tell a decision somebody made from information UBB
+is missing — `core.amount_status_pairs` can, and
+`OnlyAnUnresolvedFieldIsCompletableTest` below is that distinction at the
+receipt.
 
 **⚠ THE RECEIPT IS A COLUMN ON THIS TABLE, NOT A TABLE OF ITS OWN.** Its rule is
 therefore a THIRD rule on `ubb_posting` rather than the first rule on a second
@@ -75,20 +81,24 @@ from apps.metering.pricing.receipts import (
     SECTIONS, Resolution, ReceiptSubject, build_receipt)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
-    through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
+    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.transitions import (
     RESOLVE_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
+    COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_STATUS_KNOWN,
+    PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
+    PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
@@ -131,6 +141,22 @@ SETTLED_PRICE = Resolution(
     amount_micros=4_800, detail={"components": []})
 UNKNOWN_PRICE = Resolution(
     method=None, status=PRICING_STATUS_UNKNOWN, amount_micros=None, detail={})
+
+#: THE TERMINAL STATUSES, WHICH ARE NOT SETTLED AND ARE NOT COMPLETABLE EITHER.
+#:
+#: They carry the same pair of absent fields an unresolved section carries — no
+#: method, no amount — so "not settled" and "completable" look identical on the
+#: record and are different facts. `core.amount_status_pairs` is where that is
+#: already settled for the columns: each pair names ONE `unresolved_status`, and
+#: `waived` and `not_applicable` are not it.
+WAIVED_PRICE = Resolution(
+    method=None, status=PRICING_STATUS_WAIVED, amount_micros=None, detail={})
+NOT_APPLICABLE_PRICE = Resolution(
+    method=None, status=PRICING_STATUS_NOT_APPLICABLE, amount_micros=None,
+    detail={})
+NOT_APPLICABLE_COST = Resolution(
+    method=None, status=COSTING_STATUS_NOT_APPLICABLE, amount_micros=None,
+    detail={})
 
 
 def _receipt(costing=SETTLED_COST, pricing=SETTLED_PRICE, **overrides):
@@ -453,6 +479,65 @@ class AnUnresolvedFieldCompletesExactlyOnceTest(TransitionRefusalMixin,
                     uncosted_measurement_keys=["audio_seconds"]))})
 
 
+class OnlyAnUnresolvedFieldIsCompletableTest(TransitionRefusalMixin, TestCase):
+    """⚠ NOT SETTLED IS NOT THE SAME FACT AS COMPLETABLE, and on this record the
+    two look identical.
+
+    A section carries an amount and a method exactly when its status is settled,
+    so EVERY unsettled status leaves both null — `unknown` and `unresolved`,
+    which say UBB does not have the information, and `waived` and
+    `not_applicable`, which say a decision was made. Nothing in the SHAPE tells
+    them apart. What tells them apart is `core.amount_status_pairs`, where each
+    pair names exactly ONE `unresolved_status`, and both sibling triggers
+    whitelist that one rather than blacklisting `known`.
+
+    This class is that whitelist at the receipt. Its absence was a live hole and
+    not a hypothetical one: `pricing_service` writes a `not_applicable` costing
+    status today, the same status rides into the receipt's section, and a
+    receipt-only `UPDATE` fires neither sibling rule — so the record could be
+    made to assert a charged amount while the column beside it still said no
+    revenue arises. That is two authorities that can disagree, which is the
+    shape the receipt exists to remove.
+    """
+
+    REFUSAL_NAMES = RECEIPT
+
+    def test_a_waived_price_is_never_a_completion_candidate(self):
+        """Ruling 12c at the receipt, not only at the column.
+
+        `waived` is a decision somebody made not to pursue a charge; `unknown`
+        is information UBB does not have. If the record admitted the first as a
+        completion source, the difference would survive only as long as everyone
+        remembered the selector.
+        """
+        self._refused_by_the_trigger(
+            _holding(lambda: _receipt(pricing=WAIVED_PRICE)), RESOLVE_ONCE,
+            **{RECEIPT: _priced_at(4_800)})
+
+    def test_a_not_applicable_price_never_acquires_an_amount(self):
+        """A subject that generates no customer revenue does not grow some."""
+        self._refused_by_the_trigger(
+            _holding(lambda: _receipt(pricing=NOT_APPLICABLE_PRICE)),
+            RESOLVE_ONCE, **{RECEIPT: _priced_at(4_800)})
+
+    def test_a_not_applicable_cost_never_acquires_an_amount(self):
+        """The same rule on the side where the status is written today."""
+        self._refused_by_the_trigger(
+            _holding(lambda: _receipt(costing=NOT_APPLICABLE_COST)),
+            RESOLVE_ONCE, **{RECEIPT: _receipt()})
+
+    def test_a_terminal_section_cannot_be_relabelled_as_unresolved(self):
+        """The other way in, and it is closed.
+
+        Moving `waived` to `unknown` would make the section completable by the
+        next statement — a two-step route to the write the case above refuses,
+        which is the shape a rule guarding only the destination would miss.
+        """
+        self._refused_by_the_trigger(
+            _holding(lambda: _receipt(pricing=WAIVED_PRICE)), RESOLVE_ONCE,
+            **{RECEIPT: _with_an_unknown_price()})
+
+
 class AFieldThatWasNeverUnresolvedIsNotWritableTest(TransitionRefusalMixin,
                                                     TestCase):
     """The record's own identity, which no completion may touch.
@@ -662,24 +747,12 @@ class TheModelGuardIsNotTheEnforcementTest(TestCase):
 
 
 def _triggers_on_the_table():
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgname FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-        return {name for (name,) in cursor.fetchall()}
+    return rules_on_the_table()
 
 
 def _this_trigger():
-    """This rule's row, asked for BY NAME. Module-level, so the mutation class
-    below can read the shipped body without standing a test case up."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgtype, p.prosrc FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
-        return cursor.fetchone()
+    """This rule's row, asked for BY NAME — never "the table's trigger"."""
+    return rule_on_the_table(TRIGGER)
 
 
 class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
@@ -741,9 +814,9 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
 
         ⚠ The two ends drive the same *kind* of statement — correcting a settled
         amount — at two different values. The same value twice would leave the
-        second write identical to what the row already held, which this rule
-        returns early on, so the re-applied half would have passed against a
-        table carrying no rule at all.
+        second write identical to what the row already held, and the trigger's
+        own `WHEN` clause fires on nothing at all in that case — so the
+        re-applied half would have passed against a table carrying no rule.
         """
         migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
         run_python = next(op for op in migration.operations
@@ -775,15 +848,29 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
         A trigger body is frozen SQL living in the database, so it cannot import
         `core.vocabulary` or the receipt module the way living code does. Every
         token it freezes is derived here from the source that owns it — the
-        section names, the amount keys and each side's settled status — so a
-        rename in either turns this red rather than leaving a rule that quietly
-        matches nothing.
+        section names and amount keys from the receipt's own shape, and each
+        side's settled and completable statuses from the amount/status pairs —
+        so a rename in any of them turns this red rather than leaving a rule
+        that quietly matches nothing.
+
+        ⚠ THE COMPLETABLE STATUS IS ASSERTED BECAUSE ITS ABSENCE WAS THE BUG.
+        A first draft of this class checked only the settled status, which a
+        rule blacklisting `known` satisfies completely — and such a rule treats
+        every OTHER unsettled status as completable, so `waived` and
+        `not_applicable` sections could be turned into charged amounts. The
+        pair is what knows which single status a completion may start from, and
+        the join below is on the amount column so that neither side of it can be
+        re-pointed at the other's.
         """
         _, source = _this_trigger()
+        pairs = {pair.amount_column: pair
+                 for pair in (SUPPLIER_COST, CUSTOMER_PRICE)}
         for section, rules in SECTIONS.items():
             self.assertIn(f"'{section}'", source)
             self.assertIn(f"'{rules.amount_key}'", source)
             self.assertIn(f"'{rules.settled}'", source)
+            self.assertIn(f"'{pairs[rules.amount_key].unresolved_status}'",
+                          source)
 
 
 #: A replacement body that NAMES the declared column and refuses nothing.

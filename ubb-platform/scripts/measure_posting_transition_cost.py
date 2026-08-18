@@ -240,8 +240,6 @@ def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False,
     table's combination `CHECK`s admit them all — so the state being timed is
     the one asked for rather than whatever survived insertion.
     """
-    from apps.metering.usage.models import Posting
-
     cost = dict(
         provider_cost_micros=None,
         costing_status=COSTING_STATUS_UNRESOLVED,
@@ -259,8 +257,6 @@ def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False,
 
 
 def _insert(postings):
-    from apps.metering.usage.models import Posting
-
     Posting.objects.bulk_create(postings)
 
 

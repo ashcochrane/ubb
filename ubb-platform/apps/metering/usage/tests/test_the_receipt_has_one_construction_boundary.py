@@ -185,6 +185,11 @@ class TestWhatReachesTheColumn:
         trigger takes `UPDATE` away as a setup technique, and the repair is to
         move the setup to `INSERT`, which the rule does not fire on and which is
         what the sentence above always meant.
+
+        The row carries only what this test reads. Every column it leaves out
+        takes the model's own empty value, which is the shape
+        `tests/_helpers.py::committed_posting` already uses for a posting stood
+        up to be read rather than to be recorded.
         """
         tenant, customer = _tenant_and_customer()
         older = {"engine_version": "2.1.0",
@@ -192,8 +197,8 @@ class TestWhatReachesTheColumn:
                  "provider_cost_micros": 4_000, "billed_cost_micros": 4_800}
 
         posting = Posting.objects.create(
-            tenant=tenant, customer=customer, request_id="r-old",
-            idempotency_key="k-old", **{Posting.RECEIPT_COLUMN: older})
+            tenant=tenant, customer=customer, idempotency_key="k-old",
+            **{Posting.RECEIPT_COLUMN: older})
         stored = getattr(Posting.objects.get(id=posting.id),
                          Posting.RECEIPT_COLUMN)
 

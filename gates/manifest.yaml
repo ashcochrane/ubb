@@ -781,9 +781,14 @@ gates:
       sections to *an amount is present exactly when the status says it is
       settled, and the method with it*, so the fields that are null exactly
       while a section is unresolved are that section's method and its amount,
-      and the declaration is that sentence one level up: a section whose status
-      is not settled completes exactly once, as a whole, and nothing else in the
-      record may ever move. The column may therefore see one statement per
+      and the declaration is that sentence one level up: a section RECORDED AS
+      UNRESOLVED completes exactly once, as a whole, and nothing else in the
+      record may ever move. Unresolved rather than merely unsettled: `waived`
+      and `not_applicable` null the same two fields, so the record's shape
+      cannot tell a decision somebody made from information UBB is missing, and
+      the rule whitelists the one completable status per side that
+      `core.amount_status_pairs` names — as both sibling rules whitelist
+      theirs. The column may therefore see one statement per
       unresolved section, every one of them a resolution rather than a
       correction, which is the only distinction the class draws. A receipt with
       nothing left unresolved is sealed whole, and so is one written in a shape
@@ -845,6 +850,8 @@ gates:
         node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::AnUnresolvedFieldCompletesExactlyOnceTest::test_a_completed_field_cannot_be_completed_again
       - suite: platform
         node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::AFieldThatWasNeverUnresolvedIsNotWritableTest::test_a_completion_cannot_carry_an_edit_alongside_it
+      - suite: platform
+        node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::OnlyAnUnresolvedFieldIsCompletableTest::test_a_waived_price_is_never_a_completion_candidate
       - suite: platform
         node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest::test_an_unresolved_cost_completes_through_every_door
       - suite: platform

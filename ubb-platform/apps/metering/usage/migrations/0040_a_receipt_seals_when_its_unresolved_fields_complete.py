@@ -60,7 +60,16 @@ resolution is settled, and the method is present on exactly the same
 condition.* So the fields that are null exactly while a section is unresolved
 are that section's `method` and its amount under `totals` — and its `status` is
 the discriminator that moves with them. This rule is that sentence one level up:
-**a section whose status is not settled is completable, once, as a whole.**
+**a section RECORDED AS UNRESOLVED completes once, as a whole.**
+
+⚠ *Unresolved*, not *unsettled* — the two are not the same set and the record
+cannot tell them apart. `waived` and `not_applicable` leave a section's method
+and amount null exactly as `unresolved` and `unknown` do, so on the shape alone
+a decision somebody made is indistinguishable from information UBB is missing.
+`core.amount_status_pairs` is where that distinction already lives: each pair
+names ONE `unresolved_status`, and the array below carries it per section so
+this rule whitelists what may be completed rather than blacklisting what may
+not.
 
 Its `detail` moves with it, and that is a decision rather than an oversight. A
 completion is the statement that turns *here is what a recovery will need* into
@@ -81,6 +90,14 @@ arrive. And it is asked only where a section completed: without that condition a
 sealed receipt could accumulate cross-references forever, which is the first
 property above with a hole in it.
 
+⚠ Two exactnesses about that check, both deliberate. `@>` on a JSON **array**
+ignores order and duplicates, so a completion may reorder a list of ids or drop
+a repeated one; every id it held is still held, which is the claim being made.
+And a record whose `provenance` key is absent altogether can never satisfy
+containment — which is unreachable rather than a trap, because the receipt's
+top-level key set is exact, so a record with sections to complete has the key
+and a record without sections has already been refused above.
+
 **WHAT IS FROZEN WHOLE, AND WHY THAT IS THE RIGHT ANSWER RATHER THAN A GAP.**
 A record with no section to complete has nothing this rule can admit, so it
 cannot be written at all. That covers the empty default, which explains nothing
@@ -89,17 +106,18 @@ shape**, which the receipt module's own ruling already says are *read, never
 rewritten* — the cutover squash is what removes them, not a rule here quietly
 rewriting them into today's shape.
 
-**The tokens below are literals, and the model's are not.** `known` is frozen
-into the function body for the reason `0036`, `0037` and `0039` all give: a
-migration records the schema as it was on the day it ran, and importing living
+**The tokens below are literals, and the model's are not.** The statuses are
+frozen into the function body for the reason `0036`, `0037` and `0039` all give:
+a migration records the schema as it was on the day it ran, and importing living
 constants into a frozen file makes replay depend on today's registry. What keeps
 the copy honest is a test rather than this file —
-`test_a_receipt_seals_once_it_is_complete.py::TheRuleIsHeldByAThirdTriggerOnThis
-TableTest::test_the_rule_names_the_settled_statuses_the_registry_declares` reads
-the installed function's source out of `pg_proc` and compares it against
-`core.vocabulary`, and the section and totals keys against the receipt module's
-own, so a rename in either turns red here rather than leaving a rule that
-quietly matches nothing.
+`test_a_receipt_seals_once_it_is_complete.py`'s
+`test_the_rule_names_the_record_the_registry_and_the_shape_declare` reads the
+installed function's source out of `pg_proc` and compares each token against the
+source that owns it: the section names and amount keys against the receipt
+module's own shape, and each side's settled and completable statuses against
+`core.amount_status_pairs`. A rename in any of them turns red here rather than
+leaving a rule that quietly matches nothing.
 
 **Why there is no vendor guard**, when the neighbouring raw-SQL migrations all
 have one: `0011`, `0017` and `0022` guard on `connection.vendor` because a GIN
@@ -130,12 +148,26 @@ RECEIPT = "pricing_provenance"
 INSTALL = f"""
 CREATE FUNCTION {FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
-    -- The two sections of the record, each with the key its amount sits under
-    -- in `totals`. One array rather than two copies of one branch: the rule is
-    -- the same rule on both sides of the margin, and the day somebody repairs
-    -- it they repair it for the price side as well as the cost side.
-    sections   text[][] := ARRAY[['costing', 'provider_cost_micros'],
-                                 ['pricing', 'billed_cost_micros']];
+    -- The two sections of the record: its name, the key its amount sits under
+    -- in `totals`, and THE ONE STATUS A COMPLETION MAY START FROM. One array
+    -- rather than two copies of one branch: the rule is the same rule on both
+    -- sides of the margin, and the day somebody repairs it they repair it for
+    -- the price side as well as the cost side.
+    --
+    -- ⚠ THE THIRD COLUMN IS A WHITELIST AND MUST STAY ONE. Every unsettled
+    -- status leaves a section's method and amount null — `unresolved` and
+    -- `unknown`, which say UBB does not have the information, and `waived` and
+    -- `not_applicable`, which say a decision was made — so "not settled" and
+    -- "completable" are indistinguishable in the SHAPE and are different facts.
+    -- Blacklisting the settled status instead would make a waived charge
+    -- completable into a charged amount, on a statement that fires neither
+    -- sibling rule, leaving the record and the column beside it saying
+    -- different things. `core.amount_status_pairs` names exactly one
+    -- `unresolved_status` per pair for the same reason, and `0037` and `0039`
+    -- whitelist theirs.
+    sections   text[][] := ARRAY[
+                   ['costing', 'provider_cost_micros', 'unresolved'],
+                   ['pricing', 'billed_cost_micros', 'unknown']];
     was        jsonb := OLD.{RECEIPT};
     becomes    jsonb := NEW.{RECEIPT};
     -- `becomes`, with every slot a completion is allowed to move put back to
@@ -147,12 +179,19 @@ DECLARE
     completed  boolean := false;
     section    text;
     amount_key text;
+    completable text;
     old_side   jsonb;
     new_side   jsonb;
     old_amount jsonb;
     new_amount jsonb;
     at_section int;
 BEGIN
+    -- UNREACHABLE UNDER THE `WHEN` CLAUSE BELOW, and kept for the reason `0037`
+    -- and `0039` keep their own re-tests of their `WHEN` conditions: the two are
+    -- altered by different statements, and a body that depends on its trigger
+    -- definition still saying what it says today is a body that stops holding
+    -- silently. Written down as unreachable rather than left looking like the
+    -- branch that catches a no-op write.
     IF becomes IS NOT DISTINCT FROM was THEN
         RETURN NEW;
     END IF;
@@ -162,6 +201,7 @@ BEGIN
     FOR at_section IN 1..array_length(sections, 1) LOOP
         section := sections[at_section][1];
         amount_key := sections[at_section][2];
+        completable := sections[at_section][3];
         old_side := was -> section;
         new_side := becomes -> section;
         old_amount := was #> ARRAY['totals', amount_key];
@@ -190,6 +230,20 @@ BEGIN
                 'changing an amount that was asserted is a correction, which '
                 'belongs in a separate record beside the original',
                 section
+                USING ERRCODE = '23000';
+        END IF;
+
+        -- The terminal statuses, which are unsettled and are not completable.
+        -- Separated from the branch above rather than folded into it because
+        -- the two say different things to whoever hit them: one is a correction
+        -- of a resolved amount, the other is a decision being undone.
+        IF old_side ->> 'status' IS DISTINCT FROM completable THEN
+            RAISE EXCEPTION
+                '{RECEIPT} is declared resolve_once (ADR-0007 §2): the % '
+                'section says % and that is terminal — only a section recorded '
+                'as % is completable, because a decision somebody made is not '
+                'information UBB is missing',
+                section, old_side ->> 'status', completable
                 USING ERRCODE = '23000';
         END IF;
 

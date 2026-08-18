@@ -63,8 +63,8 @@ from django.test import TestCase
 
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, through_raw_sql,
-    through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
+    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
 from core.transitions import FROZEN, RESOLVE_ONCE
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
@@ -360,22 +360,10 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
     def _trigger_row(self):
         """This rule's row, by name. Never "the table's trigger"."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname, t.tgtype, p.prosrc "
-                "FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "JOIN pg_proc p ON p.oid = t.tgfoid "
-                "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
-            return cursor.fetchall()
+        return rule_on_the_table(TRIGGER)
 
     def _triggers_on_the_table(self):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            return {name for (name,) in cursor.fetchall()}
+        return rules_on_the_table()
 
     def test_the_posting_table_carries_exactly_the_three_declared_rules(self):
         """One rule per declared subject, and the set says which.
@@ -404,7 +392,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         rolling back work already done, and a statement-level one cannot see the
         old row at all, which is the only thing this rule is about.
         """
-        _, tgtype, _ = self._trigger_row()[0]
+        tgtype, _ = self._trigger_row()
         self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")
         self.assertTrue(tgtype & (1 << 1), "not BEFORE")
         self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
@@ -442,7 +430,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
-        self.assertEqual(self._trigger_row(), [])
+        self.assertIsNone(self._trigger_row())
         self.assertEqual(self._triggers_on_the_table(),
                          {"trg_posting_price_transitions",
                           "trg_posting_receipt_sealing"})
@@ -452,7 +440,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.code(None, editor)
-        self.assertEqual(len(self._trigger_row()), 1)
+        self.assertIsNotNone(self._trigger_row())
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(settled, **{COST: 1_000})
@@ -466,6 +454,6 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         which is what forces the migration that would otherwise be forgotten —
         leaving a rule that quietly matched nothing.
         """
-        _, _, source = self._trigger_row()[0]
+        _, source = self._trigger_row()
         self.assertIn(f"'{COSTING_STATUS_UNRESOLVED}'", source)
         self.assertIn(f"'{COSTING_STATUS_KNOWN}'", source)

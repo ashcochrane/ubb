@@ -345,8 +345,14 @@ class Posting(BaseModel):
     #: exactly when the status says it is settled, and the method with it* — so
     #: the fields that are null exactly while a section is unresolved are that
     #: section's method and its amount, and the class is that sentence one level
-    #: up: **a section whose status is not settled completes exactly once, as a
+    #: up: **a section RECORDED AS UNRESOLVED completes exactly once, as a
     #: whole, and nothing else in the record may ever move.**
+    #:
+    #: ⚠ Unresolved, not merely unsettled. `waived` and `not_applicable` null
+    #: the same two fields, so the record's shape cannot tell a decision
+    #: somebody made from information UBB is missing;
+    #: `core.amount_status_pairs` names the one completable status per side and
+    #: the rule whitelists it, as both sibling rules whitelist theirs.
     #:
     #: ⚠ So the COLUMN may see more than one statement — one per unresolved
     #: section — and every one of them is a resolution rather than a correction,
