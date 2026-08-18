@@ -180,7 +180,9 @@ class SandboxResetTest(TestCase):
         """Customers (business + pooled seat + soft-deleted seat), wallet money,
         usage, an outbox event — the rows a reset must wipe."""
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.usage.models import Posting
+        from apps.metering.usage.models import Posting, PostingMeasurement
+        from core.vocabulary import (
+            COSTING_STATUS_UNRESOLVED, UNRESOLVED_REASON_COST_RATE_MISSING)
 
         biz = Customer.objects.create(
             tenant=tenant, external_id=f"{ext_prefix}biz",
@@ -199,10 +201,34 @@ class SandboxResetTest(TestCase):
         WalletTransaction.objects.create(
             wallet=wallet, transaction_type="TOP_UP", amount_micros=5_000_000,
             balance_after_micros=5_000_000, idempotency_key=f"{ext_prefix}seed")
-        Posting.objects.create(
+        settled = Posting.objects.create(
             tenant=tenant, customer=seat, request_id=f"{ext_prefix}r1",
             idempotency_key=f"{ext_prefix}k1", provider_cost_micros=100,
             billed_cost_micros=120)
+        # ⚠ THE MEASUREMENT CHILDREN, AND THEY ARE WHY THIS FIXTURE CHANGED
+        # (#354). Until this ticket a reset test could not see the child table
+        # at all: every posting here was built through `Posting.objects.create`
+        # and so had none, while every posting a real sandbox records through
+        # the metering route has one. The child now carries a whole-record rule
+        # refusing a `DELETE` before its horizon and while its posting is
+        # unresolved — and a reset arrives at exactly that state, because
+        # nothing sets the horizon and an uncosted call is the ordinary case in
+        # test traffic. Django's collector deletes each child before its
+        # posting, so a reset that could not take these could not take any
+        # posting either, and the task would leave the sandbox quiesced.
+        #
+        # Both shapes are seeded because the rule has two conditions and either
+        # alone would have refused the wipe.
+        waiting = Posting.objects.create(
+            tenant=tenant, customer=seat, request_id=f"{ext_prefix}r2",
+            idempotency_key=f"{ext_prefix}k2", provider_cost_micros=None,
+            costing_status=COSTING_STATUS_UNRESOLVED,
+            unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING,
+            billed_cost_micros=120)
+        for posting in (settled, waiting):
+            PostingMeasurement.objects.create(
+                posting=posting, measurements={"input_tokens": 1200},
+                recorded_at=posting.created_at)
         OutboxEvent.objects.create(
             event_type="usage.recorded", payload={}, tenant_id=str(tenant.id))
         return biz, seat, wallet

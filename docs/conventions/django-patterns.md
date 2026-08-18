@@ -76,7 +76,25 @@ wire and validate.
 - **A record whose whole lifecycle is one rule declares `RECORD_RULE` instead**, which is *not* a
   fifth class — it is the absence of a per-column one, said out loud, with the rule itself written in
   the model's docstring. `PostingMeasurement` is the first (insert once, never update, delete only at
-  or after its horizon).
+  or after its horizon and only while its posting is not unresolved).
+- ⚠ **A `RECORD_RULE` record is outside G19's statement, so nothing walks it and its rule owes its
+  own tests.** G19 walks *field* transition classes; `RECORD_RULE` sits outside `DATABASE_DEFENDED`
+  by construction, so no declaration on such a record is ever judged and a green board says nothing
+  about whether its rule exists at all. `PostingMeasurement`'s `DELETE` condition (#354) is enforced
+  by a **`BEFORE DELETE`** trigger in
+  `usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`, and its three doors are
+  `delete()`, `QuerySet.delete()` and raw SQL rather than the three above — a whole-record rule is
+  about whether a row may cease to exist, not about whether a field may change. Its worked example
+  is `usage/tests/test_a_measurement_is_pruned_only_when_it_may_be.py`, and **that module is the
+  only thing that would notice the rule's absence**: it has no ledger entry and no manifest row.
+- **A whole-record rule reaching another table's column reads it in the trigger, and a `DELETE` rule
+  cannot see what else the transaction will do.** Django's collector deletes a child before its
+  parent, so a `BEFORE DELETE` trigger on the child cannot tell *this row is being pruned* from
+  *the whole parent is being discarded* — the row it would have to consult is still on disk. Where
+  that distinction matters, say which case is exempt **positively, in the rule**, rather than by a
+  session setting or a temporary drop; both are doors, and ADR-0007 §2's point is that a rule holds
+  through every one. #354's is the sandbox tenant, and the tenant table's own `CHECK` is what stops
+  the exemption being turned on.
 - **Declaring is not enforcing, and a declaration must arrive with what keeps it.** The database
   enforcement is gate G19, **installed by slice 3** (#319) and enforced over the *declarations*
   rather than over a list of columns, so a column you declare is judged on the day you declare it; a
@@ -111,6 +129,11 @@ wire and validate.
   cases through `INSERT` (a `BEFORE UPDATE` trigger never fires on one), and make **every** refusal
   assert the MESSAGE — "something refused this" stops being evidence the moment a table has two
   mechanisms. #318 hit this for the cost pair and #352 hit it again for the price pair.
+- **A rule that cannot fire on the hot statements owes a proof rather than a measurement.**
+  ADR-0007's Consequences are about *per-insert and per-update* cost, so a `BEFORE DELETE` trigger
+  pays zero on both by construction. Assert the statement mask out of `pg_trigger` — the `INSERT`
+  and `UPDATE` bits **off** — which is a stronger claim than a benchmark reporting a small number
+  and one that cannot drift (#354).
 - **A new rule on a hot table owes a measurement, not an assumption** (ADR-0007's Consequences).
   `scripts/measure_posting_transition_cost.py` is the worked example: it asks for each rule **by
   name** rather than counting, installs and drops them together, times each permitted move

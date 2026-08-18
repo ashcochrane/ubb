@@ -48,6 +48,8 @@ from apps.metering.usage.measurements import (
 )
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.tests._helpers import (
+    release_and_prune, settle_the_supplier_cost)
 #: The bag's name in the historical state `TheReverseIsExercisedTest` replays.
 #: #274 renamed it, and only the classes above this one see the new name — a
 #: migration replay must speak the vocabulary of the migration it replays.
@@ -72,6 +74,9 @@ from core.vocabulary import (
 APP_LABEL = "usage"
 FOLD_MIGRATION = "0031_the_measurements_become_a_child_record"
 PARENT_MIGRATION = "0030_the_usage_row_becomes_the_posting"
+#: The child's whole-record `DELETE` rule (#354), which arrives ten migrations
+#: after the fold and refuses the deletion the fold's own reverse ends with.
+PRUNE_RULE_MIGRATION = "0041_a_measurement_is_pruned_only_when_it_may_be"
 
 #: The columns the child was ruled to carry, over and above the ones every
 #: record in this repository inherits.
@@ -249,8 +254,16 @@ class TheDerivedMeasurementsStatusTest(TestCase):
 
         Note what is NOT asserted — that the quantities read as `{}`. They do,
         and that is exactly the reading this status exists to qualify.
+
+        The removal goes through the two steps the database now requires
+        (#354): a metered call with no cost rate behind it records
+        `unresolved`, and the child's whole-record rule refuses a `DELETE`
+        while its posting is waiting AND before the record's horizon. Settling
+        the cost is what a recovery run does; releasing the horizon is what a
+        retention clock would do. Only then is there a prune to observe.
         """
-        PostingMeasurement.objects.filter(posting=self.posting).delete()
+        settle_the_supplier_cost(self.posting, 240_000)
+        release_and_prune(self.posting)
 
         posting = self._fresh()
         self.assertEqual(posting.measurements, {})
@@ -546,6 +559,7 @@ class TheReverseIsExercisedTest(TestCase):
 
     def setUp(self):
         loader = MigrationLoader(connection)
+        self._unapply_the_later_rules(loader)
         self.migration = loader.get_migration(APP_LABEL, FOLD_MIGRATION)
         state = loader.project_state((APP_LABEL, PARENT_MIGRATION))
         for op in self.migration.operations:
@@ -559,6 +573,27 @@ class TheReverseIsExercisedTest(TestCase):
             self._reconcile(model)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
+
+    def _unapply_the_later_rules(self, loader):
+        """Take the child's prune rule back off, the way `migrate` would.
+
+        `0031`'s reverse ends by removing every measurement record, and since
+        `0041` the database refuses a `DELETE` on that table before the
+        record's horizon. That is not a conflict between the two migrations:
+        reversing to `0030` unapplies `0041` first, so a real `migrate` never
+        meets the rule at all. It is a property of replaying ONE migration's
+        callable in the middle of an applied chain, which is the same reason
+        `_reconcile` below exists — *the difference between replaying a
+        migration and re-running today's schema*, one layer up from a column.
+
+        The rule comes back on its own: this runs inside the test's
+        transaction, and the `TestCase` rolls it back.
+        """
+        rule = loader.get_migration(APP_LABEL, PRUNE_RULE_MIGRATION)
+        run_python = next(op for op in rule.operations
+                          if isinstance(op, operations.RunPython))
+        with connection.schema_editor() as editor:
+            run_python.reverse_code(None, editor)
 
     def _reconcile(self, model):
         """Make one live table accept one historical model's writes."""

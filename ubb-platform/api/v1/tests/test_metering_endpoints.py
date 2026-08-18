@@ -372,14 +372,22 @@ class UsageEventDetailEndpointTest(TestCase):
         than absent. A consumer defaulting on the empty bag alone would render
         this row as "no usage" to an end customer.
         """
-        from apps.metering.usage.models import Posting, PostingMeasurement
+        from apps.metering.usage.models import Posting
         from apps.metering.usage.services.usage_service import UsageService
+        from apps.metering.usage.tests._helpers import (
+            release_and_prune, settle_the_supplier_cost)
 
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r-pruned", "i-pruned",
                 measurements={"input_tokens": 1200})["event_id"])
-        PostingMeasurement.objects.filter(posting=ev).delete()
+        # Two steps, because the database now holds the child's whole-record
+        # rule (#354) and this call has no cost rate behind it, so it records
+        # `unresolved`: the rule refuses a `DELETE` while the posting is
+        # waiting, and again before the record's horizon. Settling is what a
+        # recovery does and releasing is what a retention clock would do.
+        settle_the_supplier_cost(ev, 240_000)
+        release_and_prune(ev)
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()

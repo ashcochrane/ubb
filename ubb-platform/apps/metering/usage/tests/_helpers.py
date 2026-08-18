@@ -15,6 +15,13 @@ assertion every module took from one place could be satisfied by editing that
 place, and the whole job of that line is to make a rule's arrival on this table
 something a reader of each module has to agree to.
 
+**It also carries the one way a test may now remove a measurement record**
+(#354). That is a rule of the CHILD table rather than of this one, and its doors
+are `delete()`, `QuerySet.delete()` and raw SQL rather than the three below —
+its own module owns those. What is here is `release_and_prune`, the single
+place that knows how to reach the state a prune leaves, because five call sites
+each inventing that for themselves is five chances to invent a different prune.
+
 `docs/conventions/testing.md` asks for exactly this — shared setup helpers in
 `tests/_helpers.py` rather than tenants and customers re-scaffolded by hand.
 The second trio is what made the duplication real rather than hypothetical, and
@@ -34,11 +41,15 @@ default**: a default would be the vacuous version of this check, and the check
 is the one thing a shared helper could quietly stop doing for every caller at
 once.
 """
+from datetime import timedelta
+
 from django.db import IntegrityError, connection, models, transaction
+from django.utils import timezone
 
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import COSTING_STATUS_KNOWN
 
 TABLE = Posting._meta.db_table
 
@@ -96,6 +107,57 @@ def through_save(posting, **columns):
 DOORS = (("QuerySet.update()", through_the_queryset),
          ("raw SQL", through_raw_sql),
          ("save()", through_save))
+
+
+def settle_the_supplier_cost(posting, micros):
+    """Settle an unresolved supplier cost — the one move a recovery run makes.
+
+    Written as the single statement the posting table's own rule permits:
+    `unresolved` becomes `known` while the amount arrives and the reason goes,
+    all at once. Through `QuerySet.update()` because `Posting.save()` refuses
+    every update by design, which is the door ADR-0007 §2 means and the one
+    `test_a_cost_settles_once.py` proves that rule holds across.
+
+    It is here because #354 made *resolving* the thing that releases a
+    measurement record, and three modules now need the sequence. ⚠ **The
+    recording path produces `unresolved` far more often than it looks**: a
+    metered call whose quantity has no cost rate lands there, which is most
+    fixtures, so `release_and_prune` on a freshly recorded posting is refused
+    for the second condition rather than the first.
+    """
+    Posting.objects.filter(pk=posting.pk).update(
+        provider_cost_micros=micros, costing_status=COSTING_STATUS_KNOWN,
+        unresolved_reason=None)
+
+
+def release_and_prune(posting):
+    """Remove a posting's measurement record the way a prune has to, since #354.
+
+    The child's whole-record rule permits a `DELETE` only at or after the
+    record's `prunable_at` and only while its posting is not unresolved, and the
+    database holds it. So a test that wants the state a prune leaves has to
+    reach it legally, and this is the one place in the tree that does — which
+    is the point of it being here rather than repeated at five call sites, each
+    free to drift into a different idea of what a prune is.
+
+    ⚠ **The `UPDATE` below walks through a hole this rule does not close.** The
+    record's declared lifecycle also says *no column is ever rewritten*, and
+    that line has no enforcement behind it: `prunable_at` has no clock, no job
+    and no owner, so nothing in production ever sets it and a test standing a
+    row up as *released* has no other way in. It is written here, once, rather
+    than spread — and the day a later slice enforces the `UPDATE` line, this
+    function is the single thing that has to change.
+
+    The caller keeps responsibility for the second condition. A posting still
+    carrying `unresolved` or `unknown` is refused here exactly as it would be
+    anywhere else, and that refusal is a fact worth a test rather than
+    something for a helper to paper over.
+    """
+    from apps.metering.usage.models import PostingMeasurement
+
+    records = PostingMeasurement.objects.filter(posting=posting)
+    records.update(prunable_at=timezone.now() - timedelta(days=1))
+    return records.delete()
 
 
 def rules_on_the_table():

@@ -819,14 +819,34 @@ gates:
       node is that distinction measured rather than asserted: it replaces the
       shipped price rule with one naming both columns and refusing nothing, and
       watches this gate's own check report a clean board over it.
-      One obligation is deferred, by name — `PostingMeasurement`'s whole-record
-      `DELETE` rule, permitted only at or after `prunable_at` and only while its
-      parent posting is not `unresolved`, reads a status that lands in slice 4,
-      so slice 4 adds it as an EXTENSION of this installed gate rather than by
-      re-owning this row; it sits outside the statement above because every
-      column of that record is declared `RECORD_RULE`, which `core/transitions.py`
-      places outside `DATABASE_DEFENDED`, and so is not a field transition class
-      at all.
+      The one obligation this row deferred BY NAME has been PAID BY SLICE 4
+      (#354) — `PostingMeasurement`'s whole-record `DELETE` rule, permitted only
+      at or after `prunable_at` and only while its parent posting is not
+      `unresolved`, which read a status that landed in slice 4. It is an
+      EXTENSION of this installed gate and not a re-owning of this row, and it
+      adds NO enforcement node below: it sits outside the statement above,
+      because every column of that record is declared `RECORD_RULE`, which
+      `core/transitions.py` places outside `DATABASE_DEFENDED`, and so is not a
+      field transition class at all. A node claiming to enforce "field
+      transition classes are enforced in the database" over a whole-record
+      `DELETE` would be a false entry in this manifest.
+      ⚠ WHICH MEANS NOTHING ON THIS BOARD COUNTS IT. That rule has no ledger
+      entry and no manifest row of its own, and slice 4 owns no manifest row at
+      all — the spec names it the single largest silent-omission risk in the
+      slice. The only thing that would notice its absence is
+      `ubb-platform/apps/metering/usage/tests/test_a_measurement_is_pruned_only_when_it_may_be.py`,
+      which drives it through `delete()`, `QuerySet.delete()` and raw SQL, names
+      the admitted move beside the refusals, and removes each condition's CAUSE
+      in turn to show the other stays standing. It is held by a `BEFORE DELETE`
+      trigger in
+      `ubb-platform/apps/metering/usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`
+      — the first rule on the child table, and the first on either table that is
+      not a `BEFORE UPDATE`. Its per-insert and per-update cost is zero by
+      construction rather than by measurement, which the module asserts out of
+      `pg_trigger`'s statement mask: a `BEFORE DELETE` trigger cannot fire on
+      the two statements ADR-0007's Consequences are about, and the recording
+      path inserts into that table on every metered call and deletes from it
+      never.
     enforced_by:
       - suite: platform
         node: ubb-platform/apps/platform/tests/test_transition_class_declarations.py::TransitionClassDeclarationsTest::test_every_declared_column_is_defended_by_the_database
