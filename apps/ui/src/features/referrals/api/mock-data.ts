@@ -56,6 +56,7 @@ function marginRow(customerId: string, revenue: number, cost: number): MarginCus
     subscription_revenue_micros: 0,
     provider_cost_micros: cost,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: revenue - cost,
     margin_percentage: revenue === 0 ? 0 : ((revenue - cost) / revenue) * 100,
   };

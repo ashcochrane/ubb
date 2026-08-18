@@ -163,9 +163,16 @@ export function EventDetailPage({
   // a cost there was never going to be are opposite facts wearing the same
   // empty cell. There is no "at least" on this screen and that is not an
   // omission: one event has no total to be a floor of — it has the mark itself.
+  // AND THE SAME IS NOW TRUE OF THE CUSTOMER PRICE (#351). It went nullable
+  // with a status of its own, so a price UBB could not resolve reaches this
+  // screen as an absence and must render as one: `£0.00` here would tell a
+  // tenant they charged their customer nothing, which is the unflattering
+  // direction of the identical mistake. The margin needs BOTH sides, so it is
+  // absent when either is.
   const providerCost = detail.provider_cost_micros ?? null;
+  const billed = detail.billed_cost_micros ?? null;
   const margin =
-    providerCost === null ? null : detail.billed_cost_micros - providerCost;
+    providerCost === null || billed === null ? null : billed - providerCost;
   const hasMetadata = Object.keys(detail.metadata).length > 0;
   const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
   const backfilled =
@@ -202,7 +209,10 @@ export function EventDetailPage({
   const moneyItems: DetailItem[] = [
     {
       label: "Billed",
-      value: formatEventMicros(detail.billed_cost_micros, detail.currency),
+      value:
+        billed === null
+          ? ABSENT_LABEL
+          : formatEventMicros(billed, detail.currency),
     },
     {
       label: "Provider cost",

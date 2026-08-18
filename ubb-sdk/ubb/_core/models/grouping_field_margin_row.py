@@ -28,6 +28,7 @@ class GroupingFieldMarginRow:
             event_count (int):
             margin_micros (int):
             provider_cost_micros (int):
+            unpriced_event_count (int):
             unresolved_event_count (int):
             grouping_field_value (None | str | Unset):
      """
@@ -36,6 +37,7 @@ class GroupingFieldMarginRow:
     event_count: int
     margin_micros: int
     provider_cost_micros: int
+    unpriced_event_count: int
     unresolved_event_count: int
     grouping_field_value: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -53,6 +55,8 @@ class GroupingFieldMarginRow:
 
         provider_cost_micros = self.provider_cost_micros
 
+        unpriced_event_count = self.unpriced_event_count
+
         unresolved_event_count = self.unresolved_event_count
 
         grouping_field_value: None | str | Unset
@@ -69,6 +73,7 @@ class GroupingFieldMarginRow:
             "event_count": event_count,
             "margin_micros": margin_micros,
             "provider_cost_micros": provider_cost_micros,
+            "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
         if grouping_field_value is not UNSET:
@@ -89,6 +94,8 @@ class GroupingFieldMarginRow:
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
+        unpriced_event_count = d.pop("unpriced_event_count")
+
         unresolved_event_count = d.pop("unresolved_event_count")
 
         def _parse_grouping_field_value(data: object) -> None | str | Unset:
@@ -106,6 +113,7 @@ class GroupingFieldMarginRow:
             event_count=event_count,
             margin_micros=margin_micros,
             provider_cost_micros=provider_cost_micros,
+            unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             grouping_field_value=grouping_field_value,
         )

@@ -204,6 +204,11 @@ export async function sendTestEvent(
     // rather than the two arbitrary slot properties this replaces.
     grouping_fields: {},
     billed_cost_micros: billed,
+    // The price half of the same rule (#351). This mock always resolves a
+    // price — the sandbox recorder is handed one — so it says `known` out loud
+    // rather than leaving the field to a default that would be wrong the day it
+    // does not.
+    pricing_status: "known",
     // The status and the amount are ONE fact and travel together: an absent
     // amount reads `unresolved` and never `known` at zero (#317, #320), and it
     // names the input that would settle it (#330).

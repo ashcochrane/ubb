@@ -26,6 +26,7 @@ class MarginClientTest(unittest.TestCase):
             # CEILING (#328) — a fixture of the kind that needs the field rather
             # than one that merely carries it, on the ROWS precedent below.
             "unresolved_event_count": 1,
+            "unpriced_event_count": 0,
             "gross_margin_micros": 500_300_000, "margin_percentage": 99.8,
             "event_count": 2, "period": {"start": "2026-06-01", "end": "2026-06-09"}})
         m = self.client.get_customer_margin("c1")
@@ -44,6 +45,7 @@ class MarginClientTest(unittest.TestCase):
     ROWS = {"period": {}, "rows": [
         {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
          "unresolved_event_count": 1,
+         "unpriced_event_count": 0,
          "billed_cost_micros": 1_300_000, "margin_micros": 300_000,
          "event_count": 2}]}
 
@@ -125,6 +127,7 @@ class MarginClientTest(unittest.TestCase):
                  # Per point (#328): a month whose cost total excluded an event
                  # is a floor for that month alone.
                  "unresolved_event_count": 1,
+                 "unpriced_event_count": 0,
                  "usage_billed_micros": 200, "subscription_revenue_micros": 0,
                  "gross_margin_micros": 100, "margin_percentage": 50.0}]})
         pts = self.client.get_margin_trend("c1", periods=3)

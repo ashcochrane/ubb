@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   COSTING_STATUS_EXPLANATIONS,
   costingStatusLabel,
@@ -16,6 +17,7 @@ import {
   EVENT_TASK_CHARGE_ID,
   EVENT_TASK_KILL_ID,
   EVENT_TIPPING_ID,
+  EVENT_UNPRICED_ID,
   EVENT_UNRESOLVED_ID,
 } from "../api/mock-data";
 import {
@@ -253,6 +255,37 @@ describe("EventDetailPage", () => {
     // What was billed is still on the receipt, which is what makes the silence
     // about the supplier cost something the tenant can see rather than infer.
     expect(screen.getByText("$0.0310")).toBeInTheDocument();
+  });
+
+  it("renders an unresolved customer price AS ABSENT — never as zero", async () => {
+    // #155 §9.2's owed rendering assertion for the state #351 introduces, and
+    // the mirror of the one above it. `unknownPrice()` in
+    // `economic-scenarios.ts` composes the state; this is the surface that
+    // proves it renders as itself rather than as a charge of nothing.
+    //
+    // ⚠ IT ASSERTS ON THE SEED WITH A SETTLED COST, on purpose. A row missing
+    // both amounts would pass against a screen that read either status for
+    // both — the crossed case is the only one that separates them.
+    renderPage({ eventId: EVENT_UNPRICED_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+
+    // A price UBB could not resolve rendered as `$0.00` would tell a tenant
+    // they charged their customer nothing — the unflattering direction of the
+    // identical mistake the cost half makes.
+    const billed = screen.getByText("Billed").closest("div");
+    expect(billed).not.toBeNull();
+    expect(billed?.textContent ?? "").not.toContain("$0.00");
+    expect(billed?.textContent ?? "").toContain(ABSENT_LABEL);
+
+    // The SUPPLIER cost on this same posting IS settled and still renders as a
+    // figure, which is what makes the absence above about the price rather
+    // than about the screen.
+    expect(screen.getByText("$0.0190")).toBeInTheDocument();
+    expect(screen.getByText(costingStatusLabel("known"))).toBeInTheDocument();
+
+    // And with no price there is nothing to refund, so the affordance is gone.
+    expect(screen.queryByText("Refund this charge")).not.toBeInTheDocument();
   });
 
   it("names a settled cost as settled, and asks for no missing input", async () => {

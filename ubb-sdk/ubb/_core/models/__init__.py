@@ -151,7 +151,9 @@ from .record_usage_response import RecordUsageResponse
 from .record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
+from .record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
+from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from .record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from .referral_out import ReferralOut
 from .referrer_earnings_summary import ReferrerEarningsSummary
@@ -224,11 +226,15 @@ from .usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingF
 from .usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
+from .usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
+from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from .usage_event_out import UsageEventOut
 from .usage_event_out_costing_status import UsageEventOutCostingStatus
 from .usage_event_out_metadata import UsageEventOutMetadata
+from .usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
+from .usage_event_out_pricing_status import UsageEventOutPricingStatus
 from .usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from .usage_invoice_list_response import UsageInvoiceListResponse
 from .usage_invoice_out import UsageInvoiceOut
@@ -399,7 +405,9 @@ __all__ = (
     "RecordUsageResponseCostingStatus",
     "RecordUsageResponseGroupingFields",
     "RecordUsageResponseMeasurementsType0",
+    "RecordUsageResponseNotApplicableReasonType0",
     "RecordUsageResponsePricingProvenanceType0",
+    "RecordUsageResponsePricingStatus",
     "RecordUsageResponseUnresolvedReasonType0",
     "ReferralOut",
     "ReferrerEarningsSummary",
@@ -472,11 +480,15 @@ __all__ = (
     "UsageEventDetailOutMeasurements",
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
+    "UsageEventDetailOutNotApplicableReasonType0",
     "UsageEventDetailOutPricingProvenance",
+    "UsageEventDetailOutPricingStatus",
     "UsageEventDetailOutUnresolvedReasonType0",
     "UsageEventOut",
     "UsageEventOutCostingStatus",
     "UsageEventOutMetadata",
+    "UsageEventOutNotApplicableReasonType0",
+    "UsageEventOutPricingStatus",
     "UsageEventOutUnresolvedReasonType0",
     "UsageInvoiceListResponse",
     "UsageInvoiceOut",

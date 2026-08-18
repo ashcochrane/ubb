@@ -40,6 +40,8 @@ class TestGetEconomicsSummary:
             # A window with no snapshots excluded nothing — the empty sum is
             # complete, and this is the zero that says so (#328).
             "unresolved_event_count": 0,
+            # And the revenue half's own empty sum (#351).
+            "unpriced_event_count": 0,
             "total_margin_micros": 0,
             "customer_count": 0,
         }
@@ -69,6 +71,11 @@ class TestGetEconomicsSummary:
             # One of the two customers' months excluded a cost, so the tenant's
             # total is a floor by exactly that much (#328).
             unresolved_event_count=3,
+            # And a DIFFERENT number of its months' events had no resolved
+            # price (#351). Different on purpose: two counts summing to two
+            # different totals is the property, and equal fixtures would pass
+            # against an implementation that summed one column twice.
+            unpriced_event_count=2,
             gross_margin_micros=220_000_000,
             margin_percentage=60,
         )
@@ -82,6 +89,7 @@ class TestGetEconomicsSummary:
             "usage_billed_micros": 110_000_000,
             "provider_cost_micros": 80_000_000,
             "unresolved_event_count": 3,
+            "unpriced_event_count": 2,
             "total_margin_micros": 330_000_000,
             "customer_count": 2,
         }

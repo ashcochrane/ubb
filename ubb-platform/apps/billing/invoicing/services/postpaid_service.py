@@ -8,10 +8,36 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.exceptions import StripeFatalError
 from core.money import DEFAULT_CURRENCY, minor_units, to_minor
 
 logger = logging.getLogger("ubb.billing")
+
+
+def _warn_if_incomplete(tenant, customer, period_start, unpriced_events):
+    """Say out loud when an invoice is being built on a floor (#351).
+
+    `Posting.billed_cost_micros` is nullable, and the read contract now reports
+    how many postings each total could not include. This service turns those
+    totals into invoice LINES, so a floor here is money not charged — and
+    silently: a seat whose every posting is unpriced bills exactly like a seat
+    that emitted nothing.
+
+    **This warns rather than refuses, deliberately.** #329 answered the
+    equivalent question for supplier cost by refusing to close a period, and
+    that was its own ticket with its own reviewed decision. Whether a period
+    holding unresolved customer prices may be invoiced at all is the same kind
+    of question and it is not this one's; what this ticket owes is that the fact
+    exists and is visible rather than absorbed by a coalesce. The line to change
+    when that decision is made is this one.
+    """
+    if not unpriced_events:
+        return
+    logger.warning("postpaid.usage_total_incomplete", extra={"data": {
+        "tenant_id": str(tenant.id), "customer_id": str(customer.id),
+        "period_start": period_start.isoformat(),
+        UNPRICED_EVENT_COUNT_KEY: unpriced_events}})
 
 # F5.5: a renewal draft older than this is too close to Stripe's ~1h
 # auto-finalize to safely pin items into — fall back to standalone.
@@ -34,8 +60,16 @@ class PostpaidUsageService:
             totals = get_billed_totals_by_customer(
                 tenant.id, list(seats.keys()), period_start, period_end)
             agg = defaultdict(int)
-            for cid, billed in totals.items():
-                agg[seats.get(cid, "(seat)")] += billed or 0
+            for cid, row in totals.items():
+                # THE READ CONTRACT ANSWERS A PAIR PER SEAT NOW (#351): the
+                # resolved billed total, already coalesced by the shared helper,
+                # and how many of that seat's postings it could not include.
+                # The `or 0` that used to sit here is gone rather than moved —
+                # the value cannot be `None`, and a coalesce in front of one
+                # that cannot be reads as though it still guarded something.
+                agg[seats.get(cid, "(seat)")] += row["billed_cost_micros"]
+            _warn_if_incomplete(tenant, customer, period_start, sum(
+                row[UNPRICED_EVENT_COUNT_KEY] for row in totals.values()))
             lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
             total = sum(a for _, a in lines)
             return total, lines
@@ -46,14 +80,21 @@ class PostpaidUsageService:
 
         if not group_by:
             from apps.metering.queries import get_customer_cost_totals
-            total = get_customer_cost_totals(tenant.id, customer.id, period_start, period_end)["billed_cost_micros"]
+            totals = get_customer_cost_totals(
+                tenant.id, customer.id, period_start, period_end)
+            total = totals["billed_cost_micros"]
+            _warn_if_incomplete(tenant, customer, period_start,
+                                totals[UNPRICED_EVENT_COUNT_KEY])
             return total, ([("", total)] if total > 0 else [])
 
         from apps.metering.queries import get_customer_billed_breakdown
         agg = defaultdict(int)
-        for label, billed in get_customer_billed_breakdown(
+        unpriced = 0
+        for label, billed, line_unpriced in get_customer_billed_breakdown(
                 tenant.id, customer.id, period_start, period_end, group_by):
             agg[label] += billed
+            unpriced += line_unpriced
+        _warn_if_incomplete(tenant, customer, period_start, unpriced)
         lines = sorted(agg.items(), key=lambda kv: (-kv[1], kv[0]))
         total = sum(a for _, a in lines)  # total IS the sum of lines, by construction
         return total, lines

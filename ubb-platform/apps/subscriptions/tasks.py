@@ -4,7 +4,7 @@ import logging
 from celery import shared_task
 from django.utils import timezone
 
-from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.services import MarginService
@@ -88,16 +88,24 @@ def reconcile_cost_accumulators():
                 # drift this task exists to remove.
                 unresolved = r[UNRESOLVED_EVENT_COUNT_KEY] if r else 0
                 bill = r["billed_cost_micros"] if r else 0
+                # BOTH PAIRS, OR THE REPAIR RESTORES HALF A ROW (#351). The
+                # billed total gained a count of its own with the nullable price
+                # column, and a reconcile that rewrote the amount while leaving
+                # this stale would produce exactly the self-disagreeing row the
+                # cost half's comment above refuses.
+                unpriced = r[UNPRICED_EVENT_COUNT_KEY] if r else 0
                 cnt = r["event_count"] if r else 0
                 if (acc.total_provider_cost_micros != prov
                         or acc.unresolved_event_count != unresolved
                         or acc.total_billed_cost_micros != bill
+                        or acc.unpriced_event_count != unpriced
                         or acc.event_count != cnt):
                     drift += 1
                     CustomerCostAccumulator.objects.filter(id=acc.id).update(
                         period_end=period_end, total_provider_cost_micros=prov,
                         unresolved_event_count=unresolved,
-                        total_billed_cost_micros=bill, event_count=cnt)
+                        total_billed_cost_micros=bill,
+                        unpriced_event_count=unpriced, event_count=cnt)
             for cid, r in ledger.items():
                 if cid in seen:
                     continue
@@ -107,6 +115,7 @@ def reconcile_cost_accumulators():
                     total_provider_cost_micros=r["provider_cost_micros"],
                     unresolved_event_count=r[UNRESOLVED_EVENT_COUNT_KEY],
                     total_billed_cost_micros=r["billed_cost_micros"],
+                    unpriced_event_count=r[UNPRICED_EVENT_COUNT_KEY],
                     event_count=r["event_count"])
                 drift += 1
 

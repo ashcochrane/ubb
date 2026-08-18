@@ -46,7 +46,14 @@ export function RefundAction({
   const refund = useRefundUsage(customerId);
   // Per-event amount — keep sub-cent precision so a micro-priced charge
   // never shows as a rounded-up refund; the balance toast stays 2-decimal.
-  const amount = formatEventMicros(detail.billed_cost_micros, detail.currency);
+  //
+  // ⚠ `null` WHERE UBB COULD NOT RESOLVE A PRICE (#351), and there is nothing
+  // to refund then — the server refuses such a refund with its own code. The
+  // affordance is hidden rather than shown against a zero, which would offer a
+  // tenant a refund of nothing and take a round trip to say so.
+  const billed = detail.billed_cost_micros ?? null;
+  const amount =
+    billed === null ? null : formatEventMicros(billed, detail.currency);
 
   const form = useForm<RefundForm>({
     resolver: zodResolver(refundSchema),
@@ -80,6 +87,10 @@ export function RefundAction({
       },
     );
   });
+
+  // There is no charge to refund where UBB never resolved a price, so the
+  // affordance is not offered at all (#351).
+  if (amount === null) return null;
 
   return (
     <>

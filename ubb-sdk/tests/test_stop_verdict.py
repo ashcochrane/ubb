@@ -27,7 +27,7 @@ class StopVerdictTest(unittest.TestCase):
     def test_record_usage_surfaces_customer_stop_fields(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
         self.assertTrue(result.stop)
@@ -40,7 +40,7 @@ class StopVerdictTest(unittest.TestCase):
         the ack names the task and carries its post-event totals."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "task_limit",
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "task_id": "task_1", "parent_task_id": None,
             "task_total_billed_cost_micros": 2_000_000,
             "task_total_provider_cost_micros": 1_100_000})
@@ -58,7 +58,7 @@ class StopVerdictTest(unittest.TestCase):
     def test_default_does_not_raise_on_stop(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop"})
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop"})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
         self.assertTrue(result.stop)  # returned, not raised
 
@@ -66,7 +66,7 @@ class StopVerdictTest(unittest.TestCase):
     def test_raise_on_stop_raises_for_customer_scope(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
         with self.assertRaises(UBBStoppedError) as cm:
             self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
@@ -79,7 +79,7 @@ class StopVerdictTest(unittest.TestCase):
     def test_raise_on_stop_raises_for_task_scope_with_task_id(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "task_limit",
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "task_id": "task_1"})
         with self.assertRaises(UBBStoppedError) as cm:
             self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
@@ -94,7 +94,7 @@ class StopVerdictTest(unittest.TestCase):
         (HTTP 200); the verdict is task_not_active, scope task."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": True, "stop_reason": "task_not_active",
+            "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "task_not_active",
             "stop_scope": "task", "task_id": "task_1",
             "task_total_billed_cost_micros": 3_000_000,
             "task_total_provider_cost_micros": 1_500_000})
@@ -109,7 +109,7 @@ class StopVerdictTest(unittest.TestCase):
     def test_raise_on_stop_no_raise_when_not_stopped(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
-            "costing_status": "known", "stop": False})
+            "costing_status": "known", "pricing_status": "known", "stop": False})
         result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
                                           raise_on_stop=True)
         self.assertFalse(result.stop)  # no raise

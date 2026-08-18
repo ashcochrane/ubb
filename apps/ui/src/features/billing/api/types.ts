@@ -32,6 +32,13 @@ export interface RevenueDailyRow {
    * so it is present on every row the endpoint emits.
    */
   unresolved_event_count: number;
+  /**
+   * And how many of the day's events carry a customer price UBB could not
+   * resolve (#351). Per day for the same reason, and a SECOND field rather
+   * than a widened one because the two are about different events: a day can
+   * be complete on one side of the margin and a floor on the other.
+   */
+  unpriced_event_count: number;
 }
 
 /**
@@ -56,6 +63,11 @@ export function toRevenueDailyRow(row: Record<string, unknown>): RevenueDailyRow
     unresolved_event_count:
       typeof row.unresolved_event_count === "number"
         ? row.unresolved_event_count
+        : 0,
+    // Same degradation and same caveat, one slice on (#351).
+    unpriced_event_count:
+      typeof row.unpriced_event_count === "number"
+        ? row.unpriced_event_count
         : 0,
   };
 }

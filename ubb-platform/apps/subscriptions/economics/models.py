@@ -22,6 +22,17 @@ class CustomerCostAccumulator(BaseModel):
     # An event whose Event Type declares no supplier cost is NOT counted: there
     # is nothing missing about a cost that does not exist (#327).
     unresolved_event_count = models.IntegerField(default=0)
+    # HOW MANY OF THOSE EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
+    #
+    # The mirror of the count above. Until this slice the handler coalesced an
+    # absent price to zero on the way in, which was sound while the column could
+    # not be null and became the silent-zero the moment it could: a period that
+    # billed real money would have read complete with a charge missing from it.
+    #
+    # A second column rather than one count for both, because the two are about
+    # different events — a posting can carry a settled cost and a price UBB
+    # could not resolve.
+    unpriced_event_count = models.IntegerField(default=0)
 
     class Meta:
         app_label = "subscriptions"
@@ -56,6 +67,15 @@ class CustomerEconomics(BaseModel):
     # whose cost excluded something is too small a denominator, so the rise
     # computed against it would be too big. See MarginService.evaluate_and_emit.
     unresolved_event_count = models.IntegerField(default=0)
+    # WHAT THE FROZEN REVENUE TOTAL LEFT OUT, copied from the same accumulator
+    # (#351). It makes `usage_billed_micros` a floor, which bounds the derived
+    # figures in the OPPOSITE direction from the count above: an excluded cost
+    # makes the margin a ceiling, an excluded price makes it a floor, and a
+    # snapshot can be both at once.
+    #
+    # NOT NULL for the same reason its sibling is — a snapshot is never
+    # null-skipped, so what travels is the count rather than a null.
+    unpriced_event_count = models.IntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
     total_revenue_micros = models.BigIntegerField(default=0)
     revenue_mode = models.CharField(max_length=20, blank=True, default="")

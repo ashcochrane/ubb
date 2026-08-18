@@ -110,7 +110,18 @@ export interface TimeseriesPoint {
 export interface PastLimitEpisodeEvent {
   event_id: string;
   effective_at: string;
-  billed_cost_micros: number;
+  /**
+   * ⚠ NULLABLE SINCE #351, on exactly the argument above: the column went
+   * nullable with a `pricing_status` beside it, so `num()` here would render a
+   * price UBB could not resolve as `$0.00` — telling a tenant they charged
+   * their customer nothing for an event that tripped their own spend stop.
+   *
+   * The absence is not yet NAMED on this surface, and that is the split #317
+   * and #330 already made once for the supplier half: this ticket stops the
+   * zero, and the console consumer that says WHICH of the three absences it is
+   * (`unknown`, `waived`, `not_applicable`) is the pricing feature's.
+   */
+  billed_cost_micros: number | null;
   provider_cost_micros: number | null;
   /** `null` where the row carried no status — see `asCostingStatus`. */
   costing_status: CostingStatus | null;
@@ -140,10 +151,18 @@ export interface PastLimitEpisode {
    * this surface came to be read as one with no completeness at all.
    */
   unresolved_event_count: number;
+  /**
+   * And how many carry a customer price UBB could not resolve (#351).
+   *
+   * The same invisibility applies: the report is `additionalProperties: true`,
+   * so nothing schema-derived can see this field arrive or leave.
+   */
+  unpriced_event_count: number;
 }
 
 export interface PastLimitLimitTotals {
   billed_cost_micros: number;
+  unpriced_event_count: number;
   provider_cost_micros: number;
   unresolved_event_count: number;
   event_count: number;
@@ -217,9 +236,10 @@ function narrowEpisode(raw: Record<string, unknown>): PastLimitEpisode {
       return {
         event_id: str(record.event_id),
         effective_at: str(record.effective_at),
-        billed_cost_micros: num(record.billed_cost_micros),
-        // `numOrNull`, NOT `num`: an absent supplier cost stays absent all the
-        // way to the cell that renders it (#330). See the interface above.
+        // `numOrNull`, NOT `num`, on BOTH amounts: an absent amount stays
+        // absent all the way to the cell that renders it (#330, #351). See the
+        // interface above.
+        billed_cost_micros: numOrNull(record.billed_cost_micros),
         provider_cost_micros: numOrNull(record.provider_cost_micros),
         costing_status: asCostingStatus(record.costing_status),
         arrived_after: record.arrived_after === true,
@@ -229,6 +249,7 @@ function narrowEpisode(raw: Record<string, unknown>): PastLimitEpisode {
     total_billed_cost_micros: num(raw.total_billed_cost_micros),
     total_provider_cost_micros: num(raw.total_provider_cost_micros),
     unresolved_event_count: num(raw.unresolved_event_count),
+    unpriced_event_count: num(raw.unpriced_event_count),
   };
 }
 
@@ -240,6 +261,7 @@ export function narrowPastLimitReport(
     const record = asRecord(value);
     totals[limit] = {
       billed_cost_micros: num(record.billed_cost_micros),
+      unpriced_event_count: num(record.unpriced_event_count),
       provider_cost_micros: num(record.provider_cost_micros),
       unresolved_event_count: num(record.unresolved_event_count),
       event_count: num(record.event_count),

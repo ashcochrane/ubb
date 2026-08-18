@@ -74,6 +74,19 @@ function countUnresolved(events: MockEvent[]): number {
   ).length;
 }
 
+/**
+ * How many of these events carry a customer price UBB could not resolve (#351).
+ *
+ * The price half of the pair above, and `addKnownCost` serves both amounts —
+ * one rule, not two. Reads the STATUS and only `unknown`: `waived` and
+ * `not_applicable` have no amount either, and neither is missing information.
+ */
+function countUnpriced(events: MockEvent[]): number {
+  return events.filter(
+    (event) => event.detail.pricing_status === "unknown",
+  ).length;
+}
+
 function notFound(detail: string): ApiProblem {
   return new ApiProblem({
     status: 404,
@@ -91,6 +104,8 @@ function toRow(detail: UsageEventDetail): UsageEventRow {
     // detail describe one posting, and a projection that decided this for
     // itself could disagree with the row it came from (#317).
     costing_status: detail.costing_status,
+    // And the price half, carried from the detail on the same argument (#351).
+    pricing_status: detail.pricing_status,
     effective_at: detail.effective_at,
     metadata: detail.metadata,
     event_type: detail.event_type,
@@ -186,7 +201,7 @@ function groupBy(
     if (key === "") continue;
     const totals = groups.get(key) ?? { event_count: 0, billed: 0, provider: 0 };
     totals.event_count += 1;
-    totals.billed += event.detail.billed_cost_micros;
+    totals.billed = addKnownCost(totals.billed, event.detail.billed_cost_micros);
     totals.provider = addKnownCost(
       totals.provider, event.detail.provider_cost_micros);
     groups.set(key, totals);
@@ -227,7 +242,7 @@ export async function getUsageAnalytics(
   let billed = 0;
   let provider = 0;
   for (const event of events) {
-    billed += event.detail.billed_cost_micros;
+    billed = addKnownCost(billed, event.detail.billed_cost_micros);
     provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
   return {
@@ -235,6 +250,7 @@ export async function getUsageAnalytics(
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
     unresolved_event_count: countUnresolved(events),
+    unpriced_event_count: countUnpriced(events),
     usage_markup_margin_micros: billed - provider,
     by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
     by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),
@@ -282,7 +298,7 @@ export async function getUsageTimeseries(
       ? `${day}|${dimensionValue(event.detail, params.group_by)}`
       : day;
     const bucket = buckets.get(key) ?? { billed: 0, provider: 0, count: 0 };
-    bucket.billed += event.detail.billed_cost_micros;
+    bucket.billed = addKnownCost(bucket.billed, event.detail.billed_cost_micros);
     bucket.provider = addKnownCost(
       bucket.provider, event.detail.provider_cost_micros);
     bucket.count += 1;
@@ -357,7 +373,11 @@ export async function refundUsage(
       event.customer_id === customerId,
   );
   if (!match) throw notFound("No usage event with that id for this customer.");
-  mockBalanceMicros += match.detail.billed_cost_micros;
+  // There is nothing to refund where UBB never resolved a price (#351); the
+  // real endpoint refuses such a refund with its own code, and this mock has no
+  // amount to move either.
+  mockBalanceMicros = addKnownCost(
+    mockBalanceMicros, match.detail.billed_cost_micros);
   const result: RefundResult = {
     refund_id: `re_${body.idempotency_key.slice(0, 12)}`,
     balance_micros: mockBalanceMicros,
@@ -379,7 +399,7 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
   let billed = 0;
   let provider = 0;
   for (const event of taskEvents) {
-    billed += event.detail.billed_cost_micros;
+    billed = addKnownCost(billed, event.detail.billed_cost_micros);
     provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
   const result: CloseTaskResult = {
@@ -391,6 +411,7 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
     unresolved_event_count: countUnresolved(taskEvents),
+    unpriced_event_count: countUnpriced(taskEvents),
   };
   closedTasks.set(taskId, result);
   return result;

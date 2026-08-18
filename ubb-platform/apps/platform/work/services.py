@@ -2,9 +2,9 @@ import logging
 
 from django.utils import timezone
 
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
-from core.vocabulary import COSTING_STATUS_KNOWN
+from core.vocabulary import COSTING_STATUS_KNOWN, PRICING_STATUS_KNOWN
 from apps.platform.work.models import Task
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,7 @@ class TaskService:
     @staticmethod
     def accumulate_cost(task_id, *, billed_cost_micros, provider_cost_micros,
                         costing_status=COSTING_STATUS_KNOWN,
+                        pricing_status=PRICING_STATUS_KNOWN,
                         tenant_id=None, customer_id=None):
         """The ONE accumulate primitive — always records, never raises on
         limits (one-rule: every event that reaches UBB is priced, recorded,
@@ -71,11 +72,17 @@ class TaskService:
         events on a killed subtask keep counting into the parent.
 
         ``costing_status`` is the compute spine's own answer about the supplier
-        cost (#328). Where it says the cost is unresolved, the provider total
-        takes nothing and ``unresolved_event_count`` takes one instead, so the
-        total this unit publishes is a floor that says how much it left out.
-        The rollup carries the count upward like the money: a parent whose
-        child excluded a cost has excluded it too.
+        cost (#328), and ``pricing_status`` its answer about the customer price
+        (#351). Where either says the amount is unresolved, that total takes
+        nothing and its own count takes one instead, so both totals this unit
+        publishes are floors that say how much they left out. The rollup carries
+        the counts upward like the money: a parent whose child excluded an
+        amount has excluded it too.
+
+        The two are kept apart all the way down. They are different events —
+        a posting can carry a settled cost and an unresolved price — so a single
+        status argument would have made one of the two totals lie on every event
+        where they disagree.
 
         Returns ``(task, verdicts)`` where ``task`` is the named unit and
         ``verdicts`` is a dict of crossing verdicts for the caller to turn
@@ -119,6 +126,15 @@ class TaskService:
                 "provider_cost_micros is None but costing_status says 'known': "
                 "pass the spine's own status so the unit can count what it "
                 "could not add")
+        # The same refusal for the price half, and it is a SEPARATE statement
+        # rather than one check over both pairs: a caller that got one right and
+        # the other wrong must be told which, and a combined message would name
+        # the pair it did not break as often as the one it did.
+        if billed_cost_micros is None and pricing_status == PRICING_STATUS_KNOWN:
+            raise ValueError(
+                "billed_cost_micros is None but pricing_status says 'known': "
+                "pass the spine's own status so the unit can count what it "
+                "could not add")
 
         def _locked(unit_id):
             qs = Task.objects.select_for_update()
@@ -139,7 +155,16 @@ class TaskService:
         now = timezone.now()
 
         def _add(unit):
-            unit.total_billed_cost_micros += int(billed_cost_micros)
+            # AN UNRESOLVED CUSTOMER PRICE ADDS NOTHING AND IS COUNTED (#351),
+            # on exactly the terms the supplier half below is. `int(None)` was
+            # this line's failure shape — a `TypeError` inside the recording
+            # path rather than a wrong number — from the moment the column went
+            # nullable, and the status decides rather than the amount because
+            # `waived` and `not_applicable` null it too and neither is missing.
+            if billed_cost_micros is not None:
+                unit.total_billed_cost_micros += int(billed_cost_micros)
+            elif counts_as_unresolved(CUSTOMER_PRICE, pricing_status):
+                unit.unpriced_event_count += 1
             # AN UNRESOLVED SUPPLIER COST ADDS NOTHING AND IS COUNTED, WHICH IS
             # WHAT MAKES THE TOTAL A FLOOR THAT SAYS SO (#320, #328). Before the
             # compute spine could say "UBB does not know what this cost",
@@ -171,6 +196,7 @@ class TaskService:
             # hum is alive.
             unit.last_event_at = now
             unit.save(update_fields=["total_billed_cost_micros",
+                                     "unpriced_event_count",
                                      "total_provider_cost_micros",
                                      "unresolved_event_count",
                                      "event_count", "last_event_at",

@@ -10,6 +10,8 @@ from ..types import UNSET, Unset
 
 from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
+from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
+from ..models.usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -33,14 +35,15 @@ T = TypeVar("T", bound="UsageEventDetailOut")
 class UsageEventDetailOut:
     """ 
         Attributes:
-            billed_cost_micros (int):
             costing_status (UsageEventDetailOutCostingStatus):
             created_at (str):
             effective_at (str):
             id (UUID):
             idempotency_key (str):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
+            pricing_status (UsageEventDetailOutPricingStatus):
             request_id (str):
+            billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
@@ -50,6 +53,7 @@ class UsageEventDetailOut:
             grouping_fields (UsageEventDetailOutGroupingFields | Unset):
             measurements (UsageEventDetailOutMeasurements | Unset):
             metadata (UsageEventDetailOutMetadata | Unset):
+            not_applicable_reason (None | Unset | UsageEventDetailOutNotApplicableReasonType0):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset): The Pricing Receipt: the authoritative record
                 of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of when. It is not a
                 guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has
@@ -64,20 +68,22 @@ class UsageEventDetailOut:
             unresolved_reason (None | Unset | UsageEventDetailOutUnresolvedReasonType0):
      """
 
-    billed_cost_micros: int
     costing_status: UsageEventDetailOutCostingStatus
     created_at: str
     effective_at: str
     id: UUID
     idempotency_key: str
     measurements_status: UsageEventDetailOutMeasurementsStatus
+    pricing_status: UsageEventDetailOutPricingStatus
     request_id: str
+    billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: str | Unset = 'usd'
     event_type: str | Unset = ''
     grouping_fields: UsageEventDetailOutGroupingFields | Unset = UNSET
     measurements: UsageEventDetailOutMeasurements | Unset = UNSET
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
+    not_applicable_reason: None | Unset | UsageEventDetailOutNotApplicableReasonType0 = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
@@ -95,8 +101,6 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
-        billed_cost_micros = self.billed_cost_micros
-
         costing_status = self.costing_status.value
 
         created_at = self.created_at
@@ -109,7 +113,15 @@ class UsageEventDetailOut:
 
         measurements_status = self.measurements_status.value
 
+        pricing_status = self.pricing_status.value
+
         request_id = self.request_id
+
+        billed_cost_micros: int | None | Unset
+        if isinstance(self.billed_cost_micros, Unset):
+            billed_cost_micros = UNSET
+        else:
+            billed_cost_micros = self.billed_cost_micros
 
         claimed_provider_cost_micros: int | None | Unset
         if isinstance(self.claimed_provider_cost_micros, Unset):
@@ -132,6 +144,14 @@ class UsageEventDetailOut:
         metadata: dict[str, Any] | Unset = UNSET
         if not isinstance(self.metadata, Unset):
             metadata = self.metadata.to_dict()
+
+        not_applicable_reason: None | str | Unset
+        if isinstance(self.not_applicable_reason, Unset):
+            not_applicable_reason = UNSET
+        elif isinstance(self.not_applicable_reason, UsageEventDetailOutNotApplicableReasonType0):
+            not_applicable_reason = self.not_applicable_reason.value
+        else:
+            not_applicable_reason = self.not_applicable_reason
 
         pricing_provenance: dict[str, Any] | Unset = UNSET
         if not isinstance(self.pricing_provenance, Unset):
@@ -173,15 +193,17 @@ class UsageEventDetailOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "billed_cost_micros": billed_cost_micros,
             "costing_status": costing_status,
             "created_at": created_at,
             "effective_at": effective_at,
             "id": id,
             "idempotency_key": idempotency_key,
             "measurements_status": measurements_status,
+            "pricing_status": pricing_status,
             "request_id": request_id,
         })
+        if billed_cost_micros is not UNSET:
+            field_dict["billed_cost_micros"] = billed_cost_micros
         if claimed_provider_cost_micros is not UNSET:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if currency is not UNSET:
@@ -194,6 +216,8 @@ class UsageEventDetailOut:
             field_dict["measurements"] = measurements
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
+        if not_applicable_reason is not UNSET:
+            field_dict["not_applicable_reason"] = not_applicable_reason
         if pricing_provenance is not UNSET:
             field_dict["pricing_provenance"] = pricing_provenance
         if provider is not UNSET:
@@ -218,8 +242,6 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
         from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
         d = dict(src_dict)
-        billed_cost_micros = d.pop("billed_cost_micros")
-
         costing_status = UsageEventDetailOutCostingStatus(d.pop("costing_status"))
 
 
@@ -241,7 +263,22 @@ class UsageEventDetailOut:
 
 
 
+        pricing_status = UsageEventDetailOutPricingStatus(d.pop("pricing_status"))
+
+
+
+
         request_id = d.pop("request_id")
+
+        def _parse_billed_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
+
 
         def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -285,6 +322,26 @@ class UsageEventDetailOut:
             metadata = UsageEventDetailOutMetadata.from_dict(_metadata)
 
 
+
+
+        def _parse_not_applicable_reason(data: object) -> None | Unset | UsageEventDetailOutNotApplicableReasonType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                not_applicable_reason_type_0 = UsageEventDetailOutNotApplicableReasonType0(data)
+
+
+
+                return not_applicable_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventDetailOutNotApplicableReasonType0, data)
+
+        not_applicable_reason = _parse_not_applicable_reason(d.pop("not_applicable_reason", UNSET))
 
 
         _pricing_provenance = d.pop("pricing_provenance", UNSET)
@@ -358,20 +415,22 @@ class UsageEventDetailOut:
 
 
         usage_event_detail_out = cls(
-            billed_cost_micros=billed_cost_micros,
             costing_status=costing_status,
             created_at=created_at,
             effective_at=effective_at,
             id=id,
             idempotency_key=idempotency_key,
             measurements_status=measurements_status,
+            pricing_status=pricing_status,
             request_id=request_id,
+            billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,
             event_type=event_type,
             grouping_fields=grouping_fields,
             measurements=measurements,
             metadata=metadata,
+            not_applicable_reason=not_applicable_reason,
             pricing_provenance=pricing_provenance,
             provider=provider,
             provider_cost_micros=provider_cost_micros,

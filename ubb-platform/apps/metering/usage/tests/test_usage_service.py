@@ -43,10 +43,11 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "costing_status",
     "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
+    "pricing_status", "not_applicable_reason",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
-    "task_total_unresolved_event_count",
+    "task_total_unresolved_event_count", "task_total_unpriced_event_count",
     "stop", "stop_reason", "stop_scope", "stop_context",
     "measurements", "pricing_provenance", "grouping_fields",
 }
@@ -78,6 +79,10 @@ class ResultSignatureTest(TestCase):
             # assertion alone would pass with a mock object in either slot.
             unresolved_reason=None, claimed_provider_cost_micros=None,
             billed_cost_micros=1,
+            # Stubbed for the same reason the cost pair above is: an unstubbed
+            # attribute answers a truthy mock, so a priced posting would appear
+            # to carry a `not_applicable_reason`.
+            pricing_status="known", not_applicable_reason=None,
             task_id=None, measurements={}, pricing_provenance={},
             stop_context=None, **{slot: "" for slot in SLOTS},
         )

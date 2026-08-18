@@ -9,10 +9,11 @@ from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
 from apps.metering.pricing.receipts import uncosted_quantity_keys
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.cost_totals import (
-    UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total, cost_total_annotations,
+    UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total,
+    cost_total_annotations,
 )
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
@@ -434,6 +435,11 @@ def get_usage_event(request, event_id: UUID):
         "unresolved_reason": e.unresolved_reason,
         "claimed_provider_cost_micros": e.claimed_provider_cost_micros,
         "billed_cost_micros": e.billed_cost_micros,
+        # Stored, and read rather than re-derived, on the same two arguments as
+        # the cost pair above (#351): the status settles with the amount, and a
+        # serialiser that recomputed either could contradict what the row says.
+        "pricing_status": e.pricing_status,
+        "not_applicable_reason": e.not_applicable_reason,
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the
         # serialiser, which is the only place §E5 permits it to exist.
@@ -470,6 +476,7 @@ def close_task(request, task_id: UUID):
         "total_billed_cost_micros": completed.total_billed_cost_micros,
         "total_provider_cost_micros": completed.total_provider_cost_micros,
         "unresolved_event_count": completed.unresolved_event_count,
+        "unpriced_event_count": completed.unpriced_event_count,
         "event_count": completed.event_count,
     }
 
@@ -743,22 +750,36 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
     qs = _apply_task_filter(qs, tenant, task_id, include_subtasks)
 
-    # EVERY SUPPLIER-COST TOTAL BELOW IS A PAIR (#327), and each breakdown row
-    # carries its OWN count: a provider whose costs are all resolved is not made
-    # partial by another provider's that are not.
-    totals = carry_cost_total(qs.aggregate(
+    # EVERY MONEY TOTAL BELOW IS A PAIR, ON BOTH SIDES OF THE MARGIN (#327,
+    # #351), and each breakdown row carries its OWN two counts: a provider whose
+    # costs are all resolved is not made partial by another provider's that are
+    # not, and the same holds of prices.
+    totals = qs.aggregate(
         total_events=Count("id"),
-        total_billed_cost_micros=Sum("billed_cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="total_billed_cost_micros"),
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-    ), key="total_provider_cost_micros")
-    total_billed = totals["total_billed_cost_micros"] or 0
+    )
+    totals = carry_cost_total(SUPPLIER_COST, totals,
+                              key="total_provider_cost_micros")
+    totals = carry_cost_total(CUSTOMER_PRICE, totals,
+                              key="total_billed_cost_micros")
+    total_billed = totals["total_billed_cost_micros"]
     total_provider = totals["total_provider_cost_micros"]
 
-    def _paired(grouped):
-        """Resolve each grouped row's cost pair. Every block goes through here,
-        including the two below that build their own query."""
-        return [carry_cost_total(row, key="total_provider_cost_micros")
+    def _paired(grouped, *, billed_key):
+        """Resolve each grouped row's TWO pairs. Every block goes through here,
+        including the two below that build their own query.
+
+        ``billed_key`` because the four blocks do not agree on what they call
+        the billed total — three say `total_cost_micros` and the dimensional one
+        says `total_billed_cost_micros` — and inventing a fifth spelling here to
+        avoid the parameter would rename a published response property.
+        """
+        rows = [carry_cost_total(SUPPLIER_COST, row,
+                                 key="total_provider_cost_micros")
                 for row in grouped]
+        return [carry_cost_total(CUSTOMER_PRICE, row, key=billed_key)
+                for row in rows]
 
     def _rollup(column, *, skip_blank=False):
         """One breakdown block: group by `column`, largest billed first, every
@@ -771,9 +792,9 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         rows = qs.exclude(**{column: ""}) if skip_blank else qs
         return _paired(rows.values(column).annotate(
             event_count=Count("id"),
-            total_cost_micros=Sum("billed_cost_micros"),
+            **cost_total_annotations(CUSTOMER_PRICE, key="total_cost_micros"),
             **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros"))
+        ).order_by("-total_cost_micros"), billed_key="total_cost_micros")
 
     by_provider = _rollup("provider", skip_blank=True)
     by_event_type = _rollup("event_type", skip_blank=True)
@@ -794,10 +815,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
             .values("tag_value")
             .annotate(
                 event_count=Count("id"),
-                total_cost_micros=Sum("billed_cost_micros"),
+                **cost_total_annotations(CUSTOMER_PRICE, key="total_cost_micros"),
                 **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
             )
-            .order_by("-total_cost_micros")
+            .order_by("-total_cost_micros"),
+            billed_key="total_cost_micros",
         )
 
     breakdowns: dict = {}
@@ -814,9 +836,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
                 .annotate(
                     event_count=Count("id"),
                     **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-                    total_billed_cost_micros=Sum("billed_cost_micros"),
+                    **cost_total_annotations(CUSTOMER_PRICE,
+                                             key="total_billed_cost_micros"),
                 )
-                .order_by("-total_billed_cost_micros")
+                .order_by("-total_billed_cost_micros"),
+                billed_key="total_billed_cost_micros",
             )
             for r in rows:
                 raw_val = r.pop(col)
@@ -838,9 +862,11 @@ def usage_analytics(request, start_date: date = None, end_date: date = None,
         "total_billed_cost_micros": total_billed,
         "total_provider_cost_micros": total_provider,
         UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
-        # Billed minus what UBB knows it paid, bounded by the same count: where
-        # events were excluded this is the LARGEST the margin can be, never the
-        # margin. One fact, stated once.
+        UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
+        # What UBB knows it charged minus what it knows it paid, bounded by BOTH
+        # counts. An excluded cost makes this the largest the margin can be; an
+        # excluded price makes it the smallest. Two facts, each stated once, and
+        # the margin mints neither of them again.
         "usage_markup_margin_micros": total_billed - total_provider,
         "by_provider": by_provider,
         "by_event_type": by_event_type,

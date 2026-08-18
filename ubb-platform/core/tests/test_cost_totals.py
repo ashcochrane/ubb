@@ -26,7 +26,7 @@ import inspect
 from django.db.models import Count, Q, Sum
 
 from core import cost_totals
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import (
     UNRESOLVED_EVENT_COUNT_KEY, AmountStatusPair, carry_cost_total, cost_total,
     cost_total_annotations, counts_as_unresolved,
@@ -44,6 +44,7 @@ FIXTURE_PAIR = AmountStatusPair(
     amount_column="fixture_amount_micros",
     status_column="fixture_status",
     unresolved_status="fixture_unresolved",
+    count_key="fixture_unresolved_count",
 )
 
 
@@ -60,9 +61,29 @@ def test_the_aggregation_names_the_pair_it_was_handed():
     }
     assert cost_total_annotations(FIXTURE_PAIR, key="total_micros") == {
         "total_micros": Sum("fixture_amount_micros"),
-        UNRESOLVED_EVENT_COUNT_KEY: Count(
+        FIXTURE_PAIR.count_key: Count(
             "id", filter=Q(fixture_status="fixture_unresolved")),
     }
+
+
+def test_two_pairs_splatted_into_one_query_do_not_collide():
+    """#351's reason for the count key being the pair's.
+
+    Both real pairs sit on ONE table and most of the read contract totals them
+    together, so this is the ordinary case rather than an edge. A shared count
+    key would not merely be ambiguous — the second `**` would overwrite the
+    first in the same dict, and one number would answer for two different sets
+    of excluded rows with nothing raising.
+    """
+    combined = {
+        **cost_total_annotations(SUPPLIER_COST, key="cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="price_micros"),
+    }
+    assert set(combined) == {"cost_micros", SUPPLIER_COST.count_key,
+                             "price_micros", CUSTOMER_PRICE.count_key}
+    assert SUPPLIER_COST.count_key != CUSTOMER_PRICE.count_key
+    # And the counts filter on their own status column, not on one another's.
+    assert combined[SUPPLIER_COST.count_key] != combined[CUSTOMER_PRICE.count_key]
 
 
 def test_the_predicate_answers_for_the_pair_it_was_handed():
@@ -84,26 +105,46 @@ def test_the_predicate_answers_for_the_pair_it_was_handed():
     assert counts_as_unresolved(SUPPLIER_COST, COSTING_STATUS_KNOWN) is False
 
 
-def test_the_coalescing_rule_is_one_rule_and_reads_no_column():
-    """The empty sum is nothing, and which pair produced it changes nothing.
+def test_the_coalescing_rule_is_one_rule_and_reads_only_the_count_key():
+    """The empty sum is nothing, and the pair decides only what the count is called.
 
-    `cost_total` takes no pair because it reads no column — it is handed the two
-    numbers the aggregation already produced. That is the shape of the rule
-    rather than an omission from the parameterisation: a parameter it never
-    consulted would be a claim it does not make.
+    `cost_total` took NO pair until #351, on the argument that it reads no
+    column — it is handed the two numbers the aggregation already produced, so a
+    parameter it never consulted would have been a claim it does not make. It
+    consults exactly one thing now, and this is the assertion that says which:
+    the same two numbers in, the same coalescing out, under each pair's own key.
     """
-    for key in ("provider_cost_micros", FIXTURE_PAIR.amount_column):
-        assert cost_total(key=key, resolved_micros=None, unresolved_events=2) == {
-            key: 0, UNRESOLVED_EVENT_COUNT_KEY: 2}
-        assert cost_total(key=key, resolved_micros=7, unresolved_events=0) == {
-            key: 7, UNRESOLVED_EVENT_COUNT_KEY: 0}
+    for pair in (SUPPLIER_COST, FIXTURE_PAIR):
+        key = pair.amount_column
+        assert cost_total(pair, key=key, resolved_micros=None,
+                          unresolved_events=2) == {key: 0, pair.count_key: 2}
+        assert cost_total(pair, key=key, resolved_micros=7,
+                          unresolved_events=0) == {key: 7, pair.count_key: 0}
 
 
 def test_a_row_is_resolved_in_place_whichever_pair_produced_it():
-    for key in ("provider_cost_micros", FIXTURE_PAIR.amount_column):
-        row = {key: None, UNRESOLVED_EVENT_COUNT_KEY: 3, "other": "untouched"}
-        assert carry_cost_total(row, key=key) is row
-        assert row == {key: 0, UNRESOLVED_EVENT_COUNT_KEY: 3, "other": "untouched"}
+    for pair in (SUPPLIER_COST, FIXTURE_PAIR):
+        key = pair.amount_column
+        row = {key: None, pair.count_key: 3, "other": "untouched"}
+        assert carry_cost_total(pair, row, key=key) is row
+        assert row == {key: 0, pair.count_key: 3, "other": "untouched"}
+
+
+def test_resolving_one_pair_leaves_the_other_pairs_keys_alone():
+    """The property a row carrying BOTH pairs depends on (#351).
+
+    Every grouped rollup in the read contract calls `carry_cost_total` twice on
+    one row. If either call touched a key that was not its pair's, the second
+    would undo or overwrite the first — and the failure would be a wrong number
+    rather than an exception.
+    """
+    row = {"cost_micros": None, SUPPLIER_COST.count_key: 2,
+           "price_micros": None, CUSTOMER_PRICE.count_key: 5}
+    carry_cost_total(SUPPLIER_COST, row, key="cost_micros")
+    assert row["price_micros"] is None, "the price sum was resolved too early"
+    carry_cost_total(CUSTOMER_PRICE, row, key="price_micros")
+    assert row == {"cost_micros": 0, SUPPLIER_COST.count_key: 2,
+                   "price_micros": 0, CUSTOMER_PRICE.count_key: 5}
 
 
 def test_the_helper_holds_no_column_of_its_own():

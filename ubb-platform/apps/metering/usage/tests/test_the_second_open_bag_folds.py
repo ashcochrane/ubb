@@ -382,7 +382,9 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         # dim1, not the bag: "chat" rather than "alice". A row reading
         # "(other)" would have passed on an empty dim1 without distinguishing
         # "grouped by the wrong column" from "read nothing at all".
-        self.assertEqual(rows, [("chat", 500_000)])
+        # The third element is #351's per-line completeness count, zero here
+        # because this posting's price is resolved.
+        self.assertEqual(rows, [("chat", 500_000, 0)])
 
     def test_a_nested_value_reaches_the_label_path_unconstrained(self):
         """WHAT THE FOLD WIDENED, RUN RATHER THAN ASSERTED AWAY.
@@ -409,6 +411,6 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
             self.tenant.id, self.customer.id, date(2020, 1, 1),
             date(2100, 1, 1), group_by="tag:request")
 
-        (label, amount), = rows
+        (label, amount, _unpriced), = rows
         self.assertEqual(amount, 500_000)
         self.assertIn("gpt-5", label)   # a JSON object, serialised as a label

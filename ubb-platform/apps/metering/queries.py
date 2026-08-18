@@ -29,9 +29,10 @@ from django.db.models import Sum, Count
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDate
 
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import (
-    UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total, cost_total_annotations,
+    UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total,
+    cost_total_annotations,
 )
 from core.time_windows import utc_day_start, utc_next_day_start
 from apps.platform.grouping_fields.models import SLOT_CHOICES
@@ -41,30 +42,40 @@ from apps.platform.grouping_fields.models import SLOT_CHOICES
 #: disagree.
 SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
-# EVERY SUPPLIER-COST TOTAL IN THIS MODULE IS A PAIR, AND THE BILLED ONES ARE
-# NOT (#327).
+# EVERY MONEY TOTAL IN THIS MODULE IS A PAIR, ON BOTH SIDES OF THE MARGIN
+# (#327, #351).
 #
 # `Posting.provider_cost_micros` is nullable and `NULL` means *not resolved*
-# (#317), so a bare `Sum` over it answers a number that looks complete and is
-# not. Every function below that returns one therefore returns the resolved sum
-# AND `unresolved_event_count` beside it, built together by `core.cost_totals`.
+# (#317). `Posting.billed_cost_micros` is nullable too and `NULL` there means
+# *UBB could not resolve this price* (#351). A bare `Sum` over either answers a
+# number that looks complete and is not, so every function below that returns
+# one returns the resolved sum AND its completeness count beside it, built
+# together by `core.cost_totals` from the pair declared in
+# `core.amount_status_pairs`.
 #
-# `billed_cost_micros` is NOT NULL, so its `Sum` can only be `None` when nothing
-# contributed at all — the empty sum, with no second reading to be confused
-# with. Those totals stay single figures, and that is the difference rather than
-# an oversight: there is no completeness to report about a column that cannot be
-# unknown. Slice 4 owns that column. What the two columns have in common is
-# settled already — since #348 `core.cost_totals` takes the amount/status pair
-# as a parameter and names no table — so the commit that makes this one nullable
-# is the one that hands the seam a second pair, not the one that discovers what
-# a pair is.
+# ⚠ TWO COUNTS, NOT ONE, AND THEY ARE NOT INTERCHANGEABLE. `unresolved_event_count`
+# is about postings whose SUPPLIER COST UBB has not learned;
+# `unpriced_event_count` is about postings whose CUSTOMER PRICE it could not
+# resolve. They are different sets of rows — an event can carry a settled cost
+# and an unknown price, and the reverse — and most queries here total both pairs
+# in one statement, where a single key would have the second annotation
+# overwrite the first.
 #
-# ⚠ AND ITS `or 0` SURVIVES ONLY WHERE THE AGGREGATE IS UNGROUPED. A GROUPED
-# `Sum` cannot answer `None` over a NOT NULL column: a group exists in the
-# result only because a row produced it. So the coalesce is live in
-# `get_customer_cost_totals` and `get_revenue_analytics`'s totals, where an
-# empty window is a real case, and it is DEAD in every per-row rollup — where
-# it has been deleted rather than left reading as though it guarded something.
+# ⚠ AND THE `or 0` IS GONE FROM THE BILLED HALF FOR THE SAME REASON IT WENT
+# FROM THE COST HALF. It was live where the aggregate was ungrouped, on the
+# argument that a grouped `Sum` cannot answer `None` over a NOT NULL column —
+# a group exists only because a row produced it. **That argument died with the
+# NOT NULL.** Over a nullable column a group CAN answer `None`: every row in it
+# may be unpriced. The coalescing rule is now the helper's, at every site,
+# grouped or not, and `or 0` reproduces exactly the ambiguity the nullable
+# column just stopped having.
+#
+# ⚠ THREE `pricing_status` VALUES NULL THE AMOUNT AND ONLY ONE IS COUNTED.
+# `unknown` is missing information; `waived` is a charge somebody decided not to
+# pursue and `not_applicable` is a subject with no customer revenue at this
+# level, and both of those are genuine zeroes. `core.amount_status_pairs` is
+# where that is argued; nothing here restates it, and no reader picks the set
+# for itself.
 
 #: What a grouped analytics row calls the value it groups.
 #:
@@ -93,9 +104,14 @@ GROUPED_VALUE_KEY = "grouping_field_value"
 
 
 class PeriodTotals(TypedDict):
-    #: What the tenant was CHARGED, which is never partial: the column is NOT
-    #: NULL, so nothing is skipped and the count below says nothing about it.
+    #: What the tenant's customers were CHARGED, and how much of it UBB could
+    #: price. It was documented here as "never partial: the column is NOT NULL"
+    #: — that sentence died with the NOT NULL in #351, and it is replaced rather
+    #: than deleted so a reader meets the change where the old claim stood. Both
+    #: halves of the margin can now be floors, and each says so with its own
+    #: count.
     total_cost_micros: int
+    unpriced_event_count: int
     event_count: int
     #: What the SUPPLIER charged, and how much of it UBB has learned. The pair
     #: travels together for the reason `core.cost_totals` states: a bare sum
@@ -128,7 +144,16 @@ class PeriodTotals(TypedDict):
 #:     because #269 declined to widen — a later reader should treat it as
 #:     payable, not as a decision.
 class UsageEventCost(TypedDict):
-    billed_cost_micros: int
+    #: `None` where UBB could not resolve a customer price (#351), exactly as
+    #: the supplier half below has been since #317. A PER-EVENT row, so it
+    #: carries no count either — `pricing_status` is what a caller adding these
+    #: up reads instead.
+    billed_cost_micros: int | None
+    #: WHICH READING THAT NULL TAKES. Only `unknown` is missing information;
+    #: `waived` and `not_applicable` are genuine zeroes, and a caller that
+    #: counted all three would report every metering-only tenant's every period
+    #: as partial forever.
+    pricing_status: str
     #: `None` where UBB has not resolved the supplier's cost (#317) AND where
     #: the Event Type declares there is none. This is a PER-EVENT row rather
     #: than a total, so it carries no count — but the null alone does not say
@@ -147,65 +172,107 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
                       basis: str = "effective") -> PeriodTotals:
     """Get aggregate usage totals for a tenant's billing period.
 
-    Returns the billed total and its event count, plus the supplier-cost pair
-    — the resolved sum and how many postings it excluded (#327).
+    Returns BOTH pairs — the resolved customer-price total with
+    `unpriced_event_count`, and the resolved supplier-cost total with
+    `unresolved_event_count` — plus the event count.
     basis="effective" windows on effective_at (when the usage happened);
     basis="arrival" windows on created_at (when it was recorded) — used by
     tenant platform-fee reconciliation, which accrues fees in the ARRIVAL
     period to match the wall-clock live accumulator.
 
-    THE TWO TOTALS ARE NOT THE SAME KIND OF NUMBER, and the count belongs to
-    exactly one of them. `billed_cost_micros` is NOT NULL, so its sum passes
-    over nothing and is complete by construction; `provider_cost_micros` is
-    nullable and its sum is a floor. Reading the count as a caveat on the
-    billed total would report a period as partial in the one figure that never
-    is — which is why the pair is built by `core.cost_totals` in the same query
-    as the total it qualifies rather than assembled beside it here.
+    THE TWO TOTALS ARE THE SAME KIND OF NUMBER SINCE #351, AND EACH CARRIES ITS
+    OWN CAVEAT. This docstring used to say the opposite — that the billed sum
+    "passes over nothing and is complete by construction" while only the
+    supplier sum was a floor — and it was true of a NOT NULL column. Both are
+    floors now, and the two counts are about different rows, so neither may be
+    read as a caveat on the other. Both pairs are built by `core.cost_totals` in
+    the SAME query as the total each qualifies, which is what stops one group's
+    exclusions being counted against another's.
+
+    ⚠ This is the period close's input, and the close is where a month stops
+    being revisable. #329 already refuses to close a period holding supplier
+    cost nobody accounted for; the same question about an unresolved customer
+    price is a policy this ticket does not decide, and the number it would need
+    is now here rather than absent.
     """
     from apps.metering.usage.models import Posting
 
     if basis not in ("effective", "arrival"):
         raise ValueError("basis must be 'effective' or 'arrival'")
     field = "created_at" if basis == "arrival" else "effective_at"
-    totals = carry_cost_total(Posting.objects.filter(
+    aggregated = Posting.objects.filter(
         tenant_id=tenant_id,
         **{f"{field}__gte": utc_day_start(period_start),
            f"{field}__lt": utc_day_start(period_end)},
     ).aggregate(
-        total_cost=Sum("billed_cost_micros"),
         event_count=Count("id"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="total_cost"),
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-    ), key="total_provider_cost_micros")
+    )
+    # One call per pair. Each touches only its own two keys, so the order is
+    # immaterial and neither can consume the other's count.
+    totals = carry_cost_total(CUSTOMER_PRICE, aggregated, key="total_cost")
+    totals = carry_cost_total(SUPPLIER_COST, totals,
+                              key="total_provider_cost_micros")
 
     return {
-        "total_cost_micros": totals["total_cost"] or 0,
+        "total_cost_micros": totals["total_cost"],
+        UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
         "event_count": totals["event_count"] or 0,
         "total_provider_cost_micros": totals["total_provider_cost_micros"],
         UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
     }
 
 
-def get_usage_event_cost(usage_event_id: str, tenant_id: str | None = None) -> int | None:
-    """Get the billed cost of a usage event. Returns int or None.
+class UsageEventPrice(TypedDict):
+    #: `None` where UBB could not resolve a customer price (#351). Zero still
+    #: means priced at exactly nothing.
+    billed_cost_micros: int | None
+    #: WHICH READING THE NULL ABOVE TAKES — `unknown` is a price UBB does not
+    #: have, `waived` is one somebody decided not to pursue, `not_applicable` is
+    #: a subject with no customer revenue at this level. A caller with only the
+    #: amount cannot tell the three apart.
+    pricing_status: str
 
-    If tenant_id is provided, only returns cost for events belonging to that tenant.
+
+def get_usage_event_cost(usage_event_id: str,
+                         tenant_id: str | None = None) -> UsageEventPrice | None:
+    """One posting's customer price and the status that qualifies it.
+
+    Returns `None` — and ONLY `None` — when there is no such posting. If
+    tenant_id is provided, a posting belonging to another tenant is no such
+    posting.
+
+    ⚠ IT RETURNED A BARE `int | None` UNTIL #351, AND THE TWO MEANINGS OF THAT
+    `None` HAD JUST BECOME THREE. `None` meant "no such event", and the one
+    caller — the wallet's refund path — refused with `usage_event_not_found` on
+    it. Once the column went nullable, a posting that exists and whose price UBB
+    could not resolve answered the same `None`, so a real event would have been
+    reported to a tenant as missing. Returning the row rather than the number
+    keeps "there is no such posting" a statement this function alone can make,
+    and hands the caller the status it needs to say anything else.
     """
     from apps.metering.usage.models import Posting
 
     qs = Posting.objects.filter(id=usage_event_id)
     if tenant_id is not None:
         qs = qs.filter(tenant_id=tenant_id)
-    event = qs.values_list("billed_cost_micros", flat=True).first()
-    return event
+    return qs.values("billed_cost_micros", "pricing_status").first()
 
 
 class RevenueAnalytics(TypedDict):
     total_provider_cost_micros: int
-    #: How many postings the provider total could not include. The markup below
-    #: is derived from that total and is bounded by the same count rather than
-    #: carrying one of its own.
+    #: How many postings the provider total could not include.
     unresolved_event_count: int
     total_billed_cost_micros: int
+    #: How many postings the BILLED total could not include (#351). A second
+    #: count and not a duplicate of the one above: the two are about different
+    #: rows, and a window can be complete on one side of the margin and a floor
+    #: on the other.
+    unpriced_event_count: int
+    #: Bounded by BOTH counts, and carrying neither of its own. The markup is
+    #: arithmetic over the two totals, and arithmetic does not mint a third
+    #: fact — there are two, and they are already stated.
     total_markup_micros: int
     daily: list[dict]
 
@@ -215,15 +282,17 @@ def get_revenue_analytics(
 ) -> RevenueAnalytics:
     """Get revenue analytics with totals and daily breakdown.
 
-    Returns dict with total provider/billed/markup costs, the count of postings
-    whose supplier cost is unresolved, and a daily list of dicts with day,
-    provider_cost_micros, unresolved_event_count, billed_cost_micros,
+    Returns dict with total provider/billed/markup costs, BOTH completeness
+    counts, and a daily list of dicts with day, provider_cost_micros,
+    unresolved_event_count, billed_cost_micros, unpriced_event_count,
     event_count.
 
-    The markup is billed MINUS THE RESOLVED provider cost, so where the count is
-    non-zero it is an upper bound rather than a figure. It carries no separate
-    count because there is one fact here — which postings were excluded — and
-    arithmetic over a total does not make it two.
+    The markup is the RESOLVED billed total minus the RESOLVED provider cost, so
+    it is bounded in both directions where either count is non-zero — a floor
+    where prices are missing, a ceiling where costs are. It carries no count of
+    its own because there is no third fact here: the two counts beside it are
+    the whole of what was excluded, and arithmetic over two totals does not make
+    a third.
     """
     from apps.metering.usage.models import Posting
 
@@ -235,41 +304,49 @@ def get_revenue_analytics(
         # Inclusive date end == strict bound at the NEXT UTC midnight.
         qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
 
-    totals = carry_cost_total(qs.aggregate(
+    aggregated = qs.aggregate(
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-        total_billed_cost_micros=Sum("billed_cost_micros"),
-    ), key="total_provider_cost_micros")
+        **cost_total_annotations(CUSTOMER_PRICE, key="total_billed_cost_micros"),
+    )
+    totals = carry_cost_total(SUPPLIER_COST, aggregated,
+                              key="total_provider_cost_micros")
+    totals = carry_cost_total(CUSTOMER_PRICE, totals,
+                              key="total_billed_cost_micros")
 
     provider_cost = totals["total_provider_cost_micros"]
-    billed_cost = totals["total_billed_cost_micros"] or 0
+    billed_cost = totals["total_billed_cost_micros"]
 
-    daily = [
-        carry_cost_total(entry, key="provider_cost_micros")
-        for entry in qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
-            **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
-            billed_cost_micros=Sum("billed_cost_micros"),
-            event_count=Count("id"),
-        ).order_by("day")
-    ]
+    daily = []
+    for entry in qs.annotate(day=TruncDate("effective_at")).values("day").annotate(
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed_cost_micros"),
+        event_count=Count("id"),
+    ).order_by("day"):
+        row = carry_cost_total(SUPPLIER_COST, entry, key="provider_cost_micros")
+        daily.append(carry_cost_total(CUSTOMER_PRICE, row,
+                                      key="billed_cost_micros"))
 
     for entry in daily:
         if entry.get("day"):
             entry["day"] = entry["day"].isoformat()
 
-    # THE MARKUP IS BILLED MINUS WHAT UBB ACTUALLY KNOWS IT PAID, always.
+    # THE MARKUP IS WHAT UBB KNOWS IT CHARGED MINUS WHAT IT KNOWS IT PAID.
     #
     # This used to answer 0 whenever the provider aggregate came back `None`,
-    # which was harmless while the column was NOT NULL — `None` then meant "no
-    # rows", and billed was 0 too. Since #317 it also means "every cost here is
-    # unresolved", and answering 0 for the markup on a window that billed real
-    # money was the silent-zero reading in miniature. The subtraction is now
-    # unconditional and the count beside it says how far the answer can be off.
+    # which was harmless while that column was NOT NULL — `None` then meant "no
+    # rows", and billed was 0 too. #317 gave it a second meaning ("every cost
+    # here is unresolved") and the subtraction became unconditional. #351 does
+    # the same to the other operand: `billed_cost` carried an `or 0` on the
+    # argument that its column could not be null, and that argument is gone.
+    # Both sides are now resolved sums, and BOTH counts say how far the answer
+    # can be off — in opposite directions.
     markup = billed_cost - provider_cost
 
     return {
         "total_provider_cost_micros": provider_cost,
         UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
         "total_billed_cost_micros": billed_cost,
+        UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
         "total_markup_micros": markup,
         "daily": daily,
     }
@@ -280,8 +357,8 @@ def get_customer_usage_for_period(
 ) -> list[UsageEventCost]:
     """Get per-event usage data for a customer in a period.
 
-    Returns list of dicts with billed_cost_micros, provider_cost_micros and
-    costing_status. Used by referrals reconciliation.
+    Returns list of dicts with billed_cost_micros, pricing_status,
+    provider_cost_micros and costing_status. Used by referrals reconciliation.
 
     ⚠ THESE ARE ROWS, NOT A TOTAL, so no count travels with them — a row states
     its own completeness in the only place it can, in the value itself. What a
@@ -302,13 +379,20 @@ def get_customer_usage_for_period(
         customer_id=customer_id,
         effective_at__gte=period_start,
         effective_at__lt=period_end,
-    ).values("billed_cost_micros", "provider_cost_micros", "costing_status")
+    ).values("billed_cost_micros", "pricing_status", "provider_cost_micros",
+             "costing_status")
 
     return list(events)
 
 
 class CustomerUsageSummary(TypedDict):
     total_billed_micros: int
+    #: How many of this customer's postings the total above could not include
+    #: (#351). The grand count is the sum of the rows' counts, exactly as the
+    #: grand total is the sum of the rows' totals — the same "by construction"
+    #: relation, extended to the caveat so a reader cannot get one without the
+    #: other.
+    unpriced_event_count: int
     event_count: int
     metrics: list[dict]
 
@@ -339,23 +423,34 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
         customer_ids = list(Customer.all_objects.filter(
             parent_id=customer_id).values_list("id", flat=True))
         if not customer_ids:
-            return {"total_billed_micros": 0, "event_count": 0, "metrics": []}
+            return {"total_billed_micros": 0, UNPRICED_EVENT_COUNT_KEY: 0,
+                    "event_count": 0, "metrics": []}
 
     rows = (Posting.objects.filter(
         tenant_id=tenant_id, customer_id__in=customer_ids,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
     ).values("event_type").annotate(
-        billed_sum=Sum("billed_cost_micros"), cnt=Count("id"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed_sum"),
+        cnt=Count("id"),
     ).order_by())
 
     metrics = sorted(
         ({"event_type": r["event_type"],
-          "billed_cost_micros": r["billed_sum"] or 0, "event_count": r["cnt"]}
+          "billed_cost_micros":
+              carry_cost_total(CUSTOMER_PRICE, dict(r),
+                               key="billed_sum")["billed_sum"],
+          UNPRICED_EVENT_COUNT_KEY: r[UNPRICED_EVENT_COUNT_KEY],
+          "event_count": r["cnt"]}
          for r in rows),
         key=lambda m: (-m["billed_cost_micros"], m["event_type"]))
     return {
         "total_billed_micros": sum(m["billed_cost_micros"] for m in metrics),
+        # The grand caveat is the sum of the rows' caveats, the same way the
+        # grand total is the sum of the rows' totals. Re-aggregating it would be
+        # a second query answering a question these rows already answer.
+        UNPRICED_EVENT_COUNT_KEY: sum(m[UNPRICED_EVENT_COUNT_KEY]
+                                      for m in metrics),
         "event_count": sum(m["event_count"] for m in metrics),
         "metrics": metrics,
     }
@@ -364,42 +459,57 @@ def get_customer_usage_summary(tenant_id, customer_id, period_start: date,
 def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> dict:
     """Provider + billed cost totals for one customer over [start, end).
 
-    The provider total travels with `unresolved_event_count`: how many of those
-    events carry a supplier cost UBB has not resolved and so contributed nothing
-    to it.
+    Each total travels with its own count: `unresolved_event_count` says how
+    many of those events carry a supplier cost UBB has not resolved,
+    `unpriced_event_count` how many carry a customer price it could not resolve.
+    Different events, so different numbers.
     """
     from apps.metering.usage.models import Posting
-    agg = carry_cost_total(Posting.objects.filter(
+    agg = Posting.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
     ).aggregate(
         **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
-        billed=Sum("billed_cost_micros"), count=Count("id"),
-    ), key="provider_cost_micros")
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed"),
+        count=Count("id"),
+    )
+    agg = carry_cost_total(SUPPLIER_COST, agg, key="provider_cost_micros")
+    agg = carry_cost_total(CUSTOMER_PRICE, agg, key="billed")
     return {
         "provider_cost_micros": agg["provider_cost_micros"],
         UNRESOLVED_EVENT_COUNT_KEY: agg[UNRESOLVED_EVENT_COUNT_KEY],
-        "billed_cost_micros": agg["billed"] or 0,
+        "billed_cost_micros": agg["billed"],
+        UNPRICED_EVENT_COUNT_KEY: agg[UNPRICED_EVENT_COUNT_KEY],
         "event_count": agg["count"] or 0,
     }
 
 
-def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date, end_date) -> int:
-    """Σ billed_cost_micros over [start, end) for every event whose pinned
-    billing owner is ``billing_owner_id`` (Stage D ``Posting.billing_owner_id``).
+def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date,
+                                   end_date) -> dict:
+    """The resolved billed total for one billing owner over [start, end), as a pair.
 
-    This OWNER-aggregates a pooled business across all its seats (each seat's
-    events pin the business as billing owner) and reduces to a single seat for
-    an allocated/individual owner (whose events pin themselves). It is the
-    durable source of truth the Tier-2 postpaid live-spend counter MAX-merges
-    toward (apps.billing.gating.services.live_counter)."""
+    OWNER-aggregates a pooled business across all its seats (each seat's events
+    pin the business as billing owner) and reduces to a single seat for an
+    allocated/individual owner (whose events pin themselves). It is the durable
+    source of truth the Tier-2 postpaid live-spend counter MAX-merges toward
+    (apps.billing.gating.services.live_counter).
+
+    ⚠ IT RETURNED A BARE `int` WITH AN `or 0` UNTIL #351, AND THAT IS WHY IT IS
+    A PAIR NOW. The counter this feeds compares a durable total against a live
+    one and takes the larger, so a floor reported as a figure understates spend
+    — it does not overcharge anybody, it lets a limit be crossed later than it
+    should be. That is a spend-control input rather than a report, and the
+    ceilings that race it are slice 6's; what this slice owes them is a number
+    that says when it is incomplete instead of one that quietly is.
+    """
     from apps.metering.usage.models import Posting
-    return Posting.objects.filter(
+    return carry_cost_total(CUSTOMER_PRICE, Posting.objects.filter(
         tenant_id=tenant_id, billing_owner_id=billing_owner_id,
         effective_at__gte=utc_day_start(start_date),
         effective_at__lt=utc_day_start(end_date),
-    ).aggregate(billed=Sum("billed_cost_micros"))["billed"] or 0
+    ).aggregate(**cost_total_annotations(CUSTOMER_PRICE, key="billed")),
+        key="billed")
 
 
 def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
@@ -408,12 +518,14 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
     per customer or per grouping field.
 
     Returns list of dicts with bucket (ISO string), provider_cost_micros,
-    unresolved_event_count, billed_cost_micros, markup_micros, event_count, and
-    optionally grouping_field_value (when group_by is set).
+    unresolved_event_count, billed_cost_micros, unpriced_event_count,
+    markup_micros, event_count, and optionally grouping_field_value (when
+    group_by is set).
 
-    Each bucket carries its OWN completeness: an unresolved cost belongs to the
-    bucket it fell in, and a tenant reading one day of a month must be told
-    about that day rather than about the month.
+    Each bucket carries its OWN completeness, on both sides: an unresolved cost
+    or an unresolved price belongs to the bucket it fell in, and a tenant
+    reading one day of a month must be told about that day rather than about the
+    month.
     """
     from django.db.models.functions import TruncHour
     from apps.metering.usage.models import Posting
@@ -438,12 +550,13 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
 
     rows = (qs.annotate(bucket=trunc("effective_at")).values(*cols).annotate(
         **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
-        billed_cost_micros=Sum("billed_cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed_cost_micros"),
         event_count=Count("id")).order_by("bucket"))
 
     out = []
     for r in rows:
-        d = carry_cost_total(dict(r), key="provider_cost_micros")
+        d = carry_cost_total(SUPPLIER_COST, dict(r), key="provider_cost_micros")
+        d = carry_cost_total(CUSTOMER_PRICE, d, key="billed_cost_micros")
         d["bucket"] = d["bucket"].isoformat() if d.get("bucket") else None
         if group_by and group_by in d:
             raw_value = d.pop(group_by)
@@ -452,10 +565,16 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
             # The key is `GROUPED_VALUE_KEY` above, shared with the sibling
             # `/analytics/usage` breakdown so the two cannot drift apart.
             d[GROUPED_VALUE_KEY] = raw_value if raw_value else "(unattributed)"
-        # Billed minus what UBB knows it paid. Bounded by this bucket's own
-        # count rather than carrying a second one of its own. No coalesce on the
-        # billed half: this aggregate is grouped over a NOT NULL column, so a
-        # bucket exists only because a row produced one.
+        # What UBB knows it charged minus what it knows it paid, bounded by
+        # this bucket's OWN two counts rather than by the window's.
+        #
+        # ⚠ THE COMMENT HERE USED TO READ "no coalesce on the billed half: this
+        # aggregate is grouped over a NOT NULL column, so a bucket exists only
+        # because a row produced one." That was sound and it is now false. A
+        # bucket still exists only because a row produced it — but over a
+        # nullable column its `Sum` can still answer `None`, because every row
+        # in the bucket may be unpriced. Both halves are coalesced by the
+        # helper, at the same point, by the same rule.
         d["markup_micros"] = d["billed_cost_micros"] - d["provider_cost_micros"]
         out.append(d)
     return out
@@ -464,8 +583,8 @@ def get_usage_timeseries(tenant_id, *, granularity="day", customer_id=None,
 def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
     """Per-customer provider + billed totals over [start, end).
 
-    Each customer's provider total carries its own `unresolved_event_count` —
-    one customer's unresolved cost does not make another's total partial.
+    Each customer's totals carry their own counts — one customer's unresolved
+    cost or unresolved price does not make another's total partial.
     """
     from apps.metering.usage.models import Posting
     rows = (Posting.objects.filter(
@@ -474,10 +593,13 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
         effective_at__lt=utc_day_start(end_date),
     ).values("customer_id").annotate(
         **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
-        billed_cost_micros=Sum("billed_cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed_cost_micros"),
         event_count=Count("id"),
     ).order_by("-billed_cost_micros"))
-    return [carry_cost_total(dict(r), key="provider_cost_micros") for r in rows]
+    return [carry_cost_total(
+        CUSTOMER_PRICE,
+        carry_cost_total(SUPPLIER_COST, dict(r), key="provider_cost_micros"),
+        key="billed_cost_micros") for r in rows]
 
 
 def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
@@ -490,10 +612,13 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     Grouping Field registry first);
     OR tag_key for a key read out of the open bag.
     Each row: {grouping_field_value, provider_cost_micros,
-    unresolved_event_count, billed_cost_micros, margin_micros, event_count}.
+    unresolved_event_count, billed_cost_micros, unpriced_event_count,
+    margin_micros, event_count}.
 
-    A margin over a cost total that excluded an event is a CEILING on a margin,
-    and the count is what says so. Rows still sort on the margin they can state.
+    A margin over a cost total that excluded an event is a CEILING on a margin;
+    over a price total that excluded one it is a FLOOR. Both counts say so, and
+    a row can be bounded in both directions at once. Rows still sort on the
+    margin they can state.
 
     The row key names the VALUE grouped rather than the axis it was grouped on,
     because the caller already chose the axis and the row would otherwise repeat
@@ -520,23 +645,29 @@ def get_dimensional_margin(tenant_id, *, group_by=None, tag_key=None,
     #: groups and subtract — no second vocabulary of aliases in between.
     _AGGREGATE = {
         **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
-        "billed_cost_micros": Sum("billed_cost_micros"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="billed_cost_micros"),
         "event_count": Count("id"),
     }
 
     def _row(value, group):
         """One row, from one group of the aggregate.
 
-        The pair is resolved FIRST so the margin is taken against the sum the
-        row will actually state. `billed_cost_micros` needs no coalesce here:
-        this aggregate is grouped, so a group exists only because a row produced
-        it, and that column is NOT NULL.
+        BOTH pairs are resolved first, so the margin is taken against the two
+        sums the row will actually state.
+
+        ⚠ The billed half needed no coalesce here until #351, on the argument
+        that a grouped aggregate over a NOT NULL column cannot answer `None`.
+        The grouping half of that is still true and the NOT NULL half is not:
+        a group can now consist entirely of unpriced postings.
         """
-        cost = carry_cost_total(dict(group), key="provider_cost_micros")
+        cost = carry_cost_total(SUPPLIER_COST, dict(group),
+                                key="provider_cost_micros")
+        cost = carry_cost_total(CUSTOMER_PRICE, cost, key="billed_cost_micros")
         return {GROUPED_VALUE_KEY: value,
                 "provider_cost_micros": cost["provider_cost_micros"],
                 UNRESOLVED_EVENT_COUNT_KEY: cost[UNRESOLVED_EVENT_COUNT_KEY],
                 "billed_cost_micros": cost["billed_cost_micros"],
+                UNPRICED_EVENT_COUNT_KEY: cost[UNPRICED_EVENT_COUNT_KEY],
                 "margin_micros": (cost["billed_cost_micros"]
                                   - cost["provider_cost_micros"]),
                 "event_count": cost["event_count"]}
@@ -603,10 +734,20 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
                                   period_end: date) -> dict:
     """Sum(billed_cost_micros) per customer over [period_start, period_end).
 
-    Returns {customer_id: total_billed_micros}; a customer with no events in
-    the window is absent (a customer whose events all bill 0 IS present with
-    0). SQL GROUP BY pushdown — the trailing .order_by() clears the model's
-    default ordering so it cannot poison the GROUP BY.
+    Returns {customer_id: {billed_cost_micros, unpriced_event_count}}; a
+    customer with no events in the window is absent (a customer whose events all
+    bill 0 IS present, with 0 and a count of 0). SQL GROUP BY pushdown — the
+    trailing .order_by() clears the model's default ordering so it cannot poison
+    the GROUP BY.
+
+    ⚠ THE VALUE WAS A BARE `int` WITH AN `or 0` UNTIL #351. This builds postpaid
+    INVOICE LINES, so a floor reported as a figure is money not charged, and
+    silently: a seat whose every posting is unpriced billed exactly like a seat
+    that emitted nothing. The count travels so the caller can see the
+    difference. **Whether a period holding unresolved prices may be invoiced at
+    all is a policy question this ticket does not decide** — #329 answered the
+    equivalent one for supplier cost by refusing the close, and the number that
+    question needs is now present rather than absent.
     """
     from apps.metering.usage.models import Posting
 
@@ -614,16 +755,24 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
         tenant_id=tenant_id, customer_id__in=list(customer_ids),
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
-    ).values("customer_id").annotate(total=Sum("billed_cost_micros")).order_by())
-    return {r["customer_id"]: r["total"] or 0 for r in rows}
+    ).values("customer_id").annotate(
+        **cost_total_annotations(CUSTOMER_PRICE, key="total")).order_by())
+    return {r["customer_id"]:
+            {"billed_cost_micros": carry_cost_total(
+                CUSTOMER_PRICE, dict(r), key="total")["total"],
+             UNPRICED_EVENT_COUNT_KEY: r[UNPRICED_EVENT_COUNT_KEY]}
+            for r in rows}
 
 
 def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
                                   period_end: date, group_by: str) -> list[tuple]:
     """Billed totals for ONE customer grouped by "tag:<key>" or the first slot.
 
-    Returns UNSORTED, aggregated [(label, billed_micros), ...] pairs (the
-    caller owns presentation order). Postpaid invoice-line label semantics:
+    Returns UNSORTED, aggregated [(label, billed_micros, unpriced_event_count),
+    ...] triples (the caller owns presentation order). The third element is
+    #351's, and it is on the tuple for the reason `get_billed_totals_by_customer`
+    above gives at length: these are invoice lines, so a line that is a floor and
+    says nothing is money not charged. Postpaid invoice-line label semantics:
     a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
     an empty slot value ALL collapse into "(other)" — unlike the analytics
     contract (get_usage_timeseries/get_dimensional_margin) where "" stays a
@@ -647,17 +796,23 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
         # The key-driven invoice line labels are slice 7's surface, left where
         # #273 found them — only the column underneath moved, with the fold.
         rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "metadata"))
-                .values("label").annotate(total=Sum("billed_cost_micros")).order_by())
+                .values("label")
+                .annotate(**cost_total_annotations(CUSTOMER_PRICE, key="total"))
+                .order_by())
         raw_key = "label"
     else:  # the first slot
         rows = (qs.values("grouping_field_1")
-                .annotate(total=Sum("billed_cost_micros")).order_by())
+                .annotate(**cost_total_annotations(CUSTOMER_PRICE, key="total"))
+                .order_by())
         raw_key = "grouping_field_1"
     merged: dict = {}
+    counts: dict = {}
     for r in rows:
         label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge
-        merged[label] = merged.get(label, 0) + (r["total"] or 0)
-    return list(merged.items())
+        row = carry_cost_total(CUSTOMER_PRICE, dict(r), key="total")
+        merged[label] = merged.get(label, 0) + row["total"]
+        counts[label] = counts.get(label, 0) + row[UNPRICED_EVENT_COUNT_KEY]
+    return [(label, billed, counts[label]) for label, billed in merged.items()]
 
 
 def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
@@ -707,6 +862,14 @@ def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
     with a one-word change. Yields plain dicts:
     {"id", "billed_cost_micros", "customer_id", "billing_owner_id"}.
     Server-side cursor via .iterator() — safe for large windows.
+
+    ⚠ `billed_cost_micros__gt=0` NOW EXCLUDES AN UNPRICED POSTING TOO, and that
+    is correct rather than incidental (#351). SQL's `> 0` is unknown for `NULL`,
+    so a posting whose price UBB could not resolve is not yielded — and there is
+    nothing to draw down for it, because there is no amount. What a caller must
+    NOT conclude is that the window held no such postings: this iterator answers
+    "what can be drawn down", not "what happened", and the completeness question
+    is answered by the totals above rather than by an absence here.
     """
     from apps.metering.usage.models import Posting
 

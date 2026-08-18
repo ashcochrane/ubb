@@ -165,7 +165,7 @@ _UNRESOLVED = object()  # sentinel: _result should look the parent up itself
 
 
 def _result(event, *, task_total_billed=None, task_total_provider=None,
-            task_total_unresolved=None,
+            task_total_unresolved=None, task_total_unpriced=None,
             stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None,
             parent_task_id=_UNRESOLVED):
@@ -201,6 +201,10 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         "unresolved_reason": event.unresolved_reason,
         "claimed_provider_cost_micros": event.claimed_provider_cost_micros,
         "billed_cost_micros": event.billed_cost_micros,
+        # And the price half of the same rule (#351): read off the row so an
+        # idempotent replay answers what the original recording concluded.
+        "pricing_status": event.pricing_status,
+        "not_applicable_reason": event.not_applicable_reason,
         "new_balance_micros": new_balance_micros, "suspended": suspended,
         "task_id": str(event.task_id) if event.task_id else None,
         "parent_task_id": str(parent_task_id) if parent_task_id else None,
@@ -210,6 +214,12 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         # caller watching its own spend against a COGS limit is watching a
         # lower bound, and the limit has therefore not been shown to be safe.
         "task_total_unresolved_event_count": task_total_unresolved,
+        # And the unit's BILLED total is a floor wherever THIS is non-zero
+        # (#351). Two counts, because a caller watching spend against a limit is
+        # watching the provider total, while a caller reconciling what it will
+        # be charged is watching the billed one — and the same event need not be
+        # missing from both.
+        "task_total_unpriced_event_count": task_total_unpriced,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
         # The itemized past-limit array (#41, spec §H) — read from the event
         # row, so idempotent replays return the ORIGINAL context unchanged.
@@ -465,6 +475,11 @@ class UsageService:
                     # by — nothing above rated it, and nothing below sums it.
                     claimed_provider_cost_micros=inp.claimed_provider_cost,
                     billed_cost_micros=billed_cost_micros,
+                    # The spine's answer about the PRICE, carried on the same
+                    # terms as its answer about the cost (#351): nothing here
+                    # re-reads the amount to decide whether it is known.
+                    pricing_status=costing.pricing_status,
+                    not_applicable_reason=costing.not_applicable_reason,
                     currency=inp.currency,
                     pricing_provenance=receipt,
                     task_id=inp.task_id,
@@ -502,6 +517,11 @@ class UsageService:
                         # only the status tells an unresolved cost apart from
                         # one the Event Type declares does not exist.
                         costing_status=costing.costing_status,
+                        # And the price half of the same statement (#351). Two
+                        # arguments rather than one because a posting can carry
+                        # a settled cost and an unresolved price, so one status
+                        # would make one of the unit's two totals lie.
+                        pricing_status=costing.pricing_status,
                         tenant_id=tenant.id, customer_id=customer.id)
         except IntegrityError as exc:
             raise RecordingConflict(str(exc)) from exc
@@ -549,6 +569,11 @@ class UsageService:
             # cannot: both arrive as null.
             costing_status=event.costing_status,
             billed_cost_micros=billed_cost_micros,
+            # The price half of the same statement, off the row for the same
+            # reason (#351): both accumulators reading this payload need to tell
+            # a price UBB could not resolve from one that was waived or never
+            # applied, and all three arrive as null.
+            pricing_status=event.pricing_status,
             event_type=inp.event_type, provider=inp.provider,
             task_id=str(inp.task_id) if inp.task_id else None,
             billing_owner_id=str(inp.billing_owner_id),
@@ -669,5 +694,6 @@ class UsageService:
                        task_total_billed=task.total_billed_cost_micros if task else None,
                        task_total_provider=task.total_provider_cost_micros if task else None,
                        task_total_unresolved=task.unresolved_event_count if task else None,
+                       task_total_unpriced=task.unpriced_event_count if task else None,
                        parent_task_id=task.parent_id if task else None,
                        stop=stop, stop_reason=stop_reason, stop_scope=stop_scope)

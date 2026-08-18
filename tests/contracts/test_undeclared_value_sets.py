@@ -85,7 +85,12 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,
     "ubb-platform/apps/metering/pricing/models.py": 3,
-    "ubb-platform/apps/metering/usage/models.py": 2,
+    # 2 → 4 in #351: the price status and its reason, both DERIVED from the
+    # registry frozensets exactly as the cost pair beside them. The count rises
+    # because this inventory counts the shape and not the provenance — which is
+    # the point of it, and the reason a derived list still has to come past a
+    # reviewer.
+    "ubb-platform/apps/metering/usage/models.py": 4,
     "ubb-platform/apps/platform/customers/models.py": 3,
     "ubb-platform/apps/platform/event_types/models.py": 3,
     "ubb-platform/apps/platform/events/models.py": 1,

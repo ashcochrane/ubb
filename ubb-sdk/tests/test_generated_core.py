@@ -30,7 +30,7 @@ class TestOpenWorldFieldTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known",
+                "costing_status": "known", "pricing_status": "known",
                 # A field added to the response after this client was pinned:
                 "brand_new_field": {"nested": 1},
             }
@@ -64,7 +64,7 @@ class TestOpenEnumTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known",
+                "costing_status": "known", "pricing_status": "known",
                 "stop": True,
                 "stop_scope": "a_scope_invented_next_year",
             }
@@ -90,7 +90,7 @@ class TestRequiredWhereTrueTyping:
 
     def test_optional_field_defaults_to_unset(self):
         r = RecordUsageResponse.from_dict(
-            {"event_id": "evt_1", "suspended": False, "costing_status": "known"})
+            {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known"})
         assert isinstance(r.task_id, Unset)
         assert r.task_id is UNSET
 

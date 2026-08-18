@@ -152,6 +152,16 @@
       "kind": "tenant_defined",
       "representation": "none"
     },
+    "not_applicable_reason": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "fixed_task_pricing",
+        "tenant_not_billing"
+      ]
+    },
     "payment_rail": {
       "advertised": false,
       "backend_serves": null,
@@ -195,10 +205,16 @@
       "representation": "enum"
     },
     "pricing_status": {
-      "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "known",
+        "waived",
+        "unknown",
+        "not_applicable"
+      ]
     },
     "rate_structure": {
       "advertised": false,

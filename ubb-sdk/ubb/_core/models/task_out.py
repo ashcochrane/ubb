@@ -32,6 +32,7 @@ class TaskOut:
             task_id (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
+            unpriced_event_count (int):
             unresolved_event_count (int):
             completed_at (None | str | Unset):
             dimensions (TaskOutDimensions | Unset):
@@ -47,6 +48,7 @@ class TaskOut:
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    unpriced_event_count: int
     unresolved_event_count: int
     completed_at: None | str | Unset = UNSET
     dimensions: TaskOutDimensions | Unset = UNSET
@@ -73,6 +75,8 @@ class TaskOut:
         total_billed_cost_micros = self.total_billed_cost_micros
 
         total_provider_cost_micros = self.total_provider_cost_micros
+
+        unpriced_event_count = self.unpriced_event_count
 
         unresolved_event_count = self.unresolved_event_count
 
@@ -112,6 +116,7 @@ class TaskOut:
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
         if completed_at is not UNSET:
@@ -146,6 +151,8 @@ class TaskOut:
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
+
+        unpriced_event_count = d.pop("unpriced_event_count")
 
         unresolved_event_count = d.pop("unresolved_event_count")
 
@@ -200,6 +207,7 @@ class TaskOut:
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             completed_at=completed_at,
             dimensions=dimensions,

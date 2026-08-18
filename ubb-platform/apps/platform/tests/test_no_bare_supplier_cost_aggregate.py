@@ -48,7 +48,13 @@ from pathlib import Path
 
 import pytest
 
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
+
+#: Every declared pair, because the rule is about the SHAPE and not about one
+#: column (#351). Listed here rather than discovered by walking the module, so
+#: that a third pair arriving is a line in this diff rather than a silent
+#: widening of what a CI gate checks.
+PAIRS = (SUPPLIER_COST, CUSTOMER_PRICE)
 
 # apps/platform/tests/test_no_bare_supplier_cost_aggregate.py -> ubb-platform/
 PLATFORM_ROOT = Path(__file__).resolve().parents[3]
@@ -70,7 +76,8 @@ SKIP_PARTS = ("tests", "migrations")
 #: these files is read by a person rather than inheriting somebody else's
 #: exemption.
 NON_POSTING_AGGREGATES = {
-    "apps/subscriptions/queries.py": ("subscriptions", "CustomerEconomics", 1),
+    "apps/subscriptions/queries.py": ("subscriptions", "CustomerEconomics",
+                                      SUPPLIER_COST.amount_column, 1),
 }
 
 
@@ -90,7 +97,7 @@ def _aggregate_sites(source: str, column: str) -> list[int]:
     return lines
 
 
-def _walk():
+def _walk(pair):
     """(repo-relative path, aggregate line numbers) for every module searched."""
     for root in SEARCH_ROOTS:
         for path in sorted((PLATFORM_ROOT / root).rglob("*.py")):
@@ -98,16 +105,19 @@ def _walk():
                 continue
             yield (path.relative_to(PLATFORM_ROOT).as_posix(),
                    _aggregate_sites(path.read_text(encoding="utf-8"),
-                                    SUPPLIER_COST.amount_column))
+                                    pair.amount_column))
 
 
-def test_the_supplier_cost_is_summed_only_where_it_cannot_be_unknown():
-    found = {path: sites for path, sites in _walk() if sites}
-    expected = {path: count for path, (_, _, count) in NON_POSTING_AGGREGATES.items()}
+@pytest.mark.parametrize("pair", PAIRS, ids=lambda p: p.amount_column)
+def test_an_amount_is_summed_only_where_it_cannot_be_unknown(pair):
+    found = {path: sites for path, sites in _walk(pair) if sites}
+    expected = {path: count
+                for path, (_, _, column, count) in NON_POSTING_AGGREGATES.items()
+                if column == pair.amount_column}
     assert {path: len(sites) for path, sites in found.items()} == expected, (
-        f"A supplier-cost total must carry the count of postings it excluded. "
-        f"Build it with core.cost_totals.cost_total_annotations() rather than a "
-        f"bare Sum({SUPPLIER_COST.amount_column!r}). Found: {found}"
+        f"A total over {pair.amount_column} must carry the count of postings it "
+        f"excluded. Build it with core.cost_totals.cost_total_annotations() "
+        f"rather than a bare Sum({pair.amount_column!r}). Found: {found}"
     )
 
 
@@ -116,13 +126,13 @@ def test_every_exemption_is_still_true():
     """An exemption is a claim about a model, and this is where it is checked."""
     from django.apps import apps as django_apps
 
-    for path, (app_label, model_name, _) in NON_POSTING_AGGREGATES.items():
+    for path, (app_label, model_name, column_name, _) in NON_POSTING_AGGREGATES.items():
         column = django_apps.get_model(app_label, model_name)._meta.get_field(
-            SUPPLIER_COST.amount_column)
+            column_name)
         assert column.null is False, (
-            f"{path} is exempt because {model_name}.{SUPPLIER_COST.amount_column} "
-            f"cannot be unknown. It can now — the aggregate there has to become "
-            f"a pair, or the exemption has to say something else that is true.")
+            f"{path} is exempt because {model_name}.{column_name} cannot be "
+            f"unknown. It can now — the aggregate there has to become a pair, "
+            f"or the exemption has to say something else that is true.")
 
 
 def test_the_walk_reached_the_modules_this_rule_is_about():
@@ -135,7 +145,7 @@ def test_the_walk_reached_the_modules_this_rule_is_about():
     permitted site to find. What is checked instead is that the three modules
     the sweep actually rewrote were read, and read as Python.
     """
-    walked = {path for path, _ in _walk()}
+    walked = {path for path, _ in _walk(SUPPLIER_COST)}
     for module in ("apps/metering/queries.py", "api/v1/metering_endpoints.py",
                    "core/cost_totals.py"):
         assert module in walked, f"the walk never reached {module}"
@@ -147,12 +157,32 @@ def test_the_walker_would_see_one_that_was_reintroduced():
     Written as text because the tree is (correctly) clean: with no offender to
     point at, the only way to show the detector fires is to hand it one.
     """
-    column = SUPPLIER_COST.amount_column
-    planted = f'total = qs.aggregate(cost=Sum("{column}"))'
-    assert _aggregate_sites(planted, column) == [1]
-    assert _aggregate_sites(f'models.Sum("{column}")', column) == [1]
-    # A different column, and the ORM's other aggregates over this one, are not
-    # this rule's business — a Count or an Avg is not a total a tenant reads as
-    # money.
-    assert _aggregate_sites('Sum("billed_cost_micros")', column) == []
-    assert _aggregate_sites(f'Avg("{column}")', column) == []
+    for pair in PAIRS:
+        column = pair.amount_column
+        planted = f'total = qs.aggregate(amount=Sum("{column}"))'
+        assert _aggregate_sites(planted, column) == [1], column
+        assert _aggregate_sites(f'models.Sum("{column}")', column) == [1], column
+        # The ORM's other aggregates over the same column are not this rule's
+        # business — a Count or an Avg is not a total a tenant reads as money.
+        assert _aggregate_sites(f'Avg("{column}")', column) == [], column
+
+    # ⚠ THE DETECTOR IS PER COLUMN, AND THAT IS AN IMPLEMENTATION FACT RATHER
+    # THAN A SCOPING DECISION SINCE #351.
+    #
+    # This line used to read `_aggregate_sites('Sum("billed_cost_micros")',
+    # SUPPLIER_COST.amount_column) == []` under a comment saying "a different
+    # column is not this rule's business". That was true while the customer
+    # price column was NOT NULL — SQL's null-skipping could not reach it, so the
+    # rule genuinely had nothing to say. **The day it went nullable that
+    # sentence became an exemption for exactly the defect this file exists to
+    # catch, and NOTHING TURNED RED**: a control asserting an empty result stays
+    # green when the reason for the emptiness expires. Which is why the repair
+    # landed in the same commit as the migration rather than after it.
+    #
+    # What the assertion says now is what is actually true: each pair's walk
+    # sees ONLY its own column, and the other pair's is covered because it has a
+    # walk of its own above — not because it is out of scope.
+    assert _aggregate_sites(f'Sum("{CUSTOMER_PRICE.amount_column}")',
+                            SUPPLIER_COST.amount_column) == []
+    assert _aggregate_sites(f'Sum("{SUPPLIER_COST.amount_column}")',
+                            CUSTOMER_PRICE.amount_column) == []

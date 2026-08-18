@@ -112,6 +112,28 @@ class TestAnalyticsDimensions:
         assert r.status_code == 200
         assert {x["grouping_field_value"] for x in r.json()["rows"]} == {"ocr"}
 
+    def test_the_declared_row_carries_both_completeness_counts_by_name(self):
+        """⚠ A `Schema` THAT DOES NOT NAME A KEY DROPS IT (#327, #351).
+
+        `/margin/by-grouping-field` is the ONE of the three rollups over these
+        axes whose rows are declared (`GroupingFieldMarginRow`). The read
+        contract attaches `unpriced_event_count` to every row of all three; the
+        two untyped ones carry it for free, and this one — the only surface a
+        drift gate can see — is the only one that can lose it.
+
+        So the assertion is BY NAME on the wire body rather than on the read
+        contract's dict. #327 paid this exact bill for `unresolved_event_count`
+        and #351 is the second instalment: the key is asserted where django-ninja
+        would have dropped it, not where it was produced.
+        """
+        self._seed()
+        rows = self._get(
+            "/api/v1/margin/by-grouping-field?group_by=subtask_type").json()["rows"]
+        assert rows, "no rows — the assertion below would be vacuous"
+        for row in rows:
+            assert "unpriced_event_count" in row, row
+            assert "unresolved_event_count" in row, row
+
 
 @pytest.mark.django_db
 class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
@@ -172,6 +194,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
             "total_provider_cost_micros": 1_000,
             "unresolved_event_count": 0,
             "total_billed_cost_micros": 3_000,
+            "unpriced_event_count": 0,
         }]}
 
     def test_the_timeseries_bucket_row_is_exactly_this(self):
@@ -193,6 +216,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
             "provider_cost_micros": 1_000,
             "unresolved_event_count": 0,
             "billed_cost_micros": 3_000,
+            "unpriced_event_count": 0,
             "markup_micros": 2_000,
             "event_count": 1,
         }]
@@ -212,6 +236,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
             "provider_cost_micros": 1_000,
             "unresolved_event_count": 0,
             "billed_cost_micros": 3_000,
+            "unpriced_event_count": 0,
             "markup_micros": 2_000,
             "event_count": 1,
         }]
@@ -252,6 +277,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
                 "total_provider_cost_micros": 7_000,
                 "unresolved_event_count": 0,
                 "total_billed_cost_micros": 9_000,
+                "unpriced_event_count": 0,
             },
             {
                 "grouping_field_value": "eu-west-1",
@@ -259,5 +285,43 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
                 "total_provider_cost_micros": 1_000,
                 "unresolved_event_count": 1,
                 "total_billed_cost_micros": 8_000,
+                "unpriced_event_count": 0,
             },
         ]}
+
+    def test_a_breakdown_row_reports_the_prices_its_own_group_excluded(self):
+        """The price half of the pin above (#351), and the crossed case.
+
+        The point is that the two counts are about DIFFERENT postings. One
+        region holds an unresolved cost and the other an unresolved price, so a
+        row carrying one count for both would report each region's caveat
+        against the wrong figure — and every existing assertion in this class
+        would still pass.
+        """
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r1",
+            idempotency_key="k1", provider="aws_textract", event_type="ocr_page",
+            grouping_field_1="eu-west-1",
+            effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
+            provider_cost_micros=None, billed_cost_micros=5_000,
+            costing_status="unresolved", unresolved_reason="cost_rate_missing")
+        Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, request_id="r2",
+            idempotency_key="k2", provider="aws_textract", event_type="ocr_page",
+            grouping_field_1="us-east-1",
+            effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
+            provider_cost_micros=7_000, billed_cost_micros=None,
+            pricing_status="unknown")
+
+        r = self._get("/api/v1/metering/analytics/usage?dimensions=region")
+        assert r.status_code == 200
+        rows = {row["grouping_field_value"]: row
+                for row in r.json()["breakdowns"]["region"]}
+        # eu-west-1: the seeded row plus the uncosted one. Its COST is a floor.
+        assert rows["eu-west-1"]["unresolved_event_count"] == 1
+        assert rows["eu-west-1"]["unpriced_event_count"] == 0
+        # us-east-1: one unpriced row. Its PRICE is a floor and its cost is not.
+        assert rows["us-east-1"]["unresolved_event_count"] == 0
+        assert rows["us-east-1"]["unpriced_event_count"] == 1
+        assert rows["us-east-1"]["total_billed_cost_micros"] == 0
+        assert rows["us-east-1"]["total_provider_cost_micros"] == 7_000

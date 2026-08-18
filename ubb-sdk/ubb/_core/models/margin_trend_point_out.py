@@ -27,6 +27,7 @@ class MarginTrendPointOut:
             period_start (str):
             provider_cost_micros (int):
             subscription_revenue_micros (int):
+            unpriced_event_count (int):
             unresolved_event_count (int):
             usage_billed_micros (int):
      """
@@ -36,6 +37,7 @@ class MarginTrendPointOut:
     period_start: str
     provider_cost_micros: int
     subscription_revenue_micros: int
+    unpriced_event_count: int
     unresolved_event_count: int
     usage_billed_micros: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -55,6 +57,8 @@ class MarginTrendPointOut:
 
         subscription_revenue_micros = self.subscription_revenue_micros
 
+        unpriced_event_count = self.unpriced_event_count
+
         unresolved_event_count = self.unresolved_event_count
 
         usage_billed_micros = self.usage_billed_micros
@@ -68,6 +72,7 @@ class MarginTrendPointOut:
             "period_start": period_start,
             "provider_cost_micros": provider_cost_micros,
             "subscription_revenue_micros": subscription_revenue_micros,
+            "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
             "usage_billed_micros": usage_billed_micros,
         })
@@ -89,6 +94,8 @@ class MarginTrendPointOut:
 
         subscription_revenue_micros = d.pop("subscription_revenue_micros")
 
+        unpriced_event_count = d.pop("unpriced_event_count")
+
         unresolved_event_count = d.pop("unresolved_event_count")
 
         usage_billed_micros = d.pop("usage_billed_micros")
@@ -99,6 +106,7 @@ class MarginTrendPointOut:
             period_start=period_start,
             provider_cost_micros=provider_cost_micros,
             subscription_revenue_micros=subscription_revenue_micros,
+            unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             usage_billed_micros=usage_billed_micros,
         )

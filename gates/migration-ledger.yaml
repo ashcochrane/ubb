@@ -2072,18 +2072,6 @@ entries:
       under #148, and slice 4 is where it becomes a validated,
       schema-versioned record rather than a provenance dict.
 
-  - id: g2-backend-pricing_status
-    gate: G2
-    site: ubb-platform/apps/metering/usage/models.py::pricing_status
-    expected: pricing_status
-    found: 0 of 4 values
-    owner_slice: slice_4
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. Revenue's four states
-      (#147's three plus #148's `not_applicable`) arrive with the pricing
-      rules that produce them, in slice 4.
-
   - id: g2-backend-rate_structure
     gate: G2
     site: ubb-platform/apps/metering/pricing/models.py::rate_structure
@@ -2730,19 +2718,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 4 rebuilds Price, which is where #148's authoritative receipt
       lands. The metadata appears in that slice.
-
-  - id: g4-openapi-pricing_status
-    gate: G4
-    site: openapi/v1.json::pricing_status
-    expected: pricing_status
-    found: 0 of 4 values
-    owner_slice: slice_4
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 4 rebuilds Price, and #147's three revenue states plus #148's
-      fourth are what this carries. The metadata appears in that slice.
 
   - id: g4-openapi-rate_structure
     gate: G4

@@ -92,6 +92,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: 274_000_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 267_500_000,
     margin_percentage: 49.4,
   },
@@ -102,6 +103,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: 55_900_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: -14_700_000,
     margin_percentage: -35.7,
   },
@@ -118,6 +120,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     usage_revenue_micros: 0,
     provider_cost_micros: 88_000_000,
     unresolved_event_count: 4,
+    unpriced_event_count: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
   },
@@ -128,6 +131,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: 96_300_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 24_100_000,
     margin_percentage: 20,
   },
@@ -138,6 +142,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: 49_400_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     gross_margin_micros: 12_400_000,
     margin_percentage: 20.1,
   },
@@ -157,6 +162,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: 274_000_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros: 541_500_000,
     gross_margin_micros: 267_500_000,
     margin_percentage: 49.4,
@@ -172,6 +178,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: 55_900_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros: 41_200_000,
     gross_margin_micros: -14_700_000,
     margin_percentage: -35.7,
@@ -188,6 +195,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     provider_cost_micros: 88_000_000,
     // Same four events as the list row above — one customer, one fact.
     unresolved_event_count: 4,
+    unpriced_event_count: 0,
     total_revenue_micros: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
@@ -203,6 +211,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: 96_300_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros: 120_400_000,
     gross_margin_micros: 24_100_000,
     margin_percentage: 20,
@@ -218,6 +227,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: 49_400_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros: 61_800_000,
     gross_margin_micros: 12_400_000,
     margin_percentage: 20.1,
@@ -252,6 +262,10 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
     // A fixture that marked all twelve could not tell a per-period read from a
     // series-wide one (#330).
     unresolved_event_count: index === all.length - 1 ? 4 : 0,
+    // A DIFFERENT MONTH, DELIBERATELY (#351). The two counts are about
+    // different postings, so a fixture that put them on the same period would
+    // pass against a console that read either one for both.
+    unpriced_event_count: index === all.length - 2 ? 2 : 0,
     usage_billed_micros: billed,
     subscription_revenue_micros: subscription,
     gross_margin_micros: margin,
@@ -293,6 +307,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       usage_revenue_micros: 120_400_000,
       provider_cost_micros: 96_300_000,
       unresolved_event_count: 0,
+      unpriced_event_count: 0,
       total_revenue_micros: 120_400_000,
       gross_margin_micros: 24_100_000,
       margin_percentage: 20,
@@ -306,6 +321,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       usage_revenue_micros: 61_800_000,
       provider_cost_micros: 49_400_000,
       unresolved_event_count: 0,
+      unpriced_event_count: 0,
       total_revenue_micros: 61_800_000,
       gross_margin_micros: 12_400_000,
       margin_percentage: 20.1,
@@ -317,6 +333,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
     usage_revenue_micros: 182_200_000,
     provider_cost_micros: 145_700_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     total_revenue_micros: 182_200_000,
     gross_margin_micros: 36_500_000,
   },
@@ -624,6 +641,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     total_billed_cost_micros: 342_500_000,
     total_provider_cost_micros: 274_000_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     usage_markup_margin_micros: 68_500_000,
     by_provider: [
       {
@@ -650,6 +668,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     total_billed_cost_micros: 41_200_000,
     total_provider_cost_micros: 55_900_000,
     unresolved_event_count: 0,
+    unpriced_event_count: 0,
     usage_markup_margin_micros: -14_700_000,
     by_provider: [],
     by_event_type: [],
@@ -667,6 +686,7 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
     total_billed_cost_micros: 88_000_000,
     total_provider_cost_micros: 88_000_000,
     unresolved_event_count: 4,
+    unpriced_event_count: 0,
     usage_markup_margin_micros: 0,
     by_provider: [],
     by_event_type: [],
@@ -730,6 +750,7 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         // have left out — a genuine zero rather than a floor at zero.
         total_provider_cost_micros: 0,
         unresolved_event_count: 0,
+        unpriced_event_count: 0,
       },
       {
         family: "floor_stop",
@@ -774,6 +795,7 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         // floor and the count beside it says by how many events.
         total_provider_cost_micros: 1_872_000,
         unresolved_event_count: 1,
+        unpriced_event_count: 0,
       },
       {
         family: "task",
@@ -798,6 +820,7 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         total_billed_cost_micros: 1_120_000,
         total_provider_cost_micros: 896_000,
         unresolved_event_count: 0,
+        unpriced_event_count: 0,
       },
     ],
     totals_per_limit: {
@@ -805,12 +828,14 @@ export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
         billed_cost_micros: 2_980_000,
         provider_cost_micros: 1_872_000,
         unresolved_event_count: 1,
+        unpriced_event_count: 0,
         event_count: 3,
       },
       task_limit: {
         billed_cost_micros: 1_120_000,
         provider_cost_micros: 896_000,
         unresolved_event_count: 0,
+        unpriced_event_count: 0,
         event_count: 1,
       },
     },

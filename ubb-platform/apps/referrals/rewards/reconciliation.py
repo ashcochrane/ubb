@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.referrals.models import Referral
 from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRewardLedger
-from core.amount_status_pairs import SUPPLIER_COST
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from apps.referrals.rewards.services import RewardService
 
@@ -44,9 +44,23 @@ def reconcile_referral(referral, period_start, period_end):
     # also null and is also skipped, and it is not missing (#327) — the row's
     # status is the only thing that separates them.
     unresolved_events = 0
+    # AND WHAT THE SPEND TOTAL LEAVES OUT (#351). The `or 0` on the billed
+    # amount below was a guard against nothing while the column was NOT NULL,
+    # and the day it went nullable it became the silent zero: a referred
+    # customer's spend would have read complete with a charge missing from it,
+    # and the referrer's reward computed against the smaller number.
+    #
+    # The skip stays, because there is no amount to add and inventing one would
+    # pay a reward on a charge nobody has resolved. What changes is that the
+    # ledger says how much of the period was answered that way.
+    unpriced_events = 0
 
     for event in events:
-        cost = event.get("billed_cost_micros") or 0
+        raw_billed = event.get("billed_cost_micros")
+        cost = raw_billed if raw_billed is not None else 0
+        if raw_billed is None and counts_as_unresolved(
+                CUSTOMER_PRICE, event.get("pricing_status")):
+            unpriced_events += 1
         raw_cost = event.get("provider_cost_micros")
 
         total_spend += cost
@@ -91,6 +105,7 @@ def reconcile_referral(referral, period_start, period_end):
             "referred_spend_micros": total_spend,
             "raw_cost_micros": total_raw_cost,
             "unresolved_event_count": unresolved_events,
+            "unpriced_event_count": unpriced_events,
             "reward_micros": total_reward,
             "calculation_method": calc_method,
         },
