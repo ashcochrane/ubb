@@ -152,7 +152,10 @@ exclusions:
     # price pair's declared transitions.
     # 219 → 220 in #353: one migration, installing the trigger that seals a
     # receipt when its last unresolved field completes.
-    files: 220
+    # 220 → 221 in #354: one migration, installing the child measurement
+    # record's whole-record DELETE rule — the first trigger on that table, and
+    # the first on either that is not a BEFORE UPDATE.
+    files: 221
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

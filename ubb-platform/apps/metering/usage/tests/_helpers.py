@@ -15,6 +15,21 @@ assertion every module took from one place could be satisfied by editing that
 place, and the whole job of that line is to make a rule's arrival on this table
 something a reader of each module has to agree to.
 
+**It also carries the one way a test may now remove a measurement record**
+(#354). That is a rule of the CHILD table rather than of this one, and its doors
+are `delete()`, `QuerySet.delete()` and raw SQL rather than the three below —
+its own module owns those. What is here is `release_the_horizon`, which is the
+**only** write of `prunable_at` after insert anywhere in the tree, and
+`release_and_prune` over it. Three modules prune and a fourth releases without
+pruning; each one inventing that for itself is four chances to invent a
+different prune, and one of them would have been a second writer of a column
+this record's declared rule says is never rewritten.
+
+**The two catalogue queries take a table** for the same reason: the child's rule
+has to ask the same questions of `ubb_posting_measurement` that the three trios
+ask of `ubb_posting`, and a second copy of one search would only ever prove that
+two copies of a search agree with each other.
+
 `docs/conventions/testing.md` asks for exactly this — shared setup helpers in
 `tests/_helpers.py` rather than tenants and customers re-scaffolded by hand.
 The second trio is what made the duplication real rather than hypothetical, and
@@ -34,7 +49,10 @@ default**: a default would be the vacuous version of this check, and the check
 is the one thing a shared helper could quietly stop doing for every caller at
 once.
 """
+from datetime import timedelta
+
 from django.db import IntegrityError, connection, models, transaction
+from django.utils import timezone
 
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
@@ -98,8 +116,79 @@ DOORS = (("QuerySet.update()", through_the_queryset),
          ("save()", through_save))
 
 
-def rules_on_the_table():
-    """Every non-internal trigger on the posting table, as a SET of names.
+def settle_the_supplier_cost(posting, micros):
+    """Settle an unresolved supplier cost — through the one production door.
+
+    `pricing.services.cost_settlement.settle_provider_cost` is *the* application
+    writer of a cost resolution, and a gate walks living backend code to keep it
+    that way. A test helper re-issuing the same `UPDATE` by hand would be a
+    second writer wearing a fixture's clothes: it would miss the conditional
+    `WHERE` clause that makes the move safe under a race, and it would keep
+    passing on the day that door changed. So this calls it and asserts what it
+    answers, rather than reproducing it.
+
+    It is here because #354 made *resolving* the thing that releases a
+    measurement record, and three modules now need that sequence. ⚠ **The
+    recording path produces `unresolved` far more often than it looks**: a
+    metered call whose quantity has no cost rate lands there, which is most
+    fixtures, so `release_and_prune` on a freshly recorded posting is refused
+    for the second condition rather than the first.
+    """
+    from apps.metering.pricing.services.cost_settlement import (
+        Settlement, settle_provider_cost)
+
+    outcome = settle_provider_cost(posting_id=posting.pk,
+                                   provider_cost_micros=micros)
+    assert outcome is Settlement.SETTLED, outcome
+    return outcome
+
+
+def release_the_horizon(posting):
+    """Put a posting's measurement record past its `prunable_at`.
+
+    ⚠ **THE ONLY PLACE IN THE TREE THAT WRITES THIS COLUMN AFTER INSERT**, and
+    it walks through a hole #354 does not close. The record's declared lifecycle
+    says *no column is ever rewritten*, and that line has no enforcement behind
+    it; `prunable_at` meanwhile has no clock, no job and no owner, so nothing in
+    production ever sets it and a test standing a row up as *released* has no
+    other way in. Confining it to one function is what makes that sentence
+    checkable — and the day a later slice enforces the `UPDATE` line, this is
+    the single thing that has to change.
+
+    Separate from `release_and_prune` because a caller sweeping two records in
+    one `DELETE` needs the release without the removal, and inlining the
+    `UPDATE` there would have put a second writer of this column in the tree on
+    the same commit that claimed there was one.
+    """
+    from apps.metering.usage.models import PostingMeasurement
+
+    return PostingMeasurement.objects.filter(posting=posting).update(
+        prunable_at=timezone.now() - timedelta(days=1))
+
+
+def release_and_prune(posting):
+    """Remove a posting's measurement record the way a prune has to, since #354.
+
+    The child's whole-record rule permits a `DELETE` only at or after the
+    record's `prunable_at` and only while its posting is not unresolved, and the
+    database holds it. So a test that wants the state a prune leaves has to
+    reach it legally, and this is where that is spelled — rather than at each
+    call site, every one of them free to drift into a different idea of what a
+    prune is.
+
+    The caller keeps responsibility for the second condition. A posting still
+    carrying `unresolved` or `unknown` is refused here exactly as it would be
+    anywhere else, and that refusal is a fact worth a test rather than
+    something for a helper to paper over.
+    """
+    from apps.metering.usage.models import PostingMeasurement
+
+    release_the_horizon(posting)
+    return PostingMeasurement.objects.filter(posting=posting).delete()
+
+
+def rules_on_the_table(table=TABLE):
+    """Every non-internal trigger on one table, as a SET of names.
 
     The catalogue query, shared; the SET each module compares it against is
     not — see this module's docstring. Names rather than a count, because
@@ -110,11 +199,11 @@ def rules_on_the_table():
         cursor.execute(
             "SELECT t.tgname FROM pg_trigger t "
             "JOIN pg_class c ON c.oid = t.tgrelid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
+            "WHERE c.relname = %s AND NOT t.tgisinternal", [table])
         return {name for (name,) in cursor.fetchall()}
 
 
-def rule_on_the_table(trigger):
+def rule_on_the_table(trigger, table=TABLE):
     """One rule's `(tgtype, prosrc)`, asked for BY NAME, or `None`.
 
     By name and never by index: with three rules on this table, anything
@@ -127,7 +216,7 @@ def rule_on_the_table(trigger):
             "SELECT t.tgtype, p.prosrc FROM pg_trigger t "
             "JOIN pg_class c ON c.oid = t.tgrelid "
             "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND t.tgname = %s", [TABLE, trigger])
+            "WHERE c.relname = %s AND t.tgname = %s", [table, trigger])
         return cursor.fetchone()
 
 

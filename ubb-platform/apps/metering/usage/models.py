@@ -603,15 +603,38 @@ class PostingMeasurement(BaseModel):
     declared into a class the database defends**
     (``core.transitions.DATABASE_DEFENDED``) — the protected columns slice 3
     ships are the parent's, declared and defended in #318, and the rule above is
-    not one of them. The ``DELETE`` condition above is cross-table and
-    unexpressible today, because the second of the two statuses it reads lands
-    in slice 4; slice 4 adds it as an **extension** of the installed gate rather
-    than by re-owning its row, and G19's `notes` name that deferral so it is
-    recorded beside the gate as well as here. A
-    model-level ``save()`` guard is deliberately *not* shipped in its place:
-    ADR-0007 §2 is explicit that such a guard is not enforcement, and this
-    repository has already shipped one that a production writer bypassed by
-    design.
+    not one of them. A model-level ``save()`` or ``delete()`` guard is
+    deliberately *not* shipped in its place either: ADR-0007 §2 is explicit that
+    such a guard is not enforcement, and this repository has already shipped one
+    that a production writer bypassed by design.
+
+    **THE ``DELETE`` LINE IS ENFORCED SINCE #354**, by a ``BEFORE DELETE``
+    trigger on this table
+    (``migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py``), across
+    ``delete()``, ``QuerySet.delete()`` and raw SQL alike. It was unexpressible
+    until then because the second of the two statuses it reads —
+    ``pricing_status`` — landed in slice 4, and slice 4 added it as an
+    **extension** of the installed gate rather than by re-owning its row. ⚠ It
+    carries **one condition the two lines above do not name**: a posting on a
+    *sandbox* tenant is discarded rather than pruned, and neither the retention
+    promise nor a recovery's inputs are at stake there. The migration argues it,
+    and ``tests/test_a_measurement_is_pruned_only_when_it_may_be.py`` proves the
+    whole rule through three doors with its admitted move.
+
+    ⚠ **The ``INSERT`` and ``UPDATE`` lines are still declared and unenforced**,
+    and saying so is the point: a record whose docstring claimed the whole rule
+    was held would be claiming two thirds more than the database does. In
+    particular ``prunable_at`` can still be written after the fact, which is the
+    one thing that would let a caller talk its way past the ``DELETE`` rule —
+    ``tests/_helpers.release_and_prune`` is the single place in the tree that
+    walks through it, and it is where a later slice enforcing the ``UPDATE``
+    line will land.
+
+    ⚠ **Nothing counts any of this.** The rule has no migration-ledger entry and
+    no gate-manifest row, so no board goes red if it disappears. G19's ``notes``
+    record it as an extension rather than as an enforcement node, because it is
+    not one — its statement is about field transition classes and this is not a
+    field.
 
     ``updated_at`` is inherited from ``BaseModel`` and, under the record rule
     above, never moves after insert.

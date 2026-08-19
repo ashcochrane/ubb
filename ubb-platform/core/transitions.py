@@ -29,13 +29,23 @@ judge a new declaration on the day it is made, and exactly why it goes green
 over a branch that refuses nothing. What a declaration here promises is proved
 behaviourally, per pair, in the usage app's two transition modules.
 
-**A different rule is genuinely deferred, and the comment this replaces
-conflated the two.** ``PostingMeasurement``'s whole-record ``DELETE`` condition
-is cross-table and unexpressible today, because the second of the two statuses
-it reads lands in slice 4. But every column of that record declares
-``RECORD_RULE``, which the constant below puts *outside* ``DATABASE_DEFENDED`` —
-so it is not a field transition class, it is not in G19's statement, and slice 4
-adds it as an extension of the installed gate rather than by re-owning its row.
+**A different rule was genuinely deferred, and slice 4 has now paid it.**
+``PostingMeasurement``'s whole-record ``DELETE`` condition is cross-table — it
+reads the parent posting's costing and pricing statuses, the second of which
+landed in slice 4 — and it is enforced since #354 by a ``BEFORE DELETE`` trigger
+in ``…/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py``. But
+every column of that record declares ``RECORD_RULE``, which the constant below
+puts *outside* ``DATABASE_DEFENDED`` — so it is not a field transition class, it
+is not in G19's statement, and slice 4 added it as an extension of the installed
+gate rather than by re-owning its row.
+
+⚠ **Which means the walk below does not reach it, and nothing else does
+either.** That rule has no ledger entry and no gate manifest row; the only thing
+that would notice its absence is
+``apps/metering/usage/tests/test_a_measurement_is_pruned_only_when_it_may_be.py``.
+Declaring one of that record's columns into a defended class to make this walk
+see it would be a false statement about the column, in the module whose whole
+subject is that declarations are true.
 
 **There are four transition classes and this module adds none.** ADR-0007 §2
 enumerates them and they are the whole vocabulary; `RECORD_RULE` below is not a
@@ -83,6 +93,14 @@ DATABASE_DEFENDED = frozenset({FROZEN, RESOLVE_ONCE, SET_ONCE, PRUNABLE})
 #: the ADR asks for: *what is allowed to happen to this?* The answer is "nothing
 #: this column decides — read the record's rule", and the record states that
 #: rule in its docstring.
+#:
+#: ⚠ **And a record's rule needs its own enforcement and its own tests, because
+#: nothing here reaches it.** `columns_declared_into_defended_classes` skips
+#: every `RECORD_RULE` column by design, so the gate that judges a declaration
+#: on the day it is made cannot judge one of these at all. `PostingMeasurement`'s
+#: `DELETE` condition is held by a trigger on its own table and proved by its own
+#: module (#354) — three doors, the admitted move, and each condition's cause
+#: removed in turn — with no ledger entry and no manifest row behind any of it.
 RECORD_RULE = "record_rule"
 
 

@@ -33,16 +33,17 @@ retention job would meet are indistinguishable while both are still there.
 
 2. **An unresolved record keeps its remediation inputs.** The quantities that
    matched no rule are in the receipt by value, so a recovery can price them
-   once a rule exists — with the measurement record gone. There were two ways
-   to satisfy this and the ruling was that the receipt carries them, because an
-   exemption is a second retention rule a pruning job must implement correctly
-   forever and the day it does not, recovery stops working silently on exactly
-   the records that most need fixing.
+   once a rule exists — and every reader after the recovery has them with the
+   measurement record gone. There were two ways to satisfy this and the ruling
+   was that the receipt carries them, because an exemption is a second
+   retention rule a pruning job must implement correctly forever and the day it
+   does not, recovery stops working silently on exactly the records that most
+   need fixing.
 
 3. **No pruning exemption exists.** Nothing about an unresolved posting's
-   measurement record makes it survive where a resolved one's would not: same
-   columns, same null horizon, created by the same unconditional statement, and
-   as removable.
+   measurement *record* makes it survive where a resolved one's would not: same
+   columns, same null horizon, created by the same unconditional statement.
+   What holds it is a fact about its **parent**, not a property of the row.
 
 ⚠ **THERE IS NO PRUNE JOB IN THIS REPOSITORY AND THIS COMMIT DOES NOT ADD ONE.**
 `prunable_at` is a column with no clock behind it, and
@@ -51,13 +52,24 @@ stops one being started by accident. So "pruned" here means the state a prune
 would leave, reached by removing the record — which is what any such job would
 eventually issue — and claim 3 is a statement about what such a job would SEE.
 
-⚠ **The whole-record `DELETE` rule is not this ticket's.** The child's rule —
-permitted only at or after its horizon, and only while its parent is not
-unresolved — is declared in prose on the model and is built by the ticket that
-extends the installed transition gate. When it lands, the deletions below stop
-being unconditional and the third class is where that shows up first; what this
-module asserts is that *this* commit made no unresolved record's payload exempt,
-which is the criterion it exists for.
+⚠ **THE WHOLE-RECORD `DELETE` RULE HAS SINCE LANDED (#354), AND THIS IS WHAT IT
+CHANGED HERE.** This module said the deletions below would stop being
+unconditional and that the third class was where it would show up first. Both
+happened. Every prune now goes through `release_and_prune`, because the
+database refuses one before the record's horizon; and the classes whose posting
+is unresolved settle the cost first, because it refuses one whose posting is
+still waiting. **The rule itself is not proved here** — it is proved in
+`test_a_measurement_is_pruned_only_when_it_may_be.py`, through three doors,
+with its admitted move and with each condition's cause removed in turn. What
+this module still asserts is its own subject: that the receipt keeps what a
+reader needs once the detail is gone, and that nothing about an unresolved
+record's own row exempts it.
+
+**And the two mechanisms cover different windows, which is why neither replaces
+the other.** The rule keeps the row while UBB is missing information; the
+receipt keeps the inputs for everyone afterwards — including the readers of a
+posting whose amount stayed absent by decision, whose record the rule releases
+on time.
 
 **Nothing here reconciles the two copies of a quantity.** The measurement record
 holds what was reported and the receipt holds what was used to compute an
@@ -69,6 +81,8 @@ The receipt's column still carries the retired spelling of the concept and this
 module never spells it: `Posting.RECEIPT_COLUMN` is what addresses it, so the
 day the rename lands the module follows it rather than going quietly vacuous.
 """
+import pytest
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from apps.metering.pricing.models import Rate
@@ -78,8 +92,11 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.measurements import measurements_status_for
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
+from apps.metering.usage.tests._helpers import (
+    release_and_prune, release_the_horizon, settle_the_supplier_cost)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.amount_status_pairs import SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
@@ -89,6 +106,13 @@ from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+
+#: The column a refusal must NAME for this module to know WHICH of the child
+#: rule's two conditions held (#354). Both refusals below are the status
+#: condition's; asserting only `IntegrityError` would be satisfied just as well
+#: by the horizon condition, which `release_the_horizon` has just cleared —
+#: "something refused this" stops being evidence once a rule has two branches.
+COSTING_STATUS_COLUMN = SUPPLIER_COST.status_column
 
 
 def _tenant_and_customer():
@@ -140,15 +164,34 @@ def _prune(posting_id):
     The premise is established on the way through — available before, `pruned`
     after, and an empty bag — so a caller cannot assert the receipt explains an
     amount while the detail that explains it is still on disk.
+
+    ⚠ **The deletion stopped being unconditional** (#354), which is the change
+    this module's docstring said would show up here first. It now goes through
+    `release_and_prune`, because the database refuses a `DELETE` before the
+    record's horizon; and the caller must have taken its posting out of
+    `unresolved` first, because it refuses one whose posting is still waiting.
+    `_resolve_the_cost` below is how the classes that need that do it.
     """
     posting = Posting.objects.get(id=posting_id)
     assert measurements_status_for(posting) == MEASUREMENTS_STATUS_AVAILABLE
-    posting.measurement.delete()
+    release_and_prune(posting)
 
     posting = Posting.objects.get(id=posting_id)
     assert measurements_status_for(posting) == MEASUREMENTS_STATUS_PRUNED
     assert posting.measurements == {}
     return getattr(posting, Posting.RECEIPT_COLUMN)
+
+
+def _resolve_the_cost(posting_id, micros):
+    """Settle an unresolved supplier cost — the move a recovery run makes.
+
+    A thin name over `settle_the_supplier_cost`, because every call site in this
+    module holds a posting id rather than a posting. It exists because #354 made
+    *resolving* the thing that releases a measurement record: before that a
+    recovery and a prune were independent, and now the second waits on the
+    first, which is the whole of what the rule says.
+    """
+    settle_the_supplier_cost(Posting.objects.get(id=posting_id), micros)
 
 
 class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
@@ -283,6 +326,18 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
             self.tenant, self.customer, "r1", "k1",
             measurements={"input_tokens": 4_100, "image_pixels": 2_000_000})
 
+    def _resolved_then_pruned(self):
+        """The lifecycle the rule now imposes, in the order it imposes it.
+
+        A run settles the cost using the inputs the receipt kept, which is what
+        releases the record; the prune follows. Every assertion in this class
+        is about what a reader has at the END of that sequence, which is the
+        window the receipt exists for and the only one in which the row is
+        gone.
+        """
+        _resolve_the_cost(self.result["event_id"], 12_300)
+        return _prune(self.result["event_id"])
+
     def test_the_record_says_it_is_unresolved_and_why(self):
         """The premise, established before anything is pruned."""
         posting = Posting.objects.get(id=self.result["event_id"])
@@ -291,8 +346,30 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
         assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
         assert posting.provider_cost_micros is None
 
+    def test_the_database_holds_the_record_until_the_posting_is_resolved(self):
+        """⚠ The premise every test below now has to establish (#354).
+
+        A recovery does not read the receipt because the row is gone — the row
+        is still there while the posting is unresolved, and the database
+        refuses to let it go. What the receipt is for is every reader AFTER the
+        recovery: the moment the cost settles the record is prunable, and from
+        then on the snapshot is the only copy of what was uncosted.
+
+        So the obligation this class carries is unchanged and its reason is
+        sharper. The two mechanisms cover different windows and neither
+        replaces the other — which is exactly why the rule is a condition on
+        the parent's status rather than an exemption living on this record.
+        """
+        posting = Posting.objects.get(id=self.result["event_id"])
+
+        with pytest.raises(IntegrityError, match=COSTING_STATUS_COLUMN):
+            with transaction.atomic():
+                release_and_prune(posting)
+
+        assert PostingMeasurement.objects.filter(posting=posting).exists()
+
     def test_the_uncosted_quantity_is_in_the_receipt_by_value(self):
-        receipt = _prune(self.result["event_id"])
+        receipt = self._resolved_then_pruned()
 
         assert receipt["costing"]["detail"]["uncosted_quantities"] == {
             "image_pixels": 2_000_000}
@@ -310,7 +387,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
         it is what `uncosted_quantity_keys` exists to answer, which is where
         the three-way version dispatch lives.
         """
-        detail = _prune(self.result["event_id"])["costing"]["detail"]
+        detail = self._resolved_then_pruned()["costing"]["detail"]
 
         assert uncosted_quantity_keys(
             _receipt_of(self.result["event_id"])) == list(
@@ -331,7 +408,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
         making, and which no hand-computed constant could make without being a
         second copy of the engine's arithmetic.
         """
-        detail = _prune(self.result["event_id"])["costing"]["detail"]
+        detail = self._resolved_then_pruned()["costing"]["detail"]
 
         late_rule = cost_rate_in_default_book(
             self.tenant, measurement_key="image_pixels",
@@ -350,7 +427,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
     def test_the_line_that_did_resolve_is_still_explained(self):
         """A partly resolved cost is not a resolved cost, and the resolved part
         is still the floor a tenant is shown. It survives the prune too."""
-        detail = _prune(self.result["event_id"])["costing"]["detail"]
+        detail = self._resolved_then_pruned()["costing"]["detail"]
 
         resolved, = detail["components"]
         assert resolved["measurement_key"] == "input_tokens"
@@ -361,10 +438,25 @@ class NoPruningExemptionExistsTest(TestCase):
     """The alternative that was rejected, asserted as absent.
 
     An unresolved record's measurement row is not special. It is created by the
-    same unconditional statement, carries the same null horizon, and comes away
-    under the same delete — so a retention job has nothing to tell the two
-    apart by, which is the property that makes the receipt's snapshot the whole
-    of the answer rather than half of it.
+    same unconditional statement and carries the same null horizon, so a
+    retention job reading the row has nothing to tell the two apart by — which
+    is the property that makes the receipt's snapshot the whole of the answer
+    rather than half of it.
+
+    ⚠ **THE DELETE STOPPED BEING UNCONDITIONAL, AND THIS IS THE CLASS THIS
+    MODULE SAID IT WOULD SHOW UP IN FIRST** (#354). What changed is not the
+    claim above but where the difference lives: **the record is identical and
+    the condition is a fact about its PARENT.** That is the whole reason the
+    rule had to be cross-table, and the reason it is not the exemption this
+    class exists to deny — an exemption is something a pruning job has to
+    implement correctly forever, and a database rule is something it cannot get
+    wrong. `test_the_child_record_declares_no_column_that_could_exempt_it`
+    below is unchanged and is where that distinction is held.
+
+    The rule itself is proved in
+    `test_a_measurement_is_pruned_only_when_it_may_be.py`, through three doors,
+    with its admitted move and a mutation of each condition. What is asserted
+    here is only what it means for this module's subject.
     """
 
     def setUp(self):
@@ -408,8 +500,18 @@ class NoPruningExemptionExistsTest(TestCase):
                            "measurements", "recorded_at", "prunable_at"}
 
     def test_an_unresolved_records_payload_comes_away_exactly_as_a_settled_one(self):
-        settled, unsettled = self._postings()
+        """Once resolved, and the two are then indistinguishable to the rule.
 
+        ⚠ The `resolve` is the only thing this test gained (#354). Both records
+        are released by the same statement and both come away in the same
+        `DELETE`, which is the claim: there is no second rule for the one whose
+        posting was once unresolved, and nothing about its history follows it.
+        """
+        settled, unsettled = self._postings()
+        _resolve_the_cost(unsettled.id, 12_300)
+
+        for posting in (settled, unsettled):
+            release_the_horizon(posting)
         removed = PostingMeasurement.objects.filter(
             posting__in=(settled, unsettled)).delete()[0]
 
@@ -418,9 +520,36 @@ class NoPruningExemptionExistsTest(TestCase):
             posting.refresh_from_db()
             assert measurements_status_for(posting) == MEASUREMENTS_STATUS_PRUNED
 
+    def test_while_it_is_unresolved_the_database_is_what_keeps_it(self):
+        """The condition, and it is a fact about the POSTING.
+
+        Two rows a retention job cannot tell apart, in one statement, and the
+        one whose parent is still waiting is what refuses it — so a job that
+        swept them together loses neither. That is the property an exemption
+        living on this record could never have: it would have to be read, and a
+        job that forgot to read it would take both.
+        """
+        settled, unsettled = self._postings()
+        for posting in (settled, unsettled):
+            release_the_horizon(posting)
+
+        with pytest.raises(IntegrityError, match=COSTING_STATUS_COLUMN):
+            with transaction.atomic():
+                PostingMeasurement.objects.filter(
+                    posting__in=(settled, unsettled)).delete()
+
+        assert PostingMeasurement.objects.filter(
+            posting__in=(settled, unsettled)).count() == 2
+
     def test_the_unresolved_posting_still_explains_itself_afterwards(self):
         """The reason no exemption is needed, in the same test class as the
-        absence of one — the snapshot is what replaces it."""
+        absence of one — the snapshot is what replaces it.
+
+        The prune follows the resolution, which is the order #354 imposes; what
+        the receipt still carries is what was uncosted *before* it, which is
+        the only copy any reader has once the record is gone.
+        """
         _, unsettled = self._postings()
+        _resolve_the_cost(unsettled.id, 12_300)
         detail = _prune(unsettled.id)["costing"]["detail"]
         assert detail["uncosted_quantities"] == {"image_pixels": 2_000_000}

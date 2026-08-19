@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,585 of 1,972 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,586 of 1,974 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -786,6 +786,31 @@ measurement_key:
     # `REQUIRED_COMPONENT_KEYS`, which spells the retired plural as a component
     # key; the trigger names the section and totals keys and never a component's,
     # so no occurrence arrived with it.
+    #
+    # #354 MOVED THE DENOMINATOR ONLY, UPWARD (1,585 → 1,586 swept, 1,972 →
+    # 1,974 tracked, 52/128 unchanged) — the same "needs no story" direction and
+    # the same non-widening signature as #352 and #353 above:
+    # `historical-migrations` went 220 → 221 because this commit ADDS a
+    # migration to a directory the rule already covers. TWO new files, ONE OF
+    # THEM SWEPT — the migration installing the child measurement record's
+    # whole-record DELETE rule (excluded) and the module that proves the
+    # database holds it. No generated artifact: this commit publishes nothing.
+    #
+    # NOTHING HERE IS ABOUT THE QUANTITY, and #275's RATE ARITHMETIC caution
+    # still holds. #354's subject is whether a measurement RECORD may cease to
+    # exist — its horizon and its parent posting's two statuses — and it reads
+    # no quantity at all. The record's bag is never opened by the rule, which is
+    # the one place in this area the retired plural could have arrived.
+    #
+    # ⚠ EIGHT FILES ALREADY IN THE SWEPT SET WERE EDITED and none of them
+    # gained an occurrence. (Fourteen changed in all: five sit under exclusion
+    # rules — this file, both gate files, the sweep's own check, and the new
+    # migration — and one of the nine swept is the new test module, which is
+    # the +1 above.) The nearest miss is
+    # `test_the_receipt_outlives_its_measurements.py`, which spells the retired
+    # plural as a receipt COMPONENT key in `_reproduce`; this commit changes
+    # when that module prunes and never what it reproduces, so its own count is
+    # where #350 left it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every
