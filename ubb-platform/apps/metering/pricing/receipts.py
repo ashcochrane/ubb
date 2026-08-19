@@ -76,15 +76,15 @@ yields a receipt naming none. The rule is configuration and can be edited; the
 receipt is the record and cannot, which is the whole reason values live here and
 pointers ride along in `provenance`.
 
-⚠ **The engine still writes only one of the price statuses, and the reader
-should know it.** The nullable price column and its status arrived in slice 4
-and the column now carries all four values — but `pricing_service` reports
-`known` with a method for every price it derives, including a margin taken over
-a supplier cost it has not learned, which is a floor rather than a settled
-price. The ruling that such a price is `waived` arrives with the rules that
-write it, in the resolver. So the null branch below is exercised at this
-boundary and not through the spine, and the two lines that will move are marked
-where they are.
+⚠ **The engine now writes three of the four price statuses** (#356). It reports
+`known` with a method where a rung priced the event, `waived` where a margin was
+taken over a supplier cost UBB never learned — a charge nobody will ever collect
+is a decided loss rather than a queued one — and `unknown` where no rung
+answered at all. `not_applicable` is the fourth and nothing produces it: it is a
+fact about the tenant's posture and the job's pricing regime rather than about
+resolution, and `pricing/applicability.py` holds the rule that decides its
+reason. So the null branch below is reached through the spine as well as at this
+boundary.
 
 **WHAT IS FIXED AND WHAT IS OPEN.** The top-level keys and the three keys of each
 section are exact — a key that is not in the shape above is refused, so a field
@@ -98,7 +98,8 @@ without the record being reshaped a second time to receive it.
 behind a posting is a child record with a retention horizon of its own; this
 record is kept for six years, so a receipt holding a total and a pointer would
 leave a tenant nothing to show a customer and a recovery run nothing to work
-from. Two obligations, and **only the first of them is enforced here**:
+from. Three obligations, and **the middle one is the only one not enforced
+here**:
 
 - **A calculated amount's components each explain themselves** — the quantity,
   the rule's terms and the denominator, by value. That is a claim about every
@@ -112,6 +113,13 @@ from. Two obligations, and **only the first of them is enforced here**:
   a rule demanding them of both would refuse a legitimate receipt. A refusal
   that is wrong for half its subject is worse than no refusal, because the
   half it is wrong about is the half nobody tests.
+- **A price derived as a margin over cost carries the percentage and the basis**
+  (#357). :data:`REQUIRED_MARKUP_KEYS`, refused here, and the obligation binds
+  the METHOD rather than the rung — a markup and a rule declaring
+  `margin_over_cost` are one method at two rungs, so a record that explained one
+  of them and not the other would be the second shape this ruling refuses. Which
+  rung supplied it is `provenance`'s answer, and it is a pointer rather than a
+  term precisely because the record it names can be edited or withdrawn.
 
 ⚠ **THAT ARRIVED WITHOUT MOVING** :data:`RECEIPT_SCHEMA_VERSION`, **and the
 reason is what the version is for.** It answers *can today's code read this
@@ -154,6 +162,7 @@ from core.vocabulary import (
     COSTING_METHOD_VALUES,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_VALUES,
+    PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_METHOD_VALUES,
     PRICING_RECEIPT_SUBJECT_TYPE_VALUES,
     PRICING_STATUS_KNOWN,
@@ -235,6 +244,55 @@ REQUIRED_COMPONENT_KEYS = frozenset({
     "rate_per_unit_micros", "unit_quantity", "fixed_micros",
     "micros",
 })
+
+#: WHAT A PRICE DERIVED AS A MARGIN OVER COST MUST CARRY, BY VALUE (#357).
+#:
+#: The content obligation above, asked of the rung that produces most of this
+#: system's prices. A record saying only *it was a margin* explains nothing: a
+#: tenant asked why a line is what it is needs the percentage that was applied
+#: and the basis it was applied to, and neither can be recovered afterwards,
+#: because the record the percentage came from can be edited or withdrawn. With
+#: these three a reader holding only the receipt can redo the sum.
+#:
+#: **THE BASIS IS NOT A DUPLICATE OF `totals.provider_cost_micros`.** That
+#: column is null wherever the cost is not settled, and a cost the tenant
+#: declares does not exist is exactly such a case AND a genuine zero to take a
+#: margin over — so the totals cannot always supply the number the arithmetic
+#: used.
+#:
+#: **EXACT, NOT A MINIMUM, WHICH IS THE OPPOSITE OF THE SET ABOVE.** A component
+#: is one of many and explains its own line, so what is asked of it is that it
+#: explains its amount and never that it explains nothing else. These are the
+#: WHOLE terms of one derivation, so a fourth arriving in them is a term nobody
+#: declared, and a margin quietly acquiring one is the composition #147 §2
+#: refuses.
+#:
+#: ⚠ **THE FLAT ADDEND IS HERE BECAUSE A RUNG CAN STILL SUPPLY ONE, AND IT IS
+#: LEAVING.** Rules never compose, and the tenant-default rung a tenant declares
+#: today cannot carry an uplift at all. The customer-override record and the
+#: plan catalog's column still can, and both are deleted in the commit that
+#: deletes them from this set (#369) — until then a receipt that omitted the
+#: term would be a receipt whose amount does not follow from its own terms.
+REQUIRED_MARKUP_KEYS = frozenset({
+    "micro_percent", "fixed_uplift_micros", "basis_micros",
+})
+
+#: WHAT THE MARKUP RUNG'S OWN ENTRY IS CALLED, IN BOTH SECTIONS THAT HOLD ONE.
+#:
+#: The terms above sit under this key in the price section's `detail`, and the
+#: rung and the record they came from sit under the SAME key in `provenance`.
+#: That is deliberate rather than a coincidence to be tidied apart: they are two
+#: halves of one answer — what the margin was, and where the percentage came
+#: from — and one name in both places is what lets a reader find the second half
+#: once they have found the first. What separates them is the section they are
+#: in, which is the receipt's own distinction: `detail` holds values and
+#: `provenance` holds ids, and the boundary below refuses a figure in the
+#: second.
+#:
+#: Named rather than spelled, because two modules address it — this boundary and
+#: the writer in `services/pricing_service.py` — and a literal at each is how two
+#: modules come to disagree about one key.
+MARKUP_TERMS_KEY = "markup"
 
 
 class ReceiptShapeError(ValueError):
@@ -456,6 +514,14 @@ def _validate_section(name, section, amount, rules):
     if "components" in section["detail"]:
         _validate_components(name, section["detail"]["components"])
 
+    # ASKED OF EVERY SECTION, AND ONLY ONE SECTION'S VOCABULARY HAS THIS
+    # METHOD — which is why the rule is written as a question about the method
+    # rather than as a rule about the price side. The cost side's two methods
+    # say how UBB came by a SUPPLIER's figure; taking a margin is not one of
+    # them and cannot become one without this branch being reconsidered.
+    if method == PRICING_METHOD_MARGIN_OVER_COST:
+        _validate_markup_terms(name, section["detail"].get(MARKUP_TERMS_KEY))
+
 
 def _validate_components(name, components):
     """THE CONTENT OBLIGATION, REFUSED AT THE BOUNDARY RATHER THAN ASSERTED.
@@ -487,6 +553,51 @@ def _validate_components(name, components):
                 f"carries the quantity, the rule's terms and the denominator "
                 f"by value, because the measurement detail behind it expires "
                 f"and this record does not")
+
+
+def _validate_markup_terms(name, terms):
+    """A MARGIN THAT DOES NOT SAY WHAT PERCENTAGE, OVER WHAT, EXPLAINS NOTHING.
+
+    Markup is the default pricing path — it runs wherever no rule matched — so
+    this is the obligation on the record that most prices in the system carry.
+    Before it, the receipt said only that a margin had been taken, and the
+    percentage was recoverable solely by re-reading configuration that may have
+    moved: the exact failure the receipt exists to prevent, on the path that
+    produces the most receipts.
+
+    Refused HERE rather than asserted in the resolver's tests, for the reason
+    the component rule gives: a record that explains nothing must not be able to
+    reach the column at all, and a rule enforced at the one construction
+    boundary holds for a writer nobody has written yet.
+
+    **THE SET IS EXACT, AND WHAT IT REFUSES IN THE OTHER DIRECTION IS
+    COMPOSITION.** A fourth term appearing beside these three is a floor, a cap
+    or a second addend nobody declared — the chain whose middle terms are on no
+    record, which is what non-composition exists to prevent.
+
+    ⚠ **IT ASKS NOTHING ABOUT THE RUNG.** Which rung supplied the percentage is
+    `provenance`'s answer, and it is deliberately not required here: a markup
+    and a rule declaring `margin_over_cost` are the SAME METHOD AT TWO RUNGS,
+    and a boundary that demanded a rung name would be a boundary that had picked
+    one of them.
+    """
+    if not isinstance(terms, dict):
+        raise ReceiptShapeError(
+            f"{name}.method is {PRICING_METHOD_MARGIN_OVER_COST!r} and "
+            f"{name}.detail.{MARKUP_TERMS_KEY} is {terms!r}: a margin over cost "
+            f"records the percentage applied and the basis it was taken over, "
+            f"by value, because the record that held the percentage can be "
+            f"edited and this one cannot")
+    if set(terms) != REQUIRED_MARKUP_KEYS:
+        raise ReceiptShapeError(
+            f"{name}.detail.{MARKUP_TERMS_KEY} carries exactly "
+            f"{sorted(REQUIRED_MARKUP_KEYS)}; found {sorted(terms)}")
+    for term, value in terms.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ReceiptShapeError(
+                f"{name}.detail.{MARKUP_TERMS_KEY}.{term} is a whole number, "
+                f"not {value!r}: every term of the arithmetic is written down "
+                f"so a reader holding only this record can redo it")
 
 
 def _validate_provenance(provenance):

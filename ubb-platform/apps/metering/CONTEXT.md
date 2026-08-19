@@ -127,16 +127,30 @@ The upstream cost of the usage, in micros — caller-supplied or summed from `co
 _Avoid_: "our cost" — this is what the upstream provider charged.
 
 **Billed cost**:
-What the customer is charged, in micros — from `price` rate cards when matched, else
-`markup(provider_cost)`.
+What the customer is charged, in micros — from a matching pricing rule, else the markup rung, and
+**`NULL` where neither answered** (#351, #356). `pricing_status` beside it says which.
 
 **Margin**:
 Realized `billed_cost − provider_cost`, computed on read and never stored.
 _Avoid_: conflating margin (the realized per-event difference) with markup (the configured rule).
 
 **Markup**:
-The configured uplift applied to provider cost to derive billed cost when no price card matches; no
-markup configured → billed equals provider. (`apps/metering/pricing/models.py:TenantMarkup`)
+The percentage a tenant declares over what a call cost it, applied where no pricing rule matched — the
+last rung of the ladder, and the path that produces most prices. A tenant declares one rung and may
+withdraw it; **UBB seeds none**, so a tenant that has declared nothing has NO rung and its unruled
+events resolve to `unknown` with no amount — never to zero and never to the supplier's own figure
+(#356). A rung declared AT zero is a different thing: it is the tenant saying *charge exactly what the
+call cost*, and it settles. (`apps/metering/pricing/models.py:TenantDefaultMarkup`; the customer
+override still lives on `TenantMarkup`, whose tenant-default row prices nothing and is deleted with
+that record.)
+_Avoid_: reading an absent rung as a zero one — that is the silently wrong price this slice deletes;
+and calling the percentage a "margin", which names only the derived figure above.
+
+**Markup provenance**:
+Which rung supplied a percentage and which record held it, recorded on the Pricing Receipt beside the
+percentage itself (#357). The percentage rides BY VALUE and the record only as a pointer, because a
+markup record can be edited or withdrawn and the receipt is what a tenant shows a customer.
+(`apps/metering/pricing/services/markup_service.py:ResolvedMarkup`)
 
 ## Pricing — the RateCard engine
 

@@ -31,6 +31,7 @@ from api.v1.schemas import (
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantMarkupIn, TenantMarkupOut,
+    TenantDefaultMarkupIn, TenantDefaultMarkupOut,
     CloseTaskResponse,
     TaskDetailOut, PaginatedTasks, task_out,
     UsageAnalyticsResponse,
@@ -571,7 +572,113 @@ def task_analytics(request, group_by: str = "task_type", start_date: date = None
     return 200, {"group_by": group_by, "rows": rows}
 
 
+# --- The tenant's default markup rung ---
+#
+# THE LAST RUNG OF THE PRICE LADDER, DECLARED (#357). Where the books in play
+# hold no rule for a quantity, the customer's price is a percentage over what
+# UBB knows the call cost — so this is the rung that produces most of the prices
+# in the system, and a tenant has to be able to say what it is, read it back and
+# take it away again.
+#
+# ⚠ IT REPLACES THE TENANT-SCOPE HALF OF THE SECTION BELOW, WHICH SURVIVES THIS
+# COMMIT AND PRICES NOTHING. That record's `customer IS NULL` row was the tenant
+# default by being the row with no customer on it; resolution now reads this
+# declaration instead. The commit that deletes that record deletes its routes,
+# its two schemas and its two audit action names with it.
+
+
+@metering_router.get("/pricing/default-markup", response=TenantDefaultMarkupOut)
+@role_floor(READ)
+def get_tenant_default_markup(request):
+    """What the tenant has declared, or null if they have declared nothing.
+
+    ⚠ **NULL, NOT ZERO.** UBB ships no catalogue, and a tenant with no
+    declaration has no markup rung — every event they record with no matching
+    rule prices to `unknown`. Answering `0` would say they had decided to charge
+    exactly what their calls cost, which is a different decision and one nobody
+    made.
+    """
+    _product_check(request)
+    from apps.metering.pricing.models import TenantDefaultMarkup
+
+    declared = TenantDefaultMarkup.objects.filter(
+        tenant=request.auth.tenant).first()
+    return {"markup_micro_percent":
+            declared.markup_micro_percent if declared else None}
+
+
+@metering_router.put("/pricing/default-markup", response=TenantDefaultMarkupOut)
+@role_floor(ADMIN)
+@records_audit("tenant_default_markup.declared")
+def declare_tenant_default_markup(request, payload: TenantDefaultMarkupIn):
+    """Declare the tenant's default markup rung, or re-declare it.
+
+    Re-declaring is the same act as declaring — a correction to a declared
+    percentage is still a declaration — which is why one action name covers
+    both and why withdrawal is a different one.
+
+    The ADMIN floor is the write default this surface already runs for
+    everything that decides what a customer is charged.
+    """
+    _product_check(request)
+    from apps.metering.pricing.models import TenantDefaultMarkup
+
+    with transaction.atomic():
+        rung, _ = TenantDefaultMarkup.objects.update_or_create(
+            tenant=request.auth.tenant,
+            defaults={"markup_micro_percent": payload.markup_micro_percent},
+        )
+        audit_record(
+            action="tenant_default_markup.declared",
+            tenant_id=request.auth.tenant.id,
+            resource_type="tenant_default_markup",
+            resource_id=rung.id,
+            metadata={"markup_micro_percent": rung.markup_micro_percent},
+        )
+    return {"markup_micro_percent": rung.markup_micro_percent}
+
+
+@metering_router.delete("/pricing/default-markup", response=StatusResponse)
+@role_floor(ADMIN)
+@records_audit("tenant_default_markup.withdrawn")
+def withdraw_tenant_default_markup(request):
+    """Withdraw the rung, leaving the tenant with none.
+
+    ⚠ **THIS IS NOT THE SAME AS DECLARING ZERO**, and the difference is the one
+    this rung exists to keep. A declared zero prices an event at exactly what
+    the call cost and settles; no rung at all resolves to `unknown` with no
+    amount, because nobody has said what to charge.
+
+    Idempotent: withdrawing nothing answers `no_declaration` rather than 404,
+    and writes no audit entry — there was no act.
+    """
+    _product_check(request)
+    from apps.metering.pricing.models import TenantDefaultMarkup
+
+    rung = TenantDefaultMarkup.objects.filter(
+        tenant=request.auth.tenant).first()
+    if rung is None:
+        return {"status": "no_declaration"}
+    with transaction.atomic():
+        rung_id = rung.id
+        rung.delete()  # instance delete — the model layer invalidates the cache
+        audit_record(
+            action="tenant_default_markup.withdrawn",
+            tenant_id=request.auth.tenant.id,
+            resource_type="tenant_default_markup",
+            resource_id=rung_id,
+        )
+    return {"status": "withdrawn"}
+
+
 # --- Pricing Markup ---
+#
+# ⚠ THE TENANT-SCOPE PAIR BELOW NO LONGER PRICES ANYTHING (#357). Resolution's
+# tenant-default rung reads the declaration above; what these two write and read
+# is a row that survives only until the record is deleted, along with these
+# routes, their two schemas and their two audit action names. The
+# customer-scope routes further down are unaffected: a customer override is
+# still a rung, until it becomes a rule in the customer's own Pricing Book.
 
 
 @metering_router.get("/pricing/markup", response=TenantMarkupOut)
@@ -626,7 +733,10 @@ def get_customer_markup(request, customer_id: UUID):
     markup = MarkupService.resolve(tenant=request.auth.tenant, customer=customer)
     if markup is None:
         return {"markup_percentage_micros": 0, "fixed_uplift_micros": 0}
-    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
+    # The rung answers in the honest unit spelling and this response publishes
+    # the retired one, so the two are joined here rather than either being
+    # renamed: this schema is deleted with the record it describes (#369).
+    return {"markup_percentage_micros": markup.markup_micro_percent, "fixed_uplift_micros": markup.fixed_uplift_micros}
 
 
 @metering_router.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)

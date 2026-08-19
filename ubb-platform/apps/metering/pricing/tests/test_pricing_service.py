@@ -19,9 +19,10 @@ as well as by that module.
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import Rate, TenantMarkup
+from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingService
-from apps.metering.pricing.tests._helpers import rate_in_default_book, a_usage_event_subject
+from apps.metering.pricing.tests._helpers import (
+    a_usage_event_subject, declares_a_markup, rate_in_default_book)
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from core.vocabulary import (
     COSTING_METHOD_REPORTED,
@@ -38,7 +39,7 @@ class TestPricing:
 
     def test_caller_cost_wins_then_markup(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantMarkup.objects.create(tenant=t, markup_percentage_micros=20_000_000)
+        declares_a_markup(t, percentage_micros=20_000_000)
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},

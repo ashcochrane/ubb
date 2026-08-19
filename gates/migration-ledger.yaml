@@ -1960,7 +1960,12 @@ entries:
     # the publication. The numerator is untouched: this consumer still holds
     # none of them by reference, so the debt is unchanged in kind and only its
     # size moved, which is exactly what `found` exists to record.
-    found: 0 of 66 values
+    #
+    # 66 -> 68: #357 gave the tenant's default markup rung the same pair, for
+    # the same reason — declaring a percentage and withdrawing it are two acts
+    # and splitting them later would be a rename. The numerator is untouched
+    # again.
+    found: 0 of 68 values
     owner_slice: slice_8
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -2587,8 +2592,9 @@ entries:
     site: openapi/v1.json::audit_action
     expected: audit_action
     # 58 -> 66 with the sibling G2 entry above: #267 gave the Event Type
-    # catalogue's write surface its action names.
-    found: 0 of 66 values
+    # catalogue's write surface its action names; 66 -> 68 with #357's pair for
+    # the tenant's default markup rung.
+    found: 0 of 68 values
     owner_slice: slice_8
     reason: >-
       The contract may not advertise these values while the backend consumer

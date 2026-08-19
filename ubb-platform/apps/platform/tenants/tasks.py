@@ -35,6 +35,14 @@ _SKIP_LABELS = frozenset({
 CONFIG_MODEL_LABELS = frozenset({
     "pricing.Rate",
     "pricing.TenantMarkup",
+    # The tenant's declared default markup rung (#357). Configuration in
+    # exactly the sense the record above it is — it is the half of that record
+    # that was the tenant default, moved onto a declaration of its own — and
+    # the sweep discovers tenant-scoped models generically, so a rung left out
+    # of this set is wiped by a reset that says it is keeping configuration.
+    # A tenant would then have no markup rung and every event after the reset
+    # would price to `unknown`, silently.
+    "pricing.TenantDefaultMarkup",
     # THE EVENT TYPE CATALOGUE — configuration, and the four arrive together
     # rather than one at a time (#326). A rate is already kept here, and a rate
     # names the declared quantity it prices, so keeping the rate while wiping

@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from django.db import IntegrityError, connection, transaction
 
-from apps.metering.pricing.models import Rate, RateCard, TenantMarkup
+from apps.metering.pricing.models import Rate, RateCard, TenantDefaultMarkup
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.usage.models import Posting
 from apps.platform.event_types.tests._helpers import declares_a_quantity
@@ -117,7 +117,7 @@ def rate_in_the_providers_default_book(tenant, provider, **fields):
         book_version_from=book.version, **fields)
 
 
-def declares_a_markup(tenant, *, percentage_micros=0, customer=None, **fields):
+def declares_a_markup(tenant, *, percentage_micros=0):
     """The markup rung a tenant has to declare before a price can settle (#356).
 
     **THE DEFAULT IS ZERO, AND ZERO IS A DECISION.** A tenant with a rung of
@@ -129,12 +129,41 @@ def declares_a_markup(tenant, *, percentage_micros=0, customer=None, **fields):
     absent rung is not a zero rung.
 
     Named for the act rather than the record — a tenant declares a markup, and
-    which row carries it is this module's business, not its callers'. The record
-    it writes is deleted later in this slice and the rung outlives it.
+    which row carries it is this module's business, not its callers'. **That is
+    what let the record change underneath every caller in #357**: the rung moved
+    off the customer-override table's `customer IS NULL` row and onto a record
+    of its own, and no fixture in the tree had to say so.
+
+    ⚠ **THE TENANT DEFAULT ONLY, WHICH IT ALWAYS WAS.** It used to take a
+    `customer=` and no caller ever passed one; the rung it now writes is the
+    tenant's by construction, so the argument is gone rather than accepting a
+    value it would have to ignore. A customer-level override is a different rung
+    and a test that wants one asks for it by name.
     """
-    return TenantMarkup.objects.create(
-        tenant=tenant, customer=customer,
-        markup_percentage_micros=percentage_micros, **fields)
+    return TenantDefaultMarkup.objects.create(
+        tenant=tenant, markup_micro_percent=percentage_micros)
+
+
+def markup_terms(basis_micros, *, micro_percent=0, fixed_uplift_micros=0):
+    """The terms a `margin_over_cost` price must carry on its receipt (#357).
+
+    `build_receipt` refuses a margin that arrives without them, so every fixture
+    building a settled `margin_over_cost` resolution by hand needs a set — and
+    two modules in two apps do, which is why this is here rather than copied
+    into each. `docs/conventions/testing.md` puts shared setup in a `_helpers`
+    module for exactly the reason that applies: a second copy is a second thing
+    to edit the day `REQUIRED_MARKUP_KEYS` moves, and the day one of them is
+    missed is the day a fixture asserts a shape the boundary no longer accepts.
+
+    **THE DEFAULTS MAKE THE ARITHMETIC TRUE, WHICH IS THE POINT OF A DEFAULT
+    HERE.** A rung of zero over a basis of `basis_micros` IS `basis_micros`, so
+    a caller who names only the basis gets terms that reproduce their own
+    amount rather than three numbers that merely sit beside it. A caller taking
+    a real percentage says so and states the amount it produces itself.
+    """
+    return {"micro_percent": micro_percent,
+            "fixed_uplift_micros": fixed_uplift_micros,
+            "basis_micros": basis_micros}
 
 
 def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",

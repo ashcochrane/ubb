@@ -6,9 +6,10 @@ one dict hit) per (tenant, customer) key for TTL_SECONDS. Version key
 ubb:markupver:{tenant} is read at most once per request: begin_request pins
 the observed version in a contextvars.ContextVar (request-scoped — a stale
 concurrent request can never clobber a fresher request's view) and resolve
-compares cached entries against it. TenantMarkup.save()/.delete() bump the
-version at the MODEL layer so no write path can bypass invalidation; a bump
-therefore propagates within one request boundary + TTL.
+compares cached entries against it. Both records a rung can be read from —
+the tenant's declared default and a customer's override — bump the version from
+their own `save()`/`delete()` at the MODEL layer, so no write path can bypass
+invalidation; a bump therefore propagates within one request boundary + TTL.
 
 Money rule: a missing markup would under-price, so every fallback — L1 miss,
 stale version, Redis failure — is a live ORM resolve via

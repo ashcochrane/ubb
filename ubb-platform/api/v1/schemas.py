@@ -929,6 +929,43 @@ class TenantMarkupOut(Schema):
     fixed_uplift_micros: int
 
 
+class TenantDefaultMarkupIn(Schema):
+    """The tenant's default markup rung, as the tenant declares it (#357).
+
+    ⚠ **REQUIRED, WITH NO DEFAULT, WHICH IS THE WHOLE POINT.** UBB ships no
+    catalogue: there is no starter percentage anywhere, and a tenant that has
+    declared nothing has no markup rung at all. A default of zero here would let
+    a caller declare a rung by accident, and a rung of zero is a decision — it
+    says *charge my customer exactly what the call cost* — so it has to be
+    stated.
+
+    **ONE TERM, BECAUSE A MARGIN NEVER COMPOSES** (#147 §2). No floor, no cap
+    and no flat addend beside the percentage: a resolved price is explicable by
+    naming one thing, and a chain whose middle terms are on no record is what
+    that rule exists to prevent.
+    """
+
+    #: Millionths of a percent — 1_000_000 is 1%. Not under the money suffix:
+    #: `_micros` means millionths of a CURRENCY unit everywhere else on this
+    #: contract.
+    markup_micro_percent: int = Field(ge=0)
+
+
+class TenantDefaultMarkupOut(Schema):
+    """What the tenant has declared, or that they have declared nothing.
+
+    ⚠ **NULL MEANS NO RUNG, AND IT IS NOT A ZERO.** The two are different facts
+    and reading one as the other is how a customer gets billed exactly what a
+    call cost with nobody having decided that: a declared zero says *charge
+    cost* and settles, and an absent declaration resolves to `unknown` with no
+    amount at all. One nullable field rather than a percentage beside a
+    `declared` flag, because two fields encoding one fact is two fields that can
+    disagree.
+    """
+
+    markup_micro_percent: Optional[int] = None
+
+
 class CloseTaskResponse(Schema):
     task_id: str
     # Set when the closed unit is a subtask (#38). Closing a PARENT

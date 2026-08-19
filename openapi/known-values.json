@@ -38,7 +38,7 @@
     },
     "audit_action": {
       "advertised": false,
-      "backend_serves": "0 of 66 values",
+      "backend_serves": "0 of 68 values",
       "kind": "closed",
       "representation": "enum"
     },

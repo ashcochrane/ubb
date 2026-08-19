@@ -5,7 +5,9 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
-from apps.metering.pricing.receipts import ReceiptSubject, Resolution, build_receipt
+from apps.metering.pricing.receipts import (
+    MARKUP_TERMS_KEY, ReceiptSubject, Resolution, build_receipt,
+)
 from apps.platform.event_types.costing import cost_declaration
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
@@ -133,6 +135,28 @@ def _priced_by_rules(rules, total_micros, costing_status):
             return None, None, PRICING_STATUS_WAIVED
         return None, None, PRICING_STATUS_UNKNOWN
     return total_micros, PRICING_METHOD_DIRECT_EVENT_PRICE, PRICING_STATUS_KNOWN
+
+
+def _markup_terms(markup, basis_micros):
+    """WHAT THE MARGIN WAS, BY VALUE — the percentage and what it was taken over.
+
+    The three numbers a reader holding only the receipt needs to redo the sum,
+    which is the whole content obligation applied to the path that produces most
+    of this system's prices (#357, #153 §12.4). The record the percentage came
+    from can be edited or withdrawn, so re-reading it later is not an answer;
+    `receipts.REQUIRED_MARKUP_KEYS` is what refuses a margin that arrives
+    without them.
+
+    **THE BASIS IS RECORDED RATHER THAN LEFT TO THE TOTALS.** They coincide for
+    a cost UBB resolved and they do not for one an Event Type declares does not
+    exist: that nulls `totals.provider_cost_micros` and is still a genuine zero
+    to take a margin over, so a reader taking the basis from the totals would
+    find nothing to multiply on exactly the case where the arithmetic is least
+    obvious.
+    """
+    return {"micro_percent": markup.markup_micro_percent,
+            "fixed_uplift_micros": markup.fixed_uplift_micros,
+            "basis_micros": basis_micros}
 
 
 def _priced_by_markup(markup, basis_micros, costing_status):
@@ -616,7 +640,11 @@ class PricingService:
                 costing_status = COSTING_STATUS_KNOWN
 
         # ---- PRICE ----
-        resolved_markup = None
+        # THE BASIS A MARGIN WOULD BE TAKEN OVER, NAMED ONCE. The rung that
+        # computes the amount and the terms that record it read the same local,
+        # so a receipt cannot come to say the margin was taken over a figure the
+        # arithmetic did not use.
+        resolved_markup, markup_basis = None, None
         if caller_billed is not None:
             billed = caller_billed
             # A PRICE THE CALLER STATED IS A PRICE ATTACHED TO THE EVENT, which
@@ -650,9 +678,34 @@ class PricingService:
                 # is why it resolves a value here rather than being handed a
                 # number to multiply — `_priced_by_markup` says what it does
                 # with the three answers it can reach.
-                resolved_markup = resolve_markup()
+                resolved_markup, markup_basis = resolve_markup(), computed_micros
                 billed, pricing_method, pricing_status = _priced_by_markup(
-                    resolved_markup, computed_micros, costing_status)
+                    resolved_markup, markup_basis, costing_status)
+
+        # WHAT THE MARKUP RUNG PUT ON THE RECORD, AND THE TWO PLACES IT GOES
+        # (#357). The percentage and the basis are TERMS and ride in the price
+        # section's detail by value; the rung and the record are a
+        # CROSS-REFERENCE and ride in `provenance`, which carries ids and
+        # nothing a reader could take a figure from.
+        #
+        # ⚠ THEY ARE NOT WRITTEN ON THE SAME CONDITION, AND THAT IS THE
+        # RECEIPT'S OWN RULE RATHER THAN A CHOICE MADE HERE. The terms are how
+        # an amount was arrived at, so they are present exactly when a method
+        # is — the same condition the boundary already enforces for the method
+        # and the amount. The provenance is which records resolution READ, so
+        # it names the rung wherever the rung was consulted, including where
+        # the charge was waived over a cost nobody learned: a receipt that
+        # named nothing there would say the tenant had configured nothing,
+        # which is the same mistake the price rules' `price_rate_ids` avoids by
+        # keeping a rule that matched and could not compute.
+        price_detail, markup_provenance = {}, {}
+        if resolved_markup is not None:
+            markup_provenance = {
+                MARKUP_TERMS_KEY: resolved_markup.as_provenance()}
+            if pricing_method is not None:
+                price_detail = {
+                    MARKUP_TERMS_KEY: _markup_terms(resolved_markup,
+                                                    markup_basis)}
 
         # The receipt records what the engine DID; the columns record what UBB
         # KNOWS. Where the two differ the receipt keeps its resolved components
@@ -715,18 +768,10 @@ class PricingService:
                     # same shape `usage/measurements.py` uses for the posting
                     # kind it is waiting on.
                     "pricing_mode": PRICING_MODE_EVENT_PRICED,
-                }),
-            # ⚠ `resolved_markup` IS IN SCOPE HERE AND THE RECORD DOES NOT YET
-            # NAME IT (#357). The rung that supplied a markup, and the record
-            # its percentage came from, are what a tenant asked "why is this
-            # line £36?" has to be able to show — and that cannot be
-            # reconstructed afterwards, because the record can be edited. The
-            # value reaches this writer carrying its source rather than as a
-            # bare number, which is the half that had to happen with the rung;
-            # writing it into this section is the ticket that makes a markup
-            # charge explicable.
+                    **price_detail}),
             provenance={"cost_rate_ids": cost_rate_ids,
-                        "price_rate_ids": price_rate_ids})
+                        "price_rate_ids": price_rate_ids,
+                        **markup_provenance})
         return pricing_receipt
 
     @staticmethod

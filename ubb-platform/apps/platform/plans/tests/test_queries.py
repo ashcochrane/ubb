@@ -22,7 +22,12 @@ class TestPlanQueries:
                                    fixed_uplift_micros=1_000)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
+        # The plan's ID rides with the terms (#357): a price resolved from this
+        # rung is recorded on a receipt that names the record the percentage
+        # came from, and a plan's markup can be edited. A cross-reference, not
+        # a term — the percentage itself is written into the receipt by value.
         assert queries.get_plan_markup_for_customer(self.tenant.id, self.customer.id) == {
+            "plan_id": str(plan.id),
             "markup_percentage_micros": 50_000_000,
             "fixed_uplift_micros": 1_000,
         }

@@ -62,6 +62,26 @@ AUDIT_ACTIONS = (
     "rate.deleted",
     "markup.set",
     "markup.deleted",
+    # THE TENANT'S DEFAULT MARKUP RUNG (#357). The last rung of the price
+    # ladder — what a customer is charged where the tenant has written no rule
+    # — so declaring it and withdrawing it are governance in exactly the sense
+    # the pairs above are, and they take names rather than the exemption list.
+    #
+    # DECLARATION AND WITHDRAWAL ARE SPLIT, under the rule stated below: a
+    # correction to a declared percentage is still a declaration, and a
+    # governance reader asking "when did this tenant stop having a markup at
+    # all" must not have to read metadata to find out — the two answers are
+    # different acts. Splitting them later is the rename ADR-004 §2 calls a
+    # breaking change, so they are split now, when it is free.
+    #
+    # ⚠ NOT A RENAME OF THE PAIR ABOVE, WHICH IS WHY BOTH SETS ARE HERE AT
+    # ONCE. Those two record acts on the record this rung replaces, and that
+    # record still exists and is still written; the commit that deletes it
+    # deletes them, and deleting an action whose act no longer exists is not
+    # the rename that rule governs. No part of the one-time pre-production
+    # audit-registry reset is spent on either pair.
+    "tenant_default_markup.declared",
+    "tenant_default_markup.withdrawn",
     # Grouping Field registry (the 2026-07-27 unified grouping model plan under
     # `docs/plans/`, D1). Renamed with
     # the thing it records (#277): `audit_action` in

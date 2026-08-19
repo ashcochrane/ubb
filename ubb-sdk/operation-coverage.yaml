@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 150
-  unwrapped: 72
+  operations: 153
+  unwrapped: 75
   wrapped: 78
-  generated_only: 72
+  generated_only: 75
   not_yet_wrapped: 0
 
 operations:
@@ -335,6 +335,10 @@ operations:
     method: PUT
     path: /api/v1/metering/task-types
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_declare_tenant_default_markup
+    method: PUT
+    path: /api/v1/metering/pricing/default-markup
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_delete_customer_markup
     method: DELETE
     path: /api/v1/metering/pricing/customers/{customer_id}/markup
@@ -354,6 +358,10 @@ operations:
   - operation_id: api_v1_metering_endpoints_get_task
     method: GET
     path: /api/v1/metering/tasks/{task_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_get_tenant_default_markup
+    method: GET
+    path: /api/v1/metering/pricing/default-markup
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_tenant_markup
     method: GET
@@ -441,6 +449,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.usage_timeseries
+  - operation_id: api_v1_metering_endpoints_withdraw_tenant_default_markup
+    method: DELETE
+    path: /api/v1/metering/pricing/default-markup
+    disposition: generated_only
   - operation_id: api_v1_plan_endpoints_archive_plan
     method: DELETE
     path: /api/v1/plans/{key}

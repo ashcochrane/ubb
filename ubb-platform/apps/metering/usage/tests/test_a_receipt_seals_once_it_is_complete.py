@@ -78,7 +78,8 @@ from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 
 from apps.metering.pricing.receipts import (
-    SECTIONS, Resolution, ReceiptSubject, build_receipt)
+    MARKUP_TERMS_KEY, SECTIONS, Resolution, ReceiptSubject, build_receipt)
+from apps.metering.pricing.tests._helpers import markup_terms
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
     DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
@@ -136,9 +137,14 @@ SETTLED_COST = Resolution(
 UNRESOLVED_COST = Resolution(
     method=None, status=COSTING_STATUS_UNRESOLVED, amount_micros=None,
     detail={"uncosted_measurement_keys": ["image_pixels"]})
+#: THE TERMS A MARGIN OVER COST HAS TO CARRY (#357), in the amounts these
+#: fixtures already used: 20% over a 4_000 basis is 800, so the 4_800 below is
+#: the sum of these rather than a number that merely sits beside them.
+MARKUP_TERMS = markup_terms(4_000, micro_percent=20_000_000)
 SETTLED_PRICE = Resolution(
     method=PRICING_METHOD_MARGIN_OVER_COST, status=PRICING_STATUS_KNOWN,
-    amount_micros=4_800, detail={"components": []})
+    amount_micros=4_800,
+    detail={"components": [], MARKUP_TERMS_KEY: MARKUP_TERMS})
 UNKNOWN_PRICE = Resolution(
     method=None, status=PRICING_STATUS_UNKNOWN, amount_micros=None, detail={})
 
@@ -202,7 +208,11 @@ def _priced_at(amount):
     """
     return _receipt(pricing=Resolution(
         method=PRICING_METHOD_MARGIN_OVER_COST, status=PRICING_STATUS_KNOWN,
-        amount_micros=amount, detail={"components": []}))
+        amount_micros=amount,
+        # A rung of zero over a basis of `amount` IS `amount`, so the terms
+        # reproduce the figure this case parameterises rather than merely
+        # sitting beside it — which is the helper's own default.
+        detail={"components": [], MARKUP_TERMS_KEY: markup_terms(amount)}))
 
 
 def _edited(receipt, edit):

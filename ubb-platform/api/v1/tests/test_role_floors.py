@@ -106,7 +106,14 @@ _WRITE_ROUTES = {
 # how usage is costed, which makes it a pricing-rule change rather than a
 # day-to-day data operation — and it applies to the satellites too, because a
 # supplier is what supplier COGS attribution keys on. 123 + 17 = 140.
-_EXPECTED_FLOORED = 140
+#
+# a markup charge can be explained (slice 4, #357): +3, the tenant's default
+# markup rung — one Read GET and two Admin writes, and NEITHER write needs a
+# _WRITE_ROUTES entry. Declaring the percentage every unruled event is charged
+# at, and withdrawing it so those events stop being priced at all, decide what a
+# customer pays; that is the same footing as the markup routes beside them and
+# as the two registries above, not a day-to-day data operation. 140 + 3 = 143.
+_EXPECTED_FLOORED = 143
 _EXPECTED_EXEMPT = 10
 
 

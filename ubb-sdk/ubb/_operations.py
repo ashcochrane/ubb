@@ -210,6 +210,10 @@ API_V1_METERING_ENDPOINTS_DECLARE_TASK_TYPES = Operation(
     'api_v1_metering_endpoints_declare_task_types',
     'put',
     '/api/v1/metering/task-types')
+API_V1_METERING_ENDPOINTS_DECLARE_TENANT_DEFAULT_MARKUP = Operation(
+    'api_v1_metering_endpoints_declare_tenant_default_markup',
+    'put',
+    '/api/v1/metering/pricing/default-markup')
 API_V1_METERING_ENDPOINTS_DELETE_CUSTOMER_MARKUP = Operation(
     'api_v1_metering_endpoints_delete_customer_markup',
     'delete',
@@ -224,6 +228,10 @@ API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP = Operation(
     '/api/v1/metering/pricing/customers/{customer_id}/markup')
 API_V1_METERING_ENDPOINTS_GET_TASK = Operation(
     'api_v1_metering_endpoints_get_task', 'get', '/api/v1/metering/tasks/{task_id}')
+API_V1_METERING_ENDPOINTS_GET_TENANT_DEFAULT_MARKUP = Operation(
+    'api_v1_metering_endpoints_get_tenant_default_markup',
+    'get',
+    '/api/v1/metering/pricing/default-markup')
 API_V1_METERING_ENDPOINTS_GET_TENANT_MARKUP = Operation(
     'api_v1_metering_endpoints_get_tenant_markup',
     'get',
@@ -286,6 +294,10 @@ API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES = Operation(
     'api_v1_metering_endpoints_usage_timeseries',
     'get',
     '/api/v1/metering/analytics/usage/timeseries')
+API_V1_METERING_ENDPOINTS_WITHDRAW_TENANT_DEFAULT_MARKUP = Operation(
+    'api_v1_metering_endpoints_withdraw_tenant_default_markup',
+    'delete',
+    '/api/v1/metering/pricing/default-markup')
 API_V1_ME_ENDPOINTS_CREATE_TOP_UP = Operation(
     'api_v1_me_endpoints_create_top_up', 'post', '/api/v1/me/top-up')
 API_V1_ME_ENDPOINTS_GET_BALANCE = Operation(

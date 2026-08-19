@@ -103,3 +103,27 @@ authorisations:
       count. Its hand-written method follows the renamed constant in the same
       commit, because the operation registry is the only place in `ubb-sdk/ubb/`
       a versioned path is spelled and a stale reference stops resolving.
+
+  - id: slice-4-357-the-tenant-default-markup-rung-is-declarable
+    issue: 357
+    operations_added: 3
+    reason: >-
+      Three new operations on the tenant's default markup rung — read it,
+      declare it, withdraw it — reachable through the generated core and
+      through none of the hand-written clients. Gaps by the manifest's
+      definition, and deliberate ones.
+
+      The rung is the last step of the price ladder and its whole subject in
+      this change is the RECORD: a percentage a tenant declares, which the
+      resolver reads and the Pricing Receipt then names by value. Nothing an
+      integrator writes against the SDK depends on it — a caller records usage
+      and reads a price back, and the rung is configuration they set once, from
+      the console or by hand, not on the metering hot path.
+
+      Deferring the ergonomic methods also keeps this change from wrapping a
+      surface that is still moving. The record these three replace is deleted
+      later in the same slice, along with its own routes and two component
+      schemas, and the hand-written client's markup surface goes with it. A
+      wrapper written here would be written twice: once against this rung and
+      again when its neighbour's methods are removed. Signing for three now is
+      what makes that sequencing visible rather than merely intended.

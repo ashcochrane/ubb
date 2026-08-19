@@ -10,6 +10,13 @@ def get_plan_markup_for_customer(tenant_id, customer_id):
     """The markup axis of the customer's plan, or None if unassigned.
 
     An archived plan yields None: archival must stop it pricing new events.
+
+    **THE PLAN'S ID RIDES WITH THE TERMS (#357).** A price resolved from this
+    rung is recorded on a Pricing Receipt that has to name the record the
+    percentage came from — a plan's markup can be edited, so a receipt naming
+    only "the plan rung" would leave a tenant re-deriving a historical charge
+    against today's catalogue. It is a cross-reference and not a term: the
+    percentage itself is written into the receipt by value beside it.
     """
     row = (
         CustomerPlanAssignment.objects
@@ -21,6 +28,7 @@ def get_plan_markup_for_customer(tenant_id, customer_id):
     if row is None:
         return None
     return {
+        "plan_id": str(row.plan.id),
         "markup_percentage_micros": row.plan.markup_percentage_micros,
         "fixed_uplift_micros": row.plan.fixed_uplift_micros,
     }

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,590 of 1,979 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,597 of 1,987 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -905,6 +905,42 @@ measurement_key:
     # and three docstrings naming a method this commit renamed — so the swept
     # TOTAL did not move a second time and the numbers above were taken once.
     # That is luck rather than method: the re-take happened anyway.
+    #
+    # #357 MOVED THE DENOMINATOR ONLY, UPWARD BY SEVEN (1,590 → 1,597 swept,
+    # 1,979 → 1,987 tracked, 52/128 unchanged), and one exclusion moved with
+    # it: `historical-migrations` 222 → 223 for the migration that creates the
+    # record a tenant declares its default markup rung on. Seven new swept
+    # files — two test modules, and FIVE GENERATED ONES, because three new
+    # published operations mint one generated SDK module each and a model
+    # module per new component schema. That is the #277/#317 hazard in its own
+    # right: these numbers were taken AFTER the contract, the console snapshot
+    # and the SDK core had all been regenerated and staged, because the sweep
+    # reads `git ls-files` and a generated file staged afterwards moves them
+    # again.
+    #
+    # ⚠ THE HAZARD HERE WAS THE PLURAL AS A RECEIPT KEY, ONE LEVEL OUT. This
+    # commit adds a second kind of terms to the price section of the Pricing
+    # Receipt — what percentage was applied, and over what — beside the
+    # per-quantity components that already spell the retired plural as a key.
+    # Naming the markup basis after what it counts would have put the word in
+    # two new modules for nothing. It is `basis_micros`: an amount, named for
+    # what a percentage is taken OVER rather than for a quantity, and the
+    # arithmetic each test redoes reads the rate through its own column name.
+    #
+    # ⚠ AND THE TWO-WORD FORM WAS IN PLAY AGAIN, per #351's and #356's warnings
+    # above. A commit whose subject is markup writes a great deal of prose about
+    # percentages and rules, and the English two-word form of
+    # `backend::pricing_model` (21 files) is what such prose reaches for. The
+    # diff was read for spaces and hyphens after the sweep rather than instead
+    # of it; the prose says "the rule's arithmetic" and "a rung" throughout.
+    #
+    # ⚠ THE WORD THIS COMMIT DELIBERATELY KEEPS IS "MARKUP", AND IT IS NOT
+    # RETIRED — #147 §9.1 and #154 §3 both ratified it, and it must not drift
+    # into "margin", which names only the displayed derived figure. What IS
+    # retired around it is the unit SPELLING, where millionths of a percent hid
+    # under a money suffix; the new rung takes the migration ledger's own
+    # `expected` spelling for that debt, so this commit adds no occurrence of
+    # the old one and neither G11 entry moves.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

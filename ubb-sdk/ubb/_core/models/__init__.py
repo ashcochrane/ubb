@@ -199,6 +199,8 @@ from .tenant_config_in import TenantConfigIn
 from .tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from .tenant_config_out import TenantConfigOut
 from .tenant_config_out_products_item import TenantConfigOutProductsItem
+from .tenant_default_markup_in import TenantDefaultMarkupIn
+from .tenant_default_markup_out import TenantDefaultMarkupOut
 from .tenant_invoice_list_response import TenantInvoiceListResponse
 from .tenant_invoice_out import TenantInvoiceOut
 from .tenant_markup_in import TenantMarkupIn
@@ -455,6 +457,8 @@ __all__ = (
     "TenantConfigInProductsType0Item",
     "TenantConfigOut",
     "TenantConfigOutProductsItem",
+    "TenantDefaultMarkupIn",
+    "TenantDefaultMarkupOut",
     "TenantInvoiceListResponse",
     "TenantInvoiceOut",
     "TenantMarkupIn",
