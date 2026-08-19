@@ -107,8 +107,13 @@ def sync_detailed(
 
     An instant must be timezone-aware (`effective_at_naive`), must not be in the
     past (`effective_at_in_past`), and must be within 366 days
-    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
-    recorded nowhere.
+    (`effective_at_too_far_ahead`). It must also be at or after the latest
+    boundary already scheduled in this book
+    (`effective_at_before_scheduled_boundary`): changes to one book are dated
+    forwards, so a change may follow what is scheduled or land exactly on it —
+    which is how a scheduled change is reversed — but never slip in behind it.
+    There is no limit on how many changes a book may have scheduled at once. A
+    refused declaration writes nothing and is recorded nowhere.
 
     Args:
         book_id (UUID):
@@ -182,8 +187,13 @@ def sync(
 
     An instant must be timezone-aware (`effective_at_naive`), must not be in the
     past (`effective_at_in_past`), and must be within 366 days
-    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
-    recorded nowhere.
+    (`effective_at_too_far_ahead`). It must also be at or after the latest
+    boundary already scheduled in this book
+    (`effective_at_before_scheduled_boundary`): changes to one book are dated
+    forwards, so a change may follow what is scheduled or land exactly on it —
+    which is how a scheduled change is reversed — but never slip in behind it.
+    There is no limit on how many changes a book may have scheduled at once. A
+    refused declaration writes nothing and is recorded nowhere.
 
     Args:
         book_id (UUID):
@@ -252,8 +262,13 @@ async def asyncio_detailed(
 
     An instant must be timezone-aware (`effective_at_naive`), must not be in the
     past (`effective_at_in_past`), and must be within 366 days
-    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
-    recorded nowhere.
+    (`effective_at_too_far_ahead`). It must also be at or after the latest
+    boundary already scheduled in this book
+    (`effective_at_before_scheduled_boundary`): changes to one book are dated
+    forwards, so a change may follow what is scheduled or land exactly on it —
+    which is how a scheduled change is reversed — but never slip in behind it.
+    There is no limit on how many changes a book may have scheduled at once. A
+    refused declaration writes nothing and is recorded nowhere.
 
     Args:
         book_id (UUID):
@@ -327,8 +342,13 @@ async def asyncio(
 
     An instant must be timezone-aware (`effective_at_naive`), must not be in the
     past (`effective_at_in_past`), and must be within 366 days
-    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
-    recorded nowhere.
+    (`effective_at_too_far_ahead`). It must also be at or after the latest
+    boundary already scheduled in this book
+    (`effective_at_before_scheduled_boundary`): changes to one book are dated
+    forwards, so a change may follow what is scheduled or land exactly on it —
+    which is how a scheduled change is reversed — but never slip in behind it.
+    There is no limit on how many changes a book may have scheduled at once. A
+    refused declaration writes nothing and is recorded nowhere.
 
     Args:
         book_id (UUID):

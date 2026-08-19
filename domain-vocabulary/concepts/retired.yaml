@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,615 of 2,006 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,616 of 2,007 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1006,6 +1006,36 @@ measurement_key:
     # retired term carries an underscore - but re-spelling a path a mixin already
     # holds is how a near-miss becomes a habit. Both now derive the URL from the
     # mixin's own attribute, which also means a route rename moves one line.
+    #
+    # #360 MOVED THE DENOMINATOR ONLY, UPWARD BY ONE (1,615 -> 1,616 swept,
+    # 2,006 -> 2,007 tracked, 52/128 unchanged), and NO EXCLUSION MOVED WITH IT:
+    # this commit adds no migration either, so `historical-migrations` stays at
+    # 224 and the two counts move together by the same one. ONE new swept file,
+    # hand-written - the reversal behaviour module. ONE existing test module
+    # gave code away rather than taking it: #359's forward-dating module handed
+    # over both its book fixture and its rules snapshot to
+    # `pricing/tests/_helpers.py`, which is already swept, so a second module
+    # reusing them adds no file. The SDK regeneration
+    # created NO file for the third commit running: a new error CODE adds a
+    # class to `_exceptions_generated.py`, and two changed route DESCRIPTIONS
+    # restamp two generated modules and mint none.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT ABOUT CANCELLATION, and the place it could
+    # have arrived is worth naming because it is not the obvious one. The new
+    # module reads a resolved price EIGHT times. Three ask WHICH RULE answered
+    # rather than how much — the empty window's, where the amount cannot
+    # discriminate. Four compare a figure against a named constant. The eighth
+    # builds the receipt written onto a posting, and what is read back off it is
+    # compared against a rule's own column. None of the eight divides an amount
+    # by anything or describes a denominator, which is the only shape in which
+    # the retired plural arrives here. #275's RATE ARITHMETIC caution holds
+    # again: this commit goes nowhere near `compute`.
+    #
+    # ⚠ THIS COUNT WAS WRONG TWICE BEFORE IT WAS RIGHT — seven, then seven
+    # again after a "correction" that re-split the same wrong total — and
+    # `/code-review`'s STANDARDS axis found the eighth, in the paragraph whose
+    # whole job is to be a measurement. Count the call sites with a grep, never
+    # from a memory of what the module does.
 
     - term: units
       retired_as: >-

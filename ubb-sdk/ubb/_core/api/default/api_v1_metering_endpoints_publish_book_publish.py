@@ -88,6 +88,11 @@ def sync_detailed(
     All-or-nothing, and nothing runs at the effective instant — the rows are
     written now, carrying the boundary as a value the resolver reads.
 
+    A draft is re-checked against the book as it stands now, so one that has
+    fallen behind a boundary scheduled since it was declared is refused with
+    `effective_at_before_scheduled_boundary` rather than published. Discard it
+    and declare the change again at an instant at or after that boundary.
+
     Args:
         book_id (UUID):
         publish_id (UUID):
@@ -128,6 +133,11 @@ def sync(
     All-or-nothing, and nothing runs at the effective instant — the rows are
     written now, carrying the boundary as a value the resolver reads.
 
+    A draft is re-checked against the book as it stands now, so one that has
+    fallen behind a boundary scheduled since it was declared is refused with
+    `effective_at_before_scheduled_boundary` rather than published. Discard it
+    and declare the change again at an instant at or after that boundary.
+
     Args:
         book_id (UUID):
         publish_id (UUID):
@@ -162,6 +172,11 @@ async def asyncio_detailed(
 
     All-or-nothing, and nothing runs at the effective instant — the rows are
     written now, carrying the boundary as a value the resolver reads.
+
+    A draft is re-checked against the book as it stands now, so one that has
+    fallen behind a boundary scheduled since it was declared is refused with
+    `effective_at_before_scheduled_boundary` rather than published. Discard it
+    and declare the change again at an instant at or after that boundary.
 
     Args:
         book_id (UUID):
@@ -202,6 +217,11 @@ async def asyncio(
 
     All-or-nothing, and nothing runs at the effective instant — the rows are
     written now, carrying the boundary as a value the resolver reads.
+
+    A draft is re-checked against the book as it stands now, so one that has
+    fallen behind a boundary scheduled since it was declared is refused with
+    `effective_at_before_scheduled_boundary` rather than published. Discard it
+    and declare the change again at an instant at or after that boundary.
 
     Args:
         book_id (UUID):

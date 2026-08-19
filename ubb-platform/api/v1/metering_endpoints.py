@@ -1306,6 +1306,13 @@ def _publish_response(request, record):
     Letting the refusal escape would have answered `internal_error` from a GET,
     and because the list below serializes every pending draft, ONE stale draft
     would have taken the whole book's pending list with it.
+
+    ⚠ **AND THE CODED REFUSAL IS CAUGHT HERE TOO, FOR THE SAME REASON (#360).**
+    A draft can fall behind the book's own diary — a later publish schedules a
+    boundary past this draft's instant — and the planner refuses that by name
+    rather than as a `ValueError`. `Problem` is not a `ValueError`, so catching
+    only the latter would have re-opened exactly the hole the paragraph above
+    describes, with a 422 escaping a GET instead of an `internal_error`.
     """
     from apps.metering.pricing.services.book_service import BookService
 
@@ -1314,6 +1321,12 @@ def _publish_response(request, record):
     keys = keys_by_slot(request.auth.tenant.id)
     try:
         rows = BookService.diff(record)
+    except Problem as e:
+        # `detail` is optional on a `Problem`, and an absent reason here would
+        # render as "no problem and no diff" — the two states this field exists
+        # to keep apart. The code is never empty, so it is the floor.
+        return book_publish_out(record,
+                                diff_unavailable_reason=e.detail or e.code)
     except ValueError as e:
         return book_publish_out(record, diff_unavailable_reason=str(e))
     return book_publish_out(
@@ -1344,8 +1357,13 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
 
     An instant must be timezone-aware (`effective_at_naive`), must not be in the
     past (`effective_at_in_past`), and must be within 366 days
-    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
-    recorded nowhere.
+    (`effective_at_too_far_ahead`). It must also be at or after the latest
+    boundary already scheduled in this book
+    (`effective_at_before_scheduled_boundary`): changes to one book are dated
+    forwards, so a change may follow what is scheduled or land exactly on it —
+    which is how a scheduled change is reversed — but never slip in behind it.
+    There is no limit on how many changes a book may have scheduled at once. A
+    refused declaration writes nothing and is recorded nowhere.
     """
     from apps.metering.pricing.services.book_service import BookService
 
@@ -1446,6 +1464,11 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
 
     All-or-nothing, and nothing runs at the effective instant — the rows are
     written now, carrying the boundary as a value the resolver reads.
+
+    A draft is re-checked against the book as it stands now, so one that has
+    fallen behind a boundary scheduled since it was declared is refused with
+    `effective_at_before_scheduled_boundary` rather than published. Discard it
+    and declare the change again at an instant at or after that boundary.
     """
     from apps.metering.pricing.services.book_service import BookService
 

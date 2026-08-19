@@ -61,6 +61,7 @@ from apps.platform.audit.actors import Actor
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
+from core.problems import Problem
 from core.transitions import (
     columns_declared_into_defended_classes)
 from core.vocabulary import (
@@ -651,11 +652,21 @@ class AChangeThatCannotBeCarriedOutIsRefusedWhileDecidingTest(
         Refusing it here is the readable half of a rule the database holds
         anyway: without this the publish would reach the trigger mid-transaction
         and answer an `IntegrityError` about a column the caller never named.
+
+        ⚠ **AND IT CARRIES A CODE SINCE #360**, because this is ruling 14b's
+        own case — a publish dated before a boundary the book has already
+        scheduled — said precisely enough to name the rule. The date is the
+        thing a tenant's automation can fix, so it must be able to tell this
+        from the refusals beside it that mean the body is wrong.
         """
         Rate.objects.filter(pk=self.rule.pk).update(
             valid_to=timezone.now() + timedelta(days=1))
-        with self.assertRaisesRegex(ValueError, "already scheduled to close"):
+        with self.assertRaises(Problem) as refusal:
             self.a_draft()
+        self.assertEqual(refusal.exception.code,
+                         "effective_at_before_scheduled_boundary")
+        self.assertIn("already scheduled to close",
+                      refusal.exception.detail)
 
     def test_an_unknown_kind_of_change_is_refused(self):
         with self.assertRaisesRegex(ValueError, "kind must be one of"):

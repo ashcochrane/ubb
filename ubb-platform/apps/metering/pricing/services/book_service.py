@@ -1,13 +1,14 @@
 import uuid
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE, PRICING_MODEL_CHOICES,
     PricingBookPublish, Rate, RateCard)
 from apps.platform.event_types.quantities import declaration_named
+from core.problems import Problem
 from core.vocabulary import DECLARATION_STATUS_PUBLISHED
 
 _RATE_COPY_FIELDS = (
@@ -99,6 +100,96 @@ def _rules_in_force_at(book, instant):
         Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
 
 
+def latest_scheduled_boundary(book):
+    """The furthest instant at which any rule in this book opens or closes.
+
+    A **maximum over both moments**, not over the openings alone: a rule that
+    is retired rather than replaced closes at an instant no other rule opens
+    at, so reading only `valid_from` would put the answer behind a close that
+    has already been scheduled.
+
+    ⚠ **IT READS THE BOOK AND NEVER A CLOCK**, which is exactly the mirror of
+    `core.scheduling.validate_scheduled_instant`, which reads a payload and a
+    clock and never a row. That is why the two floors compose and why neither
+    subsumes the other: one is a statement about the present, the other about
+    this book's own diary. The day either starts reading what the other reads
+    they stop being two rules; the signature is pinned by a test.
+
+    ⚠ **AND BECAUSE IT READS NO CLOCK IT DOES NOT MEAN "THE LATEST *FUTURE*
+    BOUNDARY", WHICH IS THE EASY THING TO ASSUME.** Every rule has an opening
+    moment, so any book holding a rule at all has a boundary and this answers
+    `None` only for an EMPTY one. Where every boundary is behind the present
+    the floor is satisfied by anything the clock floor would already admit, so
+    it is vacuous **in effect** rather than absent — and saying it that way
+    matters, because filtering to future boundaries is the one change that
+    would put a clock in here and collapse the two rules into one.
+    """
+    moments = book.rates.aggregate(opens=Max("valid_from"),
+                                   closes=Max("valid_to"))
+    scheduled = [moment for moment in moments.values() if moment is not None]
+    return max(scheduled) if scheduled else None
+
+
+def _refuse_an_instant_behind_the_books_own_diary(book, effective_at):
+    """Ruling 14b — the constraint that replaced the one-pending-publish limit.
+
+    **A publish's effective instant must be at or after the latest already
+    scheduled boundary in that book.** Strictly after permits a series; equal
+    permits the reversal ruling 3 expresses a cancellation as; earlier is
+    refused.
+
+    ⚠ **THIS IS THE HALF OF THE CLASS THE DATABASE CANNOT SEE, AND SAYING SO
+    IS THE POINT.** The spec argues that an earlier instant is refused *because
+    it is impossible anyway* — inserting a publish between two scheduled ones
+    would move a close a later publish already wrote, which `Rate.valid_to`'s
+    `SET_ONCE` rule rejects. That argument holds exactly when the publish
+    touches the rule already scheduled to close, and `plan_changes` refuses
+    **that** case in its own loop, with this same code and a message naming the
+    rule. It is a restatement: the service says so with a message, the database
+    says so regardless.
+
+    A publish dated earlier that touches some *other* rule is not impossible,
+    and the database would admit it. It is refused here anyway, for the reason
+    `plan_changes` exists: a change is resolved against the book **as it will
+    stand at the effective instant**, so an earlier-dated publish landing
+    afterwards silently changes what an already-scheduled publish will do — the
+    diff a tenant approved and the change that happens become different
+    changes. A book's diary is written forwards.
+
+    It carries its own code rather than the generic one, for the reason the two
+    instant refusals in `core.scheduling` do: on the declaring route
+    `validation_error` already means *you have not declared that grouping
+    field* and *that rule is not there to reprice*, and a tenant's automation
+    has to be able to tell a date it can fix from a body it cannot.
+
+    ⚠ **A NAMED RESIDUAL: THIS HOLDS ON THE PUBLISHING PATH AND ON NO OTHER.**
+    `BookService.publish`, `add_rate` and `delete_rate` — the immediate
+    mutation surfaces #358 deliberately kept alive and a later ticket deletes —
+    never call `plan_changes`, so none of them is bound by this rule. The worst
+    of the three is `delete_rate`: it selects on *"the rule that is still
+    open"*, which matches a replacement **scheduled to open in the future**,
+    and writes `valid_to = now`. That is a legal null-to-value write, nothing
+    on this table refuses a close before an opening, and the result is an
+    inverted window covering no instant at all — while the rule it superseded
+    is already closed at the boundary, so from that boundary onward the book
+    prices nothing and resolution falls through to markup, which returns a
+    plausible number and raises nothing. Reachable only since a publish could
+    be dated forward at all (#359); not introduced here and not closed here,
+    because closing it means deleting those three surfaces, which is the ticket
+    that also retires the three audit action names they write.
+    """
+    boundary = latest_scheduled_boundary(book)
+    if boundary is None or effective_at >= boundary:
+        return
+    raise Problem(
+        "effective_at_before_scheduled_boundary",
+        f"effective_at is before {boundary.isoformat()}, the latest boundary "
+        f"already scheduled in this book. A change is dated at or after a "
+        f"book's own diary — at it to reverse what is scheduled there, after "
+        f"it to follow — because a publish slipped in behind one already "
+        f"scheduled would change what that one does")
+
+
 #: WHAT IDENTIFIES ONE RULE INSIDE ONE BOOK: the quantity it prices and the
 #: fourteen selectors. `uq_rate_active_in_book` is the same identity plus the
 #: three the book already fixes — the book itself and its currency — so within
@@ -133,6 +224,23 @@ def plan_changes(book, changes, effective_at):
     they are still deciding, not when the price was supposed to change. The
     publish re-plans against the same book anyway, because the book can move
     between the two acts.
+
+    ⚠ **RULING 14b'S FLOOR IS ENFORCED HERE SO THAT EVERY ACT INHERITS IT
+    (#360).** Declaring, diffing and publishing all plan through this function,
+    so the floor holds at all three — including the case the declaring route
+    cannot reach, where a draft was legal when it was declared and a later
+    publish has since moved the book's diary past it.
+
+    **IT IS CHECKED AFTER THE CHANGES, NOT BEFORE THEM, AND THAT ORDER IS THE
+    WHOLE OF WHERE THE TWO HALVES MEET.** A change naming the very rule already
+    scheduled to close is refused inside the loop, with the same code and a
+    message that names the rule and the instant; the book-wide floor below
+    catches what the loop cannot see — a publish dated earlier that touches
+    some *other* rule. Checking the book first would make the loop's refusal
+    unreachable, since a rule in force at the instant and scheduled to close
+    after it puts the book's own latest boundary ahead of that instant by
+    construction, and the tenant would lose the only message that says which
+    rule.
     """
     in_force = list(
         _rules_in_force_at(book, effective_at).select_related("measurement"))
@@ -206,12 +314,29 @@ def plan_changes(book, changes, effective_at):
                 f"nothing to {kind}")
         outgoing = matched[0]
         if outgoing.valid_to is not None:
-            raise ValueError(
+            # ⚠ RULING 14b'S OWN CASE, AND THE HALF THE DATABASE ALSO REFUSES
+            # (#360). This is *inserting a publish between two scheduled ones*:
+            # carrying it out would move a close a later publish already wrote,
+            # which `Rate.valid_to`'s SET_ONCE rule rejects whatever this
+            # function does. So it is a restatement rather than the only thing
+            # holding the rule — and it carries the same code as the book-wide
+            # floor below, because it is the same statement about the same
+            # instant, said precisely enough to name the rule.
+            #
+            # ⚠ THE ADVICE IT CARRIED WAS BACKWARDS. It said "date this one
+            # before that instant", which is the case that produced the refusal
+            # in the first place. Dating the change AT OR AFTER the scheduled
+            # close is what works: at that instant the rule in force is the
+            # successor, which is still open, so the publish closes that
+            # instead and no close moves.
+            raise Problem(
+                "effective_at_before_scheduled_boundary",
                 f"change {position}: the rule for {measurement_key!r} is "
                 f"already scheduled to close at "
-                f"{outgoing.valid_to.isoformat()}. `Rate.valid_to` is declared "
-                f"set_once, so a close cannot be moved; discard the publish "
-                f"that scheduled it, or date this one before that instant")
+                f"{outgoing.valid_to.isoformat()}, and effective_at is before "
+                f"that. `Rate.valid_to` is set once, so a close cannot be "
+                f"moved; discard the publish that scheduled it, or date this "
+                f"one at or after that instant")
 
         if kind == CHANGE_RETIRE:
             if stated:
@@ -227,6 +352,7 @@ def plan_changes(book, changes, effective_at):
             kind=kind, measurement_key=measurement_key, selectors=selectors,
             outgoing=outgoing,
             terms={**_terms_of(outgoing), **stated}))
+    _refuse_an_instant_behind_the_books_own_diary(book, effective_at)
     return planned
 
 

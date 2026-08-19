@@ -669,9 +669,11 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
     have to delete assertions that say what was decided and why, which is the
     difference between a re-decision and an omission.
 
-    ⚠ ONE OF THEM FORECLOSES A DESIGN THAT IS ALREADY WRITTEN DOWN, and the
-    last case here is that fact rather than a sentence in a merged commit
-    message. Carrying a declaration forward means inheriting what it costs.
+    ⚠ ONE OF THEM FORECLOSED A DESIGN THAT WAS ALREADY WRITTEN DOWN, AND SLICE
+    4 PAID IT RATHER THAN RE-DECIDING IT (#360). The last case here used to
+    hand that choice to the next author; it now states the ruling they made —
+    a cancellation is a further publish. Carrying a declaration forward means
+    inheriting what it costs, and this is what it cost.
     """
 
     def test_the_effective_moment_carries_no_flag_left_to_delete(self):
@@ -689,37 +691,52 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
         self.assertEqual(Rate.transition_classes,
                          {VALID_FROM: FROZEN, VALID_TO: SET_ONCE})
 
-    def test_set_once_forecloses_the_cancellation_the_versions_decision_wrote(self):
-        """WHAT THIS DECLARATION COSTS, AND WHO PAYS IT — read before slice 4.
+    def test_the_cancellation_that_decision_wrote_is_a_further_publish_instead(self):
+        """WHAT THIS DECLARATION COST, AND HOW IT WAS PAID — settled by #360.
 
         The 2026-07-31 pricing-versions decision (§6.5) cancels a pending
         publish by deleting the rows whose moment is still in the future and
         *"reopens their predecessors' `valid_to`"*. That reopen is a
-        value-to-null write, and `SET_ONCE` refuses it unconditionally. The
-        mechanism that document describes is therefore not available as
-        written, and nothing else in the tree says so.
+        value-to-null write and `SET_ONCE` refuses it unconditionally, so the
+        mechanism that document describes was never available as written. This
+        case used to say so and hand the choice forward. **The choice has been
+        made, and this is now the claim rather than the question.**
 
-        THE JUSTIFICATION EVERY OTHER SITE GIVES DOES NOT COVER THIS CASE, and
-        pretending it does is how the gap would be missed. `models.py`, the
-        migration and this module all argue `SET_ONCE` from *"a period that has
-        already reported"* — but §6.5's window is explicitly one where nothing
-        has, *"safe only because nothing has resolved against the boundary
-        yet"*. The rule still holds here, because a column's class cannot be
-        conditional on whether anyone happened to read the row: `SET_ONCE` is
-        enforced by a trigger that has no way to ask. That is an argument the
-        next author may reject, and this ticket does not pre-empt it.
+        **THE RULING: A CANCELLATION IS EXPRESSED AS A FURTHER PUBLISH.** The
+        publish that reverses a scheduled change closes the rule the first one
+        opened — a second null-to-value write, which is legal — and opens a new
+        version of what that rule superseded, at the same instant. The reversed
+        rule's window is `[T, T)`, empty, and resolves for no instant, which is
+        correct because it never took effect. Every write is an INSERT or a
+        once-only close; nothing is deleted and nothing is reopened.
+        `pricing/tests/test_a_scheduled_publish_is_reversed_by_a_further_publish.py`
+        is where that is built and measured.
 
-        SO THE CHOICE IS THEIRS AND IT IS NAMED: express a cancellation without
-        reopening a closed row, or re-decide this class with an argument that
-        survives the paragraph above. What is refused is re-deciding it by
-        accident, which is what a rebuilt model quietly dropping a mapping
-        would be.
+        **THE TWO ALTERNATIVES WERE REJECTED WITH ARGUMENT, AND THE ARGUMENTS
+        LIVE HERE BECAUSE THIS IS THE COLUMN THEY ARE ABOUT.** Re-deciding the
+        class — making a close rewritable while the boundary is in the future —
+        fails because a column's class cannot be conditional on whether anybody
+        happened to read the row: the trigger cannot ask, and a class that
+        holds only when a service remembers to check is enforcement already
+        found not binding. Deriving the close from the successor's opening
+        moment fails for two reasons that look like implementation detail and
+        are not: the one-open-rule uniqueness rule is a database constraint
+        over a stored null and *"the latest version"* is not expressible as a
+        unique index, so deriving would move a money-shaped rule into a service
+        check; and resolution is on the hot pricing path, where a stored
+        half-open range is an index range scan and a derived end is a window
+        function per resolution.
+
+        The refusal below is the move the rejected mechanism would have made,
+        driven through raw SQL — the door no service sits in front of, so the
+        claim is that reopening is impossible rather than that the book service
+        declines to do it.
         """
         closed = cost_rate_in_default_book(
             _tenant(), **{VALID_TO: timezone.now() + timedelta(days=7)})
         with self.assertRaises(IntegrityError) as refusal:
             with transaction.atomic():
-                _through_the_queryset(closed, **{VALID_TO: None})
+                _through_raw_sql(closed, **{VALID_TO: None})
         self.assertIn(SET_ONCE, str(refusal.exception))
 
     def test_the_rule_lives_where_a_rebuilt_surface_cannot_reach_it(self):
