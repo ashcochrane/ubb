@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from django.db import IntegrityError, connection, transaction
 
-from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.models import Rate, RateCard, TenantMarkup
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.usage.models import Posting
 from apps.platform.event_types.tests._helpers import declares_a_quantity
@@ -90,6 +90,78 @@ def cost_rate_in_default_book(tenant, **fields):
     ones, so the word stays here and callers say what they mean.
     """
     return rate_in_default_book(tenant, card_type="cost", **fields)
+
+
+def rate_in_the_providers_default_book(tenant, provider, **fields):
+    """A rule in the tenant's default book FOR ONE PROVIDER, pinning nothing.
+
+    `rate_in_default_book` takes one `provider` and uses it twice — it selects
+    the book AND pins the rule's own selector — which is what almost every
+    fixture here wants. This separates the two, and there is exactly one
+    question that needs them separated: whether two rules in two DIFFERENT
+    default books can be made equally specific. They can only be if neither
+    pins the provider, which `rate_in_default_book` cannot express.
+
+    The book discriminator is spelled here like every other book construction
+    in this file, so a caller asking about ranking never has to.
+    """
+    book, _ = RateCard.objects.get_or_create(
+        tenant=tenant, card_type="price", provider_key=provider,
+        currency=fields.get("currency", tenant.default_currency or "usd"),
+        is_default=True, defaults={"key": provider[:64]})
+    if "measurement" not in fields:
+        fields["measurement"] = declares_a_quantity(
+            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    return Rate.objects.create(
+        tenant=tenant, card_type="price", rate_card=book,
+        book_version_from=book.version, **fields)
+
+
+def declares_a_markup(tenant, *, percentage_micros=0, customer=None, **fields):
+    """The markup rung a tenant has to declare before a price can settle (#356).
+
+    **THE DEFAULT IS ZERO, AND ZERO IS A DECISION.** A tenant with a rung of
+    nothing is saying *charge my customer what the call cost*, which settles at
+    the supplier's figure and is what the fixtures using this helper always
+    meant. What they used to rely on was the absence of a rung producing the
+    same number, and that stopped being true when a price nobody stated became
+    `unknown` rather than the cost. The distinction is the whole point: an
+    absent rung is not a zero rung.
+
+    Named for the act rather than the record — a tenant declares a markup, and
+    which row carries it is this module's business, not its callers'. The record
+    it writes is deleted later in this slice and the rung outlives it.
+    """
+    return TenantMarkup.objects.create(
+        tenant=tenant, customer=customer,
+        markup_percentage_micros=percentage_micros, **fields)
+
+
+def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
+                                   currency="usd", **fields):
+    """A price rule in a book resolution never reads (#356).
+
+    A book becomes readable in exactly two ways — it is the tenant's default for
+    the event's provider, or a customer is assigned to it — and this is neither.
+    It exists so that "there is no fallthrough between books" can be asserted by
+    a rule that WOULD match the event on every selector and is still not the
+    answer, rather than by the absence of a rule, which proves nothing about
+    reachability.
+
+    The discriminator that separates a price book from a cost one is retired and
+    its ledger entry is a ceiling on how many files may still spell it, so it is
+    spelled here — beside every other book construction in this file — and
+    callers say what they mean.
+    """
+    book = RateCard.objects.create(
+        tenant=tenant, card_type="price", key=key, provider_key=provider,
+        currency=currency, is_default=False)
+    if "measurement" not in fields:
+        fields["measurement"] = declares_a_quantity(
+            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    return Rate.objects.create(
+        tenant=tenant, card_type="price", provider=provider, currency=currency,
+        rate_card=book, book_version_from=book.version, **fields)
 
 
 def a_usage_event_subject(subject_id=None):

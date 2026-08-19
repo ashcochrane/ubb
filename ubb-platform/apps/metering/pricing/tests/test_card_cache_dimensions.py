@@ -1,4 +1,5 @@
 import pytest
+from django.utils import timezone
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
 from apps.platform.tenants.models import Tenant
@@ -31,36 +32,38 @@ class TestCardCacheDimensions:
                              unit_quantity=1_000_000)
         card_cache_module._l1.clear()
         CardCache.begin_request(t.id)
-        return t, c
+        # The instant is part of the key now, so every resolve in one test has
+        # to ask about the SAME moment or the "second resolve" is a first one.
+        return t, c, timezone.now()
 
     def test_slot_bearing_resolution_is_cached(self):
         """Before this change CardCache bypassed L1 whenever the open bag was
         non-empty (card_cache.py:67-73), so every event carrying a slot value
         hit Postgres.
         Bounded cardinality (design D4) is what makes the key safe."""
-        t, c = self._tc()
+        t, c, now = self._tc()
         sel = _sel(provider="openai", grouping_field_1="eu")
-        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
+        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
         with CaptureQueriesContext(connection) as ctx:
-            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
+            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
         assert len(ctx) == 0, "second resolve must be served from L1"
 
     def test_different_dimension_values_do_not_collide(self):
-        t, c = self._tc()
+        t, c, now = self._tc()
         hit = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="eu"),
-                                "input_tokens", "usd")
+                                "input_tokens", "usd", now)
         miss = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="us"),
-                                 "input_tokens", "usd")
+                                 "input_tokens", "usd", now)
         assert hit is not None and miss is None
 
     def test_invalidation_forces_a_re_resolve(self):
         """invalidate() bumps the Redis version counter; a NEW request observes
         the bump via begin_request, which is what stales the L1 entry."""
-        t, c = self._tc()
+        t, c, now = self._tc()
         sel = _sel(provider="openai", grouping_field_1="eu")
-        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
+        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
         CardCache.invalidate(t.id)
         CardCache.begin_request(t.id)
         with CaptureQueriesContext(connection) as ctx:
-            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd")
+            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
         assert len(ctx) > 0, "a version bump must force a re-resolve"

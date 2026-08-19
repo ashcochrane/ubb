@@ -27,6 +27,7 @@ from core.vocabulary import (
     COSTING_METHOD_REPORTED,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_STATUS_UNKNOWN,
 )
 
 
@@ -49,6 +50,15 @@ class TestPricing:
                 == PRICING_METHOD_MARGIN_OVER_COST)
 
     def test_cost_card_computes_provider_when_no_caller_cost(self):
+        """The cost resolves; the price does not, because nothing prices it.
+
+        ⚠ This used to assert `billed == 5` — the customer charged exactly what
+        the call cost, because a tenant with no markup configured got the basis
+        back unchanged. That is a price nobody stated, and #356 answers it
+        `unknown` instead: there is no rule and no markup rung, so UBB does not
+        have the information. The cost half is what this test is about and it
+        has not moved.
+        """
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             measurement_key="input_tokens", grouping_field_1="gpt-4",
@@ -60,7 +70,9 @@ class TestPricing:
                        "grouping_field_1": "gpt-4"},
             measurements={"input_tokens": 1000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
-        assert costing.provider_cost_micros == 5 and costing.billed_cost_micros == 5
+        assert costing.provider_cost_micros == 5
+        assert costing.billed_cost_micros is None
+        assert costing.pricing_status == PRICING_STATUS_UNKNOWN
 
     def test_price_card_charges_on_different_metric(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")

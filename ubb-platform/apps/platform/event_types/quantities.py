@@ -30,7 +30,7 @@ can match more than one declaration, and the reference names one of them.
 That is a claim about the CATALOGUE — the tenant declared this name — and never
 a claim about which Event Type's copy a rate meant, because resolution has never
 asked: it matches on the name, and it still does (`PricingService.
-_resolve_rate_within`). Picking is therefore invisible to what a rate prices,
+_matching_rules_across`). Picking is therefore invisible to what a rate prices,
 and it is not invisible to the unique constraint over the reference, which is
 why the pick below is DETERMINISTIC rather than arbitrary. Two rates written for
 one name in one book resolve to the same declaration and the second is refused,

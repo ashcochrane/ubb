@@ -13,6 +13,8 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.models import TenantMarkup
 from apps.metering.pricing.services import markup_cache
 from apps.metering.pricing.services.markup_cache import MarkupCache
+from apps.metering.pricing.tests._helpers import (
+    cost_rate_in_default_book, declares_a_markup)
 
 
 def usage_payload(customer, correlation, **fields):
@@ -296,6 +298,23 @@ class UsageEventDetailEndpointTest(TestCase):
         self.tenant = Tenant.objects.create(name="Rcpt", products=["metering"])
         _, self.key = TenantApiKey.create_key(self.tenant, label="r")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        # The markup rung is class-wide because most cases here want a price at
+        # all; the COST behind it is per-case, because two of them are about
+        # what an unresolved cost does and a rate in the setup would settle it
+        # under them (#356).
+        declares_a_markup(self.tenant, percentage_micros=20_000_000)
+
+    def _a_cost_the_margin_can_be_taken_over(self):
+        """WHAT A MARGIN NEEDS BEFORE IT CAN BE ONE (#356).
+
+        A rung declaring the percentage is half of it and this is the other:
+        without a cost UBB has resolved, the engine waives the charge rather
+        than taking a margin over a number it does not have — so a case about
+        the METHOD would become a case about an absence.
+        """
+        cost_rate_in_default_book(
+            self.tenant, measurement_key="input_tokens",
+            rate_per_unit_micros=1_000, unit_quantity=1_000)
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
@@ -429,6 +448,7 @@ class UsageEventDetailEndpointTest(TestCase):
         from core.vocabulary import (PRICING_METHOD_MARGIN_OVER_COST,
                                      PRICING_STATUS_KNOWN)
 
+        self._a_cost_the_margin_can_be_taken_over()
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "r-method", "i-method",
@@ -459,6 +479,7 @@ class UsageEventDetailEndpointTest(TestCase):
         from core.vocabulary import (PRICING_METHOD_MARGIN_OVER_COST,
                                      PRICING_STATUS_KNOWN)
 
+        self._a_cost_the_margin_can_be_taken_over()
         resp = self.http.post(
             "/api/v1/metering/usage",
             data=json.dumps(usage_payload(
@@ -483,9 +504,16 @@ class UsageEventDetailEndpointTest(TestCase):
         The two are published together precisely so neither has to answer the
         other's question.
 
-        Assembled rather than recorded, and deliberately: the engine reports
-        every price it derives as settled today, so the unsettled shape is
-        reachable at the construction boundary and not yet through the spine.
+        Assembled rather than recorded, and deliberately — but the reason has
+        narrowed (#356). The resolver now reaches three of the four price
+        statuses through the spine, and two of them null the method: a margin
+        over a cost UBB never learned is `waived`, and a subject no rung priced
+        is `unknown`. The status this case uses is the fourth, `not_applicable`,
+        which nothing produces because it is a fact about the tenant's posture
+        and the job's pricing regime rather than about resolution — so this is
+        still the shape reachable only at the construction boundary, and it is
+        the one that carries a reason beside it.
+
         The record is still built through `build_receipt` — the one place a
         receipt is made, and the place that refuses one whose method and status
         disagree.
@@ -553,6 +581,10 @@ class MeteringTaskEndpointTest(TestCase):
             tenant=self.tenant, external_id="cust_task_met"
         )
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
+        # The tenant charges what the call cost, said out loud. These cases
+        # accumulate BILLED totals, and a tenant with no markup rung declared
+        # bills nothing at all now — `unknown`, not the supplier's figure (#356).
+        declares_a_markup(self.tenant)
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -780,6 +812,9 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_analytics"
         )
+        # Analytics totals a billed figure, so the tenant has to have declared a
+        # rung to produce one: no markup rung is `unknown`, not cost (#356).
+        declares_a_markup(self.tenant)
         wallet = Wallet.objects.create(customer=self.customer)
         wallet.balance_micros = 100_000_000
         wallet.save()
@@ -808,8 +843,12 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
     def test_usage_analytics_dimensions(self):
         from apps.metering.usage.services.usage_service import UsageService
         from apps.metering.pricing.models import TenantMarkup
-        # a tenant-default markup so billed > provider (margin is non-zero)
-        TenantMarkup.objects.create(tenant=self.tenant, customer=None, markup_percentage_micros=20_000_000)  # 20%
+        # The class already declares the tenant's rung — a rung of nothing, so
+        # every other case here bills what the call cost. This one needs a
+        # margin, so it RAISES the rung rather than declaring a second: only
+        # one tenant default may exist, and creating a second is refused.
+        TenantMarkup.objects.filter(tenant=self.tenant, customer=None).update(
+            markup_percentage_micros=20_000_000)  # 20%
         # dimensions= now resolves through the registry (#128 rework); an
         # identity declaration (key == slot) is the porting move for tests
         # that grouped by a raw column name before the rework.

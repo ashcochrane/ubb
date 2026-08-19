@@ -2,7 +2,6 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.metering.pricing.models import PRICING_MODEL_CHOICES, Rate, RateCard
-from apps.metering.pricing.services.card_cache import CardCache
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
@@ -43,18 +42,24 @@ class BookService:
         which with a half-open range is exactly no gap and exactly no overlap.
         `NoInstantFallsBetweenTwoVersionsTest` holds it.
 
-        `as_of` IS STILL EXPECTED TO BE ~NOW, AND THAT IS A CONSTRAINT RATHER
-        THAN A HABIT. The column stopped overwriting a supplied moment, so both
-        rows here would faithfully take a future `as_of` — but faithfully
-        writing a future boundary is not the same as honouring one, and two
-        things downstream do not. `CardCache.resolve` hardcodes
-        `timezone.now()` rather than the event's own instant, and this method
-        invalidates that cache at publish time, which is the wrong moment when
-        the boundary is in the future; the 2026-07-31 pricing-versions decision
-        (§8.3) assigns both to the work that introduces forward-dating. So
-        nothing here advertises a future `as_of`, no caller passes one, and the
-        published body carries no moment at all — this entity's published
-        surface is slice 4's.
+        A FUTURE `as_of` IS NOW HONOURED DOWNSTREAM, AND THIS METHOD
+        INVALIDATES NOTHING (#356). The two defects the pricing-versions
+        decision (§8.3) assigned to the work that introduces forward-dating are
+        both paid: `CardCache.resolve` takes the instant as a parameter instead
+        of reading a clock, and its key carries that instant — so a cached
+        resolution answers for the moment it was computed for and for no other.
+        A publish therefore has nothing to invalidate. Entries for instants
+        before the new boundary stay correct forever, and entries for instants
+        after it were never created; the alternative, invalidating *at* the
+        boundary, is the scheduled job forward-dated publishing exists to avoid,
+        and "nothing runs at the effective instant" is only literally true
+        without it.
+
+        What this method still does not do is REFUSE a moment: nothing here
+        advertises a future `as_of`, no caller passes one, and the published
+        body carries no moment at all. This entity's published surface, and the
+        horizon a forward-dated publish is bounded by, are the following
+        tickets'.
         """
         as_of = as_of or timezone.now()
         with transaction.atomic():
@@ -105,5 +110,4 @@ class BookService:
             locked.version = new_version
             locked.save(update_fields=["version", "updated_at"])
             book.version = new_version
-            transaction.on_commit(lambda: CardCache.invalidate(locked.tenant_id))
             return book

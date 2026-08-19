@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,589 of 1,978 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,590 of 1,979 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -856,6 +856,55 @@ measurement_key:
     # plural in `REQUIRED_COMPONENT_KEYS`; the two cases added there read a
     # section's METHOD and never a component, so its own count is where #350
     # left it.
+    #
+    # #356 MOVED THE DENOMINATOR ONLY, UPWARD BY ONE (1,589 → 1,590 swept,
+    # 1,978 → 1,979 tracked, 52/128 unchanged), and it is the FIRST of this run
+    # to move it without a migration: `historical-migrations` stays at 222,
+    # because the commit adds no migration at all. ONE new file, and it is
+    # swept — the module over the price ladder and the as-of instant. No
+    # generated artifact: this commit publishes nothing, so the #277/#317
+    # hazard of taking the count before a regeneration does not arise.
+    #
+    # ⚠ THIS IS THE COMMIT WHERE `#275`'s RATE ARITHMETIC CAUTION WAS ACTUALLY
+    # IN PLAY, AND THE ANSWER WAS TO WRITE THE MODULE AROUND IT. #356 is price
+    # RESOLUTION — which rule answers, and what it charges — so every case in
+    # the new module builds a rule with a per-unit rate and measures a quantity
+    # against it, which is the surviving sense exactly. Three avoidances, all
+    # deliberate: the fixture's denominator is named `ONE_DENOMINATOR` rather
+    # than by what it counts; every rate is addressed by COLUMN NAME
+    # (`rate_per_unit_micros`), which the token matcher does not see; and no
+    # case asserts on a receipt COMPONENT at all — the ladder is asserted
+    # through the totals and the provenance, which is the stronger claim anyway
+    # because a component's amount can be right while the rung that produced it
+    # is wrong.
+    #
+    # ⚠ THE OTHER HAZARD WAS THE ENGLISH TWO-WORD FORM, and #351's warning
+    # above is the one that applied. This commit's whole subject is a LADDER of
+    # rules, and prose about ranking rules reaches for the two-word form of
+    # `backend::pricing_model` (21 files) without meaning the column. A space is
+    # not an identifier character, so the matcher would have stayed green. The
+    # diff was read for spaces and hyphens after the sweep, not instead of it,
+    # and the prose says "the rule's arithmetic" and "a rung" throughout.
+    #
+    # ⚠ TWENTY-EIGHT FILES ALREADY IN THE SWEPT SET WERE EDITED and none of
+    # them gained an occurrence. (Thirty changed in all: twenty-nine are swept —
+    # one of those being the new test module, which is the +1 above — and one
+    # sits under an exclusion rule, this file. ⚠ `docs/adr/**` is SWEPT, which
+    # is easy to assume the other way round because `docs/plans/**` is not: the
+    # frozen-documents rule covers dated history, and an ADR is current truth.)
+    # The nearest miss among them is
+    # `test_the_receipt_outlives_its_measurements.py`, which spells the retired
+    # plural as a receipt component key in `_reproduce`; this commit adds a
+    # markup rung to its fixture and changes nothing about what it reproduces,
+    # so its own count is where #350 left it.
+    #
+    # ⚠ FIVE OF THE TWENTY-EIGHT WERE EDITED BY THE REVIEW PASS AND NOT BY THE
+    # BUILD, which is the case #352 records: a review that adds or edits files
+    # moves these numbers again. Here it edited only — an ADR whose ranking
+    # clause this commit supersedes, a product glossary saying the same thing,
+    # and three docstrings naming a method this commit renamed — so the swept
+    # TOTAL did not move a second time and the numbers above were taken once.
+    # That is luck rather than method: the re-take happened anyway.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

@@ -1,3 +1,19 @@
+"""The markup rung: which percentage applies, and where it came from.
+
+**A RUNG ANSWERS A PERCENTAGE AND ITS SOURCE, NOT A FINISHED PRICE (#356).**
+These tests used to call an applier that took a supplier cost and returned the
+marked-up figure. It is gone: the resolver is what decides whether a basis may
+be marked up at all, and a function that handed back a number threw the source
+away at the one point it was still known. So each case here resolves the rung
+and applies it, which is what the resolver does, one step apart.
+
+**AND "NOTHING CONFIGURED" IS NO LONGER A PRICE.** An unresolved rung used to
+mean *bill the customer exactly what the call cost*, which is a decision nobody
+made wearing a settled figure's clothes. It now means there is no rung, and what
+that produces is `unknown` — asserted at the resolver, in
+`test_the_price_ladder_resolves_as_of_an_instant.py`, because it is a statement
+about resolution rather than about this module.
+"""
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
@@ -5,31 +21,43 @@ from apps.metering.pricing.models import TenantMarkup
 from apps.metering.pricing.services.markup_service import MarkupService
 
 
+def _billed(basis_micros, tenant, customer):
+    """What the markup rung answers over a basis, or `None` if there is no rung.
+
+    The resolver's two steps in one place, so a case below reads as the question
+    it is asking. `None` is not a price: it is the absence of a rung, and what
+    resolution makes of that is the resolver's to say.
+    """
+    markup = MarkupService.resolve(tenant, customer)
+    return markup.applied_to(basis_micros) if markup is not None else None
+
+
 @pytest.mark.django_db
 class TestMarkupService:
-    def test_no_markup_returns_provider_cost(self):
+    def test_no_markup_leaves_the_rung_unresolved(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
-        assert MarkupService.apply(100_000, tenant=t, customer=c) == 100_000
+        assert MarkupService.resolve(t, c) is None
 
     def test_tenant_default_markup_applied(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
         TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=20_000_000)  # 20%
-        assert MarkupService.apply(100_000, tenant=t, customer=c) == 120_000
+        assert _billed(100_000, t, c) == 120_000
 
     def test_customer_override_beats_tenant_default(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
         TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=20_000_000)
         TenantMarkup.objects.create(tenant=t, customer=c, markup_percentage_micros=50_000_000)
-        assert MarkupService.apply(100_000, tenant=t, customer=c) == 150_000
+        assert _billed(100_000, t, c) == 150_000
+        assert MarkupService.resolve(t, c).source == "customer"
 
     def test_fixed_uplift_added(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
         TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=0, fixed_uplift_micros=500)
-        assert MarkupService.apply(100_000, tenant=t, customer=c) == 100_500
+        assert _billed(100_000, t, c) == 100_500
 
 
 from apps.platform.plans.models import CustomerPlanAssignment, Plan
@@ -56,21 +84,27 @@ class TestMarkupPrecedenceWithPlans:
                                     markup_percentage_micros=20_000_000)
         self._assign("personal-lite", 50_000_000)
         # $0.50 provider cost -> 50% -> $0.75, NOT the default's $0.60.
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 750_000
+        assert _billed(500_000, self.tenant, self.customer) == 750_000
 
     def test_customer_override_beats_plan(self):
         self._assign("personal-lite", 50_000_000)
         TenantMarkup.objects.create(tenant=self.tenant, customer=self.customer,
                                     markup_percentage_micros=10_000_000)
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 550_000
+        assert _billed(500_000, self.tenant, self.customer) == 550_000
 
     def test_unassigned_customer_falls_through_to_tenant_default(self):
         TenantMarkup.objects.create(tenant=self.tenant, customer=None,
                                     markup_percentage_micros=20_000_000)
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 600_000
+        assert _billed(500_000, self.tenant, self.customer) == 600_000
 
-    def test_no_markup_anywhere_bills_at_provider_cost(self):
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 500_000
+    def test_no_markup_anywhere_leaves_the_rung_unresolved(self):
+        """What used to be "bills at provider cost" (#356).
+
+        The old answer charged a customer exactly what the call cost and called
+        it settled, which is a price nobody stated. There is no rung here, and
+        the resolver's own module is where what that produces is asserted.
+        """
+        assert MarkupService.resolve(self.tenant, self.customer) is None
 
     def test_resolve_reports_its_source(self):
         self._assign("personal-lite", 50_000_000)
@@ -82,38 +116,46 @@ class TestMarkupPrecedenceWithPlans:
                                    fixed_uplift_micros=7_000)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 607_000
+        assert _billed(500_000, self.tenant, self.customer) == 607_000
 
     def test_enterprise_and_personal_both_rate_at_twenty_percent(self):
         self._assign("enterprise", 20_000_000)
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 600_000
+        assert _billed(500_000, self.tenant, self.customer) == 600_000
 
     def test_zero_markup_plan_shadows_tenant_default_and_pins_provider_cost(self):
         """A fee-only plan (markup left blank -> 0%) is a deliberate zero, same
         as a zero customer override: it pins the customer at provider cost and
-        must NOT fall through to a non-zero tenant default."""
+        must NOT fall through to a non-zero tenant default.
+
+        The distinction the rung has to keep is between a rung that resolved to
+        zero and no rung at all — one is the tenant saying "charge cost", the
+        other is nobody having said anything.
+        """
         TenantMarkup.objects.create(tenant=self.tenant, customer=None,
                                     markup_percentage_micros=20_000_000)
         self._assign("fee-only", 0)
         resolved = MarkupService.resolve(self.tenant, self.customer)
         assert resolved.source == "plan"
-        assert MarkupService.apply(500_000, self.tenant, self.customer) == 500_000
+        assert _billed(500_000, self.tenant, self.customer) == 500_000
 
 
 @pytest.mark.django_db
-class TestAnUnresolvedCostHasNoMarkup:
-    """The one site in slice 3's sweep that refuses instead of reporting a floor
-    (#328).
+class TestAResolvedZeroIsStillABasis:
+    """The control that stops "no basis" reaching a real number (#328, #356).
 
-    Every other reader of a supplier cost answers what it can and states what it
-    left out. A markup cannot: it is not a total, so there is no "at least" to
-    say about it, and marking up zero would put a price nobody stated on an
-    invoice. So the answers are a real basis or a refusal.
+    Zero keeps a meaning of its own — resolved, and it was exactly nothing —
+    which is the distinction the nullable cost column exists to hold. A rule
+    written as a truthiness test would swallow it and refuse a cost UBB knows
+    perfectly well.
 
-    Both appliers are asserted, and separately. `MarkupCache.apply`'s whole
-    contract is that it answers what `MarkupService.apply` answers, and a shared
-    guard proved through only one of them is a guard that can quietly stop being
-    shared.
+    ⚠ **THE REFUSAL THAT USED TO LIVE HERE HAS MOVED AND CHANGED SHAPE.** The
+    applier raised on a cost UBB had not resolved, because a markup is not a
+    total: there is no "at least" to state about a single price, so the honest
+    answers were a real basis or an error. The resolver now asks that question
+    before a percentage is resolved at all and answers it in the vocabulary it
+    belongs in — a margin over a cost UBB never learned is a `waived` charge —
+    so what was an exception is a recorded status, asserted in
+    `test_the_price_ladder_resolves_as_of_an_instant.py`.
     """
 
     def setup_method(self):
@@ -121,28 +163,8 @@ class TestAnUnresolvedCostHasNoMarkup:
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
 
-    def test_the_service_refuses_a_cost_ubb_has_not_resolved(self):
-        # The MESSAGE, not just the type: `TypeError`-shaped failures from the
-        # arithmetic two lines down would satisfy a bare `raises(ValueError)`
-        # against a version with no guard at all.
-        with pytest.raises(ValueError, match="provider_cost_micros is unresolved"):
-            MarkupService.apply(None, self.tenant, self.customer)
-
-    def test_the_cache_refuses_it_on_the_same_terms(self):
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-
-        with pytest.raises(ValueError, match="provider_cost_micros is unresolved"):
-            MarkupCache.apply(None, tenant=self.tenant, customer=self.customer)
-
-    def test_a_resolved_zero_is_still_a_basis_and_is_marked_up(self):
-        """The control that stops the guard reaching a real number.
-
-        Zero keeps a meaning of its own — resolved, and it was exactly nothing
-        — which is the distinction the nullable column exists to hold. A guard
-        written as a truthiness test would swallow it and refuse a cost UBB
-        knows perfectly well.
-        """
+    def test_a_resolved_zero_is_marked_up_to_the_uplift(self):
         TenantMarkup.objects.create(tenant=self.tenant, customer=None,
                                     markup_percentage_micros=20_000_000,
                                     fixed_uplift_micros=1_000)
-        assert MarkupService.apply(0, self.tenant, self.customer) == 1_000
+        assert _billed(0, self.tenant, self.customer) == 1_000

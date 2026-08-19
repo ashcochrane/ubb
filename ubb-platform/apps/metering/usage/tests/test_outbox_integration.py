@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import declares_a_markup
 from apps.billing.wallets.models import Wallet
 from apps.platform.events.models import OutboxEvent
 
@@ -19,6 +20,10 @@ class TestUsageServiceOutbox:
         customer = Customer.objects.create(
             tenant=tenant, external_id="ext1",
         )
+        # The payload's billed figure is what this asserts, so the tenant has to
+        # have declared a rung to produce one: no markup at all resolves to
+        # `unknown` rather than to the supplier's own cost (#356).
+        declares_a_markup(tenant)
         wallet = Wallet.objects.create(customer=customer)
         wallet.balance_micros = 100_000_000
         wallet.save(update_fields=["balance_micros"])

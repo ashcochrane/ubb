@@ -7,7 +7,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.metering.pricing.models import Rate
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import (
+    declares_a_markup, rate_in_default_book)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
@@ -19,6 +20,10 @@ from core.vocabulary import COSTING_METHOD_CALCULATED
 class TestRecordUsagePricing:
     def test_backward_compat_caller_cost_unchanged(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
+        # The tenant charges what the call cost, said out loud: a markup rung of
+        # nothing settles at the supplier's figure, where no rung at all is
+        # `unknown` (#356).
+        declares_a_markup(t)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=4_000)
         assert r["provider_cost_micros"] == 4_000 and r["billed_cost_micros"] == 4_000
 
@@ -26,6 +31,7 @@ class TestRecordUsagePricing:
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+        declares_a_markup(t)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", measurements={"input_tokens": 1000})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5

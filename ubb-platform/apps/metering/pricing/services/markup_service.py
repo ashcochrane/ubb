@@ -1,4 +1,4 @@
-"""Markup resolution.
+"""Markup resolution — the last rung of the price ladder.
 
 Precedence (design doc §5):
 
@@ -7,38 +7,28 @@ Precedence (design doc §5):
 The plan rung is why a Personal Lite customer (50%) cannot silently bill at
 the tenant default (20%). Plans live in the kernel, so reading them here is
 an apps.platform.* import, not a cross-product one (ADR-001 rule 1).
+
+**A RUNG ANSWERS A PERCENTAGE AND ITS SOURCE, NEVER A FINISHED NUMBER (#356).**
+This module used to expose an applier that took a supplier cost and handed back
+the marked-up figure, and the receipt writer at the other end of it could only
+record that markup had happened — not which rung supplied it, nor which record
+the percentage came from. Those are exactly what a tenant asked *"why is this
+line £36?"* has to be shown, and they cannot be reconstructed afterwards,
+because a markup record can be edited. So the resolver takes the resolved value
+and applies it itself, with the source still in its hand at the point the record
+is built.
+
+**AND A COST UBB HAS NOT RESOLVED NO LONGER REACHES HERE AT ALL.** The applier
+carried a refusal for it (#328) because a markup is not a total: there is no
+"at least" to state about a single price, so the honest answers were a real
+basis or an error. The resolver now asks the question one step earlier and in
+the vocabulary the answer belongs in — a margin over a cost UBB never learned is
+a `waived` charge — so the case is decided before a percentage is even resolved,
+and the refusal has no caller left to protect.
 """
 from dataclasses import dataclass
 
 from apps.metering.pricing.models import TenantMarkup
-
-
-def refuse_an_unresolved_basis(provider_cost_micros):
-    """A cost UBB has not resolved has no markup, and no substitute for one.
-
-    ⚠ EVERY OTHER READER IN THIS SWEEP ANSWERS A FLOOR AND SAYS HOW FAR SHORT
-    IT FALLS; A MARKUP CANNOT (#328). A total can be partial and say so, but a
-    single price is one number: there is no "at least" to state about it, so
-    the honest answers are a real basis or a refusal. Marking up zero would put
-    a price nobody stated on an invoice.
-
-    The compute spine reaches its own decision before calling either applier —
-    it marks up zero deliberately and records the posting `unresolved`, which
-    is that decision made in the one place holding the receipt — so a `None`
-    arriving here is a caller that skipped the spine. Refusing by name beats
-    the `TypeError` the arithmetic would raise two lines later about a
-    `NoneType`.
-
-    Shared by ``MarkupService.apply`` and ``MarkupCache.apply`` rather than
-    copied into both: the cache's whole contract is that it answers what the
-    service answers, and two copies of a refusal is how the two come to differ
-    exactly where it matters.
-    """
-    if provider_cost_micros is None:
-        raise ValueError(
-            "provider_cost_micros is unresolved: a supplier cost UBB has not "
-            "resolved cannot be marked up, and a markup of zero would be a "
-            "price nobody stated")
 
 
 @dataclass(frozen=True)
@@ -60,6 +50,22 @@ class ResolvedMarkup:
             provider_cost_micros * self.markup_percentage_micros + 50_000_000
         ) // 100_000_000
         return percent + self.fixed_uplift_micros
+
+    def applied_to(self, provider_cost_micros: int) -> int:
+        """The customer price this rung answers over a basis it is given.
+
+        The basis plus the markup taken on it, said once. It is a method rather
+        than two lines at the resolver because the cache's whole contract is
+        that it answers what a live resolve answers, and a sum written at each
+        caller is how two callers come to disagree about what "marked up" meant.
+
+        The caller decides whether a basis may be marked up at all: an
+        `unresolved` cost is `waived` and never arrives here, and a resolved
+        zero IS a basis — a call that genuinely cost nothing, marked up to the
+        uplift.
+        """
+        return provider_cost_micros + self.calculate_markup_micros(
+            provider_cost_micros)
 
 
 def _from_tenant_markup(row, source):
@@ -90,23 +96,3 @@ class MarkupService:
         if default:
             return _from_tenant_markup(default, "tenant_default")
         return None
-
-    @staticmethod
-    def apply(provider_cost_micros, tenant, customer):
-        """billed = provider + markup(provider); nothing configured -> billed == provider.
-
-        ⚠ A COST UBB HAS NOT RESOLVED HAS NO MARKUP, AND THIS REFUSES RATHER
-        THAN INVENTS ONE (#328). Every other reader in this sweep answers a
-        floor and says how far short it falls; a markup cannot, because it is
-        not a total — there is no "at least" to state about a single price. The
-        spine reaches its own decision before calling here (it marks up zero and
-        records the posting `unresolved`, which is that decision made in the one
-        place that holds the receipt), so a `None` arriving here is a caller
-        that skipped it. Refusing by name beats the `TypeError` the arithmetic
-        below would raise two lines later about a `NoneType`.
-        """
-        refuse_an_unresolved_basis(provider_cost_micros)
-        markup = MarkupService.resolve(tenant, customer)
-        if markup is None:
-            return provider_cost_micros
-        return provider_cost_micros + markup.calculate_markup_micros(provider_cost_micros)

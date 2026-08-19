@@ -46,6 +46,8 @@ from core.vocabulary import (
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
     PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_STATUS_KNOWN,
+    PRICING_STATUS_WAIVED,
 )
 
 EVENT_TYPE_KEY = "acme.embed"
@@ -267,21 +269,29 @@ class TestTheComputeSpineDecidesTheStatus:
 
 
 @pytest.mark.django_db
-class TestNoBilledFigureMovesOnTheRateCardBranch:
-    """The population that does not move: everything costed from Cost Rates.
+class TestAMarginOverACostUbbNeverLearnedIsWaived:
+    """⚠ **THE FLOOR IS GONE, AND ITS OWN COMMENT SAID THIS WOULD HAPPEN.**
 
-    Which is every event with a `calculated` declaration and every event with no
-    declaration at all — the whole of this repository until a tenant adopts the
-    registry. A price marked up from an incomplete cost was a floor before this
-    ticket and is the same floor after it, to the micro. Whether such a price
-    may call itself settled is `pricing_status`, which is slice 4's word and one
-    slice 3 must not coin (spec §3.12).
+    This class used to be `TestNoBilledFigureMovesOnTheRateCardBranch`, and what
+    it pinned was `markup(0)` — a price built on a basis UBB had not resolved,
+    reported as settled because there was no other answer the record could hold.
+    Its docstring said whether such a price may call itself settled is
+    `pricing_status`, "which is slice 4's word"; #351 built the column and
+    #356's resolver is what writes it.
 
-    The population that DOES move is next door, asserted rather than left to the
-    comment that explains it.
+    **THE ANSWER IS `waived`** (#147 §7.3). The rung cannot compute: a margin is
+    a percentage of what the call cost, and UBB does not know what the call
+    cost. Holding an uncomputable charge open forever is how a receivable nobody
+    will ever collect sits in a tenant's figures, so it is recorded as a loss
+    rather than queued — and `waived` is never a candidate for a recovery run.
+
+    ⚠ **THE COST SIDE OF THIS CLASS HAS NOT MOVED AT ALL**, which is what bounds
+    the change: the supplier cost is `unresolved` with the same reason and the
+    same resolved lines in the receipt, and the settlement that completes it
+    still works. What moved is the price built on top of it.
     """
 
-    def test_markup_still_applies_to_the_rated_part(self):
+    def test_a_partly_costed_event_waives_its_margin_rather_than_flooring_it(self):
         tenant = _tenant()
         from apps.metering.pricing.models import TenantMarkup
         TenantMarkup.objects.create(tenant=tenant,
@@ -294,9 +304,12 @@ class TestNoBilledFigureMovesOnTheRateCardBranch:
                                        "image_pixels": 40})
 
         assert costing.provider_cost_micros is None
-        assert costing.billed_cost_micros == 6_000
-        assert (costing.pricing_receipt["pricing"]["method"]
-                == PRICING_METHOD_MARGIN_OVER_COST)
+        assert costing.billed_cost_micros is None
+        assert costing.pricing_status == PRICING_STATUS_WAIVED
+        # NO METHOD BESIDE NO AMOUNT. A method is how an amount was arrived at,
+        # so naming one where nothing was derived would be the record claiming
+        # an arithmetic it never did.
+        assert costing.pricing_receipt["pricing"]["method"] is None
 
     def test_a_price_rate_is_unaffected_by_an_unresolved_cost(self):
         tenant = _tenant()
@@ -316,22 +329,23 @@ class TestNoBilledFigureMovesOnTheRateCardBranch:
 
 
 @pytest.mark.django_db
-class TestTheOneBilledFigureThatDoesMove:
-    """A declaration that disowns Cost Rates disowns them as a markup basis too.
+class TestADeclarationThatDisownsCostRatesDisownsThemAsAMarkupBasis:
+    """The declaration decides what the markup rung may be taken over.
 
-    THE CHANGE, STATED: an Event Type declared `reported` or declared with no
-    cost at all, holding Cost Rates for its quantities and NO price rate, billed
-    markup over those rates before this ticket and bills `markup(0)` after it.
-    Nothing else in the system moves.
+    THE RULING: an Event Type declared `reported` or declared with no cost at
+    all is the tenant saying its Cost Rates are not this Event Type's cost —
+    `reported` means the supplier's own figure is — so marking up a basis the
+    declaration disowns would invent a number, in the flattering direction,
+    which is the whole failure this slice deletes.
 
-    It is asserted here rather than described, because a billed figure moving is
-    the kind of thing that must be somebody's decision on the record. The
-    decision: the declaration is the tenant saying those rates are not this
-    Event Type's cost — `reported` means the supplier's own figure is — so
-    marking up a basis the declaration disowns would invent a number, in the
-    flattering direction, which is the whole failure this slice deletes. What is
-    left is a floor on a posting already marked `unresolved`, and the same event
-    bills `markup(figure)` the moment its supplier figure arrives.
+    ⚠ **THE TWO DECLARATIONS PART COMPANY AT THE PRICE, AND THAT IS THE POINT
+    OF THE STATUSES (#356).** `reported` with no figure yet is UBB not KNOWING
+    the cost, so a margin over it is `waived`. No cost at all is the tenant
+    saying there IS none, so the basis is genuinely zero and a margin over it
+    settles — at the uplift, which is `known` and may well be nothing. Both
+    null the supplier cost and the two look identical in the amount; the status
+    is the only thing that tells them apart, which is why the rung branches on
+    it rather than on the figure.
     """
 
     def _marked_up_tenant(self):
@@ -341,7 +355,7 @@ class TestTheOneBilledFigureThatDoesMove:
                                     markup_percentage_micros=20_000_000)
         return tenant
 
-    def test_a_reported_declaration_does_not_mark_up_its_cost_rates(self):
+    def test_a_reported_declaration_waives_rather_than_marking_up_its_cost_rates(self):
         tenant = self._marked_up_tenant()
         _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
                      quantities=("prompt_tokens",), mapping=True)
@@ -350,13 +364,14 @@ class TestTheOneBilledFigureThatDoesMove:
         costing = _price(tenant, _customer(tenant))
 
         assert costing.costing_status == COSTING_STATUS_UNRESOLVED
-        assert costing.billed_cost_micros == 0
-        assert (costing.pricing_receipt["pricing"]["method"]
-                == PRICING_METHOD_MARGIN_OVER_COST)
+        assert costing.billed_cost_micros is None
+        assert costing.pricing_status == PRICING_STATUS_WAIVED
+        assert costing.pricing_receipt["pricing"]["method"] is None
 
     def test_the_same_event_bills_over_the_figure_once_it_arrives(self):
-        """The positive control, and what makes the zero above a floor rather
-        than a verdict: one input arrives and the price appears."""
+        """The positive control, and what makes the waiver above a verdict about
+        the information rather than about the event: one input arrives and the
+        price appears."""
         tenant = self._marked_up_tenant()
         _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
                      quantities=("prompt_tokens",), mapping=True)
@@ -367,7 +382,14 @@ class TestTheOneBilledFigureThatDoesMove:
         assert costing.costing_status == COSTING_STATUS_KNOWN
         assert costing.billed_cost_micros == 6_000
 
-    def test_an_event_type_carrying_no_cost_does_not_mark_up_either(self):
+    def test_an_event_type_carrying_no_cost_settles_its_margin_over_zero(self):
+        """The believed basis, and the half that is NOT waived.
+
+        A declaration of no cost is information UBB has, not information it
+        lacks: the basis is zero because the tenant said so. So the rung settles
+        rather than waiving, and the price it settles at is the uplift — here
+        nothing, which is a decided figure and not an absent one.
+        """
         tenant = self._marked_up_tenant()
         _declaration(tenant, quantities=())
         _cost_rate(tenant)
@@ -376,6 +398,9 @@ class TestTheOneBilledFigureThatDoesMove:
 
         assert costing.costing_status == COSTING_STATUS_NOT_APPLICABLE
         assert costing.billed_cost_micros == 0
+        assert costing.pricing_status == PRICING_STATUS_KNOWN
+        assert (costing.pricing_receipt["pricing"]["method"]
+                == PRICING_METHOD_MARGIN_OVER_COST)
 
     def test_a_price_rate_still_charges_whatever_the_declaration_says(self):
         """The half that is NOT at stake: a declared price is a declared price.

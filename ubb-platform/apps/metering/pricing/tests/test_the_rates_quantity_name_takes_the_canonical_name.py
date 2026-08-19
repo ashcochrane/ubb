@@ -332,7 +332,7 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             caller_provider_cost=None, caller_billed=None,
             resolve_declaration=lambda: None,
             resolve_card=lambda kind, key: rate,
-            apply_markup=lambda provider_cost: provider_cost).pricing_receipt
+            resolve_markup=lambda: None)
 
         # BOTH SECTIONS' COMPONENTS, not one of them. The two used to be one
         # list told apart by a retired discriminator, and #349 made the sections

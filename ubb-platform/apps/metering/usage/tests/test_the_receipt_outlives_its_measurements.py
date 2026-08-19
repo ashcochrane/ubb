@@ -88,7 +88,7 @@ from django.test import TestCase
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.receipts import uncosted_quantity_keys
 from apps.metering.pricing.tests._helpers import (
-    cost_rate_in_default_book, rate_in_default_book)
+    cost_rate_in_default_book, declares_a_markup, rate_in_default_book)
 from apps.metering.usage.measurements import measurements_status_for
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
@@ -117,6 +117,14 @@ COSTING_STATUS_COLUMN = SUPPLIER_COST.status_column
 
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
+    # ⚠ **THE PRUNE RULE READS THE PRICE STATUS TOO** (`usage/migrations/0041`),
+    # so a tenant with no markup rung declared cannot prune anything: every
+    # posting it records resolves to `unknown` (#356), which is one of the two
+    # states the rule refuses to let a measurement leave. A rung of nothing —
+    # the tenant charging what the call cost — is what these fixtures always
+    # meant, and it settles the price so the module can go on being about the
+    # COST half's rule.
+    declares_a_markup(tenant)
     return tenant, Customer.objects.create(tenant=tenant, external_id="c1")
 
 

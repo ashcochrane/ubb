@@ -1,10 +1,11 @@
-from typing import NamedTuple, Optional
+from dataclasses import dataclass
+from typing import Any, NamedTuple, Optional
 
 from django.db.models import Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
-from apps.metering.pricing.receipts import Resolution, build_receipt
+from apps.metering.pricing.receipts import ReceiptSubject, Resolution, build_receipt
 from apps.platform.event_types.costing import cost_declaration
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
@@ -16,11 +17,147 @@ from core.vocabulary import (
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_MODE_EVENT_PRICED,
     PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN,
+    PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
 PRICING_ENGINE_VERSION = "2.1.0"
+
+#: WHERE A RULE CAME FROM — the ladder's MINOR key (#356, #147 §5.1).
+#:
+#: Two sources and no more: the rules a customer's own book holds, and the rules
+#: in the book selected for that customer. They are ranked so that at equal
+#: specificity the customer's own answer wins, which is what makes "override"
+#: mean *replace the rule at the level you are overriding* rather than *replace
+#: the catalogue*.
+#:
+#: They are integers rather than names because they are only ever compared, and
+#: the comparison is the whole of what they are for.
+FROM_THE_CUSTOMERS_OWN_RULES = 1
+FROM_THE_SELECTED_BOOK = 0
+
+
+def ladder_rank(rule, source):
+    """THE COMPOSITE RANKING RULE, AND THE ONE PLACE IT IS STATED (#356).
+
+    **How specifically a rule names the event is compared FIRST; where it came
+    from is only the tie-break within a level.** So a tenant writes a broad
+    default plus narrow overrides and gets the behaviour they expect without
+    reasoning about book precedence, and the ladder reads as four rungs:
+
+    1. the customer's own rule for this exact Event Type
+    2. the selected book's rule for this exact Event Type
+    3. the customer's blanket rule
+    4. the selected book's default rule
+
+    **WHY SPECIFICITY OUTRANKS SOURCE** (#147 §5.2). The alternative — the
+    customer's own contract answering first at every level — was the ladder as
+    first stated and was rejected on its consequence: a customer's blanket 15%
+    would shadow every specific price the tenant configured, so agreeing a small
+    discount silently deletes a catalogue with nothing anywhere reporting that
+    it had. The tenant's only defence would be to restate every specific rule
+    inside every override. ADR-0005 §8 called book tier dominating rate
+    specificity a sharp edge; specificity-major ordering is what dissolves it,
+    because then there is one ranking and source is a tie-break inside it.
+
+    **STATED HERE AND NOWHERE ELSE.** It used to live as a sentence on
+    ``Rate.specificity``, a property that counts pinned selectors — one of the
+    two ingredients, and no place from which the composition can be true or
+    false. The remaining tie-break on ``valid_from`` is not part of the ruling:
+    it decides between two rules a tenant made equally specific from the same
+    source, where the later decision is the one they meant.
+    """
+    return (rule.specificity, source, rule.valid_from)
+
+
+def a_margin_has_no_basis(costing_status):
+    """A MARGIN OVER A COST UBB NEVER LEARNED IS `waived`, NOT DEFERRED (#147 §7.3).
+
+    A margin is a percentage of what the call cost, and where UBB never learned
+    the cost there is nothing to take it over. Holding such a charge open
+    forever is how a receivable nobody will ever collect sits in a tenant's
+    figures, so it is recorded as a decided loss rather than queued: `waived` is
+    never a candidate for a recovery run.
+
+    **STATED ONCE AND ASKED AT BOTH RUNGS.** A markup and a rule declaring a
+    margin are the SAME METHOD at two rungs, which is the whole reason
+    specificity-before-source is coherent — so a rule about that method that
+    held at one rung and not the other would make a tenant's answer depend on
+    where they wrote the percentage down.
+
+    ⚠ **`not_applicable` IS A BELIEVED BASIS AND NOT A MISSING ONE.** An Event
+    Type that declares no cost is the tenant saying there is none, so the basis
+    is genuinely zero and a margin over it settles — at the uplift, which may
+    well be nothing. `unresolved` is UBB not knowing. The two look identical in
+    the amount, because both null the cost, and the status is the only thing
+    that tells them apart — which is why this asks the status rather than the
+    figure.
+    """
+    return costing_status == COSTING_STATUS_UNRESOLVED
+
+
+def _priced_by_rules(rules, total_micros, costing_status):
+    """WHAT THE RULE RUNGS ANSWERED — the amount, and the method that derived it.
+
+    Returns `(amount, method, status)`.
+
+    **THE METHOD COMES FROM THE RULE AND NOT FROM THE ENGINE'S HABIT (#355).** A
+    rule declares which method it would derive by, or declares none; a rule that
+    declares none prices the event's own quantities by its own terms, which is
+    `direct_event_price` — an amount attached to the event regardless of what
+    the call cost. That is what every rate on disk is today, and reading it as
+    anything else would put a value on the record no tenant chose.
+
+    **A RULE DECLARING A MARGIN IS THE MARKUP RUNG'S METHOD AT A DIFFERENT
+    RUNG, AND IT GETS THE SAME TWO ANSWERS.** Where the cost is one UBB never
+    learned, `a_margin_has_no_basis` says `waived` — the same ruling the markup
+    rung takes, because the two are one method and a tenant should not get a
+    different status for writing the percentage in a different place. Where the
+    cost IS believed, the answer is `unknown`: the percentage lives on a
+    separate record while markup is one, and the check that keeps a rule from
+    composing refuses the two money terms this table can express, so such a rule
+    carries nothing to compute with. Computing its terms anyway would answer a
+    settled zero for a price nobody stated. The ticket that moves a percentage
+    onto the rule is the ticket that makes that branch compute.
+
+    **AND A PARTLY RESOLVED PRICE IS NOT A RESOLVED PRICE**, which is the cost
+    side's rule at the sibling site: one quantity priced by a rule that cannot
+    compute makes the whole answer unsettled, because the alternative is a total
+    that silently omits a line.
+    """
+    declared = {rule.pricing_method for rule in rules} - {None}
+    if PRICING_METHOD_MARGIN_OVER_COST in declared:
+        if a_margin_has_no_basis(costing_status):
+            return None, None, PRICING_STATUS_WAIVED
+        return None, None, PRICING_STATUS_UNKNOWN
+    return total_micros, PRICING_METHOD_DIRECT_EVENT_PRICE, PRICING_STATUS_KNOWN
+
+
+def _priced_by_markup(markup, basis_micros, costing_status):
+    """WHAT THE MARKUP RUNG ANSWERED — the last rung, and its two refusals.
+
+    Returns `(amount, method, status)`.
+
+    **NO MARKUP RUNG IS `unknown`, NEVER A ZERO AND NEVER THE COST** (#356).
+    UBB ships no catalogue: a tenant with no declared markup has no markup rung,
+    and answering the supplier's own cost would charge a customer exactly what
+    the call cost and call it a settled decision. A price nobody stated is
+    information UBB does not have.
+
+    ⚠ **THAT QUESTION IS ASKED FIRST, AND THE ORDER IS THE RULING.** No rung at
+    all is `unknown` even where the basis is also missing, because `waived` says
+    somebody decided not to pursue a charge and a tenant who has declared
+    nothing has decided nothing. Only once a rung exists does the basis matter,
+    and then `a_margin_has_no_basis` answers for it.
+    """
+    if markup is None:
+        return None, None, PRICING_STATUS_UNKNOWN
+    if a_margin_has_no_basis(costing_status):
+        return None, None, PRICING_STATUS_WAIVED
+    return (markup.applied_to(basis_micros),
+            PRICING_METHOD_MARGIN_OVER_COST, PRICING_STATUS_KNOWN)
 
 
 def _component(measurement_key, quantity, card):
@@ -115,16 +252,17 @@ class Costing(NamedTuple):
     #: Which input did not arrive, and `None` unless the status is `unresolved`.
     unresolved_reason: Optional[str]
     #: `known` · `waived` · `unknown` · `not_applicable`, held by reference from
-    #: `core.vocabulary` (#351).
+    #: `core.vocabulary` (#351), and read off the receipt's price section rather
+    #: than decided again here.
     #:
-    #: ⚠ EVERY PRICE THIS ENGINE DERIVES IS `known` TODAY, WHICH IS THE SAME
-    #: STATEMENT WITH AN EXPIRY DATE THE RECEIPT'S PRICE SIDE ALREADY CARRIES.
-    #: The column and its rule land in #351; the rules that PRODUCE the other
-    #: three — the waive, the direct price, and the ruling that a margin over a
-    #: supplier cost UBB never learned is `waived` rather than a settled figure
-    #: — arrive with the price resolver. It is a field rather than a constant at
-    #: the write site so that when they do, the one line that moves is inside
-    #: this service and every reader downstream is already carrying the answer.
+    #: THREE OF THE FOUR ARE NOW REACHED (#356). The ladder answers `known`
+    #: where a rung priced the event, `waived` where a margin was taken over a
+    #: supplier cost UBB never learned, and `unknown` where no rung answered at
+    #: all. `not_applicable` is the fourth and nothing produces it: it is a fact
+    #: about the tenant's posture and the job's pricing regime rather than about
+    #: resolution, the regime's whole vocabulary belongs to the slice that
+    #: rebuilds the unit of work, and the rule that decides its REASON is
+    #: written and waiting in `pricing/applicability.py`.
     pricing_status: str
     #: Which of two mutually exclusive causes produced `not_applicable`, and
     #: `None` for every other status. The rule is
@@ -134,14 +272,36 @@ class Costing(NamedTuple):
 
 class PricingService:
     @staticmethod
-    def _resolve_rate_within(book, selectors, measurement_key, currency, as_of):
-        """One matching semantic for all ten selectors (design D3).
+    def _matching_rules_across(books, selectors, measurement_key, currency, as_of):
+        """Every rule in the books in play that matches this event, unranked.
 
-        A rate's "" selector is a WILDCARD; a pinned selector must equal the
-        event's value. Among matches the most-pinned rate wins, tie-broken by
-        latest valid_from. `measurement_key` alone keeps exact-match semantics —
-        a rate prices one named quantity, and a rate that wildcarded WHICH
-        quantity it priced would charge the same for all of them.
+        One matching semantic for all ten selectors (design D3): a rate's ""
+        selector is a WILDCARD; a pinned selector must equal the event's value.
+        `measurement_key` alone keeps exact-match semantics — a rate prices one
+        named quantity, and a rate that wildcarded WHICH quantity it priced
+        would charge the same for all of them.
+
+        **RANKING IS NOT DONE HERE, AND THAT IS THE CHANGE (#356).** This
+        returns candidates paired with where each came from; `ladder_rank`
+        orders them across every book in play at once. While each book ranked
+        its own matches and the caller walked the books in order, book tier
+        dominated rate specificity — so a broad rule in a higher-precedence book
+        beat a narrow rule in a lower one, which is the sharp edge #147 §5.2
+        removes.
+
+        **ONE QUERY FOR ALL OF THEM, WHICH IS FEWER THAN THE WALK IT REPLACES.**
+        Ranking across books needs every candidate, so a query per book would
+        have made the hottest write path in the system pay two or three where it
+        used to short-circuit at one. `rate_card__in` asks once instead, and the
+        source each rule carries is read back off the book it belongs to.
+
+        ⚠ **AND THE RESULT IS RETURNED IN BOOK-SELECTION ORDER, NOT IN ROW
+        ORDER.** One query means the database decides what order the rules come
+        back in, and the ranking above is a STABLE sort — so a tie it cannot
+        break would silently be decided by the query plan, differently on
+        different days. Ordering the candidates by the book they came from
+        restores the one answer a tenant can predict: `_selected_books` puts
+        the narrowest book first.
 
         **THE MATCH IS STILL ON THE NAME, THROUGH THE REFERENCE (#326).** The
         rate holds the declared record rather than a spelling of it, and this
@@ -157,19 +317,16 @@ class PricingService:
         match here at all. That is what "deactivated" means in practice: the row
         is still readable, still lists, still says what it was written to price,
         and prices nothing."""
-        if book is None:
-            return None
+        source_of = {book.id: source for source, book in books}
+        position_of = {book.id: index for index, (_, book) in enumerate(books)}
         qs = Rate.objects.filter(
-            rate_card=book, measurement__code=measurement_key, currency=currency,
-            valid_from__lte=as_of,
+            rate_card__in=list(source_of), measurement__code=measurement_key,
+            currency=currency, valid_from__lte=as_of,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
         for name in Rate.SELECTORS:
             qs = qs.filter(Q(**{name: selectors.get(name) or ""}) | Q(**{name: ""}))
-        cands = list(qs)
-        if not cands:
-            return None
-        cands.sort(key=lambda c: (c.specificity, c.valid_from), reverse=True)
-        return cands[0]
+        return sorted(((rule, source_of[rule.rate_card_id]) for rule in qs),
+                      key=lambda pair: position_of[pair[0].rate_card_id])
 
     @staticmethod
     def _assigned_book(tenant, customer, card_type, currency):
@@ -187,40 +344,103 @@ class PricingService:
             currency=currency, is_default=True).first()
 
     @staticmethod
-    def _resolve_card(tenant, customer, card_type, selectors, measurement_key, currency, as_of):
-        book = PricingService._assigned_book(tenant, customer, card_type, currency)
-        if book is not None:
-            rate = PricingService._resolve_rate_within(
-                book, selectors, measurement_key, currency, as_of)
-            if rate is not None:
-                return rate
-        provider = selectors.get("provider") or ""
-        default_book = PricingService._default_book(tenant, card_type, provider, currency)
-        if default_book is not None:
-            rate = PricingService._resolve_rate_within(
-                default_book, selectors, measurement_key, currency, as_of)
-            if rate is not None:
-                return rate
-        # Book-selection (provider_key) is a separate layer from the Rate-level
-        # selector wildcarding above: a "" provider_key book is the tenant's
-        # provider-AGNOSTIC default book (D3's headline fix applied at the book
-        # layer too), so a non-empty provider that found no book, or a book
-        # with no matching rate, falls back to it. Skipped when the request was
-        # already provider-less — that IS the "" bucket, already tried above.
-        if not provider:
+    def _selected_books(tenant, customer, card_type, provider, currency):
+        """WHICH BOOKS THIS SUBJECT'S PRICE MAY BE RESOLVED FROM, chosen once.
+
+        Selection and resolution are two steps and this is the first (#147
+        §5.3). A book becomes readable for one event in exactly two ways: it is
+        the tenant's default for the event's provider, or the customer is
+        assigned to it. Anything else — a book nobody is assigned to, another
+        customer's book, the default book of a provider this event is not from —
+        is unreachable, and no rule inside it can be the answer however well it
+        matches.
+
+        **THE PROVIDER-AGNOSTIC DEFAULT IS SELECTION, NOT A THIRD TIER.** A ""
+        `provider_key` book is the tenant's provider-agnostic default (D3's
+        headline fix applied at the book layer), so it is in play alongside the
+        provider's own default rather than after it. It used to be reached by
+        falling through when the provider's book held no matching rule, which is
+        the cross-book walk #147 §5.3 deletes; ranking both books' rules
+        together answers the same events the same way for a better reason,
+        because a rule pinning the provider outranks one that does not on
+        SPECIFICITY.
+
+        Returns `(source, book)` pairs. `ladder_rank` is what orders the rules
+        they hold — but the ORDER of this list is load-bearing all the same, and
+        it is the narrowest book first: two rules a tenant made equally specific
+        from the same source are separated by nothing else, and the stable sort
+        over that tie keeps whichever book came back first here. The provider's
+        own default book is therefore ahead of the provider-agnostic one, which
+        is the answer the tiered walk used to give and the only one a tenant
+        could predict.
+
+        ⚠ **EACH BOOK APPEARS EXACTLY ONCE, AND THE FIRST WAY IT WAS REACHED IS
+        THE ONE THAT COUNTS.** A customer can be assigned to the very book that
+        is also the tenant's default, so the same rows are reachable twice; a
+        second entry for it would let the ranking read the customer's own rules
+        as the tenant's, silently demoting every override such a tenant wrote.
+        Assigned is appended first, so keeping the first entry keeps the higher
+        source.
+        """
+        books, seen = [], set()
+        assigned = PricingService._assigned_book(
+            tenant, customer, card_type, currency)
+        if assigned is not None:
+            books.append((FROM_THE_CUSTOMERS_OWN_RULES, assigned))
+            seen.add(assigned.id)
+        # A LIST AND NOT A SET, because the order above is load-bearing: a set's
+        # iteration order would decide ties between the provider's own default
+        # book and the provider-agnostic one, differently between processes.
+        for provider_key in ([provider, ""] if provider else [""]):
+            default = PricingService._default_book(
+                tenant, card_type, provider_key, currency)
+            if default is not None and default.id not in seen:
+                books.append((FROM_THE_SELECTED_BOOK, default))
+                seen.add(default.id)
+        return books
+
+    @staticmethod
+    def _resolve_card(tenant, customer, card_type, selectors, measurement_key,
+                      currency, as_of, books=None):
+        """THE LADDER: one ranking over every rule in every book in play.
+
+        There is no fallthrough between books. The books are selected first,
+        every matching rule in all of them competes in ONE ranking, and a
+        quantity with no matching rule anywhere in them resolves to nothing —
+        which on the price side is what sends the answer to the markup rung, and
+        on the cost side is what makes the posting unresolved.
+
+        `ladder_rank` holds the ordering and the argument for it. Ties beyond it
+        are left to the stable sort, which keeps the order the books came back
+        in; two rules a tenant made identically specific, from one source, on
+        one instant are not a distinction the ladder claims to draw.
+
+        ``books`` lets a caller resolving MANY quantities for one event select
+        them once instead of once per quantity — which is what
+        :func:`resolve_price` does, and the reason selection and ranking are two
+        steps rather than one. It is configuration and not a clock, so
+        re-reading it when a caller has not supplied it is a default rather than
+        an override.
+        """
+        if books is None:
+            books = PricingService._selected_books(
+                tenant, customer, card_type,
+                selectors.get("provider") or "", currency)
+        candidates = PricingService._matching_rules_across(
+            books, selectors, measurement_key, currency, as_of)
+        if not candidates:
             return None
-        wildcard_book = PricingService._default_book(tenant, card_type, "", currency)
-        return PricingService._resolve_rate_within(
-            wildcard_book, selectors, measurement_key, currency, as_of)
+        candidates.sort(key=lambda pair: ladder_rank(*pair), reverse=True)
+        return candidates[0][0]
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
                  caller_provider_cost, caller_billed,
-                 resolve_declaration, resolve_card, apply_markup):
-        """The ONE compute spine (#112): cost → status → price → markup
-        fallback. ``price`` is this spine under one card resolver —
-        ``resolve_card(card_type, measurement_key)``, ``resolve_declaration()``
-        and the matching ``apply_markup(provider_cost)`` are the parameters —
+                 resolve_declaration, resolve_card, resolve_markup):
+        """The ONE compute spine (#112): cost → status → price → markup rung,
+        returning the receipt. ``resolve_price`` is this spine under one card
+        resolver — ``resolve_card(card_type, measurement_key)``,
+        ``resolve_declaration()`` and ``resolve_markup()`` are the parameters —
         and it is the only rider left since #239 deleted the accept-time
         estimate that was the second. The parameterisation stays: it is what
         kept the two in agreement by construction, and what a future second
@@ -264,7 +484,11 @@ class PricingService:
         configuration-dependent arrives through `resolve_card` /
         `resolve_declaration`.
 
-        Always returns a :class:`Costing`."""
+        Always returns a Pricing Receipt — the whole record, validated at the
+        one construction boundary at the foot of this method. It is what the
+        recording path reads every column it writes back off (:class:`Costing`),
+        so there is one statement of what the engine concluded rather than two
+        that can drift."""
         measurements = measurements or {}
         # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
         # receipts already written are NOT rewritten. A receipt records what the
@@ -392,6 +616,7 @@ class PricingService:
                 costing_status = COSTING_STATUS_KNOWN
 
         # ---- PRICE ----
+        resolved_markup = None
         if caller_billed is not None:
             billed = caller_billed
             # A PRICE THE CALLER STATED IS A PRICE ATTACHED TO THE EVENT, which
@@ -399,76 +624,41 @@ class PricingService:
             # values and the distinction it draws is margin-over-cost versus
             # a price of its own, not which door the price came through.
             pricing_method = PRICING_METHOD_DIRECT_EVENT_PRICE
+            pricing_status = PRICING_STATUS_KNOWN
         else:
-            price_total, matched = 0, False
+            price_total, matched = 0, []
             for measurement_key, units_val in sorted(measurements.items()):
                 card = resolve_card("price", measurement_key)
                 if card is None:
                     continue
-                matched = True
+                matched.append(card)
                 component = _component(measurement_key, units_val, card)
                 price_total += component["micros"]
                 price_components.append(component)
                 price_rate_ids[measurement_key] = str(card.id)
             if matched:
-                billed = price_total
-                pricing_method = PRICING_METHOD_DIRECT_EVENT_PRICE
+                billed, pricing_method, pricing_status = _priced_by_rules(
+                    matched, price_total, costing_status)
             else:
-                # MARKUP APPLIES TO WHAT THE COST BRANCH ARRIVED AT, AND THAT
-                # MOVES FOR EXACTLY ONE POPULATION (#320).
+                # THE MARKUP RUNG — REACHED ONLY BECAUSE NO RULE WAS (#356).
                 #
-                # An event with no declaration — every event in this repository
-                # before the registry is adopted — takes the rate-card branch
-                # above, so its markup basis is the same partial sum it always
-                # was and its billed figure does not move at all.
-                #
-                # A DECLARED `reported` OR NO-COST EVENT TYPE IS DIFFERENT, and
-                # it is a real change rather than an oversight: those branches
-                # arrive at nothing, so a tenant with such a declaration, cost
-                # rates for its quantities and NO price rate now bills
-                # `markup(0)` where they billed markup over those rates. That is
-                # the honest answer, because the declaration is the tenant
-                # saying those rates are not this Event Type's cost: `reported`
-                # means the supplier's own figure is the cost, and no-cost means
-                # there is none. Marking up a basis the declaration disowns
-                # would be inventing a number, which is the failure this slice
-                # exists to delete — and it would be inventing it in the
-                # flattering direction.
-                #
-                # `markup(0)` IS THE FLOOR, WHICH IS THIS SLICE'S SHAPE FOR
-                # INCOMPLETE INFORMATION EVERYWHERE ELSE. The same event once
-                # its supplier figure arrives takes the caller branch and bills
-                # `markup(figure)`; until then the basis is missing and the
-                # price built on it is a floor, on a posting already marked
-                # `unresolved` so nobody reads it as settled. Whether such a
-                # price may call ITSELF unsettled is `pricing_status`, and #349
-                # gave the receipt a place to say so without yet moving the
-                # answer: the record below reports `known` for every price this
-                # engine derives, because there is no price status column and no
-                # rule that writes another value. The tickets that add both are
-                # where this branch's floor stops reporting itself as settled —
-                # and re-pricing after a settlement is theirs too.
-                #
-                # Pinned by `TestNoBilledFigureMoves` for the population that
-                # does not move, and by the two cases below it for the one that
-                # does. Both halves are asserted; neither is left to a comment.
-                billed = apply_markup(computed_micros)
-                pricing_method = PRICING_METHOD_MARGIN_OVER_COST
+                # This is the else-branch of rule resolution and it stays one.
+                # "Base cost -> markup -> final charge" is false for any tenant
+                # with pricing rules, and a pipeline that marked up a rule's
+                # answer would silently re-price every catalogue in the system.
+                # What the rung supplies is a percentage AND its source, which
+                # is why it resolves a value here rather than being handed a
+                # number to multiply — `_priced_by_markup` says what it does
+                # with the three answers it can reach.
+                resolved_markup = resolve_markup()
+                billed, pricing_method, pricing_status = _priced_by_markup(
+                    resolved_markup, computed_micros, costing_status)
 
         # The receipt records what the engine DID; the columns record what UBB
         # KNOWS. Where the two differ the receipt keeps its resolved components
         # and the amount below is None — see the `_compute` docstring.
         recorded_cost = (computed_micros if costing_status == COSTING_STATUS_KNOWN
                          else None)
-        # ⚠ EVERY PRICE THIS ENGINE DERIVES IS `known` TODAY, AND THAT IS A
-        # STATEMENT WITH AN EXPIRY DATE. There is no price status column yet:
-        # the price is never null, so the receipt's price side reports the only
-        # answer the system currently holds. The three other price statuses —
-        # and in particular the ruling that a margin over a supplier cost UBB
-        # never learned is `waived` rather than a settled figure — arrive with
-        # the nullable price column and the rules that write it, in the tickets
-        # that follow this one. When they do, this line is the one that moves,
-        # and the receipt's shape already admits every answer they need.
         pricing_receipt = build_receipt(
             subject=subject, effective_at=effective_at, currency=currency,
             pricing_engine_version=PRICING_ENGINE_VERSION,
@@ -487,9 +677,20 @@ class PricingService:
                     # its own record.
                     "uncosted_measurement_keys": list(uncosted_quantities),
                     "uncosted_quantities": uncosted_quantities,
+                    # WHICH INPUT DID NOT ARRIVE, ON THE RECORD RATHER THAN
+                    # ONLY ON THE COLUMN (#356). The status says a cost is
+                    # unresolved and this says why, which is the difference
+                    # between a reader who can fix the configuration and one
+                    # who has to guess. It rides here rather than beside the
+                    # status because `detail` is what explains a section's
+                    # outcome by value, and it is what the recording path now
+                    # reads the posting's own column back off — so the record
+                    # and the column cannot come to disagree, because there is
+                    # one of them.
+                    "unresolved_reason": unresolved_reason,
                 }),
             pricing=Resolution(
-                method=pricing_method, status=PRICING_STATUS_KNOWN,
+                method=pricing_method, status=pricing_status,
                 amount_micros=billed,
                 detail={
                     "components": price_components,
@@ -515,61 +716,186 @@ class PricingService:
                     # kind it is waiting on.
                     "pricing_mode": PRICING_MODE_EVENT_PRICED,
                 }),
+            # ⚠ `resolved_markup` IS IN SCOPE HERE AND THE RECORD DOES NOT YET
+            # NAME IT (#357). The rung that supplied a markup, and the record
+            # its percentage came from, are what a tenant asked "why is this
+            # line £36?" has to be able to show — and that cannot be
+            # reconstructed afterwards, because the record can be edited. The
+            # value reaches this writer carrying its source rather than as a
+            # bare number, which is the half that had to happen with the rung;
+            # writing it into this section is the ticket that makes a markup
+            # charge explicable.
             provenance={"cost_rate_ids": cost_rate_ids,
                         "price_rate_ids": price_rate_ids})
-        return Costing(provider_cost_micros=recorded_cost,
-                       billed_cost_micros=billed,
-                       pricing_receipt=pricing_receipt,
-                       costing_status=costing_status,
-                       unresolved_reason=unresolved_reason,
-                       # The one value this engine can produce, said out loud
-                       # rather than left to the column's default — see the
-                       # field's own comment for when that stops being true.
-                       pricing_status=PRICING_STATUS_KNOWN)
+        return pricing_receipt
 
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,
               caller_provider_cost, caller_billed, as_of=None):
-        """Exact pricing: the compute spine over as_of-exact ORM card
-        resolution (the Pricing Receipt it builds is persisted with the event)
-        and live-ORM markup. ``selectors`` is the full {provider, event_type,
-        task_type, subtask_type, the ten slots} map (Rate.SELECTORS keys) — an
-        absent/"" value wildcards against a rate that leaves it unpinned.
+        """The recording path's adapter over :func:`resolve_price`.
+
+        It does two things the seam deliberately does not. It assembles the
+        loose arguments the recording input arrives as into one
+        :class:`PricingSubject`, and it names the instant for a caller that did
+        not: **the clock is read HERE**, once, because a recording with no
+        effective moment of its own is being priced as of now and something has
+        to say so out loud. Nothing below this line reads one.
+
+        ``selectors`` is the full {provider, event_type, task_type,
+        subtask_type, the ten slots} map (Rate.SELECTORS keys) — an absent/""
+        value wildcards against a rate that leaves it unpinned.
 
         ``subject`` is a :class:`~apps.metering.pricing.receipts.ReceiptSubject`
         and is REQUIRED, with no default. A receipt explains one named thing,
         and a default here would hand every caller who omitted the argument one
         subject's answer — the same defect a default column name is, one level
         up. It is an input rather than a stamp applied afterwards, which is why
-        the caller generates the row's id before it records the row."""
-        as_of = as_of or timezone.now()
+        the caller generates the row's id before it records the row.
+        """
+        return costing_of(resolve_price(
+            PricingSubject(
+                receipt_subject=subject, tenant=tenant, customer=customer,
+                selectors=selectors, measurements=measurements or {},
+                currency=currency,
+                caller_provider_cost=caller_provider_cost,
+                caller_billed=caller_billed),
+            as_of or timezone.now()))
 
-        def resolve_card(card_type, measurement_key):
-            return PricingService._resolve_card(
-                tenant, customer, card_type, selectors, measurement_key,
-                currency, as_of)
 
-        def resolve_declaration():
-            """What this event's Event Type declares about cost, or None.
+@dataclass(frozen=True)
+class PricingSubject:
+    """WHAT IS BEING PRICED — everything configuration-dependent, in one value.
 
-            A function rather than a value so the spine decides *whether* the
-            declaration matters, the same way it decides which cards to
-            resolve. A caller-supplied figure needs no declaration, and this is
-            a query per recording call on the hottest write path in the system
-            — one the spine simply never asks for on that branch.
-            """
-            return cost_declaration(tenant=tenant,
-                                    key=selectors.get("event_type"))
+    The resolver takes a subject and an instant, so everything that decides an
+    answer other than the instant lives here: who the tenant is, whose price it
+    is, what the event named, what it measured, and the two figures a caller may
+    state for itself.
 
-        def apply_markup(provider_cost):
-            from apps.metering.pricing.services.markup_service import MarkupService
-            return MarkupService.apply(provider_cost, tenant=tenant, customer=customer)
+    **IT CARRIES THE RECEIPT'S SUBJECT RATHER THAN BEING IT.**
+    :class:`~apps.metering.pricing.receipts.ReceiptSubject` is the declared
+    IDENTITY of the thing a receipt explains — a typed pair, published, and the
+    same value whatever configuration exists. This is that identity plus
+    everything resolution reads about it, and none of the rest belongs on a
+    record's subject.
 
-        return PricingService._compute(
-            subject=subject, currency=currency,
-            effective_at=as_of.isoformat(),
-            measurements=measurements,
-            caller_provider_cost=caller_provider_cost,
-            caller_billed=caller_billed,
-            resolve_declaration=resolve_declaration,
-            resolve_card=resolve_card, apply_markup=apply_markup)
+    Frozen, because a resolution is a question asked once: a caller that
+    re-pointed the subject between the ladder and the receipt would produce a
+    record explaining an answer to a different question. ⚠ **That holds the
+    BINDINGS and not the containers** — `frozen=True` refuses a new `selectors`
+    map, not an edit to the one already there — so it is a statement about this
+    value's own fields rather than a guarantee about what a caller may still
+    reach through them. Making it the stronger claim would mean copying both
+    maps on every recording call, on the hottest write path in the system, to
+    defend against a caller that has no reason to do it.
+    """
+
+    receipt_subject: ReceiptSubject
+    tenant: Any
+    customer: Any
+    selectors: dict
+    measurements: dict
+    currency: str
+    #: THE SUPPLIER'S OWN FIGURE, where the caller stated it. Whether it may be
+    #: stated at all is decided before resolution and has its own refusal.
+    caller_provider_cost: Optional[int] = None
+    #: THE CUSTOMER PRICE THE CALLER STATED, which is not a rung of the ladder:
+    #: it sits above it, and the ladder arrives closed with no caller rung
+    #: (#147 §5.1). The request field it comes from is deleted later in this
+    #: slice, and the day it is, this is the field that goes with it.
+    caller_billed: Optional[int] = None
+
+
+def resolve_price(subject, as_of):
+    """PRICE RESOLUTION IS ONE FUNCTION OF A SUBJECT AND AN INSTANT (#356).
+
+    Returns the Pricing Receipt that explains its answer: the method, the
+    amount, the status, the reason where there is one, and the provenance.
+
+    **THE INSTANT IS A PARAMETER AND NO CLOCK IS READ BELOW IT.** That is a live
+    bug fix rather than a testing convenience. Resolution keyed on the current
+    instant answers for the wrong moment the day a boundary is dated forward: a
+    row that faithfully carries a future boundary is not the same as a row that
+    is honoured at one, and the difference is invisible until something
+    advertises a future effective instant. Everything time-dependent arrives
+    through `as_of`; everything configuration-dependent arrives through
+    `subject`.
+
+    **WHY THIS IS THE BOUNDARY AND NOT SIX SMALLER ONES.** The four-rung ladder,
+    specificity-before-source, markup as a rung rather than a multiplier,
+    forward-dated boundaries, the price statuses and the receipt's own shape are
+    only observable in combination. Asked through HTTP, each combination costs a
+    fixture and puts an endpoint's serialization between the assertion and the
+    behaviour; asked here they are one table of cases. It is the only new seam
+    this slice introduces, and it would have been required without a test asking
+    for it.
+    """
+    tenant, customer = subject.tenant, subject.customer
+    selectors, currency = subject.selectors, subject.currency
+
+    # THE BOOKS ARE SELECTED ONCE PER EVENT, NOT ONCE PER QUANTITY. Selection
+    # is two queries and a call prices every quantity the event measured, so
+    # asking again per quantity would multiply them by the bag's size on the
+    # hottest write path in the system. Nothing about the answer changes: which
+    # books are in play is decided by the tenant, the customer, the event's
+    # provider and the currency, and a single resolution holds all four fixed.
+    books_in_play = {}
+
+    def resolve_card(card_type, measurement_key):
+        if card_type not in books_in_play:
+            books_in_play[card_type] = PricingService._selected_books(
+                tenant, customer, card_type,
+                selectors.get("provider") or "", currency)
+        return PricingService._resolve_card(
+            tenant, customer, card_type, selectors, measurement_key,
+            currency, as_of, books=books_in_play[card_type])
+
+    def resolve_declaration():
+        """What this event's Event Type declares about cost, or None.
+
+        A function rather than a value so the spine decides *whether* the
+        declaration matters, the same way it decides which cards to resolve. A
+        caller-supplied figure needs no declaration, and this is a query per
+        recording call on the hottest write path in the system — one the spine
+        simply never asks for on that branch.
+        """
+        return cost_declaration(tenant=tenant, key=selectors.get("event_type"))
+
+    def resolve_markup():
+        """The markup rung's own answer, WITH the source that supplied it.
+
+        A rung answers a percentage and where it came from, never a finished
+        number: the receipt has to be able to say which rung of configuration
+        priced an event, and a function that returned the marked-up figure would
+        throw that away at the one point it is still known (#357).
+        """
+        from apps.metering.pricing.services.markup_service import MarkupService
+        return MarkupService.resolve(tenant, customer)
+
+    return PricingService._compute(
+        subject=subject.receipt_subject, currency=currency,
+        effective_at=as_of.isoformat(),
+        measurements=subject.measurements,
+        caller_provider_cost=subject.caller_provider_cost,
+        caller_billed=subject.caller_billed,
+        resolve_declaration=resolve_declaration,
+        resolve_card=resolve_card, resolve_markup=resolve_markup)
+
+
+def costing_of(receipt):
+    """THE POSTING'S COLUMNS, READ OFF THE RECEIPT THAT DECIDED THEM (#356).
+
+    The receipt is the authority (#148 §3), and this is what makes that true in
+    code rather than only in prose: every column the recording path writes is
+    read back off the record it stores beside them, so a posting and its receipt
+    cannot come to disagree about what the engine concluded. It is an adapter
+    and not a second reader of the record's shape — nothing here decides
+    anything, and a value it cannot find is a receipt this engine did not build.
+    """
+    costing, pricing = receipt["costing"], receipt["pricing"]
+    return Costing(
+        provider_cost_micros=receipt["totals"]["provider_cost_micros"],
+        billed_cost_micros=receipt["totals"]["billed_cost_micros"],
+        pricing_receipt=receipt,
+        costing_status=costing["status"],
+        unresolved_reason=costing["detail"]["unresolved_reason"],
+        pricing_status=pricing["status"])

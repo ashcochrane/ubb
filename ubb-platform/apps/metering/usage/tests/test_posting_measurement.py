@@ -41,6 +41,7 @@ from django.db.migrations.loader import MigrationLoader
 from django.db.models import NOT_PROVIDED
 from django.test import TestCase
 
+from apps.metering.pricing.tests._helpers import declares_a_markup
 from apps.metering.usage.measurements import (
     measurements_status,
     measurements_status_for,
@@ -85,6 +86,14 @@ DECLARED_COLUMNS = ("posting", "measurements", "recorded_at", "prunable_at")
 
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
+    # ⚠ **THE CHILD'S RULE READS THE PRICE STATUS AS WELL AS THE COST STATUS**
+    # (`migrations/0041`), so a tenant that has declared no markup rung can
+    # prune nothing at all: every posting it records resolves to `unknown`
+    # (#356), which is one of the two states the rule refuses to let a
+    # measurement leave. A rung of nothing settles the price at the supplier's
+    # figure, which is what these fixtures always meant, and keeps the pruning
+    # cases about the COST condition they name.
+    declares_a_markup(tenant)
     return tenant, Customer.objects.create(tenant=tenant, external_id="c1")
 
 

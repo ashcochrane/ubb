@@ -423,9 +423,16 @@ class Rate(BaseModel):
 
     @property
     def specificity(self):
-        """How many selectors this rate pins. The resolution tie-breaker (D3):
-        a rate pinning provider+event_type+one slot beats one pinning provider
-        alone, so a tenant writes a broad default plus narrow overrides."""
+        """How many selectors this rate pins (design D3), and only that.
+
+        ⚠ **IT DOES NOT DECIDE WHICH RULE ANSWERS, AND IT USED TO SAY IT DID
+        (#356).** Resolution ranks on how specifically a rule names the event
+        AND on where the rule came from, and a count of pinned selectors is one
+        of those two ingredients — so a rule about how they combine, stated
+        here, is stated somewhere it cannot be true or false. The composite is
+        `ladder_rank` in `services/pricing_service.py`, with the argument for
+        the order it puts them in; this is the number it reads.
+        """
         return sum(1 for v in self.selector_tuple if v)
 
     def compute(self, units):

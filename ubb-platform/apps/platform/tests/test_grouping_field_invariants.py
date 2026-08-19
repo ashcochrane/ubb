@@ -172,21 +172,30 @@ class TestGroupingFieldInvariants:
             assert selector in posting_cols, (
                 f"Rate selects on {selector!r} but Posting has no such column")
 
-    def test_book_tier_dominates_rate_specificity(self):
-        """The composite ranking rule (surfaced late in review, documented in
-        ADR-0005): `_resolve_card` walks book tiers — assigned book, then the
-        provider-specific default book, then the provider-agnostic ("") default
-        book — and returns as soon as a TIER yields any match at all. "Most
-        pinned wins" only holds WITHIN one book.
+    def test_rate_specificity_dominates_book_tier(self):
+        """⚠ **THE COMPOSITE RANKING RULE, INVERTED HERE AND RE-HOMED (#356).**
+
+        This test used to be `test_book_tier_dominates_rate_specificity`, and it
+        was right about what the code did: `_resolve_card` walked book tiers and
+        returned as soon as a TIER yielded any match, so "most pinned wins" only
+        held WITHIN one book and a narrower rule in a later book was silently
+        shadowed. ADR-0005 §8 called that a sharp edge. It is the edge #147 §5.2
+        dissolves, on its consequence rather than on taste: under book-major
+        ranking a customer's small blanket discount shadows every specific price
+        a tenant configured, and the tenant's only defence is to restate every
+        specific rule inside every override.
+
+        **The ranking is now one ranking** — how specifically a rule names the
+        event, with the source as the tie-break inside a level — and the
+        statement of it lives with resolution, at `ladder_rank`, rather than in
+        an ADR the vocabulary lock records as superseded. The scenario is kept
+        because the pair of books it uses is one the resolver's own module does
+        not cover: two DEFAULT books, provider-specific against
+        provider-agnostic, rather than a customer's book against the tenant's.
 
         Here the "" book carries a narrowly-pinned override (task_type plus the
         first slot, specificity 2) while the provider-specific "openai" book
-        carries only a
-        broad provider pin (specificity 1). Naive "most selectors wins" ranking
-        across the whole rate set would pick the "" book's rate. The real
-        resolution never gets that far: the openai book is tried first, finds a
-        match, and returns immediately — the "" book's more specific override
-        is silently shadowed."""
+        carries only a broad provider pin (specificity 1). The narrow one wins."""
         from apps.metering.pricing.models import Rate
         from apps.metering.pricing.services.pricing_service import PricingService
         from apps.metering.pricing.tests._helpers import rate_in_default_book
@@ -215,8 +224,9 @@ class TestGroupingFieldInvariants:
             measurements={"input_tokens": 1_000_000}, currency="usd",
             caller_provider_cost=None, caller_billed=None)
 
-        # The openai book's broad, specificity-1 rate wins over the ""
-        # book's narrow, specificity-2 override — book tier beats specificity.
-        assert costing.provider_cost_micros == 9_000
+        # The "" book's narrow, specificity-2 override wins over the openai
+        # book's broad, specificity-1 rate — specificity beats source, and the
+        # book a rule came from decides nothing until two rules pin equally.
+        assert costing.provider_cost_micros == 1_000
         assert (costing.pricing_receipt["costing"]["method"]
                 == COSTING_METHOD_CALCULATED)
