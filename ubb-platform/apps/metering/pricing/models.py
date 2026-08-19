@@ -12,7 +12,97 @@ from core.vocabulary import (
 )
 
 
+class TenantDefaultMarkup(BaseModel):
+    """THE RUNG THAT PRICES WHAT NO RULE MATCHED, DECLARED BY THE TENANT (#357).
+
+    The last rung of the price ladder, and the one that produces most prices:
+    where the books in play hold no rule for a quantity, the customer's price is
+    a percentage over what the call cost. A tenant declares it here, once, and
+    withdraws it by deleting the row.
+
+    **⚠ UBB SHIPS NO CATALOGUE, AND THIS IS THE MODEL THAT SAYS SO.** There is
+    no default value on the column, no starter row and no seed anywhere: a
+    tenant that has declared nothing has NO markup rung, and resolution answers
+    `unknown` rather than zero (`pricing_service._priced_by_markup`). A default
+    of `0` would make "nobody has said what to charge" and "charge exactly what
+    the call cost" one answer, which is the silently wrong price #356 deleted
+    from the resolver — putting it back on the column would be the same defect
+    one layer down.
+
+    **IT REPLACES THE TENANT-DEFAULT ROW OF `TenantMarkup`, HERE AND NOT
+    LATER.** That record's `customer IS NULL` row was the tenant default by
+    being the one with no customer on it, which is a rung read out of an
+    absence; this is the rung declared. Its own routes go with it (#369
+    deletes the record, its remaining customer-override rows and the routes
+    that write them); until then `PUT /pricing/markup` still writes that row
+    and that row no longer prices anything, which is stated on the route.
+
+    **NO UPLIFT COLUMN, AND THAT IS THE NON-COMPOSITION RULE (#147 §2).** A
+    rule that takes a margin over cost does not also carry a flat addend, a
+    floor or a cap — that is what makes a resolved price explicable by naming
+    one thing. The per-event fixed uplift the records this replaces carry is
+    deleted rather than folded in, so the replacement is not built with one.
+
+    **THE PERCENTAGE IS NOT FROZEN AND IS IN NO TRANSITION CLASS.** A tenant
+    re-declaring its default markup is an ordinary correction to configuration,
+    not a rewrite of history: every event already priced holds its percentage
+    BY VALUE on its own receipt, so an edit here cannot change what any past
+    event was charged. That is the whole reason the receipt records values and
+    keeps pointers in `provenance`.
+
+    **AND THE DATABASE DOES NOT DEFEND THE SIGN.** A percentage below zero is a
+    price under cost, which is an ordinary commercial decision (a loss leader)
+    rather than an invariant no business situation can make false — so it is
+    not the ADR-0002 shape that belongs in a `CHECK`. The declaring route
+    refuses one, as the route it replaces did.
+    """
+
+    tenant = models.OneToOneField(
+        "tenants.Tenant", on_delete=models.CASCADE,
+        related_name="default_markup",
+    )
+    #: Millionths of a percent: 1_000_000 is 1%. Named for what it holds rather
+    #: than under the money suffix — `_micros` means millionths of a CURRENCY
+    #: unit on seventy-odd columns in this tree, and the two records this one
+    #: replaces are both ledgered against G11 for hiding a percentage under it.
+    #: This is that entry's own `expected` spelling, taken on a new column where
+    #: it costs nothing.
+    markup_micro_percent = models.BigIntegerField()
+
+    class Meta:
+        db_table = "ubb_tenant_default_markup"
+
+    def __str__(self):
+        return f"TenantDefaultMarkup({self.tenant_id})"
+
+    # THE CACHE IS INVALIDATED AT THE MODEL LAYER, WHICH IS WHERE THE
+    # CONVENTION PUTS IT (`docs/conventions/django-patterns.md`, Caching): no
+    # write path can bypass a hook here, and the record this rung replaces has
+    # always carried the same pair. A rung declared or withdrawn through a
+    # route and a rung written from a shell both reach the same bump.
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+        MarkupCache.invalidate(self.tenant_id)
+
+    def delete(self, *args, **kwargs):
+        tenant_id = self.tenant_id
+        result = super().delete(*args, **kwargs)
+        from apps.metering.pricing.services.markup_cache import MarkupCache
+        MarkupCache.invalidate(tenant_id)
+        return result
+
+
 class TenantMarkup(BaseModel):
+    """The markup record slice 4 replaces — customer overrides, and a stranded
+    tenant-default row (#357, deleted by #369).
+
+    Its `customer IS NULL` row was the tenant-default rung until
+    :class:`TenantDefaultMarkup` took that job, and it prices nothing now. Its
+    per-customer rows are still a rung of the ladder and still resolve, until
+    the customer override becomes a rule in the customer's own Pricing Book.
+    """
+
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="markups",
     )

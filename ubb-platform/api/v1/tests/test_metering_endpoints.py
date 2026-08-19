@@ -10,7 +10,8 @@ from apps.platform.event_types.tests._helpers import (
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
-from apps.metering.pricing.models import TenantMarkup
+from apps.metering.pricing.models import (
+    TenantDefaultMarkup, TenantMarkup)
 from apps.metering.pricing.services import markup_cache
 from apps.metering.pricing.services.markup_cache import MarkupCache
 from apps.metering.pricing.tests._helpers import (
@@ -197,10 +198,9 @@ class PricingMarkupsCRUDTest(TestCase):
         self.assertEqual(resp.json()["markup_percentage_micros"], 50000000)
 
     def test_get_customer_markup_falls_back_to_tenant_default(self):
-        # Set only tenant default, no customer override
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=None, markup_percentage_micros=15000000, fixed_uplift_micros=0
-        )
+        # The tenant default is the DECLARED rung (#357), not this record's
+        # customer-less row: that row survives and prices nothing.
+        declares_a_markup(self.tenant, percentage_micros=15000000)
         resp = self.http_client.get(
             f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
             **self._auth(),
@@ -211,9 +211,7 @@ class PricingMarkupsCRUDTest(TestCase):
     def test_customer_markup_zero_shadows_tenant_default(self):
         # Documents WHY delete exists: a 0/0 override is NOT the same as
         # inheriting — it shadows the tenant default and pins the customer at cost.
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=None,
-            markup_percentage_micros=15000000, fixed_uplift_micros=0)
+        declares_a_markup(self.tenant, percentage_micros=15000000)
         self.http_client.put(
             f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
             data=json.dumps({"markup_percentage_micros": 0, "fixed_uplift_micros": 0}),
@@ -224,9 +222,7 @@ class PricingMarkupsCRUDTest(TestCase):
         self.assertEqual(resp.json()["markup_percentage_micros"], 0)
 
     def test_delete_customer_markup_reverts_to_tenant_default(self):
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=None,
-            markup_percentage_micros=15000000, fixed_uplift_micros=0)
+        declares_a_markup(self.tenant, percentage_micros=15000000)
         TenantMarkup.objects.create(
             tenant=self.tenant, customer=self.customer,
             markup_percentage_micros=50000000, fixed_uplift_micros=0)
@@ -261,9 +257,7 @@ class PricingMarkupsCRUDTest(TestCase):
         therefore under-holds (money leak). The endpoint must delete via the
         model layer (TenantMarkup.delete()) so the version bump added in
         8272e5a actually fires; a queryset .filter(...).delete() bypasses it."""
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=None,
-            markup_percentage_micros=50_000_000, fixed_uplift_micros=0)  # tenant default 50%
+        declares_a_markup(self.tenant, percentage_micros=50_000_000)  # 50%
         TenantMarkup.objects.create(
             tenant=self.tenant, customer=self.customer,
             markup_percentage_micros=10_000_000, fixed_uplift_micros=0)  # customer discount 10%
@@ -272,7 +266,7 @@ class PricingMarkupsCRUDTest(TestCase):
         MarkupCache.begin_request(self.tenant.id)
         cached = MarkupCache.resolve(self.tenant, self.customer)
         self.assertIsNotNone(cached)
-        self.assertEqual(cached.markup_percentage_micros, 10_000_000)
+        self.assertEqual(cached.markup_micro_percent, 10_000_000)
 
         resp = self.http_client.delete(
             f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
@@ -287,7 +281,7 @@ class PricingMarkupsCRUDTest(TestCase):
         MarkupCache.begin_request(self.tenant.id)
         resolved = MarkupCache.resolve(self.tenant, self.customer)
         self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.markup_percentage_micros, 50_000_000)
+        self.assertEqual(resolved.markup_micro_percent, 50_000_000)
 
 
 class UsageEventDetailEndpointTest(TestCase):
@@ -842,13 +836,12 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
     def test_usage_analytics_dimensions(self):
         from apps.metering.usage.services.usage_service import UsageService
-        from apps.metering.pricing.models import TenantMarkup
         # The class already declares the tenant's rung — a rung of nothing, so
         # every other case here bills what the call cost. This one needs a
         # margin, so it RAISES the rung rather than declaring a second: only
         # one tenant default may exist, and creating a second is refused.
-        TenantMarkup.objects.filter(tenant=self.tenant, customer=None).update(
-            markup_percentage_micros=20_000_000)  # 20%
+        TenantDefaultMarkup.objects.filter(tenant=self.tenant).update(
+            markup_micro_percent=20_000_000)  # 20%
         # dimensions= now resolves through the registry (#128 rework); an
         # identity declaration (key == slot) is the porting move for tests
         # that grouped by a raw column name before the rework.

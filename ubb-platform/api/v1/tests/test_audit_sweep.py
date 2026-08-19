@@ -70,7 +70,16 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # generated integration is built against, so it is not a second "declared"),
 # measurement.declared, provider.declared, event_category.declared.
 # 63 + 11 = 74.
-_EXPECTED_MUTATING = 74
+#
+# a markup charge can be explained (slice 4, #357): +2, both recording. The
+# tenant declares its default markup rung and withdraws it, and the two are
+# separate acts under the registry's own rule — a correction to a declared
+# percentage is still a declaration, while a withdrawal leaves the tenant with
+# no rung at all and a governance reader must not have to read metadata to see
+# it. Deciding what a customer is charged where no rule matched is governance in
+# the same sense as declaring a grouping axis, so neither is exempt.
+# 74 + 2 = 76.
+_EXPECTED_MUTATING = 76
 _EXPECTED_EXEMPT = 5
 
 

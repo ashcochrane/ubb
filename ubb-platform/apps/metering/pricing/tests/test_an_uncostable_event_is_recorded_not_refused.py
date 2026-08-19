@@ -23,6 +23,7 @@ from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     a_usage_event_subject,
     cost_rate_in_default_book,
+    declares_a_markup,
     rate_in_default_book,
 )
 from apps.metering.usage.models import Posting
@@ -293,9 +294,7 @@ class TestAMarginOverACostUbbNeverLearnedIsWaived:
 
     def test_a_partly_costed_event_waives_its_margin_rather_than_flooring_it(self):
         tenant = _tenant()
-        from apps.metering.pricing.models import TenantMarkup
-        TenantMarkup.objects.create(tenant=tenant,
-                                    markup_percentage_micros=20_000_000)
+        declares_a_markup(tenant, percentage_micros=20_000_000)
         _declaration(tenant, quantities=("prompt_tokens", "image_pixels"))
         _cost_rate(tenant, measurement_key="prompt_tokens")
 
@@ -349,10 +348,8 @@ class TestADeclarationThatDisownsCostRatesDisownsThemAsAMarkupBasis:
     """
 
     def _marked_up_tenant(self):
-        from apps.metering.pricing.models import TenantMarkup
         tenant = _tenant()
-        TenantMarkup.objects.create(tenant=tenant,
-                                    markup_percentage_micros=20_000_000)
+        declares_a_markup(tenant, percentage_micros=20_000_000)
         return tenant
 
     def test_a_reported_declaration_waives_rather_than_marking_up_its_cost_rates(self):

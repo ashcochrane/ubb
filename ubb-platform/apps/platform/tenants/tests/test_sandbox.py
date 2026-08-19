@@ -235,12 +235,22 @@ class SandboxResetTest(TestCase):
 
     def _seed_config_rows(self, tenant):
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import Rate
+        from apps.metering.pricing.models import Rate, TenantDefaultMarkup
 
         Rate.objects.create(
             tenant=tenant, card_type="cost",
             measurement=declares_a_quantity(tenant, "tokens"),
             rate_per_unit_micros=10)
+        # THE TENANT'S DECLARED MARKUP RUNG (#357). Seeded here because the
+        # sweep discovers tenant-scoped models GENERICALLY, so a rung missing
+        # from `CONFIG_MODEL_LABELS` is wiped by a reset that says it is keeping
+        # configuration — and a tenant with no rung prices every later event to
+        # `unknown`. Nothing else in this fixture would notice: the row is
+        # invisible to the domain-wipe assertions and to the label-resolution
+        # check, which asks whether each label RESOLVES and not whether the
+        # right models are in the set.
+        TenantDefaultMarkup.objects.create(
+            tenant=tenant, markup_micro_percent=20_000_000)
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(
             tenant=tenant, url="https://example.com/hook", secret="s")
@@ -267,7 +277,7 @@ class SandboxResetTest(TestCase):
     def test_reset_keep_config_wipes_domain_preserves_config_and_keys(self):
         from apps.billing.gating.models import BudgetConfig
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.pricing.models import Rate
+        from apps.metering.pricing.models import Rate, TenantDefaultMarkup
         from apps.metering.usage.models import Posting
         from apps.platform.event_types.models import Measurement
 
@@ -297,6 +307,12 @@ class SandboxResetTest(TestCase):
         self.assertEqual(
             Measurement.objects.filter(
                 event_type__tenant=self.sandbox).count(), 1)
+        # And the tenant's declared markup rung (#357). It is configuration in
+        # exactly the sense the rate above is — it decides what a customer is
+        # charged — and a reset that wiped it would leave the sandbox pricing
+        # every later event to `unknown` with nothing saying why.
+        self.assertEqual(
+            TenantDefaultMarkup.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 1)

@@ -17,8 +17,10 @@ import pytest
 from apps.metering.pricing import receipts
 from apps.metering.pricing.receipts import (
     LEGACY_SCHEMA_VERSION,
+    MARKUP_TERMS_KEY,
     RECEIPT_SCHEMA_VERSION,
     REQUIRED_COMPONENT_KEYS,
+    REQUIRED_MARKUP_KEYS,
     SECTIONED_SCHEMA_VERSION,
     ReceiptShapeError,
     ReceiptSubject,
@@ -28,6 +30,7 @@ from apps.metering.pricing.receipts import (
     schema_version_of,
     uncosted_quantity_keys,
 )
+from apps.metering.pricing.tests._helpers import markup_terms
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
@@ -45,6 +48,12 @@ from core.vocabulary import (
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     subject_id="11111111-1111-1111-1111-111111111111")
+
+#: THE TERMS A MARGIN OVER COST HAS TO CARRY (#357), in the amounts the settled
+#: fixtures below already use: 20% of a 4_000 basis is 800, so the 4_800 those
+#: fixtures were written with is the sum of these terms rather than a number
+#: chosen to look plausible beside them.
+MARKUP_TERMS = markup_terms(4_000, micro_percent=20_000_000)
 
 #: A receipt in the shape written before the record carried a version at all.
 #: Rows like this exist and are READ, never rewritten: a receipt records what
@@ -73,7 +82,8 @@ def a_receipt(**overrides):
                                       "uncosted_measurement_keys": []}),
         "pricing": Resolution(method=PRICING_METHOD_MARGIN_OVER_COST,
                               status=PRICING_STATUS_KNOWN, amount_micros=4_800,
-                              detail={"components": []}),
+                              detail={"components": [],
+                                      MARKUP_TERMS_KEY: MARKUP_TERMS}),
         "provenance": {"cost_rate_ids": {}, "price_rate_ids": {}},
     }
     fields.update(overrides)
@@ -365,7 +375,8 @@ def _resolution_with(section, components):
                                   "uncosted_measurement_keys": []})
     return Resolution(method=PRICING_METHOD_MARGIN_OVER_COST,
                       status=PRICING_STATUS_KNOWN, amount_micros=4_800,
-                      detail={"components": components})
+                      detail={"components": components,
+                              MARKUP_TERMS_KEY: MARKUP_TERMS})
 
 
 class TestAComponentExplainsItsOwnAmount:
@@ -451,3 +462,90 @@ class TestAComponentExplainsItsOwnAmount:
             amount_micros=4_000, detail={"uncosted_measurement_keys": []}))
 
         assert "components" not in receipt["costing"]["detail"]
+
+
+class TestAMarginSaysWhatPercentageOverWhat:
+    """The content obligation on the path that produces most prices (#357).
+
+    Markup is the default pricing path — it runs wherever no rule matched — and
+    the record it left said only that a margin had been taken. The percentage
+    was then recoverable only by re-reading configuration that can have moved
+    since, which is the exact failure the receipt exists to prevent.
+
+    ⚠ **THE RULE BINDS THE METHOD, NOT THE RUNG.** A markup and a rule declaring
+    `margin_over_cost` are one method at two rungs, so a boundary that asked
+    only of the markup rung would be the second shape this ruling refuses. It
+    asks nothing about WHICH rung supplied the percentage: that is a pointer and
+    it lives in `provenance`, because the record it names can be edited or
+    withdrawn while the terms cannot.
+    """
+
+    def _priced_by_a_margin(self, **detail):
+        return a_receipt(pricing=Resolution(
+            method=PRICING_METHOD_MARGIN_OVER_COST,
+            status=PRICING_STATUS_KNOWN, amount_micros=4_800, detail=detail))
+
+    def test_a_margin_carrying_its_terms_is_admitted(self):
+        receipt = self._priced_by_a_margin(**{MARKUP_TERMS_KEY: MARKUP_TERMS})
+
+        assert receipt["pricing"]["detail"][MARKUP_TERMS_KEY] == MARKUP_TERMS
+
+    def test_a_margin_with_no_terms_at_all_is_refused(self):
+        with pytest.raises(ReceiptShapeError, match=MARKUP_TERMS_KEY):
+            self._priced_by_a_margin()
+
+    @pytest.mark.parametrize("term", sorted(REQUIRED_MARKUP_KEYS))
+    def test_a_margin_missing_any_one_term_is_refused(self, term):
+        """Driven over the set, so a term added to it is shown to be catchable
+        rather than assumed to be — and so that dropping one from the writer
+        cannot leave a green control behind."""
+        with pytest.raises(ReceiptShapeError, match=MARKUP_TERMS_KEY):
+            self._priced_by_a_margin(**{MARKUP_TERMS_KEY: {
+                name: value for name, value in MARKUP_TERMS.items()
+                if name != term}})
+
+    def test_a_fourth_term_is_refused_because_a_margin_never_composes(self):
+        """The set is exact and this is the direction that makes it so.
+
+        A floor, a cap or a second addend appearing beside the percentage is the
+        chain whose middle terms are on no record — which is what the rule
+        against composition exists to prevent (#147 §2), asked of the record
+        rather than only of the rule.
+        """
+        with pytest.raises(ReceiptShapeError, match=MARKUP_TERMS_KEY):
+            self._priced_by_a_margin(**{MARKUP_TERMS_KEY: {
+                **MARKUP_TERMS, "floor_micros": 10}})
+
+    @pytest.mark.parametrize("not_a_record", [[], "20%", 20_000_000, None])
+    def test_terms_that_are_not_a_record_are_refused(self, not_a_record):
+        with pytest.raises(ReceiptShapeError, match=MARKUP_TERMS_KEY):
+            self._priced_by_a_margin(**{MARKUP_TERMS_KEY: not_a_record})
+
+    @pytest.mark.parametrize("not_a_number", ["20", 20.5, True, None])
+    def test_a_term_that_is_not_a_whole_number_is_refused(self, not_a_number):
+        """A term a reader cannot do arithmetic with explains nothing, and
+        `True` is here because Python would otherwise let a boolean answer for
+        a percentage."""
+        with pytest.raises(ReceiptShapeError, match="micro_percent"):
+            self._priced_by_a_margin(**{MARKUP_TERMS_KEY: {
+                **MARKUP_TERMS, "micro_percent": not_a_number}})
+
+    def test_a_price_that_derived_nothing_owes_no_terms(self):
+        """A waived or unknown price names no method, so there is no derivation
+        to explain — and demanding terms of it would refuse a legitimate
+        receipt, which is worse than not asking."""
+        receipt = a_receipt(pricing=Resolution(
+            method=None, status=PRICING_STATUS_UNKNOWN, amount_micros=None,
+            detail={}))
+
+        assert MARKUP_TERMS_KEY not in receipt["pricing"]["detail"]
+
+    def test_the_other_method_owes_no_terms_either(self):
+        """A price attached to the event has its components; it took no margin
+        over anything, so the rule above is not about it."""
+        receipt = a_receipt(pricing=Resolution(
+            method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+            status=PRICING_STATUS_KNOWN, amount_micros=4_800,
+            detail={"components": []}))
+
+        assert MARKUP_TERMS_KEY not in receipt["pricing"]["detail"]

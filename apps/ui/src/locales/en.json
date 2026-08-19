@@ -75,6 +75,8 @@
   "audit_action.system.preproduction_model_cutover": "Pre-production model cutover",
   "audit_action.task_type.declared": "Task Type declared",
   "audit_action.tenant.config_changed": "Tenant configuration changed",
+  "audit_action.tenant_default_markup.declared": "Default markup declared",
+  "audit_action.tenant_default_markup.withdrawn": "Default markup withdrawn",
   "audit_action.tenant_supplied_revenue.recorded": "Tenant-supplied revenue recorded",
   "audit_action.top_up.requested": "Top-up requested",
   "audit_action.usage.refunded": "Usage refunded",

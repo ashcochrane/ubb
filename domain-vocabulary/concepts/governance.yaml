@@ -58,6 +58,19 @@ audit_action:
     - pricing_rule.added
     - pricing_rule.deleted
     - customer_pricing_override.set
+    # The tenant's default markup rung — the last rung of the price ladder,
+    # and what prices an event no rule matched. Declaring it and withdrawing
+    # it are two acts under the same rule the satellites below follow: a
+    # correction to a declared percentage is still a declaration, and a
+    # governance reader asking when a tenant stopped having a markup at all
+    # must not have to read metadata to find out.
+    #
+    # It is not the successor of the two retired names further down. Those
+    # recorded acts on a record that ceases to exist; this rung is a new
+    # record with its own routes, and the two sets are live at once until that
+    # record is deleted.
+    - tenant_default_markup.declared
+    - tenant_default_markup.withdrawn
     # What the tenant declares it meters.
     - event_type.declared
     - measurement.declared

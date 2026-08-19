@@ -6541,6 +6541,39 @@
         "title": "TenantConfigOut",
         "type": "object"
       },
+      "TenantDefaultMarkupIn": {
+        "description": "The tenant's default markup rung, as the tenant declares it (#357).\n\n\u26a0 **REQUIRED, WITH NO DEFAULT, WHICH IS THE WHOLE POINT.** UBB ships no\ncatalogue: there is no starter percentage anywhere, and a tenant that has\ndeclared nothing has no markup rung at all. A default of zero here would let\na caller declare a rung by accident, and a rung of zero is a decision \u2014 it\nsays *charge my customer exactly what the call cost* \u2014 so it has to be\nstated.\n\n**ONE TERM, BECAUSE A MARGIN NEVER COMPOSES** (#147 \u00a72). No floor, no cap\nand no flat addend beside the percentage: a resolved price is explicable by\nnaming one thing, and a chain whose middle terms are on no record is what\nthat rule exists to prevent.",
+        "properties": {
+          "markup_micro_percent": {
+            "minimum": 0,
+            "title": "Markup Micro Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "markup_micro_percent"
+        ],
+        "title": "TenantDefaultMarkupIn",
+        "type": "object"
+      },
+      "TenantDefaultMarkupOut": {
+        "description": "What the tenant has declared, or that they have declared nothing.\n\n\u26a0 **NULL MEANS NO RUNG, AND IT IS NOT A ZERO.** The two are different facts\nand reading one as the other is how a customer gets billed exactly what a\ncall cost with nobody having decided that: a declared zero says *charge\ncost* and settles, and an absent declaration resolves to `unknown` with no\namount at all. One nullable field rather than a percentage beside a\n`declared` flag, because two fields encoding one fact is two fields that can\ndisagree.",
+        "properties": {
+          "markup_micro_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markup Micro Percent"
+          }
+        },
+        "title": "TenantDefaultMarkupOut",
+        "type": "object"
+      },
       "TenantInvoiceListResponse": {
         "properties": {
           "data": {
@@ -11997,6 +12030,87 @@
           }
         ],
         "summary": "Assign Book"
+      }
+    },
+    "/api/v1/metering/pricing/default-markup": {
+      "delete": {
+        "description": "Withdraw the rung, leaving the tenant with none.\n\n\u26a0 **THIS IS NOT THE SAME AS DECLARING ZERO**, and the difference is the one\nthis rung exists to keep. A declared zero prices an event at exactly what\nthe call cost and settles; no rung at all resolves to `unknown` with no\namount, because nobody has said what to charge.\n\nIdempotent: withdrawing nothing answers `no_declaration` rather than 404,\nand writes no audit entry \u2014 there was no act.",
+        "operationId": "api_v1_metering_endpoints_withdraw_tenant_default_markup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Tenant Default Markup"
+      },
+      "get": {
+        "description": "What the tenant has declared, or null if they have declared nothing.\n\n\u26a0 **NULL, NOT ZERO.** UBB ships no catalogue, and a tenant with no\ndeclaration has no markup rung \u2014 every event they record with no matching\nrule prices to `unknown`. Answering `0` would say they had decided to charge\nexactly what their calls cost, which is a different decision and one nobody\nmade.",
+        "operationId": "api_v1_metering_endpoints_get_tenant_default_markup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDefaultMarkupOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Tenant Default Markup"
+      },
+      "put": {
+        "description": "Declare the tenant's default markup rung, or re-declare it.\n\nRe-declaring is the same act as declaring \u2014 a correction to a declared\npercentage is still a declaration \u2014 which is why one action name covers\nboth and why withdrawal is a different one.\n\nThe ADMIN floor is the write default this surface already runs for\neverything that decides what a customer is charged.",
+        "operationId": "api_v1_metering_endpoints_declare_tenant_default_markup",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantDefaultMarkupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDefaultMarkupOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Tenant Default Markup"
       }
     },
     "/api/v1/metering/pricing/markup": {

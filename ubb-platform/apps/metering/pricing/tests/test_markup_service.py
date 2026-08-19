@@ -17,7 +17,7 @@ about resolution rather than about this module.
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import TenantMarkup
+from apps.metering.pricing.models import TenantDefaultMarkup, TenantMarkup
 from apps.metering.pricing.services.markup_service import MarkupService
 
 
@@ -42,22 +42,51 @@ class TestMarkupService:
     def test_tenant_default_markup_applied(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=20_000_000)  # 20%
+        TenantDefaultMarkup.objects.create(tenant=t, markup_micro_percent=20_000_000)  # 20%
         assert _billed(100_000, t, c) == 120_000
 
     def test_customer_override_beats_tenant_default(self):
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=20_000_000)
+        TenantDefaultMarkup.objects.create(tenant=t, markup_micro_percent=20_000_000)
         TenantMarkup.objects.create(tenant=t, customer=c, markup_percentage_micros=50_000_000)
         assert _billed(100_000, t, c) == 150_000
         assert MarkupService.resolve(t, c).source == "customer"
 
-    def test_fixed_uplift_added(self):
+    def test_a_customer_overrides_fixed_uplift_is_added(self):
+        """⚠ THE UPLIFT IS A TERM OF THE TWO RUNGS BEING DELETED (#357).
+
+        A rule that takes a margin over cost does not also carry a flat addend
+        (#147 §2), so the tenant-default rung a tenant declares now has no
+        uplift column at all. The customer override and the plan's own column
+        still do until the commit that deletes both records, so the term is
+        exercised where it is actually reachable rather than through a rung
+        that cannot express it.
+        """
         t = Tenant.objects.create(name="T", products=["metering"])
         c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantMarkup.objects.create(tenant=t, customer=None, markup_percentage_micros=0, fixed_uplift_micros=500)
+        TenantMarkup.objects.create(tenant=t, customer=c, markup_percentage_micros=0, fixed_uplift_micros=500)
         assert _billed(100_000, t, c) == 100_500
+
+    def test_the_declared_rung_names_itself_and_the_record_it_came_from(self):
+        """What the receipt's provenance is written out of (#357).
+
+        A rung answers a percentage, which rung it is, and the record the
+        percentage was read from — never a finished number. The last of those
+        is what lets a tenant asked "why is this line £36?" be shown the row,
+        and it cannot be recovered later because the row can be edited.
+        """
+        t = Tenant.objects.create(name="T", products=["metering"])
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        rung = TenantDefaultMarkup.objects.create(
+            tenant=t, markup_micro_percent=20_000_000)
+
+        resolved = MarkupService.resolve(t, c)
+
+        assert resolved.source == "tenant_default"
+        assert resolved.source_id == str(rung.id)
+        assert resolved.markup_micro_percent == 20_000_000
+        assert resolved.fixed_uplift_micros == 0
 
 
 from apps.platform.plans.models import CustomerPlanAssignment, Plan
@@ -80,8 +109,8 @@ class TestMarkupPrecedenceWithPlans:
         """THE REVENUE LEAK, PINNED. A Personal Lite customer (50%) must not
         fall through to the tenant default (20%). If this test ever passes
         with 600_000, the plan rung has been lost."""
-        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
-                                    markup_percentage_micros=20_000_000)
+        TenantDefaultMarkup.objects.create(tenant=self.tenant,
+                                           markup_micro_percent=20_000_000)
         self._assign("personal-lite", 50_000_000)
         # $0.50 provider cost -> 50% -> $0.75, NOT the default's $0.60.
         assert _billed(500_000, self.tenant, self.customer) == 750_000
@@ -93,8 +122,8 @@ class TestMarkupPrecedenceWithPlans:
         assert _billed(500_000, self.tenant, self.customer) == 550_000
 
     def test_unassigned_customer_falls_through_to_tenant_default(self):
-        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
-                                    markup_percentage_micros=20_000_000)
+        TenantDefaultMarkup.objects.create(tenant=self.tenant,
+                                           markup_micro_percent=20_000_000)
         assert _billed(500_000, self.tenant, self.customer) == 600_000
 
     def test_no_markup_anywhere_leaves_the_rung_unresolved(self):
@@ -131,8 +160,8 @@ class TestMarkupPrecedenceWithPlans:
         zero and no rung at all — one is the tenant saying "charge cost", the
         other is nobody having said anything.
         """
-        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
-                                    markup_percentage_micros=20_000_000)
+        TenantDefaultMarkup.objects.create(tenant=self.tenant,
+                                           markup_micro_percent=20_000_000)
         self._assign("fee-only", 0)
         resolved = MarkupService.resolve(self.tenant, self.customer)
         assert resolved.source == "plan"
@@ -164,7 +193,10 @@ class TestAResolvedZeroIsStillABasis:
             tenant=self.tenant, external_id="c1")
 
     def test_a_resolved_zero_is_marked_up_to_the_uplift(self):
-        TenantMarkup.objects.create(tenant=self.tenant, customer=None,
+        # Through the customer override, which is the rung that still carries
+        # an uplift: the tenant-default rung has no such column, because a
+        # margin over cost never composes with a flat addend (#147 §2).
+        TenantMarkup.objects.create(tenant=self.tenant, customer=self.customer,
                                     markup_percentage_micros=20_000_000,
                                     fixed_uplift_micros=1_000)
         assert _billed(0, self.tenant, self.customer) == 1_000

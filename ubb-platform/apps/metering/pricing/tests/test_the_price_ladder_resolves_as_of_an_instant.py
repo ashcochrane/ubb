@@ -47,7 +47,10 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, TenantMarkup
+from apps.metering.pricing.models import Rate
+from apps.metering.pricing.receipts import MARKUP_TERMS_KEY
+from apps.metering.pricing.services.markup_service import (
+    MARKUP_RUNG_TENANT_DEFAULT)
 from apps.metering.pricing.services.pricing_service import (
     FROM_THE_CUSTOMERS_OWN_RULES,
     FROM_THE_SELECTED_BOOK,
@@ -58,6 +61,7 @@ from apps.metering.pricing.services.pricing_service import (
 from apps.metering.pricing.tests._helpers import (
     a_usage_event_subject,
     cost_rate_in_default_book,
+    declares_a_markup,
     rate_in_a_book_nothing_selects,
     rate_in_default_book,
     rate_in_the_providers_default_book,
@@ -129,8 +133,8 @@ class _ALadderMixin:
                 measurement_key=QUANTITY,
                 rate_per_unit_micros=SUPPLIER_COST)
         if "markup" in rungs:
-            TenantMarkup.objects.create(
-                tenant=tenant, markup_percentage_micros=MARKUP_PERCENTAGE)
+            built["markup"] = declares_a_markup(
+                tenant, percentage_micros=MARKUP_PERCENTAGE)
         # Built low rung first so the customer's book exists before its blanket
         # rule joins it; `rate_in_default_book` reuses one book per customer.
         if "book_default" in rungs:
@@ -174,6 +178,19 @@ class _ALadderMixin:
 #: must be attributable to, or `None` where the answer came from a rung that is
 #: not a rule — which is exactly what the provenance column has to be able to
 #: express.
+#:
+#: `markup` says what the markup rung DID, which is three answers and not two
+#: (#357). The rung is consulted only where rule resolution returned nothing, so
+#: a case where a rule won must find no markup on the record at all; where the
+#: rung was consulted and priced the event, the record carries both its terms
+#: and its provenance; and where it was consulted and could not — a margin over
+#: a cost UBB never learned — it carries the provenance and no terms, because a
+#: receipt naming nothing there would say the tenant had configured nothing when
+#: they had.
+NOT_CONSULTED = "not consulted"
+SUPPLIED_THE_PRICE = "supplied the price"
+CONSULTED_AND_COULD_NOT = "consulted, and could not compute"
+
 LADDER_CASES = [
     dict(
         name="rung 1 — the customer's own rule for this Event Type",
@@ -182,7 +199,7 @@ LADDER_CASES = [
         method=PRICING_METHOD_DIRECT_EVENT_PRICE,
         amount=RUNG_1_CUSTOMERS_OWN_EXACT,
         status=PRICING_STATUS_KNOWN,
-        cost_reason=None, wins="customer_exact"),
+        cost_reason=None, wins="customer_exact", markup=NOT_CONSULTED),
     dict(
         name="rung 2 — the selected book's rule for this Event Type",
         rungs=("cost", "markup", "book_default", "customer_blanket",
@@ -190,42 +207,43 @@ LADDER_CASES = [
         method=PRICING_METHOD_DIRECT_EVENT_PRICE,
         amount=RUNG_2_BOOKS_EXACT,
         status=PRICING_STATUS_KNOWN,
-        cost_reason=None, wins="book_exact"),
+        cost_reason=None, wins="book_exact", markup=NOT_CONSULTED),
     dict(
         name="rung 3 — the customer's blanket rule",
         rungs=("cost", "markup", "book_default", "customer_blanket"),
         method=PRICING_METHOD_DIRECT_EVENT_PRICE,
         amount=RUNG_3_CUSTOMERS_BLANKET,
         status=PRICING_STATUS_KNOWN,
-        cost_reason=None, wins="customer_blanket"),
+        cost_reason=None, wins="customer_blanket", markup=NOT_CONSULTED),
     dict(
         name="rung 4 — the selected book's default rule",
         rungs=("cost", "markup", "book_default"),
         method=PRICING_METHOD_DIRECT_EVENT_PRICE,
         amount=RUNG_4_BOOKS_DEFAULT,
         status=PRICING_STATUS_KNOWN,
-        cost_reason=None, wins="book_default"),
+        cost_reason=None, wins="book_default", markup=NOT_CONSULTED),
     dict(
         name="the markup rung — reached only because no rule was",
         rungs=("cost", "markup"),
         method=PRICING_METHOD_MARGIN_OVER_COST,
         amount=MARKUP_OVER_THE_SUPPLIER_COST,
         status=PRICING_STATUS_KNOWN,
-        cost_reason=None, wins=None),
+        cost_reason=None, wins=None, markup=SUPPLIED_THE_PRICE),
     dict(
         name="the markup rung over a cost UBB never learned — waived",
         rungs=("markup",),
         method=None,
         amount=None,
         status=PRICING_STATUS_WAIVED,
-        cost_reason=UNRESOLVED_REASON_COST_RATE_MISSING, wins=None),
+        cost_reason=UNRESOLVED_REASON_COST_RATE_MISSING, wins=None,
+        markup=CONSULTED_AND_COULD_NOT),
     dict(
         name="no rule and no markup — unknown, and never a zero",
         rungs=("cost",),
         method=None,
         amount=None,
         status=PRICING_STATUS_UNKNOWN,
-        cost_reason=None, wins=None),
+        cost_reason=None, wins=None, markup=NOT_CONSULTED),
 ]
 
 
@@ -268,6 +286,25 @@ class TheLadderAnswersOneRungAtATimeTest(_ALadderMixin, TestCase):
                                 if case["wins"] else {})
                 self.assertEqual(receipt["provenance"]["price_rate_ids"],
                                  expected_ids)
+                self._assert_the_markup_rung(receipt, case["markup"], built)
+
+    def _assert_the_markup_rung(self, receipt, expected, built):
+        """What the record says the markup rung did, in each of three cases."""
+        provenance = receipt["provenance"].get(MARKUP_TERMS_KEY)
+        terms = receipt["pricing"]["detail"].get(MARKUP_TERMS_KEY)
+
+        if expected is NOT_CONSULTED:
+            self.assertIsNone(provenance)
+            self.assertIsNone(terms)
+            return
+        self.assertEqual(provenance,
+                         {"rung": MARKUP_RUNG_TENANT_DEFAULT,
+                          "record_id": str(built["markup"].id)})
+        if expected is SUPPLIED_THE_PRICE:
+            self.assertEqual(terms["micro_percent"], MARKUP_PERCENTAGE)
+            self.assertEqual(terms["basis_micros"], SUPPLIER_COST)
+        else:
+            self.assertIsNone(terms)
 
     def test_an_unpriced_subject_is_never_recorded_as_a_zero(self):
         """The claim the status exists to make, stated on its own.
