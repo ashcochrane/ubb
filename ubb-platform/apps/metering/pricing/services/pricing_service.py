@@ -353,6 +353,34 @@ class PricingService:
                       key=lambda pair: position_of[pair[0].rate_card_id])
 
     @staticmethod
+    def _override_book(tenant, customer, card_type, currency):
+        """THE BOOK HOLDING THIS CUSTOMER'S OWN RULES, IF THEY HAVE ONE (#361).
+
+        A tenant honouring a negotiated deal gives one customer their own
+        pricing rules, and this is where they live: a Pricing Book carrying
+        that customer, whose every rule is one of that customer's own. There is
+        at most one per currency, held by the constraint named on the model
+        (`RateCard.Meta.constraints`).
+
+        **NOT A SUBSTITUTE FOR A BOOK, AND #362 IS WHERE THAT BITES.** An
+        override is a rule at a rung *inside* resolution; it is not a way for a
+        customer to have pricing without a book being selected for them. A
+        customer with overrides and nothing else resolves their overrides and
+        nothing else — a partial catalogue, not a complete one — and #362's
+        required `Plan.pricing_book` is what makes that state unreachable.
+
+        The cost side has no such thing and asks anyway rather than being
+        special-cased at the call site: a supplier's price does not change
+        because of who UBB's tenant sells to, so the discriminator answers
+        `None` here for the same reason the assignment below does.
+        """
+        if customer is None or card_type != "price":
+            return None
+        return RateCard.objects.filter(
+            customer=customer, tenant=tenant, currency=currency,
+            card_type="price").first()
+
+    @staticmethod
     def _assigned_book(tenant, customer, card_type, currency):
         if customer is None or card_type != "price":
             return None
@@ -368,16 +396,25 @@ class PricingService:
             currency=currency, is_default=True).first()
 
     @staticmethod
-    def _selected_books(tenant, customer, card_type, provider, currency):
+    def _selected_books(tenant, customer, card_type, provider, currency,
+                        the_customers_own=True):
         """WHICH BOOKS THIS SUBJECT'S PRICE MAY BE RESOLVED FROM, chosen once.
 
         Selection and resolution are two steps and this is the first (#147
-        §5.3). A book becomes readable for one event in exactly two ways: it is
-        the tenant's default for the event's provider, or the customer is
-        assigned to it. Anything else — a book nobody is assigned to, another
-        customer's book, the default book of a provider this event is not from —
-        is unreachable, and no rule inside it can be the answer however well it
-        matches.
+        §5.3). A book becomes readable for one event in exactly three ways: it
+        holds the customer's own rules, it is the tenant's default for the
+        event's provider, or the customer is assigned to it. Anything else — a
+        book nobody is assigned to, another customer's book, the default book of
+        a provider this event is not from — is unreachable, and no rule inside
+        it can be the answer however well it matches.
+
+        ⚠ **`the_customers_own=False` ANSWERS A DIFFERENT QUESTION AND ONLY ONE
+        CALLER ASKS IT (#361):** *what would this customer be charged if they
+        had no override* — the inherited rule, which a console offers as the
+        starting point for writing one. It is a READ and it prices nothing:
+        every path that decides what a customer is actually charged takes the
+        default, so an override cannot be skipped by a caller who forgot an
+        argument.
 
         **THE PROVIDER-AGNOSTIC DEFAULT IS SELECTION, NOT A THIRD TIER.** A ""
         `provider_key` book is the tenant's provider-agnostic default (D3's
@@ -403,15 +440,26 @@ class PricingService:
         is also the tenant's default, so the same rows are reachable twice; a
         second entry for it would let the ranking read the customer's own rules
         as the tenant's, silently demoting every override such a tenant wrote.
-        Assigned is appended first, so keeping the first entry keeps the higher
-        source.
+        The customer's own books are appended first, so keeping the first entry
+        keeps the higher source.
         """
         books, seen = [], set()
-        assigned = PricingService._assigned_book(
-            tenant, customer, card_type, currency)
-        if assigned is not None:
-            books.append((FROM_THE_CUSTOMERS_OWN_RULES, assigned))
-            seen.add(assigned.id)
+        # THE OVERRIDE BOOK IS APPENDED AHEAD OF THE ASSIGNMENT, AND BOTH CARRY
+        # THE SAME SOURCE (#361). They are one rung — *the customer's own
+        # rules* — reached two ways while the assignment record still exists,
+        # and the ORDER between them decides only a tie that specificity and
+        # `valid_from` both failed to break. The override book goes first
+        # because it is the narrower statement of the two: it holds rules
+        # written FOR this customer, where an assignment merely points them at
+        # a book.
+        for the_customers in (PricingService._override_book(
+                                  tenant, customer, card_type, currency)
+                              if the_customers_own else None,
+                              PricingService._assigned_book(
+                                  tenant, customer, card_type, currency)):
+            if the_customers is not None and the_customers.id not in seen:
+                books.append((FROM_THE_CUSTOMERS_OWN_RULES, the_customers))
+                seen.add(the_customers.id)
         # A LIST AND NOT A SET, because the order above is load-bearing: a set's
         # iteration order would decide ties between the provider's own default
         # book and the provider-agnostic one, differently between processes.
@@ -456,6 +504,35 @@ class PricingService:
             return None
         candidates.sort(key=lambda pair: ladder_rank(*pair), reverse=True)
         return candidates[0][0]
+
+    @staticmethod
+    def the_rule_a_customer_inherits(*, tenant, customer, selectors,
+                                     measurement_key, currency, as_of):
+        """THE RULE THIS CUSTOMER WOULD GET IF THEY HAD NO OVERRIDE (#361).
+
+        What a client needs to offer *create an override from the inherited
+        rule*: the rule as it stands for this customer with their own book
+        taken out of the selection, so a console can show the method and the
+        current value it is about to replace.
+
+        **THE SAME LADDER, ONE RUNG SHORTER.** It is `_resolve_card` over the
+        books `_selected_books` returns without the customer's own, rather than
+        a second resolution written beside the first — so specificity before
+        source, the absence of fallthrough between books and the as-of instant
+        are all the ones that decide the real price, and the answer a tenant is
+        shown cannot drift from the answer they are overriding.
+
+        Answers `None` where nothing is inherited, which is a real state and
+        not an error: a quantity no book in play prices falls to the markup
+        rung, and a client creating an override there is starting from nothing
+        rather than from a rule.
+        """
+        return PricingService._resolve_card(
+            tenant, customer, "price", selectors, measurement_key, currency,
+            as_of,
+            books=PricingService._selected_books(
+                tenant, customer, "price", selectors.get("provider") or "",
+                currency, the_customers_own=False))
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,

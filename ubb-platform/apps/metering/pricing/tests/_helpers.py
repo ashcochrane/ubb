@@ -73,6 +73,27 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="
                                book_version_from=book.version, **fields)
 
 
+def an_override_rule(tenant, customer, **fields):
+    """One of a customer's OWN rules — a whole rule, at its own rung (#361).
+
+    Every field is the override's: it inherits nothing from the rule it
+    replaces, which is the whole of the ruling this fixture exists to let a
+    test assert. A caller states the method it wants the same way it states a
+    price, because an override that could not change the method would be an
+    amendment wearing a replacement's name (#151 §6.2).
+    """
+    # THE PRODUCTION DOOR, NOT A COPY OF IT. A fixture that built the same book
+    # itself would be a second writer of that construction and would keep
+    # passing the day the real one changed (#354).
+    book = BookService.the_customers_own_book(tenant, customer)
+    if "measurement" not in fields:
+        fields["measurement"] = declares_a_quantity(
+            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    return Rate.objects.create(
+        tenant=tenant, card_type="price", customer=customer, rate_card=book,
+        book_version_from=book.version, **fields)
+
+
 def cost_book(tenant, *, key="default", provider="", currency="usd"):
     """A COST book with no rates in it, for a test that adds its own.
 

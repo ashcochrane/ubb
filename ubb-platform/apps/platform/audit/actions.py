@@ -108,6 +108,32 @@ AUDIT_ACTIONS = (
     "pricing_book_publish.declared",
     "pricing_book_publish.published",
     "pricing_book_publish.discarded",
+    # A CUSTOMER'S OWN PRICING RULE (#361, #151 §6). A tenant honouring a
+    # negotiated deal gives one customer a rule that replaces what they
+    # inherit — the whole rule, method included — and takes it away again when
+    # the deal ends. Both are governance in the sense every pair above is:
+    # they decide what one named customer is charged.
+    #
+    # DECLARING AND WITHDRAWING ARE SPLIT, under the rule the pairs above
+    # follow. A governance reader asking "when did this customer stop having
+    # their own price" must not have to read metadata to find out, and
+    # splitting them later is the rename ADR-004 §2 calls a breaking change.
+    #
+    # ⚠ NOT `customer_pricing_override.set`, WHICH IS ALREADY IN THE REGISTRY
+    # AND IS A DIFFERENT ACT. That name is the end-state spelling of
+    # `markup.set` — a NUMBER written onto the per-customer row of the record
+    # this slice deletes. An override is not a number inside a rule; it is a
+    # whole rule, declared through a publish. Two acts on two records, so two
+    # names, and neither is a rename of the other.
+    #
+    # ⚠ THE ACTS RECORD THE DRAFT, NOT THE RULE, WHICH IS WHY BOTH SIT BESIDE
+    # THE THREE ABOVE. Declaring an override writes no rule: it declares a
+    # change on the customer's own book, and publishing that change is what
+    # puts the deal in force and is recorded under `pricing_book_publish.
+    # published`. The `resource_type` is the publish record's for the same
+    # reason theirs is — the ledger already says which record moved.
+    "customer_pricing_override.declared",
+    "customer_pricing_override.withdrawn",
     # Grouping Field registry (the 2026-07-27 unified grouping model plan under
     # `docs/plans/`, D1). Renamed with
     # the thing it records (#277): `audit_action` in

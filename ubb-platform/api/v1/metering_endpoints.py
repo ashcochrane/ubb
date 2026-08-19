@@ -41,6 +41,7 @@ from api.v1.schemas import (
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
     BookPublishIn, BookPublishOut, PaginatedBookPublishes,
+    CustomerOverrideIn, InheritedRuleOut, inherited_rule_out,
     UndeclaredGroupingField,
     book_change_body, book_change_diff_out, book_publish_out,
     book_out, rate_change_body, rate_out, usage_event_out,
@@ -49,6 +50,7 @@ from api.v1.schemas import (
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
+    CHANGE_ADD, CHANGE_RETIRE,
     PricingBookPublish, Rate, RateCard, RateCardAssignment,
     CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
 )
@@ -1053,6 +1055,37 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
 _billing_check = ProductAccess("billing")
 
 
+def _refuse_an_immediate_change_to_an_override(book):
+    """The three immediate routes do not reach a customer's own book (#361).
+
+    An override is created, changed and retired through a PUBLISH — the same
+    draft, the same diff, the same forward-dating, the same
+    reversal-by-further-publish — and this is what makes that true of the whole
+    surface rather than only of the two routes that declare one.
+
+    ⚠ **WITHOUT IT THE CLAIM WOULD BE FALSE, AND THE PATH IS SHORT.** A book
+    still has three immediate mutation surfaces beside the publish record —
+    adding a rule, repricing a set of them, retiring one — every one of which
+    takes a bare book id and is filtered by the tenant alone. A customer's own
+    book is one of that tenant's books, so a negotiated deal could be written,
+    repriced and retired with no record of who decided it or when it took
+    effect. That is the one thing an override must never be: it is the record
+    of a contract.
+
+    The three leave with the rest of this slice's vocabulary (#369) and this
+    refusal leaves with them.
+    """
+    if book.customer_id is not None:
+        raise Problem(
+            "validation_error",
+            "this book holds one customer's own pricing rules, which are "
+            "changed by a publish and never written directly. Declare an "
+            "override at POST /pricing/customers/{customer_id}/overrides, "
+            "withdraw one at DELETE "
+            "/pricing/customers/{customer_id}/overrides/{override_id}, and "
+            "reprice one through the book's own publish")
+
+
 def _gate_card_type(request, card_type):
     _product_check(request)
     if card_type == "price":
@@ -1169,6 +1202,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
     Creates dedupe on natural identity (#78): a duplicate rate answers 409."""
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
+    _refuse_an_immediate_change_to_an_override(book)
     if book.is_default and payload.provider != book.provider_key:
         raise Problem("validation_error",
                       f"rate provider {payload.provider!r} must match the "
@@ -1248,6 +1282,7 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
 
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
+    _refuse_an_immediate_change_to_an_override(book)
     try:
         BookService.publish(book, [rate_change_body(c.dict(exclude_none=True))
                                    for c in payload.changes])
@@ -1525,6 +1560,211 @@ def discard_book_publish(request, book_id: UUID, publish_id: UUID):
     return 200, {"status": "discarded"}
 
 
+# --- A customer override replaces a whole rule, method included (#361) -------
+#
+# A tenant honouring a negotiated deal gives one customer their own pricing
+# rule. The override replaces the WHOLE rule — its method, its terms and the
+# selectors it pins — so it is a rule, written where rules are written and
+# published the way rules are published (#151 §6).
+#
+# ⚠ **THE TWO ACTS BELOW DECLARE A DRAFT AND NOTHING ELSE.** Neither writes a
+# rule: an override is created, changed and retired through a publish, on the
+# customer's own book, through the book's own routes — the same draft, the same
+# diff, the same forward-dating, the same reversal-by-further-publish. There is
+# no immediate-effect path to an override and no second mutation surface for
+# one. What these two add is the book: a client declaring a customer's first
+# override does not have to know that a container exists.
+
+
+@metering_router.post("/pricing/customers/{customer_id}/overrides",
+                      response={200: BookPublishOut, 404: ProblemOut,
+                                422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("customer_pricing_override.declared")
+def declare_customer_override(request, customer_id: UUID,
+                              payload: CustomerOverrideIn):
+    """Declare one customer's own pricing rule, as a draft.
+
+    The override states a WHOLE rule — the quantity it prices, the selectors it
+    pins, how it derives its price and what it charges — and replaces whatever
+    this customer inherits for that rule. Nothing is inherited into it: a field
+    left out takes the rule defaults, never the superseded rule's value, so a
+    customer moved from a margin over cost onto a flat price is stated in one
+    body. `GET /pricing/customers/{customer_id}/inherited-rule` answers what
+    they get today, which is what a client offers as the starting point.
+
+    **This writes no rule.** It declares a draft on the customer's own book,
+    exactly as a change to any other book is declared, and publishing it
+    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    is what puts the deal in force. The response carries that book's id and the
+    diff.
+
+    `effective_at` dates the override forward and omitting it means now, under
+    the bounds every publish takes: timezone-aware (`effective_at_naive`), not
+    in the past (`effective_at_in_past`), within 366 days
+    (`effective_at_too_far_ahead`), and at or after the latest boundary already
+    scheduled on this customer's book
+    (`effective_at_before_scheduled_boundary`).
+    """
+    # The instant is checked before anything else happens, for the reason
+    # `declare_book_publish` states in full: a refusal placed under a write
+    # spends what it refuses, and this handler's writes are the customer's book
+    # (created on first declaration), the draft and the governance entry.
+    if payload.effective_at is not None:
+        validate_scheduled_instant(payload.effective_at, timezone.now())
+
+    from apps.metering.pricing.services.book_service import BookService
+
+    _gate_card_type(request, "price")
+    customer = get_object_or_404(Customer, id=customer_id,
+                                 tenant=request.auth.tenant)
+    slots = slot_map(request.auth.tenant.id)
+    body = {**payload.dict(exclude={"effective_at"}), "kind": CHANGE_ADD}
+    try:
+        change = book_change_body(body, slots)
+    except UndeclaredGroupingField as e:
+        raise Problem(
+            "validation_error",
+            f"no grouping field is declared under the key {e.key!r}. A "
+            f"rule selects on a grouping field this tenant has declared; "
+            f"declare it first, then price on it")
+    try:
+        with transaction.atomic():
+            book = BookService.the_customers_own_book(
+                request.auth.tenant, customer)
+            record = BookService.declare(book, [change],
+                                         effective_at=payload.effective_at)
+            audit_record(
+                action="customer_pricing_override.declared",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book_publish",
+                resource_id=record.id,
+                metadata={"customer_id": str(customer.id),
+                          "book_id": str(book.id),
+                          "measurement_key": payload.measurement_key,
+                          "effective_at": record.effective_at.isoformat()},
+            )
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+    return 200, _publish_response(request, record)
+
+
+@metering_router.delete("/pricing/customers/{customer_id}/overrides/{override_id}",
+                        response={200: BookPublishOut, 404: ProblemOut,
+                                  422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("customer_pricing_override.withdrawn")
+def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
+                               effective_at: datetime = None):
+    """Withdraw one of a customer's own rules: they go back to inheriting.
+
+    **This writes no rule either.** It declares a draft retiring the override
+    on the customer's own book, and publishing that draft is what ends the
+    deal. Retiring an override reopens nothing and revives nothing — the rule
+    the customer inherits was there all along, out-ranked, and starts
+    answering again the moment it is not.
+
+    `effective_at` dates the withdrawal forward under the same bounds a publish
+    takes, and omitting it means now.
+    """
+    if effective_at is not None:
+        validate_scheduled_instant(effective_at, timezone.now())
+
+    from apps.metering.pricing.services.book_service import BookService
+
+    _gate_card_type(request, "price")
+    override = get_object_or_404(
+        Rate.objects.select_related("rate_card", "measurement"),
+        id=override_id, tenant=request.auth.tenant,
+        rate_card__customer_id=customer_id)
+    # The change is built from the rule's OWN columns rather than from a body,
+    # so what is retired is the rule the caller addressed and nothing that
+    # merely resembles it. `plan_changes` identifies a rule by the quantity it
+    # prices plus its selectors, which is exactly what this reads back.
+    change = {"kind": CHANGE_RETIRE,
+              "measurement_key": override.measurement_key,
+              **{name: getattr(override, name) for name in Rate.SELECTORS}}
+    try:
+        with transaction.atomic():
+            record = BookService.declare(override.rate_card, [change],
+                                         effective_at=effective_at)
+            audit_record(
+                action="customer_pricing_override.withdrawn",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book_publish",
+                resource_id=record.id,
+                metadata={"customer_id": str(customer_id),
+                          "book_id": str(override.rate_card_id),
+                          "override_id": str(override.id),
+                          "measurement_key": override.measurement_key,
+                          "effective_at": record.effective_at.isoformat()},
+            )
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+    return 200, _publish_response(request, record)
+
+
+@metering_router.get("/pricing/customers/{customer_id}/inherited-rule",
+                     response={200: InheritedRuleOut, 404: ProblemOut,
+                               422: ProblemOut})
+@role_floor(READ)
+def get_inherited_rule(request, customer_id: UUID, measurement_key: str,
+                       provider: str = "", event_type: str = "",
+                       task_type: str = "", subtask_type: str = "",
+                       grouping_field: list[str] = Query([]),
+                       as_of: datetime = None):
+    """What this customer is charged for a rule where they have no override.
+
+    The starting point for writing one: the rule as it stands for this customer
+    with their own book taken out of the ladder, so a client can show the
+    method and the current value the override is about to replace, and copy
+    them into `POST /pricing/customers/{customer_id}/overrides`.
+
+    It is the same ladder one rung shorter — same specificity-before-source,
+    same absence of fallthrough between books — so what is shown cannot drift
+    from what is being overridden.
+
+    `rule` is null where nothing is inherited, which is an ordinary state
+    rather than an error: a quantity no book in play prices falls to the
+    tenant's markup rung, and an override written there starts from nothing.
+
+    Each `grouping_field` is `key=value`, naming a grouping field this tenant
+    has declared; repeat the parameter to pin more than one. `as_of` asks the
+    question at an instant other than now.
+    """
+    _product_check(request)
+    customer = get_object_or_404(Customer, id=customer_id,
+                                 tenant=request.auth.tenant)
+    slots = slot_map(request.auth.tenant.id)
+    selectors = {name: "" for name in Rate.SELECTORS}
+    selectors.update(provider=provider, event_type=event_type,
+                     task_type=task_type, subtask_type=subtask_type)
+    for pinned in grouping_field:
+        key, separator, value = pinned.partition("=")
+        if not separator or key not in slots:
+            raise Problem(
+                "validation_error",
+                f"grouping_field takes `key=value` naming a grouping field "
+                f"this tenant has declared; got {pinned!r}")
+        selectors[slots[key]] = value
+    from apps.metering.pricing.services.pricing_service import PricingService
+
+    rule = PricingService.the_rule_a_customer_inherits(
+        tenant=request.auth.tenant, customer=customer, selectors=selectors,
+        measurement_key=measurement_key,
+        currency=request.auth.tenant.default_currency or "usd",
+        as_of=as_of or timezone.now())
+    # The rule's OWN selector values, not the ones asked about: a rule that
+    # leaves a selector unpinned matches an event that carries one, and a
+    # starting point echoing the request would tell a client the rule pins
+    # something it does not.
+    return 200, inherited_rule_out(
+        rule,
+        {} if rule is None else {name: getattr(rule, name)
+                                 for name in Rate.SELECTORS},
+        keys_by_slot(request.auth.tenant.id))
+
+
 @metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("rate_card.assigned")
@@ -1552,17 +1792,26 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
 
 
 @metering_router.delete("/pricing/rate-cards/{book_id}/rates/{rate_id}",
-                        response=StatusResponse)
+                        response={200: StatusResponse, 404: ProblemOut,
+                                  422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("rate.deleted")
 def delete_rate(request, book_id: UUID, rate_id: UUID):
     """Retire (soft-expire) a single rate within its book. Addressed under its
     book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
     noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
-    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path)."""
+    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    A rule in a book that holds one customer's own pricing is refused (422): an
+    override is withdrawn through DELETE
+    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
+    effect when its publish lands."""
     _product_check(request)
-    rate = get_object_or_404(Rate, id=rate_id, rate_card_id=book_id,
-                             tenant=request.auth.tenant, valid_to__isnull=True)
+    rate = get_object_or_404(
+        Rate.objects.select_related("rate_card"), id=rate_id,
+        rate_card_id=book_id, tenant=request.auth.tenant,
+        valid_to__isnull=True)
+    _refuse_an_immediate_change_to_an_override(rate.rate_card)
     with transaction.atomic():
         rate.valid_to = timezone.now()
         rate.save(update_fields=["valid_to", "updated_at"])

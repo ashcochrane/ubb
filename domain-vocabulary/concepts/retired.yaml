@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,616 of 2,007 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,630 of 2,022 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1036,6 +1036,36 @@ measurement_key:
     # `/code-review`'s STANDARDS axis found the eighth, in the paragraph whose
     # whole job is to be a measurement. Count the call sites with a grep, never
     # from a memory of what the module does.
+
+    # #361 MOVED THE DENOMINATOR ONLY, UPWARD BY FOURTEEN (1,616 -> 1,630
+    # swept, 2,007 -> 2,022 tracked, 52/128 unchanged), and ONE EXCLUSION MOVED
+    # WITH IT for the ordinary reason: `historical-migrations` went 224 -> 225
+    # because this commit ADDS a migration to a directory the rule already
+    # covers, which is #312's non-widening signature and not a story. Fifteen
+    # new tracked files, fourteen of them swept.
+    #
+    # TWO OF THE FOURTEEN ARE HAND-WRITTEN and TWELVE ARE GENERATED, which is
+    # the largest generated share any re-take here has seen. The two are the
+    # override's behaviour module and its route module. The twelve are
+    # `generate_core.py`'s, counted off `git diff --name-status` rather than
+    # from memory: three operation modules for the three new routes, three
+    # model modules for the three new schemas, two grouping-field bag modules,
+    # and FOUR ENUM MODULES — one per schema that newly advertises how a rule
+    # derives its price. That last four is the mechanism #355 recorded:
+    # advertising a closed concept mints one generated enum module PER SCHEMA
+    # carrying it, so a commit that puts one concept on four schemas pays four
+    # files. The numbers here were taken after `generate_core.py` ran and its
+    # output was staged, which is the discipline #317 wrote down.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT ABOUT PRICING RULES, which is the family
+    # this word is most at home in. The two new modules resolve a price
+    # repeatedly and never divide one: every figure they compare is a rule's
+    # own per-unit term against a constant chosen so the two are equal, which
+    # is the arrangement that lets a test read as *which rule answered* rather
+    # than as arithmetic somebody has to redo. The denominator half of a rate
+    # is named `unit_quantity` at every site, which is the surviving RATE
+    # ARITHMETIC sense's own spelling and is #275's caution holding once more:
+    # this commit goes nowhere near `compute`.
 
     - term: units
       retired_as: >-

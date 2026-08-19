@@ -690,7 +690,7 @@ class TheRefusalSpendsNothingTest(_APublishingTenantMixin, TestCase):
 
 
 class TheContractPublishesEveryTermTheServiceMovesTest(TestCase):
-    """The published terms and the terms a publish can move are one set.
+    """The published terms and everything a publish can move are one set.
 
     ⚠ A `Schema` THAT DOES NOT NAME A KEY DROPS IT, silently — which is how a
     read contract once published a ceiling on a margin as the margin. The
@@ -703,9 +703,9 @@ class TheContractPublishesEveryTermTheServiceMovesTest(TestCase):
 
     def test_the_two_sets_are_equal(self):
         from api.v1.schemas import RuleTermsOut
-        from apps.metering.pricing.services.book_service import _TERM_FIELDS
+        from apps.metering.pricing.services.book_service import _RULE_FIELDS
 
-        self.assertEqual(set(RuleTermsOut.model_fields), set(_TERM_FIELDS))
+        self.assertEqual(set(RuleTermsOut.model_fields), set(_RULE_FIELDS))
 
 
 class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):

@@ -8,62 +8,52 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
+from ..models.customer_override_in_pricing_method_type_0 import CustomerOverrideInPricingMethodType0
 from ..types import UNSET, Unset
 from typing import cast
+import datetime
 
 if TYPE_CHECKING:
-  from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
+  from ..models.customer_override_in_grouping_fields import CustomerOverrideInGroupingFields
 
 
 
 
 
-T = TypeVar("T", bound="BookChangeIn")
+T = TypeVar("T", bound="CustomerOverrideIn")
 
 
 
 @_attrs_define
-class BookChangeIn:
-    """ One change in a publish: what to do, and to which rule.
+class CustomerOverrideIn:
+    """ The rule this customer gets, and when it takes effect.
 
-    `kind` is `add`, `reprice` or `retire` — the three surfaces a book used to
-    have, arriving as three kinds of one act. It is a plain string and the
-    service refuses anything else, which is how the book's own discriminators
-    are already handled on this surface: these three name the shape of one
-    request body, they are stored on no column and returned in no response, and
-    a `Literal` here would publish an enumeration the vocabulary registry does
-    not own.
+    **A COMPLETE RULE, WHICH IS THE WHOLE RULING.** Every field a rule has is
+    stated here: the quantity it prices, the selectors it pins, how it derives
+    its price and what it charges. There is no field naming a rule to inherit
+    from and no field that takes a value while leaving a method behind —
+    **partial override is not expressible on this surface**, because a rule
+    whose method comes from one record and whose value comes from another
+    cannot be explained by naming one rule, which is the property the receipt
+    design rests on (#151 §6.2).
 
-    The rule is identified by the quantity it prices plus its selectors —
-    `provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own
-    declared grouping fields. An omitted selector means the rule leaves it
-    unpinned, which is what an unpinned selector means everywhere on this
-    surface, so a change body names only what the rule pins.
+    **THIS BODY NAMES NO ACT.** It carries no `kind`, unlike a change to a
+    book: declaring an override adds a rule and withdrawing one retires it, and
+    which of the two is happening is the route you called.
 
-    The three terms and the method are nullable because a reprice states only
-    what moves: anything unstated is carried over from the rule being
-    superseded. An `add` takes the model's own defaults for what it leaves out,
-    and a `retire` states none of them at all — it opens no rule.
-
-    ⚠ **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE
-    IT.** Whether an amount is per-unit or a fixed component is carried over
-    from the rule being superseded, and an added rule takes the default. The
-    column's name is retired and its ledger entry caps how many files may still
-    spell it, so putting it on this schema would coin the retired spelling on a
-    brand-new surface for the ticket that renames it to convert — and putting
-    the canonical spelling here would publish a field whose values are still the
-    retired ones. Both belong to the commit that converts the column, its values
-    and the three rate schemas above together. The immediate reprice route this
-    act replaces still states the shape and is untouched.
+    `effective_at` dates the override forward and omitting it means now, under
+    exactly the bounds a publish takes, because this IS a publish: it is
+    declared as a draft on the customer's own book, published through the
+    book's own route, and reversed by a further publish. There is no
+    immediate-effect path to an override and no second mutation surface for one.
 
         Attributes:
-            kind (str):
             measurement_key (str):
+            effective_at (datetime.datetime | None | Unset):
             event_type (str | Unset):  Default: ''.
             fixed_micros (int | None | Unset):
-            grouping_fields (BookChangeInGroupingFields | Unset):
-            pricing_method (BookChangeInPricingMethodType0 | None | Unset):
+            grouping_fields (CustomerOverrideInGroupingFields | Unset):
+            pricing_method (CustomerOverrideInPricingMethodType0 | None | Unset):
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
             subtask_type (str | Unset):  Default: ''.
@@ -71,12 +61,12 @@ class BookChangeIn:
             unit_quantity (int | None | Unset):
      """
 
-    kind: str
     measurement_key: str
+    effective_at: datetime.datetime | None | Unset = UNSET
     event_type: str | Unset = ''
     fixed_micros: int | None | Unset = UNSET
-    grouping_fields: BookChangeInGroupingFields | Unset = UNSET
-    pricing_method: BookChangeInPricingMethodType0 | None | Unset = UNSET
+    grouping_fields: CustomerOverrideInGroupingFields | Unset = UNSET
+    pricing_method: CustomerOverrideInPricingMethodType0 | None | Unset = UNSET
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
     subtask_type: str | Unset = ''
@@ -89,10 +79,16 @@ class BookChangeIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
-        kind = self.kind
-
+        from ..models.customer_override_in_grouping_fields import CustomerOverrideInGroupingFields
         measurement_key = self.measurement_key
+
+        effective_at: None | str | Unset
+        if isinstance(self.effective_at, Unset):
+            effective_at = UNSET
+        elif isinstance(self.effective_at, datetime.datetime):
+            effective_at = self.effective_at.isoformat()
+        else:
+            effective_at = self.effective_at
 
         event_type = self.event_type
 
@@ -109,7 +105,7 @@ class BookChangeIn:
         pricing_method: None | str | Unset
         if isinstance(self.pricing_method, Unset):
             pricing_method = UNSET
-        elif isinstance(self.pricing_method, BookChangeInPricingMethodType0):
+        elif isinstance(self.pricing_method, CustomerOverrideInPricingMethodType0):
             pricing_method = self.pricing_method.value
         else:
             pricing_method = self.pricing_method
@@ -136,9 +132,10 @@ class BookChangeIn:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "kind": kind,
             "measurement_key": measurement_key,
         })
+        if effective_at is not UNSET:
+            field_dict["effective_at"] = effective_at
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if fixed_micros is not UNSET:
@@ -164,11 +161,29 @@ class BookChangeIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
+        from ..models.customer_override_in_grouping_fields import CustomerOverrideInGroupingFields
         d = dict(src_dict)
-        kind = d.pop("kind")
-
         measurement_key = d.pop("measurement_key")
+
+        def _parse_effective_at(data: object) -> datetime.datetime | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                effective_at_type_0 = datetime.datetime.fromisoformat(data)
+
+
+
+                return effective_at_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(datetime.datetime | None | Unset, data)
+
+        effective_at = _parse_effective_at(d.pop("effective_at", UNSET))
+
 
         event_type = d.pop("event_type", UNSET)
 
@@ -183,16 +198,16 @@ class BookChangeIn:
 
 
         _grouping_fields = d.pop("grouping_fields", UNSET)
-        grouping_fields: BookChangeInGroupingFields | Unset
+        grouping_fields: CustomerOverrideInGroupingFields | Unset
         if isinstance(_grouping_fields,  Unset):
             grouping_fields = UNSET
         else:
-            grouping_fields = BookChangeInGroupingFields.from_dict(_grouping_fields)
+            grouping_fields = CustomerOverrideInGroupingFields.from_dict(_grouping_fields)
 
 
 
 
-        def _parse_pricing_method(data: object) -> BookChangeInPricingMethodType0 | None | Unset:
+        def _parse_pricing_method(data: object) -> CustomerOverrideInPricingMethodType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -200,14 +215,14 @@ class BookChangeIn:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                pricing_method_type_0 = BookChangeInPricingMethodType0(data)
+                pricing_method_type_0 = CustomerOverrideInPricingMethodType0(data)
 
 
 
                 return pricing_method_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(BookChangeInPricingMethodType0 | None | Unset, data)
+            return cast(CustomerOverrideInPricingMethodType0 | None | Unset, data)
 
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
@@ -238,9 +253,9 @@ class BookChangeIn:
         unit_quantity = _parse_unit_quantity(d.pop("unit_quantity", UNSET))
 
 
-        book_change_in = cls(
-            kind=kind,
+        customer_override_in = cls(
             measurement_key=measurement_key,
+            effective_at=effective_at,
             event_type=event_type,
             fixed_micros=fixed_micros,
             grouping_fields=grouping_fields,
@@ -253,8 +268,8 @@ class BookChangeIn:
         )
 
 
-        book_change_in.additional_properties = d
-        return book_change_in
+        customer_override_in.additional_properties = d
+        return customer_override_in
 
     @property
     def additional_keys(self) -> list[str]:

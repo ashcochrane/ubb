@@ -206,6 +206,10 @@ API_V1_METERING_ENDPOINTS_DECLARE_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_declare_book_publish',
     'post',
     '/api/v1/metering/pricing/rate-cards/{book_id}/publishes')
+API_V1_METERING_ENDPOINTS_DECLARE_CUSTOMER_OVERRIDE = Operation(
+    'api_v1_metering_endpoints_declare_customer_override',
+    'post',
+    '/api/v1/metering/pricing/customers/{customer_id}/overrides')
 API_V1_METERING_ENDPOINTS_DECLARE_GROUPING_FIELDS = Operation(
     'api_v1_metering_endpoints_declare_grouping_fields',
     'put',
@@ -238,6 +242,10 @@ API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP = Operation(
     'api_v1_metering_endpoints_get_customer_markup',
     'get',
     '/api/v1/metering/pricing/customers/{customer_id}/markup')
+API_V1_METERING_ENDPOINTS_GET_INHERITED_RULE = Operation(
+    'api_v1_metering_endpoints_get_inherited_rule',
+    'get',
+    '/api/v1/metering/pricing/customers/{customer_id}/inherited-rule')
 API_V1_METERING_ENDPOINTS_GET_TASK = Operation(
     'api_v1_metering_endpoints_get_task', 'get', '/api/v1/metering/tasks/{task_id}')
 API_V1_METERING_ENDPOINTS_GET_TENANT_DEFAULT_MARKUP = Operation(
@@ -314,6 +322,10 @@ API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES = Operation(
     'api_v1_metering_endpoints_usage_timeseries',
     'get',
     '/api/v1/metering/analytics/usage/timeseries')
+API_V1_METERING_ENDPOINTS_WITHDRAW_CUSTOMER_OVERRIDE = Operation(
+    'api_v1_metering_endpoints_withdraw_customer_override',
+    'delete',
+    '/api/v1/metering/pricing/customers/{customer_id}/overrides/{override_id}')
 API_V1_METERING_ENDPOINTS_WITHDRAW_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_withdraw_tenant_default_markup',
     'delete',

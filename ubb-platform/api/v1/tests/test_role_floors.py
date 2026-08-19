@@ -123,7 +123,14 @@ _WRITE_ROUTES = {
 # Declaring writes no rule, and it is still Admin — a draft is the first half of
 # that act, and a floor that let anyone stage a price change for an Admin to
 # approve would be a floor on the wrong half. 143 + 5 = 148.
-_EXPECTED_FLOORED = 148
+#
+# 148 -> 151 with #361's customer override: two Admin writes and one Read GET.
+# Declaring a customer's own rule and withdrawing it decide what one named
+# customer is charged, which is the same act as the five above at a narrower
+# scope, so they take the same floor. The GET answers what a customer would be
+# charged without the deal — a read a client makes to offer a starting point,
+# and one that decides nothing. 148 + 3 = 151.
+_EXPECTED_FLOORED = 151
 _EXPECTED_EXEMPT = 10
 
 
