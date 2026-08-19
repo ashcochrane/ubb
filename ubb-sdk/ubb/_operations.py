@@ -202,6 +202,10 @@ API_V1_METERING_ENDPOINTS_CREATE_BOOK = Operation(
     'api_v1_metering_endpoints_create_book',
     'post',
     '/api/v1/metering/pricing/rate-cards')
+API_V1_METERING_ENDPOINTS_DECLARE_BOOK_PUBLISH = Operation(
+    'api_v1_metering_endpoints_declare_book_publish',
+    'post',
+    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes')
 API_V1_METERING_ENDPOINTS_DECLARE_GROUPING_FIELDS = Operation(
     'api_v1_metering_endpoints_declare_grouping_fields',
     'put',
@@ -222,6 +226,14 @@ API_V1_METERING_ENDPOINTS_DELETE_RATE = Operation(
     'api_v1_metering_endpoints_delete_rate',
     'delete',
     '/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}')
+API_V1_METERING_ENDPOINTS_DISCARD_BOOK_PUBLISH = Operation(
+    'api_v1_metering_endpoints_discard_book_publish',
+    'delete',
+    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}')
+API_V1_METERING_ENDPOINTS_GET_BOOK_PUBLISH = Operation(
+    'api_v1_metering_endpoints_get_book_publish',
+    'get',
+    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}')
 API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP = Operation(
     'api_v1_metering_endpoints_get_customer_markup',
     'get',
@@ -248,6 +260,10 @@ API_V1_METERING_ENDPOINTS_LIST_BOOKS = Operation(
     'api_v1_metering_endpoints_list_books',
     'get',
     '/api/v1/metering/pricing/rate-cards')
+API_V1_METERING_ENDPOINTS_LIST_BOOK_PUBLISHES = Operation(
+    'api_v1_metering_endpoints_list_book_publishes',
+    'get',
+    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes')
 API_V1_METERING_ENDPOINTS_LIST_BOOK_RATES = Operation(
     'api_v1_metering_endpoints_list_book_rates',
     'get',
@@ -268,6 +284,10 @@ API_V1_METERING_ENDPOINTS_PUBLISH_BOOK = Operation(
     'api_v1_metering_endpoints_publish_book',
     'post',
     '/api/v1/metering/pricing/rate-cards/{book_id}/publish')
+API_V1_METERING_ENDPOINTS_PUBLISH_BOOK_PUBLISH = Operation(
+    'api_v1_metering_endpoints_publish_book_publish',
+    'post',
+    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE = Operation(
     'api_v1_metering_endpoints_record_usage', 'post', '/api/v1/metering/usage')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH = Operation(

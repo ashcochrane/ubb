@@ -34,7 +34,7 @@ file's own history. "The write was rejected" stopped being evidence of anything
 here several slices ago, and a test asserting only the exception type would
 pass while the wrong mechanism did the refusing. The two checks this module is
 about are told apart from EACH OTHER the same way, which is why
-`RuleRefusalThroughEveryDoorMixin.REFUSAL_NAME` has no default.
+`RefusalThroughEveryDoorMixin.REFUSAL_NAME` has no default.
 
 **A REFUSAL IS PROVED BY AN ADMISSION BESIDE IT.** A check that refused every
 write would satisfy every refusal below, so each pair of refusals is followed by
@@ -62,7 +62,7 @@ from apps.metering.pricing.models import (
     Rate,
 )
 from apps.metering.pricing.tests._helpers import (
-    RuleRefusalThroughEveryDoorMixin, rate_in_default_book)
+    RefusalThroughEveryDoorMixin, rate_in_default_book)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -85,7 +85,7 @@ def _tenant(name="T"):
 
 
 class APricingRuleDeclaresOneOfTwoRatifiedMethodsTest(
-        RuleRefusalThroughEveryDoorMixin, TestCase):
+        RefusalThroughEveryDoorMixin, TestCase):
     """The value set, closed at the table rather than in a comment."""
 
     REFUSAL_NAME = DECLARES_A_RATIFIED_METHOD_CHECK
@@ -151,7 +151,7 @@ class APricingRuleDeclaresOneOfTwoRatifiedMethodsTest(
 
 
 class ARuleCarriesNoSecondComponentBesideItsMethodTest(
-        RuleRefusalThroughEveryDoorMixin, TestCase):
+        RefusalThroughEveryDoorMixin, TestCase):
     """Non-composition, as a property of a row rather than a sentence.
 
     ⚠ **THIS HOLDS COMPOSITION *BESIDE A METHOD*, AND TWO OTHER PARTS OF "RULES

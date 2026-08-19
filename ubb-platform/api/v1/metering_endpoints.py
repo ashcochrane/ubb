@@ -39,29 +39,36 @@ from api.v1.schemas import (
     TaskAnalyticsOut,
     RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
+    BookPublishIn, BookPublishOut, PaginatedBookPublishes,
+    UndeclaredGroupingField,
+    book_change_body, book_change_diff_out, book_publish_out,
     book_out, rate_change_body, rate_out, usage_event_out,
     SLOT_PROPERTY_COLUMNS,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
-    Rate, RateCard, RateCardAssignment,
+    PricingBookPublish, Rate, RateCard, RateCardAssignment,
     CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
 )
 from api.v1.pagination import page
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
+from apps.platform.audit.actors import get_current_actor
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.queries import GROUPED_VALUE_KEY
 from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
 from apps.platform.event_types.quantities import declaration_named
-from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
+from core.vocabulary import (
+    COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
+    SOURCE_KIND_CALLER_SUPPLIED)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.models import SLOT_CHOICES
+from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
 logger = logging.getLogger(__name__)
@@ -1255,6 +1262,208 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
                   "change_count": len(payload.changes)},
     )
     return 200, book_out(book)
+
+
+# --- Every change to a Pricing Book is a publish, and a draft is not one ------
+#
+# THREE ACTS AND THEIR THREE ROUTES (#358). Adding a rule, repricing one and
+# retiring one become one act, recorded once, with a diff a tenant reads before
+# committing to it. Declaring a draft, publishing it and discarding it are three
+# answers to three different questions, so each carries its own audit action —
+# `#148 §6.3`'s "one path replaces three" is about the book's MUTATION surface,
+# not about collapsing governance — and `record()` refuses an unregistered name,
+# which is why the registry and these routes are one commit.
+#
+# ⚠ THE IMMEDIATE ROUTES ABOVE SURVIVE THIS COMMIT and still write rules with no
+# publish record behind them. `POST .../rates`, `DELETE .../rates/{rate_id}` and
+# `POST .../publish` are deleted by a later ticket together with the THREE
+# retired action names they write, so that nothing here decrements a count. (The
+# ticket names two of the three: the pair belonging to the add-rule and
+# retire-rule routes. The publish route's own name is retired with them.) Until
+# then a book has two ways to change and only one of them leaves a record.
+
+
+def _book_publish_or_404(request, book_id, publish_id):
+    return get_object_or_404(PricingBookPublish, id=publish_id,
+                             book_id=book_id, tenant=request.auth.tenant)
+
+
+def _publish_response(request, record):
+    """One publish record, with its diff where there is one to compute.
+
+    THREE CASES, AND THE THIRD IS THE ONE THAT MATTERS. A published record's
+    diff is null rather than recomputed: a diff is a statement about a change
+    that has not happened, and re-planning a change already applied would
+    describe the book disagreeing with itself.
+
+    ⚠ **AND A DRAFT CAN BE LEFT STATING A CHANGE THAT CAN NO LONGER BE CARRIED
+    OUT.** This is reachable through surfaces this commit deliberately keeps
+    alive: a book still has three immediate mutation routes, and two drafts can
+    name one rule while only one of them publishes. Reading such a draft must
+    SAY so — it is exactly what a tenant needs to know, since declaring it again
+    would be refused with the same sentence and discarding it is the way out.
+    Letting the refusal escape would have answered `internal_error` from a GET,
+    and because the list below serializes every pending draft, ONE stale draft
+    would have taken the whole book's pending list with it.
+    """
+    from apps.metering.pricing.services.book_service import BookService
+
+    if record.is_published:
+        return book_publish_out(record)
+    keys = keys_by_slot(request.auth.tenant.id)
+    try:
+        rows = BookService.diff(record)
+    except ValueError as e:
+        return book_publish_out(record, diff_unavailable_reason=str(e))
+    return book_publish_out(
+        record, diff=[book_change_diff_out(row, keys) for row in rows])
+
+
+@metering_router.post("/pricing/rate-cards/{book_id}/publishes",
+                      response={200: BookPublishOut, 404: ProblemOut,
+                                422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("pricing_book_publish.declared")
+def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
+    """Declare a change to a book: the intended changes, and nothing written.
+
+    A draft holds the changes and writes no rule, which is what makes it freely
+    editable and freely discardable. The response carries the diff — what the
+    book will look like afterwards — so a tenant decides against the outcome
+    rather than against their own request.
+
+    Every change is resolved before the draft is created, so a name the tenant
+    has not declared, or a rule that is not there, is a 422 while they are still
+    deciding rather than a surprise when the price was supposed to change.
+    """
+    from apps.metering.pricing.services.book_service import BookService
+
+    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    _gate_card_type(request, book.card_type)
+    slots = slot_map(request.auth.tenant.id)
+    try:
+        changes = [book_change_body(change.dict(), slots)
+                   for change in payload.changes]
+    except UndeclaredGroupingField as e:
+        raise Problem(
+            "validation_error",
+            f"no grouping field is declared under the key {e.key!r}. A "
+            f"rule selects on a grouping field this tenant has declared; "
+            f"declare it first, then price on it")
+    try:
+        with transaction.atomic():
+            record = BookService.declare(book, changes)
+            audit_record(
+                action="pricing_book_publish.declared",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book_publish",
+                resource_id=record.id,
+                metadata={"book_id": str(book.id),
+                          "effective_at": record.effective_at.isoformat(),
+                          "change_count": len(changes)},
+            )
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+    return 200, _publish_response(request, record)
+
+
+@metering_router.get("/pricing/rate-cards/{book_id}/publishes",
+                     response={200: PaginatedBookPublishes, 404: ProblemOut})
+@role_floor(READ)
+def list_book_publishes(request, book_id: UUID, cursor: str = None,
+                        limit: int = 50):
+    """The changes PENDING on this book — the drafts, newest first, each with
+    its diff.
+
+    Drafts only, and that is the question this route answers: *what is about to
+    happen to my prices*. A published record is history and the governance
+    ledger is where history is read, filtered by action; here it would cost a
+    diff computation per row for a record whose diff is null anyway.
+    """
+    _product_check(request)
+    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    pending = PricingBookPublish.objects.filter(
+        tenant=request.auth.tenant, book=book,
+        declaration_status=DECLARATION_STATUS_DRAFT)
+    return 200, page(pending, cursor, limit,
+                     serialize=lambda record: _publish_response(request, record))
+
+
+@metering_router.get("/pricing/rate-cards/{book_id}/publishes/{publish_id}",
+                     response={200: BookPublishOut, 404: ProblemOut})
+@role_floor(READ)
+def get_book_publish(request, book_id: UUID, publish_id: UUID):
+    """One change to a book, with its diff while it is still a draft."""
+    _product_check(request)
+    return 200, _publish_response(
+        request, _book_publish_or_404(request, book_id, publish_id))
+
+
+@metering_router.post(
+    "/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish",
+    response={200: BookPublishOut, 404: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("pricing_book_publish.published")
+def publish_book_publish(request, book_id: UUID, publish_id: UUID):
+    """Publish a declared change: close each superseded rule, open its
+    replacement, from one value.
+
+    All-or-nothing, and nothing runs at the effective instant — the rows are
+    written now, carrying the boundary as a value the resolver reads.
+    """
+    from apps.metering.pricing.services.book_service import BookService
+
+    record = _book_publish_or_404(request, book_id, publish_id)
+    _gate_card_type(request, record.book.card_type)
+    try:
+        with transaction.atomic():
+            BookService.publish_declared(record, actor=get_current_actor())
+            audit_record(
+                action="pricing_book_publish.published",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book_publish",
+                resource_id=record.id,
+                metadata={"book_id": str(book_id),
+                          "effective_at": record.effective_at.isoformat(),
+                          "opened": len(record.opened_rule_ids),
+                          "closed": len(record.closed_rule_ids)},
+            )
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+    return 200, _publish_response(request, record)
+
+
+@metering_router.delete(
+    "/pricing/rate-cards/{book_id}/publishes/{publish_id}",
+    response={200: StatusResponse, 404: ProblemOut, 422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("pricing_book_publish.discarded")
+def discard_book_publish(request, book_id: UUID, publish_id: UUID):
+    """Discard a draft, leaving the book exactly as it stood.
+
+    A draft closed nothing, so this reopens nothing. A published record is
+    refused: a publish that has already closed and opened rules is not an
+    intention that can be withdrawn, and the act that undoes one is a further
+    publish.
+    """
+    from apps.metering.pricing.services.book_service import BookService
+
+    record = _book_publish_or_404(request, book_id, publish_id)
+    _gate_card_type(request, record.book.card_type)
+    try:
+        with transaction.atomic():
+            record_id = record.id
+            BookService.discard(record)
+            audit_record(
+                action="pricing_book_publish.discarded",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book_publish",
+                resource_id=record_id,
+                metadata={"book_id": str(book_id)},
+            )
+    except ValueError as e:
+        raise Problem("validation_error", str(e))
+    return 200, {"status": "discarded"}
 
 
 @metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})

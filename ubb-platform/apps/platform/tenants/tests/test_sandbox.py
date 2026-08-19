@@ -234,8 +234,12 @@ class SandboxResetTest(TestCase):
         return biz, seat, wallet
 
     def _seed_config_rows(self, tenant):
+        from django.utils import timezone
+
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import Rate, TenantDefaultMarkup
+        from apps.metering.pricing.models import (
+            PricingBookPublish, Rate, RateCard, TenantDefaultMarkup)
+        from core.vocabulary import DECLARATION_STATUS_PUBLISHED
 
         Rate.objects.create(
             tenant=tenant, card_type="cost",
@@ -251,6 +255,24 @@ class SandboxResetTest(TestCase):
         # right models are in the set.
         TenantDefaultMarkup.objects.create(
             tenant=tenant, markup_micro_percent=20_000_000)
+        # A RULE INSIDE A BOOK, AND THE PUBLISH RECORD THAT EXPLAINS IT (#358).
+        # The rate above holds no book, which is a shape no route can produce
+        # any more — every API-created rule lives in one. That mattered: the
+        # book was not in the kept set, its rules hold it with `PROTECT`, and a
+        # reset keeping the rules while wiping their container is refused
+        # outright, so the whole reset failed. The publish record rides on the
+        # same fix rather than beside it: it is CASCADEd from the book, so a
+        # label of its own would have protected nothing.
+        book = RateCard.objects.create(
+            tenant=tenant, card_type="price", key="sandbox", is_default=True)
+        book.rates.create(
+            tenant=tenant, card_type="price",
+            measurement=declares_a_quantity(tenant, "book_tokens"),
+            rate_per_unit_micros=20)
+        PricingBookPublish.objects.create(
+            tenant=tenant, book=book, effective_at=timezone.now(),
+            changes=[], declaration_status=DECLARATION_STATUS_PUBLISHED,
+            opened_rule_ids=[], closed_rule_ids=[])
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(
             tenant=tenant, url="https://example.com/hook", secret="s")
@@ -277,7 +299,8 @@ class SandboxResetTest(TestCase):
     def test_reset_keep_config_wipes_domain_preserves_config_and_keys(self):
         from apps.billing.gating.models import BudgetConfig
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.pricing.models import Rate, TenantDefaultMarkup
+        from apps.metering.pricing.models import (
+            PricingBookPublish, Rate, RateCard, TenantDefaultMarkup)
         from apps.metering.usage.models import Posting
         from apps.platform.event_types.models import Measurement
 
@@ -299,14 +322,22 @@ class SandboxResetTest(TestCase):
             wallet__customer__tenant=self.sandbox).count(), 0)
         self.assertEqual(Posting.objects.filter(tenant=self.sandbox).count(), 0)
 
-        # Config preserved
-        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 1)
-        # And the declaration that rate names, with it. A kept rate pointing at
-        # a wiped quantity is not a state this reset may produce (#326) — it is
-        # not merely undesirable, it is refused, and the whole reset fails.
+        # Config preserved — both rules, the one with no book and the one in
+        # a book, and the book itself.
+        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 2)
+        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 1)
+        # And the record that says who changed that book's prices and when
+        # (#358). A reset keeping the rules while wiping the publishes leaves
+        # exactly the untraceable price this record exists to remove.
+        self.assertEqual(
+            PricingBookPublish.objects.filter(tenant=self.sandbox).count(), 1)
+        # And the declarations those rates name, with them. A kept rate pointing
+        # at a wiped quantity is not a state this reset may produce (#326) — it
+        # is not merely undesirable, it is refused, and the whole reset fails.
+        # Two since #358, one per seeded rule.
         self.assertEqual(
             Measurement.objects.filter(
-                event_type__tenant=self.sandbox).count(), 1)
+                event_type__tenant=self.sandbox).count(), 2)
         # And the tenant's declared markup rung (#357). It is configuration in
         # exactly the sense the rate above is — it decides what a customer is
         # charged — and a reset that wiped it would leave the sandbox pricing

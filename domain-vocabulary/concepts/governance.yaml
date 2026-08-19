@@ -71,6 +71,26 @@ audit_action:
     # record is deleted.
     - tenant_default_markup.declared
     - tenant_default_markup.withdrawn
+    # Changing a Pricing Book. Every change to a book is a publish — adding a
+    # rule, repricing one and retiring one are one act recorded once — and the
+    # three names below are three answers to three different questions, not
+    # three spellings of one.
+    #
+    # A DRAFT CLOSES NOTHING, WHICH IS WHY DECLARING ONE IS ITS OWN ACT. It
+    # holds the intended changes and writes no rule; publishing it is what
+    # closes each superseded rule and opens its replacement, and discarding it
+    # leaves the book exactly as it was. A governance reader asking "when did
+    # this book's prices change" must not have to read metadata to separate the
+    # publication from the intention, and one asking "what was proposed and
+    # abandoned" must still find it.
+    #
+    # The noun is the publish record rather than the book, on the rule the
+    # Event Type satellites state above: the ledger's `resource_type` already
+    # says which record moved, and an action naming a different one would make
+    # the two disagree.
+    - pricing_book_publish.declared
+    - pricing_book_publish.published
+    - pricing_book_publish.discarded
     # What the tenant declares it meters.
     - event_type.declared
     - measurement.declared

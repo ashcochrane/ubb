@@ -1420,11 +1420,17 @@ class RateOut(Schema):
 #: is someone widening this dict to ten, which would coin four new published
 #: properties under a spelling both candidates are about to retire.
 #:
-#: Six, not ten. A rate can hold ten slots; the contract can name six. The four
-#: without an entry here are unreachable from outside — a reprice body leaves
-#: them at "", which matches a rate that leaves them unpinned — so a rate pinned
-#: on slot seven can be written server-side and never repriced through the API.
-#: That gap arrived with #276 and leaves with slice 4.
+#: Six, not ten. A rate can hold ten slots and the three schemas above can name
+#: six, so through THOSE bodies the other four are unreachable — a reprice body
+#: leaves them at "", which matches a rate that leaves them unpinned.
+#:
+#: ⚠ **THAT IS NO LONGER A STATEMENT ABOUT THE API (#358).** A rule pinned on
+#: slot seven used to be writable server-side and repriceable through no route
+#: at all. It is reachable now, through the act that replaces those three: a
+#: publish's change body carries `grouping_fields` keyed by what the TENANT
+#: declared, and the registry resolves the key to whichever slot it is bound
+#: to. What survives is this join and the three schemas it serves, and they
+#: leave with the ticket that converts them.
 SLOT_PROPERTY_COLUMNS = {f"dim{i}": f"grouping_field_{i}" for i in range(1, 7)}
 
 
@@ -1462,6 +1468,274 @@ def rate_out(r):
         "valid_from": r.valid_from.isoformat(),
         "valid_to": r.valid_to.isoformat() if r.valid_to else None,
     }
+
+
+# --- Every change to a Pricing Book is a publish (#358) -----------------------
+#
+# One act replacing three, so a book has one mutation surface and a tenant has
+# one thing to read: *your book changes on 1 August; here is the diff*.
+#
+# ⚠ **THESE SCHEMAS NAME NO PHYSICAL SLOT, AND THAT IS DELIBERATE RATHER THAN
+# INCIDENTAL.** The three schemas above publish the rate's selector list as six
+# `dim<n>` properties, which is a debt `api/v1/tests/
+# test_grouping_values_on_the_contract.py` holds as an EXACT residue that only
+# ever shrinks. Reusing that spelling here would have coined six more published
+# properties under a name this slice is retiring, and left the ticket that
+# converts those three schemas with a fourth to convert. So a change body names
+# its grouping fields the way a recording call already does — by the tenant's
+# own declared key, in an object — which reaches all TEN slots rather than six
+# and is the shape the converted schemas will have anyway.
+
+
+class BookChangeIn(Schema):
+    """One change in a publish: what to do, and to which rule.
+
+    `kind` is `add`, `reprice` or `retire` — the three surfaces a book used to
+    have, arriving as three kinds of one act. It is a plain string and the
+    service refuses anything else, which is how the book's own discriminators
+    are already handled on this surface: these three name the shape of one
+    request body, they are stored on no column and returned in no response, and
+    a `Literal` here would publish an enumeration the vocabulary registry does
+    not own.
+
+    The rule is identified by the quantity it prices plus its selectors —
+    `provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own
+    declared grouping fields. An omitted selector means the rule leaves it
+    unpinned, which is what an unpinned selector means everywhere on this
+    surface, so a change body names only what the rule pins.
+
+    The three terms are nullable because a reprice states only what moves: an
+    unstated term is carried over from the rule being superseded. An `add`
+    takes the model's own defaults for anything it leaves out, and a `retire`
+    states none at all — it opens no rule.
+
+    ⚠ **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE
+    IT.** Whether an amount is per-unit or a fixed component is carried over
+    from the rule being superseded, and an added rule takes the default. The
+    column's name is retired and its ledger entry caps how many files may still
+    spell it, so putting it on this schema would coin the retired spelling on a
+    brand-new surface for the ticket that renames it to convert — and putting
+    the canonical spelling here would publish a field whose values are still the
+    retired ones. Both belong to the commit that converts the column, its values
+    and the three rate schemas above together. The immediate reprice route this
+    act replaces still states the shape and is untouched.
+    """
+    kind: str
+    measurement_key: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="", max_length=100)
+    event_type: str = Field(default="", max_length=100)
+    task_type: str = Field(default="", max_length=64)
+    subtask_type: str = Field(default="", max_length=64)
+    grouping_fields: dict[str, str] = {}
+    rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
+    unit_quantity: Optional[int] = Field(default=None, gt=0)
+    fixed_micros: Optional[int] = Field(default=None, ge=0)
+
+
+class BookPublishIn(Schema):
+    """The intended changes, declared as a draft.
+
+    No effective instant: a change declared here takes effect when it is
+    declared, and dating one forward is a separate set of properties — the
+    request field, a bounded horizon and the refusal that enforces it — which
+    the following ticket owns. The record carries the instant either way, and
+    the publish writes both boundaries from it.
+    """
+    changes: list[BookChangeIn] = Field(min_length=1)
+
+
+class RuleTermsOut(Schema):
+    """What a rule charges — the three columns a change may move.
+
+    ⚠ The arithmetic shape is deliberately absent, for the reason `BookChangeIn`
+    gives: a publish cannot move it. A reader comparing a `before` with an
+    `after` therefore sees all three terms and is not told which one the rule
+    actually charges on — `GET .../rates` answers that, and this row is a
+    statement about what a change does rather than a restatement of the rule.
+    """
+    rate_per_unit_micros: int
+    unit_quantity: int
+    fixed_micros: int
+
+
+def rule_terms_out(terms):
+    """`RuleTermsOut`'s serializer — one rule's terms, named key by key.
+
+    ⚠ **NAMED RATHER THAN PASSED THROUGH, AND THAT IS THE WHOLE POINT.** A
+    `Schema` that does not name a key does not merely omit it — Django Ninja
+    DROPS it, silently, which is how a read contract once published a ceiling as
+    a margin. The service decides what a rule's terms ARE; this decides what the
+    contract publishes; and handing the service's dict straight to the schema
+    would let those two disagree with nothing saying so. Spelling each key here
+    makes a term the service gains and this does not name a `KeyError` on the
+    first request instead, and
+    `api/v1/tests/test_a_book_changes_by_publishing.py` asserts the two sets are
+    equal, which is the same claim held at rest.
+    """
+    return {
+        "rate_per_unit_micros": terms["rate_per_unit_micros"],
+        "unit_quantity": terms["unit_quantity"],
+        "fixed_micros": terms["fixed_micros"],
+    }
+
+
+class BookChangeDiffOut(Schema):
+    """One row of the diff: which rule, and what happens to it.
+
+    `before` is the rule as it will stand at the publish's effective instant and
+    is null where the change adds one; `after` is the rule the publish opens and
+    is null where the change retires one. Neither is null on a reprice, which is
+    what makes the row readable as a change rather than as an outcome.
+    """
+    kind: str
+    measurement_key: str
+    provider: str
+    event_type: str
+    task_type: str
+    subtask_type: str
+    grouping_fields: dict[str, str] = {}
+    before: Optional[RuleTermsOut] = None
+    after: Optional[RuleTermsOut] = None
+
+
+class BookPublishOut(Schema):
+    """A change to a book: an intention while it is a draft, a decision once
+    published.
+
+    ⚠ `declaration_status` is deliberately UNMARKED, on the same footing as
+    `EventTypeOut.declaration_status`: the concept declares no `openapi`
+    consumer in the registry, and the applier refuses a marker for a concept
+    that contributes nothing. A field is marked by the ticket that declares its
+    concept's contract consumer, never by one passing nearby. The FIELD is still
+    final under ADR-0007 §3 — gaining an `enum` later is additive, and its
+    values are already the registry's.
+    """
+    id: str
+    book_id: str
+    declaration_status: str
+    effective_at: str
+    published_at: Optional[str] = None
+    #: An immutable snapshot of the principal whose decision this was, taken at
+    #: the moment of the publish (ADR-004 §4). Empty on a draft: whose decision
+    #: put a price in force is a question with an answer only once one is in
+    #: force, and who declared the draft is the audit ledger's.
+    actor_kind: str
+    actor_id: str
+    actor_display: str
+    #: The rule versions this publish opened and closed. Empty on a draft,
+    #: because a draft opened and closed none.
+    opened_rule_ids: list[str]
+    closed_rule_ids: list[str]
+    #: WHAT THIS PUBLISH WILL DO, computed against the book as it will stand at
+    #: `effective_at`. Present while the record is a draft and NULL once it is
+    #: published, because a diff is a statement about a change that has not
+    #: happened yet. What a published record DID is the two id lists above, read
+    #: back off the rules themselves — which carry their own terms, their own
+    #: boundaries and their lineage — rather than out of an echo of the request.
+    diff: Optional[list[BookChangeDiffOut]] = None
+    #: ⚠ WHY A DRAFT MAY HAVE NO DIFF EITHER, WHICH IS A REACHABLE STATE AND NOT
+    #: A DEFENSIVE ONE. A book still has three immediate mutation routes beside
+    #: this act, and two drafts can name one rule while only one of them
+    #: publishes — so a draft can be left stating a change that can no longer be
+    #: carried out. Reading it must say so rather than answer a diff nobody can
+    #: compute: `diff` is null and this carries the same sentence declaring the
+    #: draft would now be refused with. Null on a draft with a diff, and null on
+    #: a published record — where `declaration_status` is what tells a reader
+    #: which of the two an absent diff means.
+    diff_unavailable_reason: Optional[str] = None
+
+
+def book_publish_out(record, diff=None, diff_unavailable_reason=None):
+    """`BookPublishOut`'s serializer.
+
+    `diff` arrives already translated into the tenant's own vocabulary — see
+    `book_change_diff_out` — because the service works in column names and this
+    contract publishes none.
+    """
+    return {
+        "id": str(record.id),
+        "book_id": str(record.book_id),
+        "declaration_status": record.declaration_status,
+        "effective_at": record.effective_at.isoformat(),
+        "published_at": (record.published_at.isoformat()
+                         if record.published_at else None),
+        "actor_kind": record.actor_kind,
+        "actor_id": record.actor_id,
+        "actor_display": record.actor_display,
+        "opened_rule_ids": list(record.opened_rule_ids),
+        "closed_rule_ids": list(record.closed_rule_ids),
+        "diff": diff,
+        "diff_unavailable_reason": diff_unavailable_reason,
+    }
+
+
+class UndeclaredGroupingField(ValueError):
+    """A change body selects on a grouping field the tenant has not declared.
+
+    Its own type rather than a `KeyError`, so the route can answer 422 for THIS
+    and let anything else fail loudly: catching `KeyError` around a translation
+    catches every bug inside it too and reports each one as a tenant error.
+    """
+
+    def __init__(self, key):
+        self.key = key
+        super().__init__(key)
+
+
+def book_change_body(change: dict, slots: dict) -> dict:
+    """One change body with its grouping fields resolved to slot columns.
+
+    The service matches a rule on `Rate.SELECTORS`, which are columns. A tenant
+    names its own declared key; `slots` is the registry's `{key: slot}` map for
+    that tenant, and a key the registry does not carry raises `KeyError` here so
+    the route can answer 422 rather than silently matching a rule that leaves
+    every slot unpinned — which would reprice the wrong rule, or none.
+    """
+    body = {name: value for name, value in change.items()
+            if name != "grouping_fields"}
+    for key, value in (change.get("grouping_fields") or {}).items():
+        if key not in slots:
+            # Raised on the LOOKUP rather than caught around the whole loop: a
+            # `KeyError` from anywhere else in here is a bug in this function,
+            # and reporting one to a tenant as "you have not declared that
+            # grouping field" would be a wrong answer wearing a right one's
+            # clothes.
+            raise UndeclaredGroupingField(key)
+        body[slots[key]] = value
+    return body
+
+
+def book_change_diff_out(row: dict, keys: dict) -> dict:
+    """One diff row, in the tenant's own vocabulary.
+
+    The inverse of `book_change_body`: `keys` is the registry's `{slot: key}`
+    map, so a row names the grouping field the tenant declared rather than the
+    column it happens to occupy.
+    """
+    reserved = ("provider", "event_type", "task_type", "subtask_type")
+    selectors = row["selectors"]
+    return {
+        "kind": row["kind"],
+        "measurement_key": row["measurement_key"],
+        **{name: selectors.get(name, "") for name in reserved},
+        # The slots, by exclusion of the four reserved axes, and then `keys[]`
+        # rather than a membership test. Dropping a slot the registry cannot
+        # name would take a selector OFF a diff row and leave it naming a
+        # different rule — the blanket one — which is the misreading the write
+        # side above refuses outright. `keys_by_slot` keeps retired definitions
+        # for exactly this reason and nothing in the tree removes one, so a
+        # missing slot is a corrupt row rather than a state a tenant can reach,
+        # and it should be loud.
+        "grouping_fields": {keys[slot]: value
+                            for slot, value in selectors.items()
+                            if slot not in reserved},
+        "before": rule_terms_out(row["before"]) if row["before"] else None,
+        "after": rule_terms_out(row["after"]) if row["after"] else None,
+    }
+
+
+class PaginatedBookPublishes(Paginated[BookPublishOut]):
+    pass
 
 
 class PaginatedBooks(Paginated[BookOut]):

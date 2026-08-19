@@ -847,6 +847,34 @@ gates:
       the two statements ADR-0007's Consequences are about, and the recording
       path inserts into that table on every metered call and deletes from it
       never.
+      EXTENDED A THIRD TIME BY SLICE 4 (#358), and this is the first extension
+      on a DIFFERENT TABLE. A Pricing Book's publish record declares
+      `declaration_status` `RESOLVE_ONCE` -- `draft` is the unresolved state,
+      `published` is the one terminal value -- and it is held by a `BEFORE
+      UPDATE` trigger on `ubb_pricing_book_publish`, the only rule on that
+      table. The rule is ONE branch and it is the record's rather than the
+      column's: once the status is `published`, no column of the record moves,
+      ever. That single sentence is what makes the status resolve-once as well,
+      because `published` cannot be left and so cannot be entered twice. A
+      second branch refusing "draft to anything but published" was written and
+      REMOVED -- inside the closed set it is unreachable, and outside it the
+      table's value-set `CHECK` is the mechanism, so the branch would have
+      refused nothing, which is how a rule comes to look enforced while holding
+      nothing.
+      Its per-write cost is zero by construction rather than by measurement,
+      which the module asserts out of `pg_trigger`'s statement mask: the trigger
+      cannot fire on an `INSERT` or a `DELETE`, so declaring a draft and
+      discarding one pay nothing, and its `WHEN` clause admits only a row that
+      is already published -- so editing a draft and publishing it never enter
+      the function either. Nothing on the metering path writes that table at
+      all; it is written when a human changes a price.
+      DELETE IS OUTSIDE THIS RULE AND OUTSIDE THIS ROW. Discarding a draft is a
+      `DELETE`, and refusing one against a published record would read as the
+      natural other half -- but a `BEFORE DELETE` trigger cannot tell a discard
+      from a cascade, the mechanism #354 paid for, and a tenant wipe deletes
+      every row that table holds. The route that discards is what refuses a
+      published record, and it can, because it knows which act it is
+      performing.
     enforced_by:
       - suite: platform
         node: ubb-platform/apps/platform/tests/test_transition_class_declarations.py::TransitionClassDeclarationsTest::test_every_declared_column_is_defended_by_the_database
@@ -878,6 +906,14 @@ gates:
         node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::TheModelGuardIsNotTheEnforcementTest::test_the_guard_being_absent_would_change_nothing
       - suite: platform
         node: ubb-platform/apps/metering/usage/tests/test_a_receipt_seals_once_it_is_complete.py::AGreenDeclarationCheckDoesNotProveTheRuleHoldsTest::test_a_rule_that_refuses_nothing_still_passes_the_declaration_check
+      - suite: platform
+        node: ubb-platform/apps/metering/pricing/tests/test_every_change_to_a_book_is_a_publish.py::APublishedRecordIsNotEditableTest::test_no_column_of_a_published_record_moves
+      - suite: platform
+        node: ubb-platform/apps/metering/pricing/tests/test_every_change_to_a_book_is_a_publish.py::APublishedRecordIsNotEditableTest::test_a_published_record_cannot_return_to_draft
+      - suite: platform
+        node: ubb-platform/apps/metering/pricing/tests/test_every_change_to_a_book_is_a_publish.py::TheOneAdmittedMoveIsAdmittedTest::test_a_draft_publishes_through_every_door
+      - suite: platform
+        node: ubb-platform/apps/metering/pricing/tests/test_every_change_to_a_book_is_a_publish.py::AGreenDeclarationCheckDoesNotProveTheRuleHoldsTest::test_a_rule_that_refuses_nothing_still_passes_the_declaration_check
 
   G20:
     statement: Migrations carry their data — a rename, never an add-and-remove pair.

@@ -31,8 +31,14 @@ from .audit_record_list_response import AuditRecordListResponse
 from .audit_record_out import AuditRecordOut
 from .audit_record_out_metadata import AuditRecordOutMetadata
 from .balance_response import BalanceResponse
+from .book_change_diff_out import BookChangeDiffOut
+from .book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
+from .book_change_in import BookChangeIn
+from .book_change_in_grouping_fields import BookChangeInGroupingFields
 from .book_in import BookIn
 from .book_out import BookOut
+from .book_publish_in import BookPublishIn
+from .book_publish_out import BookPublishOut
 from .budget_config_in import BudgetConfigIn
 from .budget_config_in_enforce_mode import BudgetConfigInEnforceMode
 from .budget_config_out import BudgetConfigOut
@@ -94,6 +100,7 @@ from .measurement_out_source_kind import MeasurementOutSourceKind
 from .member_list_response import MemberListResponse
 from .member_out import MemberOut
 from .member_role_update_in import MemberRoleUpdateIn
+from .paginated_book_publishes import PaginatedBookPublishes
 from .paginated_books import PaginatedBooks
 from .paginated_event_categories import PaginatedEventCategories
 from .paginated_event_types import PaginatedEventTypes
@@ -174,6 +181,7 @@ from .revenue_mode_in import RevenueModeIn
 from .revenue_mode_out import RevenueModeOut
 from .revenue_profile_in import RevenueProfileIn
 from .revenue_profile_out import RevenueProfileOut
+from .rule_terms_out import RuleTermsOut
 from .sandbox_reset_in import SandboxResetIn
 from .seat_margin_out import SeatMarginOut
 from .seats_in import SeatsIn
@@ -289,8 +297,14 @@ __all__ = (
     "AuditRecordOut",
     "AuditRecordOutMetadata",
     "BalanceResponse",
+    "BookChangeDiffOut",
+    "BookChangeDiffOutGroupingFields",
+    "BookChangeIn",
+    "BookChangeInGroupingFields",
     "BookIn",
     "BookOut",
+    "BookPublishIn",
+    "BookPublishOut",
     "BudgetConfigIn",
     "BudgetConfigInEnforceMode",
     "BudgetConfigOut",
@@ -352,6 +366,7 @@ __all__ = (
     "MemberRoleUpdateIn",
     "MeSubscriptionInvoiceOut",
     "MeUsageInvoiceOut",
+    "PaginatedBookPublishes",
     "PaginatedBooks",
     "PaginatedEventCategories",
     "PaginatedEventTypes",
@@ -432,6 +447,7 @@ __all__ = (
     "RevenueModeOut",
     "RevenueProfileIn",
     "RevenueProfileOut",
+    "RuleTermsOut",
     "SandboxResetIn",
     "SeatMarginOut",
     "SeatsIn",

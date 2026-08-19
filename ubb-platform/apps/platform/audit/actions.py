@@ -82,6 +82,32 @@ AUDIT_ACTIONS = (
     # audit-registry reset is spent on either pair.
     "tenant_default_markup.declared",
     "tenant_default_markup.withdrawn",
+    # CHANGING A PRICING BOOK (#358). Every change to a book is a publish —
+    # adding a rule, repricing one and retiring one are one act, recorded once,
+    # with a diff the tenant reads before committing to it. That collapse is
+    # about the book's MUTATION surface; it is not an argument for collapsing
+    # governance, and these three are three answers to three different
+    # questions:
+    #
+    #   * a draft was declared — an intention, which closes nothing and writes
+    #     no rule;
+    #   * it was published — the act that closes each superseded rule and opens
+    #     its replacement, and therefore the one that changes what a customer
+    #     is charged;
+    #   * it was discarded — an intention abandoned, leaving the book exactly
+    #     as it stood.
+    #
+    # Reading which of the three happened out of an entry's metadata is what
+    # the rule below refuses, and splitting them later is the rename ADR-004 §2
+    # calls a breaking change; they are split now, when it is free.
+    #
+    # The noun is the publish record and not the book, because the ledger's
+    # `resource_type` already says which record moved — the same reason the
+    # Event Type's satellites each carry their own noun rather than borrowing
+    # its.
+    "pricing_book_publish.declared",
+    "pricing_book_publish.published",
+    "pricing_book_publish.discarded",
     # Grouping Field registry (the 2026-07-27 unified grouping model plan under
     # `docs/plans/`, D1). Renamed with
     # the thing it records (#277): `audit_action` in

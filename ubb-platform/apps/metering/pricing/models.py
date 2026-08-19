@@ -5,8 +5,11 @@ from django.utils import timezone
 
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 from core.models import BaseModel
-from core.transitions import FROZEN, SET_ONCE
+from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE, SET_ONCE
 from core.vocabulary import (
+    DECLARATION_STATUS_DRAFT,
+    DECLARATION_STATUS_PUBLISHED,
+    DECLARATION_STATUS_VALUES,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_METHOD_VALUES,
 )
@@ -234,9 +237,13 @@ class Rate(BaseModel):
     # Ten, matching the registry and the Posting since #276: a slot a tenant
     # can declare and attribute but cannot PRICE on would be a grouping axis
     # that silently is not a rate selector, which is the split D3 exists to
-    # close. Only six of these reach the published contract, and no slice-2
-    # ticket widens that — this entity's published surface is rebuilt in slice
-    # 4. `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS` holds the join and the gap.
+    # close. Only six of these reach the published contract UNDER THEIR OWN
+    # SPELLING, and no slice-2 ticket widens that;
+    # `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS` holds the join and what is left
+    # of the gap. All ten are addressable since #358, by the tenant's declared
+    # KEY rather than by the slot, on the act that replaces the three immediate
+    # mutation routes — which is what "this entity's published surface is
+    # rebuilt in slice 4" meant.
     grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
@@ -583,3 +590,186 @@ class RateCardAssignment(BaseModel):
                 fields=["tenant", "customer", "currency"],
                 name="uq_assignment_customer_currency"),
         ]
+
+
+#: THE THREE THINGS A TENANT CAN DO TO A BOOK, AND THERE IS NO FOURTH (#358).
+#:
+#: Adding a rule, repricing one and retiring one — the three surfaces a book
+#: used to have, arriving here as three kinds of one act. A change body names
+#: one of these and the service refuses anything else.
+#:
+#: **Held as a plain tuple rather than as a declared concept, deliberately.**
+#: These are not a value set the vocabulary registry owns: they name the shape
+#: of one request body on one route, they are never stored on a column a reader
+#: interprets, and they never cross the wire in a response. ADR-0006 governs the
+#: NAMES the domain publishes; a request enumerating its own three verbs is the
+#: same undeclared set `card_type` and the arithmetic shape are refused against
+#: at their own routes today, and giving it a concept would advertise a set that
+#: has no meaning outside this one body.
+CHANGE_ADD = "add"
+CHANGE_REPRICE = "reprice"
+CHANGE_RETIRE = "retire"
+CHANGE_KINDS = (CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE)
+
+
+class PricingBookPublish(BaseModel):
+    """EVERY CHANGE TO A PRICING BOOK IS A PUBLISH, AND A DRAFT IS NOT ONE.
+
+    Adding a rule, repricing one and retiring one used to be three unrelated
+    mutation surfaces, each writing immediately, each recorded under its own
+    name, and none of them able to say *what the book will look like afterwards*
+    before it happened. They are one act now, recorded once, with a diff a
+    tenant reads before committing to it — which is also what gives the console
+    one thing to show (*"your book changes on 1 August; here is the diff"*)
+    instead of three.
+
+    **THE TWO STATES ARE THE ONES THE REGISTRY ALREADY CLOSED.** `draft` and
+    `published`, imported from `core.vocabulary` rather than spelled here, so
+    the record follows the declared vocabulary instead of restating it. The
+    concept is `declaration_status` and the name was settled against
+    `publication_status` at the site where that was rejected: a field one word
+    away from a model named for a publish record is ADR-0006 §3's named defect
+    shape, and "declaration" is already this slice's own noun.
+
+    * **A draft holds the intended changes and writes no rule.** It is freely
+      editable and freely discardable, and discarding it reopens nothing
+      **because it closed nothing**.
+    * **Publishing is the act that writes rows.** It closes each superseded rule
+      and opens its replacement, and that is the only statement that changes
+      what a customer is charged.
+
+    **ONE CLOCK CLOSES THE BOUNDARY AND OPENS IT.** The outgoing rule's
+    effective-to and the incoming rule's effective-from are the same value —
+    `effective_at`, this record's own — which with a half-open range is exactly
+    no gap and exactly no overlap. `BookService.publish_declared` is where that
+    single value is used twice; `NoInstantFallsBetweenTwoVersionsTest` and this
+    record's own boundary test are what hold it.
+
+    **THE RECORD IS IMMUTABLE ONCE PUBLISHED**, which is the whole-record rule
+    `transition_classes` declares below and a trigger keeps. A price in force at
+    any past moment is traceable to a decision somebody made, and a record that
+    could be edited afterwards would make that traceability a claim rather than
+    a fact.
+
+    ⚠ **THE ACTOR AND THE INSTANT ARE THE PUBLISHER'S, AND A DRAFT CARRIES
+    NEITHER.** *Whose decision put this price in force* is the question
+    traceability asks, and it has an answer only once a publish has happened.
+    Who declared the draft, and who discarded one, are the audit ledger's —
+    `pricing_book_publish.declared` and `.discarded` carry their own actor
+    snapshots, taken the same way. Stamping a declaring actor here as well
+    would be a second copy of a fact the ledger already holds, on the record
+    whose columns must all mean one thing.
+
+    The three actor columns are `AuditRecord`'s own shape (ADR-004 §4): an
+    immutable snapshot taken at the moment of the act, so a later rename or
+    deletion of the principal never rewrites what this record says.
+
+    ⚠ **THE RULE VERSIONS IT CREATED AND CLOSED ARE HELD HERE, NOT AS COLUMNS ON
+    THE RULE.** Two reasons, and the second is the load-bearing one. A publish
+    is an act and these are the act's outputs, so they belong to its record in
+    the way an audit entry's metadata belongs to the entry. And nothing can
+    disagree with them: a rule row is created by exactly one statement, and
+    `Rate.valid_to` is declared `SET_ONCE` and held by a trigger, so a rule can
+    be closed at most once and two publishes cannot both claim to have closed
+    it. A pair of nullable columns on the rule would carry the same fact with a
+    second writer and no such guarantee.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="pricing_book_publishes")
+    #: The book this changes. `CASCADE` rather than `PROTECT` on purpose: a
+    #: publish record explains a book, so it has no meaning once the book is
+    #: gone, and a `PROTECT` here would make deleting a book fail on the records
+    #: describing it — including under the sandbox reset, where a refusal from a
+    #: record nobody asked about is how a tenant wipe stops half way.
+    book = models.ForeignKey("pricing.RateCard", on_delete=models.CASCADE,
+                             related_name="publishes")
+    declaration_status = models.CharField(
+        max_length=32, default=DECLARATION_STATUS_DRAFT, db_index=True)
+    #: WHEN THE CHANGE TAKES EFFECT — the one value both boundaries are written
+    #: from. Chosen by the caller, and defaulted by the route rather than here,
+    #: because a declaration with no stated moment means "now" at the moment it
+    #: is *declared*, not at the moment the row happens to be constructed.
+    effective_at = models.DateTimeField(db_index=True)
+    #: THE INTENDED CHANGES, held by value. Each is a mapping naming one of
+    #: `CHANGE_KINDS`, the quantity it prices and the selectors that identify
+    #: the rule, plus the terms for a kind that writes any. A draft is exactly
+    #: this list and nothing else, which is what "a draft writes no rule" means.
+    changes = models.JSONField(default=list)
+    published_at = models.DateTimeField(null=True, blank=True)
+    actor_kind = models.CharField(max_length=32, blank=True, default="")
+    actor_id = models.CharField(max_length=255, blank=True, default="")
+    actor_display = models.CharField(max_length=255, blank=True, default="")
+    #: The rule versions this publish opened and closed, by id. Empty on a
+    #: draft, because a draft opened and closed none.
+    opened_rule_ids = models.JSONField(default=list)
+    closed_rule_ids = models.JSONField(default=list)
+
+    #: WHAT MAY HAPPEN TO THIS RECORD (ADR-0007 §2).
+    #:
+    #: One column takes a defended class and the rest declare the record's own
+    #: rule, which is `PostingMeasurement`'s shape for the same reason: the
+    #: question ADR-0007 §2 asks is *what is allowed to happen to this?*, and
+    #: for thirteen of these fourteen columns the honest answer is "nothing this
+    #: column decides — read the record's rule", stated rather than left absent.
+    #:
+    #: `declaration_status` is `RESOLVE_ONCE` and it is the real thing rather
+    #: than a convenience: `draft` is the unresolved state, `published` is the
+    #: one terminal value, and the move happens once. Publishing twice is not a
+    #: correction, and returning a published record to draft is a book whose
+    #: prices moved with nothing recording that they did.
+    #:
+    #: **The record's rule, which the trigger holds and this sentence states
+    #: once:** while the record is a draft, any column may change — that is what
+    #: makes a draft freely editable — and once it is published, none may, ever.
+    #: `RECORD_RULE` sits outside `DATABASE_DEFENDED`, so the declaration walk
+    #: judges `declaration_status` alone and the behavioural trio in
+    #: `pricing/tests/test_every_change_to_a_book_is_a_publish.py` is what
+    #: proves the rest, through all three doors.
+    #:
+    #: ⚠ **DELETE IS NOT IN THE RULE, AND THAT IS DELIBERATE.** Discarding a
+    #: draft is a `DELETE`, and refusing one against a *published* record would
+    #: read as the natural other half — but a `BEFORE DELETE` trigger cannot
+    #: tell a discard from a cascade (#354), and a tenant wipe deletes every row
+    #: this table holds. The route is what refuses to discard a published
+    #: record, and it can, because it knows which act it is performing.
+    transition_classes = {
+        "id": RECORD_RULE,
+        "created_at": RECORD_RULE,
+        "updated_at": RECORD_RULE,
+        "tenant": RECORD_RULE,
+        "book": RECORD_RULE,
+        "declaration_status": RESOLVE_ONCE,
+        "effective_at": RECORD_RULE,
+        "changes": RECORD_RULE,
+        "published_at": RECORD_RULE,
+        "actor_kind": RECORD_RULE,
+        "actor_id": RECORD_RULE,
+        "actor_display": RECORD_RULE,
+        "opened_rule_ids": RECORD_RULE,
+        "closed_rule_ids": RECORD_RULE,
+    }
+
+    class Meta:
+        db_table = "ubb_pricing_book_publish"
+        indexes = [
+            models.Index(fields=["book", "declaration_status"],
+                         name="idx_book_publish_pending"),
+        ]
+        constraints = [
+            # The closed set at the database, which is where a value set
+            # belongs (ADR-0002: an invariant no business situation can make
+            # false). `choices=` is a form-layer courtesy and a `clean()` is a
+            # door; neither is reached by a data migration or a shell.
+            models.CheckConstraint(
+                condition=models.Q(
+                    declaration_status__in=sorted(DECLARATION_STATUS_VALUES)),
+                name="ck_book_publish_declaration_status"),
+        ]
+
+    def __str__(self):
+        return f"PricingBookPublish({self.declaration_status} @ {self.effective_at})"
+
+    @property
+    def is_published(self):
+        return self.declaration_status == DECLARATION_STATUS_PUBLISHED
