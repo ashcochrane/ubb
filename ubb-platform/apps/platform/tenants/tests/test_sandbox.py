@@ -247,7 +247,7 @@ class SandboxResetTest(TestCase):
 
     def _live_counts(self):
         from apps.billing.wallets.models import Wallet, WalletTransaction
-        from apps.metering.usage.models import Posting
+        from apps.metering.usage.models import Posting, PostingMeasurement
 
         return {
             "customers": Customer.all_objects.filter(tenant=self.live).count(),
@@ -255,6 +255,12 @@ class SandboxResetTest(TestCase):
             "txns": WalletTransaction.objects.filter(
                 wallet__customer__tenant=self.live).count(),
             "usage": Posting.objects.filter(tenant=self.live).count(),
+            # The child table, since the fixture began seeding it (#354). Without
+            # this the "live rows untouched" assertion could not see the one
+            # table the reset newly has to argue with, which is the state that
+            # let the break this ticket found stay invisible.
+            "measurements": PostingMeasurement.objects.filter(
+                posting__tenant=self.live).count(),
             "outbox": OutboxEvent.objects.filter(tenant_id=self.live.id).count(),
         }
 

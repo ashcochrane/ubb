@@ -81,11 +81,8 @@ The receipt's column still carries the retired spelling of the concept and this
 module never spells it: `Posting.RECEIPT_COLUMN` is what addresses it, so the
 day the rename lands the module follows it rather than going quietly vacuous.
 """
-from datetime import timedelta
-
 import pytest
 from django.db import IntegrityError, transaction
-from django.utils import timezone
 from django.test import TestCase
 
 from apps.metering.pricing.models import Rate
@@ -96,9 +93,10 @@ from apps.metering.usage.measurements import measurements_status_for
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests._helpers import (
-    release_and_prune, settle_the_supplier_cost)
+    release_and_prune, release_the_horizon, settle_the_supplier_cost)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.amount_status_pairs import SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
@@ -108,6 +106,13 @@ from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+
+#: The column a refusal must NAME for this module to know WHICH of the child
+#: rule's two conditions held (#354). Both refusals below are the status
+#: condition's; asserting only `IntegrityError` would be satisfied just as well
+#: by the horizon condition, which `release_the_horizon` has just cleared —
+#: "something refused this" stops being evidence once a rule has two branches.
+COSTING_STATUS_COLUMN = SUPPLIER_COST.status_column
 
 
 def _tenant_and_customer():
@@ -357,7 +362,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
         """
         posting = Posting.objects.get(id=self.result["event_id"])
 
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match=COSTING_STATUS_COLUMN):
             with transaction.atomic():
                 release_and_prune(posting)
 
@@ -506,8 +511,7 @@ class NoPruningExemptionExistsTest(TestCase):
         _resolve_the_cost(unsettled.id, 12_300)
 
         for posting in (settled, unsettled):
-            PostingMeasurement.objects.filter(posting=posting).update(
-                prunable_at=timezone.now() - timedelta(days=1))
+            release_the_horizon(posting)
         removed = PostingMeasurement.objects.filter(
             posting__in=(settled, unsettled)).delete()[0]
 
@@ -527,10 +531,9 @@ class NoPruningExemptionExistsTest(TestCase):
         """
         settled, unsettled = self._postings()
         for posting in (settled, unsettled):
-            PostingMeasurement.objects.filter(posting=posting).update(
-                prunable_at=timezone.now() - timedelta(days=1))
+            release_the_horizon(posting)
 
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match=COSTING_STATUS_COLUMN):
             with transaction.atomic():
                 PostingMeasurement.objects.filter(
                     posting__in=(settled, unsettled)).delete()

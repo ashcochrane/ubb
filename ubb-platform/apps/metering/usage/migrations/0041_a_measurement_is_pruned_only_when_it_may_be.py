@@ -13,7 +13,7 @@ per-column lifecycle to describe::
 one that decision called *"a cross-table condition on a `DELETE`, evaluated
 against the parent's `costing_status`/`pricing_status`"*, and the reason it
 could not be written until now is in that sentence: the second of the two
-statuses it reads landed four migrations ago, in `0038`.
+statuses it reads landed three migrations ago, in `0038`.
 
 ⚠ **NOTHING COUNTS THIS RULE.** It has no entry in the migration ledger and no
 row in the gate manifest, and slice 4 owns no manifest row at all — so no number
@@ -114,9 +114,16 @@ refusal that arrives far from its cause and never fires under a `TestCase`, and
 a change to what deleting a posting means everywhere. Both are bigger decisions
 than this rule, and both belong in a ticket that argues for them.
 
-`is_sandbox` cannot be turned on for a live tenant to escape the rule:
-`ck_sandbox_iff_parent` on `ubb_tenant` holds it to *sandbox if and only if it
-has a parent tenant*, and `uq_one_sandbox_per_parent` allows one.
+**How far the guard on that condition actually goes**, stated at its real
+width. `ck_sandbox_iff_parent` on `ubb_tenant` holds `is_sandbox` to *sandbox if
+and only if it has a parent tenant*, so a live tenant cannot acquire this
+exemption by having one boolean set on it — and the same constraint would admit
+`is_sandbox` written together with a `parent_tenant`. What that buys is not
+unreachability but identity: a row taking this exemption has to become a sandbox
+OF some parent, whose keys are `ubb_test_` and for whom
+`uq_one_sandbox_per_parent` allows exactly one. Both halves have a test, because
+a claim that the exemption had no door at all would be wrong in the direction
+this programme keeps paying for.
 
 **THE TOKENS BELOW ARE LITERALS AND THE REGISTRY'S ARE NOT.** `unresolved` and
 `unknown` are frozen into the function body for the reason `0036` gives at

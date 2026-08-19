@@ -802,8 +802,11 @@ measurement_key:
     # no quantity at all. The record's bag is never opened by the rule, which is
     # the one place in this area the retired plural could have arrived.
     #
-    # ⚠ FIVE MODULES ALREADY IN THE SWEPT SET WERE EDITED and none of them
-    # gained an occurrence. The nearest miss is
+    # ⚠ EIGHT FILES ALREADY IN THE SWEPT SET WERE EDITED and none of them
+    # gained an occurrence. (Fourteen changed in all: five sit under exclusion
+    # rules — this file, both gate files, the sweep's own check, and the new
+    # migration — and one of the nine swept is the new test module, which is
+    # the +1 above.) The nearest miss is
     # `test_the_receipt_outlives_its_measurements.py`, which spells the retired
     # plural as a receipt COMPONENT key in `_reproduce`; this commit changes
     # when that module prunes and never what it reproduces, so its own count is

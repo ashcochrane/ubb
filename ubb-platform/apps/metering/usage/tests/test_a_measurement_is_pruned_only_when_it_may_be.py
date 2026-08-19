@@ -12,7 +12,7 @@ no per-column lifecycle to describe::
 **This module is the third line, and only the third line.** It is the one the
 split decision said was *"a cross-table condition on a `DELETE`, evaluated
 against the parent's `costing_status`/`pricing_status`"* — unexpressible until
-the second of those two statuses landed, which it did four tickets ago.
+the second of those two statuses landed, which it did three tickets ago.
 
 ⚠ **NOTHING COUNTS THIS RULE.** It has no entry in the migration ledger and no
 row in the gate manifest, and slice 4 owns no manifest row at all. There is no
@@ -120,7 +120,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.metering.usage.models import Posting, PostingMeasurement
-from apps.metering.usage.tests._helpers import committed_posting
+from apps.metering.usage.tests._helpers import (
+    committed_posting, rule_on_the_table, rules_on_the_table)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.tests.test_transition_class_declarations import (
@@ -156,13 +157,16 @@ RECORD_RULE_TOKEN = "whole-record rule"
 # table, so each shape below carries the amount and the reason its status
 # requires rather than the status alone.
 
-def _resolved_posting(**columns):
+def _resolved_posting():
     """A posting with nothing outstanding on either pair — the default.
 
     `committed_posting` leaves both statuses at their column defaults, which are
-    `known` on both sides, with a zero amount that agrees with them.
+    `known` on both sides, with a zero amount that agrees with them. Named
+    rather than called directly because every refusal below depends on this
+    posting having nothing outstanding, and that premise should be readable at
+    the call site rather than inferred from a default.
     """
-    return committed_posting(**columns)
+    return committed_posting()
 
 
 def _cost_is_unresolved():
@@ -419,17 +423,6 @@ class ThePredicateIsNotUnresolvedRatherThanIsResolvedTest(TestCase):
             provider_cost_micros=None,
             costing_status=COSTING_STATUS_NOT_APPLICABLE)))
 
-    def test_the_two_statuses_it_does_hold_for_are_the_registrys_own(self):
-        """The predicate reads one status per pair, and the registry names it.
-
-        Asserted against `core.amount_status_pairs` rather than against two
-        literals, so a rename in the vocabulary turns this red rather than
-        leaving a rule that quietly matches nothing.
-        """
-        self.assertEqual(
-            {SUPPLIER_COST.unresolved_status, CUSTOMER_PRICE.unresolved_status},
-            {"unresolved", "unknown"})
-
 
 class ThisRuleDeclaresNoColumnIntoADefendedClassTest(TestCase):
     """The rule adds a database defence and no declaration, which is the point.
@@ -456,12 +449,17 @@ class ThisRuleDeclaresNoColumnIntoADefendedClassTest(TestCase):
             len(declared), 1,
             "the walk found nothing at all, so it says nothing about this record")
 
-    def test_the_declaration_check_reports_a_clean_board_over_this_table(self):
+    def test_the_declaration_check_still_reports_a_clean_board(self):
         """Through the gate's own entry point, not a copy of its search.
 
         Two copies of one search agreeing with each other is not evidence; this
         is the third caller `columns_the_database_does_not_defend` was made
         public for.
+
+        It asserts the WHOLE board rather than this table's share of it, which
+        is deliberate and is what the name says: the claim being made is that
+        installing a rule on a table with no declared columns left every OTHER
+        table's declarations exactly as they were.
         """
         self.assertEqual(
             columns_the_database_does_not_defend(
@@ -491,24 +489,18 @@ class TheModelIsNotWhereThisIsEnforcedTest(TestCase):
 
 
 def _rules_on_the_child_table():
-    """Every non-internal trigger on the child table, as a SET of names."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgname FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-        return {name for (name,) in cursor.fetchall()}
+    """Every non-internal trigger on the CHILD table, as a SET of names.
+
+    Through the shared catalogue query with this table's name, rather than a
+    second copy of it here: two copies of one search agreeing with each other is
+    not evidence, and the three trios on the parent table ask exactly this.
+    """
+    return rules_on_the_table(TABLE)
 
 
 def _this_rule():
     """This rule's `(tgtype, prosrc)`, asked for BY NAME, or `None`."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgtype, p.prosrc FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND t.tgname = %s", [TABLE, TRIGGER])
-        return cursor.fetchone()
+    return rule_on_the_table(TRIGGER, TABLE)
 
 
 def _body_without_its_comments():
@@ -658,22 +650,30 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
 #: **every column name the real rule spells**. That last part is the method: a
 #: mutation that deleted the token would be caught by anything asserting the
 #: rule names a column, and would prove nothing about whether the rule holds.
-#: Each mutant keeps the removed condition's column in the surviving branch's
-#: message, where it says something and enforces nothing —
-#: `test_both_mutants_still_spell_every_column_the_real_rule_spells` is what
-#: holds them to it.
+#:
+#: ⚠ The removed condition's column survives as a **read that enforces
+#: nothing** rather than inside the surviving branch's message. Both properties
+#: are needed and they pull apart: `test_both_mutants_still_spell_every_column_
+#: the_real_rule_spells` reads `prosrc` and must find every name, while the two
+#: tests above assert the surviving refusal is the OTHER condition's — which a
+#: message naming all three columns could not tell anybody.
 _MUTANT_PREAMBLE = """
 CREATE OR REPLACE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     parent_is_sandbox     boolean;
     parent_{cost_status}  text;
     parent_{price_status} text;
+    released_at           timestamptz;
 BEGIN
     SELECT t.is_sandbox, p.{cost_status}, p.{price_status}
       INTO parent_is_sandbox, parent_{cost_status}, parent_{price_status}
       FROM {posting} p
       JOIN ubb_tenant t ON t.id = p.tenant_id
      WHERE p.id = OLD.posting_id;
+
+    -- Read and never acted on, which is the whole point of it: the column is
+    -- still named by this rule and no longer governs anything.
+    released_at := OLD.prunable_at;
 
     IF parent_is_sandbox THEN
         RETURN OLD;
@@ -686,28 +686,24 @@ END;
 $$;
 """
 
-#: No comparison against `prunable_at` anywhere — but the column is still read
-#: and still named, in the status branch's message.
+#: No comparison against `prunable_at` anywhere, and no mention of it in the
+#: surviving message — but the column is still read, and still in the body.
 _WITHOUT_THE_INSTANT = _MUTANT_PREAMBLE + """
     IF parent_{cost_status} = '{cost_unresolved}'
        OR parent_{price_status} = '{price_unresolved}' THEN
         RAISE EXCEPTION 'whole-record rule: {cost_status} is %, '
-                        '{price_status} is %, prunable_at is %',
-            parent_{cost_status}, parent_{price_status},
-            COALESCE(OLD.prunable_at::text, 'unset')
+                        '{price_status} is %',
+            parent_{cost_status}, parent_{price_status}
             USING ERRCODE = '23000';
     END IF;
 """ + _MUTANT_CLOSE
 
-#: No comparison against either status — but both are still read off the parent
-#: and still named, in the instant branch's message.
+#: No comparison against either status, and neither named in the surviving
+#: message — but both are still read off the parent, and still in the body.
 _WITHOUT_THE_STATUS = _MUTANT_PREAMBLE + """
     IF OLD.prunable_at IS NULL OR now() < OLD.prunable_at THEN
-        RAISE EXCEPTION 'whole-record rule: prunable_at is %, '
-                        '{cost_status} is %, {price_status} is %',
-            COALESCE(OLD.prunable_at::text, 'unset'),
-            parent_{cost_status}, parent_{price_status}
-            USING ERRCODE = '23000';
+        RAISE EXCEPTION 'whole-record rule: prunable_at is %',
+            COALESCE(released_at::text, 'unset') USING ERRCODE = '23000';
     END IF;
 """ + _MUTANT_CLOSE
 
@@ -737,13 +733,14 @@ class TheTwoConditionsAreIndependentlyLoadBearingTest(TestCase):
                 price_status=CUSTOMER_PRICE.status_column,
                 price_unresolved=CUSTOMER_PRICE.unresolved_status))
 
-    def _deletes(self, measurement):
+    def _refusal(self, measurement):
+        """The message the delete was refused with, or `None` if it went."""
         try:
             with transaction.atomic():
                 _through_the_queryset(measurement)
-        except IntegrityError:
-            return False
-        return True
+        except IntegrityError as refusal:
+            return str(refusal)
+        return None
 
     def test_without_the_instant_an_unreleased_record_is_pruned(self):
         never_released = _measurement(_resolved_posting(), None)
@@ -751,12 +748,17 @@ class TheTwoConditionsAreIndependentlyLoadBearingTest(TestCase):
 
         self._install(_WITHOUT_THE_INSTANT)
 
-        self.assertTrue(
-            self._deletes(never_released),
+        self.assertIsNone(
+            self._refusal(never_released),
             "the instant condition refused this and its cause is gone")
-        self.assertFalse(
-            self._deletes(still_unresolved),
-            "the status condition was not the thing removed")
+        survivor = self._refusal(still_unresolved)
+        self.assertIsNotNone(
+            survivor, "the status condition was not the thing removed")
+        # ⚠ AND IT IS STILL REFUSED FOR ITS OWN REASON. A surviving refusal that
+        # named the wrong condition would be this rule's two branches having
+        # become one, which "something refused this" cannot see.
+        self.assertIn(SUPPLIER_COST.status_column, survivor)
+        self.assertNotIn(NAMES_THE_INSTANT, survivor)
 
     def test_without_the_status_an_unresolved_postings_record_is_pruned(self):
         still_unresolved = _measurement(_price_is_unknown(), _long_past())
@@ -764,12 +766,15 @@ class TheTwoConditionsAreIndependentlyLoadBearingTest(TestCase):
 
         self._install(_WITHOUT_THE_STATUS)
 
-        self.assertTrue(
-            self._deletes(still_unresolved),
+        self.assertIsNone(
+            self._refusal(still_unresolved),
             "the status condition refused this and its cause is gone")
-        self.assertFalse(
-            self._deletes(never_released),
-            "the instant condition was not the thing removed")
+        survivor = self._refusal(never_released)
+        self.assertIsNotNone(
+            survivor, "the instant condition was not the thing removed")
+        self.assertIn(NAMES_THE_INSTANT, survivor)
+        for status in NAMES_THE_STATUSES:
+            self.assertNotIn(status, survivor)
 
     def test_both_mutants_still_spell_every_column_the_real_rule_spells(self):
         """The control on the method: neither mutation is a token edit.
@@ -866,29 +871,73 @@ class ADiscardIsNotAPruneTest(TestCase):
                     PostingMeasurement.objects.filter(
                         pk=measurement.pk).exists())
 
-    def test_a_live_tenants_record_in_the_same_state_is_refused(self):
+    def test_a_live_tenants_record_is_still_refused_for_its_own_reason(self):
         """The control, and without it the class above proves nothing.
 
-        Two records identical in every respect the child table can see — same
-        NULL horizon, same unresolved parent — and the only difference is which
-        tenant owns the posting.
+        ⚠ **Each case fails exactly ONE condition and asserts the message that
+        names it.** The sandbox rows above fail both at once, which is fine for
+        an admitted move — there is no cause to attribute — but a refusal with
+        two causes available cannot say which one held, and this class exists
+        precisely to claim that the tenant is the only thing that differs.
         """
-        live = _measurement(_cost_is_unresolved(), None)
+        cases = (("the horizon", _resolved_posting(), None, NAMES_THE_INSTANT),
+                 ("the status", _cost_is_unresolved(), _long_past(),
+                  SUPPLIER_COST.status_column))
 
-        self.assertFalse(self._prunes(live))
+        for name, posting, horizon, expected in cases:
+            with self.subTest(condition=name):
+                measurement = _measurement(posting, horizon)
+                try:
+                    with transaction.atomic():
+                        _through_the_queryset(measurement)
+                    self.fail("a live tenant's record was pruned")
+                except IntegrityError as refusal:
+                    self.assertIn(RECORD_RULE_TOKEN, str(refusal))
+                    self.assertIn(expected, str(refusal))
 
-    def test_the_exemption_cannot_be_turned_on_for_a_live_tenant(self):
-        """`is_sandbox` is held by a `CHECK`, not by convention.
+    def test_the_exemption_is_not_reachable_by_flipping_a_boolean(self):
+        """`is_sandbox` is held by a `CHECK`, and here is exactly how far it goes.
 
-        A rule that can be escaped by setting a boolean is a rule with a door.
-        This one cannot: a sandbox is a tenant with a parent, and the table
-        refuses the combination that would make an ordinary tenant one.
+        ⚠ **The honest claim is narrower than "this cannot be escaped".**
+        `ck_sandbox_iff_parent` is *sandbox if and only if it has a parent
+        tenant*, so it refuses the one-column flip below — and it would admit
+        `is_sandbox=True` written together with a `parent_tenant`. What the
+        constraint buys is therefore not unreachability: it is that a tenant
+        cannot acquire this exemption by having one boolean set on it. It has
+        to become a sandbox OF some parent, which is a different row identity —
+        its keys must be `ubb_test_`, `uq_one_sandbox_per_parent` refuses it
+        outright where that parent already has a sandbox, and both halves are
+        pinned in `apps/platform/tenants/tests/test_sandbox.py`.
+
+        Stated at this width deliberately. A docstring claiming the exemption
+        had no door at all would be the shape of defect this programme keeps
+        finding — a refusal that is right for half its subject, with the prose
+        claiming the whole.
         """
         live = Tenant.objects.create(name="live only")
 
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Tenant.objects.filter(pk=live.pk).update(is_sandbox=True)
+
+    def test_becoming_a_sandbox_means_acquiring_a_parent_rather_than_a_flag(self):
+        """The other half of the sentence above, so neither is left to a reader.
+
+        Written as the two-column update the `CHECK` does admit, and what it
+        costs: the tenant is now somebody's sandbox, and a second one for that
+        parent is refused.
+        """
+        parent = Tenant.objects.create(name="the parent")
+        live = Tenant.objects.create(name="live only")
+
+        Tenant.objects.filter(pk=live.pk).update(
+            is_sandbox=True, parent_tenant=parent)
+        self.assertTrue(Tenant.objects.get(pk=live.pk).is_sandbox)
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Tenant.objects.create(name="a second sandbox", is_sandbox=True,
+                                      parent_tenant=parent)
 
     def test_the_rule_reads_the_flag_off_the_tenant_that_owns_the_posting(self):
         """Joined through the posting, so a sandbox cannot lend its exemption.

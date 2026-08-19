@@ -559,7 +559,7 @@ class TheReverseIsExercisedTest(TestCase):
 
     def setUp(self):
         loader = MigrationLoader(connection)
-        self._unapply_the_later_rules(loader)
+        self._unapply_the_prune_rule(loader)
         self.migration = loader.get_migration(APP_LABEL, FOLD_MIGRATION)
         state = loader.project_state((APP_LABEL, PARENT_MIGRATION))
         for op in self.migration.operations:
@@ -574,7 +574,7 @@ class TheReverseIsExercisedTest(TestCase):
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
 
-    def _unapply_the_later_rules(self, loader):
+    def _unapply_the_prune_rule(self, loader):
         """Take the child's prune rule back off, the way `migrate` would.
 
         `0031`'s reverse ends by removing every measurement record, and since

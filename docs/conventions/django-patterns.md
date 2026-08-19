@@ -83,8 +83,9 @@ wire and validate.
   about whether its rule exists at all. `PostingMeasurement`'s `DELETE` condition (#354) is enforced
   by a **`BEFORE DELETE`** trigger in
   `usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`, and its three doors are
-  `delete()`, `QuerySet.delete()` and raw SQL rather than the three above — a whole-record rule is
-  about whether a row may cease to exist, not about whether a field may change. Its worked example
+  `delete()`, `QuerySet.delete()` and raw SQL rather than the `save()` / `QuerySet.update()` / raw
+  SQL trio the bullets below use — a whole-record rule is about whether a row may cease to exist,
+  not about whether a field may change. Its worked example
   is `usage/tests/test_a_measurement_is_pruned_only_when_it_may_be.py`, and **that module is the
   only thing that would notice the rule's absence**: it has no ledger entry and no manifest row.
 - **A whole-record rule reaching another table's column reads it in the trigger, and a `DELETE` rule
