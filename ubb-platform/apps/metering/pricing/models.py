@@ -687,9 +687,12 @@ class PricingBookPublish(BaseModel):
     declaration_status = models.CharField(
         max_length=32, default=DECLARATION_STATUS_DRAFT, db_index=True)
     #: WHEN THE CHANGE TAKES EFFECT — the one value both boundaries are written
-    #: from. Chosen by the caller, and defaulted by the route rather than here,
-    #: because a declaration with no stated moment means "now" at the moment it
-    #: is *declared*, not at the moment the row happens to be constructed.
+    #: from. Stated by the caller on the declaring body and defaulted in
+    #: `BookService.declare` rather than by a model default, because a
+    #: declaration with no stated moment means "now" at the moment it is
+    #: *declared*, not at the moment the row happens to be constructed. Which
+    #: instants a caller may state is `core.scheduling`'s — bounded ahead at a
+    #: platform horizon and refused behind the present (#359).
     effective_at = models.DateTimeField(db_index=True)
     #: THE INTENDED CHANGES, held by value. Each is a mapping naming one of
     #: `CHANGE_KINDS`, the quantity it prices and the selectors that identify

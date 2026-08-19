@@ -20,9 +20,17 @@
       "status": 422,
       "title": "effective_at is in the future"
     },
+    "effective_at_in_past": {
+      "status": 422,
+      "title": "effective_at is in the past"
+    },
     "effective_at_naive": {
       "status": 422,
       "title": "effective_at must be timezone-aware"
+    },
+    "effective_at_too_far_ahead": {
+      "status": 422,
+      "title": "effective_at is beyond the scheduling horizon"
     },
     "effective_at_too_old": {
       "status": 422,

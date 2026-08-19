@@ -90,9 +90,19 @@ class EffectiveAtInFutureError(UnprocessableEntityError):
     CODE = 'effective_at_in_future'
 
 
+class EffectiveAtInPastError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'effective_at_in_past'
+
+
 class EffectiveAtNaiveError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'effective_at_naive'
+
+
+class EffectiveAtTooFarAheadError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'effective_at_too_far_ahead'
 
 
 class EffectiveAtTooOldError(UnprocessableEntityError):
@@ -189,7 +199,9 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'conflict': ConflictError,
     'currency_locked': CurrencyLockedError,
     'effective_at_in_future': EffectiveAtInFutureError,
+    'effective_at_in_past': EffectiveAtInPastError,
     'effective_at_naive': EffectiveAtNaiveError,
+    'effective_at_too_far_ahead': EffectiveAtTooFarAheadError,
     'effective_at_too_old': EffectiveAtTooOldError,
     'feature_not_enabled': FeatureNotEnabledError,
     'forbidden': ForbiddenError,
@@ -240,7 +252,9 @@ __all__ = [
     'BillingPeriodClosedError',
     'CurrencyLockedError',
     'EffectiveAtInFutureError',
+    'EffectiveAtInPastError',
     'EffectiveAtNaiveError',
+    'EffectiveAtTooFarAheadError',
     'EffectiveAtTooOldError',
     'FeatureNotEnabledError',
     'InsufficientBalanceError',

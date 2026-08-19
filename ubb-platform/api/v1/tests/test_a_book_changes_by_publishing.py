@@ -21,8 +21,11 @@ so none of them takes the audit sweep's exemption list — that carve is for usa
 ingestion and the start-gate call.
 """
 import json
+from datetime import timedelta
+from uuid import uuid4
 
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from apps.metering.pricing.models import PricingBookPublish, Rate
 from apps.metering.pricing.tests._helpers import (
@@ -33,6 +36,7 @@ from apps.platform.audit.models import AuditRecord
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.scheduling import MAX_FORWARD_SCHEDULING_DAYS
 from core.vocabulary import (
     DECLARATION_STATUS_DRAFT, DECLARATION_STATUS_PUBLISHED)
 
@@ -54,6 +58,17 @@ AFTER = 7_000_000
 #: — the one the immediate reprice body cannot name at all.
 UNREACHABLE_SLOT = "grouping_field_7"
 TIER = "tier"
+
+
+def _in_days(days):
+    """An instant `days` from now, as a tenant would state it.
+
+    Relative rather than a fixed date, because the horizon is measured from the
+    request's own moment. The calendar cases — *"the same day next year"* across
+    a leap year — are held where the clock is a parameter,
+    `core/tests/test_scheduling.py`, rather than by patching one here.
+    """
+    return timezone.now() + timedelta(days=days)
 
 
 class _APublishingTenantMixin:
@@ -102,6 +117,15 @@ class _APublishingTenantMixin:
         return self._post(self.publishes, {
             "changes": list(changes) or [
                 self.a_change(rate_per_unit_micros=AFTER)]})
+
+    def declare_at(self, effective_at, *changes):
+        """The same body, dated. Separate from `declare` on purpose: the great
+        majority of cases here are about a change rather than about when it
+        lands, and a body carrying no instant is the one they should send."""
+        return self._post(self.publishes, {
+            "changes": list(changes) or [
+                self.a_change(rate_per_unit_micros=AFTER)],
+            "effective_at": effective_at.isoformat()})
 
 
 class DeclaringAChangeWritesNoRuleTest(_APublishingTenantMixin, TestCase):
@@ -390,6 +414,216 @@ class ADraftTheBookHasMovedUnderIsStillReadableTest(_APublishingTenantMixin,
                          DECLARATION_STATUS_PUBLISHED)
         self.assertIsNone(body["diff"])
         self.assertIsNone(body["diff_unavailable_reason"])
+
+
+class AChangeCanBeDatedForwardTest(_APublishingTenantMixin, TestCase):
+    """`effective_at` is what dates a change forward, and omitting it means now
+    (#359).
+
+    A tenant who has agreed a rise from the first of next month states that
+    instant here and stops having to remember it. Nothing runs at the instant:
+    the rows are written when the publish lands and the boundary is a value the
+    resolver reads, which is asserted where the writing happens, in
+    `pricing/tests/test_a_publish_can_be_dated_forward.py`. What is asked HERE
+    is what only the route can answer — that the instant crosses the wire, that
+    it is carried onto the record, and which instants are refused.
+    """
+
+    def test_a_declared_change_carries_the_instant_it_was_dated_for(self):
+        boundary = _in_days(30)
+
+        body = self.declare_at(boundary).json()
+
+        self.assertEqual(body["effective_at"], boundary.isoformat())
+        record = PricingBookPublish.objects.get(id=body["id"])
+        self.assertEqual(record.effective_at, boundary)
+
+    def test_omitting_the_instant_still_means_now(self):
+        """The property #358 shipped, unchanged by the field arriving.
+
+        A body with no instant is the overwhelmingly common one and it must not
+        have started meaning something else.
+        """
+        before = timezone.now()
+
+        body = self.declare().json()
+
+        record = PricingBookPublish.objects.get(id=body["id"])
+        self.assertGreaterEqual(record.effective_at, before)
+        self.assertLessEqual(record.effective_at, timezone.now())
+
+    def test_publishing_a_forward_dated_change_writes_the_future_boundary(self):
+        boundary = _in_days(30)
+        declared = self.declare_at(boundary).json()
+
+        self.assertEqual(
+            self._post(f"{self.publishes}/{declared['id']}/publish")
+            .status_code, 200)
+
+        self.rule.refresh_from_db()
+        self.assertEqual(self.rule.valid_to, boundary)
+        self.assertLess(timezone.now(), boundary)
+
+
+class AnInstantBeyondTheHorizonIsRefusedTest(_APublishingTenantMixin,
+                                             TestCase):
+    """Ruling 14a: 366 days, a platform constant, and a named error.
+
+    The bound exists to stop **a typo becoming a permanent invisible schedule**,
+    which is the only failure mode anybody has described. The calendar
+    arithmetic and the "no tenant setting moves it" claim are held at the rail
+    itself, in `core/tests/test_scheduling.py`; what is asserted here is that
+    the route enforces it and answers with a code a tenant's automation can tell
+    apart from every other reason a body is refused.
+    """
+
+    def test_exactly_366_days_ahead_is_accepted(self):
+        # Exactly the bound, and safe against the clock moving between here and
+        # the handler: the route reads a LATER `now`, so its horizon is a later
+        # instant than this one and an instant on the bound stays inside it.
+        response = self.declare_at(_in_days(MAX_FORWARD_SCHEDULING_DAYS))
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_367_days_ahead_is_refused_with_its_own_code(self):
+        response = self.declare_at(_in_days(367))
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "effective_at_too_far_ahead")
+
+    def test_a_naive_instant_is_refused(self):
+        """Not a moment at all, and told so by its own code.
+
+        A naive datetime compared against an aware one raises rather than
+        answering, so this refusal is what stands between a malformed body and
+        a 500.
+        """
+        response = self._post(self.publishes, {
+            "changes": [self.a_change(rate_per_unit_micros=AFTER)],
+            "effective_at": "2027-06-01T00:00:00"})
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "effective_at_naive")
+
+    def test_an_instant_in_the_past_is_refused(self):
+        """A change is dated forward or not at all.
+
+        A boundary behind the present is a retroactive reprice — the thing
+        `Rate.valid_from` is declared FROZEN to prevent — rather than a
+        schedule. It carries a code of its own for the reason the horizon does:
+        on this route `validation_error` already means *"you have not declared
+        that grouping field"* and *"that rule is not there to reprice"*, so a
+        third meaning would leave a caller unable to tell a date it can fix from
+        a body it cannot.
+        """
+        response = self.declare_at(_in_days(-1))
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "effective_at_in_past")
+
+    def test_the_three_refusals_are_told_apart_by_their_codes(self):
+        """The whole point of naming them, asserted as a set.
+
+        Three ways a stated instant can be wrong, three codes, and none of them
+        the generic one this route already uses for two other things. A caller
+        branching on `code` can act on each differently — fix the date, wait, or
+        stop sending a date at all.
+        """
+        naive = self._post(self.publishes, {
+            "changes": [self.a_change(rate_per_unit_micros=AFTER)],
+            "effective_at": "2027-06-01T00:00:00"})
+
+        self.assertEqual(
+            [naive.json()["code"],
+             self.declare_at(_in_days(-1)).json()["code"],
+             self.declare_at(_in_days(400)).json()["code"]],
+            ["effective_at_naive", "effective_at_in_past",
+             "effective_at_too_far_ahead"])
+
+
+class TheRefusalSpendsNothingTest(_APublishingTenantMixin, TestCase):
+    """⚠ A REFUSAL ADDED TO A ROUTE CAN SPEND WHAT IT REFUSES.
+
+    This programme has already paid for that once — a `422` that sat underneath
+    an admission and permanently burned tenant keyspace on requests that
+    recorded nothing. So the instant is checked before anything else happens,
+    and these are what say so rather than the comment beside it.
+
+    **WHAT SITS ABOVE IT, NAMED.** Textually, one statement: the deferred
+    `book_service` import ADR-001's boundary discipline puts at the top of every
+    handler here, which does nothing. Then the authenticator, which buffers the
+    key's last-used marker on *every* request whatever the answer — a property
+    of authenticating rather than something this refusal decides — and the role
+    floor, which is a pure read of the principal's role. Nothing else: not the
+    book lookup, not the product gate, not the slot registry read, and
+    therefore nowhere near the two statements that spend anything, which are
+    `BookService.declare` and `audit_record`.
+
+    ⚠ **AND ONLY TWO OF THESE CASES ARE LOAD-BEARING AGAINST A DELETED CHECK.**
+    Declaring writes no rule, so *the book is where it was* stays green whether
+    the instant was refused or accepted — it guards a different regression (a
+    declaration that started writing) and is kept for that, not counted as
+    evidence about the refusal. Measured: deleting the horizon refusal reddens
+    the record case, the audit case and the ordering pin, and leaves that one
+    green.
+    """
+
+    def test_a_refused_declaration_leaves_no_record(self):
+        before = PricingBookPublish.objects.count()
+
+        self.declare_at(_in_days(400))
+
+        self.assertEqual(PricingBookPublish.objects.count(), before)
+
+    def test_a_refused_declaration_records_no_attempt(self):
+        """No audit entry of ANY kind, rather than "not the declared one".
+
+        Naming the action a refusal must not have written would leave a second
+        entry riding along beside it invisible, and would spell a name this
+        assertion has no business spelling.
+        """
+        self.declare_at(_in_days(400))
+
+        self.assertEqual(AuditRecord.objects.filter(
+            tenant_id=self.tenant.id).count(), 0)
+
+    def test_a_refused_declaration_leaves_the_book_exactly_where_it_was(self):
+        self.declare_at(_in_days(400))
+
+        self.rule.refresh_from_db()
+        self.book.refresh_from_db()
+        self.assertEqual(self.rule.rate_per_unit_micros, BEFORE)
+        self.assertIsNone(self.rule.valid_to)
+        self.assertEqual(self.book.version, 1)
+        self.assertEqual(Rate.objects.filter(tenant=self.tenant).count(), 1)
+
+    def test_the_check_runs_before_the_book_is_even_looked_up(self):
+        """The ORDER, pinned — it is invisible in a diff otherwise.
+
+        A book id this tenant does not own would 404 if anything above the
+        check touched the database. It answers the horizon refusal instead,
+        which is only possible if the check ran first. Move the check below the
+        lookup and this test reports a 404.
+        """
+        unknown_book = self.publishes.replace(str(self.book.id), str(uuid4()))
+
+        response = self._post(unknown_book, {
+            "changes": [self.a_change(rate_per_unit_micros=AFTER)],
+            "effective_at": _in_days(400).isoformat()})
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"], "effective_at_too_far_ahead")
+
+    def test_a_valid_instant_reaches_the_lookup_and_gets_the_404(self):
+        """The other half, so the case above cannot pass by the route being
+        broken for every request rather than by the ordering being right."""
+        unknown_book = self.publishes.replace(str(self.book.id), str(uuid4()))
+
+        response = self._post(unknown_book, {
+            "changes": [self.a_change(rate_per_unit_micros=AFTER)],
+            "effective_at": _in_days(30).isoformat()})
+
+        self.assertEqual(response.status_code, 404)
 
 
 class TheContractPublishesEveryTermTheServiceMovesTest(TestCase):

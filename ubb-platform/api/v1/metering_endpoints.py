@@ -21,6 +21,7 @@ from core.cost_totals import (
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
+from core.scheduling import validate_scheduled_instant
 from core.time_windows import (
     REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
 from django.utils import timezone
@@ -1335,8 +1336,42 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
     Every change is resolved before the draft is created, so a name the tenant
     has not declared, or a rule that is not there, is a 422 while they are still
     deciding rather than a surprise when the price was supposed to change.
+
+    **The change can be dated forward, and nothing runs at the instant.**
+    `effective_at` names when it takes effect and omitting it means now.
+    Publishing writes the rows there and then, carrying the boundary as a value
+    resolution reads, so no job has to run when the moment arrives.
+
+    An instant must be timezone-aware (`effective_at_naive`), must not be in the
+    past (`effective_at_in_past`), and must be within 366 days
+    (`effective_at_too_far_ahead`). A refused declaration writes nothing and is
+    recorded nowhere.
     """
     from apps.metering.pricing.services.book_service import BookService
+
+    # ⚠ THE INSTANT IS CHECKED BEFORE ANYTHING ELSE HAPPENS, AND THAT IS THE
+    # POINT. *A refusal added to a route can spend what it refuses* — this
+    # programme has already paid for a 422 that sat underneath an admission and
+    # burned tenant keyspace on requests that recorded nothing. So the check is
+    # the first EFFECTFUL statement here, above the book lookup, the product
+    # gate and the slot registry read, and therefore far above the two
+    # statements that spend anything: `BookService.declare`, which creates the
+    # record, and `audit_record`, which writes the governance entry. (The only
+    # thing textually above it is the deferred import, which ADR-001's boundary
+    # discipline puts in every one of these handlers and which does nothing.)
+    # It can be hoisted that far because `validate_scheduled_instant` reads
+    # nothing but the payload and the clock.
+    #
+    # WHAT SITS ABOVE IT, NAMED: the authenticator, which buffers the key's
+    # last-used marker on EVERY request whatever the answer — a property of
+    # authenticating rather than something this refusal decides — and the role
+    # floor, which is a pure read of the principal's role. A refused request
+    # records no audit entry and needs no action of its own to say so:
+    # `records_audit` is a marker, and `audit_record` is only reached on the
+    # path that succeeds. `test_a_book_changes_by_publishing.py`'s
+    # `TheRefusalSpendsNothingTest` pins the ORDER, which is invisible in a diff.
+    if payload.effective_at is not None:
+        validate_scheduled_instant(payload.effective_at, timezone.now())
 
     book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
     _gate_card_type(request, book.card_type)
@@ -1352,7 +1387,8 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
             f"declare it first, then price on it")
     try:
         with transaction.atomic():
-            record = BookService.declare(book, changes)
+            record = BookService.declare(book, changes,
+                                         effective_at=payload.effective_at)
             audit_record(
                 action="pricing_book_publish.declared",
                 tenant_id=request.auth.tenant.id,
