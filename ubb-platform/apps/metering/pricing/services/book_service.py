@@ -9,7 +9,7 @@ from apps.metering.pricing.models import (
     PricingBookPublish, Rate, RateCard)
 from apps.platform.event_types.quantities import declaration_named
 from core.problems import Problem
-from core.vocabulary import DECLARATION_STATUS_PUBLISHED
+from core.vocabulary import DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
@@ -41,6 +41,42 @@ _RATE_COPY_FIELDS = (
 #: immediate reprice route this act replaces still states the shape and is
 #: untouched here.
 _TERM_FIELDS = ("rate_per_unit_micros", "unit_quantity", "fixed_micros")
+
+#: HOW A RULE DERIVES ITS PRICE — the fourth thing a change states, and the one
+#: that makes an override a whole rule (#361, #151 §6).
+#:
+#: **A CUSTOMER OVERRIDE REPLACES THE RULE IT INHERITS COMPLETELY, METHOD
+#: INCLUDED**, so the method has to be statable wherever a rule is written. It
+#: was not: a change body carried three money terms and an added rule took the
+#: column's own null, which meant a customer moved from a margin over cost onto
+#: a flat price could not be expressed at all — the tenant's only route to it
+#: was to estimate that customer's typical cost, do the arithmetic by hand and
+#: enter a number that approximates the deal. That is a price computed outside
+#: UBB and pasted in, going stale the moment the supplier moves, which is
+#: exactly the caller-supplied price #146 §8 deleted arriving through the
+#: configuration door instead of the payload one.
+#:
+#: ⚠ **HALF A RULE IS NOT A REPLACEMENT, WHICH IS WHY THIS JOINS THE TERMS
+#: RATHER THAN SITTING BESIDE THEM.** There is no path that takes a value from
+#: one rule and a method from another: an `add` states its own method or takes
+#: the column's null — never the superseded rule's, because it supersedes none
+#: — and a `reprice` carries the method of the rule it replaces along with
+#: every term it does not restate, because a reprice IS that rule at a new
+#: price. A rule whose method comes from one record and whose value from
+#: another could not be explained by naming one rule, which is the property the
+#: whole receipt design rests on.
+#:
+#: ⚠ **NOT THE ARITHMETIC SHAPE, WHICH IS STILL UNSTATABLE AND STILL FOR THE
+#: SAME REASON** — see `_TERM_FIELDS` above. HOW A PRICE IS DERIVED and HOW THE
+#: ARITHMETIC RUNS are two adjacent columns with unrelated value sets, and only
+#: the first has a name a new schema may carry.
+_METHOD_FIELD = "pricing_method"
+
+#: Everything a change may state about the rule it opens: what it charges, and
+#: how it derives it. `_TERM_FIELDS` is kept separate because the three money
+#: terms are what a `retire` refuses and what `Rate` defaults; this is the set
+#: a body carries and a diff row publishes.
+_RULE_FIELDS = (*_TERM_FIELDS, _METHOD_FIELD)
 
 
 class PlannedChange:
@@ -83,12 +119,31 @@ class PlannedChange:
 
 
 def _terms_of(rule):
-    return {name: getattr(rule, name) for name in _TERM_FIELDS}
+    return {name: getattr(rule, name) for name in _RULE_FIELDS}
 
 
 def _default_terms():
+    """What an added rule charges where its change body said nothing.
+
+    Read off the columns rather than restated, so a rule added through a publish
+    and a rule created any other way start from one set of values.
+
+    **THE METHOD'S IS `None`, WHICH IS WHAT THE COLUMN ANSWERS** — Django reads a
+    nullable field with no declared default as null rather than as the empty
+    string, and the empty string would be a value `ck_rate_pricing_method`
+    refuses. ⚠ This line first special-cased the method to `None` explicitly, on
+    exactly that worry; mutating the special case away reddened NOTHING, because
+    the generic read already gives null. The special case was dead and its
+    stated reason was false, so it is gone rather than left as a guard nobody
+    can tell is holding anything.
+
+    Null is not a third method: it says the rule derives no price of its own and
+    charges its own terms, which is what `direct_event_price` means at
+    resolution. The argument is made in full on the column
+    (`pricing/models.py`).
+    """
     return {name: Rate._meta.get_field(name).get_default()
-            for name in _TERM_FIELDS}
+            for name in _RULE_FIELDS}
 
 
 def _rules_in_force_at(book, instant):
@@ -272,8 +327,26 @@ def plan_changes(book, changes, effective_at):
 
         matched = [rule for rule in in_force
                    if _identity_of_rule(rule) == identity]
-        stated = {name: change[name] for name in _TERM_FIELDS
+        stated = {name: change[name] for name in _RULE_FIELDS
                   if change.get(name) is not None}
+        # THE METHOD'S VALUE SET IS CLOSED AND THE SERVICE IS WHERE A BODY
+        # MEETS IT (#361). The column's `CHECK` would refuse an unratified
+        # value too, as a 500 with a constraint name in it; this is the same
+        # refusal said where a tenant can act on it, and it is the shape the
+        # immediate add route already uses for the arithmetic shape beside it.
+        #
+        # It carries `validation_error` rather than a code of its own: on this
+        # route that code already means *"you have not declared that grouping
+        # field"* and *"that rule is not there to reprice"* — body problems a
+        # caller fixes by editing the body — and a value outside a published
+        # enumeration is the same kind of answer. The codes #359 and #360
+        # bought are for the INSTANT, where "that date is a typo" and "that
+        # date has passed" are things a caller's automation must tell apart.
+        if _METHOD_FIELD in stated and stated[_METHOD_FIELD] not in PRICING_METHOD_VALUES:
+            raise ValueError(
+                f"change {position}: {_METHOD_FIELD} must be one of "
+                f"{sorted(PRICING_METHOD_VALUES)}; got "
+                f"{stated[_METHOD_FIELD]!r}")
 
         if kind == CHANGE_ADD:
             if matched:
@@ -342,7 +415,7 @@ def plan_changes(book, changes, effective_at):
             if stated:
                 raise ValueError(
                     f"change {position}: a retirement opens no rule, so it "
-                    f"states no terms; got {sorted(stated)}")
+                    f"states neither terms nor a method; got {sorted(stated)}")
             planned.append(PlannedChange(
                 kind=kind, measurement_key=measurement_key,
                 selectors=selectors, outgoing=outgoing, terms=None))
@@ -357,6 +430,36 @@ def plan_changes(book, changes, effective_at):
 
 
 class BookService:
+    @staticmethod
+    def the_customers_own_book(tenant, customer):
+        """The book holding one customer's own pricing rules, created on first
+        use (#361).
+
+        **THE CONTAINER IS BOOKKEEPING AND THE OVERRIDE IS THE ACT**, which is
+        why creating it records no audit action of its own: a tenant declaring
+        a customer's first negotiated rule has performed ONE governance act,
+        and recording two would make a ledger reader count a decision nobody
+        took.
+
+        ⚠ **HERE RATHER THAN AT THE ROUTE, BECAUSE A TEST FIXTURE NEEDS IT
+        TOO.** A fixture that hand-rolled the same construction would be a
+        second writer of it — it would keep passing the day the real one
+        changed, which is the shape #354 paid for — and a product's test
+        helpers may not import `api.*` to reach the route's version. One
+        function, two callers, and the fixture exercises what a tenant reaches.
+
+        It is a PRICE book by construction, which is where "an override book is
+        a price book" is held: a supplier's cost does not change because of who
+        the tenant sells to, and the column that says so leaves with #366, so a
+        constraint naming it would be written to be dropped.
+        """
+        book, _ = RateCard.objects.get_or_create(
+            tenant=tenant, customer=customer, card_type="price",
+            currency=tenant.default_currency or "usd",
+            defaults={"key": f"customer-override-{customer.id}"[:64],
+                      "name": f"Overrides for {customer.external_id}"[:255]})
+        return book
+
     @staticmethod
     def publish(book, changes, as_of=None):
         """Atomically reprice a set of the book's rates. Each change must match
@@ -572,6 +675,16 @@ class BookService:
                 else:
                     # An added rule starts a lineage of its own: there is no
                     # predecessor whose history it continues.
+                    #
+                    # ⚠ WHOSE RULE IT IS COMES FROM THE BOOK AND IS NOT
+                    # COPIED ONTO THE RULE (#361). `RateCard.customer` is what
+                    # resolution reads; `Rate.customer` is the pre-book model's
+                    # own column and nothing in pricing reads it. Writing it
+                    # here would be a second copy of one fact — and a copy with
+                    # a DIFFERENT delete rule, since that column is `CASCADE`
+                    # where the book's is `SET_NULL`, so deleting a customer
+                    # would take their negotiated rules with them. Avoiding
+                    # exactly that is why the book's column is `SET_NULL`.
                     data = {
                         "tenant_id": locked.tenant_id, "customer_id": None,
                         "card_type": locked.card_type,

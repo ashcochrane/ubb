@@ -770,7 +770,14 @@ CONCEPTS_IN_THE_CONTRACT = {
     # no receipt and no method on either side; its two readers are accumulators
     # asking whether an amount may be included, and neither asks how it was
     # derived. The same ruling #328 and #351 made for the two reasons.
-    "pricing_method": Published(2, ENUM),  # the ack + the audit lookup
+    # 2 -> 6 in #361, and all four new nodes are there because the method
+    # became something a tenant STATES rather than only something UBB reports.
+    # TWO of them are request bodies — the change a publish carries and the one
+    # that declares an override — and a closed concept a caller may SEND is
+    # exactly the one that has to be advertised. The other two are the reads
+    # that shadow them: the diff row a tenant checks before committing, and the
+    # inherited rule a client copies a starting point from.
+    "pricing_method": Published(6, ENUM),
 }
 
 
@@ -972,7 +979,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # this claim is about: the recording ack and the audit lookup are exactly
     # the responses publishing the record the method lives inside. A third
     # response gaining that record and not this marker is the finding.
-    placed("pricing_method", {"RecordUsageResponse", "UsageEventDetailOut"})
+    # ⚠ SIX SINCE #361, AND FOUR OF THEM ARE REQUESTS. The rule was "wherever
+    # the receipt goes" while the method was only ever reported; a customer
+    # override made it something a tenant STATES, so the set is now every
+    # schema that carries the method in either direction — the two responses
+    # publishing the receipt, the two bodies that state a rule, the diff row
+    # that shows one changing, and the inherited rule a client copies from.
+    placed("pricing_method", {"RecordUsageResponse", "UsageEventDetailOut",
+                              "BookChangeIn", "CustomerOverrideIn",
+                              "RuleTermsOut", "InheritedPricingRule"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})

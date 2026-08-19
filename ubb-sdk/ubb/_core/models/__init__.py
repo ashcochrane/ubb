@@ -35,6 +35,7 @@ from .book_change_diff_out import BookChangeDiffOut
 from .book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
 from .book_change_in import BookChangeIn
 from .book_change_in_grouping_fields import BookChangeInGroupingFields
+from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
 from .book_in import BookIn
 from .book_out import BookOut
 from .book_publish_in import BookPublishIn
@@ -57,6 +58,9 @@ from .customer_billing_profile_in import CustomerBillingProfileIn
 from .customer_billing_profile_out import CustomerBillingProfileOut
 from .customer_margin_list_row import CustomerMarginListRow
 from .customer_margin_out import CustomerMarginOut
+from .customer_override_in import CustomerOverrideIn
+from .customer_override_in_grouping_fields import CustomerOverrideInGroupingFields
+from .customer_override_in_pricing_method_type_0 import CustomerOverrideInPricingMethodType0
 from .customer_response import CustomerResponse
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
@@ -78,6 +82,10 @@ from .grant_out import GrantOut
 from .grant_summary_out import GrantSummaryOut
 from .grouping_field_margin_row import GroupingFieldMarginRow
 from .grouping_field_values_out import GroupingFieldValuesOut
+from .inherited_pricing_rule import InheritedPricingRule
+from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGroupingFields
+from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
+from .inherited_rule_out import InheritedRuleOut
 from .invitation_create_in import InvitationCreateIn
 from .invitation_list_response import InvitationListResponse
 from .invitation_out import InvitationOut
@@ -182,6 +190,7 @@ from .revenue_mode_out import RevenueModeOut
 from .revenue_profile_in import RevenueProfileIn
 from .revenue_profile_out import RevenueProfileOut
 from .rule_terms_out import RuleTermsOut
+from .rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
 from .sandbox_reset_in import SandboxResetIn
 from .seat_margin_out import SeatMarginOut
 from .seats_in import SeatsIn
@@ -301,6 +310,7 @@ __all__ = (
     "BookChangeDiffOutGroupingFields",
     "BookChangeIn",
     "BookChangeInGroupingFields",
+    "BookChangeInPricingMethodType0",
     "BookIn",
     "BookOut",
     "BookPublishIn",
@@ -323,6 +333,9 @@ __all__ = (
     "CustomerBillingProfileOut",
     "CustomerMarginListRow",
     "CustomerMarginOut",
+    "CustomerOverrideIn",
+    "CustomerOverrideInGroupingFields",
+    "CustomerOverrideInPricingMethodType0",
     "CustomerResponse",
     "DebitCreditResponse",
     "DebitRequest",
@@ -344,6 +357,10 @@ __all__ = (
     "GrantSummaryOut",
     "GroupingFieldMarginRow",
     "GroupingFieldValuesOut",
+    "InheritedPricingRule",
+    "InheritedPricingRuleGroupingFields",
+    "InheritedPricingRulePricingMethodType0",
+    "InheritedRuleOut",
     "InvitationCreateIn",
     "InvitationListResponse",
     "InvitationOut",
@@ -448,6 +465,7 @@ __all__ = (
     "RevenueProfileIn",
     "RevenueProfileOut",
     "RuleTermsOut",
+    "RuleTermsOutPricingMethodType0",
     "SandboxResetIn",
     "SeatMarginOut",
     "SeatsIn",

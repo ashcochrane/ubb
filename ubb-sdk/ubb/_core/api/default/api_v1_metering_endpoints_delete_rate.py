@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.problem_out import ProblemOut
 from ...models.status_response import StatusResponse
 from typing import cast
 from uuid import UUID
@@ -35,7 +36,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> StatusResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | StatusResponse | None:
     if response.status_code == 200:
         response_200 = StatusResponse.from_dict(response.json())
 
@@ -43,13 +44,27 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 404:
+        response_404 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 422:
+        response_422 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_422
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[StatusResponse]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | StatusResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,13 +79,18 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[StatusResponse]:
+) -> Response[ProblemOut | StatusResponse]:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
     book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
     noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
     previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    A rule in a book that holds one customer's own pricing is refused (422): an
+    override is withdrawn through DELETE
+    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
+    effect when its publish lands.
 
     Args:
         book_id (UUID):
@@ -81,7 +101,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[StatusResponse]
+        Response[ProblemOut | StatusResponse]
      """
 
 
@@ -103,13 +123,18 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> StatusResponse | None:
+) -> ProblemOut | StatusResponse | None:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
     book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
     noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
     previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    A rule in a book that holds one customer's own pricing is refused (422): an
+    override is withdrawn through DELETE
+    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
+    effect when its publish lands.
 
     Args:
         book_id (UUID):
@@ -120,7 +145,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        StatusResponse
+        ProblemOut | StatusResponse
      """
 
 
@@ -137,13 +162,18 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[StatusResponse]:
+) -> Response[ProblemOut | StatusResponse]:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
     book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
     noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
     previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    A rule in a book that holds one customer's own pricing is refused (422): an
+    override is withdrawn through DELETE
+    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
+    effect when its publish lands.
 
     Args:
         book_id (UUID):
@@ -154,7 +184,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[StatusResponse]
+        Response[ProblemOut | StatusResponse]
      """
 
 
@@ -176,13 +206,18 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> StatusResponse | None:
+) -> ProblemOut | StatusResponse | None:
     """ Delete Rate
 
      Retire (soft-expire) a single rate within its book. Addressed under its
     book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
     noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
     previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
+
+    A rule in a book that holds one customer's own pricing is refused (422): an
+    override is withdrawn through DELETE
+    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
+    effect when its publish lands.
 
     Args:
         book_id (UUID):
@@ -193,7 +228,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        StatusResponse
+        ProblemOut | StatusResponse
      """
 
 

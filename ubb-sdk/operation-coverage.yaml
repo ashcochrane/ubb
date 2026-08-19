@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 158
-  unwrapped: 80
+  operations: 161
+  unwrapped: 83
   wrapped: 78
-  generated_only: 80
+  generated_only: 83
   not_yet_wrapped: 0
 
 operations:
@@ -331,6 +331,10 @@ operations:
     method: POST
     path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_declare_customer_override
+    method: POST
+    path: /api/v1/metering/pricing/customers/{customer_id}/overrides
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_declare_grouping_fields
     method: PUT
     path: /api/v1/metering/grouping-fields
@@ -367,6 +371,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_markup
+  - operation_id: api_v1_metering_endpoints_get_inherited_rule
+    method: GET
+    path: /api/v1/metering/pricing/customers/{customer_id}/inherited-rule
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_task
     method: GET
     path: /api/v1/metering/tasks/{task_id}
@@ -469,6 +477,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.usage_timeseries
+  - operation_id: api_v1_metering_endpoints_withdraw_customer_override
+    method: DELETE
+    path: /api/v1/metering/pricing/customers/{customer_id}/overrides/{override_id}
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_withdraw_tenant_default_markup
     method: DELETE
     path: /api/v1/metering/pricing/default-markup

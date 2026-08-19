@@ -1971,7 +1971,13 @@ entries:
     # and a governance reader must not have to read metadata to tell an
     # intention from a publication or from an abandonment. The numerator is
     # untouched a third time.
-    found: 0 of 71 values
+    #
+    # 71 -> 73: #361's pair for a customer's own pricing rule — declared and
+    # withdrawn. Neither is a rename of `customer_pricing_override.set` beside
+    # them: that name is the end-state spelling of a NUMBER on the markup
+    # record this slice deletes, and an override is a whole rule. The
+    # numerator is untouched a fourth time.
+    found: 0 of 73 values
     owner_slice: slice_8
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -2600,8 +2606,9 @@ entries:
     # 58 -> 66 with the sibling G2 entry above: #267 gave the Event Type
     # catalogue's write surface its action names; 66 -> 68 with #357's pair for
     # the tenant's default markup rung; 68 -> 71 with #358's three for the
-    # Pricing Book's publish record.
-    found: 0 of 71 values
+    # Pricing Book's publish record; 71 -> 73 with #361's pair for a
+    # customer's own pricing rule.
+    found: 0 of 73 values
     owner_slice: slice_8
     reason: >-
       The contract may not advertise these values while the backend consumer

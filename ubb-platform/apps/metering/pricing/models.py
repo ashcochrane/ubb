@@ -548,6 +548,62 @@ class RateCard(BaseModel):
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="rate_card_containers")
+    # WHOSE OWN PRICING RULES THIS BOOK HOLDS, OR NOBODY'S (#361, #147 §4.1).
+    #
+    # A book carrying a customer is that customer's OVERRIDE book: every rule
+    # in it is one of that customer's own rules, and resolution reads them at
+    # the ladder's `FROM_THE_CUSTOMERS_OWN_RULES` source
+    # (`services/pricing_service.py`). A book carrying none is a catalogue the
+    # tenant wrote for everybody.
+    #
+    # **THIS IS WHAT MAKES AN OVERRIDE A WHOLE RULE RATHER THAN A NUMBER
+    # (#151 §6).** An override replaces the rule it inherits completely — its
+    # method, its terms and the selectors it pins — so it has to BE a rule,
+    # written where rules are written and published the way rules are
+    # published. Putting the customer on the book rather than on the rule is
+    # what buys that: a book is what `PricingBookPublish` changes, what
+    # `uq_rate_active_in_book` scopes uniqueness to, and what `plan_changes`
+    # resolves a change against. Scoping rules to a customer INSIDE a shared
+    # book would put the customer into a rule's IDENTITY and move all three at
+    # once; putting it on the book moves none of them.
+    #
+    # ⚠ THAT IS ABOUT RULE IDENTITY AND NOT ABOUT THE WHOLE PUBLISH PATH.
+    # `plan_changes` IS edited here — a change body may now state a rule's
+    # method — which extends what a body carries rather than changing how a
+    # rule is identified, closed or reopened. Nothing on the publishing,
+    # forward-dating or reversal path knows a customer exists.
+    #
+    # **NULLABLE BECAUSE MOST BOOKS ARE NOBODY'S**, and the null is not a
+    # second meaning: it says this book is not an override book. One override
+    # book per customer per currency is the constraint below.
+    #
+    # `SET_NULL` RATHER THAN `CASCADE`, AND THE REASON IS A REFUSAL FURTHER
+    # DOWN THE CHAIN. `Rate.rate_card` is `PROTECT`, so cascading a customer's
+    # deletion into their book would make the database refuse to delete a
+    # customer who was ever given a negotiated price — and refuse it from a
+    # record nobody deleting a customer asked about, which is how a tenant wipe
+    # stops half way (#354, #358). Nulling it leaves the rules, their windows
+    # and the receipts that point at them exactly as they were, and leaves the
+    # book in a state this schema already has: one nothing selects.
+    #
+    # ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THIS TABLE DECLARES NONE. The
+    # rule table beside it declares two, so the absence is worth saying rather
+    # than leaving silent: whose deal a book carries is configuration a tenant
+    # changes — declaring an override and withdrawing it are exactly those two
+    # writes — and configuration is not history. What protects history is the
+    # receipt, which holds VALUES: withdrawing an override cannot move a number
+    # a customer was already charged.
+    #
+    # ⚠ NOTHING AT THE DATABASE SAYS AN OVERRIDE BOOK IS A PRICE BOOK, AND THAT
+    # IS DELIBERATE. A cost book has no customer — a supplier's price does not
+    # change because of who UBB's tenant sells to — but the column that
+    # separates the two is retired and leaves with #366, so a `CHECK` naming it
+    # would be a constraint written to be dropped. The one route that writes
+    # this column creates the book itself and creates a price book, which is
+    # where the property is held and where its test points.
+    customer = models.ForeignKey("customers.Customer", on_delete=models.SET_NULL,
+                                 related_name="pricing_override_books",
+                                 null=True, blank=True)
     card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
     # provider_key pins the book to one provider so the per-provider default
     # invariant is DB-enforceable ("" is the no-provider bucket).
@@ -567,6 +623,30 @@ class RateCard(BaseModel):
                 fields=["tenant", "card_type", "provider_key", "currency"],
                 condition=models.Q(is_default=True),
                 name="uq_ratecard_one_default_per_provider"),
+            # ONE OVERRIDE BOOK PER CUSTOMER PER CURRENCY (#361). A customer
+            # with two would have two answers at one rung and nothing deciding
+            # between them, which is the second independent ranking layer
+            # specificity-before-source exists to dissolve (#147 §5.2). The
+            # currency is in the key because a book is priced in one, exactly
+            # as the assignment record beside it already scopes its own.
+            #
+            # ⚠ IT NAMES THE CUSTOMER AND NOT THE TENANT, and that is not an
+            # omission: a customer belongs to exactly one tenant, so a pair
+            # naming both would be a wider key that admits nothing more.
+            #
+            # ⚠ AND EXACTLY ONE CURRENCY IS REACHABLE TODAY, WHICH IS CUR-1
+            # RATHER THAN ANYTHING HERE. A book lives in the tenant's own
+            # currency and the route that creates one refuses any other
+            # (`_resolve_card_currency`: per-tenant single currency, no FX), so
+            # the per-currency half of this key admits one row per customer in
+            # practice. It is keyed that way anyway because a book IS priced in
+            # one currency — the same shape the assignment record beside it
+            # already has — and a key that had to be widened later is a key
+            # that has to be rebuilt later.
+            models.UniqueConstraint(
+                fields=["customer", "currency"],
+                condition=models.Q(customer__isnull=False),
+                name="uq_pricing_book_one_override_per_customer"),
         ]
 
     def __str__(self):

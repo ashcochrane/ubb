@@ -161,7 +161,9 @@ exclusions:
     # its default markup rung on.
     # 223 → 224 in #358: one migration, creating the publish record every change
     # to a Pricing Book is, and the rule that freezes it once published.
-    files: 224
+    # 224 → 225 in #361: one migration, giving a Pricing Book the customer whose
+    # own pricing rules it holds.
+    files: 225
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

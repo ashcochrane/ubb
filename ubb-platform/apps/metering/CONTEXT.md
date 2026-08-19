@@ -230,6 +230,30 @@ vocabulary; until then, a rule can appear in a book with no publish record behin
 can be left stating a change one of those routes has since made impossible, which is why reading one
 answers a reason rather than a diff.
 
+**Customer override**:
+One customer's own pricing rule, honouring a negotiated deal. It **replaces the whole rule it
+inherits — its method, its terms and the selectors it pins — never a number inside one**, so a
+customer on cost-plus and a customer on a flat price are both expressible and a rule can be read on
+its own without tracing a chain (#151 §6). It lives in a Pricing Book carrying that customer, which
+is what lets it be published, dated forward and reversed by exactly the machinery every other rule
+uses; resolution reads that book at the ladder's customer's-own source. Declaring one and
+withdrawing one are two governance acts with two registered audit actions, and both DECLARE a draft
+— publishing it is what puts the deal in force.
+(#361; `apps/metering/pricing/models.py:RateCard.customer`;
+`apps/metering/pricing/services/pricing_service.py:_override_book`)
+_Avoid_: reading an override as an adjustment to the inherited rule — nothing is inherited into it,
+so a body stating a price and no method opens a rule with no method rather than the inherited one's;
+treating it as a substitute for a book — it is a rule at a rung *inside* resolution, and a customer
+resolves a book besides; and expecting a withdrawal to revive anything — the rule the customer
+inherits was there all along and simply stops being out-ranked.
+
+**The inherited rule**:
+What a customer would be charged for a rule if they had no override — the same ladder with their own
+book taken out of the selection, which is what a client offers as the starting point when creating
+one. A read, and the only caller that asks for it: every path that decides what a customer is
+actually charged reads the whole ladder.
+(#361; `apps/metering/pricing/services/pricing_service.py:the_rule_a_customer_inherits`)
+
 **Pricing provenance**:
 The audit trail stamped on each event — engine version, cost/price source, and rate-card ids.
 

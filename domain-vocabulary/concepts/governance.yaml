@@ -91,6 +91,22 @@ audit_action:
     - pricing_book_publish.declared
     - pricing_book_publish.published
     - pricing_book_publish.discarded
+    # A customer's own pricing rule. A tenant honouring a negotiated deal
+    # gives one customer a rule that replaces what they inherit — the whole
+    # rule, method included — and takes it away again when the deal ends.
+    #
+    # Declared and withdrawn are two acts under the rule the pairs above
+    # follow: a governance reader asking when a customer stopped having their
+    # own price must not have to read metadata to find out.
+    #
+    # NEITHER IS A RENAME OF `customer_pricing_override.set` ABOVE, which is
+    # the end-state spelling of a NUMBER written onto the per-customer row of
+    # the markup record slice 4 deletes. An override is not a number inside a
+    # rule; it is a whole rule, declared through a publish. Two acts on two
+    # records, so two names, and the two sets are live at once until that
+    # record is deleted.
+    - customer_pricing_override.declared
+    - customer_pricing_override.withdrawn
     # What the tenant declares it meters.
     - event_type.declared
     - measurement.declared

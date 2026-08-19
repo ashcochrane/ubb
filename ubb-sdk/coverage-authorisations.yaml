@@ -155,3 +155,28 @@ authorisations:
       written for it would not be written twice. What defers it is the split
       above, and the console feature that reads these routes, which is the
       surface a tenant will actually use and is a later ticket in this slice.
+
+  - id: slice-4-361-a-customer-override-is-declared-and-withdrawn
+    issue: 361
+    operations_added: 3
+    reason: >-
+      Three new operations for a customer's own pricing rule — declaring an
+      override, withdrawing one, and reading the rule it replaces. Reachable
+      through the generated core and through none of the hand-written clients.
+      Gaps by the manifest's definition, and deliberate ones.
+
+      The reason is #358's, unchanged, because these are the same surface one
+      scope narrower: every route that DECIDES what a customer is charged is
+      unwrapped, and the two that read the catalogue are wrapped. An
+      integrator's code records usage and reads a price back; agreeing a
+      negotiated deal with one named customer is a governance act performed
+      from the console or by hand, by a person entitled to. Two of these three
+      are that act, and wrapping them would move the SDK's ergonomic surface
+      onto the configuration side of that line.
+
+      The third is a READ, which makes it the closer call — and it goes the
+      same way for a different reason: it exists to answer what this customer
+      would be charged without the deal, a question only the surface that
+      writes the deal has any use for. Wrapping the read without the writes
+      would hand an integrator half a workflow. It belongs with the console
+      feature that uses all three, which is a later ticket in this slice.

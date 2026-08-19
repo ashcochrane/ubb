@@ -88,7 +88,14 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # rule and still records: what a tenant PROPOSED to charge and then dropped is
 # exactly the sort of thing this ledger exists to have an answer for.
 # 76 + 3 = 79.
-_EXPECTED_MUTATING = 79
+#
+# 79 -> 81 with #361's customer override: declaring one and withdrawing one.
+# Both decide what one named customer is charged, which is governance in the
+# same sense the three above are, so both take names in the registry rather
+# than a place on the exemption list below. Like those three, each declares a
+# draft and writes no rule; the publish that puts the deal in force is the
+# existing act and keeps its own name. 79 + 2 = 81.
+_EXPECTED_MUTATING = 81
 _EXPECTED_EXEMPT = 5
 
 

@@ -1504,10 +1504,10 @@ class BookChangeIn(Schema):
     unpinned, which is what an unpinned selector means everywhere on this
     surface, so a change body names only what the rule pins.
 
-    The three terms are nullable because a reprice states only what moves: an
-    unstated term is carried over from the rule being superseded. An `add`
-    takes the model's own defaults for anything it leaves out, and a `retire`
-    states none at all — it opens no rule.
+    The three terms and the method are nullable because a reprice states only
+    what moves: anything unstated is carried over from the rule being
+    superseded. An `add` takes the model's own defaults for what it leaves out,
+    and a `retire` states none of them at all — it opens no rule.
 
     ⚠ **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE
     IT.** Whether an amount is per-unit or a fixed component is carried over
@@ -1527,6 +1527,21 @@ class BookChangeIn(Schema):
     task_type: str = Field(default="", max_length=64)
     subtask_type: str = Field(default="", max_length=64)
     grouping_fields: dict[str, str] = {}
+    #: HOW THE RULE DERIVES ITS PRICE — a margin over what the call cost, or an
+    #: amount attached to the event regardless of cost (#361, #147 §2).
+    #:
+    #: Nullable, and null is not a third method: it says the rule derives no
+    #: price of its own and charges its own terms. An `add` that omits it takes
+    #: that null; a `reprice` that omits it keeps the method of the rule it
+    #: supersedes, exactly as it keeps every term it does not restate; a
+    #: `retire` may not state it at all, because it opens no rule.
+    #:
+    #: **THIS IS WHAT MAKES A CUSTOMER OVERRIDE A WHOLE RULE** (#151 §6): a
+    #: customer moved from cost-plus onto a flat price is a method change, and
+    #: without it the tenant's only route to that deal would be to estimate the
+    #: customer's typical cost and enter a number that approximates it — a
+    #: price computed outside UBB, going stale the moment the supplier moves.
+    pricing_method: Optional[PricingMethod] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
@@ -1560,17 +1575,25 @@ class BookPublishIn(Schema):
 
 
 class RuleTermsOut(Schema):
-    """What a rule charges — the three columns a change may move.
+    """What a rule charges and how it derives it — everything a change may move.
 
     ⚠ The arithmetic shape is deliberately absent, for the reason `BookChangeIn`
     gives: a publish cannot move it. A reader comparing a `before` with an
     `after` therefore sees all three terms and is not told which one the rule
     actually charges on — `GET .../rates` answers that, and this row is a
     statement about what a change does rather than a restatement of the rule.
+
+    **THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer
+    override replaces a whole rule including its method, so the diff a tenant
+    reads before committing to it has to show the method changing — otherwise
+    the one part of a negotiated deal that changes its shape is the one part
+    that is invisible until after it lands.
     """
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
+    #: Null where the rule derives no price of its own — see `BookChangeIn`.
+    pricing_method: Optional[PricingMethod] = None
 
 
 def rule_terms_out(terms):
@@ -1591,6 +1614,7 @@ def rule_terms_out(terms):
         "rate_per_unit_micros": terms["rate_per_unit_micros"],
         "unit_quantity": terms["unit_quantity"],
         "fixed_micros": terms["fixed_micros"],
+        "pricing_method": terms["pricing_method"],
     }
 
 
@@ -1747,6 +1771,134 @@ def book_change_diff_out(row: dict, keys: dict) -> dict:
         "before": rule_terms_out(row["before"]) if row["before"] else None,
         "after": rule_terms_out(row["after"]) if row["after"] else None,
     }
+
+
+# --- A customer override replaces a whole rule, method included (#361) -------
+#
+# A tenant honouring a negotiated deal gives one customer their own pricing
+# rule. The override replaces the WHOLE rule — never a number inside one — so a
+# customer on cost-plus and a customer on a flat price are both expressible, and
+# a rule can be read on its own without tracing a chain (#151 §6).
+
+
+# ⚠ WHY THIS BODY CARRIES NO `kind` WHILE `BookChangeIn` DOES — a COMMENT, not
+# the docstring, because a `Schema`'s docstring is exported verbatim into
+# `openapi/v1.json` and the generated SDK, and this is a note to the next author
+# rather than something a caller can act on (#359's lesson, one layer out from
+# the route it was learned on).
+#
+# The two bodies name a rule identically on purpose: they are the same rule, and
+# a client that can write one can write the other. What differs is the ACT, and
+# here the act is the route — declaring an override adds a rule, withdrawing one
+# retires it. Reusing `BookChangeIn` would let the declaring route be sent a
+# retirement, and the governance ledger would then record the wrong act for it.
+class CustomerOverrideIn(Schema):
+    """The rule this customer gets, and when it takes effect.
+
+    **A COMPLETE RULE, WHICH IS THE WHOLE RULING.** Every field a rule has is
+    stated here: the quantity it prices, the selectors it pins, how it derives
+    its price and what it charges. There is no field naming a rule to inherit
+    from and no field that takes a value while leaving a method behind —
+    **partial override is not expressible on this surface**, because a rule
+    whose method comes from one record and whose value comes from another
+    cannot be explained by naming one rule, which is the property the receipt
+    design rests on (#151 §6.2).
+
+    **THIS BODY NAMES NO ACT.** It carries no `kind`, unlike a change to a
+    book: declaring an override adds a rule and withdrawing one retires it, and
+    which of the two is happening is the route you called.
+
+    `effective_at` dates the override forward and omitting it means now, under
+    exactly the bounds a publish takes, because this IS a publish: it is
+    declared as a draft on the customer's own book, published through the
+    book's own route, and reversed by a further publish. There is no
+    immediate-effect path to an override and no second mutation surface for one.
+    """
+    measurement_key: str = Field(min_length=1, max_length=100)
+    provider: str = Field(default="", max_length=100)
+    event_type: str = Field(default="", max_length=100)
+    task_type: str = Field(default="", max_length=64)
+    subtask_type: str = Field(default="", max_length=64)
+    grouping_fields: dict[str, str] = {}
+    pricing_method: Optional[PricingMethod] = None
+    rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
+    unit_quantity: Optional[int] = Field(default=None, gt=0)
+    fixed_micros: Optional[int] = Field(default=None, ge=0)
+    effective_at: Optional[datetime] = None
+
+
+class InheritedPricingRule(Schema):
+    """One rule, as a client would start an override from it.
+
+    Everything an override body has to state, in the shape it has to state it —
+    so *create from the inherited rule* is a copy rather than a translation. The
+    rule's own id and the book it came from ride along so a reader can say where
+    the starting point came from.
+    """
+    rule_id: str
+    book_id: str
+    measurement_key: str
+    provider: str
+    event_type: str
+    task_type: str
+    subtask_type: str
+    grouping_fields: dict[str, str] = {}
+    pricing_method: Optional[PricingMethod] = None
+    rate_per_unit_micros: int
+    unit_quantity: int
+    fixed_micros: int
+    currency: str
+
+
+class InheritedRuleOut(Schema):
+    """What this customer is charged for a quantity where they have no override.
+
+    **AN ENVELOPE, BECAUSE "NOTHING IS INHERITED" IS AN ANSWER.** A quantity no
+    book in play prices falls to the tenant's markup rung, and a client creating
+    an override there is starting from nothing rather than from a rule — a
+    perfectly ordinary state, and one a `404` would report as *"no such
+    customer"*. So the rule is nullable and the status stays `200`.
+    """
+    rule: Optional[InheritedPricingRule] = None
+
+
+def inherited_rule_out(rule, selectors, keys):
+    """`InheritedRuleOut`'s serializer.
+
+    `selectors` is the rule's own `{column: value}` map and `keys` is the
+    registry's `{slot: declared key}`, exactly as `book_change_diff_out` takes
+    them — and this walks them the same way round, which is the part that
+    matters.
+
+    ⚠ **THE WALK IS OVER THE RULE'S SLOTS AND THE LOOKUP IS `keys[slot]`,
+    LOUD.** Walking the registry's map instead would silently drop a slot the
+    registry cannot name, and that is worse here than anywhere: this row is
+    what a client copies into an override body, so a dropped selector produces
+    an override BROADER than the rule it was supposed to replace — the blanket
+    one. `keys_by_slot` keeps retired definitions and nothing removes one, so a
+    missing slot is a corrupt row rather than a state a tenant can reach, and
+    it should be loud.
+
+    Named key by key for the reason `rule_terms_out` gives: a `Schema` that does
+    not name a key does not merely omit it, Django Ninja DROPS it.
+    """
+    if rule is None:
+        return {"rule": None}
+    reserved = ("provider", "event_type", "task_type", "subtask_type")
+    return {"rule": {
+        "rule_id": str(rule.id),
+        "book_id": str(rule.rate_card_id),
+        "measurement_key": rule.measurement_key,
+        **{name: selectors.get(name, "") for name in reserved},
+        "grouping_fields": {keys[slot]: value
+                            for slot, value in selectors.items()
+                            if slot not in reserved and value},
+        "pricing_method": rule.pricing_method,
+        "rate_per_unit_micros": rule.rate_per_unit_micros,
+        "unit_quantity": rule.unit_quantity,
+        "fixed_micros": rule.fixed_micros,
+        "currency": rule.currency,
+    }}
 
 
 class PaginatedBookPublishes(Paginated[BookPublishOut]):
