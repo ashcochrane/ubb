@@ -521,24 +521,87 @@ class AnInstantBeyondTheHorizonIsRefusedTest(_APublishingTenantMixin,
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["code"], "effective_at_in_past")
 
-    def test_the_three_refusals_are_told_apart_by_their_codes(self):
+    def test_the_four_refusals_are_told_apart_by_their_codes(self):
         """The whole point of naming them, asserted as a set.
 
-        Three ways a stated instant can be wrong, three codes, and none of them
+        Four ways a stated instant can be wrong, four codes, and none of them
         the generic one this route already uses for two other things. A caller
-        branching on `code` can act on each differently — fix the date, wait, or
-        stop sending a date at all.
+        branching on `code` can act on each differently — fix the date, wait,
+        stop sending a date at all, or move it past what is already scheduled.
+
+        ⚠ **THE FOURTH IS THE ONLY ONE THAT DEPENDS ON THE BOOK** (#360), which
+        is why it is provoked last: it needs a boundary to be behind, so the
+        publish that schedules one has to happen first, and it would change
+        the answers of nothing above it.
         """
         naive = self._post(self.publishes, {
             "changes": [self.a_change(rate_per_unit_micros=AFTER)],
             "effective_at": "2027-06-01T00:00:00"})
+        past = self.declare_at(_in_days(-1))
+        ahead = self.declare_at(_in_days(400))
+        self._schedule(_in_days(30))
 
         self.assertEqual(
-            [naive.json()["code"],
-             self.declare_at(_in_days(-1)).json()["code"],
-             self.declare_at(_in_days(400)).json()["code"]],
+            [naive.json()["code"], past.json()["code"], ahead.json()["code"],
+             self.declare_at(_in_days(10)).json()["code"]],
             ["effective_at_naive", "effective_at_in_past",
-             "effective_at_too_far_ahead"])
+             "effective_at_too_far_ahead",
+             "effective_at_before_scheduled_boundary"])
+
+    def test_a_change_behind_a_scheduled_boundary_is_refused_by_the_route(self):
+        """Ruling 14b, at the surface a tenant meets it on.
+
+        The book's diary is written forwards: a change may follow what is
+        already scheduled or land exactly on it, and never slip in behind.
+        """
+        self._schedule(_in_days(30))
+
+        response = self.declare_at(_in_days(10))
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["code"],
+                         "effective_at_before_scheduled_boundary")
+
+    def test_a_change_dated_at_the_scheduled_boundary_is_accepted(self):
+        """The reversal case, at the route.
+
+        A tenant who scheduled a rise and changed their mind declares the
+        reversal at the very same instant. Equal is admitted, and it has to be:
+        it is the whole of how a scheduled change is taken back.
+        """
+        boundary = _in_days(30)
+        self._schedule(boundary)
+
+        response = self.declare_at(boundary, self.a_change(
+            rate_per_unit_micros=BEFORE))
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_a_book_may_carry_more_than_one_scheduled_change(self):
+        """The one-pending-publish limit is gone (ruling 14b).
+
+        Two boundaries outstanding at once, both still in the future, and the
+        second was accepted because it follows the first rather than because
+        the first had taken effect.
+        """
+        self._schedule(_in_days(30))
+
+        response = self._schedule(_in_days(60))
+
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def _schedule(self, effective_at, *changes):
+        """Declare a change at `effective_at` and publish it, through the route.
+
+        Publishing is what writes a boundary into the book — a draft writes no
+        rule, so a declaration alone leaves nothing for a later change to be
+        behind. Every case above that needs a scheduled boundary needs both
+        acts, which is why they are one call.
+        """
+        declared = self.declare_at(effective_at, *changes)
+        self.assertEqual(declared.status_code, 200, declared.content)
+        return self._post(
+            f"{self.publishes}/{declared.json()['id']}/publish")
 
 
 class TheRefusalSpendsNothingTest(_APublishingTenantMixin, TestCase):

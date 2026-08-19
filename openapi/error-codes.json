@@ -16,6 +16,10 @@
       "status": 409,
       "title": "Currency locked"
     },
+    "effective_at_before_scheduled_boundary": {
+      "status": 422,
+      "title": "effective_at is before the book's latest scheduled boundary"
+    },
     "effective_at_in_future": {
       "status": 422,
       "title": "effective_at is in the future"

@@ -2,11 +2,19 @@ from uuid import uuid4
 
 from django.db import IntegrityError, connection, transaction
 
-from apps.metering.pricing.models import Rate, RateCard, TenantDefaultMarkup
+from apps.metering.pricing.models import (
+    CHANGE_REPRICE, Rate, RateCard, TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
+from apps.metering.pricing.services.book_service import BookService
+from apps.metering.pricing.services.pricing_service import (
+    PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
+from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from core.vocabulary import PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT
+from apps.platform.tenants.models import Tenant
+from core.vocabulary import (
+    PRICING_METHOD_DIRECT_EVENT_PRICE,
+    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
 
 #: WHICH QUANTITY A RATE PRICES WHEN THE FIXTURE NEVER SAID (#326).
 #:
@@ -318,3 +326,115 @@ class RefusalThroughEveryDoorMixin:
                     with transaction.atomic():
                         door(record, **columns)
                 record.refresh_from_db()
+
+
+# --- A book holding one rule that can be repriced at an instant --------------
+
+#: The quantity the fixture below prices and the two selectors it pins. Named
+#: here rather than in each caller because two modules now ask one book the
+#: same question — *what does this cost at that moment* — and a second
+#: transcription of the setup is what `docs/conventions/testing.md` puts this
+#: module here to prevent.
+SCHEDULING_QUANTITY = "prompt_tokens"
+SCHEDULING_PROVIDER = "openai"
+SCHEDULING_EVENT_TYPE = "chat"
+
+#: One whole denominator of the quantity, so a resolved amount IS the rule's
+#: per-unit term rather than a multiple of it that has to be divided back out.
+ONE_DENOMINATOR = 1_000_000
+
+#: Distinct powers of ten, so an assertion reading the wrong version of a rule
+#: names it in its own failure message rather than reporting a bare mismatch.
+FIRST = 1_000_000
+SECOND = 2_000_000
+THIRD = 3_000_000
+FOURTH = 4_000_000
+
+#: The one term these fixtures move. A publish cannot change a rule's
+#: arithmetic shape, so the per-unit amount is the whole of what a reprice
+#: states here.
+THE_TERM = "rate_per_unit_micros"
+
+
+class AForwardDatingBookMixin:
+    """A tenant, a customer, and a book holding one rule that can be repriced.
+
+    Two acts and two reads, which between them are every question a scheduling
+    test asks: declare or publish a new amount at an instant, and resolve the
+    price at an instant. Every one of them takes the moment as an argument,
+    because a test about *when* a price changes cannot have a fixture that
+    reads a clock on its behalf.
+
+    Lives here rather than in either module because #359's forward-dating
+    tests and #360's reversal tests need exactly this book, and copying the
+    scaffolding is the violation `docs/conventions/testing.md:22` names — the
+    structure is what "copy the prior art" means, never the code.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.tenant = Tenant.objects.create(name="T", default_currency="usd")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1")
+        self.rule = rate_in_default_book(
+            self.tenant, provider=SCHEDULING_PROVIDER,
+            event_type=SCHEDULING_EVENT_TYPE,
+            measurement_key=SCHEDULING_QUANTITY, rate_per_unit_micros=FIRST)
+        self.book = the_book_holding(self.rule)
+
+    def a_change(self, **terms):
+        return {"kind": CHANGE_REPRICE,
+                "measurement_key": SCHEDULING_QUANTITY,
+                "provider": SCHEDULING_PROVIDER,
+                "event_type": SCHEDULING_EVENT_TYPE, **terms}
+
+    def declare_at(self, effective_at, amount):
+        """Declare a reprice dated at `effective_at`. Writes no rule."""
+        return BookService.declare(
+            self.book, [self.a_change(**{THE_TERM: amount})],
+            effective_at=effective_at)
+
+    def publish_at(self, effective_at, amount):
+        """Declare a reprice and publish it, dated at `effective_at`."""
+        return BookService.publish_declared(
+            self.declare_at(effective_at, amount))
+
+    def resolved(self, as_of):
+        return resolve_price(
+            PricingSubject(
+                receipt_subject=a_usage_event_subject(),
+                tenant=self.tenant, customer=self.customer,
+                selectors=self._selectors(),
+                measurements={SCHEDULING_QUANTITY: ONE_DENOMINATOR},
+                currency="usd"),
+            as_of)
+
+    def amount_at(self, as_of):
+        receipt = self.resolved(as_of)
+        # The method is asserted beside the amount deliberately: a fallthrough
+        # to markup returns a plausible number and raises nothing, so "an
+        # amount came back" is not evidence that a rule produced it.
+        self.assertEqual(receipt["pricing"]["method"],
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
+        return receipt["totals"]["billed_cost_micros"]
+
+    def _selectors(self, **overrides):
+        base = {name: "" for name in Rate.SELECTORS}
+        base.update(provider=SCHEDULING_PROVIDER,
+                    event_type=SCHEDULING_EVENT_TYPE)
+        base.update(overrides)
+        return base
+
+
+def rules_snapshot(book):
+    """Every column of every rule in a book, in a stable order.
+
+    `updated_at` rides along deliberately: a write that touched a row and
+    changed nothing else would still move it, and "nothing was written" has to
+    mean the rows were not written to at all.
+    """
+    columns = [field.attname for field in Rate._meta.concrete_fields]
+    return [
+        {column: getattr(rule, column) for column in columns}
+        for rule in book.rates.order_by("id")
+    ]

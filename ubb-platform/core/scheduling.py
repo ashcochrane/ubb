@@ -55,11 +55,15 @@ forever — is **conditional on nobody publishing a stale draft, and it was
 already conditional before this rail existed**. This module narrows it; it does
 not make it true, and #358's split is where the remaining path comes from.
 
-⚠ **The stronger floor is a later ticket's and it is not this one.** #360 replaces
-"at or after now" with *"at or after the latest already-scheduled boundary in
-that book"*, which is a rule about a book rather than about a clock and is
-vacuous where a book has nothing scheduled. The two compose; neither subsumes
-the other.
+⚠ **THE OTHER FLOOR IS NOT THIS ONE, AND IT IS NOT HERE.** #360 added *"at or
+after the latest already-scheduled boundary in that book"* — a rule about a
+book rather than about a clock, vacuous where a book has nothing scheduled. The
+two compose and neither subsumes the other, which is exactly why they are two
+functions in two modules: this one reads a payload and a clock and no row, and
+`apps.metering.pricing.services.book_service.latest_scheduled_boundary` reads a
+book and no clock. Keeping this module free of the book's floor is what keeps
+"there is no row a tenant could write that reaches this function" true — the
+sentence the horizon's whole not-a-tenant-setting argument rests on.
 
 **THE SKEW ALLOWANCE IS THE RECORDING ROUTE'S, FOR THE RECORDING ROUTE'S
 REASON, AND IT IS ON THE FLOOR ALONE.** A caller that stamps its own clock's

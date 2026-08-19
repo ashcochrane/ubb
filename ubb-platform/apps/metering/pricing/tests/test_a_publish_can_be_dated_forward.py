@@ -1,4 +1,4 @@
-"""A publish can be dated forward, and nothing runs at the effective instant
+﻿"""A publish can be dated forward, and nothing runs at the effective instant
 (#359).
 
 A tenant who agrees a rise from the first of next month should not have to
@@ -48,36 +48,20 @@ from django.db.models import signals
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import (
-    CHANGE_REPRICE, PricingBookPublish, Rate)
+from apps.metering.pricing.models import PricingBookPublish, Rate
 from apps.metering.pricing.services.book_service import BookService
-from apps.metering.pricing.services.pricing_service import (
-    PricingSubject, resolve_price)
 from apps.metering.pricing.tests._helpers import (
-    a_usage_event_subject,
+    FIRST,
+    FOURTH,
+    SECOND,
+    THE_TERM,
+    THIRD,
+    AForwardDatingBookMixin,
     declares_a_markup,
-    rate_in_default_book,
-    the_book_holding,
+    rules_snapshot,
 )
-from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tenants.models import Tenant
-from core.vocabulary import (
-    DECLARATION_STATUS_DRAFT, PRICING_METHOD_DIRECT_EVENT_PRICE)
-
-QUANTITY = "prompt_tokens"
-ONE_DENOMINATOR = 1_000_000
-PROVIDER = "openai"
-EVENT_TYPE = "chat"
-
-#: Distinct powers of ten, so an assertion reading the wrong version of a rule
-#: names it in its own failure message rather than reporting a bare mismatch.
-FIRST = 1_000_000
-SECOND = 2_000_000
-THIRD = 3_000_000
-FOURTH = 4_000_000
-
-THE_TERM = "rate_per_unit_micros"
+from core.vocabulary import DECLARATION_STATUS_DRAFT
 
 #: How far ahead the fixtures date a change. Comfortably inside the platform's
 #: horizon, and far enough that no test could pass by the boundary having
@@ -104,57 +88,8 @@ EVERY_MODEL_SIGNAL_A_WRITE_RAISES = [
 ]
 
 
-class _AForwardDatingBookMixin:
-
-    def setUp(self):
-        super().setUp()
-        self.tenant = Tenant.objects.create(name="T", default_currency="usd")
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1")
-        self.rule = rate_in_default_book(
-            self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
-            measurement_key=QUANTITY, rate_per_unit_micros=FIRST)
-        self.book = the_book_holding(self.rule)
-
-    def a_change(self, **terms):
-        return {"kind": CHANGE_REPRICE, "measurement_key": QUANTITY,
-                "provider": PROVIDER, "event_type": EVENT_TYPE, **terms}
-
-    def publish_at(self, effective_at, amount):
-        """Declare a reprice and publish it, dated at `effective_at`."""
-        record = BookService.declare(
-            self.book, [self.a_change(**{THE_TERM: amount})],
-            effective_at=effective_at)
-        return BookService.publish_declared(record)
-
-    def resolved(self, as_of):
-        return resolve_price(
-            PricingSubject(
-                receipt_subject=a_usage_event_subject(),
-                tenant=self.tenant, customer=self.customer,
-                selectors=self._selectors(),
-                measurements={QUANTITY: ONE_DENOMINATOR},
-                currency="usd"),
-            as_of)
-
-    def amount_at(self, as_of):
-        receipt = self.resolved(as_of)
-        # The method is asserted beside the amount deliberately: a fallthrough
-        # to markup returns a plausible number and raises nothing, so "an amount
-        # came back" is not evidence that a rule produced it.
-        self.assertEqual(receipt["pricing"]["method"],
-                         PRICING_METHOD_DIRECT_EVENT_PRICE)
-        return receipt["totals"]["billed_cost_micros"]
-
-    def _selectors(self, **overrides):
-        base = {name: "" for name in Rate.SELECTORS}
-        base.update(provider=PROVIDER, event_type=EVENT_TYPE)
-        base.update(overrides)
-        return base
-
-
 class AFutureDatedPublishIsPersistedImmediatelyTest(
-        _AForwardDatingBookMixin, TestCase):
+        AForwardDatingBookMixin, TestCase):
     """The rows exist before the instant arrives.
 
     This is what makes the whole design work: there is nothing left to happen
@@ -210,7 +145,7 @@ class AFutureDatedPublishIsPersistedImmediatelyTest(
 
 
 class NothingExecutesAtTheEffectiveInstantTest(
-        _AForwardDatingBookMixin, TestCase):
+        AForwardDatingBookMixin, TestCase):
     """Asserted on the absence, four ways.
 
     ⚠ **THE POINT IS THAT THERE IS NOTHING TO BE LATE.** A job that priced the
@@ -291,7 +226,7 @@ class NothingExecutesAtTheEffectiveInstantTest(
 
 
 class TheClockIsTheOnlyThingThatMovesTest(
-        _AForwardDatingBookMixin, TestCase):
+        AForwardDatingBookMixin, TestCase):
     """Resolution before the boundary gives the old answer and at or after it
     gives the new one, **with no code having run in between**.
 
@@ -321,18 +256,18 @@ class TheClockIsTheOnlyThingThatMovesTest(
         """
         boundary = timezone.now() + A_MONTH
         record = self.publish_at(boundary, SECOND)
-        before = _rules_snapshot(self.book)
+        before = rules_snapshot(self.book)
         published_at = record.published_at
 
         self.amount_at(boundary + timedelta(days=1))
 
-        self.assertEqual(_rules_snapshot(self.book), before)
+        self.assertEqual(rules_snapshot(self.book), before)
         record.refresh_from_db()
         self.assertEqual(record.published_at, published_at)
 
 
 class APublishResolvesItsPredecessorsAtItsOwnInstantTest(
-        _AForwardDatingBookMixin, TestCase):
+        AForwardDatingBookMixin, TestCase):
     """A series of scheduled publishes composes, and that is why.
 
     ```
@@ -412,17 +347,3 @@ class APublishResolvesItsPredecessorsAtItsOwnInstantTest(
         # Each window opens exactly where the last one closes — asserted as the
         # equality rather than as two lists that happen to agree.
         self.assertEqual(opened_at[1:], closed_at[:-1])
-
-
-def _rules_snapshot(book):
-    """Every column of every rule in a book, in a stable order.
-
-    `updated_at` rides along deliberately: a write that touched a row and
-    changed nothing else would still move it, and "nothing was written" has to
-    mean the rows were not written to at all.
-    """
-    columns = [field.attname for field in Rate._meta.concrete_fields]
-    return [
-        {column: getattr(rule, column) for column in columns}
-        for rule in book.rates.order_by("id")
-    ]
