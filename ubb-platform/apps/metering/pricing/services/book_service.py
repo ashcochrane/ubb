@@ -275,11 +275,12 @@ class BookService:
         and "nothing runs at the effective instant" is only literally true
         without it.
 
-        What this method still does not do is REFUSE a moment: nothing here
-        advertises a future `as_of`, no caller passes one, and the published
-        body carries no moment at all. This entity's published surface, and the
-        horizon a forward-dated publish is bounded by, are the following
-        tickets'.
+        What THIS method still does not do is REFUSE a moment, and it still has
+        no caller that supplies one: `PublishIn` carries no moment, so the
+        immediate route this survives beside always means now. The horizon a
+        dated change is bounded by landed in `core.scheduling` with #359 and is
+        enforced on the DECLARE route, which is the surface that advertises an
+        instant. This entity's published surface is still a later ticket's.
         """
         as_of = as_of or timezone.now()
         with transaction.atomic():
@@ -361,10 +362,15 @@ class BookService:
         that is what keeps a diff meaningful. A tenant reads the diff, and the
         diff is a statement about one instant; recomputing it against "now" when
         the publish lands would let the change a tenant approved and the change
-        that happens be different changes. Nothing on the published surface
-        advertises a future instant yet — the request field, the bounded horizon
-        and its refusal are the following ticket's — so through the API this is
-        the moment of declaration.
+        that happens be different changes.
+
+        **THE PUBLISHED SURFACE NOW ADVERTISES A FUTURE INSTANT (#359).**
+        `BookPublishIn.effective_at` carries it, and a caller who omits it means
+        now — which is what the fall-back below says. The bound it is refused
+        beyond, and the reason that refusal is the route's first statement
+        rather than this method's, are in `core.scheduling`: this is a service
+        that takes an instant, not a surface that decides which instants a
+        tenant may name.
         """
         effective_at = effective_at or timezone.now()
         plan_changes(book, changes, effective_at)

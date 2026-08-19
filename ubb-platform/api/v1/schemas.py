@@ -1533,15 +1533,30 @@ class BookChangeIn(Schema):
 
 
 class BookPublishIn(Schema):
-    """The intended changes, declared as a draft.
+    """The intended changes, and when they take effect.
 
-    No effective instant: a change declared here takes effect when it is
-    declared, and dating one forward is a separate set of properties — the
-    request field, a bounded horizon and the refusal that enforces it — which
-    the following ticket owns. The record carries the instant either way, and
-    the publish writes both boundaries from it.
+    **`effective_at` IS WHAT DATES A CHANGE FORWARD, AND OMITTING IT MEANS
+    NOW.** A tenant who has agreed a rise from the first of next month states
+    that instant here and stops having to remember: publishing writes the rows
+    immediately, carrying the boundary as a value the resolver reads, so
+    **nothing runs at the instant itself**. There is no job to be late, which
+    matters because a late job would price every event in the gap at the old
+    rate and that wrong price would sit permanently on an authoritative record.
+
+    The instant must be timezone-aware (`effective_at_naive`). A change is dated
+    forward or not at all, so an instant more than five minutes behind the
+    present is refused with `effective_at_in_past` — the allowance is clock
+    skew, so that a caller stamping its own "now" is not told its clock is
+    wrong. And it must be within the platform's forward horizon of **366 days**;
+    beyond it the request is refused with `effective_at_too_far_ahead`.
+
+    Each of the three carries a code of its own so that *"that date is a typo"*
+    is distinguishable from *"that date has passed"* and from every other reason
+    a body is refused. The horizon is a platform bound and no tenant setting
+    moves it.
     """
     changes: list[BookChangeIn] = Field(min_length=1)
+    effective_at: Optional[datetime] = None
 
 
 class RuleTermsOut(Schema):
