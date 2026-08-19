@@ -23,8 +23,7 @@ class ResolveParityTest(MarkupCacheTestBase):
     def test_no_markup_configured_negative_cache(self):
         MarkupCache.begin_request(self.tenant.id)
         self.assertIsNone(MarkupCache.resolve(self.tenant, self.customer))
-        self.assertEqual(MarkupCache.apply(1_000_000, tenant=self.tenant,
-                                           customer=self.customer), 1_000_000)
+        self.assertIsNone(MarkupService.resolve(self.tenant, self.customer))
 
     def test_parity_default_and_override(self):
         TenantMarkup.objects.create(tenant=self.tenant, customer=None,
@@ -33,9 +32,12 @@ class ResolveParityTest(MarkupCacheTestBase):
                                     fixed_uplift_micros=7)
         MarkupCache.begin_request(self.tenant.id)
         for cust in (self.customer, None):
+            # PARITY IS OVER THE WHOLE RESOLVED VALUE, not over a price built
+            # from it: the source is half of what a rung answers, and comparing
+            # two figures would let the cache lose it silently.
             self.assertEqual(
-                MarkupCache.apply(1_000_000, tenant=self.tenant, customer=cust),
-                MarkupService.apply(1_000_000, tenant=self.tenant, customer=cust))
+                MarkupCache.resolve(self.tenant, cust),
+                MarkupService.resolve(self.tenant, cust))
 
     def test_l1_hit_skips_orm(self):
         MarkupCache.begin_request(self.tenant.id)
@@ -66,6 +68,6 @@ class RedisDownTest(MarkupCacheTestBase):
         with patch.object(markup_cache, "_client", side_effect=Exception("down")):
             MarkupCache.begin_request(self.tenant.id)   # swallows, ver=0
             MarkupCache.invalidate(self.tenant.id)      # swallows
-            self.assertEqual(
-                MarkupCache.apply(100, tenant=self.tenant, customer=self.customer),
-                103)  # ORM resolve still correct — never "assume none"
+            resolved = MarkupCache.resolve(self.tenant, self.customer)
+            # ORM resolve still correct — never "assume none"
+            self.assertEqual(resolved.applied_to(100), 103)

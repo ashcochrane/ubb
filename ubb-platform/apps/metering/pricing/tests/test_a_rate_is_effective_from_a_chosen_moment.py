@@ -8,8 +8,8 @@ from January resolves against the rules effective in January, there were none,
 and the correction returned a plausible-looking number that was not the answer.
 
 **Resolution was already right, which is why nothing found this.**
-`PricingService._resolve_rate_within` has filtered `valid_from__lte=as_of` since
-it was written, and `UsageService.record_usage` has threaded
+`PricingService._matching_rules_across` has filtered `valid_from__lte=as_of`
+since it was written, and `UsageService.record_usage` has threaded
 `as_of=effective_at` just as long. Every part of reading a historical rate
 worked. Only *declaring* one was impossible, and no assertion in the tree
 recorded a rate's effective moment as something a caller had **chosen** — the
@@ -242,12 +242,19 @@ class TheDeclaredMomentSurvivesTheInsertTest(TestCase):
         is unique on the selectors WHERE `valid_to IS NULL`, so a future-dated
         row cannot be written beside the open row it is meant to replace — the
         pair has to be created by one act that closes the outgoing rule, which
-        is the Pricing Book Publish record (2026-07-31 decision, §6.3). And
-        `CardCache.resolve` hardcodes `timezone.now()`, so resolution behind
-        the cache is not time-aware at all; §8.3 of that decision assigns
-        making it so to the same later work. What this test pins is the column:
-        a supplied future moment is kept rather than overwritten, which is the
-        thing that had to be true first.
+        is the Pricing Book Publish record (2026-07-31 decision, §6.3).
+
+        ⚠ **THE SECOND OBSTACLE IS GONE AND THIS PARAGRAPH USED TO SAY IT WAS
+        NOT (#356).** It read that `CardCache.resolve` hardcodes
+        `timezone.now()`, so resolution behind the cache is not time-aware at
+        all, and that §8.3 of that decision assigns making it so to later work.
+        That work is the price resolver: the instant is a parameter of
+        `resolve_price` and of `CardCache.resolve`, and it is part of the cache
+        key, so a cached resolution answers for the moment it was computed for
+        and no other. What is left in the way is the constraint above.
+
+        What this test pins is the column: a supplied future moment is kept
+        rather than overwritten, which is the thing that had to be true first.
         """
         moment = timezone.now() + timedelta(days=7)
         for half, rate_in_book in HALVES:

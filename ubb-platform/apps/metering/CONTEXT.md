@@ -142,11 +142,12 @@ markup configured → billed equals provider. (`apps/metering/pricing/models.py:
 
 **Rate**:
 A single priced *line* — one measurement key's rate for a combination of the ten declared selector columns
-— living in a RateCard, versioned via `lineage_id`. An empty selector is a wildcard; among rates
-that match within one book, the most-pinned (highest `specificity`) wins. (ADR-0005;
-`apps/metering/pricing/models.py:Rate`)
-_Avoid_: calling a Rate a "rate card" — that name belongs to the container; assuming specificity
-ranks across every book — it only ranks within the one book a resolution tier selected (ADR-0005).
+— living in a RateCard, versioned via `lineage_id`. An empty selector is a wildcard; among the rates
+that match, the most-pinned (highest `specificity`) wins, **whichever book it came from** (#356).
+(ADR-0005 clause 8, superseded; `apps/metering/pricing/models.py:Rate`)
+_Avoid_: calling a Rate a "rate card" — that name belongs to the container; assuming a rule in any
+book at all can be reached — resolution reads only the books in play for that event, and a rule in a
+book nobody selected is unreachable however well it matches.
 
 **Selector**:
 One of the fourteen columns (`provider`, `event_type`, `task_type`, `subtask_type`,
@@ -158,9 +159,13 @@ it inside a tenant and time window (#276).
 (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
 
 **Specificity**:
-How many of a Rate's fourteen selectors are non-empty (pinned) — the tie-breaker among rates matching
-the same event *within one book*: most-pinned wins, ties broken by latest `valid_from`. Does not
-rank across books — book tier is resolved first (ADR-0005). (`apps/metering/pricing/models.py:Rate.specificity`)
+How many of a Rate's fourteen selectors are non-empty (pinned) — and **only that count** (#356). It
+is one of the two ingredients the resolution ladder ranks on and says nothing about how they
+combine: rules from every book in play compete in one ranking, specificity first and the source of
+the rule as the tie-break inside a level, ties beyond that broken by latest `valid_from`. The
+composite rule is stated once, at `ladder_rank`.
+(`apps/metering/pricing/models.py:Rate.specificity`;
+`apps/metering/pricing/services/pricing_service.py:ladder_rank`)
 
 **RateCard**:
 The versioned container (informally a "book") grouping many Rates, pinned to one provider +

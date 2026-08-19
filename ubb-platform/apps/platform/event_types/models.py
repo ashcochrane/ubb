@@ -995,7 +995,7 @@ class Measurement(DeclarationPart, BaseModel):
     loading the rows. The second read arrived with the reference: **a Cost Rate
     still matches on `measurement_key`**, and since #326 it holds this record
     rather than a spelling of it, so resolution reads the code back through the
-    reference (`PricingService._resolve_rate_within` joins on
+    reference (`PricingService._matching_rules_across` joins on
     `measurement__code`).
 
     **That join is not this record selecting a rate, and the distinction is

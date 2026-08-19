@@ -65,22 +65,31 @@ every refusal at every slot rather than at a representative one):
 7. Every `Rate.SELECTORS` name exists as a `Posting` column — one vocabulary, both sides. Superseded
    in the sense above: re-pointed at `Posting` by #269 and dissolving in slice 4, not deleted.
 
-**8. The ranking rule is two-level: book tier dominates rate specificity.**
+**8. ~~The ranking rule is two-level: book tier dominates rate specificity.~~ SUPERSEDED by slice 4
+(#356): there is ONE ranking, and rate specificity dominates book tier.**
 
-"Among matching rates, the most-pinned wins" (design D3) is true **only within a single book**.
-`PricingService._resolve_card` walks book tiers in a fixed order — the customer's assigned book,
-then the provider-specific default book, then the provider-agnostic (`""`) default book — and
-returns the first tier that yields *any* match at all (`pricing_service.py::_resolve_card`).
-Specificity ranking (`_resolve_rate_within`) only ever compares rates that were already fetched from
-the *one* book a tier selected; it never compares across books.
+What this clause recorded was true when it was written and is the sharp edge slice 4 removes.
+`PricingService._resolve_card` used to walk book tiers in a fixed order — the customer's assigned
+book, then the provider-specific default book, then the provider-agnostic (`""`) default book — and
+return the first tier that yielded *any* match at all, so specificity only ever compared rates
+fetched from the one book a tier had selected. A rate in the `""` book pinning `task_type` +
+`grouping_field_1` (specificity 2) therefore lost to a rate in the `openai` book pinning only
+`provider` (specificity 1), and a tenant's narrow override was silently shadowed.
 
-The practical consequence: a rate in the `""` book pinning `task_type` + `grouping_field_1`
-(specificity 2) loses to a rate in the `openai` book pinning only `provider` (specificity 1),
-whenever both would otherwise match the same event, because the `openai` book is tried first and its
-match short-circuits the walk before the `""` book's more specific override is ever queried. A
-tenant's narrow override in the `""` book is therefore silently shadowed by any provider-book rate
-on the same measurement key — not a bug, but a sharp edge worth knowing before writing overrides.
-Pinned by `test_grouping_field_invariants.py::test_book_tier_dominates_rate_specificity`.
+**The walk is gone.** The books in play are selected first — the customer's assigned book plus the
+tenant's default book(s) for the event's provider — and then every matching rule in all of them
+competes in one ranking: how specifically a rule names the event first, and where it came from only
+as the tie-break inside a level. The argument for that order is the 2026-07-31 markup-and-price
+precedence decision §5.2, and it is a consequence argument rather than a taste one: under book-major
+ranking a customer's small blanket discount shadows every specific price the tenant configured, and
+their only defence is to restate every specific rule inside every override.
+
+**The rule is now stated in exactly one place in the tree** — `ladder_rank`, in
+`apps/metering/pricing/services/pricing_service.py` — with the four rungs it produces and the
+argument for the order. This clause is kept rather than deleted because clause numbers here are cited
+from outside this document; what it records now is that the edge existed and where its replacement
+lives. Pinned by `test_grouping_field_invariants.py::test_rate_specificity_dominates_book_tier` and
+by `apps/metering/pricing/tests/test_the_price_ladder_resolves_as_of_an_instant.py`.
 
 **9. A slot outside the declared vocabulary is refused** (#276). Numbered here rather than folded
 into the list above, because the numbers are cited from outside this document and renumbering them
@@ -135,11 +144,14 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   costs is the discipline of declaring it, not the column.
 - `Task.task_type` is immutable for the same reason `Task.parent` is — `accumulate_cost` reads it
   without a lock.
-- Rate resolution has two independent ranking layers (book tier, then selector specificity) rather
-  than one flat ranking over every candidate rate. A tenant authoring narrow overrides in the `""`
-  book must also author them in whichever provider book would otherwise match, or the override never
-  fires. The publish-time tooling does not warn on this today — a candidate for a future
-  "ambiguous/shadowed override" lint alongside the specificity-tie warning the design doc flags.
+- ~~Rate resolution has two independent ranking layers (book tier, then selector specificity) rather
+  than one flat ranking over every candidate rate.~~ **Superseded with clause 8 by slice 4 (#356):**
+  there is one ranking over every candidate rule in the books in play, specificity-major. A tenant
+  authoring a narrow override no longer has to restate it in whichever provider book would otherwise
+  match — that requirement was the consequence the supersession exists to remove, and the
+  "ambiguous/shadowed override" lint it wanted is no longer the shape of the problem. What survives
+  as a real tie is two rules a tenant made equally specific from one source, which the ladder breaks
+  on the later effective moment and does not claim to resolve further.
 - **Migration note — superseded.** This ADR used to warn that
   `apps/metering/usage/migrations/0028_remove_usageevent_idx_usage_attribution_and_more.py`
   implemented a column move as `AddField` + `RemoveField` rather than `RenameField`, and that

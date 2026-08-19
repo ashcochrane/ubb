@@ -17,11 +17,19 @@ the accept-time reservation this cache fed, where under-pricing meant
 under-reserving; #239 deleted that path, and the rule stands on the plainer
 ground that a dropped markup is lost margin.
 
-**Nothing in production reads this cache.** ``MarkupCache.apply`` had one
-caller — the accept-time estimate — and the recording path prices through
-``MarkupService`` against live ORM. Only the model-layer ``invalidate`` hook
-is still wired. Disposing of it belongs to a later slice-1 ticket, with
-``card_cache.py``, which is caller-less for the same reason.
+**Nothing in production reads this cache.** ``MarkupCache.resolve`` reached
+production only through an applier that fed the accept-time estimate, and the
+recording path prices through ``MarkupService`` against live ORM. Only the
+model-layer ``invalidate`` hook is still wired. Disposing of it belongs to a
+later slice-1 ticket, with ``card_cache.py``, which is caller-less for the same
+reason.
+
+**THE APPLIER IS GONE AND ``resolve`` IS THE WHOLE CONTRACT (#356).** A markup
+rung answers a percentage and the source that supplied it; turning that into a
+customer price is the resolver's business, because the resolver is what decides
+whether the basis may be marked up at all — a cost UBB never learned is a
+`waived` charge rather than a number. What is left here is the claim that has
+always been this module's: it answers what a live resolve answers.
 """
 import contextvars
 import time
@@ -82,23 +90,3 @@ class MarkupCache:
             _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, markup)
         return markup
-
-    @staticmethod
-    def apply(provider_cost_micros, *, tenant, customer):
-        """MarkupService.apply semantics via the cache. No production caller
-        since #239 — see the module docstring.
-
-        Including its refusal of an unresolved cost (#328): "same semantics" has
-        to cover the case where the answer is that there is no answer, or the
-        two paths differ exactly where it matters.
-        """
-        # Imported here rather than at module scope, matching `resolve` above:
-        # this module is loaded early and the service module reaches the ORM.
-        from apps.metering.pricing.services.markup_service import (
-            refuse_an_unresolved_basis)
-
-        refuse_an_unresolved_basis(provider_cost_micros)
-        markup = MarkupCache.resolve(tenant, customer)
-        if markup is None:
-            return provider_cost_micros
-        return provider_cost_micros + markup.calculate_markup_micros(provider_cost_micros)

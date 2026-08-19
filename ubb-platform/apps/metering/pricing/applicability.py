@@ -32,12 +32,20 @@ have to invent a value for that case, which is precisely the "answer nobody
 decided" the totality proof exists to prevent. So the rule lives here, returns
 `None` for the case that has no reason, and says so in the type.
 
-**It has no production caller yet, and that is the shape of this slice rather
-than an oversight.** The price resolver — the one new seam slice 4 introduces —
-is what will consult it, along with the rest of the four statuses' writers. This
-is the same way `PRICING_MODE_EVENT_PRICED` is named out loud in
-`services/pricing_service.py` before the column it will be read from exists: the
-rule that is already decided is written down where its caller will find it,
+**It still has no production caller, and the price resolver is not it (#356).**
+The resolver reaches three of the four price statuses — `known` where a rung
+priced the event, `waived` where a margin was taken over a supplier cost UBB
+never learned, and `unknown` where no rung answered — and it cannot reach the
+fourth, because `not_applicable` is not a fact about resolution. Both of this
+rule's inputs are facts about the SUBJECT: the tenant's posture, and whether the
+unit of work is sold for one agreed price. The second has no column anywhere and
+the regime's whole vocabulary belongs to the slice that rebuilds the unit of
+work, so a caller here would have to invent one of its two arguments.
+
+That is why the rule sits written and waiting rather than wired: it is the same
+way `PRICING_MODE_EVENT_PRICED` is named out loud in
+`services/pricing_service.py` before the column it will be read from exists —
+the rule that is already decided is written down where its caller will find it,
 rather than re-derived from a decision document by whoever gets there first.
 """
 from core.vocabulary import (

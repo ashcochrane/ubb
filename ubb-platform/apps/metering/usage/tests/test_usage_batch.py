@@ -10,7 +10,7 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.metering.pricing.tests._helpers import (
-    receipt_without_its_per_event_facts)
+    declares_a_markup, receipt_without_its_per_event_facts)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
@@ -29,6 +29,10 @@ def _setup(**tenant_kwargs):
     _, raw_key = TenantApiKey.create_key(t, label="test")
     c = Customer.objects.create(tenant=t, external_id="cust1")
     declares_a_caller_supplied_cost(t, DECLARED)
+    # A markup rung of nothing — the tenant charges what the call cost. Batch
+    # parity is over what each item BILLS, and without a rung every item bills
+    # `unknown` and the two sides agree about an absence (#356).
+    declares_a_markup(t)
     http = Client()
     auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
     return t, c, http, auth

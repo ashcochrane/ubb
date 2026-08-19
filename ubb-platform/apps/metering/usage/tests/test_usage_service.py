@@ -6,6 +6,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import declares_a_markup
 from apps.metering.usage.services.usage_service import SLOTS, UsageService, _result
 
 
@@ -143,6 +144,12 @@ class UsageServiceCoreTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
+        # A RUNG OF NOTHING IS STILL A RUNG (#356). These cases are about what
+        # the recording path does with a figure, not about what it charges for
+        # it — and a tenant with no markup declared at all now resolves to
+        # `unknown` rather than to the supplier's own cost, which would make
+        # every billed assertion below a statement about an absence.
+        declares_a_markup(self.tenant)
         self.wallet = Wallet.objects.create(customer=self.customer)
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -273,6 +280,12 @@ class UsageServiceEventEmissionTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
+        # A RUNG OF NOTHING IS STILL A RUNG (#356). These cases are about what
+        # the recording path does with a figure, not about what it charges for
+        # it — and a tenant with no markup declared at all now resolves to
+        # `unknown` rather than to the supplier's own cost, which would make
+        # every billed assertion below a statement about an absence.
+        declares_a_markup(self.tenant)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_writes_outbox_event(self, mock_process):
@@ -311,6 +324,12 @@ class UsageServiceTaskTest(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
         )
+        # A RUNG OF NOTHING IS STILL A RUNG (#356). These cases are about what
+        # the recording path does with a figure, not about what it charges for
+        # it — and a tenant with no markup declared at all now resolves to
+        # `unknown` rather than to the supplier's own cost, which would make
+        # every billed assertion below a statement about an absence.
+        declares_a_markup(self.tenant)
 
     def _task(self, balance=20_000_000, limit=None):
         return TaskService.create_task(
