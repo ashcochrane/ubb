@@ -152,6 +152,7 @@ from .record_usage_response_costing_status import RecordUsageResponseCostingStat
 from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
 from .record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
+from .record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
 from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
 from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from .record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
@@ -227,6 +228,7 @@ from .usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
+from .usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
 from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
 from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
@@ -406,6 +408,7 @@ __all__ = (
     "RecordUsageResponseGroupingFields",
     "RecordUsageResponseMeasurementsType0",
     "RecordUsageResponseNotApplicableReasonType0",
+    "RecordUsageResponsePricingMethodType0",
     "RecordUsageResponsePricingProvenanceType0",
     "RecordUsageResponsePricingStatus",
     "RecordUsageResponseUnresolvedReasonType0",
@@ -481,6 +484,7 @@ __all__ = (
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutNotApplicableReasonType0",
+    "UsageEventDetailOutPricingMethodType0",
     "UsageEventDetailOutPricingProvenance",
     "UsageEventDetailOutPricingStatus",
     "UsageEventDetailOutUnresolvedReasonType0",

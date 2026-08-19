@@ -187,10 +187,14 @@
       "representation": "none"
     },
     "pricing_method": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "margin_over_cost",
+        "direct_event_price"
+      ]
     },
     "pricing_mode": {
       "advertised": false,

@@ -750,6 +750,27 @@ CONCEPTS_IN_THE_CONTRACT = {
     # `not_applicable`, and a field nothing reads is a field that goes stale.
     # The same ruling #328 made for `unresolved_reason` on the same payload.
     "not_applicable_reason": Published(3, ENUM),  # record + list row + detail
+    # #355 (slice 4) — HOW a price was derived, beside the status that says
+    # WHETHER it is settled. The third nullable marker on a response, in the
+    # string member for the reason the two above give.
+    #
+    # TWO NODES, AND THE RULE IS A DIFFERENT ONE FROM THE FOUR ABOVE rather
+    # than a smaller version of it. Those qualify an AMOUNT, so they belong on
+    # every response publishing one. This one goes WHEREVER THE RECEIPT GOES,
+    # and that is mechanical rather than a judgement: the method is a value
+    # inside the record, which is published untyped, so on every response
+    # carrying that record the method is already on the wire with no schema
+    # saying what it may be. Exactly two responses carry it — the recording ack
+    # and the audit lookup — and leaving either out would leave the same closed
+    # concept unadvertised there.
+    #
+    # ⚠ NOT ON THE `usage.recorded` PAYLOAD, AND THAT WAS CHECKED RATHER THAN
+    # ASSUMED — the trap this slice was warned about by name is a closed concept
+    # reaching the wire unmarked, which no count can see. That payload carries
+    # no receipt and no method on either side; its two readers are accumulators
+    # asking whether an amount may be included, and neither asks how it was
+    # derived. The same ruling #328 and #351 made for the two reasons.
+    "pricing_method": Published(2, ENUM),  # the ack + the audit lookup
 }
 
 
@@ -841,6 +862,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     alone would be satisfied by six markers on one unrelated schema. This names
     the schemas, because the agreement being asserted is between a tenant's
     declaration and the vocabulary UBB serves it under.
+
+    ⚠ **AND IT HAS TO NAME EVERY ONE OF THEM.** Three concepts reached the
+    contract with a count and no placement — the tenant's product set from #240
+    and the price pair from #351 — because nothing here required a line per
+    concept. A placement test that quietly skips a concept has the same defect
+    as the count it exists to strengthen, one level down. The check at the foot
+    is what makes the omission impossible, and the names it compares are
+    collected by :func:`placed` rather than restated in a list beside it, which
+    would be one more copy able to drift.
     """
     where = {}
     for pointer, node in marked_nodes(spec):
@@ -854,28 +884,34 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
         where.setdefault(node[MARKER], set()).add(
             parts[2] if parts[1] == "webhooks" else parts[3])
 
-    assert where["costing_method"] == {"EventTypeIn", "EventTypeOut",
-                                       "EventTypeUpdateIn"}
-    assert where["source_kind"] == {"MeasurementIn", "MeasurementOut",
-                                    "ReportedCostMappingIn",
-                                    "ReportedCostMappingOut"}
-    assert where["amount_representation"] == {"ReportedCostMappingIn",
-                                              "ReportedCostMappingOut"}
+    stated = set()
+
+    def placed(concept, schemas):
+        """One concept's placement, asserted and counted as stated."""
+        stated.add(concept)
+        assert where.get(concept) == schemas, concept
+
+    placed("costing_method", {"EventTypeIn", "EventTypeOut",
+                              "EventTypeUpdateIn"})
+    placed("source_kind", {"MeasurementIn", "MeasurementOut",
+                           "ReportedCostMappingIn", "ReportedCostMappingOut"})
+    placed("amount_representation", {"ReportedCostMappingIn",
+                                     "ReportedCostMappingOut"})
     # The unit sits on the declared quantity, in and out. It does NOT sit on
     # the reported cost mapping: that carries money with a currency, and
     # `amount_representation` above is its equivalent noun.
-    assert where["unit"] == {"MeasurementIn", "MeasurementOut"}
+    placed("unit", {"MeasurementIn", "MeasurementOut"})
     # The response shape is declared ONCE at the Event Type, which is the whole
     # of #193 §C7's ruling — two quantities beneath it can never disagree about
     # which client they are mapped to. A marker on `MeasurementIn` would say
     # the opposite on the published contract.
-    assert where["source_shape_id"] == {"EventTypeIn", "EventTypeOut",
-                                        "EventTypeUpdateIn"}
+    placed("source_shape_id", {"EventTypeIn", "EventTypeOut",
+                               "EventTypeUpdateIn"})
     # OUT ONLY, and that is the ruling rather than an omission: the status is
     # derived and served, so a request schema naming it would be inviting a
     # caller to state a fact UBB computes — the second encoding ADR-0006 §4
     # refuses, arriving through the wire instead of through a column.
-    assert where["measurements_status"] == {"UsageEventDetailOut"}
+    placed("measurements_status", {"UsageEventDetailOut"})
     # OUT ONLY as well, and for a DIFFERENT reason worth keeping apart from the
     # one above: this status IS stored, so the objection is not that a caller
     # would state a computed fact — it is that a caller does not know it. What
@@ -896,8 +932,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # marker on exactly the stated rule rather than by extension: two products
     # count their exclusions off that field, so a subscriber switching on it
     # needs the set the document now states.
-    assert where["costing_status"] == {"RecordUsageResponse", "UsageEventOut",
-                                       "UsageEventDetailOut", "usage.recorded"}
+    placed("costing_status", {"RecordUsageResponse", "UsageEventOut",
+                              "UsageEventDetailOut", "usage.recorded"})
     # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
     # The cause is unreadable without the status and the status is unactionable
     # without the cause, so over RESPONSES the two sets are equal by design — a
@@ -912,9 +948,137 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # payload's readers are accumulators counting HOW MANY costs they could not
     # include, and not one of them asks why. A cause carried there would be a
     # field nothing reads, which is how a field goes stale and starts lying.
-    assert where["unresolved_reason"] == {"RecordUsageResponse",
-                                          "UsageEventOut",
-                                          "UsageEventDetailOut"}
+    placed("unresolved_reason", {"RecordUsageResponse", "UsageEventOut",
+                                 "UsageEventDetailOut"})
+    # THE PRICE HALF OF BOTH SETS ABOVE, on the same rule and the same
+    # asymmetry: the status rides the payload because two products accumulate
+    # off it and need to tell a price UBB could not resolve from one that was
+    # waived; the cause does not, because neither reader asks which of the two
+    # causes produced a `not_applicable`.
+    #
+    # ⚠ THESE TWO WERE COUNTED FROM #351 AND PLACED BY NOTHING UNTIL #355. The
+    # count is satisfied by four markers anywhere at all, which is the whole
+    # reason this test exists beside it, and the module the count lives in says
+    # so in its own words. Adding a third marker to the same family while its
+    # two siblings had no placement would have left the hole exactly where the
+    # slice was warned to look.
+    placed("pricing_status", {"RecordUsageResponse", "UsageEventOut",
+                              "UsageEventDetailOut", "usage.recorded"})
+    placed("not_applicable_reason", {"RecordUsageResponse", "UsageEventOut",
+                                     "UsageEventDetailOut"})
+    # HOW a price was derived, beside the status saying WHETHER it is settled
+    # (#355). The rule is "wherever the receipt goes", and it is asserted here
+    # as the schemas rather than as a count precisely because those are the two
+    # this claim is about: the recording ack and the audit lookup are exactly
+    # the responses publishing the record the method lives inside. A third
+    # response gaining that record and not this marker is the finding.
+    placed("pricing_method", {"RecordUsageResponse", "UsageEventDetailOut"})
+    # The first marker of any kind (#240), and the tenant's own product set is
+    # written where a tenant reads and where a tenant writes.
+    placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
+
+    # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
+    # nothing held this test to naming every concept, so a marker whose
+    # placement nobody stated still passed here — the count map beside it says
+    # in its own words that a count is satisfied by markers anywhere at all, and
+    # a placement test that skips a concept has exactly the same defect one
+    # level down. Checked in both directions, so a concept leaving the contract
+    # takes its line with it rather than leaving a stale one behind.
+    assert stated == set(where), (
+        "a concept the contract advertises has no placement stated above. A "
+        "count says a marker exists; only a placement says it is on the schema "
+        "whose values it describes — add the line in the commit that adds the "
+        "marker, and delete it in the commit that removes one.")
+
+
+def _marker_on(node):
+    """The concept a property node names, wherever the marker legally sits.
+
+    Two places, and both are correct: on the node, or — where the field is
+    nullable — inside the string member of its union, which is the placement
+    `test_a_closed_concepts_marker_never_sits_on_a_nullable_union` requires.
+    A reader that looked only at the node would read every nullable marked
+    field as unmarked.
+    """
+    if not isinstance(node, dict):
+        return None
+    if MARKER in node:
+        return node[MARKER]
+    for member in node.get("anyOf") or []:
+        if isinstance(member, dict) and MARKER in member:
+            return member[MARKER]
+    return None
+
+
+def _properties(document):
+    """Every (pointer, name, node) property in the document, at any depth.
+
+    From the ROOT, because `tools/known_values/apply.py` walks from the root
+    too: the `webhooks` section is part of the contract, and a check that
+    started at `components.schemas` would be blind to exactly the half this is
+    about.
+    """
+    def walk(node, pointer):
+        if isinstance(node, dict):
+            for name, child in (node.get("properties") or {}).items():
+                yield f"{pointer}/properties/{name}", name, child
+            for key, child in node.items():
+                yield from walk(child, f"{pointer}/{key}")
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                yield from walk(child, f"{pointer}/{index}")
+
+    return walk(document, "")
+
+
+def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
+    """⚠ **THE TRAP NO COUNT CAN SEE, AND THE WEBHOOK SECTION IS WHERE IT BITES.**
+
+    `test_the_contract_advertises_exactly_these_concepts_under_these_kinds`
+    counts MARKED nodes, and an unmarked node is not one — so a closed concept
+    can reach the wire as a bare `type: string`, correct in every value it ever
+    carries and advertised nowhere, with the whole board green. The placement
+    test above says where each marker IS; nothing until now said where one is
+    MISSING.
+
+    The rule this asserts is the narrowest one that is actually true: **a
+    property whose name IS an advertised concept carries that concept's
+    marker.** Both halves of the restriction are load-bearing.
+
+    - Advertised only. A concept the backend does not yet serve *must* stay
+      unmarked — `openapi/README.md` is explicit that marking one fails the
+      export — and a concept the registry gives no `openapi` consumer may not
+      be marked at all. `EventTypeOut.declaration_status` is the live example
+      of the second: a `closed` concept, correctly bare, and a rule keyed on
+      kind alone would demand a marker the applier refuses.
+    - By name only. A field carrying a concept under a different name is real
+      (`TenantConfigOut.products` carries `tenant_product`) and cannot be found
+      mechanically, so this makes the easy half of the claim rather than
+      pretending to make both. What it buys is that the easy half stops being
+      free: the natural spelling of a new field IS the concept's name, which is
+      how `pricing_method` arrived in #355 and how the next one will.
+
+    ⚠ **AND HERE IS WHAT IT CANNOT SEE, SAID PLAINLY.** It walks `properties`,
+    so it is blind inside an `additionalProperties: true` payload — which has
+    no properties to walk and is exactly where this repository's live instance
+    of the trap lives: the Pricing Receipt publishes four closed concepts
+    inside an untyped record on two responses. That is #349's recorded
+    residual, and it is not fixable by a check — marking needs a TYPED node, so
+    the fix is typing the payload. #355 answered it for its own concept by
+    lifting the value into a typed field on both responses carrying the record,
+    which is the pattern the rest will follow. This test holds the typed
+    surface; nothing holds the untyped one, and pretending otherwise would be a
+    green board over the half that is still open.
+    """
+    unmarked = [pointer for pointer, name, node in _properties(spec)
+                if name in decisions and decisions[name].advertised
+                and _marker_on(node) != name]
+
+    assert not unmarked, (
+        f"{len(unmarked)} propert(ies) are named for a concept the contract "
+        f"advertises and carry no marker for it, so the document publishes an "
+        f"agreed value set as an open string:\n"
+        + "\n".join(f"  {pointer}" for pointer in unmarked))
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is
@@ -1441,9 +1605,11 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     all "for each entry" — and this is what would not.
 
     THE FLOOR MOVES DOWN BY ONE PER CONCEPT PAID, AND ONLY THEN. It went 25 →
-    24 in #317, which advertised `costing_status`, and 24 → 23 in #351, which
+    24 in #317, which advertised `costing_status`, 24 → 23 in #351, which
     advertised `pricing_status` — the same concept one slice later on the other
-    side of the margin, and the same single-entry step.
+    side of the margin, and the same single-entry step — and 23 → 22 in #355,
+    which advertised `pricing_method`, the second concept of that pair's own
+    slice and again one entry.
 
     ⚠ #351 also COINED `not_applicable_reason`, and that moved the floor by
     nothing at all. A concept whose backend consumer holds every value on the
@@ -1461,6 +1627,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 23, (
+    assert len(_entries(programme)) >= 22, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,586 of 1,974 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,589 of 1,978 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -811,6 +811,51 @@ measurement_key:
     # plural as a receipt COMPONENT key in `_reproduce`; this commit changes
     # when that module prunes and never what it reproduces, so its own count is
     # where #350 left it.
+    #
+    # #355 MOVED THE DENOMINATOR ONLY, UPWARD (1,586 → 1,589 swept, 1,974 →
+    # 1,978 tracked, 52/128 unchanged) — the same "needs no story" direction and
+    # the same non-widening signature as #352, #353 and #354 above:
+    # `historical-migrations` went 221 → 222 because this commit ADDS a
+    # migration to a directory the rule already covers.
+    #
+    # FOUR new files, THREE OF THEM SWEPT, and the last two are the reason
+    # #324's discriminator is worth having written down. The migration carrying
+    # the rule's method column and its two checks is excluded; the module
+    # proving a rule declares one method and never composes is swept; and so are
+    # TWO GENERATED SDK enum modules, because this commit advertises a CLOSED
+    # concept and the generator mints one PER SCHEMA carrying it — here the
+    # recording ack and the audit lookup, the two responses that publish the
+    # record the method lives inside. #323 has exactly that signature and #324
+    # did not: the difference is closed-value-set versus plain amount, and it is
+    # why these numbers are taken AFTER the core regen rather than after the
+    # build. ⚠ The count moved TWICE for that reason during this ticket — once
+    # when the field landed on one response, again when review showed it
+    # belonged on both.
+    #
+    # NOTHING HERE IS ABOUT THE QUANTITY, and #275's RATE ARITHMETIC caution
+    # still holds — but the near miss is closer this time than in the three
+    # commits above, and it is worth naming. The new module is about the money
+    # TERMS a rule may carry beside its method, and one of them is a per-unit
+    # rate divided by a denominator. Every reference to those is by COLUMN NAME
+    # (`rate_per_unit_micros`, `unit_quantity`), which the sweep's own token
+    # matcher does not see, and the prose says "the per-unit rate" and "the flat
+    # addend" rather than naming what is counted. `compute` is not touched, not
+    # called and not described.
+    #
+    # ⚠ SIXTEEN FILES ALREADY IN THE SWEPT SET WERE EDITED and none of them
+    # gained an occurrence. (Twenty-four changed in all: nineteen are swept —
+    # the other three being the new test module and the two generated enum
+    # modules, which are the +3 above — and five sit under exclusion rules: this
+    # file, both gate files, the sweep's own check, and the new migration. ⚠ The
+    # committed contract, its known-value document and the console's snapshot of
+    # it are SWEPT rather than excluded, which is easy to assume the other way
+    # round, and so is `test_undeclared_value_sets.py`, whose own docstring said
+    # it was excluded until this commit corrected it.)
+    # The nearest miss among them is
+    # `test_the_pricing_receipt_explains_an_amount.py`, which spells the retired
+    # plural in `REQUIRED_COMPONENT_KEYS`; the two cases added there read a
+    # section's METHOD and never a component, so its own count is where #350
+    # left it.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

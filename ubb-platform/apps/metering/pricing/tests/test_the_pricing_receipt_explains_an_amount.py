@@ -24,6 +24,7 @@ from apps.metering.pricing.receipts import (
     ReceiptSubject,
     Resolution,
     build_receipt,
+    pricing_method_of,
     schema_version_of,
     uncosted_quantity_keys,
 )
@@ -161,6 +162,43 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         assert schema_version_of(older) == LEGACY_SCHEMA_VERSION
         assert uncosted_quantity_keys(older) == ["image_pixels"]
         assert older["provider_cost_micros"] == 4_000
+
+    def test_the_method_reader_dispatches_the_same_three_ways(self):
+        """The second reader over this record, and the same three-way dispatch
+        (#355) — because a reader that guessed would turn a shape it does not
+        understand into a plausible wrong answer about how money was derived.
+
+        ⚠ **AN OLDER RECEIPT ANSWERS `None`, AND THAT IS NOT A GAP.** What that
+        shape recorded beside its price is the SOURCE that supplied it, which is
+        a different question: a markup and a rule declaring a margin are one
+        method at two sources. Reading the older field as a method would publish
+        a value no writer ever recorded, under a mapping nobody ratified.
+        """
+        current = a_receipt()
+
+        assert pricing_method_of(current) == PRICING_METHOD_MARGIN_OVER_COST
+        assert pricing_method_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
+        assert "price_source" in A_RECEIPT_IN_THE_OLDER_SHAPE
+
+        with pytest.raises(ReceiptShapeError, match="schema version"):
+            pricing_method_of(dict(current,
+                                   receipt_schema_version=
+                                   SECTIONED_SCHEMA_VERSION + 1))
+
+    def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
+        """AC: null means the price was NOT DERIVED, and the status says why.
+
+        The two travel together by construction — the boundary refuses a record
+        whose method and status disagree — so this asserts the pair a reader
+        actually gets rather than the null alone.
+        """
+        not_derived = a_receipt(pricing=Resolution(
+            method=None, status=PRICING_STATUS_NOT_APPLICABLE,
+            amount_micros=None, detail={"components": []}))
+
+        assert pricing_method_of(not_derived) is None
+        assert (not_derived["pricing"]["status"]
+                == PRICING_STATUS_NOT_APPLICABLE)
 
     def test_the_two_shapes_answer_the_same_questions_the_same_way(self):
         current = a_receipt(costing=Resolution(

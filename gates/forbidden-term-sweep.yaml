@@ -155,7 +155,9 @@ exclusions:
     # 220 → 221 in #354: one migration, installing the child measurement
     # record's whole-record DELETE rule — the first trigger on that table, and
     # the first on either that is not a BEFORE UPDATE.
-    files: 221
+    # 221 → 222 in #355: one migration, adding the pricing rule's method column
+    # and the two checks that close its value set and refuse a composed rule.
+    files: 222
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

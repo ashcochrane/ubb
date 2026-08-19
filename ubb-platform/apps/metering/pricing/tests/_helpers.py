@@ -1,5 +1,7 @@
 from uuid import uuid4
 
+from django.db import IntegrityError, connection, transaction
+
 from apps.metering.pricing.models import Rate, RateCard
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.usage.models import Posting
@@ -127,3 +129,71 @@ def receipt_without_its_per_event_facts(body):
     return {**body, Posting.RECEIPT_COLUMN: {
         **body[Posting.RECEIPT_COLUMN],
         "subject_id": "SUBJECT", "effective_at": "AS_OF"}}
+
+
+# --- The three doors ADR-0007 §2 names, over one rule -------------------------
+#
+# A guard only one door respects is the defect a database rule exists to catch,
+# so every prohibited write against this table is driven through all three.
+# `usage/tests/_helpers.py` has the same three over a posting, and the two sets
+# are not one set: they write different columns on different tables through
+# different model APIs, and the only lines they would share are the two the ORM
+# dictates. What IS copied is the structure, which is what "copy the prior art"
+# means.
+
+def through_the_queryset(rule, **columns):
+    Rate.objects.filter(pk=rule.pk).update(**columns)
+
+
+def through_raw_sql(rule, **columns):
+    """Raw SQL, with each value prepared the way its own column takes it.
+
+    The door is *raw SQL*, not *raw Python objects*: `get_db_prep_value` is the
+    model field's own answer to what the driver should be handed, so this door
+    writes exactly what the ORM writes and differs from the other two only in
+    going around them — which is the whole point of it.
+    """
+    assignments = ", ".join(f"{name} = %s" for name in columns)
+    values = [Rate._meta.get_field(name).get_db_prep_value(value, connection)
+              for name, value in columns.items()]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE {Rate._meta.db_table} SET {assignments} WHERE id = %s",
+            [*values, str(rule.pk)])
+
+
+def through_save(rule, **columns):
+    """`save()` — the door a shell session, a data migration or a fixture uses."""
+    for name, value in columns.items():
+        setattr(rule, name, value)
+    rule.save()
+
+
+DOORS = (("QuerySet.update()", through_the_queryset),
+         ("raw SQL", through_raw_sql),
+         ("save()", through_save))
+
+
+class RuleRefusalThroughEveryDoorMixin:
+    """Every prohibited write against a rule, driven through all three doors.
+
+    ⚠ `REFUSAL_NAME` has no default on purpose. Several mechanisms on this table
+    answer `IntegrityError` and two of them now refuse writes to the same
+    column, so a subclass that forgot to say which one it is about would assert
+    against whatever the base class happened to carry — the shape that let a
+    rule refusing the wrong thing pass its own check one slice ago.
+    """
+
+    #: The constraint a subclass's refusals must name. Set per class.
+    REFUSAL_NAME = None
+
+    def assert_every_door_refuses(self, rule, **columns):
+        self.assertIsNotNone(
+            self.REFUSAL_NAME,
+            "this class has not said which mechanism its refusals belong to")
+        for name, door in DOORS:
+            with self.subTest(door=name):
+                with self.assertRaisesRegex(IntegrityError, self.REFUSAL_NAME):
+                    with transaction.atomic():
+                        door(rule, **columns)
+                rule.refresh_from_db()

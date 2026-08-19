@@ -11,6 +11,7 @@ from ..types import UNSET, Unset
 from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
+from ..models.usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
 from ..models.usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from ..types import UNSET, Unset
@@ -54,6 +55,7 @@ class UsageEventDetailOut:
             measurements (UsageEventDetailOutMeasurements | Unset):
             metadata (UsageEventDetailOutMetadata | Unset):
             not_applicable_reason (None | Unset | UsageEventDetailOutNotApplicableReasonType0):
+            pricing_method (None | Unset | UsageEventDetailOutPricingMethodType0):
             pricing_provenance (UsageEventDetailOutPricingProvenance | Unset): The Pricing Receipt: the authoritative record
                 of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of when. It is not a
                 guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has
@@ -84,6 +86,7 @@ class UsageEventDetailOut:
     measurements: UsageEventDetailOutMeasurements | Unset = UNSET
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     not_applicable_reason: None | Unset | UsageEventDetailOutNotApplicableReasonType0 = UNSET
+    pricing_method: None | Unset | UsageEventDetailOutPricingMethodType0 = UNSET
     pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
@@ -153,6 +156,14 @@ class UsageEventDetailOut:
         else:
             not_applicable_reason = self.not_applicable_reason
 
+        pricing_method: None | str | Unset
+        if isinstance(self.pricing_method, Unset):
+            pricing_method = UNSET
+        elif isinstance(self.pricing_method, UsageEventDetailOutPricingMethodType0):
+            pricing_method = self.pricing_method.value
+        else:
+            pricing_method = self.pricing_method
+
         pricing_provenance: dict[str, Any] | Unset = UNSET
         if not isinstance(self.pricing_provenance, Unset):
             pricing_provenance = self.pricing_provenance.to_dict()
@@ -218,6 +229,8 @@ class UsageEventDetailOut:
             field_dict["metadata"] = metadata
         if not_applicable_reason is not UNSET:
             field_dict["not_applicable_reason"] = not_applicable_reason
+        if pricing_method is not UNSET:
+            field_dict["pricing_method"] = pricing_method
         if pricing_provenance is not UNSET:
             field_dict["pricing_provenance"] = pricing_provenance
         if provider is not UNSET:
@@ -344,6 +357,26 @@ class UsageEventDetailOut:
         not_applicable_reason = _parse_not_applicable_reason(d.pop("not_applicable_reason", UNSET))
 
 
+        def _parse_pricing_method(data: object) -> None | Unset | UsageEventDetailOutPricingMethodType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_method_type_0 = UsageEventDetailOutPricingMethodType0(data)
+
+
+
+                return pricing_method_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventDetailOutPricingMethodType0, data)
+
+        pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
+
+
         _pricing_provenance = d.pop("pricing_provenance", UNSET)
         pricing_provenance: UsageEventDetailOutPricingProvenance | Unset
         if isinstance(_pricing_provenance,  Unset):
@@ -431,6 +464,7 @@ class UsageEventDetailOut:
             measurements=measurements,
             metadata=metadata,
             not_applicable_reason=not_applicable_reason,
+            pricing_method=pricing_method,
             pricing_provenance=pricing_provenance,
             provider=provider,
             provider_cost_micros=provider_cost_micros,

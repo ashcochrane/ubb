@@ -408,6 +408,138 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertIn("measurements_status", body)
         self.assertIn(body["measurements_status"], MEASUREMENTS_STATUS_VALUES)
 
+    # --- How the price was derived (#355) ------------------------------------
+    #
+    # ⚠ THESE LIVE ON THE ENDPOINT'S OWN CLASS RATHER THAN IN A MODULE OF THEIR
+    # OWN, and the reason is a ceiling rather than a preference: a new module
+    # reading the stored record back would spell the retired name of the column
+    # that holds it, whose ledger entry is at its extent. This file already
+    # carries that word and this class already owns the surface, so the
+    # assertions go where the behaviour is.
+
+    def test_a_derived_price_names_the_method_that_derived_it(self):
+        """AC: the method reaches the published contract, off a real recording.
+
+        Recorded through the route rather than assembled, so what the response
+        publishes is what the engine actually wrote — a fixture holding the
+        answer would pass the day the engine stopped writing one.
+        """
+        from apps.metering.usage.models import Posting
+        from apps.metering.usage.services.usage_service import UsageService
+        from core.vocabulary import (PRICING_METHOD_MARGIN_OVER_COST,
+                                     PRICING_STATUS_KNOWN)
+
+        ev = Posting.objects.get(
+            id=UsageService.record_usage(
+                self.tenant, self.customer, "r-method", "i-method",
+                measurements={"input_tokens": 1200})["event_id"])
+
+        body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
+                             **self._auth()).json()
+        self.assertEqual(body["pricing_method"], PRICING_METHOD_MARGIN_OVER_COST)
+        self.assertEqual(body["pricing_status"], PRICING_STATUS_KNOWN)
+        # The published field is the RECORD's, not a second derivation that
+        # could answer differently the day the rules behind it are edited —
+        # which is the whole of what the receipt is for.
+        self.assertEqual(body["pricing_method"],
+                         body["pricing_provenance"]["pricing"]["method"])
+
+    def test_the_recording_ack_names_the_method_too(self):
+        """AC: the method reaches the contract on BOTH responses carrying the
+        record, and the ack is the one it would be easiest to leave out.
+
+        The rule is mechanical rather than a judgement: the method is a value
+        INSIDE the record this response already returns, which is published
+        untyped — so leaving the ack out would have left the same closed concept
+        crossing to a caller with no schema saying what it may be, which is the
+        defect the marker exists to remove. The value here is compared against
+        the record on the same body, so the typed field cannot drift from the
+        untyped one it was lifted out of.
+        """
+        from core.vocabulary import (PRICING_METHOD_MARGIN_OVER_COST,
+                                     PRICING_STATUS_KNOWN)
+
+        resp = self.http.post(
+            "/api/v1/metering/usage",
+            data=json.dumps(usage_payload(
+                self.customer, "r-ack-method",
+                measurements={"input_tokens": 1200})),
+            content_type="application/json", **self._auth())
+
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["pricing_method"], PRICING_METHOD_MARGIN_OVER_COST)
+        self.assertEqual(body["pricing_status"], PRICING_STATUS_KNOWN)
+        self.assertEqual(body["pricing_method"],
+                         body["pricing_provenance"]["pricing"]["method"])
+
+    def test_a_price_that_was_not_derived_answers_null_beside_the_status(self):
+        """AC: null means the price was NOT DERIVED, read beside the status.
+
+        Null is not a third method and it is not an error. It says no
+        derivation happened, and the field a reader consults for WHY is the
+        price status on the same body — here, a posting under a job sold for
+        one agreed price, which carries no event-level customer price at all.
+        The two are published together precisely so neither has to answer the
+        other's question.
+
+        Assembled rather than recorded, and deliberately: the engine reports
+        every price it derives as settled today, so the unsettled shape is
+        reachable at the construction boundary and not yet through the spine.
+        The record is still built through `build_receipt` — the one place a
+        receipt is made, and the place that refuses one whose method and status
+        disagree.
+        """
+        from apps.metering.pricing.receipts import Resolution, build_receipt
+        from apps.metering.pricing.tests._helpers import a_usage_event_subject
+        from apps.metering.usage.models import Posting
+        from core.vocabulary import (
+            COSTING_METHOD_CALCULATED, COSTING_STATUS_KNOWN,
+            NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
+            PRICING_STATUS_NOT_APPLICABLE)
+
+        receipt = build_receipt(
+            subject=a_usage_event_subject(),
+            effective_at="2026-08-19T09:00:00+00:00", currency="usd",
+            pricing_engine_version="2.1.0",
+            costing=Resolution(method=COSTING_METHOD_CALCULATED,
+                               status=COSTING_STATUS_KNOWN,
+                               amount_micros=300_000,
+                               detail={"components": []}),
+            pricing=Resolution(method=None,
+                               status=PRICING_STATUS_NOT_APPLICABLE,
+                               amount_micros=None,
+                               detail={"components": []}))
+        ev = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            idempotency_key="idem-not-derived",
+            provider_cost_micros=300_000, billed_cost_micros=None,
+            pricing_status=PRICING_STATUS_NOT_APPLICABLE,
+            not_applicable_reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
+            pricing_provenance=receipt)
+
+        body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
+                             **self._auth()).json()
+        self.assertIsNone(body["pricing_method"])
+        self.assertEqual(body["pricing_status"], PRICING_STATUS_NOT_APPLICABLE)
+        self.assertEqual(body["not_applicable_reason"],
+                         NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
+
+    def test_a_receipt_in_the_older_shape_names_no_method_rather_than_one(self):
+        """The read-path half, and the direction that actually happens.
+
+        Rows on disk predate the sectioned record, and what the older shape
+        wrote beside its price is the SOURCE that supplied it — a different
+        question from how the amount was derived, since a markup and a rule
+        declaring a margin are one method at two sources. Translating that
+        field would put a value on the published contract that no writer ever
+        recorded, so the response says nothing, which is what the record says.
+        """
+        body = self.http.get(f"/api/v1/metering/usage/{self._event().id}",
+                             **self._auth()).json()
+        self.assertIn("pricing_method", body)
+        self.assertIsNone(body["pricing_method"])
+
 
 class MeteringTaskEndpointTest(TestCase):
     def setUp(self):
