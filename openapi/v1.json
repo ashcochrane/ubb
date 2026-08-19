@@ -4956,6 +4956,22 @@
             ],
             "title": "Parent Task Id"
           },
+          "pricing_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin_over_cost",
+                  "direct_event_price"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Method"
+          },
           "pricing_provenance": {
             "anyOf": [
               {
@@ -7125,6 +7141,22 @@
               }
             ],
             "title": "Not Applicable Reason"
+          },
+          "pricing_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin_over_cost",
+                  "direct_event_price"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Method"
           },
           "pricing_provenance": {
             "additionalProperties": true,

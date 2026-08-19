@@ -8,7 +8,10 @@ from django.db.models.fields.json import KeyTextTransform
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
-from apps.metering.pricing.receipts import uncosted_quantity_keys
+from apps.metering.pricing.receipts import (
+    pricing_method_of,
+    uncosted_quantity_keys,
+)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.cost_totals import (
@@ -183,14 +186,27 @@ def usage_error(e):
     return "validation_error", str(e)
 
 
-def with_uncosted(result):
-    """Surface the receipt's uncosted-quantity list on a success body — both
-    recording surfaces return it.
+def with_receipt_reads(result):
+    """Surface what the receipt says, typed, on a success body — both recording
+    surfaces return it.
 
-    The list says WHICH declared quantities went uncosted; `costing_status` on
-    the same body says THAT the cost is unresolved. Neither is the other: a
-    tenant fixing this needs the specific declaration, and a reader totalling a
-    column needs the status.
+    Two reads, and they answer two questions.
+
+    The uncosted-quantity list says WHICH declared quantities went uncosted;
+    `costing_status` on the same body says THAT the cost is unresolved. Neither
+    is the other: a tenant fixing this needs the specific declaration, and a
+    reader totalling a column needs the status.
+
+    The pricing method says HOW the customer price was derived; `pricing_status`
+    beside it says whether that price is settled. Null means no derivation
+    happened, and the status says why (#355).
+
+    **BOTH ARE ALREADY IN THE BODY, UNTYPED, AND THAT IS THE POINT OF LIFTING
+    THEM.** These surfaces publish the whole record in `pricing_provenance`,
+    which is `additionalProperties: true` — so a value inside it reaches a
+    consumer with no schema saying what it may be, and a closed value set
+    published that way is advertised nowhere. Lifting each into a typed field
+    is what lets the contract carry the agreed vocabulary for it.
 
     **THE RECEIPT'S SHAPE IS ASKED FOR, NOT ASSUMED (#349).** An idempotent
     replay answers with the receipt the posting was recorded with, so this is a
@@ -198,8 +214,9 @@ def with_uncosted(result):
     a read-path obligation rather than a migration, since old receipts are read
     and never rewritten. The tolerance is expressed once, in the receipts
     module, because a second copy of it here is a second thing to repair."""
-    result["uncosted_measurement_keys"] = uncosted_quantity_keys(
-        result.get("pricing_provenance"))
+    receipt = result.get("pricing_provenance")
+    result["uncosted_measurement_keys"] = uncosted_quantity_keys(receipt)
+    result["pricing_method"] = pricing_method_of(receipt)
     return result
 
 
@@ -257,7 +274,7 @@ def record_sync_item(tenant, item, customers, task_exists):
             **usage_kwargs(item))
     except ValueError as e:
         return _rejected(*usage_error(e))
-    return {"accepted": True, **with_uncosted(result)}
+    return {"accepted": True, **with_receipt_reads(result)}
 
 
 @metering_router.post("/usage", response={200: RecordUsageResponse})
@@ -311,7 +328,7 @@ def record_usage(request, payload: RecordUsageRequest):
     # Kill execution is the recording core's job (#112): a crossing verdict
     # registers kill_and_announce on the recording transaction's on_commit,
     # so the kills have already fired by the time this returns.
-    return with_uncosted(result)
+    return with_receipt_reads(result)
 
 
 @metering_router.post("/usage/batch", response={200: UsageBatchResponse})
@@ -440,6 +457,13 @@ def get_usage_event(request, event_id: UUID):
         # serialiser that recomputed either could contradict what the row says.
         "pricing_status": e.pricing_status,
         "not_applicable_reason": e.not_applicable_reason,
+        # Derived here rather than stored, and read out of the record rather
+        # than recomputed (#355). The receipt is the authority on how an amount
+        # was reached; re-deriving the method from today's configuration is the
+        # failure the receipt exists to prevent. The shape is ASKED FOR, not
+        # assumed — the tolerance lives once in the receipts module, like the
+        # uncosted list on the recording surfaces.
+        "pricing_method": pricing_method_of(e.pricing_provenance),
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the
         # serialiser, which is the only place §E5 permits it to exist.

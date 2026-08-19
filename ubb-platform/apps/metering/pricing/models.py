@@ -6,6 +6,10 @@ from django.utils import timezone
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 from core.models import BaseModel
 from core.transitions import FROZEN, SET_ONCE
+from core.vocabulary import (
+    PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_METHOD_VALUES,
+)
 
 
 class TenantMarkup(BaseModel):
@@ -51,11 +55,66 @@ class TenantMarkup(BaseModel):
 
 #: The check that makes a rate say which quantity it prices, exactly once
 #: (#326). Named here rather than spelled at each site because every test of it
-#: asserts the MESSAGE: several mechanisms on this table answer
-#: `IntegrityError` — the partial unique index, this check, the reference's own
-#: foreign key and the two triggers `0018` and `0020` install — and "the write
-#: was rejected" stopped being evidence the moment there was more than one.
+#: asserts the MESSAGE: MANY mechanisms on this table answer `IntegrityError`,
+#: and "the write was rejected" stopped being evidence the moment there was
+#: more than one.
+#:
+#: ⚠ **NOT A CLOSED LIST, DELIBERATELY, AND IT USED TO READ LIKE ONE.** This
+#: comment named five — the partial unique index, this check, the reference's
+#: own foreign key and the two triggers `0018` and `0020` install — and #355
+#: added two more checks below without that enumeration being wrong so much as
+#: OUT OF DATE, which is the failure mode of writing a count in prose at all.
+#: Every foreign key and every `NOT NULL` on this table answers the same
+#: exception too. What a test needs is not the tally but the habit: name the
+#: mechanism you mean.
 NAMES_ONE_QUANTITY_CHECK = "ck_rate_names_one_quantity"
+
+#: The check that keeps the method's value set closed at the table (#355).
+#:
+#: `choices=` reaches forms, the admin and `full_clean`, and it is worth having
+#: — but it is not a constraint: `QuerySet.update()` and raw SQL write straight
+#: past all three, which the tests of this constant demonstrate rather than
+#: assert. A closed value set is an invariant no business situation can make
+#: false, which is exactly what ADR-0002 puts in the database.
+#:
+#: Named for the reason the check above it gives.
+DECLARES_A_RATIFIED_METHOD_CHECK = "ck_rate_pricing_method"
+
+#: The check that makes non-composition a property of a ROW rather than a
+#: sentence in a comment (#355, #147 §2).
+#:
+#: A rule declaring that its price is a margin over what the call cost may not
+#: also carry a second component that would be added to, floored under or capped
+#: over that margin. The two components this table can express are the per-unit
+#: rate and the flat addend beside it, and a margin rule carries neither.
+#:
+#: **WHY A `CHECK` IS THE RIGHT MECHANISM HERE AND WAS NOT FOR #326's RULE.**
+#: This is a statement about the SHAPE OF A ROW, true at every instant, which is
+#: exactly what a check evaluates. #326 needed a trigger because its rule was
+#: about which rows may be BORN — a distinction a check cannot draw, since it
+#: cannot tell an `INSERT` from the conversion's `UPDATE`. Nothing here depends
+#: on how a row arrived.
+#:
+#: ⚠ **IT IS NOT THE WHOLE OF "RULES NEVER COMPOSE", AND THE REST IS NOT THIS
+#: TICKET'S.** A SECOND composition is expressible on this table and is left
+#: legal here: `compute` adds the flat term to the per-unit term, so one rule
+#: can carry both. That is a statement about the rule's ARITHMETIC SHAPE, whose
+#: two alternatives are `per_unit` and a fixed component and whose exclusivity
+#: is decided with the shape's own rename — not about which METHOD derived the
+#: price, which is what this check holds. Refusing it here would change what an
+#: existing rate may be, in a ticket that renames nothing.
+NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
+
+#: HOW A PRICING RULE DERIVES A CUSTOMER PRICE, DERIVED FROM THE REGISTRY rather
+#: than restated beside it — the construction the posting's four closed sets
+#: already use, and for the same reason: a hand-typed list is correct on the day
+#: it is written and silently wrong the day `domain-vocabulary/` moves.
+#:
+#: The label is the token. Django's second element is not a translation hook
+#: (ADR-0008 §4 puts every human-facing word in the console's locale catalogue,
+#: keyed off the concept's `label_key_prefix`), so English authored here would be
+#: a wording nobody can reach and one more copy to keep in step.
+PRICING_METHOD_CHOICES = [(value, value) for value in sorted(PRICING_METHOD_VALUES)]
 
 CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
 # per_unit/flat only: ADR-0003 — the MVP launches without tiered pricing
@@ -135,6 +194,53 @@ class Rate(BaseModel):
     # every door rather than only at the route.
     undeclared_measurement_key = models.CharField(max_length=100, blank=True,
                                                   default="")
+    # HOW THIS RULE DERIVES A CUSTOMER PRICE — one of exactly two, or nothing
+    # (#355, #147 §2). A margin applied over what UBB knows the call cost, or an
+    # amount attached directly to the event regardless of cost.
+    #
+    # ONE METHOD PER RULE, AND THE COLUMN IS WHAT MAKES THAT TRUE rather than a
+    # convention. A rule that wanted both would be two rules; a rule that wanted
+    # one method plus a floor, a cap or a second additive component would make
+    # the explanation of a resolved price a chain whose middle terms nobody
+    # stored, which is the failure the receipt exists to remove.
+    # `NEVER_COMPOSES_CHECK` above is where that stops being a sentence.
+    #
+    # NULLABLE, AND NULL IS NOT A THIRD METHOD. It means the price was not
+    # DERIVED — because it was agreed, or because there is none — and which of
+    # those is read off the price STATUS beside the amount on the posting
+    # (`usage/models.py`), which already carries `waived`, `unknown` and
+    # `not_applicable`. THIS IS THE ONE PLACE THAT ARGUMENT IS MADE IN FULL; the
+    # migration, the published schema and the receipt module state the rule and
+    # point here, because seven copies of a paragraph are seven things that can
+    # go false separately. It is the shape the cost side already ships: the
+    # derivation lives on the declaration and the receipt snapshots it.
+    #
+    # ⚠ EVERY ROW IN THE TREE IS NULL TODAY AND THAT IS THE HONEST READING, not
+    # a backfill left undone. The engine that writes a method into a receipt
+    # decides it from the rung that supplied the price rather than from a column
+    # (`services/pricing_service.py`), and the rule that carries its own method
+    # is what the resolver of the next ticket resolves against. Nothing is lost
+    # meanwhile: a receipt written today already records which method produced
+    # its amount.
+    #
+    # ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THAT IS AN ANSWER RATHER THAN
+    # A SILENCE. Every term on this table is undeclared — the two effective
+    # instants below are the only declared columns, and they are declared
+    # because WHEN a rule applied is a fact about history rather than a setting.
+    # Whether a rule's terms may be edited in place at all is the publishing
+    # model's question, and declaring this column FROZEN now would answer it
+    # early and in the wrong ticket. What protects history meanwhile is not this
+    # column's mutability but the receipt, which holds VALUES: editing a rule
+    # cannot move a number a tenant was already shown.
+    #
+    # ⚠ AND IT SITS ONE WORD FROM `pricing_model` BELOW, WHICH HOLDS THE RULE'S
+    # ARITHMETIC SHAPE AND HAS NOTHING TO DO WITH THIS. Two adjacent character
+    # fields, near-identical names, unrelated value sets: HOW A PRICE IS DERIVED
+    # (a margin, or a price of its own) versus HOW THE ARITHMETIC RUNS (per unit
+    # of quantity, or once). Reach the second through `STRUCTURE_COLUMN` rather
+    # than by name, and read the two comments together before touching either.
+    pricing_method = models.CharField(
+        max_length=32, choices=PRICING_METHOD_CHOICES, null=True, blank=True)
     #: WHICH COLUMN HOLDS THE RATE'S ARITHMETIC SHAPE, NAMED ONCE (#350).
     #:
     #: The shape decides which arithmetic produced an amount — so much per unit
@@ -248,6 +354,39 @@ class Rate(BaseModel):
                     | (models.Q(measurement__isnull=True)
                        & ~models.Q(undeclared_measurement_key=""))),
                 name=NAMES_ONE_QUANTITY_CHECK),
+            # THE METHOD'S VALUE SET, CLOSED AT THE TABLE (#355) — see
+            # `DECLARES_A_RATIFIED_METHOD_CHECK` for why the column's `choices=`
+            # is not this. The members come from the registry frozenset, so this
+            # constraint cannot hold a set the agreed model disagrees with.
+            #
+            # NULL IS ADMITTED HERE BECAUSE NULL IS NOT A VALUE, and the
+            # membership test would answer NULL for it — which a check reads as
+            # satisfied. Saying so positively is what stops a reader taking the
+            # admission for an oversight.
+            models.CheckConstraint(
+                condition=(models.Q(pricing_method__isnull=True)
+                           | models.Q(pricing_method__in=sorted(
+                               PRICING_METHOD_VALUES))),
+                name=DECLARES_A_RATIFIED_METHOD_CHECK),
+            # RULES NEVER COMPOSE (#355, #147 §2). A margin rule's price is a
+            # percentage of what the call cost; a second component added to it
+            # would make the resolved price impossible to explain by naming one
+            # rule, because the middle term is nowhere on the record.
+            #
+            # ⚠ THIS ENFORCES ONE DIRECTION OF THE PROPERTY AND ONLY ONE, and
+            # saying which is the difference between a rule and a claim. The two
+            # components this table can express — the per-unit rate and the flat
+            # addend — are `direct_event_price`'s own terms, so the refusal is
+            # over a margin rule carrying them. The mirrored refusal (a direct
+            # rule carrying a margin term) is not expressible here: no percentage
+            # column exists on this table, because markup is still a separate
+            # record. The ticket that moves it is the ticket that adds the other
+            # half.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(pricing_method=PRICING_METHOD_MARGIN_OVER_COST)
+                    | models.Q(rate_per_unit_micros=0, fixed_micros=0)),
+                name=NEVER_COMPOSES_CHECK),
         ]
 
     @property

@@ -41,12 +41,18 @@ stopped failing. The SDK declares no `Literal[...]` at all, which
 `test_consumer_census.py` pins separately. Both facts are checked below so that
 neither can change without being seen.
 
-One housekeeping note, because it looks like an oversight otherwise: this module
-is named in the forbidden-term sweep's `checks-whose-subject-is-a-retired-word`
-exclusion. It has to be — the inventory below is a list of real paths, and one
-of the directories UBB has not yet renamed is spelled with a retired word. The
-path is data, not prose, and editing it to satisfy a sweep would falsify the
-inventory to keep a gate quiet.
+One housekeeping note, corrected in #355 because it said the opposite of what
+is true and no gate reads prose. This module is **swept like any other file** —
+it is in none of `gates/forbidden-term-sweep.yaml`'s seven exclusion rules, and
+`checks-whose-subject-is-a-retired-word` names fourteen paths that do not
+include it. Nothing about the inventory below needs an exemption today: it is a
+list of real paths, and a path is tokenised on `/` and `.` like anything else,
+so none of the directories it names happens to carry a retired word.
+
+⚠ **The day one does, the answer is the exclusion and not an edit here.** The
+path is data rather than prose, and re-spelling it to satisfy a sweep would
+falsify the inventory to keep a gate quiet — which is the one thing this module
+exists to refuse.
 """
 
 import pytest
@@ -84,7 +90,15 @@ VALUE_SETS = {
     "ubb-platform/apps/billing/stripe/models.py": 1,
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,
-    "ubb-platform/apps/metering/pricing/models.py": 3,
+    # 3 → 4 in #355: the rule's pricing method, DERIVED from the registry
+    # frozenset exactly as the posting's four are, and counted for the reason
+    # the paragraph above gives — this inventory counts the shape and not the
+    # provenance, so a derived list still comes past a reviewer. Re-taken from
+    # the census rather than incremented: the file's other three are the kind
+    # discriminator, declared once on the rule and once on its container, and
+    # the rule's arithmetic shape — and a number nobody measured is a number
+    # that can be wrong in either direction.
+    "ubb-platform/apps/metering/pricing/models.py": 4,
     # 2 → 4 in #351: the price status and its reason, both DERIVED from the
     # registry frozensets exactly as the cost pair beside them. The count rises
     # because this inventory counts the shape and not the provenance — which is

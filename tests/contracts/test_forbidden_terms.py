@@ -218,7 +218,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 218 → 219 in #352: the trigger holding the price pair's transitions.
         # 219 → 220 in #353: the trigger sealing a completed receipt.
         # 220 → 221 in #354: the child measurement record's DELETE rule.
-        "historical-migrations": (UNTIL_SLICE_8, 221, 19),
+        # 221 → 222 in #355: the pricing rule's method column, and the two
+        # checks closing its value set and refusing a composed rule.
+        "historical-migrations": (UNTIL_SLICE_8, 222, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

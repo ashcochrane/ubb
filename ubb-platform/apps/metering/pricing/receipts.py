@@ -67,14 +67,24 @@ compute would record its identity in `provenance` and its terms by value in
 lost by that, and the alternative is a receipt naming how an amount was computed
 beside no amount.
 
-⚠ **No engine path produces that record yet, and the reader should know it.**
-There is no price status column and no rule that writes a price status other
-than settled, so `pricing_service` reports `known` with a method for every price
-it derives — including a margin taken over a supplier cost it has not learned,
-which is a floor rather than a settled price. The ruling that such a price is
-`waived` arrives with the nullable price column and the rules that write it. So
-the null branch below is exercised at this boundary and not through the spine,
-and the two lines that will move are marked where they are.
+⚠ **A PRICING RULE NOW DECLARES A METHOD OF ITS OWN (#355), AND THAT IS NOT THE
+SAME FIELD SAID TWICE.** The rule's column says which method it *would* derive
+by; this section says which method *did* produce the amount beside it. They
+coincide for every price the engine resolves and they are not required to: the
+matched-but-uncomputable case above is exactly where a rule naming a method
+yields a receipt naming none. The rule is configuration and can be edited; the
+receipt is the record and cannot, which is the whole reason values live here and
+pointers ride along in `provenance`.
+
+⚠ **The engine still writes only one of the price statuses, and the reader
+should know it.** The nullable price column and its status arrived in slice 4
+and the column now carries all four values — but `pricing_service` reports
+`known` with a method for every price it derives, including a margin taken over
+a supplier cost it has not learned, which is a floor rather than a settled
+price. The ruling that such a price is `waived` arrives with the rules that
+write it, in the resolver. So the null branch below is exercised at this
+boundary and not through the spine, and the two lines that will move are marked
+where they are.
 
 **WHAT IS FIXED AND WHAT IS OPEN.** The top-level keys and the three keys of each
 section are exact — a key that is not in the shape above is refused, so a field
@@ -524,6 +534,32 @@ def schema_version_of(receipt):
     return receipt.get("receipt_schema_version", LEGACY_SCHEMA_VERSION)
 
 
+def _readable_version_of(receipt):
+    """The version a reader may act on, or a refusal — the guard both readers
+    below share.
+
+    **THE DISPATCH IS THREE-WAY, NOT TWO.** A version this code does not know is
+    REFUSED rather than read as the current shape: "old record, new code" is the
+    direction that happens and is answered, and the other direction — a record
+    written by something newer — cannot be read by guessing, so guessing would
+    turn a shape it does not understand into a plausible wrong answer or a
+    `KeyError` from the middle of a request.
+
+    Extracted rather than written twice (#355). It takes no path and reads no
+    section, so each reader below still says in its own body what it reads and
+    from where; what is shared is only the question *may this record be read at
+    all*, which has one answer for the whole module.
+    """
+    if not isinstance(receipt, dict):
+        return None
+    version = schema_version_of(receipt)
+    if version not in READABLE_SCHEMA_VERSIONS:
+        raise ReceiptShapeError(
+            f"this receipt declares schema version {version!r}; this code reads "
+            f"{sorted(READABLE_SCHEMA_VERSIONS)}")
+    return version
+
+
 def uncosted_quantity_keys(receipt):
     """WHICH DECLARED QUANTITIES WENT UNCOSTED, out of a receipt of any shape.
 
@@ -533,21 +569,41 @@ def uncosted_quantity_keys(receipt):
     so this is a live read path over rows in the older shape rather than a
     migration courtesy.
 
-    **THE DISPATCH IS THREE-WAY, NOT TWO.** A version this code does not know is
-    REFUSED rather than read as the current shape: "old record, new code" is the
-    direction that happens and is answered, and the other direction — a record
-    written by something newer — cannot be read by guessing, so guessing would
-    turn a shape it does not understand into a plausible wrong answer or a
-    `KeyError` from the middle of a request. There is one reader, so the
-    dispatch is written once, here.
+    The three-way dispatch this rests on is :func:`_readable_version_of`, which
+    both readers share; what is written here is only where THIS answer lives in
+    each shape.
     """
-    if not isinstance(receipt, dict):
+    version = _readable_version_of(receipt)
+    if version is None:
         return []
-    version = schema_version_of(receipt)
-    if version not in READABLE_SCHEMA_VERSIONS:
-        raise ReceiptShapeError(
-            f"this receipt declares schema version {version!r}; this code reads "
-            f"{sorted(READABLE_SCHEMA_VERSIONS)}")
     if version == LEGACY_SCHEMA_VERSION:
         return receipt.get("uncosted_measurement_keys", []) or []
     return receipt["costing"]["detail"].get("uncosted_measurement_keys", []) or []
+
+
+def pricing_method_of(receipt):
+    """HOW THIS RECEIPT'S CUSTOMER PRICE WAS DERIVED, or `None` (#355).
+
+    `None` means the price was **not derived** — it was agreed, or there is
+    none — and which of those it was is read off the price status beside it.
+    That rule is argued in full where the rule's own column is declared
+    (`apps/metering/pricing/models.py`); what matters here is that the two are
+    answered together and neither answers the other's question.
+
+    Read by the recording surfaces and by the audit lookup, which is the surface
+    a dispute is settled on. The three-way dispatch is
+    :func:`_readable_version_of`, shared with the reader above.
+
+    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO METHOD, AND THIS DOES NOT INVENT
+    ONE.** What that shape recorded beside its price is the SOURCE that supplied
+    it — the rung — and that is a different question from how the amount was
+    derived: a markup and a rule declaring a margin are one method at two
+    sources. Translating the older field into a method would therefore put a
+    value on the published contract that no writer ever recorded, under a
+    mapping nobody ratified. So an older receipt answers `None` — *this record
+    does not say* — which is what it is.
+    """
+    version = _readable_version_of(receipt)
+    if version is None or version == LEGACY_SCHEMA_VERSION:
+        return None
+    return receipt["pricing"]["method"]

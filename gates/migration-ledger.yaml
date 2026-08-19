@@ -2035,19 +2035,6 @@ entries:
       unavailable at the requested grain must never render as zero (#141,
       #147). Slice 7 rebuilds the analytics surface that has to say so.
 
-  - id: g2-backend-pricing_method
-    gate: G2
-    site: ubb-platform/apps/metering/pricing/models.py::pricing_method
-    expected: pricing_method
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. `margin_over_cost` and
-      `direct_event_price` are the two methods one pricing rule may declare
-      (#147). Slice 4 replaces the rate card with the Pricing Book that
-      carries them.
-
   - id: g2-backend-pricing_mode
     gate: G2
     site: ubb-platform/apps/platform/work/models.py::pricing_mode
@@ -2679,19 +2666,6 @@ entries:
       that. Slice 7 rebuilds the analytics surface, where a measure that is
       unavailable must never render as a zero (#141, #147). The metadata
       appears in that slice.
-
-  - id: g4-openapi-pricing_method
-    gate: G4
-    site: openapi/v1.json::pricing_method
-    expected: pricing_method
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 4 rebuilds Price, and #147's two alternative methods are what
-      a pricing rule declares. The metadata appears in that slice.
 
   - id: g4-openapi-pricing_mode
     gate: G4

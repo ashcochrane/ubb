@@ -325,6 +325,30 @@ NotApplicableReason = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "not_applicable_reason"})]
 
 
+#: HOW A CUSTOMER PRICE WAS DERIVED (#355, #147 §2). `closed` — UBB owns both
+#: values — so the export writes a real `enum` here and this file spells
+#: neither of them.
+#:
+#: NULLABLE, WHICH IS WHY ITS MARKER SITS WHERE IT DOES — the argument
+#: `UnresolvedReason` makes in full, and the second half of the trap this slice
+#: was warned about by name. `Optional[PricingMethod]` renders
+#: `anyOf: [string, null]` with the marker inside the STRING MEMBER; a marker on
+#: the union node would publish a document under which `null` is invalid while
+#: the server returns `null` for every price it did not derive, because `enum`
+#: and `anyOf` at ONE node are read conjunctively.
+#:
+#: NULL IS NOT A THIRD METHOD. It says the price was not derived, and
+#: `pricing_status` beside it says which of the two reasons applied. The
+#: argument for that shape is made once, where the rule's own column is
+#: declared (`apps/metering/pricing/models.py`).
+#:
+#: NO HAND-WRITTEN `description`, for the reason `UnresolvedReason` gives: the
+#: registry owns this concept's summary and generates its values, and a sentence
+#: restating either here would be a second copy no gate reads.
+PricingMethod = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_method"})]
+
+
 class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
@@ -410,6 +434,18 @@ class RecordUsageResponse(Schema):
     # beside the new status would have been two encodings of "we could not cost
     # this" — which ADR-0007 §3 refuses in a response that is already breaking.
     uncosted_measurement_keys: list[str] = []
+    # HOW THE CUSTOMER PRICE ABOVE WAS DERIVED, lifted out of the receipt this
+    # response already carries (#355). Null means it was not derived, and
+    # `pricing_status` above says which of the two reasons applied.
+    #
+    # ⚠ ON THIS RESPONSE BECAUSE THE RECORD IS ON THIS RESPONSE, which is the
+    # whole rule — see `UsageEventDetailOut.pricing_method`. The value was
+    # already crossing here inside `pricing_provenance`, untyped and therefore
+    # advertised nowhere; publishing it typed is what puts the agreed value set
+    # in front of a consumer that switches on it. An acknowledgement that
+    # carried the record but not the vocabulary for what is in it would be the
+    # unmarked-closed-concept shape one level out.
+    pricing_method: Optional[PricingMethod] = None
     # The posting's grouping values, keyed by the tenant's own declared key
     # (#277) — see `UsageEventDetailOut.grouping_fields`, which is the same
     # object. Inherited values are included: task- and subtask-scoped values are
@@ -588,6 +624,32 @@ class UsageEventDetailOut(Schema):
     # The audit lookup is where a price that does not apply gets investigated,
     # so the cause belongs on it. Null on any other status.
     not_applicable_reason: Optional[NotApplicableReason] = None
+    # HOW THE PRICE ABOVE WAS DERIVED, read off the receipt and published beside
+    # the status that qualifies it (#355). Null means it was NOT derived, and
+    # the status says which of the two reasons applied.
+    #
+    # THE RULE FOR WHERE THIS SITS IS "WHEREVER THE RECEIPT DOES", and it is
+    # mechanical rather than a judgement call: this value is INSIDE the record
+    # `pricing_provenance` publishes, which is untyped, so on every response
+    # carrying that record the method is already on the wire with no schema
+    # saying what it may be. Lifting it into a typed field is what lets the
+    # contract advertise the agreed value set for it, and leaving one of those
+    # responses out would leave the same closed concept unadvertised there.
+    # Exactly two responses publish the record — this one and the recording
+    # ack — and `test_openapi_known_values.py` pins that pair.
+    #
+    # The two surfaces that DO publish a price and do NOT get this are ruled out
+    # by the same sentence: the list row omits the receipt to stay lean, so it
+    # holds no record to read from; and the `usage.recorded` payload carries no
+    # receipt either, its readers being accumulators asking whether an amount
+    # may be included rather than how it was reached.
+    #
+    # DERIVED AT THE SERIALISER, LIKE THE STATUS BELOW IT AND UNLIKE THE ONE
+    # ABOVE. No column on a posting holds it: what holds it is the receipt, and
+    # reading it back through the receipts module is what keeps the answer the
+    # one that was recorded rather than one recomputed against today's rules —
+    # which is the whole of what the receipt is for.
+    pricing_method: Optional[PricingMethod] = None
     # The quantities this posting was measured by, keyed by declared code
     # (#274) — the field the status below has always been about.
     measurements: dict = {}

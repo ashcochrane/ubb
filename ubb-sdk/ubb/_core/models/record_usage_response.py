@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from ..models.record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
+from ..models.record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
 from ..models.record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from ..models.record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from ..types import UNSET, Unset
@@ -46,6 +47,7 @@ class RecordUsageResponse:
             new_balance_micros (int | None | Unset):
             not_applicable_reason (None | RecordUsageResponseNotApplicableReasonType0 | Unset):
             parent_task_id (None | str | Unset):
+            pricing_method (None | RecordUsageResponsePricingMethodType0 | Unset):
             pricing_provenance (None | RecordUsageResponsePricingProvenanceType0 | Unset): The Pricing Receipt: the
                 authoritative record of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of
                 when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a
@@ -78,6 +80,7 @@ class RecordUsageResponse:
     new_balance_micros: int | None | Unset = UNSET
     not_applicable_reason: None | RecordUsageResponseNotApplicableReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
+    pricing_method: None | RecordUsageResponsePricingMethodType0 | Unset = UNSET
     pricing_provenance: None | RecordUsageResponsePricingProvenanceType0 | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     stop: bool | Unset = False
@@ -152,6 +155,14 @@ class RecordUsageResponse:
             parent_task_id = UNSET
         else:
             parent_task_id = self.parent_task_id
+
+        pricing_method: None | str | Unset
+        if isinstance(self.pricing_method, Unset):
+            pricing_method = UNSET
+        elif isinstance(self.pricing_method, RecordUsageResponsePricingMethodType0):
+            pricing_method = self.pricing_method.value
+        else:
+            pricing_method = self.pricing_method
 
         pricing_provenance: dict[str, Any] | None | Unset
         if isinstance(self.pricing_provenance, Unset):
@@ -258,6 +269,8 @@ class RecordUsageResponse:
             field_dict["not_applicable_reason"] = not_applicable_reason
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
+        if pricing_method is not UNSET:
+            field_dict["pricing_method"] = pricing_method
         if pricing_provenance is not UNSET:
             field_dict["pricing_provenance"] = pricing_provenance
         if provider_cost_micros is not UNSET:
@@ -397,6 +410,26 @@ class RecordUsageResponse:
             return cast(None | str | Unset, data)
 
         parent_task_id = _parse_parent_task_id(d.pop("parent_task_id", UNSET))
+
+
+        def _parse_pricing_method(data: object) -> None | RecordUsageResponsePricingMethodType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_method_type_0 = RecordUsageResponsePricingMethodType0(data)
+
+
+
+                return pricing_method_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponsePricingMethodType0 | Unset, data)
+
+        pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
         def _parse_pricing_provenance(data: object) -> None | RecordUsageResponsePricingProvenanceType0 | Unset:
@@ -554,6 +587,7 @@ class RecordUsageResponse:
             new_balance_micros=new_balance_micros,
             not_applicable_reason=not_applicable_reason,
             parent_task_id=parent_task_id,
+            pricing_method=pricing_method,
             pricing_provenance=pricing_provenance,
             provider_cost_micros=provider_cost_micros,
             stop=stop,
