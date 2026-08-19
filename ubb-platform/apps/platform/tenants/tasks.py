@@ -43,6 +43,30 @@ CONFIG_MODEL_LABELS = frozenset({
     # A tenant would then have no markup rung and every event after the reset
     # would price to `unknown`, silently.
     "pricing.TenantDefaultMarkup",
+    # ⚠ THE BOOK A RULE LIVES IN, AND THE RECORD OF EVERY CHANGE TO IT (#358).
+    #
+    # The book was missing and that was a live break rather than a tidiness
+    # point: a rule holds its book with `PROTECT`, so a reset told to keep the
+    # rules and wipe the book is refused by the database and the WHOLE reset
+    # fails. It never showed because the only fixture with a rate gave it no
+    # book — a shape no route can produce, since every API-created rule lives in
+    # one. Measured on this commit: seeding a book-scoped rule turned the
+    # keep-config case red with a `ProtectedError` naming the rule's pointer at
+    # its container.
+    #
+    # It is configuration on the same reading as the rate itself: the book is
+    # what a tenant declares its prices in, and keeping a rule whose container
+    # is gone is not a state this reset may produce — exactly the sentence the
+    # declared quantity below already earns.
+    #
+    # The publish record rides on that fix rather than beside it. It CASCADEs
+    # from the book, so a label of its own would have protected nothing while
+    # the book was going; with the book kept, it is kept for its own reason —
+    # a reset keeping the rules and wiping the records that say who set them,
+    # when, and what they superseded leaves precisely the untraceable price
+    # that record exists to remove.
+    "pricing.RateCard",
+    "pricing.PricingBookPublish",
     # THE EVENT TYPE CATALOGUE — configuration, and the four arrive together
     # rather than one at a time (#326). A rate is already kept here, and a rate
     # names the declared quantity it prices, so keeping the rate while wiping

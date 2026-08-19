@@ -127,3 +127,31 @@ authorisations:
       wrapper written here would be written twice: once against this rung and
       again when its neighbour's methods are removed. Signing for three now is
       what makes that sequencing visible rather than merely intended.
+
+  - id: slice-4-358-a-books-changes-are-declared-and-published
+    issue: 358
+    operations_added: 5
+    reason: >-
+      Five new operations on a Pricing Book's publish record — declare a change,
+      read one back, list a book's pending changes, publish one, discard one.
+      Reachable through the generated core and through none of the hand-written
+      clients. Gaps by the manifest's definition, and deliberate ones.
+
+      The reason is the one the whole pricing-configuration surface already
+      runs on rather than a new one: every route that CHANGES a book is
+      unwrapped today — adding a rule, repricing a set of them, retiring one,
+      declaring the markup rung — while the two that READ the catalogue are
+      wrapped. That split is the SDK's actual subject. An integrator's code
+      records usage and reads a price back; deciding what a customer is charged
+      is a governance act performed from the console or by hand, once, by a
+      person who is entitled to. These five replace three of those unwrapped
+      routes, so wrapping them would put the SDK's ergonomic surface on the
+      configuration side of that line for the first time — a decision about what
+      this client is for, which is larger than the ticket that happens to add
+      the routes and is not one to take by omission.
+
+      There is no sequencing argument here and the difference is worth saying:
+      the publish record is an end-state entity, not a placeholder. A wrapper
+      written for it would not be written twice. What defers it is the split
+      above, and the console feature that reads these routes, which is the
+      surface a tenant will actually use and is a later ticket in this slice.

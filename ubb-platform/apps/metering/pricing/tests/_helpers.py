@@ -79,6 +79,18 @@ def cost_book(tenant, *, key="default", provider="", currency="usd"):
         currency=currency, is_default=True)
 
 
+def the_book_holding(rule):
+    """The book a rule lives in.
+
+    A one-line reader, and it earns its place for the reason `cost_book` above
+    does: the column that points a rule at its container is retired, its ledger
+    entry is a ceiling on how many files may still spell it, and a test whose
+    subject is the book — publishing it, diffing it — needs the object rather
+    than the column name. This file already carries the word.
+    """
+    return rule.rate_card
+
+
 def cost_rate_in_default_book(tenant, **fields):
     """A COST Rate, without the caller having to name the discriminator.
 
@@ -232,21 +244,28 @@ def receipt_without_its_per_event_facts(body):
         "subject_id": "SUBJECT", "effective_at": "AS_OF"}}
 
 
-# --- The three doors ADR-0007 §2 names, over one rule -------------------------
+# --- The three doors ADR-0007 §2 names, over one record ----------------------
 #
 # A guard only one door respects is the defect a database rule exists to catch,
-# so every prohibited write against this table is driven through all three.
-# `usage/tests/_helpers.py` has the same three over a posting, and the two sets
-# are not one set: they write different columns on different tables through
-# different model APIs, and the only lines they would share are the two the ORM
-# dictates. What IS copied is the structure, which is what "copy the prior art"
-# means.
+# so every prohibited write against this app's tables is driven through all
+# three. `usage/tests/_helpers.py` has the same three over a posting, and the
+# two sets are not one set: they write different columns on different tables
+# through different model APIs, and the only lines they would share are the two
+# the ORM dictates. What IS copied is the structure, which is what "copy the
+# prior art" means.
+#
+# THE RECORD DECIDES ITS OWN MODEL, WHICH IS WHY THESE THREE TAKE NO MODEL
+# ARGUMENT AND NAME NONE (#358). A second rule landed on a second table in this
+# app — a publish record, whose whole-record rule needs the same three doors as
+# the rule table's column rules — and a copy of these functions differing only
+# in a class name would be the duplication `docs/conventions/testing.md` puts a
+# `_helpers` module here to prevent.
 
-def through_the_queryset(rule, **columns):
-    Rate.objects.filter(pk=rule.pk).update(**columns)
+def through_the_queryset(record, **columns):
+    type(record).objects.filter(pk=record.pk).update(**columns)
 
 
-def through_raw_sql(rule, **columns):
+def through_raw_sql(record, **columns):
     """Raw SQL, with each value prepared the way its own column takes it.
 
     The door is *raw SQL*, not *raw Python objects*: `get_db_prep_value` is the
@@ -254,20 +273,21 @@ def through_raw_sql(rule, **columns):
     writes exactly what the ORM writes and differs from the other two only in
     going around them — which is the whole point of it.
     """
+    model = type(record)
     assignments = ", ".join(f"{name} = %s" for name in columns)
-    values = [Rate._meta.get_field(name).get_db_prep_value(value, connection)
+    values = [model._meta.get_field(name).get_db_prep_value(value, connection)
               for name, value in columns.items()]
     with connection.cursor() as cursor:
         cursor.execute(
-            f"UPDATE {Rate._meta.db_table} SET {assignments} WHERE id = %s",
-            [*values, str(rule.pk)])
+            f"UPDATE {model._meta.db_table} SET {assignments} WHERE id = %s",
+            [*values, str(record.pk)])
 
 
-def through_save(rule, **columns):
+def through_save(record, **columns):
     """`save()` — the door a shell session, a data migration or a fixture uses."""
     for name, value in columns.items():
-        setattr(rule, name, value)
-    rule.save()
+        setattr(record, name, value)
+    record.save()
 
 
 DOORS = (("QuerySet.update()", through_the_queryset),
@@ -275,11 +295,11 @@ DOORS = (("QuerySet.update()", through_the_queryset),
          ("save()", through_save))
 
 
-class RuleRefusalThroughEveryDoorMixin:
-    """Every prohibited write against a rule, driven through all three doors.
+class RefusalThroughEveryDoorMixin:
+    """Every prohibited write against a record, driven through all three doors.
 
-    ⚠ `REFUSAL_NAME` has no default on purpose. Several mechanisms on this table
-    answer `IntegrityError` and two of them now refuse writes to the same
+    ⚠ `REFUSAL_NAME` has no default on purpose. Several mechanisms on these
+    tables answer `IntegrityError` and two of them refuse writes to the same
     column, so a subclass that forgot to say which one it is about would assert
     against whatever the base class happened to carry — the shape that let a
     rule refusing the wrong thing pass its own check one slice ago.
@@ -288,7 +308,7 @@ class RuleRefusalThroughEveryDoorMixin:
     #: The constraint a subclass's refusals must name. Set per class.
     REFUSAL_NAME = None
 
-    def assert_every_door_refuses(self, rule, **columns):
+    def assert_every_door_refuses(self, record, **columns):
         self.assertIsNotNone(
             self.REFUSAL_NAME,
             "this class has not said which mechanism its refusals belong to")
@@ -296,5 +316,5 @@ class RuleRefusalThroughEveryDoorMixin:
             with self.subTest(door=name):
                 with self.assertRaisesRegex(IntegrityError, self.REFUSAL_NAME):
                     with transaction.atomic():
-                        door(rule, **columns)
-                rule.refresh_from_db()
+                        door(record, **columns)
+                record.refresh_from_db()

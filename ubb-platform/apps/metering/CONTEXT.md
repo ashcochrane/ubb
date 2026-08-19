@@ -196,6 +196,40 @@ end to end by ADR-0003: the MVP launches without tiered pricing.)
 **lineage_id**:
 The stable identity a Rate keeps across version supersessions, linking its whole price history.
 
+**PricingBookPublish**:
+One change to a book, recorded once. Adding a rule, repricing one and retiring one are three kinds of
+a single act, not three surfaces: a **draft** holds the intended changes and writes no rule, and
+**publishing** is what closes each superseded rule and opens its replacement — both boundaries
+written from the record's own effective instant, so with a half-open range there is exactly no gap
+and exactly no overlap. Its two states are `declaration_status` ∈ `{draft, published}`, the closed
+concept the registry already declared, and a published record is immutable: a trigger on its table
+refuses every column, through `save()`, `QuerySet.update()` and raw SQL alike.
+It carries its actor, its instant, its effective instant and the rule versions it opened and closed,
+which is what makes a price in force at any past moment traceable to a decision somebody made.
+(#358; `apps/metering/pricing/models.py:PricingBookPublish`,
+`apps/metering/pricing/services/book_service.py`)
+_Avoid_: reading a draft as a pending change to the book — it closes nothing, so discarding one
+reopens nothing; treating a discard as an undo of a publish — the act that undoes a publish is a
+further publish; and expecting anything to run at the effective instant — the rows are written when
+the publish lands and the boundary is a value the resolver reads.
+
+**The diff**:
+What a declared change will do to the book, computed against the book **as it will stand at the
+effective instant** rather than as it stands now. The two genuinely differ where the book already
+carries a scheduled change, and the diff a tenant reads is the plan the publish executes — one
+computation, not two that agree today.
+_Avoid_: asking for the diff of a published record — it is a statement about a change that has not
+happened, and what a published record did is the rule versions it names.
+
+**The two ways a book changes**:
+There are currently **two**, and only one of them leaves a record: the publish record above, and the
+three immediate routes it replaces (`POST .../rates`, `DELETE .../rates/{rate_id}`,
+`POST .../publish`), which still write rules directly. The immediate three and the three retired
+audit action names they write are deleted by the ticket that retires the rest of this slice's
+vocabulary; until then, a rule can appear in a book with no publish record behind it — and a draft
+can be left stating a change one of those routes has since made impossible, which is why reading one
+answers a reason rather than a diff.
+
 **Pricing provenance**:
 The audit trail stamped on each event — engine version, cost/price source, and rate-card ids.
 

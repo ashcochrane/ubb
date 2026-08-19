@@ -221,7 +221,8 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 221 → 222 in #355: the pricing rule's method column, and the two
         # checks closing its value set and refusing a composed rule.
         # 222 → 223 in #357: the tenant's declared default markup rung.
-        "historical-migrations": (UNTIL_SLICE_8, 223, 19),
+        # 223 → 224 in #358: the Pricing Book's publish record and its rule.
+        "historical-migrations": (UNTIL_SLICE_8, 224, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

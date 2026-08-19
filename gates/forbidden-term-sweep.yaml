@@ -159,7 +159,9 @@ exclusions:
     # and the two checks that close its value set and refuse a composed rule.
     # 222 → 223 in #357: one migration, creating the record a tenant declares
     # its default markup rung on.
-    files: 223
+    # 223 → 224 in #358: one migration, creating the publish record every change
+    # to a Pricing Book is, and the rule that freezes it once published.
+    files: 224
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

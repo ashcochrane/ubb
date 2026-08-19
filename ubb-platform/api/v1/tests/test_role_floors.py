@@ -113,7 +113,17 @@ _WRITE_ROUTES = {
 # at, and withdrawing it so those events stop being priced at all, decide what a
 # customer pays; that is the same footing as the markup routes beside them and
 # as the two registries above, not a day-to-day data operation. 140 + 3 = 143.
-_EXPECTED_FLOORED = 143
+#
+# every change to a Pricing Book is a publish (slice 4, #358): +5, and no
+# _WRITE_ROUTES entry either. Two Read GETs (a book's pending changes, and one
+# of them with its diff) and three Admin writes — declaring a change,
+# publishing it and discarding it. The Admin floor is the one the immediate
+# reprice route beside them already carries and for the same reason: this is
+# the act that decides what every customer priced by that book is charged.
+# Declaring writes no rule, and it is still Admin — a draft is the first half of
+# that act, and a floor that let anyone stage a price change for an Admin to
+# approve would be a floor on the wrong half. 143 + 5 = 148.
+_EXPECTED_FLOORED = 148
 _EXPECTED_EXEMPT = 10
 
 

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,597 of 1,987 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,612 of 2,003 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -941,6 +941,46 @@ measurement_key:
     # under a money suffix; the new rung takes the migration ledger's own
     # `expected` spelling for that debt, so this commit adds no occurrence of
     # the old one and neither G11 entry moves.
+    #
+    # #358 MOVED THE DENOMINATOR ONLY, UPWARD BY FIFTEEN (1,597 -> 1,612 swept,
+    # 1,987 -> 2,003 tracked, 52/128 unchanged), and one exclusion moved with
+    # it: `historical-migrations` 223 -> 224 for the migration that creates the
+    # record every change to a Pricing Book is. Fifteen new swept files - two
+    # test modules and THIRTEEN GENERATED ONES, because five new published
+    # operations mint one generated SDK module each and eight more arrive as a
+    # model module per new component schema, two of them the nested object a
+    # `dict[str, str]` property renders as. Taken AFTER the contract, the
+    # console snapshot and the SDK core were all regenerated and staged, on the
+    # #357 hazard: the sweep reads `git ls-files`, so a generated file staged
+    # afterwards moves these numbers again.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT THAT HAD EVERY REASON TO MOVE IT. This
+    # one is about what a rule CHARGES - the per-unit rate, its denominator and
+    # the flat addend, named together as a rule's terms on two new schemas and
+    # compared before and after in a diff. "Per unit" is the phrase such a
+    # surface reaches for and the retired plural is one word away from it in
+    # every sentence about rate arithmetic (#275's caution, live). The terms are
+    # named for the COLUMNS they are, and the diff rows say "terms" rather than
+    # counting anything.
+    #
+    # AND THE COMMIT WAS SHAPED BY A CEILING RATHER THAN MERELY PASSING ONE. A
+    # change body would naturally state a rule's arithmetic shape, and the
+    # column's name is `backend::pricing_model`'s - 21 files, and every schema
+    # publishing a field mints a generated SDK model module that counts, so two
+    # new schemas carrying it put `sdk::pricing_model` at 11 against a ledger
+    # entry of 9. Measured, not predicted: the field was written, the sweep
+    # refused it, and the field was removed rather than the entry widened. A
+    # publish therefore cannot move a rule's arithmetic shape, which is a
+    # deferral recorded where a reader of the schema will meet it. The ledger is
+    # a ceiling as well as a floor, and this is the first commit in the slice
+    # where it decided a published surface.
+    #
+    # ⚠ THE TWO-WORD FORM WAS IN PLAY FOR THE THIRD TIME, per #351, #356 and
+    # #357 above, and the avoidance is the same: a commit whose subject is a
+    # book's prices writes prose about rules and shapes, and the English
+    # two-word form of that same term is what it reaches for. The diff was read
+    # for spaces and hyphens after the sweep rather than instead of it. The
+    # prose says "the rule's arithmetic shape" throughout.
     - term: units
       retired_as: >-
         the posting's own field for the metered quantity — dropped, with every

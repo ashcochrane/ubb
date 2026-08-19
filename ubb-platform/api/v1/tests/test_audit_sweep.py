@@ -79,7 +79,16 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # it. Deciding what a customer is charged where no rule matched is governance in
 # the same sense as declaring a grouping axis, so neither is exempt.
 # 74 + 2 = 76.
-_EXPECTED_MUTATING = 76
+#
+# every change to a Pricing Book is a publish (slice 4, #358): +3, all three
+# recording. Declaring a change to a book, publishing it and discarding it are
+# three answers to three different questions — an intention, the act that moves
+# every price the book sets, and an intention abandoned — and a governance
+# reader must not have to read metadata to tell them apart. Declaring writes no
+# rule and still records: what a tenant PROPOSED to charge and then dropped is
+# exactly the sort of thing this ledger exists to have an answer for.
+# 76 + 3 = 79.
+_EXPECTED_MUTATING = 79
 _EXPECTED_EXEMPT = 5
 
 

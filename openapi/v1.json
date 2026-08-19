@@ -416,6 +416,162 @@
         "title": "BalanceResponse",
         "type": "object"
       },
+      "BookChangeDiffOut": {
+        "description": "One row of the diff: which rule, and what happens to it.\n\n`before` is the rule as it will stand at the publish's effective instant and\nis null where the change adds one; `after` is the rule the publish opens and\nis null where the change retires one. Neither is null on a reprice, which is\nwhat makes the row readable as a change rather than as an outcome.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleTermsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleTermsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Grouping Fields",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "measurement_key": {
+            "title": "Measurement Key",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "subtask_type": {
+            "title": "Subtask Type",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "measurement_key",
+          "provider",
+          "event_type",
+          "task_type",
+          "subtask_type"
+        ],
+        "title": "BookChangeDiffOut",
+        "type": "object"
+      },
+      "BookChangeIn": {
+        "description": "One change in a publish: what to do, and to which rule.\n\n`kind` is `add`, `reprice` or `retire` \u2014 the three surfaces a book used to\nhave, arriving as three kinds of one act. It is a plain string and the\nservice refuses anything else, which is how the book's own discriminators\nare already handled on this surface: these three name the shape of one\nrequest body, they are stored on no column and returned in no response, and\na `Literal` here would publish an enumeration the vocabulary registry does\nnot own.\n\nThe rule is identified by the quantity it prices plus its selectors \u2014\n`provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own\ndeclared grouping fields. An omitted selector means the rule leaves it\nunpinned, which is what an unpinned selector means everywhere on this\nsurface, so a change body names only what the rule pins.\n\nThe three terms are nullable because a reprice states only what moves: an\nunstated term is carried over from the rule being superseded. An `add`\ntakes the model's own defaults for anything it leaves out, and a `retire`\nstates none at all \u2014 it opens no rule.\n\n\u26a0 **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE\nIT.** Whether an amount is per-unit or a fixed component is carried over\nfrom the rule being superseded, and an added rule takes the default. The\ncolumn's name is retired and its ledger entry caps how many files may still\nspell it, so putting it on this schema would coin the retired spelling on a\nbrand-new surface for the ticket that renames it to convert \u2014 and putting\nthe canonical spelling here would publish a field whose values are still the\nretired ones. Both belong to the commit that converts the column, its values\nand the three rate schemas above together. The immediate reprice route this\nact replaces still states the shape and is untouched.",
+        "properties": {
+          "event_type": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "fixed_micros": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Micros"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Grouping Fields",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "measurement_key": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Measurement Key",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Provider",
+            "type": "string"
+          },
+          "rate_per_unit_micros": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Per Unit Micros"
+          },
+          "subtask_type": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Subtask Type",
+            "type": "string"
+          },
+          "task_type": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Task Type",
+            "type": "string"
+          },
+          "unit_quantity": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Quantity"
+          }
+        },
+        "required": [
+          "kind",
+          "measurement_key"
+        ],
+        "title": "BookChangeIn",
+        "type": "object"
+      },
       "BookIn": {
         "properties": {
           "card_type": {
@@ -511,6 +667,120 @@
           "is_default"
         ],
         "title": "BookOut",
+        "type": "object"
+      },
+      "BookPublishIn": {
+        "description": "The intended changes, declared as a draft.\n\nNo effective instant: a change declared here takes effect when it is\ndeclared, and dating one forward is a separate set of properties \u2014 the\nrequest field, a bounded horizon and the refusal that enforces it \u2014 which\nthe following ticket owns. The record carries the instant either way, and\nthe publish writes both boundaries from it.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/BookChangeIn"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "BookPublishIn",
+        "type": "object"
+      },
+      "BookPublishOut": {
+        "description": "A change to a book: an intention while it is a draft, a decision once\npublished.\n\n\u26a0 `declaration_status` is deliberately UNMARKED, on the same footing as\n`EventTypeOut.declaration_status`: the concept declares no `openapi`\nconsumer in the registry, and the applier refuses a marker for a concept\nthat contributes nothing. A field is marked by the ticket that declares its\nconcept's contract consumer, never by one passing nearby. The FIELD is still\nfinal under ADR-0007 \u00a73 \u2014 gaining an `enum` later is additive, and its\nvalues are already the registry's.",
+        "properties": {
+          "actor_display": {
+            "title": "Actor Display",
+            "type": "string"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_kind": {
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "book_id": {
+            "title": "Book Id",
+            "type": "string"
+          },
+          "closed_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Closed Rule Ids",
+            "type": "array"
+          },
+          "declaration_status": {
+            "title": "Declaration Status",
+            "type": "string"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BookChangeDiffOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
+          "diff_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Unavailable Reason"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "opened_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opened Rule Ids",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          }
+        },
+        "required": [
+          "id",
+          "book_id",
+          "declaration_status",
+          "effective_at",
+          "actor_kind",
+          "actor_id",
+          "actor_display",
+          "opened_rule_ids",
+          "closed_rule_ids"
+        ],
+        "title": "BookPublishOut",
         "type": "object"
       },
       "BudgetConfigIn": {
@@ -2758,6 +3028,38 @@
           "role"
         ],
         "title": "MemberRoleUpdateIn",
+        "type": "object"
+      },
+      "PaginatedBookPublishes": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/BookPublishOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedBookPublishes",
         "type": "object"
       },
       "PaginatedBooks": {
@@ -5607,6 +5909,30 @@
           "effective_from"
         ],
         "title": "RevenueProfileOut",
+        "type": "object"
+      },
+      "RuleTermsOut": {
+        "description": "What a rule charges \u2014 the three columns a change may move.\n\n\u26a0 The arithmetic shape is deliberately absent, for the reason `BookChangeIn`\ngives: a publish cannot move it. A reader comparing a `before` with an\n`after` therefore sees all three terms and is not told which one the rule\nactually charges on \u2014 `GET .../rates` answers that, and this row is a\nstatement about what a change does rather than a restatement of the rule.",
+        "properties": {
+          "fixed_micros": {
+            "title": "Fixed Micros",
+            "type": "integer"
+          },
+          "rate_per_unit_micros": {
+            "title": "Rate Per Unit Micros",
+            "type": "integer"
+          },
+          "unit_quantity": {
+            "title": "Unit Quantity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rate_per_unit_micros",
+          "unit_quantity",
+          "fixed_micros"
+        ],
+        "title": "RuleTermsOut",
         "type": "object"
       },
       "SandboxResetIn": {
@@ -12354,6 +12680,328 @@
           }
         ],
         "summary": "Publish Book"
+      }
+    },
+    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes": {
+      "get": {
+        "description": "The changes PENDING on this book \u2014 the drafts, newest first, each with\nits diff.\n\nDrafts only, and that is the question this route answers: *what is about to\nhappen to my prices*. A published record is history and the governance\nledger is where history is read, filtered by action; here it would cost a\ndiff computation per row for a record whose diff is null anyway.",
+        "operationId": "api_v1_metering_endpoints_list_book_publishes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedBookPublishes"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Book Publishes"
+      },
+      "post": {
+        "description": "Declare a change to a book: the intended changes, and nothing written.\n\nA draft holds the changes and writes no rule, which is what makes it freely\neditable and freely discardable. The response carries the diff \u2014 what the\nbook will look like afterwards \u2014 so a tenant decides against the outcome\nrather than against their own request.\n\nEvery change is resolved before the draft is created, so a name the tenant\nhas not declared, or a rule that is not there, is a 422 while they are still\ndeciding rather than a surprise when the price was supposed to change.",
+        "operationId": "api_v1_metering_endpoints_declare_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookPublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Book Publish"
+      }
+    },
+    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}": {
+      "delete": {
+        "description": "Discard a draft, leaving the book exactly as it stood.\n\nA draft closed nothing, so this reopens nothing. A published record is\nrefused: a publish that has already closed and opened rules is not an\nintention that can be withdrawn, and the act that undoes one is a further\npublish.",
+        "operationId": "api_v1_metering_endpoints_discard_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Discard Book Publish"
+      },
+      "get": {
+        "description": "One change to a book, with its diff while it is still a draft.",
+        "operationId": "api_v1_metering_endpoints_get_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Book Publish"
+      }
+    },
+    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish": {
+      "post": {
+        "description": "Publish a declared change: close each superseded rule, open its\nreplacement, from one value.\n\nAll-or-nothing, and nothing runs at the effective instant \u2014 the rows are\nwritten now, carrying the boundary as a value the resolver reads.",
+        "operationId": "api_v1_metering_endpoints_publish_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Publish Book Publish"
       }
     },
     "/api/v1/metering/pricing/rate-cards/{book_id}/rates": {

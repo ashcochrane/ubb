@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 153
-  unwrapped: 75
+  operations: 158
+  unwrapped: 80
   wrapped: 78
-  generated_only: 75
+  generated_only: 80
   not_yet_wrapped: 0
 
 operations:
@@ -327,6 +327,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.create_rate_card
+  - operation_id: api_v1_metering_endpoints_declare_book_publish
+    method: POST
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_declare_grouping_fields
     method: PUT
     path: /api/v1/metering/grouping-fields
@@ -349,6 +353,14 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.delete_rate
+  - operation_id: api_v1_metering_endpoints_discard_book_publish
+    method: DELETE
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_get_book_publish
+    method: GET
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_customer_markup
     method: GET
     path: /api/v1/metering/pricing/customers/{customer_id}/markup
@@ -379,6 +391,10 @@ operations:
     method: GET
     path: /api/v1/metering/usage/{event_id}
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_book_publishes
+    method: GET
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_book_rates
     method: GET
     path: /api/v1/metering/pricing/rate-cards/{book_id}/rates
@@ -408,6 +424,10 @@ operations:
   - operation_id: api_v1_metering_endpoints_publish_book
     method: POST
     path: /api/v1/metering/pricing/rate-cards/{book_id}/publish
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_publish_book_publish
+    method: POST
+    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_record_usage
     method: POST
