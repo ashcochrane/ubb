@@ -1011,23 +1011,31 @@ measurement_key:
     # 2,006 -> 2,007 tracked, 52/128 unchanged), and NO EXCLUSION MOVED WITH IT:
     # this commit adds no migration either, so `historical-migrations` stays at
     # 224 and the two counts move together by the same one. ONE new swept file,
-    # hand-written - the reversal behaviour module. Two existing test modules
-    # gave code away rather than taking it: the forward-dating fixture and the
-    # rules snapshot moved into `pricing/tests/_helpers.py`, which is already
-    # swept, so a second module reusing them adds no file. The SDK regeneration
+    # hand-written - the reversal behaviour module. ONE existing test module
+    # gave code away rather than taking it: #359's forward-dating module handed
+    # over both its book fixture and its rules snapshot to
+    # `pricing/tests/_helpers.py`, which is already swept, so a second module
+    # reusing them adds no file. The SDK regeneration
     # created NO file for the third commit running: a new error CODE adds a
     # class to `_exceptions_generated.py`, and two changed route DESCRIPTIONS
     # restamp two generated modules and mint none.
     #
     # THE NUMERATOR SURVIVED A COMMIT ABOUT CANCELLATION, and the place it could
     # have arrived is worth naming because it is not the obvious one. The new
-    # module resolves a price at seven instants. Three of those ask WHICH RULE
-    # answered rather than how much — the empty window's, where the amount
-    # cannot discriminate — and the other four compare a figure against a named
-    # constant. None of the seven divides an amount by anything or describes a
-    # denominator, which is the only shape in which the retired plural arrives
-    # here. #275's RATE ARITHMETIC caution holds again: this commit goes nowhere
-    # near `compute`.
+    # module reads a resolved price EIGHT times. Three ask WHICH RULE answered
+    # rather than how much — the empty window's, where the amount cannot
+    # discriminate. Four compare a figure against a named constant. The eighth
+    # builds the receipt written onto a posting, and what is read back off it is
+    # compared against a rule's own column. None of the eight divides an amount
+    # by anything or describes a denominator, which is the only shape in which
+    # the retired plural arrives here. #275's RATE ARITHMETIC caution holds
+    # again: this commit goes nowhere near `compute`.
+    #
+    # ⚠ THIS COUNT WAS WRONG TWICE BEFORE IT WAS RIGHT — seven, then seven
+    # again after a "correction" that re-split the same wrong total — and
+    # `/code-review`'s STANDARDS axis found the eighth, in the paragraph whose
+    # whole job is to be a measurement. Count the call sites with a grep, never
+    # from a memory of what the module does.
 
     - term: units
       retired_as: >-

@@ -1,4 +1,4 @@
-﻿"""A publish can be dated forward, and nothing runs at the effective instant
+"""A publish can be dated forward, and nothing runs at the effective instant
 (#359).
 
 A tenant who agrees a rise from the first of next month should not have to

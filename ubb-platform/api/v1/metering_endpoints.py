@@ -1322,7 +1322,11 @@ def _publish_response(request, record):
     try:
         rows = BookService.diff(record)
     except Problem as e:
-        return book_publish_out(record, diff_unavailable_reason=e.detail)
+        # `detail` is optional on a `Problem`, and an absent reason here would
+        # render as "no problem and no diff" — the two states this field exists
+        # to keep apart. The code is never empty, so it is the floor.
+        return book_publish_out(record,
+                                diff_unavailable_reason=e.detail or e.code)
     except ValueError as e:
         return book_publish_out(record, diff_unavailable_reason=str(e))
     return book_publish_out(

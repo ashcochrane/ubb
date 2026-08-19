@@ -112,15 +112,20 @@ def latest_scheduled_boundary(book):
     `core.scheduling.validate_scheduled_instant`, which reads a payload and a
     clock and never a row. That is why the two floors compose and why neither
     subsumes the other: one is a statement about the present, the other about
-    this book's own diary, and a book whose boundaries are all behind it
-    constrains nothing at all. The day either starts reading what the other
-    reads they stop being two rules; the signature is pinned by a test.
+    this book's own diary. The day either starts reading what the other reads
+    they stop being two rules; the signature is pinned by a test.
 
-    `None` where the book holds no rule — a book nothing has ever been
-    published into has no diary to be behind.
+    ⚠ **AND BECAUSE IT READS NO CLOCK IT DOES NOT MEAN "THE LATEST *FUTURE*
+    BOUNDARY", WHICH IS THE EASY THING TO ASSUME.** Every rule has an opening
+    moment, so any book holding a rule at all has a boundary and this answers
+    `None` only for an EMPTY one. Where every boundary is behind the present
+    the floor is satisfied by anything the clock floor would already admit, so
+    it is vacuous **in effect** rather than absent — and saying it that way
+    matters, because filtering to future boundaries is the one change that
+    would put a clock in here and collapse the two rules into one.
     """
-    moments = Rate.objects.filter(rate_card=book).aggregate(
-        opens=Max("valid_from"), closes=Max("valid_to"))
+    moments = book.rates.aggregate(opens=Max("valid_from"),
+                                   closes=Max("valid_to"))
     scheduled = [moment for moment in moments.values() if moment is not None]
     return max(scheduled) if scheduled else None
 
@@ -156,6 +161,22 @@ def _refuse_an_instant_behind_the_books_own_diary(book, effective_at):
     `validation_error` already means *you have not declared that grouping
     field* and *that rule is not there to reprice*, and a tenant's automation
     has to be able to tell a date it can fix from a body it cannot.
+
+    ⚠ **A NAMED RESIDUAL: THIS HOLDS ON THE PUBLISHING PATH AND ON NO OTHER.**
+    `BookService.publish`, `add_rate` and `delete_rate` — the immediate
+    mutation surfaces #358 deliberately kept alive and a later ticket deletes —
+    never call `plan_changes`, so none of them is bound by this rule. The worst
+    of the three is `delete_rate`: it selects on *"the rule that is still
+    open"*, which matches a replacement **scheduled to open in the future**,
+    and writes `valid_to = now`. That is a legal null-to-value write, nothing
+    on this table refuses a close before an opening, and the result is an
+    inverted window covering no instant at all — while the rule it superseded
+    is already closed at the boundary, so from that boundary onward the book
+    prices nothing and resolution falls through to markup, which returns a
+    plausible number and raises nothing. Reachable only since a publish could
+    be dated forward at all (#359); not introduced here and not closed here,
+    because closing it means deleting those three surfaces, which is the ticket
+    that also retires the three audit action names they write.
     """
     boundary = latest_scheduled_boundary(book)
     if boundary is None or effective_at >= boundary:

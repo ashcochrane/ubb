@@ -80,6 +80,7 @@ from apps.metering.pricing.tests._helpers import (
     THE_TERM,
     THIRD,
     AForwardDatingBookMixin,
+    cost_book,
     declares_a_markup,
     rate_in_default_book,
     rules_snapshot,
@@ -443,18 +444,32 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
         self.t1 = timezone.now() + A_MONTH
         self.t2 = self.t1 + A_MONTH
 
-    def test_a_book_with_nothing_scheduled_has_no_boundary_to_be_behind(self):
-        """The floor is vacuous where the book has never been published.
+    def test_an_empty_book_is_the_only_one_with_no_boundary_at_all(self):
+        """⚠ THE `None` BRANCH, AND IT IS NARROWER THAN IT LOOKS.
 
-        Which is the overwhelmingly common case, and the reason this rule
-        composes with the clock floor rather than replacing it: a book whose
-        only rule opened when it was created constrains nothing about the
-        future.
+        Every rule has an opening moment, so a book holding any rule at all
+        has a boundary — reading this as *"the latest FUTURE boundary"* is the
+        easy mistake, and it is the one that would put a clock in a rule whose
+        whole point is that it has none. `None` means the book is empty.
+        """
+        self.assertIsNone(latest_scheduled_boundary(cost_book(self.tenant)))
+
+    def test_a_books_first_rule_is_already_a_boundary_and_now_still_passes(self):
+        """Vacuous IN EFFECT rather than absent, which is the honest wording.
+
+        The book's only rule opened when it was created, so the floor is not
+        `None` — it is that opening moment, behind the present. What makes the
+        rule harmless here is that anything the clock floor admits is at or
+        after it anyway, which is why the two compose rather than one standing
+        in for the other.
         """
         self.assertEqual(latest_scheduled_boundary(self.book),
                          self.rule.valid_from)
-        # And a publish dated now is admitted against it.
-        self.assertIsNotNone(self.publish_at(timezone.now(), SECOND))
+        self.assertLess(self.rule.valid_from, timezone.now())
+
+        published = self.publish_at(timezone.now(), SECOND)
+
+        self.assertTrue(published.is_published)
 
     def test_the_latest_boundary_is_a_maximum_over_both_of_a_rules_moments(self):
         """⚠ ASKED WITH A RETIREMENT, BECAUSE A REPRICE CANNOT ANSWER IT.
@@ -511,8 +526,8 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
         self.assertEqual(refusal.exception.code, BEFORE_THE_BOUNDARY)
         self.assertIn("already scheduled to close", refusal.exception.detail)
 
-    def test_a_publish_before_the_boundary_touching_another_rule_is_refused_too(self):
-        """⚠ THE HALF ONLY THE SERVICE HOLDS, AND THE ONLY CASE THAT REACHES IT.
+    def test_a_publish_before_the_boundary_touching_another_rule_is_refused(self):
+        """⚠ THE HALF ONLY THE SERVICE HOLDS, REACHED AT THE DECLARING ACT.
 
         The change here names a rule with no boundary of its own — nothing
         about it is scheduled, so carrying the publish out would move no close
@@ -522,22 +537,16 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
         scheduled at `t2` will find in force, so the diff its tenant approved
         and the change that happens stop being the same change.
 
-        Without this case the book-wide floor could be deleted outright with
-        everything else here still green, since every other refusal in this
-        class is the per-rule one wearing the same code.
+        This case and its twin below are the ONLY two that reach the floor:
+        every other refusal in this class is the per-rule one wearing the same
+        code, so without these two the floor could be deleted outright and the
+        rest of the module would stay green. Measured, not assumed.
         """
-        untouched = rate_in_default_book(
-            self.tenant, provider=SCHEDULING_PROVIDER,
-            event_type=SCHEDULING_EVENT_TYPE, measurement_key=ANOTHER_QUANTITY,
-            rate_per_unit_micros=FIRST)
+        untouched = self._a_second_rule_with_no_boundary()
         self.publish_at(self.t2, SECOND)
 
         with self.assertRaises(Problem) as refusal:
-            BookService.declare(
-                self.book,
-                [self.a_change(measurement_key=ANOTHER_QUANTITY,
-                               **{THE_TERM: THIRD})],
-                effective_at=self.t1)
+            self._declare_on_the_second_rule(at=self.t1)
 
         self.assertEqual(refusal.exception.code, BEFORE_THE_BOUNDARY)
         # And it is refused for the book's sake rather than for this rule's:
@@ -547,24 +556,16 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
         self.assertNotIn("already scheduled to close", refusal.exception.detail)
 
     def test_a_draft_on_another_rule_that_falls_behind_cannot_be_published(self):
-        """The same half, reached at the publishing act rather than at the
-        declaring one — and the only case that reaches it there.
+        """The same half, reached at the PUBLISHING act instead.
 
         The draft was legal when it was declared: the book had nothing
-        scheduled. A publish then wrote a boundary past it, and the draft now
-        states a change dated behind the book's own diary. Nothing about the
-        rule it names is scheduled, so this is refused by the floor and by
-        nothing else.
+        scheduled ahead. A publish then wrote a boundary past it, and the draft
+        now states a change dated behind the book's own diary. The declaring
+        check above cannot reach this — the book moved after it ran — which is
+        why the floor lives in the planner both acts go through.
         """
-        rate_in_default_book(
-            self.tenant, provider=SCHEDULING_PROVIDER,
-            event_type=SCHEDULING_EVENT_TYPE, measurement_key=ANOTHER_QUANTITY,
-            rate_per_unit_micros=FIRST)
-        stale = BookService.declare(
-            self.book,
-            [self.a_change(measurement_key=ANOTHER_QUANTITY,
-                           **{THE_TERM: THIRD})],
-            effective_at=self.t1)
+        self._a_second_rule_with_no_boundary()
+        stale = self._declare_on_the_second_rule(at=self.t1)
         self.publish_at(self.t2, SECOND)
 
         with self.assertRaises(Problem) as refusal:
@@ -572,6 +573,25 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
 
         self.assertEqual(refusal.exception.code, BEFORE_THE_BOUNDARY)
         self.assertNotIn("already scheduled to close", refusal.exception.detail)
+
+    def _a_second_rule_with_no_boundary(self):
+        """A rule in the same book that nothing has ever scheduled anything for.
+
+        Both floor cases need one, because a change naming a rule that IS
+        scheduled to close is caught by the per-rule refusal before the floor
+        is reached.
+        """
+        return rate_in_default_book(
+            self.tenant, provider=SCHEDULING_PROVIDER,
+            event_type=SCHEDULING_EVENT_TYPE, measurement_key=ANOTHER_QUANTITY,
+            rate_per_unit_micros=FIRST)
+
+    def _declare_on_the_second_rule(self, *, at):
+        return BookService.declare(
+            self.book,
+            [self.a_change(measurement_key=ANOTHER_QUANTITY,
+                           **{THE_TERM: THIRD})],
+            effective_at=at)
 
     def test_a_refused_publish_writes_no_draft(self):
         self.publish_at(self.t2, SECOND)
