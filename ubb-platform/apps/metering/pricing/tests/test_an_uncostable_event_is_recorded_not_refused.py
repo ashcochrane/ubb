@@ -88,7 +88,6 @@ def _price(tenant, customer, **kwargs):
                                     "provider": "openai"})
     kwargs.setdefault("measurements", {"prompt_tokens": 1_000})
     kwargs.setdefault("caller_provider_cost", None)
-    kwargs.setdefault("caller_billed", None)
     return PricingService.price(
         subject=a_usage_event_subject(),
         tenant=tenant, customer=customer, currency="usd", **kwargs)

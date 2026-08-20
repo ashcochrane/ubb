@@ -42,15 +42,35 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(call_args.args[0], "/api/v1/metering/usage")
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_explicit_billed(self, mock_post):
+    def test_the_customers_price_is_read_off_the_ack_and_never_sent(self, mock_post):
+        """This case used to SEND the price. It cannot any more (#365).
+
+        A customer price is resolved and held by UBB from the pricing rules a
+        tenant configures — it is not a number a caller states per call, so the
+        wrapper has no keyword for one and puts no key in the body. What
+        survives is the other direction: the resolved price comes BACK on the
+        ack, which is where it always belonged.
+
+        ⚠ The refusal asserts the KEYWORD'S NAME, not just `TypeError`. A bare
+        `assertRaises(TypeError)` around a call passing an unknown keyword
+        asserts only that Python refuses unknown keywords, and would pass
+        identically against a wrapper that never had this one.
+        """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_2", "new_balance_micros": 9_000_000, "suspended": False,
             "costing_status": "known", "pricing_status": "known",
             "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
         })
+
+        with self.assertRaisesRegex(TypeError, "billed_cost_micros"):
+            self.client.record_usage(
+                customer_id="cust_1", request_id="r2", idempotency_key="i2",
+                billed_cost_micros=1_000_000,
+            )
+
         result = self.client.record_usage(
             customer_id="cust_1", request_id="r2", idempotency_key="i2",
-            provider_cost_micros=500_000, billed_cost_micros=1_000_000,
+            provider_cost_micros=500_000,
             event_type="chat_completion", provider="openai",
         )
         self.assertIsInstance(result, RecordUsageResponse)
@@ -58,7 +78,8 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(result.provider_cost_micros, 500_000)
         body = mock_post.call_args.kwargs["json"]
         self.assertEqual(body["provider_cost_micros"], 500_000)
-        self.assertEqual(body["billed_cost_micros"], 1_000_000)
+        self.assertNotIn("billed_cost_micros", body,
+                         "the wrapper still puts a price in the request body")
         # No measurements supplied → must not appear in body
         self.assertNotIn("measurements", body)
 

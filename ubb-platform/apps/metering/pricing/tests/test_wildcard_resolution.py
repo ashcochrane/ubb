@@ -24,7 +24,7 @@ class TestWildcardResolution:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors=base,
             measurements={"input_tokens": 1_000_000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
 
     def test_wildcard_rate_matches_any_provider(self):
         """The headline fix: one provider-agnostic rate, not one per provider."""
@@ -111,7 +111,7 @@ class TestWildcardResolution:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors=base,
             measurements={"metric_y": 1_000_000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert costing.provider_cost_micros == 3_000
         assert (costing.pricing_receipt["costing"]["method"]
                 == COSTING_METHOD_CALCULATED)

@@ -467,38 +467,42 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
                                  f"{name}.amount_micros no longer carries the "
                                  f"shared ceiling")
 
-    def test_the_request_still_carries_the_directly_supplied_price(self):
-        """`billed_cost_micros` STAYS on the request, and this is why.
+    def test_the_price_is_now_read_back_and_never_sent(self):
+        """`billed_cost_micros` is a RESPONSE field and nothing else (#365).
 
-        #146 §8 — this slice's own source decision — says slice 3 deletes it.
-        It does not. Its declared replacement is slice 4's direct-price rules,
-        so deleting the field here would leave a window in which nothing can
-        supply a price directly: a caller with a negotiated price and no rate
-        would have no way to state it at all. The field goes in slice 4,
-        TOGETHER WITH its replacement, and this test is what carries the
-        ruling forward rather than a sentence in a merged commit message.
+        This case used to hold the question — *why is the caller's price still
+        here?* — and #146 §8's answer was that slice 3 deletes it. Slice 3 did
+        not, and was right not to: the direct-price rules that replace it are
+        slice 4's, so deleting the field first would have left a window in which
+        nothing could supply a customer price directly. The field and its
+        replacement land in one slice, and this case now carries the claim that
+        replaced the question.
 
-        The schemas that publish a field of the SAME NAME on the way back are
-        kept by #146 §8.1 and are not this ticket's to touch. That half is
-        counted rather than asserted in prose: the request is one of the
-        schemas carrying the name, and every other one is a response.
+        THE DELETION WAS BY CLASS AND NOT BY TOKEN, WHICH IS WHY BOTH
+        DIRECTIONS ARE ASSERTED. The name appears on seven published schemas;
+        exactly one of them is a request, and a grep-shaped deletion would have
+        been wrong in both directions at once — taking the six a tenant reads
+        their own resolved prices back from, or missing the one that goes. So
+        the request half is asserted ABSENT and the response half is asserted as
+        an exact SET: an eighth carrier, or a lost seventh, is read by a person.
 
-        ⚠ SIX RESPONSES SINCE #364, and the sixth is on the RESPONSE side of
-        that line rather than an erosion of it. `UnresolvedQueueRow` publishes
-        the price a posting has — which for most rows in that queue is `null`,
-        with `pricing_status` beside it saying UBB could not resolve one. The
-        set is pinned rather than counted precisely so that a seventh carrier
-        is read by a person, and reading this one confirms the request half is
-        untouched: the field a caller may SEND still appears on exactly one
-        schema, and ticket 18 is still the ticket that deletes it.
+        `UnresolvedQueueRow` is the newest of the six (#364) and publishes the
+        price a posting has — `null` for most rows in that queue, with
+        `pricing_status` beside it saying UBB could not resolve one. That is the
+        response side of the line rather than an erosion of it: what a tenant
+        may READ has grown, and what a caller may SEND is now nothing.
+
+        Where a price comes from instead is
+        `test_a_customer_price_comes_only_from_configuration.py`, which asserts
+        the rule resolving one and the request refusing to carry one.
         """
-        self.assertIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
-        self.assertIn(
+        self.assertNotIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
+        self.assertNotIn(
             "billed_cost_micros",
             self.schemas["RecordUsageRequest"]["properties"])
         carrying = {name for name, schema in self.schemas.items()
                     if "billed_cost_micros" in schema.get("properties", {})}
-        self.assertEqual(carrying - {"RecordUsageRequest"}, {
+        self.assertEqual(carrying, {
             "GroupingFieldMarginRow", "RecordUsageResponse",
             "UnresolvedQueueRow", "UsageEventDetailOut", "UsageEventOut",
             "UsageMetricOut"})

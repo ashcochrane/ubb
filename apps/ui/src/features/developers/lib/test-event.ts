@@ -26,12 +26,6 @@ export const testEventFormSchema = z.object({
     .refine((value) => value === "" || MONEY_RE.test(value), {
       message: "Amount like 1.25 (up to 6 decimals)",
     }),
-  billed_cost: z
-    .string()
-    .trim()
-    .refine((value) => value === "" || MONEY_RE.test(value), {
-      message: "Amount like 1.25 (up to 6 decimals)",
-    }),
   effective_at: z.string(),
   idempotency_key: z.string().trim().min(1, "Required — regenerate one"),
   measurements: z
@@ -79,6 +73,22 @@ export function toMicros(value: string): number {
  * optionals are omitted entirely; costs convert to integer micros;
  * effective_at converts to a tz-aware UTC ISO string (the API rejects naive
  * timestamps).
+ *
+ * ⚠ `billed_cost_micros` IS GONE AND SENDING IT IS NOW A 422 (#365). The
+ * customer's price was deleted from the request: what a tenant charges is
+ * resolved by UBB from the pricing rules they configure and comes back on the
+ * RESPONSE, never stated per call. The form field that fed this was hinted
+ * "overrides pricing", which is precisely the bypass that was removed — and
+ * unlike every other retired key, this one is refused rather than dropped, so
+ * leaving it here would have broken the panel rather than quietly done nothing.
+ *
+ * ⚠ RESIDUAL, NOT THIS TICKET'S: `product_id` below is a wire field the API
+ * removed some time ago and still DROPS silently, which the backend pins on
+ * purpose (`test_product_id_is_gone_from_the_wire_contract`). So the input is
+ * sent, discarded, and does nothing whatever on every send, with no error
+ * anywhere — a dead form field rather than a broken one. Removing it is a
+ * console change with no contract behind it and no ticket naming it; it is left
+ * alone here and recorded so the next person to touch this panel can see it.
  */
 export function buildTestEventRequest(
   values: TestEventFormValues,
@@ -99,9 +109,6 @@ export function buildTestEventRequest(
     ...(values.product_id !== "" && { product_id: values.product_id }),
     ...(values.provider_cost !== "" && {
       provider_cost_micros: toMicros(values.provider_cost),
-    }),
-    ...(values.billed_cost !== "" && {
-      billed_cost_micros: toMicros(values.billed_cost),
     }),
     ...(Object.keys(measurements).length > 0 && { measurements }),
     ...(values.effective_at !== "" && {

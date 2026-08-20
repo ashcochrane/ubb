@@ -42,6 +42,8 @@ from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at, what_it_bills)
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
@@ -63,6 +65,7 @@ class OneRulePinTestBase(TestCase):
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=100_000_000)
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
+        a_rule_that_prices_what_it_measures(self.tenant)
 
     def tearDown(self):
         cache.clear()
@@ -86,6 +89,12 @@ class OneRulePinTestBase(TestCase):
             # (#324). `extra` still wins, so a test may name another key.
             "event_type": DECLARED,
         }
+        # ⚠ WHAT AN EVENT BILLS IS CONFIGURED, NOT SENT (#365). Callers say
+        # `bills=N` exactly as they used to say the deleted request field; the
+        # shared door turns it into the quantities this tenant's own rule
+        # charges N for, so one number goes in and no caller here learns which
+        # key it lands under.
+        data.update(what_it_bills(extra))
         data.update(extra)
         return self.http_client.post(
             "/api/v1/metering/usage", data=json.dumps(data),
@@ -103,7 +112,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(task.id),
                                 provider_cost_micros=11_000_000,
-                                billed_cost_micros=15_000_000)
+                                bills=15_000_000)
 
         # The event that crossed the limit answers 200 and is durably
         # recorded + billed — never rolled back.
@@ -155,7 +164,7 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(task.id),
                                 provider_cost_micros=12_000_000,
-                                billed_cost_micros=12_000_000)
+                                bills=12_000_000)
         self.assertEqual(resp.status_code, 200)
 
         # Everything the deferred lane made the caller wait for is already
@@ -184,10 +193,10 @@ class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
         # transaction's on_commit — #112) ...
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                         billed_cost_micros=11_000_000)
+                         bills=11_000_000)
         # ... then a late event arrives on the killed task.
         resp = self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                            billed_cost_micros=3_000_000)
+                            bills=3_000_000)
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -231,7 +240,7 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
             with self.captureOnCommitCallbacks(execute=True):
                 resp = self._record(task_id=str(task.id),
                                     provider_cost_micros=2_000_000,
-                                    billed_cost_micros=2_000_000)
+                                    bills=2_000_000)
             self.assertEqual(resp.status_code, 200)
             self.assertNotIn("hard_stop", resp.json())
 
@@ -266,7 +275,7 @@ class Pin14DenominationTest(OneRulePinTestBase):
         task = self._task(limit=10_000_000)
         # Billed way past the limit, provider under it -> nothing fires.
         resp = self._record(task_id=str(task.id), provider_cost_micros=1_000_000,
-                            billed_cost_micros=50_000_000)
+                            bills=50_000_000)
         body = resp.json()
         self.assertFalse(body["stop"])
         task.refresh_from_db()
@@ -283,7 +292,11 @@ class Pin14DenominationTest(OneRulePinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(task.id),
                                 provider_cost_micros=9_500_000,
-                                billed_cost_micros=1)
+                                # The least this tenant's rule can charge. It
+                                # used to be one micro; nothing asserts the
+                                # figure, and the point is that the number
+                                # beside it is the one that races the limit.
+                                bills=1_000)
         self.assertTrue(resp.json()["stop"])
         self.assertEqual(resp.json()["stop_reason"], "task_limit")
         task.refresh_from_db()
@@ -339,7 +352,7 @@ class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
         task = self._task(limit=1)  # would trip on any attributed event
         resp = self._record(metadata={"task": str(task.id)},
                             provider_cost_micros=5_000_000,
-                            billed_cost_micros=5_000_000)
+                            bills=5_000_000)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertIsNone(body["task_id"])
@@ -430,8 +443,8 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
         self.tenant.save(update_fields=["enforcement_mode"])
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=2_000_000, metadata={"task": "labelled"})
-        self._record(task_id=str(task.id), billed_cost_micros=3_000_000)
+                     bills=2_000_000, metadata={"task": "labelled"})
+        self._record(task_id=str(task.id), bills=3_000_000)
 
         client = redis.from_url(settings.REDIS_URL)
         for family in (b"ubb:runcost:*", b"ubb:taskcost:*"):

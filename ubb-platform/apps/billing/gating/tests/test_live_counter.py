@@ -21,6 +21,8 @@ from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.live_counter import (Door, LiveCounter,
                                                        stop_channel)
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.queries import get_billing_owner_billed_total
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
@@ -239,16 +241,19 @@ class TestStopFlag:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        # The event that crosses the floor bills 6,000,000 — a figure the
+        # tenant's own rule charges now, not one the call states (#365).
+        a_rule_that_prices_what_it_measures(t)
         res = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
-            billed_cost_micros=6_000_000)
+            measurements=priced_at(6_000_000))
         # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
         assert Posting.objects.filter(id=res["event_id"]).exists()
         # I4: the idempotent replay return ALSO carries the stop verdict
         replay = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
-            billed_cost_micros=6_000_000)
+            measurements=priced_at(6_000_000))
         assert replay["event_id"] == res["event_id"]
         assert replay["stop"] is True
 
@@ -285,9 +290,10 @@ class TestStopFlag:
         t = _tenant()  # prepaid, enforcing; floor = 0
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        a_rule_that_prices_what_it_measures(t)
         res = UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
-            billed_cost_micros=6_000_000)  # crosses the floor -> _set_stop fires
+            measurements=priced_at(6_000_000))  # crosses the floor -> _set_stop fires
         # The one rule: record_usage returned normally; the tipping event
         # landed and billed.
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"

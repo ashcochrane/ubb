@@ -24,6 +24,8 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at, what_it_bills)
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
@@ -53,6 +55,7 @@ class PastLimitPinTestBase(TestCase):
             customer=self.customer, min_balance_micros=FLOOR,
             soft_min_balance_micros=SOFT)
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
+        a_rule_that_prices_what_it_measures(self.tenant)
 
     def tearDown(self):
         cache.clear()
@@ -76,6 +79,12 @@ class PastLimitPinTestBase(TestCase):
             # (#324). `extra` still wins, so a test may name another key.
             "event_type": DECLARED,
         }
+        # ⚠ WHAT AN EVENT BILLS IS CONFIGURED, NOT SENT (#365). Callers say
+        # `bills=N` exactly as they used to say the deleted request field; the
+        # shared door turns it into the quantities this tenant's own rule
+        # charges N for, so one number goes in and no caller here learns which
+        # key it lands under.
+        data.update(what_it_bills(extra))
         data.update(extra)
         resp = self.http_client.post(
             "/api/v1/metering/usage", data=json.dumps(data),
@@ -119,9 +128,9 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             tip = self._record(task_id=str(task.id),
                                provider_cost_micros=11_000_000,
-                               billed_cost_micros=1_000_000)
+                               bills=1_000_000)
         late = self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                            billed_cost_micros=1_000_000)
+                            bills=1_000_000)
 
         # The ack carries the itemized array; the stored row matches it.
         tip_ctx, late_ctx = tip["stop_context"], late["stop_context"]
@@ -157,13 +166,13 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         # Kill executes at commit (#112) — land it before the batch below.
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                         billed_cost_micros=1_000_000)
+                         bills=1_000_000)
         resp = self.http_client.post(
             "/api/v1/metering/usage/batch", data=json.dumps({"events": [{
                 "customer_id": str(self.customer.id),
                 "request_id": "rb1", "idempotency_key": "ib1",
                 "task_id": str(task.id), "provider_cost_micros": 500_000,
-                "event_type": DECLARED, "billed_cost_micros": 500_000,
+                "event_type": DECLARED, "measurements": priced_at(500_000),
             }]}), content_type="application/json", **self._auth())
         item = resp.json()["results"][0]
         self.assertTrue(item["accepted"])
@@ -183,7 +192,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         task = self._task(limit=10_000_000)
         resp = self._record(task_id=str(task.id),
                             provider_cost_micros=12_000_000,
-                            billed_cost_micros=1_000_000)
+                            bills=1_000_000)
         event = Posting.objects.get()
         self.assertEqual(event.provider_cost_micros, 12_000_000)
         self.assertEqual(event.stop_context[0]["limit"], "task_limit")
@@ -194,7 +203,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
     def test_replay_returns_the_original_context(self, _mock):
         task = self._task(limit=1_000_000)
         body = {"task_id": str(task.id), "provider_cost_micros": 2_000_000,
-                "billed_cost_micros": 500_000,
+                "bills": 500_000,
                 "idempotency_key": "replay-me"}
         first = self._record(**body)
         replay = self._record(**body)
@@ -210,15 +219,15 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         task = self._task(limit=10_000_000)
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                         billed_cost_micros=6_000_000)
+                         bills=6_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=3_000_000)
+                     bills=3_000_000)
 
         # -- the customer-floor episode: the fast lane opens it on the
         #    crossing event (balance 20M - 9M - 17M = -6M < -5M), one more
         #    event lands during the episode.
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=17_000_000)
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=1_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=17_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=1_000_000)
 
         # -- the durable lane sees the same drawdowns (soft floor's ONLY
         #    detector; the hard-floor crossing loses the dedup to the fast
@@ -304,7 +313,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # Trip a real floor crossing so a genuine episode exists on the
         # signal ledger (the episode ROW is sourced from there, not from any
         # event tag) — balance 20M, floor 5M: one event billing 26M crosses.
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=26_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=26_000_000)
         state = StopSignalState.objects.get(owner=self.customer, family="floor_stop")
         self.assertEqual(state.state, "stopped")
 
@@ -354,7 +363,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
     def test_window_filters_episodes(self, _mock):
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=1_000_000)
+                     bills=1_000_000)
         for query in ("?since=2099-01-01T00:00:00Z",
                       "?until=2000-01-01T00:00:00Z"):
             report = self._report(query)
@@ -397,7 +406,7 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
         self.assertIsNone(self._balance()["negative_since"])
 
         # ≥0 → <0 through the real drawdown lane.
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=21_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=21_000_000)
         self._drain_durable()
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, -1_000_000)
@@ -407,7 +416,7 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
         self.assertEqual(body["negative_since"], stamped.isoformat())
 
         # A further negative move PRESERVES the original transition time.
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=2_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=2_000_000)
         self._drain_durable()
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.negative_since, stamped)
@@ -431,12 +440,12 @@ class PastLimitQueryFiltersTest(PastLimitPinTestBase):
     def _seed(self):
         # One untagged event, one task-scope tagged event, two customer-scope
         # tagged events (the crossing + one after).
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=1_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=1_000_000)
         task = self._task(limit=1_000_000)
         self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     billed_cost_micros=1_000_000)
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=25_000_000)
-        self._record(provider_cost_micros=1_000_000, billed_cost_micros=1_000_000)
+                     bills=1_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=25_000_000)
+        self._record(provider_cost_micros=1_000_000, bills=1_000_000)
 
     def _usage(self, query=""):
         resp = self.http_client.get(

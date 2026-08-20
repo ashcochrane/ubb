@@ -59,6 +59,8 @@ from django.test import Client, TestCase
 from api.v1.schemas import RecordUsageRequest
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
@@ -106,6 +108,7 @@ class RecordingDriftPinTest(TestCase):
         # The request below states the supplier's own cost, admissible only
         # against an Event Type that declares it arrives on the call (#324).
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
+        a_rule_that_prices_what_it_measures(self.tenant)
 
     def tearDown(self):
         cache.clear()
@@ -119,7 +122,9 @@ class RecordingDriftPinTest(TestCase):
                 "customer_id": str(self.customer.id),
                 "provider_cost_micros": 10_000_000,
                 "event_type": DECLARED,
-                "billed_cost_micros": billed_micros,
+                # What the request bills is configured now (#365) — the same
+                # figure, reached through the tenant's own rule.
+                "measurements": priced_at(billed_micros),
                 **_correlation_values(),
             }),
             content_type="application/json",

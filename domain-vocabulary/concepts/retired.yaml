@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,656 of 2,050 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,657 of 2,051 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1137,6 +1137,32 @@ measurement_key:
     # record's own bag through `receipts.recorded_quantities` — the 52nd file's
     # own reader, added by #363 for exactly this reason — so the quantities
     # cross this commit without any module in it spelling them.
+    #
+    # #365 MOVED THE DENOMINATOR ONLY, UPWARD BY ONE (1,656 -> 1,657 swept,
+    # 2,050 -> 2,051 tracked, 52/129 unchanged), AND NO EXCLUSION MOVED WITH IT.
+    # The commit deletes the recording request's customer price and adds a
+    # single hand-written test module for what replaces it. No migration, so
+    # `historical-migrations` stays at 227 and the two counts move together by
+    # the same one — #364's signature at a twelfth of the size.
+    #
+    # ⚠ NOTHING GENERATED JOINED IT, WHICH IS THE HALF WORTH SAYING, because
+    # every re-take since #355 has had generated files in it and a reader could
+    # reasonably expect some here. `generate_core.py` MINTS a module per schema
+    # and per closed concept published; this commit publishes neither. It
+    # removes a property from one existing request schema, so
+    # `record_usage_request.py` is REWRITTEN and no file is born or dies —
+    # #349's lesson in the direction nobody writes down, that a deletion can
+    # leave the file count flat.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT THAT REACHES THE PRICING SPINE'S OWN
+    # QUANTITY LOOP. Deleting the caller's price rung dedents the block that
+    # walks the measured quantities, so those lines are in the diff — but the
+    # loop's local is `units_val`, one of the SEVEN NEAR MISSES that
+    # `tests/contracts/test_the_inline_unit_total_is_gone.py` requires to stay a
+    # spelling the tree really has, and `pricing_service.py` is the only one of
+    # that control's six named files carrying it (#350). It is moved, not
+    # renamed and not removed: touching those lines without touching that token
+    # is what keeps both this numerator and that control where they are.
 
     - term: units
       retired_as: >-

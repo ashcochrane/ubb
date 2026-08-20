@@ -329,7 +329,7 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             subject=a_usage_event_subject(), currency="usd",
             effective_at="2026-01-01T00:00:00+00:00",
             measurements={"input_tokens": 3},
-            caller_provider_cost=None, caller_billed=None,
+            caller_provider_cost=None,
             resolve_declaration=lambda: None,
             resolve_card=lambda kind, key: rate,
             resolve_markup=lambda: None)

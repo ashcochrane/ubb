@@ -586,11 +586,12 @@ def _subject_of(posting, stored):
         selectors={name: getattr(posting, name) for name in Rate.SELECTORS},
         measurements=recorded_quantities(stored),
         currency=posting.currency,
-        caller_provider_cost=_the_cost_the_record_holds(posting),
-        # A RUN STATES NO PRICE OF ITS OWN, EVER. The caller rung sits above the
-        # ladder, and a recovery inventing a price would be the money-moving
-        # surface this mechanism exists not to be.
-        caller_billed=None)
+        # A RUN STATES NO PRICE OF ITS OWN, EVER — a recovery inventing one
+        # would be the money-moving surface this mechanism exists not to be.
+        # It used to say so by passing an explicit `caller_billed=None`; since
+        # #365 the subject has no such field at all, so the claim is structural
+        # and there is nothing left here to pass.
+        caller_provider_cost=_the_cost_the_record_holds(posting))
 
 
 def _the_cost_the_record_holds(posting):

@@ -19,6 +19,8 @@ from django.utils import timezone
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
 from apps.platform.customers.models import Customer
@@ -54,6 +56,10 @@ class TestTaskLimitFanout:
 
         declares_a_caller_supplied_cost(t, DECLARED)
 
+        # The event bills what it cost, which is now a rule's answer rather than
+        # a second copy of the supplier figure in the body (#365).
+        a_rule_that_prices_what_it_measures(t)
+
         def record(key, provider):
             return Client().post(
                 "/api/v1/metering/usage",
@@ -61,7 +67,7 @@ class TestTaskLimitFanout:
                                  "idempotency_key": key,
                                  "provider_cost_micros": provider,
                                  "event_type": DECLARED,
-                                 "billed_cost_micros": provider,
+                                 "measurements": priced_at(provider),
                                  "task_id": str(task.id)}),
                 content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {raw}")
 

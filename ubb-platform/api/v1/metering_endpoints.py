@@ -176,7 +176,6 @@ def usage_kwargs(item):
         idempotency_key=item.idempotency_key,
         provider_cost_micros=item.provider_cost_micros,
         claimed_provider_cost_micros=item.claimed_provider_cost_micros,
-        billed_cost_micros=item.billed_cost_micros,
         currency=item.currency,
         metadata=item.metadata,
         event_type=item.event_type,

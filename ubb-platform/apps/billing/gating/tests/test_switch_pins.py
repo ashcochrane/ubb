@@ -49,6 +49,8 @@ from apps.billing.gating.tasks import (
 )
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -60,10 +62,16 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
 def _tenant(mode="prepaid", maintenance=True, enf="enforcing"):
-    return Tenant.objects.create(
+    tenant = Tenant.objects.create(
         name="T", products=["metering", "billing"],
         billing_mode=mode, enforcement_mode=enf,
         live_counter_maintenance_enabled=maintenance)
+    # Every tenant here records usage through `_record`, and what an event
+    # bills is the tenant's own configuration now rather than the call's (#365).
+    # The rule matches ONE declared quantity, so an event measuring anything
+    # else still falls where it fell before.
+    a_rule_that_prices_what_it_measures(tenant)
+    return tenant
 
 
 def _customer(t, balance_micros=0, ext="c1"):
@@ -84,9 +92,13 @@ def _record(client, auth, c, billed=1_000_000, key=None):
     each posture twice, once per lane, and the lanes have collapsed into one.
     """
     key = key or f"k-{uuid.uuid4()}"
+    # ⚠ THE AMOUNT IS CONFIGURED, NOT SENT (#365). This body used to state what
+    # to bill; the request has no such field any more and REFUSES one, so the
+    # caller's number becomes a quantity the tenant's own rule prices at exactly
+    # it. Callers of this helper still say one figure and still never learn how.
     return client.post("/api/v1/metering/usage", data=json.dumps({
         "customer_id": str(c.id), "request_id": key, "idempotency_key": key,
-        "billed_cost_micros": billed}),
+        "measurements": priced_at(billed)}),
         content_type="application/json", **auth)
 
 

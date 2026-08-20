@@ -176,7 +176,11 @@ export async function sendTestEvent(
     measuredCost += (MOCK_MEASUREMENT_RATE_MICROS[name] ?? 0) * quantity;
   }
 
-  const billed = body.billed_cost_micros ?? measuredCost;
+  // WHAT THE CUSTOMER IS CHARGED IS DERIVED HERE AND NOT SENT (#365). The
+  // request used to be able to carry the price and this line used to prefer it;
+  // the API deleted that field, so the only source left is the same one the
+  // real engine uses — the tenant's configured rules over the measurements.
+  const billed = measuredCost;
   // A measurement no cost card covers leaves the whole supplier cost UNRESOLVED
   // — not a smaller number (#320). A caller who states the cost outright is
   // answered `known` whatever the measurements say, which is the backend's own
@@ -225,7 +229,9 @@ export async function sendTestEvent(
     uncosted_measurement_keys: resolved ? [] : uncosted,
     pricing_provenance: {
       engine_version: "mock-1",
-      price_source: body.billed_cost_micros != null ? "explicit" : "rate_card",
+      // ONE SOURCE, because there is only one: a caller cannot state a price,
+      // so "explicit" is a branch nothing can reach any more (#365).
+      price_source: "rate_card",
       sequence: eventCounter,
     },
     stop: stopped,

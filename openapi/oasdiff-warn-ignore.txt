@@ -326,3 +326,58 @@ POST /api/v1/metering/usage removed the optional property `uncosted_metrics` fro
 # field's absence from the tenant model, asserted in
 # `api/v1/tests/test_onboarding_is_not_a_wall.py`.
 PATCH /api/v1/tenant/config removed the request property `require_cost_card_coverage`
+#
+# --- #365: a caller can no longer put a customer price in the payload -------
+#
+# THE FIELD WAS THE HOLE IN THE WHOLE PRICING DOMAIN. `billed_cost_micros` on
+# the recording request let a caller state the customer's price per event, which
+# bypassed configuration entirely: a per-customer figure worked out somewhere
+# outside UBB and pasted onto every call, going stale the moment the supplier
+# moved, answerable to no rule anybody could read back, and outranking every
+# rule the tenant HAD written. Supplier cost may be an observed value a caller
+# reports; a customer price is a commercial decision UBB resolves and holds
+# (#151 §9.2). Two lines because both recording surfaces take the same item
+# schema — the single call, and the same object inside the batch's array.
+#
+# ⚠ TAKEN NOW BECAUSE ITS REPLACEMENT EXISTS NOW, AND NOT BEFORE. #146 §8 gave
+# this deletion to slice 3 and slice 3 handed it forward: the direct-price rules
+# that replace it are slice 4's, so deleting the field first would have left a
+# window in which nothing could supply a customer price directly at all. The
+# rule half landed earlier in this slice; this is the commit that closes the
+# door behind it. `test_a_customer_price_comes_only_from_configuration.py` holds
+# both halves side by side, so the replacement is asserted rather than asserted
+# to exist.
+#
+# ⚠ AND THIS ONE ALONE IS REFUSED, WHICH IS THE OPPOSITE OF THE #321 ENTRY
+# ABOVE. That one records a removed request property whose senders keep getting
+# 200, because Django Ninja drops a body key no schema declares — the ordinary
+# shape of a removed optional property here, and a deliberate posture: this
+# re-model renames wire fields in every slice, and a caller mid-migration must
+# not be broken once per rename. A PRICE cannot take that lane. A client still
+# posting its own prices into a route that discards them and answers 200 would
+# read agreement, indefinitely, into a number nothing uses — which is the exact
+# failure the deletion exists to end. So `RecordUsageRequest` carries a
+# validator that refuses a body naming this one key, with a 422 that says where
+# the price comes from instead.
+#
+# ⚠ THE REFUSAL HAS NO LINE IN THIS FILE, AND ITS ABSENCE IS A PROPERTY OF WHERE
+# IT LIVES. It is a validator rather than a schema keyword, so the published
+# document is unchanged by it — the two lines below are the whole contract
+# difference — and this file fails on an INERT entry exactly as it fails on an
+# unreviewed finding. What proves the refusal is a test, not a suppression line.
+#
+# ⚠ THE GENERAL FORM WAS TRIED FIRST AND MEASURED. `extra="forbid"` on this
+# schema publishes as `additionalProperties: false` (oasdiff reports the change
+# and no checker calls it breaking, so it would have added no line here either)
+# and it reddened 64 cases — three of which exist purely to state that a stale
+# caller is ACCEPTED and its retired keys dropped. Refusing the unpublished
+# would have reversed that posture for every retired key at once, which is a
+# slice-wide decision no ticket owns. The narrow refusal is the one that fits
+# what this ticket is for.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the one known caller-side consumer
+# of this property is the SDK's hand-written `record_usage`, whose keyword is
+# deleted and whose generated core is regenerated in this same commit.
+POST /api/v1/metering/usage removed the request property `billed_cost_micros`
+POST /api/v1/metering/usage/batch removed the request property `events/items/billed_cost_micros`

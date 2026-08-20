@@ -18,6 +18,8 @@ from apps.billing.gating.models import StopSignalState
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -87,9 +89,11 @@ class TestOffIsByteForBytePreEnforcement:
         _k, raw = TenantApiKey.create_key(t, label="t")
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        # 8,000,000 is what the tenant's rule charges for this event now (#365).
+        a_rule_that_prices_what_it_measures(t)
         r = client.post("/api/v1/metering/usage", data=json.dumps({
             "customer_id": str(c.id), "request_id": "k1", "idempotency_key": "k1",
-            "billed_cost_micros": 8_000_000}),
+            "measurements": priced_at(8_000_000)}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw}")
         assert r.status_code == 200

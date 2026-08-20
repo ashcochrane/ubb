@@ -51,12 +51,17 @@ class MarginServiceTest(TestCase):
         assert econ.gross_margin_micros == 499_200_000
 
     def test_compute_live_matches(self):
+        from apps.metering.pricing.tests._helpers import (
+            a_rule_that_prices_what_it_measures, priced_at)
         from apps.metering.usage.services.usage_service import UsageService
         from unittest.mock import patch
+        # The billed figure is CONFIGURED now, not stated on the call (#365).
+        a_rule_that_prices_what_it_measures(self.tenant)
         with patch("apps.platform.events.tasks.process_single_event"):
             UsageService.record_usage(
                 tenant=self.tenant, customer=self.customer, request_id="r1",
-                idempotency_key="i1", provider_cost_micros=800_000, billed_cost_micros=1_000_000)
+                idempotency_key="i1", provider_cost_micros=800_000,
+                measurements=priced_at(1_000_000))
         # live window covering today; just assert the shape + margin math
         data = MarginService.compute_live(
             self.tenant.id, self.customer.id, datetime.date(2026, 1, 1), datetime.date(2100, 1, 1))

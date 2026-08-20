@@ -323,10 +323,18 @@ def test_the_wire_walk_actually_read_the_recording_request():
     read. The currency beside it, because the rule is about the PAIR — micros
     plus a canonical code — and a walk that could see one and not the other
     could not tell a normalised wire from half of one.
+
+    ⚠ THE FOURTH NAME USED TO BE THE CUSTOMER PRICE, AND #365 DELETED IT from
+    this request: a price is resolved and held by UBB, never stated on a call.
+    It is REPLACED rather than dropped, by the caller's own claimed cost — the
+    other money field this request still carries, and the one whose absence
+    would leave the guard blind to exactly half the amounts it exists to watch.
+    Relaxing to three names instead would have made the guard weaker on the day
+    a field left, which is the day it is most worth having.
     """
     assert len(_WIRE_FIELDS) > 12, f"only read {len(_WIRE_FIELDS)} fields"
     for expected in ("RecordUsageRequest.provider_cost_micros",
-                     "RecordUsageRequest.billed_cost_micros",
+                     "RecordUsageRequest.claimed_provider_cost_micros",
                      "RecordUsageRequest.currency",
                      "UsageBatchRequest.events"):
         assert expected in _WIRE_FIELDS, f"the walk did not read {expected}"

@@ -3,6 +3,8 @@ from unittest.mock import patch
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.services.usage_service import UsageService
 
 
@@ -12,13 +14,19 @@ class MarginEndpointsTest(TestCase):
         self.tenant = Tenant.objects.create(name="Heyotis", products=["metering"])  # NO subscriptions
         _, self.key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        # The two events still bill exactly what they always billed — but a
+        # customer price is UBB's to resolve now (#365), so the amounts are
+        # CONFIGURED rather than stated on the call.
+        a_rule_that_prices_what_it_measures(self.tenant)
         with patch("apps.platform.events.tasks.process_single_event"):
             UsageService.record_usage(
                 tenant=self.tenant, customer=self.customer, request_id="r1", idempotency_key="i1",
-                provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai")
+                provider_cost_micros=800_000, measurements=priced_at(1_000_000),
+                provider="openai")
             UsageService.record_usage(
                 tenant=self.tenant, customer=self.customer, request_id="r2", idempotency_key="i2",
-                provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai")
+                provider_cost_micros=200_000, measurements=priced_at(300_000),
+                provider="openai")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
