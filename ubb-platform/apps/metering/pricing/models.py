@@ -502,12 +502,12 @@ class Rate(BaseModel):
             # ⚠ THIS ENFORCES ONE DIRECTION OF THE PROPERTY AND ONLY ONE, and
             # saying which is the difference between a rule and a claim. The two
             # components this table can express — the per-unit rate and the
-            # fixed addend — are `direct_event_price`'s own terms, so the refusal is
-            # over a margin rule carrying them. The mirrored refusal (a direct
-            # rule carrying a margin term) is not expressible here: no percentage
-            # column exists on this table, because markup is still a separate
-            # record. The ticket that moves it is the ticket that adds the other
-            # half.
+            # fixed addend — are `direct_event_price`'s own terms, so the
+            # refusal is over a margin rule carrying them. The mirrored refusal
+            # (a direct rule carrying a margin term) is not expressible here: no
+            # percentage column exists on this table, because markup is still a
+            # separate record. The ticket that moves it is the ticket that adds
+            # the other half.
             models.CheckConstraint(
                 condition=(
                     ~models.Q(pricing_method=PRICING_METHOD_MARGIN_OVER_COST)

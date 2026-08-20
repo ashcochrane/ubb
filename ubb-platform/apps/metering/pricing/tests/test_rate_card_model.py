@@ -1,7 +1,8 @@
 import pytest
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
-from core.vocabulary import RATE_STRUCTURE_FIXED_COMPONENT
+from core.vocabulary import (
+    RATE_STRUCTURE_FIXED_COMPONENT, RATE_STRUCTURE_PER_UNIT)
 
 
 @pytest.mark.django_db
@@ -12,7 +13,8 @@ class TestRateCard:
         c = Rate.objects.create(
             tenant=t, card_type="cost", provider="openai", event_type="chat",
             measurement=declares_a_quantity(t, "input_tokens"), grouping_field_1="gpt-4",
-            rate_structure="per_unit", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
+            rate_structure=RATE_STRUCTURE_PER_UNIT,
+            rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         # provider, event_type and the first slot.
         assert c.grouping_field_1 == "gpt-4" and c.specificity == 3
         assert c.compute(1000) == 5  # (1000*5000 + 500000)//1000000 = 5

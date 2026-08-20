@@ -1585,16 +1585,23 @@ def rate_out(r):
 # One act replacing three, so a book has one mutation surface and a tenant has
 # one thing to read: *your book changes on 1 August; here is the diff*.
 #
-# ⚠ **THESE SCHEMAS NAME NO PHYSICAL SLOT, AND THAT IS DELIBERATE RATHER THAN
-# INCIDENTAL.** The three schemas above publish the rate's selector list as six
-# `dim<n>` properties, which is a debt `api/v1/tests/
-# test_grouping_values_on_the_contract.py` holds as an EXACT residue that only
-# ever shrinks. Reusing that spelling here would have coined six more published
-# properties under a name this slice is retiring, and left the ticket that
-# converts those three schemas with a fourth to convert. So a change body names
-# its grouping fields the way a recording call already does — by the tenant's
-# own declared key, in an object — which reaches all TEN slots rather than six
-# and is the shape the converted schemas will have anyway.
+# ⚠ **THESE SCHEMAS NAME NO PHYSICAL SLOT, AND THAT IS STILL DELIBERATE — BUT
+# NOT FOR THE REASON IT WAS (#366).** #358 kept the slot spelling off this act
+# because the three schemas above published the rate's selector list as six
+# `dim<n>` properties under a name slice 4 was retiring, and reusing it here
+# would have coined six more for the converting ticket to convert. That ticket
+# has landed: those three publish all TEN slots now, under the COLUMN names, and
+# the join dictionary between the two spellings is gone.
+#
+# **SO THE TWO SHAPES ARE BOTH LIVE AND THEY ARE NOT REDUNDANT.** A change body
+# names its grouping fields the way a recording call does — by the tenant's own
+# declared key, in an object — and the three above name the slot directly. The
+# key-keyed form is the one to reach for, because a key rebound to another slot
+# takes its rules with it while a body naming the slot silently starts
+# addressing something else; the slot-named form is what the three immediate
+# routes have always spoken, and it is how a rule with no declared key for a
+# slot is addressable at all. Both end at the same columns, so they cannot
+# disagree about which rule they mean.
 
 
 class BookChangeIn(Schema):
@@ -1695,21 +1702,23 @@ class BookPublishIn(Schema):
 
 
 class RuleTermsOut(Schema):
-    """What a rule charges and how it derives it — everything a change may move.
+    """What a rule charges, how it derives it, and which arithmetic it runs.
 
-    **THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer
-    override replaces a whole rule including its method, so the diff a tenant
-    reads before committing to it has to show the method changing — otherwise
-    the one part of a negotiated deal that changes its shape is the one part
-    that is invisible until after it lands.
-
-    **AND SO IS THE ARITHMETIC SHAPE, FOR THE SAME REASON, ONE TICKET LATER
-    (#366).** It was absent while a publish could not move it; a diff showing
-    three money terms and not which one the rule actually charges on told a
-    reader almost nothing — a rule going from a per-unit charge to a fixed
-    component reads as *"nothing moved"* if only the terms are shown, because
-    both terms are already there and only the shape decides which is spent.
+    Everything a change may move, so a `before` and an `after` side by side are
+    a complete account of what a publish does to a rule. `rate_structure`
+    decides which of the money terms is actually spent, so a rule going from a
+    per-unit charge to a fixed component would read as *"nothing moved"* from
+    the terms alone.
     """
+    # ⚠ WHY THE LAST TWO FIELDS ARRIVED LATE, in a COMMENT rather than the
+    # docstring above: a `Schema`'s docstring is exported verbatim into
+    # `openapi/v1.json` and the generated SDK, and this repository's slice
+    # history is not something a caller needs. The method joined in #361,
+    # because a customer override replaces a whole rule INCLUDING its method
+    # and a diff that hid the change would hide the one part of a negotiated
+    # deal that changes shape. The arithmetic shape joined in #366 for the same
+    # reason one ticket later — it was absent only while a publish could not
+    # move it, which was a retired column name rather than a decision.
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int

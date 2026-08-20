@@ -24,20 +24,13 @@ T = TypeVar("T", bound="RuleTermsOut")
 
 @_attrs_define
 class RuleTermsOut:
-    """ What a rule charges and how it derives it — everything a change may move.
+    """ What a rule charges, how it derives it, and which arithmetic it runs.
 
-    **THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer
-    override replaces a whole rule including its method, so the diff a tenant
-    reads before committing to it has to show the method changing — otherwise
-    the one part of a negotiated deal that changes its shape is the one part
-    that is invisible until after it lands.
-
-    **AND SO IS THE ARITHMETIC SHAPE, FOR THE SAME REASON, ONE TICKET LATER
-    (#366).** It was absent while a publish could not move it; a diff showing
-    three money terms and not which one the rule actually charges on told a
-    reader almost nothing — a rule going from a per-unit charge to a fixed
-    component reads as *"nothing moved"* if only the terms are shown, because
-    both terms are already there and only the shape decides which is spent.
+    Everything a change may move, so a `before` and an `after` side by side are
+    a complete account of what a publish does to a rule. `rate_structure`
+    decides which of the money terms is actually spent, so a rule going from a
+    per-unit charge to a fixed component would read as *"nothing moved"* from
+    the terms alone.
 
         Attributes:
             fixed_micros (int):

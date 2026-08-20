@@ -279,12 +279,27 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request pro
 # free (ADR-0007 §5 — the launch tag is not what binds); the same change after
 # platform admission costs a 90-day cycle under ADR-0003 §4.
 #
-# THE RATE'S SIX SLOT PROPERTIES SURVIVE, AND NOT BY OVERSIGHT. `RateIn`,
-# `RateChangeIn` and `RateOut` still publish `dim1..dim6`. #193 §L puts the rate
-# selector list in slice 4 expressly "so that no ticket quietly widens", and
-# slice 4 rebuilds those three schemas. The residue is pinned in
-# `api/v1/tests/test_grouping_values_on_the_contract.py`, which fails if it ever
-# overstates what the contract actually publishes.
+# THE RATE'S SIX SLOT PROPERTIES SURVIVED THIS COMMIT, AND NOT BY OVERSIGHT.
+# `RateIn`, `RateChangeIn` and `RateOut` went on publishing `dim1..dim6` here.
+# #193 §L puts the rate selector list in slice 4 expressly "so that no ticket
+# quietly widens", and slice 4 rebuilds those three schemas.
+#
+# ⚠ **RESOLVED IN #366, AND RESOLVED BY EMITTING NOTHING — WHICH IS WHY THIS
+# PARAGRAPH IS EDITED RATHER THAN DELETED.** That commit replaced those six
+# properties with all TEN under the column names. The removal adds no line to
+# this file for exactly the reason given three paragraphs up, applied to a
+# different surface: at `api-v1-launch` these three schemas published
+# `dimensions`, a free-form bag, so the six slot properties were added AFTER the
+# tag and removed before the next baseline, and the cumulative comparison sees a
+# surface that never reached it. Pasting the emitted lines in would fail this
+# gate as six entries suppressing nothing. What #366 DID emit is its own block
+# at the foot of this file and of the error file — four lines, for the rename of
+# the arithmetic-shape property beside them.
+#
+# The residue those six were pinned against is gone with them. What
+# `api/v1/tests/test_grouping_values_on_the_contract.py` now holds is the end
+# state — an equality over every published property naming a slot in either
+# spelling — rather than a debt that only shrinks.
 #
 # #320 — THE UNCOSTED-QUANTITY LIST TAKES THE CANONICAL WORD FOR A DECLARED
 # QUANTITY, AND REPLACES THE OLD KEY RATHER THAN SITTING BESIDE IT.

@@ -8,13 +8,22 @@ HERE is what only the route can answer — the request shape a tenant sends, the
 refusals it gets back, the governance entries the acts leave, and the vocabulary
 the contract publishes.
 
-**⚠ THE CHANGE BODY NAMES A GROUPING FIELD BY THE TENANT'S OWN KEY, WHICH IS
-WHY SLOT SEVEN IS REACHABLE HERE AND NOT THROUGH THE ROUTE THIS REPLACES.** The
-immediate reprice body names six of the ten slots by their physical spelling, so
-a rule pinned on the seventh cannot be addressed through it at all — a
-functional gap, not a naming one. A change body carries an object keyed by what
-the tenant declared, so every slot is reachable and no physical slot reaches the
-contract. One case below is that gap, closed.
+**⚠ THE CHANGE BODY NAMES A GROUPING FIELD BY THE TENANT'S OWN KEY, AND THAT IS
+WHY SLOT SEVEN WAS REACHABLE HERE FIRST.** When this act landed, the immediate
+reprice body named six of the ten slots by their physical spelling, so a rule
+pinned on the seventh could not be addressed through it at all — a functional
+gap, not a naming one. A change body carries an object keyed by what the tenant
+declared, so every slot was reachable through this route while four were
+reachable through no other. One case below is that gap, closed.
+
+⚠ **IT IS NO LONGER THE ONLY ROUTE THAT CAN REACH THEM (#366).** The immediate
+reprice body publishes all ten slots now, under the column names, and
+`api/v1/tests/test_a_rate_on_any_slot_can_be_repriced.py` reprices a rule pinned
+on the seventh end to end through exactly that route. So the case below is no
+longer evidence that this act is the ONLY way in; what it still asserts, and
+what nothing else does, is that a tenant can address a slot **without knowing
+which slot it is** — by the key they declared, which survives a rebinding that
+a body naming the column silently would not.
 
 **GOVERNANCE, NOT TELEMETRY.** All three acts decide what a customer is charged,
 so none of them takes the audit sweep's exemption list — that carve is for usage

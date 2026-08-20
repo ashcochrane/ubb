@@ -27,11 +27,15 @@ every test that only asks whether the new name exists would pass over the loss.
 add-plus-remove ADR-0007 §1 forbids.
 
 **No index or constraint is described over this column**, so unlike `0016` there
-is no state-only half to re-describe: `Rate.Meta` names `measurement`, the ten
-grouping slots and the two method columns, and none of them is this one. The
-`AlterField` below records only that the column's `choices=` now come from the
-registry's frozenset rather than from a hand-typed pair — the same members in
-the same order, under their ratified spellings.
+is no state-only half to re-describe. That is a claim about every database
+object on the table rather than about the ones that came to mind, and it was
+checked that way: `idx_ratecard_lookup`, `uq_rate_active_in_book`,
+`ck_rate_names_one_quantity`, `ck_rate_pricing_method` and
+`ck_rate_never_composes` are what `Rate.Meta` declares, and the renamed column
+appears in none of their field lists. The `AlterField` below records only that
+the column's `choices=` now come from the registry's frozenset rather than from
+a hand-typed pair — the same members in the same order, under their ratified
+spellings.
 
 `old_name` is where a reader should look the retired word up. The migrations
 tree is a declared sweep exclusion (`gates/forbidden-term-sweep.yaml`), so the

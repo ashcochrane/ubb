@@ -24,6 +24,7 @@ import {
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { pricingModelLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { RATE_STRUCTURE_VALUES } from "@/lib/vocabulary";
 import { toastSuccess } from "@/lib/mutations";
 import { useAddRate } from "../api/queries";
 import type { Book } from "../api/types";
@@ -194,7 +195,10 @@ export function AddRateDialog({
           <div className="space-y-1.5">
             <Label>Rate structure</Label>
             <div className="flex gap-2">
-              {(["per_unit", "fixed_component"] as const).map((model) => (
+              {/* The registry's set, not a hand-typed pair: a third arithmetic
+                  shape would appear as a button here rather than being one a
+                  tenant cannot reach through the console. */}
+              {RATE_STRUCTURE_VALUES.map((model) => (
                 <button
                   key={model}
                   type="button"

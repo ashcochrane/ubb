@@ -23,8 +23,12 @@ export interface RowEdit {
 export function initialEdit(rate: Rate): RowEdit {
   const choice = unitChoiceFor(rate.unit_quantity);
   return {
-    rate_structure:
-      rate.rate_structure === "fixed_component" ? "fixed_component" : "per_unit",
+    // Copied, not narrowed. The ternary that used to stand here dated from
+    // when the read schema typed this as a bare `string`; the contract
+    // advertises the closed set now, so `rate.rate_structure` IS the union and
+    // the fallback was provably unreachable — a guard whose removal changes
+    // nothing.
+    rate_structure: rate.rate_structure,
     rate: microsToUnitString(rate.rate_per_unit_micros),
     unit_choice: choice,
     custom_unit: choice === "custom" ? String(rate.unit_quantity) : "",

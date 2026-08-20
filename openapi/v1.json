@@ -6549,7 +6549,7 @@
         "type": "object"
       },
       "RuleTermsOut": {
-        "description": "What a rule charges and how it derives it \u2014 everything a change may move.\n\n**THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer\noverride replaces a whole rule including its method, so the diff a tenant\nreads before committing to it has to show the method changing \u2014 otherwise\nthe one part of a negotiated deal that changes its shape is the one part\nthat is invisible until after it lands.\n\n**AND SO IS THE ARITHMETIC SHAPE, FOR THE SAME REASON, ONE TICKET LATER\n(#366).** It was absent while a publish could not move it; a diff showing\nthree money terms and not which one the rule actually charges on told a\nreader almost nothing \u2014 a rule going from a per-unit charge to a fixed\ncomponent reads as *\"nothing moved\"* if only the terms are shown, because\nboth terms are already there and only the shape decides which is spent.",
+        "description": "What a rule charges, how it derives it, and which arithmetic it runs.\n\nEverything a change may move, so a `before` and an `after` side by side are\na complete account of what a publish does to a rule. `rate_structure`\ndecides which of the money terms is actually spent, so a rule going from a\nper-unit charge to a fixed component would read as *\"nothing moved\"* from\nthe terms alone.",
         "properties": {
           "fixed_micros": {
             "title": "Fixed Micros",

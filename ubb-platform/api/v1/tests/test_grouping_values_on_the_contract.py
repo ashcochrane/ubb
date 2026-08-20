@@ -176,8 +176,19 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         Read off the MODULE rather than by trying an import: `assertRaises(
         ImportError)` around one name proves nothing about a differently-named
         map doing the same job. This asks the stronger question — does anything
-        in the module map a published property name onto a column name — and it
-        would catch the dict under any name at all.
+        at `api.v1.schemas`'s top level map a published property name onto a
+        column name — and it catches such a map under ANY name.
+
+        ⚠ **THE SCOPE IS THE MODULE, NOT THE TREE, AND SAYING SO IS THE POINT.**
+        A dict built inside a function body, or one that reappeared in
+        `metering_endpoints.py`, is outside this walk. That is not a hole left
+        open: the dict was a module constant here and this is where a
+        reintroduction would go, while a translation reintroduced anywhere at
+        all is caught behaviourally instead — the equality above pins what the
+        three schemas publish, and
+        `api/v1/tests/test_a_rate_on_any_slot_can_be_repriced.py` fails if a
+        body key reaches the wrong column, which is the only damage such a map
+        can actually do.
         """
         maps = {
             name: value for name, value in vars(schemas).items()
