@@ -146,18 +146,22 @@ class APriceIsSuppliedThroughConfigurationTest(_ARecordingTenant):
     def test_every_response_that_carries_a_price_still_carries_it(self):
         """⚠ THE DELETION WAS BY CLASS, AND THIS IS THE OTHER DIRECTION.
 
-        The same name sat on the request and still sits on four response
-        surfaces, so a deletion done by searching for the word would have taken
-        the four a tenant reads their own resolved prices back from. Which
-        schemas publish the name is asserted against the document in
-        `test_two_request_fields_each_with_one_meaning.py`; this asserts the
-        thing that actually matters — that one configured price arrives, in
-        full, on every one of them.
+        THE FOUR ARE THE TICKET'S FOUR — the occurrences it lists in the
+        request/response schema module beside the one that goes: the ack, the
+        ack's whole-job total, the usage-event list row and the usage-event
+        detail. A deletion done by searching for the word would have taken all
+        four, so each is read here with one configured price in it.
 
-        The whole-job total is here for a reason the document check cannot
-        cover: its key is `task_total_billed_cost_micros`, a different token, so
-        a property-name assertion walks straight past it and only a figure read
-        off a job says it survived.
+        ⚠ THAT IS NOT THE SAME COUNT AS THE SCHEMAS PUBLISHING THE NAME, and
+        conflating the two is easy: SIX response schemas carry
+        `billed_cost_micros`, and which ones is asserted as an exact set against
+        the document in `test_two_request_fields_each_with_one_meaning.py`. This
+        case covers three of those six plus the whole-job total, which is the
+        one the document check CANNOT cover — its key is
+        `task_total_billed_cost_micros`, a different token, so a
+        property-name assertion walks straight past it and only a figure read
+        off a job says it survived. The two checks are complementary rather than
+        two counts of one thing.
         """
         self.a_direct_price_rule()
         job = TaskService.create_task(

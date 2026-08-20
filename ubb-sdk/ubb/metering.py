@@ -141,9 +141,11 @@ class MeteringClient:
         arrives on the response — ``result.billed_cost_micros``, with
         ``result.pricing_status`` saying whether it settled. A price sent on the
         call would be a decision made outside the system that goes stale the
-        moment the underlying cost moves, so this request refuses any key it
-        does not publish rather than dropping it: a body carrying one is a 422,
-        not a silent 200. Write the rule instead.
+        moment the underlying cost moves, so the route REFUSES a body carrying
+        ``billed_cost_micros``: it is a 422 naming the field, not a silent 200.
+        That refusal is specific to this one retired name — every other key the
+        request does not publish is still dropped without comment. Write the
+        rule instead.
 
         ``raise_on_stop``: when True, raise UBBStoppedError if the response
         carries a stop verdict (result.stop). The event is still

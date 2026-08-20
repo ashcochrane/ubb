@@ -168,8 +168,8 @@ def cost_rate_in_default_book(tenant, **fields):
 #: body, so any test wanting an event that billed a chosen figure said so in one
 #: keyword. The price is now UBB's to resolve, and the only ways in are a rule
 #: and the markup rung — so a test that used to state an amount has to CONFIGURE
-#: one. Fifteen modules did, across metering, billing, subscriptions and the
-#: composition layer.
+#: one. Sixteen modules import this door, across metering, billing,
+#: subscriptions and the composition layer.
 #:
 #: This is that configuration, said once. `a_rule_that_prices_what_it_measures`
 #: puts a per-unit price rule in the tenant's own book; `priced_at(micros)`
@@ -189,15 +189,23 @@ WHAT_A_UNIT_COSTS_THE_CUSTOMER = 1_000
 def a_rule_that_prices_what_it_measures(tenant, **fields):
     """A price rule over `PRICED_QUANTITY`, and a cost rule of NOTHING beside it.
 
-    ⚠ THE SECOND RULE IS WHAT KEEPS THE SUBSTITUTION HONEST, and leaving it out
-    changes what half the fixtures assert. A body that stated a price carried NO
-    quantities, so the cost side saw an empty bag and settled at a KNOWN zero.
-    Handing those same events a quantity with nothing costing it would put the
-    cost at `unresolved` / `cost_rate_missing` instead — a different economic
-    state, on tests whose subject is a stop verdict or a counter and which would
-    have gone red for a reason having nothing to do with them. Declaring the
-    quantity costable at nothing is the state they were already in, said out
-    loud.
+    WHAT THE SECOND RULE IS FOR: fidelity, not coverage. A body that stated a
+    price carried NO quantities, so the cost side saw an empty bag and settled
+    at a KNOWN zero. Handing those same events a quantity with nothing costing
+    it puts the cost at `unresolved` / `cost_rate_missing` instead — a different
+    economic state for events whose migration was supposed to change only where
+    the PRICE comes from. Declaring the quantity costable at nothing keeps them
+    in the state they were already in.
+
+    ⚠ AND NO TEST WOULD CATCH ITS ABSENCE, WHICH IS MEASURED RATHER THAN
+    GUESSED. Deleting these three lines and running every module that imports
+    this door gives **440 passed, 0 failed** — because almost every one of those
+    fixtures also states `provider_cost_micros`, and the caller's own figure
+    wins on the cost side without ever consulting a rule. So this is INSURANCE
+    against a fixture drifting into a state its own commit never chose, said out
+    loud here rather than dressed up as a guard: an earlier draft of this
+    docstring claimed leaving it out "changes what half the fixtures assert",
+    and the measurement says that was false.
 
     A fixture that wants a real supplier cost states it as it always did, and
     the caller's figure wins over this rule without consulting it.
@@ -229,6 +237,25 @@ def priced_at(micros):
             f"for: it prices each one measured at "
             f"{WHAT_A_UNIT_COSTS_THE_CUSTOMER} micros")
     return {PRICED_QUANTITY: quantity}
+
+
+def what_it_bills(extra):
+    """Translate a caller's `bills=N` into the body keys that bill exactly N.
+
+    THE THREE RECORDING-ROUTE TEST MODULES BUILD THEIR BODY THE SAME WAY — a
+    `_record(**extra)` helper over a dict — and each used to pass the deleted
+    price field straight through. This is the one translation they now share, in
+    `tests/_helpers.py` where `docs/conventions/testing.md` puts shared setup:
+    three copies of it would be three places to fix the day the fixture rule
+    changes, and #352 paid for exactly that duplication once already.
+
+    Answers the keys to merge, so a caller that says nothing about billing gets
+    nothing merged and its body is untouched. Pops, so `bills` never reaches the
+    request as a key of its own.
+    """
+    if "bills" not in extra:
+        return {}
+    return {"measurements": priced_at(extra.pop("bills"))}
 
 
 #: What every posting in a recovery fixture measures, and the denominator its

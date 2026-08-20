@@ -35,6 +35,15 @@ const PRICED_MEASUREMENT = "requests";
 const MICROS_PER_REQUEST = 50_000;
 
 function requestsWorth(micros: number): string {
+  // Refuses an amount the rate cannot reach rather than rounding to one it can
+  // — its Python twin `priced_at` does the same, and for the same reason: a
+  // case silently asserting 12.5 requests would be asserting a figure nothing
+  // in it chose. The form takes whole quantities only.
+  if (micros % MICROS_PER_REQUEST !== 0) {
+    throw new Error(
+      `${micros} is not a whole number of priced requests at ${MICROS_PER_REQUEST} micros each`,
+    );
+  }
   return String(micros / MICROS_PER_REQUEST);
 }
 

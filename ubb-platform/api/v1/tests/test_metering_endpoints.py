@@ -66,10 +66,12 @@ def declared_grouping_values(values):
 #: in this repository sent two parameters it publishes nowhere and answered
 #: `200` on the axis default for years.
 #:
-#: ⚠ THE SET IS NOW THE WHOLE SURFACE, WHICH IT WAS NOT BEFORE #365. That commit
-#: gave the request `extra="forbid"`, so a key outside this set is refused
-#: rather than discarded — and the customer price left the set in the same
-#: commit, because a price is configured and never sent.
+#: ⚠ THE CUSTOMER PRICE LEFT THIS SET IN #365, because a price is configured and
+#: never sent. It is the one departed key that is REFUSED rather than dropped —
+#: by a validator naming it, not by a rule about unknown keys, so everything
+#: else outside this set is still discarded exactly as the paragraph above says.
+#: `test_a_customer_price_comes_only_from_configuration.py` holds both halves of
+#: that asymmetry and the measurement behind it.
 THE_WHOLE_RECORDING_REQUEST = frozenset({
     "customer_id", "request_id", "idempotency_key", "metadata",
     "provider_cost_micros", "claimed_provider_cost_micros",

@@ -25,7 +25,7 @@ from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.tests._helpers import (
-    a_rule_that_prices_what_it_measures, priced_at)
+    a_rule_that_prices_what_it_measures, priced_at, what_it_bills)
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
@@ -80,12 +80,11 @@ class PastLimitPinTestBase(TestCase):
             "event_type": DECLARED,
         }
         # ⚠ WHAT AN EVENT BILLS IS CONFIGURED, NOT SENT (#365). Callers say
-        # `bills=N` exactly as they used to say the deleted request field, and
-        # it becomes the quantities this tenant's own rule charges N for — the
-        # `usage_payload` pattern, one concept along: one number in, and the
-        # caller never learns which key it lands under.
-        if "bills" in extra:
-            data["measurements"] = priced_at(extra.pop("bills"))
+        # `bills=N` exactly as they used to say the deleted request field; the
+        # shared door turns it into the quantities this tenant's own rule
+        # charges N for, so one number goes in and no caller here learns which
+        # key it lands under.
+        data.update(what_it_bills(extra))
         data.update(extra)
         resp = self.http_client.post(
             "/api/v1/metering/usage", data=json.dumps(data),
