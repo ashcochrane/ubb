@@ -60,10 +60,10 @@ from typing import Any, Optional
 
 from django.db.models import Q
 
-from apps.metering.pricing.models import ResolutionRun
+from apps.metering.pricing.models import Rate, ResolutionRun
 from apps.metering.pricing.receipts import (
-    RECEIPT_SCHEMA_VERSION, RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject,
-    Resolution, completed_receipt, recorded_quantities)
+    RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject, Resolution,
+    completed_receipt, recorded_quantities, written_in_the_current_shape)
 from apps.metering.pricing.services.cost_settlement import (
     Settlement, settle_provider_cost)
 from apps.metering.pricing.services.price_resolution import (
@@ -128,7 +128,7 @@ class RunSelector:
     selected_event_type: str = ""
 
 
-def never_resolved():
+def never_resolved_condition():
     """The membership predicate, built from the pairs rather than from literals.
 
     Public because the property worth asserting is that **this is all there
@@ -157,7 +157,7 @@ def candidates(tenant, selector):
     dependent on the planner.
     """
     postings = (Posting.objects.filter(tenant=tenant)
-                .filter(never_resolved()))
+                .filter(never_resolved_condition()))
     if selector.selected_from is not None:
         postings = postings.filter(effective_at__gte=selector.selected_from)
     if selector.selected_to is not None:
@@ -242,14 +242,23 @@ def _complete(posting_id, run_id):
     completions computed from the same stale read would each be missing the
     other's. The lock is what makes the read and the write one decision.
     """
-    posting = (Posting.objects.select_for_update()
+    # ⚠ `of=("self",)` LOCKS THE POSTING AND NOTHING ELSE. `select_related`
+    # makes the statement an INNER JOIN, and a bare `FOR UPDATE` over a join
+    # locks a row in EVERY joined table — so this would have taken locks on the
+    # customer and the tenant, in the wrong order: `docs/conventions/
+    # coding-standards.md` puts Customer BEFORE Posting in the canonical global
+    # order, and taking them the other way round is how two paths deadlock. The
+    # join is here to save two queries per posting on a loop that may run two
+    # hundred times; `of` is what keeps it from also being a lock.
+    posting = (Posting.objects.select_for_update(of=("self",))
                .select_related("tenant", "customer").get(pk=posting_id))
     stored = getattr(posting, Posting.RECEIPT_COLUMN)
 
     completable = {name for name, pair in PAIR_BY_SECTION.items()
                    if getattr(posting, pair.status_column)
                    == pair.unresolved_status}
-    if not completable or _the_record_cannot_be_re_resolved(posting, stored):
+    if not completable \
+            or _the_record_cannot_account_for_a_completion(posting, stored):
         return False, False
 
     resolved = resolve_price(_subject_of(posting, stored),
@@ -271,35 +280,43 @@ def _complete(posting_id, run_id):
     return settled_cost, resolved_price
 
 
-def _the_record_cannot_be_re_resolved(posting, stored):
-    """⚠ AN UNRESOLVED COST WHOSE RECORD KEPT NO QUANTITIES IS LEFT ALONE.
+def _the_record_cannot_account_for_a_completion(posting, stored):
+    """⚠ TWO WAYS A RECORD CANNOT SUPPORT A RECOVERY, AND BOTH LEAVE THE POSTING
+    ALONE. Each was a live defect before it was a branch.
 
-    **This is a guard against a silent zero, and it was measured rather than
-    reasoned about.** A run re-resolves from the receipt — never from the
-    measurement rows, which prune — and the receipt keeps the quantities a
-    recovery will need in exactly one case: an unresolved cost whose quantities
-    matched no rule (`uncosted_quantities`, #350). The OTHER cause of an
-    unresolved cost is a supplier that was declared to report its own figure and
-    did not, and that branch of the engine records **no quantities at all**,
-    because what recovers it is the figure arriving rather than a re-costing.
+    **ONE — THE RECORD CANNOT NAME THE ACT THAT COMPLETED IT.** A receipt in an
+    older shape, or the empty default, is one `completed_receipt` may not touch:
+    *read, never rewritten*. Without this branch the doors still moved the money
+    columns and simply carried no receipt — so a posting was priced, the
+    outcome counted it, and **nothing anywhere named the run that did it**. A
+    number a recovery changed has to be explicable by the act that changed it,
+    and half of that claim is worse than none: these are precisely the oldest
+    postings, which is where a recovery is most likely to be questioned.
 
-    Re-resolving such a record from an empty bag computes a cost of exactly
-    zero, and every condition for settling it is then satisfied: the status
-    reads `known`, the amount is a number, the door admits it, the trigger
-    admits it, and the receipt seals over it. A posting that measured a million
-    tokens would have been settled at nothing, permanently, by the mechanism
-    built to put such postings right.
+    **TWO — AN UNRESOLVED COST WHOSE RECORD KEPT NO QUANTITIES.** A run
+    re-resolves from the receipt — never from the measurement rows, which prune
+    — and the receipt keeps the quantities a recovery needs in exactly one case:
+    an unresolved cost whose quantities matched no rule (`uncosted_quantities`,
+    #350). The other cause of an unresolved cost is a supplier declared to
+    report its own figure that never did, and that branch of the engine records
+    **no quantities at all**, because what recovers it is the figure arriving
+    rather than a re-costing. Re-resolved from an empty bag the engine computes
+    a cost of exactly zero, and every condition for settling it is then
+    satisfied: status `known`, amount a number, door admits, trigger admits,
+    receipt seals over it. A posting that measured a million tokens would have
+    settled at nothing, permanently.
 
-    So the question asked here is whether the record can reproduce what it
-    explains. Where it cannot, the run examines the posting, completes nothing,
-    and reports it as still unresolved — which is the true answer.
+    ⚠ The second is asked of the COST side only, and that is not an omission.
+    Where the cost is settled, `_subject_of` states the figure the record
+    already holds, so an empty bag is harmless: no rule matches nothing, and a
+    margin over the stated basis is the right answer for a posting that measured
+    nothing. It is only an unresolved cost that would be *computed* from the bag.
 
-    ⚠ It is asked of the COST side only, and that is not an omission. Where the
-    cost is settled, `_subject_of` states the figure the record already holds,
-    so an empty bag is harmless: no rule matches nothing, and a margin over the
-    stated basis is the right answer for a posting that measured nothing. It is
-    only an unresolved cost that would be *computed* from the bag.
+    Where either holds, the run examines the posting, completes nothing, and
+    reports it still unresolved — which is the true answer about it.
     """
+    if not written_in_the_current_shape(stored):
+        return True
     return (posting.costing_status
             == PAIR_BY_SECTION["costing"].unresolved_status
             and not recorded_quantities(stored))
@@ -328,17 +345,15 @@ def _resolve_the_price(posting, stored, resolved, run_id):
 
 
 def _receipt_completing(section, stored, resolved, run_id):
-    """The stored receipt with one section completed, or `None`.
+    """The stored receipt with one section completed, naming the run that did it.
 
-    `None` where the posting carries no receipt this code may complete — an
-    empty default, or one written in an older shape, which the receipt's own
-    ruling says is *read, never rewritten*. The columns still move: what shape
-    of record a posting happens to carry must not decide whether a cost may be
-    learned. Nothing is silently upgraded.
+    It asks nothing about the record's shape, and that is the point rather than
+    an omission: a posting whose record cannot be completed never reaches here,
+    because `_the_record_cannot_account_for_a_completion` has already left it
+    alone. Asking twice would put the decision in two places, and the second
+    copy is the one that goes stale — the boundary's own refusal is what this
+    would be duplicating, and it stays there where every caller meets it.
     """
-    if not isinstance(stored, dict) \
-            or stored.get("receipt_schema_version") != RECEIPT_SCHEMA_VERSION:
-        return None
     side = resolved[section]
     return completed_receipt(
         stored,
@@ -369,8 +384,6 @@ def _subject_of(posting, stored):
     `reported`, which is discarded: a settled section is never written back, and
     only the section being completed is taken from this answer.
     """
-    from apps.metering.pricing.models import Rate
-
     return PricingSubject(
         receipt_subject=ReceiptSubject(
             subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,

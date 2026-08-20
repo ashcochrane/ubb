@@ -426,6 +426,26 @@ def build_receipt(*, subject, effective_at, currency, pricing_engine_version,
     return record
 
 
+def written_in_the_current_shape(record):
+    """Can this record be completed, and can it be made to name what completed it?
+
+    One question with one answer, asked BEFORE a completion is assembled and
+    again inside :func:`completed_receipt`, so a caller deciding whether a
+    posting is recoverable and the boundary refusing a bad record cannot come to
+    disagree about which records those are.
+
+    A record in an older shape is `False` here rather than upgraded: the
+    receipt's own ruling is that such a record is *read, never rewritten*. So is
+    the empty default, which explains nothing and has nothing to complete. That
+    is a fact about the posting rather than an error to route around — and it is
+    what makes *a completed field can always be explained by the act that
+    completed it* true rather than nearly true, because a record this answers
+    `False` for is one no completion may touch at all.
+    """
+    return (isinstance(record, dict)
+            and record.get("receipt_schema_version") == RECEIPT_SCHEMA_VERSION)
+
+
 def completed_receipt(record, *, sections, provenance=None):
     """A STORED RECEIPT WITH ITS UNRESOLVED SECTIONS COMPLETED (#363).
 
@@ -458,7 +478,7 @@ def completed_receipt(record, *, sections, provenance=None):
     """
     if not isinstance(record, dict):
         raise ReceiptShapeError(f"a receipt is a record, not {type(record)!r}")
-    if record.get("receipt_schema_version") != RECEIPT_SCHEMA_VERSION:
+    if not written_in_the_current_shape(record):
         raise ReceiptShapeError(
             f"a completion writes the shape this code writes "
             f"({RECEIPT_SCHEMA_VERSION}); this record declares "
@@ -832,11 +852,19 @@ def recorded_quantities(receipt):
         return {}
     quantities = {}
     for name in SECTIONS:
+        # `.get` WITHOUT A FALLBACK COERCION, WHICH IS THE DIFFERENCE THAT
+        # MATTERS. A section that priced no quantity legitimately has no
+        # `components` key, and that is the default here; a section whose
+        # `components` is a record, a zero or a `False` is a corrupt record, and
+        # `x or []` would turn every one of those into "no components" on the
+        # way past — the same coercion the validator beside this refuses to
+        # make, for the same reason.
         for component in receipt[name]["detail"].get("components", []):
             quantities.setdefault(component["measurement_key"],
                                   component["units"])
-    quantities.update(
-        receipt["costing"]["detail"].get("uncosted_quantities", {}) or {})
+    uncosted = receipt["costing"]["detail"]
+    if "uncosted_quantities" in uncosted:
+        quantities.update(uncosted["uncosted_quantities"])
     return quantities
 
 

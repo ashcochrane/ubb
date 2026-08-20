@@ -955,11 +955,19 @@ class ResolutionRun(BaseModel):
     postings_examined = models.PositiveIntegerField(default=0)
     costs_settled = models.PositiveIntegerField(default=0)
     prices_resolved = models.PositiveIntegerField(default=0)
-    #: Of those examined, how many are still unresolved because nothing the
-    #: tenant has since configured resolves them. The honest half of the
-    #: outcome: a run that completed nothing is a run that ran, not a failure,
-    #: and the number that says so is what stops a green answer reading as a
-    #: repair.
+    #: Of those examined, how many the run completed nothing on. TWO REASONS
+    #: PRODUCE THAT AND THIS COLUMN DELIBERATELY DOES NOT SEPARATE THEM: nothing
+    #: the tenant has since configured resolves the posting, or the posting's
+    #: own record cannot support a completion (an older shape, or an unresolved
+    #: cost whose quantities it never kept). What they have in common is the
+    #: whole of what this number claims — the run examined it and left it as it
+    #: was. Separating them would put a diagnosis on the act's record, where a
+    #: reader would take it for a count of what is recoverable; what is
+    #: recoverable is a projection over the postings themselves.
+    #:
+    #: It is the honest half of the outcome either way: a run that completed
+    #: nothing is a run that ran, not a failure, and the number that says so is
+    #: what stops a green answer reading as a repair.
     postings_left_unresolved = models.PositiveIntegerField(default=0)
     #: WHETHER THE SELECTOR MATCHED MORE THAN ONE RUN MAY TAKE. A run is bounded
     #: (`resolution_run.MAXIMUM_POSTINGS_PER_RUN`) so that one request cannot

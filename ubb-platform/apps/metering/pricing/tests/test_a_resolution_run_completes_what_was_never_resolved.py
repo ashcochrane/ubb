@@ -53,6 +53,7 @@ first for its callers, and the record is addressed through
 """
 import ast
 import inspect
+import pathlib
 import uuid
 from datetime import timedelta
 from unittest.mock import patch
@@ -61,16 +62,19 @@ from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils import timezone
 
+from api.v1 import schemas
 from apps.metering.pricing.models import ResolutionRun
 from apps.metering.pricing.receipts import (
-    RESOLUTION_RUN_KEY, SECTIONS, ReceiptShapeError, Resolution,
-    completed_receipt)
+    LEGACY_SCHEMA_VERSION, RESOLUTION_RUN_KEY, SECTIONS, ReceiptShapeError,
+    Resolution, completed_receipt, written_in_the_current_shape)
 from apps.metering.pricing.services import resolution_run
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
 from apps.metering.pricing.services.resolution_run import (
-    PAIRS, RunSelector, candidates, execute, never_resolved)
+    PAIRS, RunSelector, candidates, execute, never_resolved_condition)
 from apps.metering.pricing.tests._helpers import (
+    ONE_CALL, RECOVERABLE_QUANTITY as QUANTITY, WHAT_IT_COST,
+    a_tenant_with_unresolved_postings, an_unresolved_posting,
     cost_rate_in_default_book, declares_a_markup, rate_in_default_book,
     the_cost_rate_is_repriced)
 from apps.metering.usage.models import Posting
@@ -95,9 +99,6 @@ from core.vocabulary import (
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
-#: The quantity every ordinary posting here measures, priced by a Cost Rate the
-#: tenant got right.
-QUANTITY = "prompt_tokens"
 #: A second quantity, and the one the tenant declared with a typo — so a Cost
 #: Rate written against the declaration prices a name no event ever measures,
 #: and every posting measuring the real one goes uncosted. Correcting the
@@ -105,10 +106,6 @@ QUANTITY = "prompt_tokens"
 #: repoints has been in force since before the posting.
 SECOND_QUANTITY = "completion_tokens"
 THE_TYPO = "completion_tokns"
-
-#: What one call measures, and the denominator every rule here divides by — so a
-#: rule's per-unit figure IS the amount, and an assertion says one number.
-ONE_CALL = 1_000_000
 
 CALCULATED_CALL = "chat"
 #: The Event Type whose supplier reports its own figure. Recorded with none, it
@@ -119,7 +116,6 @@ REPORTED_CALL = "reported.call"
 #: are not without either state being a fixture accident.
 PRICED_CALL = "priced.call"
 
-WHAT_IT_COST = 4_000_000
 WHAT_THE_RULE_CHARGES = 9_000_000
 
 
@@ -129,31 +125,12 @@ class _ATenantWithUnresolvedPostingsMixin:
     recorded in, and the one a run exists for."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(
-            name="Recovery", products=["metering", "billing"])
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="acme")
-        declares_a_quantity(self.tenant, QUANTITY)
-        cost_rate_in_default_book(
-            self.tenant, measurement_key=QUANTITY,
-            rate_per_unit_micros=WHAT_IT_COST, unit_quantity=ONE_CALL)
+        self.tenant, self.customer = a_tenant_with_unresolved_postings()
 
     # --- seeds -------------------------------------------------------------
 
-    def a_posting(self, key, *, event_type=CALCULATED_CALL,
-                  measures=QUANTITY, **fields):
-        """One recorded posting, through the real recording path.
-
-        Recorded rather than constructed, because what a run reads is the
-        receipt the engine wrote — the quantities by value, the section
-        statuses, the provenance — and a hand-built row would be a fixture
-        agreeing with itself.
-        """
-        result = UsageService.record_usage(
-            self.tenant, self.customer, f"corr-{key}", key,
-            event_type=event_type, measurements={measures: ONE_CALL},
-            **fields)
-        return Posting.objects.get(id=result["event_id"])
+    def a_posting(self, key, **fields):
+        return an_unresolved_posting(self.tenant, self.customer, key, **fields)
 
     def a_rate_priced_against_a_typo(self):
         """The Cost Rate the tenant meant to write, against the name they
@@ -218,7 +195,7 @@ class MembershipIsTheStatusAndNotAFilterTest(
         amount UBB may not have joins a run's reach on the day it is declared —
         and so this cannot pass by agreeing with a copy of itself.
         """
-        predicate = never_resolved()
+        predicate = never_resolved_condition()
 
         self.assertEqual(
             sorted(predicate.children),
@@ -510,13 +487,204 @@ class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
         self.the_tenant_says_to_calculate_it_after_all()
         declares_a_markup(self.tenant, percentage_micros=0)
 
-        with patch.object(resolution_run, "_the_record_cannot_be_re_resolved",
+        with patch.object(resolution_run, "_the_record_cannot_account_for_a_completion",
                           lambda posting, stored: False):
             run = self.a_run()
 
         self.assertEqual((run.costs_settled, run.prices_resolved), (1, 1))
         self.assertEqual(self.state_of(self.posting),
                          (COSTING_STATUS_KNOWN, 0, PRICING_STATUS_KNOWN, 0))
+
+
+class ARecordThatCannotNameTheRunIsLeftAloneTest(
+        _ATenantWithUnresolvedPostingsMixin, TestCase):
+    """⚠ THE OTHER HALF OF THE SAME GUARD, AND THE ONE REVIEW FOUND.
+
+    A receipt in an older shape — or the empty default — is one a completion may
+    not touch: *read, never rewritten*. Before this branch existed the doors
+    still ran, so the money column moved, the outcome counted it, and **nothing
+    anywhere named the run that did it**. "A number a run changed can be
+    explained by the act that changed it" was true of half its subject, and the
+    half it was false for is the oldest postings — exactly where a recovery is
+    most likely to be questioned.
+    """
+
+    def setUp(self):
+        super().setUp()
+        #: A posting with no receipt at all, which is what the column's own
+        #: default is. Built at the table because the recording path always
+        #: writes one — the point is a row whose record cannot carry the act.
+        self.no_record = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, idempotency_key="none",
+            costing_status=COSTING_STATUS_KNOWN,
+            provider_cost_micros=WHAT_IT_COST,
+            pricing_status=PRICING_STATUS_UNKNOWN, billed_cost_micros=None)
+        #: A posting beside it that IS recoverable, recorded before the rung
+        #: exists — so a run in this fixture has something to complete and
+        #: "nothing happened" cannot pass for "the guard held".
+        self.recoverable = self.a_posting("recoverable")
+        declares_a_markup(self.tenant, percentage_micros=0)
+
+    def test_it_is_reached_and_then_left_exactly_as_it_was(self):
+        reachable = set(candidates(self.tenant, RunSelector())
+                        .values_list("id", flat=True))
+        run = self.a_run()
+
+        self.assertIn(self.no_record.id, reachable)
+        self.assertEqual(
+            (run.postings_examined, run.prices_resolved,
+             run.postings_left_unresolved), (2, 1, 1))
+        self.assertEqual(self.state_of(self.no_record)[2:],
+                         (PRICING_STATUS_UNKNOWN, None))
+        self.assertEqual(self.state_of(self.recoverable)[2:],
+                         (PRICING_STATUS_KNOWN, WHAT_IT_COST))
+
+    def test_every_completed_posting_carries_the_run_in_its_record(self):
+        """The property itself, over the run's own outcome rather than over one
+        fixture: whatever a run says it completed, the receipt of each posting it
+        reached names it. A posting completed with nothing naming the act would
+        make the two numbers disagree."""
+        run = self.a_run()
+        named = [posting for posting in Posting.objects.filter(
+                     tenant=self.tenant)
+                 if getattr(posting, Posting.RECEIPT_COLUMN)
+                 .get("provenance", {}).get(RESOLUTION_RUN_KEY) == str(run.id)]
+
+        self.assertEqual(run.prices_resolved, 1)
+        self.assertEqual(len(named), run.costs_settled + run.prices_resolved)
+
+    def test_removing_the_guard_fails_loudly_rather_than_completing(self):
+        """The mutation, run rather than argued.
+
+        Two mechanisms answer this record and they answer differently. The guard
+        turns *this cannot be recovered* into an honest outcome; the receipt
+        boundary underneath it turns the same record into a refusal. With the
+        guard gone the run raises rather than pricing — which is the safe half
+        of the pair, and exactly why the shape question is asked in ONE place
+        now: it used to be asked here as well, wrongly, by returning `None` and
+        letting both doors write their columns with no receipt at all.
+        """
+        with patch.object(resolution_run,
+                          "_the_record_cannot_account_for_a_completion",
+                          lambda posting, stored: False):
+            with self.assertRaisesRegex(ReceiptShapeError,
+                                        "read, never rewritten"):
+                self.a_run()
+
+        self.assertEqual(self.state_of(self.no_record)[2:],
+                         (PRICING_STATUS_UNKNOWN, None))
+
+    def test_the_boundary_refuses_such_a_record_on_its_own(self):
+        """The same answer one layer down, so the guard is not the only thing
+        standing between an unwritable record and a completion."""
+        with self.assertRaisesRegex(ReceiptShapeError, "read, never rewritten"):
+            completed_receipt(
+                {}, sections={"pricing": Resolution(
+                    method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+                    status=PRICING_STATUS_KNOWN, amount_micros=1, detail={})})
+
+    def test_one_predicate_decides_it_for_the_guard_and_the_boundary(self):
+        """Which records those are is asked in one place. Two copies of the
+        question is how a caller's idea of *recoverable* and the boundary's idea
+        of *completable* come apart, and the gap between them is where a column
+        moves with no record of why."""
+        self.assertFalse(written_in_the_current_shape({}))
+        self.assertFalse(written_in_the_current_shape(
+            {"receipt_schema_version": LEGACY_SCHEMA_VERSION}))
+        self.assertTrue(written_in_the_current_shape(
+            self.receipt_of(self.a_posting("k1"))))
+
+
+class ARunRecoversACostForATenantThatBillsNobodyTest(TestCase):
+    """⚠ THE COST HALF IS METERING'S, AND THE ROUTE'S GATE HAD TO SAY SO.
+
+    A supplier cost UBB never learned is owed to a metering-only tenant who
+    charges nobody through UBB — they still want their margin reporting to stop
+    understating what their traffic cost. Gating this route on the `billing`
+    product, as the pricing routes beside it do, would have left exactly that
+    tenant with no way to work through the queue this mechanism exists to be.
+    """
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Meters only", products=["metering"])
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="acme")
+
+    def test_such_a_tenants_postings_are_reachable_by_a_run(self):
+        declares_a_quantity(self.tenant, QUANTITY)
+        posting = an_unresolved_posting(self.tenant, self.customer, "k1")
+
+        reachable = set(candidates(self.tenant, RunSelector())
+                        .values_list("id", flat=True))
+
+        self.assertEqual(posting.costing_status, COSTING_STATUS_UNRESOLVED)
+        self.assertIn(posting.id, reachable)
+
+
+class ACustomerDeletionTakesTheRunsThatNamedThemTest(
+        _ATenantWithUnresolvedPostingsMixin, TestCase):
+    """The one door the record's blanket UPDATE refusal does not cover, stated
+    and asserted rather than left as a property of a column declaration.
+
+    A run scoped to one customer explains that customer's postings, and those
+    CASCADE with them — so the record going too is the consistent answer rather
+    than a gap. `PROTECT` would make deleting a customer fail because a
+    historical run once named them; `SET_NULL` would leave the record claiming
+    the run was pointed at every customer, which is a different act.
+
+    ⚠ **AND THE ORDINARY DELETION DOES NOT REACH IT AT ALL**, which is worth
+    establishing rather than assuming: a `Customer` is `SoftDeleteMixin`, so a
+    tenant deleting one marks the row and takes nothing with it. The cascade is
+    reached only by a hard delete — the sandbox wipe — where the postings go in
+    the same statement.
+    """
+
+    def test_the_tenant_facing_deletion_is_soft_and_takes_nothing(self):
+        scoped = self.a_run(selected_customer=self.customer)
+        posting = self.a_posting("k1")
+
+        self.customer.delete()
+
+        self.assertTrue(ResolutionRun.objects.filter(pk=scoped.pk).exists())
+        self.assertTrue(Posting.objects.filter(pk=posting.pk).exists())
+
+    def test_a_hard_delete_is_refused_outright_where_a_posting_was_measured(self):
+        """⚠ AND THE CASCADE IS UNREACHABLE FOR A RECORDED POSTING AT ALL, which
+        is a PRE-EXISTING property this ticket only inherits.
+
+        A measurement record may be pruned only at or after its retention
+        horizon (#354), and no job in this repository ever sets one — so a hard
+        customer delete, which reaches that record through the postings, is
+        refused whatever the parent's status. It is asserted here rather than
+        assumed because it decides what the column choice above is a statement
+        ABOUT: `PROTECT` would have added a second refusal to a statement the
+        database already refuses, and `SET_NULL` would have falsified the record
+        for a deletion that cannot happen.
+        """
+        self.a_posting("k1")
+
+        with self.assertRaisesRegex(IntegrityError, "may be pruned only"), \
+                transaction.atomic():
+            Customer.all_objects.filter(pk=self.customer.pk).delete()
+
+    def test_where_it_is_reachable_the_run_goes_with_the_postings(self):
+        """The consistency the choice rests on, on the one shape that reaches
+        it: a posting with no measurement record — which is what a synthetic
+        charge is, and what every sandbox fixture builds. The record and what it
+        explains leave in the same statement, and a run that named no customer
+        is untouched by either."""
+        posting = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, idempotency_key="k1",
+            costing_status=COSTING_STATUS_KNOWN, provider_cost_micros=0)
+        scoped = self.a_run(selected_customer=self.customer)
+        unscoped = self.a_run()
+
+        Customer.all_objects.filter(pk=self.customer.pk).delete()
+
+        self.assertFalse(ResolutionRun.objects.filter(pk=scoped.pk).exists())
+        self.assertFalse(Posting.objects.filter(pk=posting.pk).exists())
+        self.assertTrue(ResolutionRun.objects.filter(pk=unscoped.pk).exists())
 
 
 class ACompletionHappensOnceAndTheReceiptSealsTest(
@@ -685,12 +853,47 @@ class NoPathBackdatesARuleTest(_ATenantWithUnresolvedPostingsMixin, TestCase):
 
         self.assertEqual(refused.exception.code, "effective_at_in_past")
 
+    def test_every_handler_that_takes_a_datable_body_calls_the_refusal(self):
+        """⚠ THE HALF A UNIT TEST OF THE REFUSAL CANNOT MAKE.
+
+        `validate_scheduled_instant` refusing a past instant proves nothing
+        about a route that never calls it. The claim is about the SURFACE, so it
+        is walked: every handler in the composition layer whose body carries an
+        `effective_at`, plus every one taking it as a query parameter, must name
+        the refusal in its own source. A new route that dates a rule and forgets
+        the call turns this red on the day it is written, rather than on the day
+        somebody backdates a price.
+        """
+        composition = pathlib.Path(
+            resolution_run.__file__).resolve().parents[4] / "api" / "v1"
+        datable = {name for name, body in vars(schemas).items()
+                   if isinstance(getattr(body, "model_fields", None), dict)
+                   and "effective_at" in body.model_fields}
+        self.assertTrue(datable, "no body dates anything; the walk is vacuous")
+
+        offenders = []
+        for module in sorted(composition.glob("*.py")):
+            tree = ast.parse(module.read_text(encoding="utf-8"))
+            calls = {node.func.id for node in ast.walk(tree)
+                     if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Name)}
+            for handler in [n for n in ast.walk(tree)
+                            if isinstance(n, ast.FunctionDef)]:
+                takes = {getattr(arg.annotation, "id", None)
+                         for arg in handler.args.args} & datable
+                names = {node.func.id
+                         for node in ast.walk(handler)
+                         if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Name)}
+                if takes and "validate_scheduled_instant" not in names | calls:
+                    offenders.append(f"{module.name}::{handler.name}")
+
+        self.assertEqual(offenders, [])
+
     def test_no_request_body_states_a_rules_own_effective_columns(self):
         """The other half, and the one an enumeration is for: a body that could
         state the rule's effective moment DIRECTLY would go around the check
         above entirely."""
-        from api.v1 import schemas
-
         offenders = []
         for name in dir(schemas):
             body = getattr(schemas, name)

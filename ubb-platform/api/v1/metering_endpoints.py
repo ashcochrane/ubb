@@ -1844,27 +1844,38 @@ def execute_resolution_run(request, payload: ResolutionRunIn):
     neither is one whose charge was waived — a waived charge is a decision
     somebody made, not information UBB is missing.
 
-    **Nothing is backdated.** A rule takes effect from the moment it is
-    published forward, so writing one today does not reprice work recorded in
-    July; what a run recovers is what today's markup rung and today's Event Type
-    declarations resolve at that past instant. There is no field here, and no
-    field anywhere, that dates a rule behind the present.
+    **Nothing is repriced.** A rule takes effect from the moment it is published
+    forward, so writing one today does not change work recorded in July; what a
+    run completes is what today's markup rung and today's Event Type
+    declarations resolve at that past instant.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response
     says what it completed.
 
     The selector takes a date range, a customer and an Event Type in any
-    combination; any other field is refused. `more_to_do` says the selector
-    matched more postings than one run takes — send the same body again, and the
-    next run continues where this one stopped.
+    combination — the range is half-open, `[from, to)` — and any other field is
+    refused (`validation_error`). A customer this tenant does not have is a 404.
+    `more_to_do` says the selector matched more postings than one run takes;
+    send the same body again and the next run continues where this one stopped.
 
     A run cannot be undone: completing an unresolved field happens exactly once,
     and the receipt is sealed after it. It requires the `admin` role.
     """
     from apps.metering.pricing.services import resolution_run
 
-    _gate_card_type(request, "price")
+    # ⚠ THE METERING GATE AND NOT THE BILLING ONE, WHICH IS A DECISION RATHER
+    # THAN THE HABIT OF THE ROUTES AROUND THIS. The pricing routes beside it
+    # gate on `billing` because writing a price rule is a billing act. A run is
+    # not: it completes BOTH pairs, and one of them — a supplier cost UBB never
+    # learned — is metering's own, owed to a metering-only tenant who never
+    # charges anybody through UBB. Gating on billing would leave exactly that
+    # tenant with no way to work through an unresolved-cost backlog at all,
+    # which is the queue this mechanism exists to be. A tenant that does not
+    # bill resolves no PRICE either way: their postings price to
+    # `not_applicable`, which is not a completable status, so the wider gate
+    # admits nothing extra rather than admitting something wrong.
+    _product_check(request)
     customer = None
     if payload.selected_customer_id is not None:
         customer = get_object_or_404(Customer, id=payload.selected_customer_id,

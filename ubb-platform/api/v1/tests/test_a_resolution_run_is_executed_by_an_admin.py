@@ -25,7 +25,9 @@ from django.test import Client, TestCase
 
 from apps.metering.pricing.models import ResolutionRun
 from apps.metering.pricing.tests._helpers import (
-    cost_rate_in_default_book, declares_a_markup)
+    ONE_CALL, RECOVERABLE_QUANTITY as QUANTITY, WHAT_IT_COST,
+    a_tenant_with_unresolved_postings, an_unresolved_posting,
+    declares_a_markup)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.audit.actions import is_registered_action
@@ -37,10 +39,6 @@ from apps.platform.membership.roles import ADMIN, READ, WRITE
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN
 
-QUANTITY = "prompt_tokens"
-ONE_CALL = 1_000_000
-WHAT_IT_COST = 4_000_000
-
 #: The route, as the contract publishes it.
 RUNS = "/api/v1/metering/pricing/resolution-runs"
 EXECUTED = "resolution_run.executed"
@@ -51,24 +49,17 @@ class _ATenantWithSomethingToRecoverMixin:
 
     def setUp(self):
         self.http = Client()
-        self.tenant = Tenant.objects.create(
-            name="Recovery", products=["metering", "billing"])
+        # The seed is the service module's own, from `pricing/tests/_helpers`:
+        # what a run repairs is the same state at both seams, and a second copy
+        # of it here is a second thing to edit the day the recording path's
+        # answer moves (`docs/conventions/testing.md`).
+        self.tenant, self.customer = a_tenant_with_unresolved_postings()
         self.key, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="acme")
-        declares_a_quantity(self.tenant, QUANTITY)
-        cost_rate_in_default_book(
-            self.tenant, measurement_key=QUANTITY,
-            rate_per_unit_micros=WHAT_IT_COST, unit_quantity=ONE_CALL)
 
     def a_posting(self, key, **fields):
         """A posting with a cost UBB knows and a price no rule ever gave it —
         which is the state a run exists to repair."""
-        result = UsageService.record_usage(
-            self.tenant, self.customer, f"corr-{key}", key,
-            event_type=fields.pop("event_type", "chat"),
-            measurements={QUANTITY: ONE_CALL}, **fields)
-        return Posting.objects.get(id=result["event_id"])
+        return an_unresolved_posting(self.tenant, self.customer, key, **fields)
 
     def _as(self, role):
         """The same key, at a role. The floor reads the principal's own role,
@@ -314,6 +305,43 @@ class RunningItTwiceIsNotAnErrorTest(
         self.assertEqual(AuditRecord.objects.filter(action=EXECUTED).count(), 2)
 
 
+class ATenantThatBillsNobodyMayStillRunOneTest(TestCase):
+    """⚠ THE PRODUCT GATE IS METERING'S AND NOT BILLING'S, WHICH IS A DECISION.
+
+    The pricing routes beside this one gate on `billing`, because writing a
+    price rule is a billing act. A run is not: it completes BOTH pairs, and one
+    of them — a supplier cost UBB never learned — is metering's own, owed to a
+    tenant who charges nobody through UBB and still wants their cost reporting
+    to stop understating what their traffic cost. The wider gate admits nothing
+    extra on the price side: such a tenant's postings price to `not_applicable`,
+    which is not a completable status.
+    """
+
+    def setUp(self):
+        self.http = Client()
+        self.tenant = Tenant.objects.create(
+            name="Meters only", products=["metering"])
+        self.key, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
+
+    def test_the_route_admits_a_tenant_with_no_billing_product(self):
+        answered = self.http.post(
+            RUNS, data=json.dumps({}), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+        self.assertEqual(answered.status_code, 200)
+        self.assertEqual(answered.json()["postings_examined"], 0)
+
+    def test_a_tenant_without_metering_is_still_refused(self):
+        """The gate that remains, so the widening is not a removal."""
+        Tenant.objects.filter(pk=self.tenant.pk).update(products=[])
+
+        answered = self.http.post(
+            RUNS, data=json.dumps({}), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+        self.assertEqual(answered.status_code, 403)
+
+
 class TheResponseSaysWhatTheRunDidTest(
         _ATenantWithSomethingToRecoverMixin, TestCase):
 
@@ -343,3 +371,16 @@ class TheResponseSaysWhatTheRunDidTest(
             "postings_left_unresolved": 0,
             "more_to_do": False,
         })
+
+    def test_the_record_and_the_published_selector_name_the_same_axes(self):
+        """The selector is assembled from the RECORD's own reader and published
+        through a schema, and the two are different files. A key added to one
+        and not the other would leave the wire and the record describing the
+        same run differently — so the two sets are compared rather than the
+        agreement being a property of whoever edits both."""
+        from api.v1.schemas import ResolutionRunSelectorOut
+
+        run = ResolutionRun.objects.create(tenant=self.tenant)
+
+        self.assertEqual(set(run.selector),
+                         set(ResolutionRunSelectorOut.model_fields))
