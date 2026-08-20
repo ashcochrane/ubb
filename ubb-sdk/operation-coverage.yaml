@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 161
-  unwrapped: 83
+  operations: 162
+  unwrapped: 84
   wrapped: 78
-  generated_only: 83
+  generated_only: 84
   not_yet_wrapped: 0
 
 operations:
@@ -360,6 +360,10 @@ operations:
   - operation_id: api_v1_metering_endpoints_discard_book_publish
     method: DELETE
     path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_execute_resolution_run
+    method: POST
+    path: /api/v1/metering/pricing/resolution-runs
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_book_publish
     method: GET

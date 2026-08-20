@@ -130,7 +130,15 @@ _WRITE_ROUTES = {
 # scope, so they take the same floor. The GET answers what a customer would be
 # charged without the deal — a read a client makes to offer a starting point,
 # and one that decides nothing. 148 + 3 = 151.
-_EXPECTED_FLOORED = 151
+#
+# 151 -> 152 with #363's Resolution Run: one Admin write, and the floor is
+# argued rather than guessed (ruling 12a). A run writes money-adjacent numbers
+# into periods whose reporting is already closed; under the receipt's sealing
+# rule its write is a one-time completion, so it is IRREVERSIBLE and there is no
+# second act to undo one with; and what it completes is a customer-facing money
+# figure. Irreversible plus money-adjacent is the highest floor this table has.
+# 151 + 1 = 152.
+_EXPECTED_FLOORED = 152
 _EXPECTED_EXEMPT = 10
 
 

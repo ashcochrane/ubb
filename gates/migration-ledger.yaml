@@ -1977,7 +1977,12 @@ entries:
     # them: that name is the end-state spelling of a NUMBER on the markup
     # record this slice deletes, and an override is a whole rule. The
     # numerator is untouched a fourth time.
-    found: 0 of 73 values
+    #
+    # 73 -> 74: #363's single name for executing a Resolution Run. One rather
+    # than a pair, because a run has no withdrawal — its write is a one-time
+    # completion and the receipt is sealed after it. The numerator is
+    # untouched a fifth time.
+    found: 0 of 74 values
     owner_slice: slice_8
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -2607,8 +2612,9 @@ entries:
     # catalogue's write surface its action names; 66 -> 68 with #357's pair for
     # the tenant's default markup rung; 68 -> 71 with #358's three for the
     # Pricing Book's publish record; 71 -> 73 with #361's pair for a
-    # customer's own pricing rule.
-    found: 0 of 73 values
+    # customer's own pricing rule; 73 -> 74 with #363's single name for
+    # executing a Resolution Run.
+    found: 0 of 74 values
     owner_slice: slice_8
     reason: >-
       The contract may not advertise these values while the backend consumer

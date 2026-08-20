@@ -856,3 +856,179 @@ class PricingBookPublish(BaseModel):
     @property
     def is_published(self):
         return self.declaration_status == DECLARATION_STATUS_PUBLISHED
+
+
+class ResolutionRun(BaseModel):
+    """THE RECORD OF A RECOVERY — one mechanism, one actor, one selector (#363).
+
+    Four documents each described a way to put right what UBB could not resolve
+    at the time — an unresolved-cost queue, a customer adjustment, a remediation
+    path, a correction's decision record — and none of them owned building one.
+    They are one mechanism here, because all three of the recovery paths that do
+    not move money are the same act: **completing a `NULL` beside a status that
+    says the field was never resolved.** This row is that act, written down.
+
+    **A RUN MOVES NO MONEY.** It completes what was never resolved and records
+    that it did. What recovering is worth is a projection over these records and
+    the receipts behind them; the tenant then acts through the money path UBB
+    already has. Stripe owns the billing engine — UBB drives invoicing, credit
+    notes and refunds as a control plane and never reimplements them — so a
+    UBB-owned adjustment surface would be exactly that reimplementation.
+
+    ⚠ **SCOPED BY CONSTRUCTION, NEVER BY PREDICATE.** A run reaches only
+    postings whose status says they were never resolved, and membership **is**
+    that status: the candidate set is built from `core.amount_status_pairs`,
+    where each pair names the ONE status meaning *not learned*. There is no flag
+    to set correctly and no predicate to get right, and therefore no way for a
+    run to touch a number that already exists. `waived` is outside a run for the
+    same reason rather than by an exclusion somebody remembered to write — a
+    waived charge is a decision somebody made, and a run recovers information
+    UBB does not have, not decisions it disagrees with.
+
+    **THE SELECTOR IS THREE AXES AND NEVER AN ARBITRARY PREDICATE.** A date
+    range, a customer and an Event Type — the same axes the rule ladder itself
+    selects on. It is a filter rather than a button because a tenant onboarding
+    in August who backfills July has postings unresolved for two different
+    causes, and *everything it matches* would apply one repair to postings
+    needing another. A predicate is the check the construction argument above
+    just refused, so the surface accepts none.
+
+    **THE ACTOR IS SNAPSHOTTED, IN `AuditRecord`'s OWN THREE COLUMNS**
+    (ADR-004 §4): an immutable copy taken at the moment of the act, so a later
+    rename or deletion of the principal never rewrites what this record says.
+    The ledger entry `resolution_run.executed` carries the same actor and the
+    same selector; this row carries the OUTCOME, which the ledger has no column
+    for and which the next ticket projects from.
+
+    **THE INSTANT OF THE ACT IS `created_at` AND THERE IS NO SECOND COLUMN FOR
+    IT.** A run record exists because a run happened, so the row's own creation
+    instant *is* when it happened; an execution instant beside it would be two
+    columns holding one fact, which is how the two come to disagree.
+
+    ⚠ **NO PATH UPDATES ONE, AND THE DATABASE IS WHAT MAKES THAT TRUE.** Every
+    column declares `RECORD_RULE` — not a class of its own, because the honest
+    answer per column is *"nothing this column decides; read the record's
+    rule"* — and the record's rule is that after the insert nothing may change,
+    ever. `pricing/migrations/0025` holds it across every door. That is not
+    tidiness: a run is irreversible under the receipt's sealing rule and this
+    row is the only surviving explanation of it, so a record that could be
+    edited afterwards would make the traceability a claim rather than a fact.
+    `updated_at` can therefore never differ from `created_at`, which is what the
+    rule means rather than an oversight in it.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="resolution_runs")
+    actor_kind = models.CharField(max_length=32, blank=True, default="")
+    actor_id = models.CharField(max_length=255, blank=True, default="")
+    actor_display = models.CharField(max_length=255, blank=True, default="")
+
+    # --- The selector, on the three axes the rule ladder uses ---------------
+    #
+    # Each is nullable/blank and means "unpinned on this axis", which is the
+    # same reading a rule's own selectors take: a rule leaving a selector empty
+    # matches anything there. Recorded as the caller stated them rather than as
+    # a compiled query, because what a governance reader asks afterwards is
+    # what this run was POINTED AT, and a query object cannot answer that.
+    selected_from = models.DateTimeField(null=True, blank=True)
+    selected_to = models.DateTimeField(null=True, blank=True)
+    #: ⚠ `CASCADE`, and the two neighbouring rules would both be wrong here. A
+    #: `PROTECT` would make deleting a customer fail because a historical run
+    #: once named them — a refusal from a record nobody asked about, which is
+    #: how a tenant wipe stops half way. A `SET_NULL` is worse: it would leave
+    #: the record saying this run was pointed at EVERY customer, which is a
+    #: different act from the one that happened. A run scoped to one customer
+    #: explains that customer's postings, and those go with them.
+    selected_customer = models.ForeignKey(
+        "customers.Customer", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="resolution_runs")
+    selected_event_type = models.CharField(max_length=100, blank=True,
+                                           default="")
+
+    # --- The outcome -------------------------------------------------------
+    #
+    # ⚠ COUNTS AND NOT AMOUNTS. What a recovery is WORTH is a projection over
+    # the receipts this run completed, and each of those names this run's id in
+    # its provenance — so the money is read from the records that hold it, in
+    # their own currencies, rather than summed into a column here that would add
+    # two denominations together the day a run spans them.
+    postings_examined = models.PositiveIntegerField(default=0)
+    costs_settled = models.PositiveIntegerField(default=0)
+    prices_resolved = models.PositiveIntegerField(default=0)
+    #: Of those examined, how many the run completed nothing on. TWO REASONS
+    #: PRODUCE THAT AND THIS COLUMN DELIBERATELY DOES NOT SEPARATE THEM: nothing
+    #: the tenant has since configured resolves the posting, or the posting's
+    #: own record cannot support a completion (an older shape, or an unresolved
+    #: cost whose quantities it never kept). What they have in common is the
+    #: whole of what this number claims — the run examined it and left it as it
+    #: was. Separating them would put a diagnosis on the act's record, where a
+    #: reader would take it for a count of what is recoverable; what is
+    #: recoverable is a projection over the postings themselves.
+    #:
+    #: It is the honest half of the outcome either way: a run that completed
+    #: nothing is a run that ran, not a failure, and the number that says so is
+    #: what stops a green answer reading as a repair.
+    postings_left_unresolved = models.PositiveIntegerField(default=0)
+    #: WHETHER THE SELECTOR MATCHED MORE THAN ONE RUN MAY TAKE. A run is bounded
+    #: (`resolution_run.MAXIMUM_POSTINGS_PER_RUN`) so that one request cannot
+    #: rewrite a whole history synchronously, and the bound is safe precisely
+    #: BECAUSE membership is the status: everything this run completed has left
+    #: the candidate set, so running the same selector again continues where
+    #: this one stopped, with no cursor to carry. Reported rather than silent —
+    #: a truncation nobody is told about reads as "that was all of them".
+    more_to_do = models.BooleanField(default=False)
+
+    #: WHAT MAY HAPPEN TO THIS RECORD (ADR-0007 §2). Nothing, on every column,
+    #: which is why none of them takes a class of its own: `RECORD_RULE` is the
+    #: absence of a class said out loud, and the record's rule is stated in the
+    #: docstring above and held by `pricing/migrations/0025`. A column-level
+    #: `FROZEN` would be that one claim written sixteen times, and G19's walk
+    #: would then require each column to be NAMED by the rule — which a blanket
+    #: refusal deliberately does not do, because it refuses every update
+    #: whatever it touched.
+    transition_classes = {
+        "id": RECORD_RULE,
+        "created_at": RECORD_RULE,
+        "updated_at": RECORD_RULE,
+        "tenant": RECORD_RULE,
+        "actor_kind": RECORD_RULE,
+        "actor_id": RECORD_RULE,
+        "actor_display": RECORD_RULE,
+        "selected_from": RECORD_RULE,
+        "selected_to": RECORD_RULE,
+        "selected_customer": RECORD_RULE,
+        "selected_event_type": RECORD_RULE,
+        "postings_examined": RECORD_RULE,
+        "costs_settled": RECORD_RULE,
+        "prices_resolved": RECORD_RULE,
+        "postings_left_unresolved": RECORD_RULE,
+        "more_to_do": RECORD_RULE,
+    }
+
+    class Meta:
+        db_table = "ubb_resolution_run"
+        indexes = [
+            models.Index(fields=["tenant", "created_at"],
+                         name="idx_resolution_run_tenant"),
+        ]
+
+    def __str__(self):
+        return (f"ResolutionRun({self.postings_examined} examined, "
+                f"{self.costs_settled + self.prices_resolved} completed)")
+
+    @property
+    def selector(self):
+        """The three axes as the caller stated them, for the ledger and the wire.
+
+        One reader, so the entry in the governance ledger and the body the route
+        answers cannot come to describe the same run differently.
+        """
+        return {
+            "selected_from": (self.selected_from.isoformat()
+                              if self.selected_from else None),
+            "selected_to": (self.selected_to.isoformat()
+                            if self.selected_to else None),
+            "selected_customer_id": (str(self.selected_customer_id)
+                                     if self.selected_customer_id else None),
+            "selected_event_type": self.selected_event_type or None,
+        }

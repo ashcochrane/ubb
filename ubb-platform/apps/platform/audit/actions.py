@@ -134,6 +134,26 @@ AUDIT_ACTIONS = (
     # reason theirs is — the ledger already says which record moved.
     "customer_pricing_override.declared",
     "customer_pricing_override.withdrawn",
+    # EXECUTING A RESOLUTION RUN (#363, spec §10). The one recovery mechanism:
+    # it completes fields a posting recorded as unresolved — a supplier cost
+    # UBB never learned, a customer price no rule was written for — and moves
+    # no money.
+    #
+    # Governance rather than telemetry, and by some distance the strongest
+    # case in this registry for a name: a run writes money-adjacent numbers
+    # into periods whose reporting is closed, it is authorised at the ADMIN
+    # floor, and under the receipt's sealing rule it is IRREVERSIBLE. There is
+    # no second act to undo one with, so the ledger entry is the only place
+    # the actor and the selector survive.
+    #
+    # ⚠ ONE NAME RATHER THAN THE PAIR EVERY NEIGHBOUR ABOVE TAKES, and that is
+    # this act's shape rather than a split deferred. Those pairs separate
+    # declaring from withdrawing because both acts exist and a governance
+    # reader must not read metadata to tell them apart. A run has no
+    # withdrawal: its write is a one-time completion, after which the receipt
+    # is sealed. Reserving a name for an act that cannot happen would be a
+    # registry entry nothing may ever write.
+    "resolution_run.executed",
     # Grouping Field registry (the 2026-07-27 unified grouping model plan under
     # `docs/plans/`, D1). Renamed with
     # the thing it records (#277): `audit_action` in

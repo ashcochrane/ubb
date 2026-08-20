@@ -180,3 +180,25 @@ authorisations:
       writes the deal has any use for. Wrapping the read without the writes
       would hand an integrator half a workflow. It belongs with the console
       feature that uses all three, which is a later ticket in this slice.
+
+  - id: slice-4-363-a-resolution-run-completes-what-was-never-resolved
+    issue: 363
+    operations_added: 1
+    reason: >-
+      One new operation: executing a Resolution Run. Reachable through the
+      generated core and through none of the hand-written clients. A gap by the
+      manifest's definition, and a deliberate one.
+
+      The reason is #358's and #361's, and this route is the clearest case of
+      it yet. An integrator's code records usage and reads a price back;
+      deciding to complete money-adjacent numbers across a tenant's history is
+      a governance act, performed once, by a person entitled to it — this route
+      carries the ADMIN floor for exactly that reason, and it cannot be undone.
+      An ergonomic wrapper is a statement that a client program should be doing
+      something routinely, and that is the opposite of what this route is for.
+
+      There is no sequencing argument and the difference is worth saying: the
+      run is an end-state entity and a wrapper written for it would not be
+      written twice. What defers it is the split above, and the console surface
+      that offers the filter (ruling 12b), which is a later ticket in this
+      slice.

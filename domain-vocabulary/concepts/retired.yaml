@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,633 of 2,026 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,641 of 2,035 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    52 files, 128 occurrences
+    #     units    52 files, 129 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1084,6 +1084,25 @@ measurement_key:
     # assertions read as *which rule answered*. The rate's denominator is
     # `unit_quantity` wherever it is named, which is the surviving RATE
     # ARITHMETIC sense's own spelling; `compute` is untouched.
+    #
+    # ⚠ #363 IS A RISE — 128 -> 129 OCCURRENCES — AND THE FIRST CASE OF THE
+    # THREE, SO HERE IS THE OCCURRENCE AND WHAT SENSE IT IS IN. Somebody wrote
+    # the word, and the somebody was `receipts.recorded_quantities`, a new
+    # reader that assembles the bag a recovery re-resolves from out of the
+    # record's own components: it reads `component["units"]`, which is the key
+    # `pricing_service._component` already writes the quantity under. That is
+    # the surviving RATE ARITHMETIC sense — the term the receipt records the
+    # amount's inputs in — and the file was already one of the 52, which is why
+    # the NUMERATOR OF FILES DID NOT MOVE (52 unchanged; the denominator went
+    # 1,633 -> 1,641 swept, 2,026 -> 2,035 tracked, with `historical-migrations`
+    # 226 -> 227 for one new migration).
+    #
+    # It is written there deliberately rather than in the run that needs it:
+    # the run reads quantities THROUGH this function precisely so the retired
+    # plural stays inside the module that already carries it, in the sense that
+    # module already uses it, instead of reaching a 53rd file. The rename of
+    # this key belongs to the ticket that renames the rule's arithmetic shape,
+    # which owns both spellings at once.
 
     - term: units
       retired_as: >-

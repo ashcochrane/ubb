@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from django.db import IntegrityError, connection, transaction
+from django.utils import timezone
 
 from apps.metering.pricing.models import (
     CHANGE_REPRICE, Rate, RateCard, TenantDefaultMarkup)
@@ -158,6 +159,74 @@ def cost_rate_in_default_book(tenant, **fields):
     ones, so the word stays here and callers say what they mean.
     """
     return rate_in_default_book(tenant, card_type="cost", **fields)
+
+
+#: What every posting in a recovery fixture measures, and the denominator its
+#: rules divide by — so a rule's per-unit figure IS the amount, and an assertion
+#: says one number rather than an arithmetic.
+RECOVERABLE_QUANTITY = "prompt_tokens"
+ONE_CALL = 1_000_000
+WHAT_IT_COST = 4_000_000
+
+
+def a_tenant_with_unresolved_postings(name="Recovery"):
+    """A tenant whose costs come from a Cost Rate and whose prices come from
+    nothing at all (#363).
+
+    The state most postings in this repository are recorded in, and the one a
+    Resolution Run exists for: a cost UBB can work out, and a price no rule and
+    no markup rung ever gave them. Returns `(tenant, customer)`.
+
+    It is here rather than in either test module because BOTH of #363's modules
+    need it — the service-level one and the one at the HTTP surface — and
+    `docs/conventions/testing.md` puts shared setup in a `_helpers` module for
+    the reason that applies: a second copy is a second thing to edit the day the
+    recording path's answer moves, and the day one of them is missed is the day
+    a fixture asserts a state the engine no longer produces.
+    """
+    tenant = Tenant.objects.create(name=name,
+                                   products=["metering", "billing"])
+    customer = Customer.objects.create(tenant=tenant, external_id="acme")
+    declares_a_quantity(tenant, RECOVERABLE_QUANTITY)
+    cost_rate_in_default_book(
+        tenant, measurement_key=RECOVERABLE_QUANTITY,
+        rate_per_unit_micros=WHAT_IT_COST, unit_quantity=ONE_CALL)
+    return tenant, customer
+
+
+def an_unresolved_posting(tenant, customer, key, *, event_type="chat",
+                          measures=RECOVERABLE_QUANTITY, **fields):
+    """One posting, recorded through the real recording path.
+
+    Recorded rather than constructed, because what a run reads is the receipt
+    the engine wrote — the quantities by value, the section statuses, the
+    provenance — and a hand-built row would be a fixture agreeing with itself.
+    """
+    from apps.metering.usage.services.usage_service import UsageService
+
+    result = UsageService.record_usage(
+        tenant, customer, f"corr-{key}", key, event_type=event_type,
+        measurements={measures: ONE_CALL}, **fields)
+    return Posting.objects.get(id=result["event_id"])
+
+
+def the_cost_rate_is_repriced(tenant, *, to_micros, **fields):
+    """Close the cost rule in force and open its replacement (#363).
+
+    The shape a publish writes — one boundary closing and the next opening —
+    done directly because what a caller here needs is the state afterwards
+    rather than the route that reaches it.
+
+    It lives beside `cost_rate_in_default_book` for that helper's own reason:
+    selecting the rules to close names the discriminator that separates a cost
+    rule from a price one, and that word is retired with a ledger entry which is
+    a ceiling as well as a floor. This file is already one of the counted ones,
+    so the word stays here and callers say what they mean.
+    """
+    Rate.objects.filter(tenant=tenant, card_type="cost",
+                        valid_to__isnull=True).update(valid_to=timezone.now())
+    return cost_rate_in_default_book(tenant, rate_per_unit_micros=to_micros,
+                                     **fields)
 
 
 def rate_in_the_providers_default_book(tenant, provider, **fields):
