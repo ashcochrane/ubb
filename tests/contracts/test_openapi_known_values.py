@@ -706,7 +706,15 @@ CONCEPTS_IN_THE_CONTRACT = {
     # `type: string` because the applier walks the `webhooks` section like any
     # other, and an unmarked node would have published a closed concept as an
     # open one — the shape this map exists to make countable.
-    "costing_status": Published(4, ENUM),  # record + list row + detail + payload
+    #
+    # #364 (slice 4) — A FIFTH NODE, ON THE QUEUE OF EVERYTHING UNRESOLVED. The
+    # rule is unchanged and mechanical: that row publishes a supplier cost, so
+    # it publishes the status qualifying it. What is different is how loudly it
+    # matters — every row in that list is there BECAUSE something is
+    # unresolved, so a list that published the amount without the status would
+    # be a page of blanks with nothing saying which of them are missing and
+    # which do not exist.
+    "costing_status": Published(5, ENUM),  # + the unresolved queue's row
     # #323 (slice 3) — the other half of the sentence above, and the first
     # nullable marker on a RESPONSE. Nullable markers are not new:
     # `EventTypeUpdateIn` has carried two since #262, and they are the
@@ -725,7 +733,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     #
     # Three nodes, for the same reason the status has three — a cause that does
     # not travel with the status it explains leaves the reader a shrug.
-    "unresolved_reason": Published(3, ENUM),  # record + list row + detail
+    #
+    # #364 — a FOURTH node, and the one where the cause is the point rather
+    # than the companion. The unresolved queue exists so a tenant can find out
+    # what they have misconfigured, and the recorded cause is the whole of that
+    # answer: `cost_rate_missing` says write a rate, `reported_cost_missing`
+    # says you are waiting on a supplier.
+    "unresolved_reason": Published(4, ENUM),  # + the unresolved queue's row
     # #351 (slice 4) — the price half of both entries above, and the same four
     # nodes for the same reasons. The customer price column went nullable with
     # a status beside it, so every response that publishes a price says whether
@@ -738,7 +752,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # because a node that is not marked is not counted and the count is all the
     # gate sees. Only this map — which says WHERE each marker sits — can catch
     # it, and `apply.py` walks the `webhooks` section like any other.
-    "pricing_status": Published(4, ENUM),  # record + list row + detail + payload
+    #
+    # #364 — a FIFTH node, the price half of the queue row's argument: a
+    # posting whose price UBB could not resolve is the other half of that list,
+    # and `unknown` is what says so.
+    "pricing_status": Published(5, ENUM),  # + the unresolved queue's row
     # #351 — the second nullable marker on a response, following exactly the
     # placement `unresolved_reason` above established: in the STRING MEMBER of
     # the union, never on the union node, because `enum` and `anyOf` at one node
@@ -939,8 +957,16 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # marker on exactly the stated rule rather than by extension: two products
     # count their exclusions off that field, so a subscriber switching on it
     # needs the set the document now states.
+    #
+    # ⚠ FIVE SINCE #364, AND THE FIFTH IS THE RULE WORKING RATHER THAN AN
+    # EXCEPTION TO IT. The unresolved queue's row publishes a supplier cost, so
+    # by the stated rule it publishes this status too — and on that surface the
+    # status is not decoration but the reason the row is in the list at all. A
+    # queue of unresolved amounts that did not say which of them were
+    # unresolved would be the one place the ambiguity really bites.
     placed("costing_status", {"RecordUsageResponse", "UsageEventOut",
-                              "UsageEventDetailOut", "usage.recorded"})
+                              "UsageEventDetailOut", "UnresolvedQueueRow",
+                              "usage.recorded"})
     # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
     # The cause is unreadable without the status and the status is unactionable
     # without the cause, so over RESPONSES the two sets are equal by design — a
@@ -955,8 +981,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # payload's readers are accumulators counting HOW MANY costs they could not
     # include, and not one of them asks why. A cause carried there would be a
     # field nothing reads, which is how a field goes stale and starts lying.
+    #
+    # ⚠ AND THE QUEUE ROW KEEPS THE EQUALITY OVER RESPONSES (#364). It carries
+    # the cause because the cause is what the queue is FOR: a tenant working
+    # through a list of unresolved costs is looking for what to configure, and
+    # a column of `unresolved` with no reason is a column of shrugs. A queue
+    # publishing the status and not the cause would be the finding.
     placed("unresolved_reason", {"RecordUsageResponse", "UsageEventOut",
-                                 "UsageEventDetailOut"})
+                                 "UsageEventDetailOut", "UnresolvedQueueRow"})
     # THE PRICE HALF OF BOTH SETS ABOVE, on the same rule and the same
     # asymmetry: the status rides the payload because two products accumulate
     # off it and need to tell a price UBB could not resolve from one that was
@@ -969,8 +1001,12 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # so in its own words. Adding a third marker to the same family while its
     # two siblings had no placement would have left the hole exactly where the
     # slice was warned to look.
+    # ⚠ FIVE SINCE #364, the price half of the queue row's own argument: the
+    # row publishes a customer price, and `unknown` is the other reason a
+    # posting is in that list.
     placed("pricing_status", {"RecordUsageResponse", "UsageEventOut",
-                              "UsageEventDetailOut", "usage.recorded"})
+                              "UsageEventDetailOut", "UnresolvedQueueRow",
+                              "usage.recorded"})
     placed("not_applicable_reason", {"RecordUsageResponse", "UsageEventOut",
                                      "UsageEventDetailOut"})
     # HOW a price was derived, beside the status saying WHETHER it is settled

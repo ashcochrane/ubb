@@ -3787,6 +3787,52 @@
         "title": "PaginatedTransactions",
         "type": "object"
       },
+      "PaginatedUnresolvedQueue": {
+        "description": "Everything that went unresolved, with the reason the record holds.",
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedQueueRow"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedQueueTotals"
+            },
+            "title": "Totals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "has_more",
+          "basis",
+          "totals"
+        ],
+        "title": "PaginatedUnresolvedQueue",
+        "type": "object"
+      },
       "PaginatedUsageInvoices": {
         "properties": {
           "data": {
@@ -4812,6 +4858,80 @@
           }
         },
         "title": "ProgramUpdateRequest",
+        "type": "object"
+      },
+      "ProjectedAdjustmentOut": {
+        "description": "What a recovery would be worth, per customer \u2014 and nothing that bills.\n\nA projection, never an instruction. UBB does not back-bill: it tells you\nwhat completing these postings would be worth and leaves the decision, and\nthe money movement, with you. There is no grand total across currencies,\nbecause adding two denominations produces a number in neither.",
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "postings_examined": {
+            "title": "Postings Examined",
+            "type": "integer"
+          },
+          "postings_not_examined": {
+            "title": "Postings Not Examined",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectedAdjustmentRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "basis",
+          "rows",
+          "postings_examined",
+          "postings_not_examined"
+        ],
+        "title": "ProjectedAdjustmentOut",
+        "type": "object"
+      },
+      "ProjectedAdjustmentRow": {
+        "description": "What recovering this filter would be worth for one customer.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "projected_billed_cost_micros": {
+            "title": "Projected Billed Cost Micros",
+            "type": "integer"
+          },
+          "recoverable_event_count": {
+            "title": "Recoverable Event Count",
+            "type": "integer"
+          },
+          "unpriced_event_count": {
+            "title": "Unpriced Event Count",
+            "type": "integer"
+          },
+          "usage_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Usage Event Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "customer_id",
+          "currency",
+          "projected_billed_cost_micros",
+          "unpriced_event_count",
+          "recoverable_event_count",
+          "usage_event_ids"
+        ],
+        "title": "ProjectedAdjustmentRow",
         "type": "object"
       },
       "ProviderIn": {
@@ -7684,6 +7804,136 @@
         "title": "UnprofitableOut",
         "type": "object"
       },
+      "UnresolvedQueueRow": {
+        "description": "One posting UBB could not resolve, and what says why.\n\nThe amounts are the columns as they stand: `null` where UBB has no figure,\nnever a zero and never a word. Which of the two readings a `null` takes is\nthe status beside it \u2014 that is the whole of what the nullable columns and\ntheir statuses were built for, and a queue is exactly where a reader would\notherwise total a column of blanks by eye.",
+        "properties": {
+          "billed_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billed Cost Micros"
+          },
+          "costing_status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Costing Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "event_type": {
+            "default": "",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "pricing_status": {
+            "enum": [
+              "known",
+              "waived",
+              "unknown",
+              "not_applicable"
+            ],
+            "title": "Pricing Status",
+            "type": "string",
+            "x-ubb-concept": "pricing_status"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Micros"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
+          },
+          "usage_event_id": {
+            "title": "Usage Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "usage_event_id",
+          "effective_at",
+          "customer_id",
+          "currency",
+          "costing_status",
+          "pricing_status"
+        ],
+        "title": "UnresolvedQueueRow",
+        "type": "object"
+      },
+      "UnresolvedQueueTotals": {
+        "description": "What the queue has already cost, in one currency, and what it left out.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "queued_event_count": {
+            "title": "Queued Event Count",
+            "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "currency",
+          "provider_cost_micros",
+          "unresolved_event_count",
+          "queued_event_count"
+        ],
+        "title": "UnresolvedQueueTotals",
+        "type": "object"
+      },
       "UsageAnalyticsResponse": {
         "properties": {
           "breakdowns": {
@@ -8357,6 +8607,57 @@
           "series"
         ],
         "title": "UsageTimeseriesResponse",
+        "type": "object"
+      },
+      "WaivedLossOut": {
+        "description": "What waiving has cost, as money, for the economic horizon.",
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/WaivedLossRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "basis",
+          "rows"
+        ],
+        "title": "WaivedLossOut",
+        "type": "object"
+      },
+      "WaivedLossRow": {
+        "description": "What waiving cost this tenant in one currency.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          },
+          "waived_event_count": {
+            "title": "Waived Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "currency",
+          "provider_cost_micros",
+          "unresolved_event_count",
+          "waived_event_count"
+        ],
+        "title": "WaivedLossRow",
         "type": "object"
       },
       "WalletTransactionOut": {
@@ -13204,6 +13505,113 @@
         "summary": "Upsert Tenant Markup"
       }
     },
+    "/api/v1/metering/pricing/projected-adjustment": {
+      "get": {
+        "description": "What recovering this filter would be worth, per customer.\n\nA projection and not an instruction: reading it moves no money, creates no\ninvoice, credit note, charge or refund, and UBB will not bill your customer\nfor it. Deciding to go back to a customer stays yours, and you act on it\nthrough the billing path you already use.\n\nEach posting is re-resolved at its own effective instant, so nothing is\nrepriced against today's rules. `usage_event_ids` names the postings behind\neach figure; each one's Pricing Receipt is at\nGET /metering/usage/{event_id}.\n\nOne pass examines a bounded number of postings. `postings_not_examined`\nsays how many the filter matched beyond it \u2014 narrow the date range to reach\nthose \u2014 and `unpriced_event_count` says how many examined postings still\nresolve to no price. Both make the figures a floor.\n\nThe filter is the Resolution Run's: a half-open date range, a customer and\nan Event Type, in any combination. A customer this tenant does not have is\na 404; a stated window longer than 366 days is a `validation_error`.",
+        "operationId": "api_v1_metering_endpoints_get_projected_adjustment",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "selected_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_event_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Selected Event Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectedAdjustmentOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Projected Adjustment"
+      }
+    },
     "/api/v1/metering/pricing/rate-cards": {
       "get": {
         "description": "List the tenant's rate-card BOOKS (containers), newest first. Rates\nlive under a book and are read via GET /pricing/rate-cards/{book_id}/rates.",
@@ -14005,6 +14413,246 @@
           }
         ],
         "summary": "Execute Resolution Run"
+      }
+    },
+    "/api/v1/metering/pricing/unresolved-queue": {
+      "get": {
+        "description": "Everything UBB could not resolve: a supplier cost it never learned, a\ncustomer price it could not work out, or both.\n\nEach row carries the status that put it in the list and, for a supplier\ncost, the recorded reason the cost is missing. An amount UBB does not have\nis `null`, never a zero.\n\nThese are exactly the postings a Resolution Run over the same filter would\ntake up. The filter is the run's: a date range over the posting's own\neffective instant (half-open, `[selected_from, selected_to)`), a customer,\nand an Event Type, in any combination. A customer this tenant does not have\nis a 404; a stated window longer than 366 days is a `validation_error`.\n\n`totals` is over the whole filter rather than over one page, one row per\ncurrency, and says how many postings each figure could not include.",
+        "operationId": "api_v1_metering_endpoints_get_unresolved_queue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "selected_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_event_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Selected Event Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedUnresolvedQueue"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Unresolved Queue"
+      }
+    },
+    "/api/v1/metering/pricing/waived-loss": {
+      "get": {
+        "description": "What waiving has cost you over a period, as money.\n\nA charge is waived where the margin rule had no supplier cost to take a\nmargin over, so a waived posting never carried a price and this figure\ncannot be revenue forgone. `basis` states what it is instead, in the\nresponse itself.\n\nWaived postings whose own supplier cost UBB never learned are not in the\nfigure and are counted beside it, so the total is a floor. Waived postings\nare never candidates for a Resolution Run: a decision somebody made is not\ninformation UBB is missing.\n\nRows are per currency and there is no total across them. The filter is the\nResolution Run's: a half-open date range, a customer and an Event Type, in\nany combination. A customer this tenant does not have is a 404; a stated\nwindow longer than 366 days is a `validation_error`.",
+        "operationId": "api_v1_metering_endpoints_get_waived_loss",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "selected_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected_event_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Selected Event Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaivedLossOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Waived Loss"
       }
     },
     "/api/v1/metering/task-types": {

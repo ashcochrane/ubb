@@ -482,6 +482,15 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         kept by #146 §8.1 and are not this ticket's to touch. That half is
         counted rather than asserted in prose: the request is one of the
         schemas carrying the name, and every other one is a response.
+
+        ⚠ SIX RESPONSES SINCE #364, and the sixth is on the RESPONSE side of
+        that line rather than an erosion of it. `UnresolvedQueueRow` publishes
+        the price a posting has — which for most rows in that queue is `null`,
+        with `pricing_status` beside it saying UBB could not resolve one. The
+        set is pinned rather than counted precisely so that a seventh carrier
+        is read by a person, and reading this one confirms the request half is
+        untouched: the field a caller may SEND still appears on exactly one
+        schema, and ticket 18 is still the ticket that deletes it.
         """
         self.assertIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertIn(
@@ -491,7 +500,8 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
                     if "billed_cost_micros" in schema.get("properties", {})}
         self.assertEqual(carrying - {"RecordUsageRequest"}, {
             "GroupingFieldMarginRow", "RecordUsageResponse",
-            "UsageEventDetailOut", "UsageEventOut", "UsageMetricOut"})
+            "UnresolvedQueueRow", "UsageEventDetailOut", "UsageEventOut",
+            "UsageMetricOut"})
 
 
 def _bounds(node):

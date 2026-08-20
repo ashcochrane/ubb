@@ -250,6 +250,10 @@ API_V1_METERING_ENDPOINTS_GET_INHERITED_RULE = Operation(
     'api_v1_metering_endpoints_get_inherited_rule',
     'get',
     '/api/v1/metering/pricing/customers/{customer_id}/inherited-rule')
+API_V1_METERING_ENDPOINTS_GET_PROJECTED_ADJUSTMENT = Operation(
+    'api_v1_metering_endpoints_get_projected_adjustment',
+    'get',
+    '/api/v1/metering/pricing/projected-adjustment')
 API_V1_METERING_ENDPOINTS_GET_TASK = Operation(
     'api_v1_metering_endpoints_get_task', 'get', '/api/v1/metering/tasks/{task_id}')
 API_V1_METERING_ENDPOINTS_GET_TENANT_DEFAULT_MARKUP = Operation(
@@ -260,6 +264,10 @@ API_V1_METERING_ENDPOINTS_GET_TENANT_MARKUP = Operation(
     'api_v1_metering_endpoints_get_tenant_markup',
     'get',
     '/api/v1/metering/pricing/markup')
+API_V1_METERING_ENDPOINTS_GET_UNRESOLVED_QUEUE = Operation(
+    'api_v1_metering_endpoints_get_unresolved_queue',
+    'get',
+    '/api/v1/metering/pricing/unresolved-queue')
 API_V1_METERING_ENDPOINTS_GET_USAGE = Operation(
     'api_v1_metering_endpoints_get_usage',
     'get',
@@ -268,6 +276,10 @@ API_V1_METERING_ENDPOINTS_GET_USAGE_EVENT = Operation(
     'api_v1_metering_endpoints_get_usage_event',
     'get',
     '/api/v1/metering/usage/{event_id}')
+API_V1_METERING_ENDPOINTS_GET_WAIVED_LOSS = Operation(
+    'api_v1_metering_endpoints_get_waived_loss',
+    'get',
+    '/api/v1/metering/pricing/waived-loss')
 API_V1_METERING_ENDPOINTS_LIST_BOOKS = Operation(
     'api_v1_metering_endpoints_list_books',
     'get',

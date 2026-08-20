@@ -1999,6 +1999,155 @@ def resolution_run_out(run) -> dict:
     }
 
 
+# --- The three surfaces a Resolution Run projects onto (#364) ---------------
+#
+# ⚠ EVERY COUNT BELOW IS NAMED ON A DECLARED ROW, WHICH IS THE POINT OF
+# DECLARING THEM. A `Schema` that does not name a key does not merely omit it —
+# django-ninja DROPS it — so a completeness count attached in `queries.py`
+# survives on an untyped rollup and vanishes from the one row a drift gate can
+# see (#327, spec §24). These rows are typed precisely so that the surfaces
+# whose subject is *a total that says what it left out* are the surfaces a gate
+# can hold to it.
+#
+# None of the three publishes a mutating verb, and that is checked rather than
+# asserted: the #82 audit sweep counts mutating routes on the live API and its
+# expected number does not move for this commit.
+
+
+class UnresolvedQueueRow(Schema):
+    """One posting UBB could not resolve, and what says why.
+
+    The amounts are the columns as they stand: `null` where UBB has no figure,
+    never a zero and never a word. Which of the two readings a `null` takes is
+    the status beside it — that is the whole of what the nullable columns and
+    their statuses were built for, and a queue is exactly where a reader would
+    otherwise total a column of blanks by eye.
+    """
+    usage_event_id: str
+    effective_at: str
+    customer_id: str
+    event_type: str = ""
+    provider: str = ""
+    #: The denomination both amounts below are in. On the row because the
+    #: totals are per currency and a reader has to be able to see which row
+    #: belongs to which total.
+    currency: str
+    provider_cost_micros: Optional[int] = None
+    #: Whether the supplier cost above is settled — and on this surface it is
+    #: the reason the row is in the list at all, half the time.
+    costing_status: CostingStatus
+    #: WHICH INPUT DID NOT ARRIVE. Null unless the cost is unresolved. This is
+    #: the recorded *why* the queue exists to show: a tenant who reads
+    #: `cost_rate_missing` knows what to write, and one who reads
+    #: `reported_cost_missing` knows they are waiting on a supplier.
+    unresolved_reason: Optional[UnresolvedReason] = None
+    billed_cost_micros: Optional[int] = None
+    #: Whether the customer price above is settled. `unknown` is the other
+    #: reason a row is here.
+    #:
+    #: ⚠ THE PRICE SIDE RECORDS NO REASON OF ITS OWN, AND THIS SURFACE REPORTS
+    #: WHAT THE RECORD HOLDS RATHER THAN DERIVING ONE. The engine writes a
+    #: reason for an unresolved COST and none for an unresolved price, so a
+    #: finer answer here would be a second copy of the engine's branch logic
+    #: living in a read surface, going stale silently. Coining a price-side
+    #: reason is a value-set decision with a registry entry behind it, and it
+    #: belongs to whoever changes what the recording path writes.
+    pricing_status: PricingStatus
+
+
+class UnresolvedQueueTotals(Schema):
+    """What the queue has already cost, in one currency, and what it left out."""
+    currency: str
+    #: WHAT UBB HAS ALREADY PAID THE SUPPLIER for the calls in this queue —
+    #: money out with no settled price against it. Over the whole filter, not
+    #: over one page.
+    provider_cost_micros: int
+    #: How many queued postings that total could NOT include, because their own
+    #: supplier cost is one UBB has not learned either. The total is a floor and
+    #: this is how far short it may fall.
+    unresolved_event_count: int
+    #: How many postings the filter matched in this currency. Not a caveat —
+    #: the size of the working list.
+    queued_event_count: int
+
+
+class PaginatedUnresolvedQueue(Paginated[UnresolvedQueueRow]):
+    """Everything that went unresolved, with the reason the record holds."""
+    #: What this list is and what its total is taken over, in the response's
+    #: own words.
+    basis: str
+    totals: List[UnresolvedQueueTotals]
+
+
+class ProjectedAdjustmentRow(Schema):
+    """What recovering this filter would be worth for one customer."""
+    customer_id: str
+    currency: str
+    #: The customer prices a Resolution Run over this filter would settle,
+    #: summed. Zero where nothing would be recovered — and the count below is
+    #: what separates *nothing to recover* from *nothing could be valued*.
+    projected_billed_cost_micros: int
+    #: How many unpriced postings this figure could NOT put a number on,
+    #: because re-resolving them still resolves no price. A posting a recovery
+    #: would waive, or one whose Event Type generates no customer revenue, is
+    #: not counted here: neither is missing information.
+    unpriced_event_count: int
+    #: How many postings DID produce a figure.
+    recoverable_event_count: int
+    #: The postings behind the figure. Each one's Pricing Receipt — the record
+    #: explaining what its amount would be and how — is at
+    #: GET /metering/usage/{event_id}.
+    usage_event_ids: List[str]
+
+
+class ProjectedAdjustmentOut(Schema):
+    """What a recovery would be worth, per customer — and nothing that bills.
+
+    A projection, never an instruction. UBB does not back-bill: it tells you
+    what completing these postings would be worth and leaves the decision, and
+    the money movement, with you. There is no grand total across currencies,
+    because adding two denominations produces a number in neither.
+    """
+    #: What the figures are, what they are not, and where the receipts are.
+    basis: str
+    rows: List[ProjectedAdjustmentRow]
+    #: How many never-resolved postings this pass examined. One pass takes the
+    #: same bounded number of postings a Resolution Run does, so the figures
+    #: are what a run over the same filter would complete.
+    postings_examined: int
+    #: HOW MANY THE FILTER MATCHED BEYOND THAT BOUND — the second reason these
+    #: figures are a floor, and a count rather than a flag for the reason every
+    #: total on these surfaces carries one: "there is more" does not say how
+    #: much more. Zero means the pass reached everything the filter matched.
+    #: It cannot be attributed per customer, because working out whose postings
+    #: they are is exactly the examination the bound refused. Narrow the date
+    #: range to reach them.
+    postings_not_examined: int
+
+
+class WaivedLossRow(Schema):
+    """What waiving cost this tenant in one currency."""
+    currency: str
+    #: THE SUPPLIER COST PAID ON WAIVED CALLS. See `basis` on the envelope for
+    #: why this, and not a sum of prices: a waived charge never carried one.
+    provider_cost_micros: int
+    #: How many waived postings that figure could NOT include, because their
+    #: own supplier cost is also one UBB never learned. The figure is a floor
+    #: and this says how far short.
+    unresolved_event_count: int
+    #: How many postings in this currency were waived.
+    waived_event_count: int
+
+
+class WaivedLossOut(Schema):
+    """What waiving has cost, as money, for the economic horizon."""
+    #: The basis of the figure, stated rather than left to be inferred — a
+    #: number a tenant reads as revenue lost is a number they will act on
+    #: wrongly, and a waived charge has no revenue to lose.
+    basis: str
+    rows: List[WaivedLossRow]
+
+
 class PaginatedBookPublishes(Paginated[BookPublishOut]):
     pass
 

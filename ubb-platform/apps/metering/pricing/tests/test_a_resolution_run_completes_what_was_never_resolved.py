@@ -73,10 +73,11 @@ from apps.metering.pricing.services.price_resolution import (
 from apps.metering.pricing.services.resolution_run import (
     PAIRS, RunSelector, candidates, execute, never_resolved_condition)
 from apps.metering.pricing.tests._helpers import (
-    ONE_CALL, RECOVERABLE_QUANTITY as QUANTITY, WHAT_IT_COST,
-    a_tenant_with_unresolved_postings, an_unresolved_posting,
-    cost_rate_in_default_book, declares_a_markup, rate_in_default_book,
-    the_cost_rate_is_repriced)
+    CALCULATED_CALL, ONE_CALL, PRICED_CALL, RECOVERABLE_QUANTITY as QUANTITY,
+    REPORTED_CALL, SECOND_QUANTITY, THE_TYPO, WHAT_IT_COST,
+    WHAT_THE_RULE_CHARGES, ATenantWithUnresolvedPostingsMixin,
+    an_unresolved_posting, cost_rate_in_default_book, declares_a_markup,
+    rate_in_default_book, the_cost_rate_is_repriced)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
@@ -99,91 +100,8 @@ from core.vocabulary import (
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
-#: A second quantity, and the one the tenant declared with a typo — so a Cost
-#: Rate written against the declaration prices a name no event ever measures,
-#: and every posting measuring the real one goes uncosted. Correcting the
-#: declaration is the recovery: it carries no effective moment, and the rate it
-#: repoints has been in force since before the posting.
-SECOND_QUANTITY = "completion_tokens"
-THE_TYPO = "completion_tokns"
-
-CALCULATED_CALL = "chat"
-#: The Event Type whose supplier reports its own figure. Recorded with none, it
-#: is unresolved for a cause no re-costing can answer — and its record keeps no
-#: quantities, which is what the guard against a silent zero exists for.
-REPORTED_CALL = "reported.call"
-#: The Event Type a price rule pins, so that some postings are priced and some
-#: are not without either state being a fixture accident.
-PRICED_CALL = "priced.call"
-
-WHAT_THE_RULE_CHARGES = 9_000_000
-
-
-class _ATenantWithUnresolvedPostingsMixin:
-    """A tenant whose costs come from Cost Rates and whose prices come from
-    nothing at all — which is the state most postings in this repository are
-    recorded in, and the one a run exists for."""
-
-    def setUp(self):
-        self.tenant, self.customer = a_tenant_with_unresolved_postings()
-
-    # --- seeds -------------------------------------------------------------
-
-    def a_posting(self, key, **fields):
-        return an_unresolved_posting(self.tenant, self.customer, key, **fields)
-
-    def a_rate_priced_against_a_typo(self):
-        """The Cost Rate the tenant meant to write, against the name they
-        mistyped when they declared it."""
-        declares_a_quantity(self.tenant, THE_TYPO)
-        return cost_rate_in_default_book(
-            self.tenant, measurement_key=THE_TYPO,
-            rate_per_unit_micros=WHAT_IT_COST, unit_quantity=ONE_CALL)
-
-    def the_tenant_corrects_the_declaration(self):
-        """The recovery, and the reason it is not backdating.
-
-        A declared quantity's code carries no effective moment — correcting one
-        is a statement about the tenant's catalogue, not about a price at a
-        date — and the Cost Rate it repoints has been in force since before the
-        posting was recorded. A *rule* written today could not reach that
-        posting at all, which is the difference this whole mechanism turns on.
-        """
-        Measurement.objects.filter(
-            event_type__tenant=self.tenant, code=THE_TYPO).update(
-            code=SECOND_QUANTITY)
-
-    def declares_a_reported_cost(self):
-        """An Event Type whose supplier reports its own figure."""
-        return declares_a_caller_supplied_cost(
-            self.tenant, REPORTED_CALL,
-            currency=self.tenant.default_currency or "usd")
-
-    def a_price_rule(self):
-        return rate_in_default_book(
-            self.tenant, event_type=PRICED_CALL, measurement_key=QUANTITY,
-            rate_per_unit_micros=WHAT_THE_RULE_CHARGES, unit_quantity=ONE_CALL)
-
-    # --- reading -----------------------------------------------------------
-
-    @staticmethod
-    def state_of(posting):
-        posting.refresh_from_db()
-        return (posting.costing_status, posting.provider_cost_micros,
-                posting.pricing_status, posting.billed_cost_micros)
-
-    @staticmethod
-    def receipt_of(posting):
-        posting.refresh_from_db()
-        return getattr(posting, Posting.RECEIPT_COLUMN)
-
-    def a_run(self, **selector):
-        with transaction.atomic():
-            return execute(tenant=self.tenant, selector=RunSelector(**selector))
-
-
 class MembershipIsTheStatusAndNotAFilterTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """The set a run selects from is CONSTRUCTED, so there is nothing to get
     right — and no filter whose removal opens a hole."""
 
@@ -242,7 +160,7 @@ class MembershipIsTheStatusAndNotAFilterTest(
 
 
 class ARunReachesOnlyWhatWasNeverResolvedTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """The mix, seeded and asserted row by row."""
 
     def setUp(self):
@@ -342,7 +260,7 @@ class ARunReachesOnlyWhatWasNeverResolvedTest(
 
 
 class AWaivedChargeIsNeverCompletedTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """Ruling 12c, and the thing that achieves it."""
 
     def setUp(self):
@@ -417,7 +335,7 @@ class AWaivedChargeIsNeverCompletedTest(
 
 
 class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """⚠ THE GUARD AGAINST A SILENT ZERO — the defect this mechanism would
     otherwise have shipped, measured on the way in.
 
@@ -497,7 +415,7 @@ class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
 
 
 class ARecordThatCannotNameTheRunIsLeftAloneTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """⚠ THE OTHER HALF OF THE SAME GUARD, AND THE ONE REVIEW FOUND.
 
     A receipt in an older shape — or the empty default — is one a completion may
@@ -623,7 +541,7 @@ class ARunRecoversACostForATenantThatBillsNobodyTest(TestCase):
 
 
 class ACustomerDeletionTakesTheRunsThatNamedThemTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """The one door the record's blanket UPDATE refusal does not cover, stated
     and asserted rather than left as a property of a column declaration.
 
@@ -688,7 +606,7 @@ class ACustomerDeletionTakesTheRunsThatNamedThemTest(
 
 
 class ACompletionHappensOnceAndTheReceiptSealsTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """A run's write is the one-time completion ticket 6's rule enforces."""
 
     def setUp(self):
@@ -737,7 +655,7 @@ class ACompletionHappensOnceAndTheReceiptSealsTest(
 
 
 class TheReceiptNamesTheRunThatChangedItTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """AC 8: a number that changed can be explained by the act that changed it."""
 
     def setUp(self):
@@ -797,7 +715,7 @@ class TheReceiptNamesTheRunThatChangedItTest(
             self.recorded["provenance"].get("cost_rate_ids", {}))
 
 
-class ARunMovesNoMoneyTest(_ATenantWithUnresolvedPostingsMixin, TestCase):
+class ARunMovesNoMoneyTest(ATenantWithUnresolvedPostingsMixin, TestCase):
     """AC 10. Nothing in the money path is touched, asserted over that path's
     own records rather than over a list somebody remembered."""
 
@@ -828,7 +746,7 @@ class ARunMovesNoMoneyTest(_ATenantWithUnresolvedPostingsMixin, TestCase):
         self.assertEqual(sdk.method_calls, [])
 
 
-class NoPathBackdatesARuleTest(_ATenantWithUnresolvedPostingsMixin, TestCase):
+class NoPathBackdatesARuleTest(ATenantWithUnresolvedPostingsMixin, TestCase):
     """AC 11, over the SURFACE rather than over the run.
 
     A run recovers by re-resolving at a past instant, so the one input that
@@ -948,7 +866,7 @@ class NoPathBackdatesARuleTest(_ATenantWithUnresolvedPostingsMixin, TestCase):
 
 
 class TheRunRecordIsWrittenOnceAndNeverEditedTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """The record of an irreversible act cannot itself be rewritten, through
     any of the three doors ADR-0007 §2 names."""
 
@@ -991,7 +909,7 @@ class TheRunRecordIsWrittenOnceAndNeverEditedTest(
 
 
 class ARunIsBoundedAndSaysSoTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """The bound, and the property that makes it safe."""
 
     def setUp(self):
@@ -1025,7 +943,7 @@ class ARunIsBoundedAndSaysSoTest(
 
 
 class TheSelectorNarrowsOnThreeAxesTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """AC 6 at the service: each axis alone, and all three together."""
 
     def setUp(self):
@@ -1090,7 +1008,7 @@ class TheSelectorNarrowsOnThreeAxesTest(
 
 
 class TheCompletionUsesTheRecordsOwnTermsTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """What a run re-resolves FROM, which is the record and not the rows
     beside it."""
 
@@ -1136,7 +1054,7 @@ class TheCompletionUsesTheRecordsOwnTermsTest(
 
 
 class TheRunRecordCarriesItsActorAndSelectorTest(
-        _ATenantWithUnresolvedPostingsMixin, TestCase):
+        ATenantWithUnresolvedPostingsMixin, TestCase):
     """AC 1 at the service. The actor arrives through the auth seam's own
     contextvar, which is what stops this record and the ledger entry beside it
     naming two different people."""

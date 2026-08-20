@@ -20,6 +20,8 @@ Consumers:
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
   clear_backfill_dirty_period() (the ack half of the marker contract)
 - api/v1/me_endpoints.py → get_customer_usage_summary()
+- api/v1/metering_endpoints.py → get_unresolved_queue(),
+  get_projected_adjustment(), get_waived_loss() (the three recovery reads, #364)
 """
 import uuid
 from datetime import date, datetime
@@ -35,6 +37,7 @@ from core.cost_totals import (
     cost_total_annotations,
 )
 from core.time_windows import utc_day_start, utc_next_day_start
+from core.vocabulary import PRICING_STATUS_WAIVED
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 
 #: The slot columns a caller may group by, read off the registry that owns the
@@ -880,3 +883,249 @@ def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
         tenant_id=tenant_id, billed_cost_micros__gt=0,
         **{f"{field}__gte": since, f"{field}__lt": before},
     ).values("id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()
+
+
+# --- What went unresolved, what recovering it is worth, and what waiving cost -
+#
+# The three read surfaces a Resolution Run projects onto (#364, spec §10
+# rulings 11 and 12c; user stories 34, 40 and 42). None of them writes anything
+# and none of them moves money: the customer adjustment is the only one of the
+# four recovery mechanisms that does, two documents forbid it being automatic,
+# and Stripe owns the billing engine UBB never reimplements. What these produce
+# is a figure and the receipts behind it; the tenant acts through the money path
+# UBB already has.
+#
+# ⚠ ALL THREE FILTER THROUGH THE RUN'S OWN AXES (`resolution_run.narrowed`)
+# rather than through a copy of them here. A queue that could be narrowed
+# differently from the run aimed at it would be a working list of a different
+# set of postings, and the divergence would be invisible — both would answer
+# 200 with plausible rows.
+#
+# ⚠ AND EACH ONE STATES ITS BASIS IN THE RESPONSE, not only in this file. A
+# money figure whose basis a reader has to infer is one they will infer wrongly,
+# and the waived figure is the sharpest case: a number a tenant reads as revenue
+# lost, which it cannot be.
+
+#: WHAT THE QUEUE'S MONEY TOTAL IS, IN THE RESPONSE'S OWN WORDS.
+UNRESOLVED_QUEUE_BASIS = (
+    "Everything UBB could not resolve: a supplier cost it never learned, a "
+    "customer price no rule and no markup rung gave, or both. Each row carries "
+    "the status that put it here and, for a supplier cost, the recorded reason "
+    "the cost is missing. The total beside the list is what UBB has already "
+    "paid the supplier for these calls — money out with no settled price "
+    "against it — over the whole filter rather than over one page. Rows whose "
+    "supplier cost is itself unresolved are not in that total and are counted "
+    "beside it; rows whose Event Type declares no supplier cost are not in it "
+    "and are not counted, because nothing about those is missing."
+)
+
+#: WHERE THE RECEIPTS BEHIND A PROJECTED FIGURE ARE, NAMED ONCE.
+#:
+#: ⚠ A PATH QUOTED IN PROSE IS A CROSS-REFERENCE NOTHING TYPE-CHECKS, and this
+#: one is published verbatim into the contract and the generated SDK — so a
+#: reader following it would be sent nowhere by a route that moved.
+#:
+#: ⚠ **THE CONSTANT ALONE DOES NOT MAKE THE COPIES AGREE, AND A COMMENT SAYING
+#: IT DOES WOULD BE THE DEFECT IT WARNS ABOUT.** A docstring cannot interpolate
+#: one, so the route's and the schema's each hand-type this path; only the
+#: response's `basis` is built from it. What holds all three together is a
+#: test — `api/v1/tests/test_the_three_surfaces_a_recovery_projects_onto.py`
+#: checks this value against the LIVE API and then requires every published
+#: docstring that names a receipt path to name exactly this one.
+RECEIPTS_ARE_AT = "/metering/usage/{event_id}"
+
+#: WHAT THE PROJECTION IS, AND — LOUDLY — WHAT IT IS NOT.
+PROJECTED_ADJUSTMENT_BASIS = (
+    "What completing this filter would be worth, per customer: the customer "
+    "prices a Resolution Run would settle, summed over the postings this pass "
+    "examined. It is a projection and not an instruction — no invoice, credit "
+    "note, charge or refund follows from reading it, and UBB will not bill "
+    "your customer for it. Each price is re-resolved at its own posting's "
+    "effective instant, so nothing here is repriced against today's rules. "
+    "The supplier-cost half of a recovery is deliberately not in the figure: "
+    "learning what a call cost is not money you can go back to a customer "
+    "for. Two things make these figures a floor and both are counted: "
+    "`unpriced_event_count`, per customer, is how many examined postings "
+    "still resolve to no price; `postings_not_examined` is how many the "
+    "filter matched beyond what one pass takes up — narrow the date range to "
+    "reach those. `usage_event_ids` names the postings that produced each "
+    f"total; each one's Pricing Receipt is at GET {RECEIPTS_ARE_AT}."
+)
+
+#: WHAT THE WAIVED FIGURE IS TAKEN OVER, AND WHY IT CANNOT BE THE PRICE.
+#:
+#: ⚠ **THE BASIS HAD TO BE DECIDED HERE AND IT IS NOT THE OBVIOUS ONE.** A
+#: waived posting carries a `NULL` price by construction — a charge is waived
+#: exactly where the margin rule could not compute — so there is no set of
+#: prices to add up, and a figure presented as forgone revenue would be a
+#: number nobody ever stated. What IS a real loss, and is denominated, is the
+#: supplier cost UBB paid on those calls: money that left the tenant's account
+#: with nothing charged against it.
+WAIVED_LOSS_BASIS = (
+    "What UBB paid suppliers for calls whose charge was waived — money out "
+    "with nothing charged for it. It is NOT revenue forgone and cannot be: a "
+    "waived charge never carried a price, because the margin rule had no "
+    "supplier cost to take a margin over, which is why it was waived. Waived "
+    "postings whose own supplier cost UBB has not resolved are not in the "
+    "figure and are counted beside it, so the total is a floor. Waived "
+    "postings are never candidates for a "
+    "Resolution Run — a decision somebody made is not information UBB is "
+    "missing — so this is reported, never repaired."
+)
+
+
+def _the_same_axes_a_run_accepts(selected_from, selected_to,
+                                 selected_customer_id, selected_event_type):
+    """The three axes, as a run's own selector.
+
+    Built rather than re-implemented so that "filterable on the same axes a run
+    accepts" is a fact about the code and not a claim in a docstring.
+    """
+    from apps.metering.pricing.services.resolution_run import RunSelector
+
+    return RunSelector(selected_from=selected_from, selected_to=selected_to,
+                       selected_customer=selected_customer_id,
+                       selected_event_type=selected_event_type)
+
+
+def _per_currency_supplier_cost(postings, count_key: str) -> list[dict]:
+    """The supplier cost over `postings`, one row per currency, with its count.
+
+    Two of the three surfaces total the same column over different sets — the
+    queue over what UBB could not resolve, the waived report over what nobody
+    was charged for — and the only thing that differs is what the row calls its
+    population. Written once because two copies of one rollup is how two
+    surfaces come to answer the same question differently.
+
+    ⚠ **THE TRAILING `.order_by("currency")` IS LOAD-BEARING AND IT IS NOT
+    DECORATION.** `candidates` orders on two columns this rollup does not group
+    by, and Django folds a surviving ordering into the GROUP BY — so without it
+    this answers ONE ROW PER POSTING, each "total" being a single row's own
+    amount, with nothing raising. `order_by` REPLACES rather than appends,
+    which is what makes one call both the ordering and the repair. Measured
+    rather than reasoned about: dropping it turns
+    `test_the_queues_total_counts_the_unresolved_and_not_the_absent` red at
+    `3 != 1`, while an `.order_by()` reset in front of `.values()` — which
+    looks like the guard — turns nothing red.
+
+    Rows are per currency because adding two denominations produces a number in
+    neither. The rollups above this section are silent on that; the silence is
+    inherited and is not widened here.
+    """
+    rows = (postings.values("currency").annotate(
+        **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
+        **{count_key: Count("id")}).order_by("currency"))
+    return [carry_cost_total(SUPPLIER_COST, dict(row),
+                             key="provider_cost_micros") for row in rows]
+
+
+def _queue_row(posting) -> dict:
+    """One posting in the queue, as plain data.
+
+    The statuses are the *why*: a supplier cost UBB has not learned says so
+    with its recorded reason beside it, and a price it could not resolve says
+    so with its own status. Neither amount is coerced — a price UBB does not
+    have is `None` here, never a zero and never the word `unknown` in a money
+    field, which is the whole defect the nullable columns exist to remove.
+    """
+    return {
+        "usage_event_id": str(posting.id),
+        "effective_at": posting.effective_at.isoformat(),
+        "customer_id": str(posting.customer_id),
+        "event_type": posting.event_type,
+        "provider": posting.provider,
+        "currency": posting.currency,
+        "provider_cost_micros": posting.provider_cost_micros,
+        "costing_status": posting.costing_status,
+        "unresolved_reason": posting.unresolved_reason or None,
+        "billed_cost_micros": posting.billed_cost_micros,
+        "pricing_status": posting.pricing_status,
+    }
+
+
+def get_unresolved_queue(tenant_id, *, selected_from=None, selected_to=None,
+                         selected_customer_id=None, selected_event_type="",
+                         cursor=None, limit=50) -> dict:
+    """The working list a Resolution Run is aimed at (user story 34).
+
+    Exactly the run's candidate set — `resolution_run.candidates`, not a
+    re-derived filter — so a tenant working through this list is looking at the
+    postings a run over the same filter would take up, and the two cannot come
+    to disagree about membership.
+
+    Paged newest-first, which is the house list idiom; a run works its own set
+    oldest-first so that a bounded run advances through a backlog. The two
+    orders answer different questions and neither is the other's bug.
+
+    The totals are over the WHOLE filter rather than over the page, per
+    currency, each with the count of rows it could not include.
+    """
+    from apps.metering.pricing.services.resolution_run import candidates
+    from core.pagination import page
+
+    queued = candidates(tenant_id, _the_same_axes_a_run_accepts(
+        selected_from, selected_to, selected_customer_id, selected_event_type))
+    return {
+        "basis": UNRESOLVED_QUEUE_BASIS,
+        # THE ONE ENVELOPE (#115), not a hand-assembled copy of it: `page`
+        # owns `data`/`next_cursor`/`has_more` and is in the kernel, so a
+        # product may call it. Keyed on `effective_at`, which is the axis the
+        # filter narrows on and the one a working list is read in.
+        **page(queued, cursor, limit, serialize=_queue_row,
+               time_field="effective_at"),
+        "totals": _per_currency_supplier_cost(queued, "queued_event_count"),
+    }
+
+
+def get_projected_adjustment(tenant_id, *, selected_from=None, selected_to=None,
+                             selected_customer_id=None,
+                             selected_event_type="") -> dict:
+    """What recovering this filter would be worth, per customer (user story 40).
+
+    The arithmetic is the run's own, with the writing taken out — see
+    `resolution_run.project`, which re-resolves each posting through the same
+    function a run completes from. This adds the response's statement of what
+    the figure is, which the surface owes a reader who would otherwise read a
+    projection as a receivable.
+    """
+    from apps.metering.pricing.services.resolution_run import project
+
+    return {"basis": PROJECTED_ADJUSTMENT_BASIS,
+            **project(tenant_id, _the_same_axes_a_run_accepts(
+                selected_from, selected_to, selected_customer_id,
+                selected_event_type))}
+
+
+def get_waived_loss(tenant_id, *, selected_from=None, selected_to=None,
+                    selected_customer_id=None, selected_event_type="") -> dict:
+    """What waiving has cost this tenant over the filter (user story 42).
+
+    A misconfiguration that is losing a tenant money should be visible as
+    money, and this is the money it is visible as: the supplier cost paid on
+    calls nobody was ever charged for. `WAIVED_LOSS_BASIS` argues why it cannot
+    be the price, and the response carries that sentence.
+
+    Rows are per currency. There is no grand total across them, deliberately —
+    adding two denominations produces a number in neither.
+    """
+    from apps.metering.pricing.services.resolution_run import narrowed
+    from apps.metering.usage.models import Posting
+
+    # ⚠ THE PAIR'S THIRD BRANCH IS UNREACHABLE HERE, AND SAYING SO IN CODE IS
+    # WHY THE PUBLISHED BASIS DOES NOT MENTION IT. `core.cost_totals` skips a
+    # `not_applicable` cost without counting it, because nothing about that one
+    # is missing — but a charge is waived exactly where a margin had no basis,
+    # i.e. where the cost is `unresolved`, and `not_applicable` is only ever
+    # written when a posting is recorded. So no waived posting can carry one,
+    # and a tenant-facing sentence describing that carve would be explaining a
+    # case they can never meet. The rule still applies; it just has nothing to
+    # apply to.
+    waived = narrowed(
+        Posting.objects.filter(tenant_id=tenant_id,
+                               pricing_status=PRICING_STATUS_WAIVED),
+        _the_same_axes_a_run_accepts(selected_from, selected_to,
+                                     selected_customer_id, selected_event_type))
+    return {
+        "basis": WAIVED_LOSS_BASIS,
+        "rows": _per_currency_supplier_cost(waived, "waived_event_count"),
+    }
