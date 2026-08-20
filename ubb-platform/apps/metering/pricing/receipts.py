@@ -158,6 +158,7 @@ until #348.
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_VALUES,
     COSTING_STATUS_KNOWN,
@@ -350,16 +351,43 @@ class _SectionRules:
     statuses: frozenset
     settled: str
     amount_key: str
+    #: THE ONE STATUS A SECTION MAY BE COMPLETED FROM (#363).
+    #:
+    #: ⚠ **A WHITELIST, AND IT HAS TO BE ONE.** Every unsettled status leaves a
+    #: section's method and amount null — `unresolved` and `unknown`, which say
+    #: UBB does not have the information, and `waived` and `not_applicable`,
+    #: which say somebody made a decision — so *not settled* and *completable*
+    #: are indistinguishable in the SHAPE and are different facts. Naming the
+    #: settled status and admitting everything else would make a waived charge
+    #: completable into a charged amount, which is exactly what ruling 12c
+    #: refuses.
+    completable: str
 
 
+#: Each section's rules, with its amount key and its completable status taken
+#: from the pair that already declares them (`core.amount_status_pairs`) rather
+#: than spelled again here. Two copies of one column name is how a rule about
+#: the receipt and a rule about the columns beside it come to disagree, and the
+#: database rule that seals a receipt makes the same join.
 SECTIONS = {
     "costing": _SectionRules(
         methods=COSTING_METHOD_VALUES, statuses=COSTING_STATUS_VALUES,
-        settled=COSTING_STATUS_KNOWN, amount_key="provider_cost_micros"),
+        settled=COSTING_STATUS_KNOWN,
+        amount_key=SUPPLIER_COST.amount_column,
+        completable=SUPPLIER_COST.unresolved_status),
     "pricing": _SectionRules(
         methods=PRICING_METHOD_VALUES, statuses=PRICING_STATUS_VALUES,
-        settled=PRICING_STATUS_KNOWN, amount_key="billed_cost_micros"),
+        settled=PRICING_STATUS_KNOWN,
+        amount_key=CUSTOMER_PRICE.amount_column,
+        completable=CUSTOMER_PRICE.unresolved_status),
 }
+
+#: WHICH RUN COMPLETED A SECTION, in `provenance` where the cross-references
+#: live. The receipt's shape has always said provenance carries the ids of the
+#: matched rule, the publish, the cost rates *and where applicable the run that
+#: completed it*; this is that key, named once so the writer and every reader
+#: spell it the same way.
+RESOLUTION_RUN_KEY = "resolution_run_id"
 
 
 def build_receipt(*, subject, effective_at, currency, pricing_engine_version,
@@ -396,6 +424,91 @@ def build_receipt(*, subject, effective_at, currency, pricing_engine_version,
     }
     validate_receipt(record)
     return record
+
+
+def completed_receipt(record, *, sections, provenance=None):
+    """A STORED RECEIPT WITH ITS UNRESOLVED SECTIONS COMPLETED (#363).
+
+    The one place a receipt is *changed* rather than built, and it may make
+    exactly the change the database admits: a section recorded as unresolved
+    moves to settled — status, method and amount in one statement — the
+    provenance gains a cross-reference, and **nothing else moves at all**.
+    `usage/migrations/0040` refuses everything else at the table, through every
+    door; this refuses the same things one layer up, where the caller can be
+    told which section and why, and so that a wrong record never reaches a
+    statement in the first place.
+
+    :param record: the receipt as stored, which is where the completion starts
+        from. It is NOT rebuilt from a fresh resolution: everything outside the
+        completed sections — the instant, the currency, the engine version, the
+        other section — is what the engine recorded on the day, and a rebuild
+        would quietly restate today's answer to a question asked then.
+    :param sections: ``{section name: Resolution}``, the freshly resolved side
+        for each section being completed. A section absent here is untouched.
+    :param provenance: cross-references to ADD. Existing keys are kept; a key
+        that would change a recorded value is refused.
+    :raises ReceiptShapeError: if the record is not a receipt this code writes,
+        if a named section is not completable, or if the result would not be a
+        valid receipt.
+
+    **A RECORD IN AN OLDER SHAPE IS REFUSED HERE, NOT UPGRADED.** The receipt's
+    own ruling is that such a record is *read, never rewritten* — so a caller
+    holding one has a posting whose price cannot be completed, which is a fact
+    about that posting rather than an error to route around.
+    """
+    if not isinstance(record, dict):
+        raise ReceiptShapeError(f"a receipt is a record, not {type(record)!r}")
+    if record.get("receipt_schema_version") != RECEIPT_SCHEMA_VERSION:
+        raise ReceiptShapeError(
+            f"a completion writes the shape this code writes "
+            f"({RECEIPT_SCHEMA_VERSION}); this record declares "
+            f"{record.get('receipt_schema_version')!r}, and a receipt in an "
+            f"older shape is read, never rewritten")
+
+    completing = dict(record)
+    completing["totals"] = dict(record["totals"])
+
+    for name, resolution in sections.items():
+        rules = SECTIONS[name]
+        was = record[name]
+        # THE WHITELIST, ASKED BEFORE ANYTHING IS ASSEMBLED. `waived` and
+        # `not_applicable` leave a section looking exactly like `unknown` and
+        # `unresolved` do — no method, no amount — so the question is which
+        # status it says, never whether it has an amount.
+        if was["status"] != rules.completable:
+            raise ReceiptShapeError(
+                f"the {name} section says {was['status']!r} and only a section "
+                f"recorded as {rules.completable!r} may be completed: a "
+                f"decision somebody made is not information UBB is missing")
+        if (resolution.status != rules.settled
+                or resolution.method is None
+                or resolution.amount_micros is None):
+            raise ReceiptShapeError(
+                f"completing the {name} section means settling it — status "
+                f"{rules.settled!r} carrying a method and an amount; got "
+                f"status {resolution.status!r}, method {resolution.method!r}, "
+                f"amount {resolution.amount_micros!r}")
+        completing[name] = {"method": resolution.method,
+                            "status": resolution.status,
+                            "detail": _copied(resolution.detail)}
+        completing["totals"][rules.amount_key] = resolution.amount_micros
+
+    # ADDITIVE ONLY, AND REFUSED RATHER THAN RESOLVED. The database asks
+    # containment, which a changed value fails silently from the caller's point
+    # of view — it sees `IntegrityError` and no key name. Refusing here names
+    # the key, and refusing rather than preferring one of the two values is the
+    # point: two writers disagreeing about a cross-reference is not something
+    # this function may pick a winner for.
+    recorded = record["provenance"]
+    for key, value in (provenance or {}).items():
+        if key in recorded and recorded[key] != value:
+            raise ReceiptShapeError(
+                f"provenance.{key} already records {recorded[key]!r}; a "
+                f"completion may add a cross-reference and may not change one")
+    completing["provenance"] = {**recorded, **(provenance or {})}
+
+    validate_receipt(completing)
+    return completing
 
 
 def _copied(container):
@@ -690,6 +803,41 @@ def uncosted_quantity_keys(receipt):
     if version == LEGACY_SCHEMA_VERSION:
         return receipt.get("uncosted_measurement_keys", []) or []
     return receipt["costing"]["detail"].get("uncosted_measurement_keys", []) or []
+
+
+def recorded_quantities(receipt):
+    """WHAT THE ENGINE PRICED, BY VALUE — the bag a recovery re-resolves from.
+
+    `{declared quantity name: quantity}`, assembled out of the record rather
+    than out of the measurement rows beside it, and that is the whole point of
+    the content obligation (#350, #153 §12.4): the measured detail is a child
+    record with a retention horizon of its own and this record is kept for six
+    years, so a recovery that read the child rows would stop working silently on
+    exactly the postings that most need fixing. A snapshot is a fact that is
+    either there or not.
+
+    THREE PLACES HOLD IT AND THEY ARE VIEWS OF ONE BAG. A quantity that had a
+    cost rate is a costing component; one that had none is in the costing
+    section's uncosted mapping; and one on a posting whose cost was stated by
+    the caller, or declared not to exist, appears only as a PRICE component,
+    because the cost side of such a receipt records no components at all. Taking
+    the union is what makes this the bag the engine saw, rather than whichever
+    part of it the reader happened to look at.
+
+    ⚠ A RECEIPT IN AN OLDER SHAPE ANSWERS EMPTY, which is what it is: that shape
+    recorded no per-quantity terms, so there is nothing in it to re-resolve from
+    and a caller must not be handed a partial bag that looks like a whole one.
+    """
+    if _readable_version_of(receipt) != SECTIONED_SCHEMA_VERSION:
+        return {}
+    quantities = {}
+    for name in SECTIONS:
+        for component in receipt[name]["detail"].get("components", []):
+            quantities.setdefault(component["measurement_key"],
+                                  component["units"])
+    quantities.update(
+        receipt["costing"]["detail"].get("uncosted_quantities", {}) or {})
+    return quantities
 
 
 def pricing_method_of(receipt):

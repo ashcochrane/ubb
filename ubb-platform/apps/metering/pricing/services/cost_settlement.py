@@ -22,10 +22,11 @@ migration or a shell session too; what a trigger cannot do is notice that a
 correct settlement has been written twice in two places, each tested once. That
 half is what the walk is for.
 
-**Nothing calls this yet, and that is the shape of the slice.** No writer
-produces an `unresolved` posting until the compute spine learns to (#320), so
-the door is built, proved and defended before there is anything to come through
-it — which is the order that stops the first caller from inventing its own.
+**The first caller is the Resolution Run (#363)**, which is the order this door
+was built in: proved and defended before there was anything to come through it,
+so the first caller could not invent its own. A run learns a cost by re-resolving
+the posting at its own instant and settles it here, one posting at a time, and it
+hands over the completed receipt so the record and the columns move together.
 """
 import enum
 
@@ -55,13 +56,28 @@ class Settlement(enum.Enum):
     NEVER_UNRESOLVED = "never_unresolved"
 
 
-def settle_provider_cost(*, posting_id, provider_cost_micros):
+def settle_provider_cost(*, posting_id, provider_cost_micros,
+                         pricing_receipt=None):
     """Settle one posting's supplier cost, once, and say what happened.
 
     `provider_cost_micros` is the resolved amount in micros. **Zero is a
     resolved amount** — a supplier that charged nothing — and settles normally;
     `None` is not an amount at all and is refused before any statement runs,
     because `NULL` is precisely what "unresolved" means in this column.
+
+    `pricing_receipt` is the posting's stored receipt with its **costing section
+    completed** (`receipts.completed_receipt`), written in the SAME statement as
+    the columns. It is optional and not decoration:
+
+    * where it is given, the record and the columns move together, so the
+      posting's receipt cannot come to say a cost is unresolved while the column
+      beside it says the amount is known — the exact disagreement the receipt
+      exists to remove;
+    * where it is omitted, the posting has no receipt this code may complete —
+      an empty default, or one written in an older shape, which the receipt's own
+      ruling says is *read, never rewritten*. Such a posting's cost still
+      settles. Refusing it would make a shape of record decide whether a supplier
+      cost may be learned.
 
     Raises `Posting.DoesNotExist` if there is no such posting: neither outcome
     above would be true of it, and answering with one anyway is how a settlement
@@ -71,6 +87,14 @@ def settle_provider_cost(*, posting_id, provider_cost_micros):
         raise ValueError(
             "A settlement carries an amount. NULL is what unresolved means in "
             "this column, so it cannot also be what resolves it.")
+
+    # THE RECEIPT, ADDRESSED THROUGH THE COLUMN'S CONSTANT AND NEVER SPELLED.
+    # The column still carries the retired name of the concept and the ratchet
+    # caps how many files may say it, so this is how everything that arrived
+    # after the rename addresses it — and it follows the rename rather than
+    # going quietly wrong on the day it lands.
+    completes_the_record = ({Posting.RECEIPT_COLUMN: pricing_receipt}
+                            if pricing_receipt is not None else {})
 
     # ADR-0007 §2's conditional update, and the reason it is one statement: the
     # WHERE clause holds the whole precondition, so two callers racing on the
@@ -82,7 +106,8 @@ def settle_provider_cost(*, posting_id, provider_cost_micros):
                         costing_status=COSTING_STATUS_UNRESOLVED)
                 .update(provider_cost_micros=provider_cost_micros,
                         costing_status=COSTING_STATUS_KNOWN,
-                        unresolved_reason=None))
+                        unresolved_reason=None,
+                        **completes_the_record))
 
     if affected == 1:
         return Settlement.SETTLED

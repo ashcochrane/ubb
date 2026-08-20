@@ -95,7 +95,15 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # than a place on the exemption list below. Like those three, each declares a
 # draft and writes no rule; the publish that puts the deal in force is the
 # existing act and keeps its own name. 79 + 2 = 81.
-_EXPECTED_MUTATING = 81
+#
+# 81 -> 82 with #363's Resolution Run. It is the strongest case on this list for
+# a name rather than an exemption: it writes money-adjacent numbers into periods
+# whose reporting is closed, it is authorised at the ADMIN floor, and under the
+# receipt's sealing rule it cannot be undone — so who ran it and what they
+# pointed it at is exactly what this ledger exists to answer, and there is no
+# second act that could record it later. One action rather than a pair, because
+# a run has no withdrawal. 81 + 1 = 82.
+_EXPECTED_MUTATING = 82
 _EXPECTED_EXEMPT = 5
 
 

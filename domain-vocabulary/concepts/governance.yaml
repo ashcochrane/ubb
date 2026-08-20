@@ -107,6 +107,22 @@ audit_action:
     # record is deleted.
     - customer_pricing_override.declared
     - customer_pricing_override.withdrawn
+    # Executing a Resolution Run — the one recovery mechanism, and the only
+    # act in this registry that writes a money-adjacent number into a period
+    # whose reporting is already closed.
+    #
+    # ONE NAME, NOT A PAIR, and the asymmetry is the ruling rather than an
+    # omission. The pairs above split declaring from withdrawing because both
+    # acts exist; a run has no second act. Its write is the one-time
+    # completion of a field recorded as unresolved, after which the receipt is
+    # sealed — there is nothing to withdraw and no name to reserve for it.
+    #
+    # IT RECORDS THE ACTOR AND THE SELECTOR, which is what makes this
+    # governance rather than telemetry: a run is authorised at the ADMIN floor
+    # and cannot be undone, so who ran it and what they pointed it at is
+    # exactly what a governance reader needs and cannot reconstruct from the
+    # postings afterwards.
+    - resolution_run.executed
     # What the tenant declares it meters.
     - event_type.declared
     - measurement.declared

@@ -183,6 +183,9 @@ from .reported_cost_mapping_in_source_kind import ReportedCostMappingInSourceKin
 from .reported_cost_mapping_out import ReportedCostMappingOut
 from .reported_cost_mapping_out_amount_representation import ReportedCostMappingOutAmountRepresentation
 from .reported_cost_mapping_out_source_kind import ReportedCostMappingOutSourceKind
+from .resolution_run_in import ResolutionRunIn
+from .resolution_run_out import ResolutionRunOut
+from .resolution_run_selector_out import ResolutionRunSelectorOut
 from .revenue_analytics_response import RevenueAnalyticsResponse
 from .revenue_analytics_response_daily_item import RevenueAnalyticsResponseDailyItem
 from .revenue_mode_in import RevenueModeIn
@@ -458,6 +461,9 @@ __all__ = (
     "ReportedCostMappingOut",
     "ReportedCostMappingOutAmountRepresentation",
     "ReportedCostMappingOutSourceKind",
+    "ResolutionRunIn",
+    "ResolutionRunOut",
+    "ResolutionRunSelectorOut",
     "RevenueAnalyticsResponse",
     "RevenueAnalyticsResponseDailyItem",
     "RevenueModeIn",

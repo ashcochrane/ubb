@@ -224,7 +224,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 223 → 224 in #358: the Pricing Book's publish record and its rule.
         # 224 → 225 in #361: the customer whose own rules a Pricing Book holds.
         # 225 → 226 in #362: the Plan's required Pricing Book reference.
-        "historical-migrations": (UNTIL_SLICE_8, 226, 19),
+        # 226 → 227 in #363: the Resolution Run record, and the rule that
+        # refuses every edit to one.
+        "historical-migrations": (UNTIL_SLICE_8, 227, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

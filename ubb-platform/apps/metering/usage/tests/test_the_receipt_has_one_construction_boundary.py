@@ -11,12 +11,22 @@ module names, and that distinction was measured rather than reasoned about — s
 the comment on `BUILDS_A_RECEIPT`, where the set form is the vacuous one.
 
 ⚠ **What the walk does not cover, said out loud.** It reads the name a keyword
-argument or an attribute assignment is written under, so a receipt persisted
-through `setattr`, through `**kwargs`, or by raw SQL passes it. That is honest
-about being a tripwire for the ordinary spelling. The behavioural half below is
-what covers the recording path itself, and the database-level rule — a field
-recorded as unresolved completing exactly once — is a separate decision proved
-through three doors, and not this ticket's.
+argument or an attribute assignment is written under, plus the one other
+spelling a writer can use — a mapping keyed on `Posting.RECEIPT_COLUMN`, which
+is how every module outside the recording path has to address the column,
+because the column's name is retired and the ratchet caps how many files may say
+it. A receipt persisted through `setattr` with a computed name, or by raw SQL,
+still passes. That is honest about being a tripwire for the spellings writers
+actually use. The behavioural half below is what covers the recording path
+itself, and the database-level rule — a field recorded as unresolved completing
+exactly once — is a separate decision proved through three doors.
+
+⚠ **THE CONSTANT-ADDRESSED SPELLING WAS ADDED BECAUSE A WRITER ARRIVED IN IT
+(#363).** The two doors that complete a posting — a supplier cost, a customer
+price — write the receipt in the same statement as the columns, and neither may
+spell the column literally. Before this, the walk read the literal keyword only,
+so both would have been invisible: a gate that cannot see the spelling every new
+writer must use is a gate that goes quiet exactly when a writer arrives.
 
 **Every receipt that reaches the column validates.** That is behaviour, so it is
 recorded through the service and read back off the row. It is the check that
@@ -74,9 +84,43 @@ CONSTRUCTOR = "build_receipt"
 #: it — it says only that no OTHER module builds one, which is the easier half.
 BUILDS_A_RECEIPT = {"apps/metering/pricing/services/pricing_service.py": 1}
 
-#: Where one is written to the column, and how many times — same reasoning, and
-#: the recording path inserts exactly one receipt per posting.
-WRITES_THE_RECEIPT = {"apps/metering/usage/services/usage_service.py": 1}
+#: Where one is written to the column, and how many times — same reasoning. The
+#: recording path inserts exactly one receipt per posting, and each of the two
+#: completion doors writes one: the statement that settles a supplier cost and
+#: the statement that resolves a customer price each carry the section they
+#: completed, so the record and the columns beside it move together and cannot
+#: come to disagree (#363).
+#:
+#: ⚠ THREE WRITERS IS NOT THREE BOUNDARIES. None of them builds a record: the
+#: recording path persists what `build_receipt` returned, and each door persists
+#: what `completed_receipt` returned from the record already on the row. The
+#: claim this pair of expectations makes together is that a receipt is
+#: constructed in one place and only ever persisted from there.
+WRITES_THE_RECEIPT = {
+    "apps/metering/usage/services/usage_service.py": 1,
+    "apps/metering/pricing/services/cost_settlement.py": 1,
+    "apps/metering/pricing/services/price_resolution.py": 1,
+}
+
+#: The name of the constant a module addresses the column through. Its NAME and
+#: not its value: this file may not spell the column, and what the walk looks
+#: for is the reference rather than the string it resolves to.
+COLUMN_CONSTANT = "RECEIPT_COLUMN"
+
+
+def _keyed_on_the_column(node):
+    """A mapping literal with the receipt column's constant as a key.
+
+    The write-position spelling available to a module that may not say the
+    column's retired name — `**{Posting.RECEIPT_COLUMN: record}` inside an
+    `update()`, which is a `**` expansion and therefore not a keyword the walk
+    below could see any other way. A READER spells it
+    `getattr(posting, Posting.RECEIPT_COLUMN)`, which is not a mapping key and
+    is not a finding.
+    """
+    return isinstance(node, ast.Dict) and any(
+        isinstance(key, ast.Attribute) and key.attr == COLUMN_CONSTANT
+        for key in node.keys)
 
 
 def _sites(source):
@@ -97,7 +141,32 @@ def _sites(source):
                 if (isinstance(target, ast.Attribute)
                         and target.attr == Posting.RECEIPT_COLUMN):
                     written.append(node.lineno)
+        elif _keyed_on_the_column(node):
+            written.append(node.lineno)
     return built, written
+
+
+def test_the_walk_sees_every_spelling_a_writer_uses():
+    """The vacuity guard, one arm per spelling, through the real helper.
+
+    Without it, a detector that had quietly stopped matching — a renamed
+    constant, an `ast` shape that no longer occurs — would report a clean tree
+    for a repository it never read. The third arm is the one that matters most
+    here: it is a POSITIVE control for a spelling that produced no finding at
+    all before #363, in a file that is not the one under test.
+    """
+    literal = f"Posting.objects.create({Posting.RECEIPT_COLUMN}=record)\n"
+    assert _sites(literal)[1] == [1]
+
+    assigned = f"posting.{Posting.RECEIPT_COLUMN} = record\n"
+    assert _sites(assigned)[1] == [1]
+
+    through_the_constant = "rows.update(**{Posting.RECEIPT_COLUMN: record})\n"
+    assert _sites(through_the_constant)[1] == [1]
+
+    # And a READ through the same constant is not a write.
+    read = "stored = getattr(posting, Posting.RECEIPT_COLUMN)\n"
+    assert _sites(read)[1] == []
 
 
 def _walk():

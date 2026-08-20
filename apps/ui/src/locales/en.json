@@ -68,6 +68,7 @@
   "audit_action.referral_program.reactivated": "Referral program reactivated",
   "audit_action.referral_program.updated": "Referral program updated",
   "audit_action.referrer.registered": "Referrer registered",
+  "audit_action.resolution_run.executed": "Resolution Run executed",
   "audit_action.reported_cost_mapping.declared": "Reported cost mapping declared",
   "audit_action.reported_cost_mapping.withdrawn": "Reported cost mapping withdrawn",
   "audit_action.sandbox.created": "Sandbox created",

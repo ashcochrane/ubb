@@ -6000,6 +6000,170 @@
         "title": "ReportedCostMappingOut",
         "type": "object"
       },
+      "ResolutionRunIn": {
+        "additionalProperties": false,
+        "description": "Which postings this run should reach: a date range, a customer, an\nEvent Type \u2014 in any combination, and any of them may be omitted.\n\nAn omitted axis is unpinned rather than empty: a body naming nothing at all\nreaches every posting of this tenant that was never resolved. The date range\nis over the posting's own effective instant and is half-open \u2014 `[from, to)`\n\u2014 so running one month and then the next repairs each posting exactly once.\n\nA run reaches only postings whose status says they were never resolved, and\nthat is a property of how the set is built rather than of what you send:\nthere is no field here that could widen it to a posting already carrying a\ncost or a price, and none that could reach one whose charge was waived.\n\nAny other field is refused (`validation_error`). A run takes no condition of\nits own.",
+        "properties": {
+          "selected_customer_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Customer Id"
+          },
+          "selected_event_type": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Selected Event Type",
+            "type": "string"
+          },
+          "selected_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected From"
+          },
+          "selected_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected To"
+          }
+        },
+        "title": "ResolutionRunIn",
+        "type": "object"
+      },
+      "ResolutionRunOut": {
+        "description": "What one run reached, and what it completed.\n\n`postings_examined` is how many never-resolved postings the run took up, and\nthe three numbers under it account for all of them: a cost settled, a price\nresolved, or nothing \u2014 because nothing the tenant has since configured\nresolves that posting at the instant it happened. A posting can appear in\nboth of the first two, so they do not sum to the total.\n\n`more_to_do` says the selector matched more postings than one run takes.\nSend the same body again: everything this run completed has left the set it\nselects from, so the next run continues where this one stopped.\n\nA run moves no money. It completes what was never resolved and records that\nit did; no invoice, credit note, charge or refund follows from one.",
+        "properties": {
+          "actor_display": {
+            "title": "Actor Display",
+            "type": "string"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_kind": {
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "costs_settled": {
+            "title": "Costs Settled",
+            "type": "integer"
+          },
+          "executed_at": {
+            "title": "Executed At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "more_to_do": {
+            "title": "More To Do",
+            "type": "boolean"
+          },
+          "postings_examined": {
+            "title": "Postings Examined",
+            "type": "integer"
+          },
+          "postings_left_unresolved": {
+            "title": "Postings Left Unresolved",
+            "type": "integer"
+          },
+          "prices_resolved": {
+            "title": "Prices Resolved",
+            "type": "integer"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/ResolutionRunSelectorOut"
+          }
+        },
+        "required": [
+          "id",
+          "executed_at",
+          "actor_kind",
+          "actor_id",
+          "actor_display",
+          "selector",
+          "postings_examined",
+          "costs_settled",
+          "prices_resolved",
+          "postings_left_unresolved",
+          "more_to_do"
+        ],
+        "title": "ResolutionRunOut",
+        "type": "object"
+      },
+      "ResolutionRunSelectorOut": {
+        "description": "The three axes, as they were stated \u2014 echoed so the record of the act and\nthe answer to the request cannot describe the same run differently.",
+        "properties": {
+          "selected_customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Customer Id"
+          },
+          "selected_event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Event Type"
+          },
+          "selected_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected From"
+          },
+          "selected_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected To"
+          }
+        },
+        "title": "ResolutionRunSelectorOut",
+        "type": "object"
+      },
       "RevenueAnalyticsResponse": {
         "properties": {
           "daily": {
@@ -13786,6 +13950,61 @@
           }
         ],
         "summary": "Delete Rate"
+      }
+    },
+    "/api/v1/metering/pricing/resolution-runs": {
+      "post": {
+        "description": "Complete what was never resolved: prices and supplier costs UBB could\nnot work out at the time.\n\nEach posting the run reaches is re-resolved **at its own effective\ninstant**, and a field recorded as unresolved is completed where that\nresolution now has an answer. Nothing else is touched: a posting already\ncarrying a cost or a price is not in the set the run selects from, and\nneither is one whose charge was waived \u2014 a waived charge is a decision\nsomebody made, not information UBB is missing.\n\n**Nothing is backdated.** A rule takes effect from the moment it is\npublished forward, so writing one today does not reprice work recorded in\nJuly; what a run recovers is what today's markup rung and today's Event Type\ndeclarations resolve at that past instant. There is no field here, and no\nfield anywhere, that dates a rule behind the present.\n\n**A run moves no money.** No invoice, credit note, charge or refund follows\nfrom one. It completes the numbers and records that it did, and the response\nsays what it completed.\n\nThe selector takes a date range, a customer and an Event Type in any\ncombination; any other field is refused. `more_to_do` says the selector\nmatched more postings than one run takes \u2014 send the same body again, and the\nnext run continues where this one stopped.\n\nA run cannot be undone: completing an unresolved field happens exactly once,\nand the receipt is sealed after it. It requires the `admin` role.",
+        "operationId": "api_v1_metering_endpoints_execute_resolution_run",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolutionRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionRunOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Execute Resolution Run"
       }
     },
     "/api/v1/metering/task-types": {

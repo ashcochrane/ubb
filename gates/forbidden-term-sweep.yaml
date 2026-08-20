@@ -165,7 +165,9 @@ exclusions:
     # own pricing rules it holds.
     # 225 → 226 in #362: one migration, giving a Plan the required reference to
     # the Pricing Book its customers are priced from.
-    files: 226
+    # 226 → 227 in #363: one migration, creating the Resolution Run record and
+    # the rule that refuses every edit to one.
+    files: 227
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

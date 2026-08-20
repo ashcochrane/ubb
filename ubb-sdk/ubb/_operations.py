@@ -234,6 +234,10 @@ API_V1_METERING_ENDPOINTS_DISCARD_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_discard_book_publish',
     'delete',
     '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}')
+API_V1_METERING_ENDPOINTS_EXECUTE_RESOLUTION_RUN = Operation(
+    'api_v1_metering_endpoints_execute_resolution_run',
+    'post',
+    '/api/v1/metering/pricing/resolution-runs')
 API_V1_METERING_ENDPOINTS_GET_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_get_book_publish',
     'get',

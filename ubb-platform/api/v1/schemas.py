@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Annotated, List, Literal, Optional
 
 from ninja import Schema, Field
-from pydantic import field_validator
+from pydantic import ConfigDict, field_validator
 
 from api.v1.pagination import Paginated
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -1899,6 +1899,104 @@ def inherited_rule_out(rule, selectors, keys):
         "fixed_micros": rule.fixed_micros,
         "currency": rule.currency,
     }}
+
+
+# --- A Resolution Run completes what was never resolved (#363) --------------
+#
+# ⚠ WHY THE REQUEST BODY REFUSES WHAT IT DOES NOT PUBLISH — a COMMENT rather
+# than the docstring, because a `Schema`'s docstring is exported verbatim into
+# `openapi/v1.json` and the generated SDK, and this is a note to the next author.
+#
+# Django Ninja DROPS a body key no schema names rather than refusing it, so a
+# caller sending a condition of their own — a filter expression, a status, a
+# flag — would get a 200 and a run that quietly ignored it. Ruling 12b settles
+# that a run declares its selector on three fixed axes and accepts no arbitrary
+# predicate, and a silently-dropped key is exactly that predicate appearing to
+# be honoured. `extra="forbid"` is what makes the refusal real; it publishes as
+# `additionalProperties: false`, so the contract says so too.
+class ResolutionRunIn(Schema):
+    """Which postings this run should reach: a date range, a customer, an
+    Event Type — in any combination, and any of them may be omitted.
+
+    An omitted axis is unpinned rather than empty: a body naming nothing at all
+    reaches every posting of this tenant that was never resolved. The date range
+    is over the posting's own effective instant and is half-open — `[from, to)`
+    — so running one month and then the next repairs each posting exactly once.
+
+    A run reaches only postings whose status says they were never resolved, and
+    that is a property of how the set is built rather than of what you send:
+    there is no field here that could widen it to a posting already carrying a
+    cost or a price, and none that could reach one whose charge was waived.
+
+    Any other field is refused (`validation_error`). A run takes no condition of
+    its own.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    selected_from: Optional[datetime] = None
+    selected_to: Optional[datetime] = None
+    selected_customer_id: Optional[UUID] = None
+    selected_event_type: str = Field(default="", max_length=100)
+
+
+class ResolutionRunSelectorOut(Schema):
+    """The three axes, as they were stated — echoed so the record of the act and
+    the answer to the request cannot describe the same run differently."""
+    selected_from: Optional[str] = None
+    selected_to: Optional[str] = None
+    selected_customer_id: Optional[str] = None
+    selected_event_type: Optional[str] = None
+
+
+class ResolutionRunOut(Schema):
+    """What one run reached, and what it completed.
+
+    `postings_examined` is how many never-resolved postings the run took up, and
+    the three numbers under it account for all of them: a cost settled, a price
+    resolved, or nothing — because nothing the tenant has since configured
+    resolves that posting at the instant it happened. A posting can appear in
+    both of the first two, so they do not sum to the total.
+
+    `more_to_do` says the selector matched more postings than one run takes.
+    Send the same body again: everything this run completed has left the set it
+    selects from, so the next run continues where this one stopped.
+
+    A run moves no money. It completes what was never resolved and records that
+    it did; no invoice, credit note, charge or refund follows from one.
+    """
+    id: str
+    #: When the run happened, which is when this record was created — a run
+    #: record exists because a run happened, so there is no second instant.
+    executed_at: str
+    #: An immutable snapshot of the principal who ran it, taken at the moment of
+    #: the act (ADR-004 §4), because a run cannot be undone and this is the only
+    #: place the answer survives.
+    actor_kind: str
+    actor_id: str
+    actor_display: str
+    selector: ResolutionRunSelectorOut
+    postings_examined: int
+    costs_settled: int
+    prices_resolved: int
+    postings_left_unresolved: int
+    more_to_do: bool
+
+
+def resolution_run_out(run) -> dict:
+    """One run on the wire, from the record that holds it."""
+    return {
+        "id": str(run.id),
+        "executed_at": run.created_at.isoformat(),
+        "actor_kind": run.actor_kind,
+        "actor_id": run.actor_id,
+        "actor_display": run.actor_display,
+        "selector": run.selector,
+        "postings_examined": run.postings_examined,
+        "costs_settled": run.costs_settled,
+        "prices_resolved": run.prices_resolved,
+        "postings_left_unresolved": run.postings_left_unresolved,
+        "more_to_do": run.more_to_do,
+    }
 
 
 class PaginatedBookPublishes(Paginated[BookPublishOut]):
