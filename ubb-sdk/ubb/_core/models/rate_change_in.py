@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.rate_change_in_rate_structure_type_0 import RateChangeInRateStructureType0
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -22,46 +23,56 @@ T = TypeVar("T", bound="RateChangeIn")
 
 @_attrs_define
 class RateChangeIn:
-    """ One reprice in a publish. Match keys (measurement_key plus the ten
-    selectors below — provider/event_type/task_type/subtask_type/dim1..dim6)
-    locate the active rate; the remaining (nullable) fields, when present,
-    override it in the new version.
+    """ One reprice in a publish. Match keys (measurement_key plus the fourteen
+    selectors below — provider/event_type/task_type/subtask_type and the ten
+    grouping-field slots) locate the active rate; the remaining (nullable)
+    fields, when present, override it in the new version.
 
-    These ten are not the whole selector set a rate can pin. A rate may also be
-    pinned on four further grouping-field slots that this body cannot name, and
-    such a rate cannot be matched here — a publish naming it fails to find an
-    active rate. Reaching them is not yet possible through the API.
+    **These are the whole selector set a rate can pin.** A rate is pinned on the
+    four reserved axes and on any of the ten grouping slots, and every one of
+    them can be stated here — so a rule pinned on any slot is reachable. A
+    selector left empty matches a rule that leaves that slot unpinned, which is
+    what an empty selector means everywhere on this surface, so omitting one is
+    a statement about the rule rather than a gap in the body.
 
         Attributes:
             measurement_key (str):
-            dim1 (str | Unset):  Default: ''.
-            dim2 (str | Unset):  Default: ''.
-            dim3 (str | Unset):  Default: ''.
-            dim4 (str | Unset):  Default: ''.
-            dim5 (str | Unset):  Default: ''.
-            dim6 (str | Unset):  Default: ''.
             event_type (str | Unset):  Default: ''.
             fixed_micros (int | None | Unset):
-            pricing_model (None | str | Unset):
+            grouping_field_1 (str | Unset):  Default: ''.
+            grouping_field_10 (str | Unset):  Default: ''.
+            grouping_field_2 (str | Unset):  Default: ''.
+            grouping_field_3 (str | Unset):  Default: ''.
+            grouping_field_4 (str | Unset):  Default: ''.
+            grouping_field_5 (str | Unset):  Default: ''.
+            grouping_field_6 (str | Unset):  Default: ''.
+            grouping_field_7 (str | Unset):  Default: ''.
+            grouping_field_8 (str | Unset):  Default: ''.
+            grouping_field_9 (str | Unset):  Default: ''.
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
+            rate_structure (None | RateChangeInRateStructureType0 | Unset):
             subtask_type (str | Unset):  Default: ''.
             task_type (str | Unset):  Default: ''.
             unit_quantity (int | None | Unset):
      """
 
     measurement_key: str
-    dim1: str | Unset = ''
-    dim2: str | Unset = ''
-    dim3: str | Unset = ''
-    dim4: str | Unset = ''
-    dim5: str | Unset = ''
-    dim6: str | Unset = ''
     event_type: str | Unset = ''
     fixed_micros: int | None | Unset = UNSET
-    pricing_model: None | str | Unset = UNSET
+    grouping_field_1: str | Unset = ''
+    grouping_field_10: str | Unset = ''
+    grouping_field_2: str | Unset = ''
+    grouping_field_3: str | Unset = ''
+    grouping_field_4: str | Unset = ''
+    grouping_field_5: str | Unset = ''
+    grouping_field_6: str | Unset = ''
+    grouping_field_7: str | Unset = ''
+    grouping_field_8: str | Unset = ''
+    grouping_field_9: str | Unset = ''
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
+    rate_structure: None | RateChangeInRateStructureType0 | Unset = UNSET
     subtask_type: str | Unset = ''
     task_type: str | Unset = ''
     unit_quantity: int | None | Unset = UNSET
@@ -74,18 +85,6 @@ class RateChangeIn:
     def to_dict(self) -> dict[str, Any]:
         measurement_key = self.measurement_key
 
-        dim1 = self.dim1
-
-        dim2 = self.dim2
-
-        dim3 = self.dim3
-
-        dim4 = self.dim4
-
-        dim5 = self.dim5
-
-        dim6 = self.dim6
-
         event_type = self.event_type
 
         fixed_micros: int | None | Unset
@@ -94,11 +93,25 @@ class RateChangeIn:
         else:
             fixed_micros = self.fixed_micros
 
-        pricing_model: None | str | Unset
-        if isinstance(self.pricing_model, Unset):
-            pricing_model = UNSET
-        else:
-            pricing_model = self.pricing_model
+        grouping_field_1 = self.grouping_field_1
+
+        grouping_field_10 = self.grouping_field_10
+
+        grouping_field_2 = self.grouping_field_2
+
+        grouping_field_3 = self.grouping_field_3
+
+        grouping_field_4 = self.grouping_field_4
+
+        grouping_field_5 = self.grouping_field_5
+
+        grouping_field_6 = self.grouping_field_6
+
+        grouping_field_7 = self.grouping_field_7
+
+        grouping_field_8 = self.grouping_field_8
+
+        grouping_field_9 = self.grouping_field_9
 
         provider = self.provider
 
@@ -107,6 +120,14 @@ class RateChangeIn:
             rate_per_unit_micros = UNSET
         else:
             rate_per_unit_micros = self.rate_per_unit_micros
+
+        rate_structure: None | str | Unset
+        if isinstance(self.rate_structure, Unset):
+            rate_structure = UNSET
+        elif isinstance(self.rate_structure, RateChangeInRateStructureType0):
+            rate_structure = self.rate_structure.value
+        else:
+            rate_structure = self.rate_structure
 
         subtask_type = self.subtask_type
 
@@ -124,28 +145,36 @@ class RateChangeIn:
         field_dict.update({
             "measurement_key": measurement_key,
         })
-        if dim1 is not UNSET:
-            field_dict["dim1"] = dim1
-        if dim2 is not UNSET:
-            field_dict["dim2"] = dim2
-        if dim3 is not UNSET:
-            field_dict["dim3"] = dim3
-        if dim4 is not UNSET:
-            field_dict["dim4"] = dim4
-        if dim5 is not UNSET:
-            field_dict["dim5"] = dim5
-        if dim6 is not UNSET:
-            field_dict["dim6"] = dim6
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
         if fixed_micros is not UNSET:
             field_dict["fixed_micros"] = fixed_micros
-        if pricing_model is not UNSET:
-            field_dict["pricing_model"] = pricing_model
+        if grouping_field_1 is not UNSET:
+            field_dict["grouping_field_1"] = grouping_field_1
+        if grouping_field_10 is not UNSET:
+            field_dict["grouping_field_10"] = grouping_field_10
+        if grouping_field_2 is not UNSET:
+            field_dict["grouping_field_2"] = grouping_field_2
+        if grouping_field_3 is not UNSET:
+            field_dict["grouping_field_3"] = grouping_field_3
+        if grouping_field_4 is not UNSET:
+            field_dict["grouping_field_4"] = grouping_field_4
+        if grouping_field_5 is not UNSET:
+            field_dict["grouping_field_5"] = grouping_field_5
+        if grouping_field_6 is not UNSET:
+            field_dict["grouping_field_6"] = grouping_field_6
+        if grouping_field_7 is not UNSET:
+            field_dict["grouping_field_7"] = grouping_field_7
+        if grouping_field_8 is not UNSET:
+            field_dict["grouping_field_8"] = grouping_field_8
+        if grouping_field_9 is not UNSET:
+            field_dict["grouping_field_9"] = grouping_field_9
         if provider is not UNSET:
             field_dict["provider"] = provider
         if rate_per_unit_micros is not UNSET:
             field_dict["rate_per_unit_micros"] = rate_per_unit_micros
+        if rate_structure is not UNSET:
+            field_dict["rate_structure"] = rate_structure
         if subtask_type is not UNSET:
             field_dict["subtask_type"] = subtask_type
         if task_type is not UNSET:
@@ -162,18 +191,6 @@ class RateChangeIn:
         d = dict(src_dict)
         measurement_key = d.pop("measurement_key")
 
-        dim1 = d.pop("dim1", UNSET)
-
-        dim2 = d.pop("dim2", UNSET)
-
-        dim3 = d.pop("dim3", UNSET)
-
-        dim4 = d.pop("dim4", UNSET)
-
-        dim5 = d.pop("dim5", UNSET)
-
-        dim6 = d.pop("dim6", UNSET)
-
         event_type = d.pop("event_type", UNSET)
 
         def _parse_fixed_micros(data: object) -> int | None | Unset:
@@ -186,15 +203,25 @@ class RateChangeIn:
         fixed_micros = _parse_fixed_micros(d.pop("fixed_micros", UNSET))
 
 
-        def _parse_pricing_model(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
+        grouping_field_1 = d.pop("grouping_field_1", UNSET)
 
-        pricing_model = _parse_pricing_model(d.pop("pricing_model", UNSET))
+        grouping_field_10 = d.pop("grouping_field_10", UNSET)
 
+        grouping_field_2 = d.pop("grouping_field_2", UNSET)
+
+        grouping_field_3 = d.pop("grouping_field_3", UNSET)
+
+        grouping_field_4 = d.pop("grouping_field_4", UNSET)
+
+        grouping_field_5 = d.pop("grouping_field_5", UNSET)
+
+        grouping_field_6 = d.pop("grouping_field_6", UNSET)
+
+        grouping_field_7 = d.pop("grouping_field_7", UNSET)
+
+        grouping_field_8 = d.pop("grouping_field_8", UNSET)
+
+        grouping_field_9 = d.pop("grouping_field_9", UNSET)
 
         provider = d.pop("provider", UNSET)
 
@@ -206,6 +233,26 @@ class RateChangeIn:
             return cast(int | None | Unset, data)
 
         rate_per_unit_micros = _parse_rate_per_unit_micros(d.pop("rate_per_unit_micros", UNSET))
+
+
+        def _parse_rate_structure(data: object) -> None | RateChangeInRateStructureType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                rate_structure_type_0 = RateChangeInRateStructureType0(data)
+
+
+
+                return rate_structure_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RateChangeInRateStructureType0 | Unset, data)
+
+        rate_structure = _parse_rate_structure(d.pop("rate_structure", UNSET))
 
 
         subtask_type = d.pop("subtask_type", UNSET)
@@ -224,17 +271,21 @@ class RateChangeIn:
 
         rate_change_in = cls(
             measurement_key=measurement_key,
-            dim1=dim1,
-            dim2=dim2,
-            dim3=dim3,
-            dim4=dim4,
-            dim5=dim5,
-            dim6=dim6,
             event_type=event_type,
             fixed_micros=fixed_micros,
-            pricing_model=pricing_model,
+            grouping_field_1=grouping_field_1,
+            grouping_field_10=grouping_field_10,
+            grouping_field_2=grouping_field_2,
+            grouping_field_3=grouping_field_3,
+            grouping_field_4=grouping_field_4,
+            grouping_field_5=grouping_field_5,
+            grouping_field_6=grouping_field_6,
+            grouping_field_7=grouping_field_7,
+            grouping_field_8=grouping_field_8,
+            grouping_field_9=grouping_field_9,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             subtask_type=subtask_type,
             task_type=task_type,
             unit_quantity=unit_quantity,

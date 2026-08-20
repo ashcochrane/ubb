@@ -130,6 +130,28 @@ containers, which no reader may assume a fixed set of. A version bumped for an
 additive detail key would say a record had become unreadable when it had not,
 and would fork the one reader below for no question it could answer differently.
 
+⚠⚠ **AND A COMPONENT'S ARITHMETIC-SHAPE KEY WAS *RENAMED* WITHOUT MOVING IT
+EITHER (#366), WHICH IS A HARDER CASE AND IS DECIDED RATHER THAN INHERITED.** A
+key arriving is additive; a key changing its spelling is not, and this module's
+own rule for the version says to bump it "when a key moves, arrives or leaves".
+The rule it serves is narrower than its wording, and the wording is what would
+mislead here: the version answers *can today's code read this record*, and a
+bump is a claim that some reader's ANSWER changes. **Nothing reads this key.**
+`uncosted_quantity_keys` and `recorded_quantities` are the module's two readers
+and neither touches a component's shape; the only thing that has ever read it is
+a test, over a receipt it wrote itself moments earlier. So a receipt written
+last year and one written today are equally readable by every reader that
+exists, and a bumped version would have refused nothing, unlocked nothing, and
+added a shape to :data:`READABLE_SCHEMA_VERSIONS` that no branch below could
+tell apart from the one beside it.
+
+**Old receipts keep the old spelling and are NOT rewritten**, which is #148
+§4.6's rule and the whole point of the record: back-dating one to a shape that
+did not exist on its day makes it a worse record, not a better one. ⚠ **The day
+a real reader of this key appears, it must know BOTH spellings** — that is what
+a version would have bought and what this note is instead, and the reader that
+adds it is the one that should add the version with it.
+
 ⚠ **THE QUANTITIES NOW EXIST IN TWO PLACES ON PURPOSE AND THEY ARE NOT TWO
 SOURCES OF TRUTH** (#165 §6). The measurement record holds what was *reported*;
 this holds what was *used to compute an amount*. They are not required to be
@@ -224,16 +246,23 @@ TOTALS_KEYS = frozenset({"provider_cost_micros", "billed_cost_micros"})
 #: is usually method-specific — so what is asked of a component is that it
 #: explains its amount, never that it explains nothing else.
 #:
-#: ⚠ **ONE TERM IS MISSING FROM THIS SET DELIBERATELY AND ITS ABSENCE IS NOT AN
-#: OVERSIGHT.** A component also records which arithmetic shape its rule had —
-#: whether the amount is per unit of quantity or a component applying once — and
-#: `_component` writes it, so the record is complete. It is not required HERE
-#: because its key is spelled with a word the registry retired and the ratchet
-#: caps how many files may carry that word: this module is not one of them, and
-#: naming it here would put the count over its ledger entry and fail the sweep.
-#: The ticket that renames the rule's arithmetic shape is the one that adds it
-#: to this set. Until then the shape is asserted where a reader can reach it
-#: through `Rate.STRUCTURE_COLUMN` rather than by spelling it.
+#: ⚠ **THE ARITHMETIC SHAPE JOINS THE SET HERE, AND ITS ABSENCE WAS A LEDGER
+#: CEILING RATHER THAN A JUDGEMENT (#366).** A component records which shape its
+#: rule had — whether the amount is per unit of quantity or a component applying
+#: once — and `_component` has always written it, so the record was complete;
+#: what could not happen was requiring it, because the key was spelled with a
+#: word the registry had retired and the ratchet caps how many files may carry
+#: one. This module was not among them, so naming it would have put the count
+#: over its ledger entry and failed the sweep. The commit that renames the
+#: column is the one that clears that, which is this one.
+#:
+#: **AND IT IS NOT DECORATION.** `Rate.compute` BRANCHES on this value: a
+#: fixed-component rule is its fixed term and nothing else, while a per-unit
+#: rule divides. A component missing it cannot be recomputed at all — and worse,
+#: a reader assuming the per-unit formula answers CORRECTLY for a fixed rule
+#: whose per-unit term happens to be zero, which is the accident that reads as
+#: coverage. Requiring it is what makes "enough to redo the sum" true rather
+#: than nearly true.
 #:
 #: ⚠ And this set spells the retired PLURAL, which is a different thing: that
 #: word is a retired SENSE rather than sweep input, so it costs an entry in the
@@ -243,6 +272,7 @@ TOTALS_KEYS = frozenset({"provider_cost_micros", "billed_cost_micros"})
 REQUIRED_COMPONENT_KEYS = frozenset({
     "measurement_key", "units",
     "rate_per_unit_micros", "unit_quantity", "fixed_micros",
+    "rate_structure",
     "micros",
 })
 

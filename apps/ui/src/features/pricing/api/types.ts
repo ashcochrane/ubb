@@ -12,6 +12,16 @@ export type Rate = MeteringSchemas["RateOut"];
 export type RateIn = MeteringSchemas["RateIn"];
 export type PaginatedRates = MeteringSchemas["PaginatedRates"];
 
+/**
+ * Which arithmetic a rule runs — per unit of quantity, or once regardless.
+ *
+ * Taken off the READ schema rather than declared here. It is a closed registry
+ * concept, so the contract publishes a real `enum` for it and the generated
+ * types carry that as a union; a hand-written copy would be one the day a value
+ * moves, and this feature both sends and renders the value.
+ */
+export type RateStructure = Rate["rate_structure"];
+
 export type PublishIn = MeteringSchemas["PublishIn"];
 export type RateChangeIn = MeteringSchemas["RateChangeIn"];
 

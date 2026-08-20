@@ -33,7 +33,10 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("gpt4o_input_tokens")).toBeInTheDocument();
     expect(screen.getByText("$2.5 / 1M")).toBeInTheDocument();
     expect(screen.getByText("image_generation")).toBeInTheDocument();
-    expect(screen.getByText("Flat")).toBeInTheDocument();
+    // The arithmetic shape's wording, which followed the value's rename
+    // (#366): a rule that charges once regardless of quantity is a
+    // `fixed_component`, and the label catalogue already spelled it that way.
+    expect(screen.getByText("Fixed component")).toBeInTheDocument();
     // The superseded $5/1M version is history — hidden in the default view.
     expect(screen.queryByText("$5 / 1M")).not.toBeInTheDocument();
     // Audit-trail affordance fires the injected navigation callback (the

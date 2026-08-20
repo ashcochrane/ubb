@@ -58,7 +58,7 @@ class BookApiTest(TestCase):
         # 2. add a rate to it -> the rate reports its book membership.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
             "measurement_key": "input_tokens", "provider": "gemini",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 10})
+            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 200, r.content)
         rate = r.json()
         self.assertEqual(rate["rate_per_unit_micros"], 10)
@@ -88,7 +88,7 @@ class BookApiTest(TestCase):
         self.assertEqual(r.json()["currency"], "usd")  # tenant default
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
             "measurement_key": "input_tokens", "provider": "openai",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 5})
+            "rate_structure": "per_unit", "rate_per_unit_micros": 5})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["currency"], "usd")
 
@@ -102,13 +102,13 @@ class BookApiTest(TestCase):
         # Mismatched provider on a default book -> 422, unresolvable rate rejected.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
             "measurement_key": "input_tokens", "provider": "openai",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 10})
+            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 422, r.content)
 
         # Matching provider -> 200.
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
             "measurement_key": "input_tokens", "provider": "gemini",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 10})
+            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
         self.assertEqual(r.status_code, 200, r.content)
 
     # ---- list ----

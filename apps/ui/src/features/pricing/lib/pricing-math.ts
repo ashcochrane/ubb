@@ -1,6 +1,8 @@
 // Pure pricing helpers. All money stays in integer micros; conversion from
 // user input happens exactly once via toMicros (Math.round(x * 1e6)).
 
+import type { RateStructure } from "../api/types";
+
 export const UNIT_QUANTITY_CHOICES = [
   { value: "1", quantity: 1, label: "per unit" },
   { value: "1000", quantity: 1_000, label: "per 1K units" },
@@ -36,7 +38,7 @@ export function microsToUnitString(micros: number): string {
 }
 
 export interface RateShape {
-  pricing_model: string;
+  rate_structure: RateStructure;
   rate_per_unit_micros: number;
   unit_quantity: number;
   fixed_micros: number;
@@ -48,7 +50,7 @@ export interface RateShape {
  * A flat rate charges the fixed component per event, regardless of units.
  */
 export function exampleChargeMicros(rate: RateShape, units: number): number {
-  if (rate.pricing_model === "flat") return rate.fixed_micros;
+  if (rate.rate_structure === "fixed_component") return rate.fixed_micros;
   return (
     Math.floor((units * rate.rate_per_unit_micros) / rate.unit_quantity) +
     rate.fixed_micros
@@ -58,7 +60,7 @@ export function exampleChargeMicros(rate: RateShape, units: number): number {
 /** True when two rate value-shapes price identically (publish diffing). */
 export function sameRateValues(a: RateShape, b: RateShape): boolean {
   return (
-    a.pricing_model === b.pricing_model &&
+    a.rate_structure === b.rate_structure &&
     a.rate_per_unit_micros === b.rate_per_unit_micros &&
     a.unit_quantity === b.unit_quantity &&
     a.fixed_micros === b.fixed_micros

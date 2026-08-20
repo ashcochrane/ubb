@@ -36,6 +36,7 @@ from .book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingField
 from .book_change_in import BookChangeIn
 from .book_change_in_grouping_fields import BookChangeInGroupingFields
 from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
+from .book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
 from .book_in import BookIn
 from .book_out import BookOut
 from .book_publish_in import BookPublishIn
@@ -61,6 +62,7 @@ from .customer_margin_out import CustomerMarginOut
 from .customer_override_in import CustomerOverrideIn
 from .customer_override_in_grouping_fields import CustomerOverrideInGroupingFields
 from .customer_override_in_pricing_method_type_0 import CustomerOverrideInPricingMethodType0
+from .customer_override_in_rate_structure_type_0 import CustomerOverrideInRateStructureType0
 from .customer_response import CustomerResponse
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
@@ -85,6 +87,7 @@ from .grouping_field_values_out import GroupingFieldValuesOut
 from .inherited_pricing_rule import InheritedPricingRule
 from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGroupingFields
 from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
+from .inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from .inherited_rule_out import InheritedRuleOut
 from .invitation_create_in import InvitationCreateIn
 from .invitation_list_response import InvitationListResponse
@@ -157,8 +160,11 @@ from .provider_out import ProviderOut
 from .provider_update_in import ProviderUpdateIn
 from .publish_in import PublishIn
 from .rate_change_in import RateChangeIn
+from .rate_change_in_rate_structure_type_0 import RateChangeInRateStructureType0
 from .rate_in import RateIn
+from .rate_in_rate_structure import RateInRateStructure
 from .rate_out import RateOut
+from .rate_out_rate_structure import RateOutRateStructure
 from .ready_response import ReadyResponse
 from .ready_response_checks import ReadyResponseChecks
 from .record_usage_request import RecordUsageRequest
@@ -197,6 +203,7 @@ from .revenue_profile_in import RevenueProfileIn
 from .revenue_profile_out import RevenueProfileOut
 from .rule_terms_out import RuleTermsOut
 from .rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
+from .rule_terms_out_rate_structure import RuleTermsOutRateStructure
 from .sandbox_reset_in import SandboxResetIn
 from .seat_margin_out import SeatMarginOut
 from .seats_in import SeatsIn
@@ -324,6 +331,7 @@ __all__ = (
     "BookChangeIn",
     "BookChangeInGroupingFields",
     "BookChangeInPricingMethodType0",
+    "BookChangeInRateStructureType0",
     "BookIn",
     "BookOut",
     "BookPublishIn",
@@ -349,6 +357,7 @@ __all__ = (
     "CustomerOverrideIn",
     "CustomerOverrideInGroupingFields",
     "CustomerOverrideInPricingMethodType0",
+    "CustomerOverrideInRateStructureType0",
     "CustomerResponse",
     "DebitCreditResponse",
     "DebitRequest",
@@ -373,6 +382,7 @@ __all__ = (
     "InheritedPricingRule",
     "InheritedPricingRuleGroupingFields",
     "InheritedPricingRulePricingMethodType0",
+    "InheritedPricingRuleRateStructure",
     "InheritedRuleOut",
     "InvitationCreateIn",
     "InvitationListResponse",
@@ -445,8 +455,11 @@ __all__ = (
     "ProviderUpdateIn",
     "PublishIn",
     "RateChangeIn",
+    "RateChangeInRateStructureType0",
     "RateIn",
+    "RateInRateStructure",
     "RateOut",
+    "RateOutRateStructure",
     "ReadyResponse",
     "ReadyResponseChecks",
     "RecordUsageRequest",
@@ -485,6 +498,7 @@ __all__ = (
     "RevenueProfileOut",
     "RuleTermsOut",
     "RuleTermsOutPricingMethodType0",
+    "RuleTermsOutRateStructure",
     "SandboxResetIn",
     "SeatMarginOut",
     "SeatsIn",

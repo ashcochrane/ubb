@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
+from ..models.book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -41,21 +42,15 @@ class BookChangeIn:
     unpinned, which is what an unpinned selector means everywhere on this
     surface, so a change body names only what the rule pins.
 
-    The three terms and the method are nullable because a reprice states only
-    what moves: anything unstated is carried over from the rule being
-    superseded. An `add` takes the model's own defaults for what it leaves out,
-    and a `retire` states none of them at all — it opens no rule.
+    The three terms, the method and the arithmetic shape are nullable because a
+    reprice states only what moves: anything unstated is carried over from the
+    rule being superseded. An `add` takes the model's own defaults for what it
+    leaves out, and a `retire` states none of them at all — it opens no rule.
 
-    ⚠ **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE
-    IT.** Whether an amount is per-unit or a fixed component is carried over
-    from the rule being superseded, and an added rule takes the default. The
-    column's name is retired and its ledger entry caps how many files may still
-    spell it, so putting it on this schema would coin the retired spelling on a
-    brand-new surface for the ticket that renames it to convert — and putting
-    the canonical spelling here would publish a field whose values are still the
-    retired ones. Both belong to the commit that converts the column, its values
-    and the three rate schemas above together. The immediate reprice route this
-    act replaces still states the shape and is untouched.
+    `rate_structure` says which arithmetic the rule runs: an amount per unit of
+    quantity, or a component that applies once regardless of quantity. It is a
+    different fact from `pricing_method`, which says how the price is DERIVED,
+    and a change may move either without the other.
 
         Attributes:
             kind (str):
@@ -66,6 +61,7 @@ class BookChangeIn:
             pricing_method (BookChangeInPricingMethodType0 | None | Unset):
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
+            rate_structure (BookChangeInRateStructureType0 | None | Unset):
             subtask_type (str | Unset):  Default: ''.
             task_type (str | Unset):  Default: ''.
             unit_quantity (int | None | Unset):
@@ -79,6 +75,7 @@ class BookChangeIn:
     pricing_method: BookChangeInPricingMethodType0 | None | Unset = UNSET
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
+    rate_structure: BookChangeInRateStructureType0 | None | Unset = UNSET
     subtask_type: str | Unset = ''
     task_type: str | Unset = ''
     unit_quantity: int | None | Unset = UNSET
@@ -122,6 +119,14 @@ class BookChangeIn:
         else:
             rate_per_unit_micros = self.rate_per_unit_micros
 
+        rate_structure: None | str | Unset
+        if isinstance(self.rate_structure, Unset):
+            rate_structure = UNSET
+        elif isinstance(self.rate_structure, BookChangeInRateStructureType0):
+            rate_structure = self.rate_structure.value
+        else:
+            rate_structure = self.rate_structure
+
         subtask_type = self.subtask_type
 
         task_type = self.task_type
@@ -151,6 +156,8 @@ class BookChangeIn:
             field_dict["provider"] = provider
         if rate_per_unit_micros is not UNSET:
             field_dict["rate_per_unit_micros"] = rate_per_unit_micros
+        if rate_structure is not UNSET:
+            field_dict["rate_structure"] = rate_structure
         if subtask_type is not UNSET:
             field_dict["subtask_type"] = subtask_type
         if task_type is not UNSET:
@@ -224,6 +231,26 @@ class BookChangeIn:
         rate_per_unit_micros = _parse_rate_per_unit_micros(d.pop("rate_per_unit_micros", UNSET))
 
 
+        def _parse_rate_structure(data: object) -> BookChangeInRateStructureType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                rate_structure_type_0 = BookChangeInRateStructureType0(data)
+
+
+
+                return rate_structure_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(BookChangeInRateStructureType0 | None | Unset, data)
+
+        rate_structure = _parse_rate_structure(d.pop("rate_structure", UNSET))
+
+
         subtask_type = d.pop("subtask_type", UNSET)
 
         task_type = d.pop("task_type", UNSET)
@@ -247,6 +274,7 @@ class BookChangeIn:
             pricing_method=pricing_method,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             subtask_type=subtask_type,
             task_type=task_type,
             unit_quantity=unit_quantity,

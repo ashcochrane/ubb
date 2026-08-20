@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.customer_override_in_pricing_method_type_0 import CustomerOverrideInPricingMethodType0
+from ..models.customer_override_in_rate_structure_type_0 import CustomerOverrideInRateStructureType0
 from ..types import UNSET, Unset
 from typing import cast
 import datetime
@@ -56,6 +57,7 @@ class CustomerOverrideIn:
             pricing_method (CustomerOverrideInPricingMethodType0 | None | Unset):
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
+            rate_structure (CustomerOverrideInRateStructureType0 | None | Unset):
             subtask_type (str | Unset):  Default: ''.
             task_type (str | Unset):  Default: ''.
             unit_quantity (int | None | Unset):
@@ -69,6 +71,7 @@ class CustomerOverrideIn:
     pricing_method: CustomerOverrideInPricingMethodType0 | None | Unset = UNSET
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
+    rate_structure: CustomerOverrideInRateStructureType0 | None | Unset = UNSET
     subtask_type: str | Unset = ''
     task_type: str | Unset = ''
     unit_quantity: int | None | Unset = UNSET
@@ -118,6 +121,14 @@ class CustomerOverrideIn:
         else:
             rate_per_unit_micros = self.rate_per_unit_micros
 
+        rate_structure: None | str | Unset
+        if isinstance(self.rate_structure, Unset):
+            rate_structure = UNSET
+        elif isinstance(self.rate_structure, CustomerOverrideInRateStructureType0):
+            rate_structure = self.rate_structure.value
+        else:
+            rate_structure = self.rate_structure
+
         subtask_type = self.subtask_type
 
         task_type = self.task_type
@@ -148,6 +159,8 @@ class CustomerOverrideIn:
             field_dict["provider"] = provider
         if rate_per_unit_micros is not UNSET:
             field_dict["rate_per_unit_micros"] = rate_per_unit_micros
+        if rate_structure is not UNSET:
+            field_dict["rate_structure"] = rate_structure
         if subtask_type is not UNSET:
             field_dict["subtask_type"] = subtask_type
         if task_type is not UNSET:
@@ -239,6 +252,26 @@ class CustomerOverrideIn:
         rate_per_unit_micros = _parse_rate_per_unit_micros(d.pop("rate_per_unit_micros", UNSET))
 
 
+        def _parse_rate_structure(data: object) -> CustomerOverrideInRateStructureType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                rate_structure_type_0 = CustomerOverrideInRateStructureType0(data)
+
+
+
+                return rate_structure_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(CustomerOverrideInRateStructureType0 | None | Unset, data)
+
+        rate_structure = _parse_rate_structure(d.pop("rate_structure", UNSET))
+
+
         subtask_type = d.pop("subtask_type", UNSET)
 
         task_type = d.pop("task_type", UNSET)
@@ -262,6 +295,7 @@ class CustomerOverrideIn:
             pricing_method=pricing_method,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             subtask_type=subtask_type,
             task_type=task_type,
             unit_quantity=unit_quantity,

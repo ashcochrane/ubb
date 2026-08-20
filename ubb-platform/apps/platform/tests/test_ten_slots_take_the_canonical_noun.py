@@ -437,50 +437,95 @@ class SlotOrderIsNotAlphabeticalOrderTest(TestCase):
                          list(SLOTS))
 
 
-class ThePublishedContractIsUnchangedByTheWideningTest(SimpleTestCase):
-    """What this ticket promised NOT to do, and the two bounds it had to move.
+#: The three schemas that publish a rate's selector list, and the reason they
+#: are named here rather than discovered: a walk that found two would report
+#: success just as loudly as one that found three.
+RATE_SCHEMAS = ("RateIn", "RateChangeIn", "RateOut")
 
-    The slot values a caller reads and writes keep their published names here.
-    Replacing them with one object keyed by the tenant's own key is the next
-    ticket's, and doing it early would rename published properties in a ticket
-    whose acceptance criteria forbid exactly that.
 
-    Two published values do move, and both are forced by the widening rather
-    than chosen: the declaration body's item cap was the slot count, and the
-    slot property's length bound was the width of the old identifiers. A cap of
-    six would refuse the tenth declaration and a bound of eight would refuse
-    every one of the new identifiers, so leaving them would have shipped ten
-    slots that no caller can reach. Both are relaxations — nothing a caller
-    could already send is refused now.
+class ThePublishedContractCaughtUpWithTheWideningTest(SimpleTestCase):
+    """⚠ INVERTED BY #366. This class was
+    `ThePublishedContractIsUnchangedByTheWideningTest`, and its two headline
+    tests asserted the opposite of what they assert now.
+
+    **What #276 promised and why the promise expired.** Its acceptance criteria
+    forbade it to rename a published property, so it widened the COLUMNS to ten
+    and left the contract naming six of them under an older spelling. The two
+    tests below were written to hold that line — one guarding against a future
+    commit re-spelling the published properties to match the columns, the other
+    proving the old spellings were still there. #193 §L put "the rate selector
+    list" in slice 4 expressly "so that no ticket quietly widens", and #366 took
+    it: the three schemas publish all ten slots, under the column names.
+
+    **Each test is replaced by its successor at its own address rather than
+    deleted**, which is slice 3's pattern for a tripwire and the only way a
+    reader arriving at the old claim finds out what happened to it. Relaxing
+    either — dropping the guard, or weakening "still carries" to "carries
+    something" — would have left this file green while proving the opposite of
+    what it was written to prove.
+
+    **The gap that closed was FUNCTIONAL, not cosmetic**, and that is why the
+    promise could not simply be renewed. Six published names over ten columns
+    meant a reprice body left the other four empty, and empty is what matches a
+    rule leaving a slot unpinned — so a rule pinned on the seventh slot was
+    writable server-side and matched by no publish body at all.
+    `api/v1/tests/test_a_rate_on_any_slot_can_be_repriced.py` drives that end to
+    end.
+
+    Two published values moved with #276's own widening and still hold below:
+    the declaration body's item cap was the slot count, and the slot property's
+    length bound was the width of the old identifiers.
     """
 
-    def test_no_published_schema_exposes_a_slot_column(self):
-        """A GUARD AGAINST A FUTURE COMMIT, NOT EVIDENCE ABOUT THIS ONE.
+    def test_only_the_rate_schemas_expose_a_slot_column(self):
+        """The successor to `test_no_published_schema_exposes_a_slot_column`.
 
-        No published schema has ever named a slot column, so this was green
-        before the rename and is green after it. Its whole value is forward:
-        the obvious way to "finish" this ticket is to re-spell the published
-        properties to match the columns, and that is the one thing it must not
-        do. Read it with the test below, which is the half that says something
-        about today.
+        That test asserted NO schema names a slot column, as a guard against
+        exactly the commit that has now happened. The guard's subject was always
+        the rest of the contract rather than the rate, and that half is
+        unchanged: a posting's grouping values are the TENANT's facts, keyed by
+        the tenant's own declared key, so a physical slot there would leak UBB's
+        internal identity for a binding the tenant knows by another name. A
+        rule's selector list is the RULE's own shape — it is pinned on the
+        columns it is pinned on.
+
+        ⚠ Held as an exact set on the rate schemas rather than as a bare
+        intersection, so a conversion that published four of the ten and stopped
+        fails here. The whole-document form of this claim, over every property
+        naming a slot in EITHER spelling, is
+        `api/v1/tests/test_grouping_values_on_the_contract.py`'s equality; this
+        one is the widening's own side of it and is what says the ten reached
+        the contract at all.
         """
         for name, schema in schemas().items():
             with self.subTest(schema=name):
-                self.assertFalse(
-                    set(schema.get("properties", {})) & set(SLOTS),
-                    f"{name} exposes a physical slot column")
+                exposed = set(schema.get("properties", {})) & set(SLOTS)
+                if name in RATE_SCHEMAS:
+                    self.assertEqual(exposed, set(SLOTS),
+                                     f"{name} publishes some slots and not all")
+                else:
+                    self.assertFalse(exposed,
+                                     f"{name} exposes a physical slot column")
 
-    def test_the_rate_schemas_still_carry_the_properties_they_carried(self):
-        """The half that is about today, and the control for the test above.
+    def test_the_rate_schemas_no_longer_carry_the_older_spelling(self):
+        """The successor to
+        `test_the_rate_schemas_still_carry_the_properties_they_carried`.
 
-        An "exposes nothing canonical" check passes just as green over a
-        contract whose properties were DELETED, which is a break this ticket
-        must not make either."""
+        That test read the retired spellings off #276's own `RenameField`
+        operations and asserted the contract still published them. It is the
+        same six names, read the same way, asserted the other way round — which
+        is what makes this a replacement rather than a deletion, and what stops
+        a rename from landing as a DELETION of the properties. The test above
+        is the half that says the ten arrived; this is the half that says the
+        six did not survive beside them, because two published spellings for one
+        selector is the thing the join dictionary was and the thing #366 removed.
+        """
         retired = _renames(*RESHAPED[1][1:])
-        for name in ("RateIn", "RateChangeIn", "RateOut"):
+        for name in RATE_SCHEMAS:
             with self.subTest(schema=name):
-                self.assertTrue(
-                    set(retired) <= set(schemas()[name]["properties"]))
+                self.assertFalse(
+                    set(retired) & set(schemas()[name]["properties"]),
+                    f"{name} still publishes a slot under its older spelling")
 
     def test_the_declaration_body_admits_one_item_per_slot(self):
         registry = schemas()["DimensionRegistryIn"]

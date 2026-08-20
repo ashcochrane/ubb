@@ -52,7 +52,7 @@ export function AddRateDialog({
     provider: book.provider_key,
     event_type: "",
     task_type: "",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate: "",
     unit_choice: "1000000",
     custom_unit: "",
@@ -89,17 +89,25 @@ export function AddRateDialog({
         event_type: formValues.event_type,
         task_type: formValues.task_type,
         subtask_type: "",
-        dim1: "",
-        dim2: "",
-        dim3: "",
-        dim4: "",
-        dim5: "",
-        dim6: "",
-        pricing_model: formValues.pricing_model,
+        grouping_field_1: "",
+        grouping_field_2: "",
+        grouping_field_3: "",
+        grouping_field_4: "",
+        grouping_field_5: "",
+        grouping_field_6: "",
+        grouping_field_7: "",
+        grouping_field_8: "",
+        grouping_field_9: "",
+        grouping_field_10: "",
+        rate_structure: formValues.rate_structure,
         rate_per_unit_micros:
-          formValues.pricing_model === "flat" ? 0 : toMicros(formValues.rate),
+          formValues.rate_structure === "fixed_component"
+            ? 0
+            : toMicros(formValues.rate),
         unit_quantity:
-          formValues.pricing_model === "flat" ? 1 : resolveUnitQuantity(formValues),
+          formValues.rate_structure === "fixed_component"
+            ? 1
+            : resolveUnitQuantity(formValues),
         fixed_micros: toMicros(formValues.fixed),
       },
       {
@@ -184,17 +192,17 @@ export function AddRateDialog({
           </FormField>
 
           <div className="space-y-1.5">
-            <Label>Pricing model</Label>
+            <Label>Rate structure</Label>
             <div className="flex gap-2">
-              {(["per_unit", "flat"] as const).map((model) => (
+              {(["per_unit", "fixed_component"] as const).map((model) => (
                 <button
                   key={model}
                   type="button"
-                  aria-pressed={values.pricing_model === model}
-                  onClick={() => form.setValue("pricing_model", model)}
+                  aria-pressed={values.rate_structure === model}
+                  onClick={() => form.setValue("rate_structure", model)}
                   className={cn(
                     "rounded-lg border px-3 py-1.5 text-[13px] transition-colors",
-                    values.pricing_model === model
+                    values.rate_structure === model
                       ? "border-border-strong bg-bg-subtle font-medium"
                       : "border-border hover:bg-bg-subtle/50",
                   )}
@@ -204,13 +212,13 @@ export function AddRateDialog({
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              {values.pricing_model === "flat"
-                ? "Flat: every matching event charges the fixed amount, regardless of units."
+              {values.rate_structure === "fixed_component"
+                ? "Fixed component: every matching event charges the fixed amount, regardless of units."
                 : "Per unit: the amount below is charged per chosen quantity of units."}
             </p>
           </div>
 
-          {values.pricing_model === "per_unit" && (
+          {values.rate_structure === "per_unit" && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField
                 label={`Rate (${currency.toUpperCase()})`}
@@ -268,9 +276,9 @@ export function AddRateDialog({
             label={`Fixed amount per event (${currency.toUpperCase()})`}
             error={form.formState.errors.fixed?.message}
             hint={
-              values.pricing_model === "flat"
-                ? "The flat charge for every matching event."
-                : "Optional flat add-on charged in addition to the per-unit amount. Use 0 for none."
+              values.rate_structure === "fixed_component"
+                ? "The fixed charge for every matching event."
+                : "Optional fixed add-on charged in addition to the per-unit amount. Use 0 for none."
             }
           >
             {(id) => (

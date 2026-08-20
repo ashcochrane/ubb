@@ -796,6 +796,29 @@ CONCEPTS_IN_THE_CONTRACT = {
     # that shadow them: the diff row a tenant checks before committing, and the
     # inherited rule a client copies a starting point from.
     "pricing_method": Published(6, ENUM),
+    # WHICH ARITHMETIC A RULE RUNS (#366) — seven nodes, which is every schema
+    # that carries a rule in either direction rather than a subset of them.
+    # Three are the immediate rate routes: the body that opens a rule, the body
+    # that reprices one, the row that reads one back. Two are the publish act
+    # that replaces those three — the change it carries and the terms row a diff
+    # shows before and after. Two are the customer override — the body that
+    # declares one, and the inherited rule a client copies into it.
+    #
+    # ⚠ IT REACHED THE CONTRACT ONE SLICE LATE AND THE REASON WAS MECHANICAL.
+    # #358 wanted the shape on a change body and could not have it: the column's
+    # name was retired, so coining that spelling on a new schema would have
+    # broken its ledger ceiling, and coining the canonical spelling would have
+    # published a field whose VALUES were still the retired ones. The rename
+    # cleared both at once, which is why the column, its values and all seven
+    # nodes land in one commit.
+    #
+    # ⚠ AND THE LAST TWO WERE FOUND BY A TEST. An existing case holds the
+    # override body's field set EQUAL to a change body's, minus the act, plus
+    # the instant — so a concept added to one and not the other is red rather
+    # than merely inconsistent. That is what an equality buys over a
+    # per-property check, and it is why "a rule states a whole rule" is
+    # asserted as a SET.
+    "rate_structure": Published(7, ENUM),
 }
 
 
@@ -1024,6 +1047,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("pricing_method", {"RecordUsageResponse", "UsageEventDetailOut",
                               "BookChangeIn", "CustomerOverrideIn",
                               "RuleTermsOut", "InheritedPricingRule"})
+    # The rate's arithmetic shape (#366), on every schema carrying a rule in
+    # either direction. The three `Rate*` schemas are the immediate routes;
+    # `BookChangeIn` and `RuleTermsOut` are the publish act that replaces them;
+    # `CustomerOverrideIn` and `InheritedPricingRule` are the override that
+    # states a whole rule and the row a client copies into it. None of the last
+    # four could carry it until the column was renamed.
+    placed("rate_structure", {"RateIn", "RateOut", "RateChangeIn",
+                              "BookChangeIn", "RuleTermsOut",
+                              "CustomerOverrideIn", "InheritedPricingRule"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
@@ -1658,9 +1690,15 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     THE FLOOR MOVES DOWN BY ONE PER CONCEPT PAID, AND ONLY THEN. It went 25 →
     24 in #317, which advertised `costing_status`, 24 → 23 in #351, which
     advertised `pricing_status` — the same concept one slice later on the other
-    side of the margin, and the same single-entry step — and 23 → 22 in #355,
-    which advertised `pricing_method`, the second concept of that pair's own
-    slice and again one entry.
+    side of the margin, and the same single-entry step — 23 → 22 in #355, which
+    advertised `pricing_method`, the second concept of that pair's own slice and
+    again one entry, and 22 → 21 in #366, which advertised `rate_structure`.
+
+    ⚠ THAT LAST ONE PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
+    right rather than an accounting slip: the G4 debt and the backend G2 debt
+    were the SAME debt read from two sides, and the contract could not advertise
+    the values until the backend consumer held them. Only the G4 entry is in
+    this seeding, so only one comes out of it.
 
     ⚠ #351 also COINED `not_applicable_reason`, and that moved the floor by
     nothing at all. A concept whose backend consumer holds every value on the
@@ -1678,6 +1716,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 22, (
+    assert len(_entries(programme)) >= 21, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

@@ -203,7 +203,11 @@ meaning of every historical row in that column. Ten since #276, widened because 
 free-form grouping escape hatch and the demand has to arrive declared or not at all. The stored
 identifier IS the column name, which is why rewriting it is a data migration and not a relabelling,
 and why a declaration bound to a slot outside the declared ten is refused rather than stored.
-The rate write surface publishes six of the ten; slice 4 closes that gap. (ADR-0005)
+The rate write surface publishes all ten since #366, under the column names, so a rule pinned on any
+slot can be written and repriced through the API. It published six until then, which was a
+*functional* gap rather than a spelling one: a reprice body left the other four empty, and empty is
+what matches a rule leaving a slot unpinned, so a rule pinned on the seventh slot could be written
+server-side and then matched by no publish body at all. (ADR-0005)
 
 **Scope**:
 The level at which a grouping field's value is constant — `task`, `subtask`, or `event` — governing

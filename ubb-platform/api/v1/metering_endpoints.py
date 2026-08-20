@@ -46,15 +46,14 @@ from api.v1.schemas import (
     PaginatedUnresolvedQueue, ProjectedAdjustmentOut, WaivedLossOut,
     UndeclaredGroupingField,
     book_change_body, book_change_diff_out, book_publish_out,
-    book_out, rate_change_body, rate_out, usage_event_out,
-    SLOT_PROPERTY_COLUMNS,
+    book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE,
     PricingBookPublish, Rate, RateCard, RateCardAssignment,
-    CARD_TYPE_CHOICES, PRICING_MODEL_CHOICES,
+    CARD_TYPE_CHOICES,
 )
 from api.v1.pagination import page
 from apps.platform.customers.models import Customer
@@ -74,11 +73,11 @@ from apps.platform.event_types.costing import (
 from apps.platform.event_types.quantities import declaration_named
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    SOURCE_KIND_CALLER_SUPPLIED)
+    RATE_STRUCTURE_VALUES, SOURCE_KIND_CALLER_SUPPLIED)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
-from apps.platform.grouping_fields.models import SLOT_CHOICES
+from apps.platform.grouping_fields.models import SLOT_CHOICES, SLOTS
 from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
@@ -1214,10 +1213,16 @@ def add_rate(request, book_id: UUID, payload: RateIn):
         raise Problem("validation_error",
                       f"rate provider {payload.provider!r} must match the "
                       f"default book's provider {book.provider_key!r}")
-    valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
-    if payload.pricing_model not in valid_models:
+    # THE ARITHMETIC SHAPE'S VALUE SET IS CLOSED AND THIS IS WHERE A BODY MEETS
+    # IT. `choices=` on the column is not enforcement — Django never validates
+    # it on `save()` — so an unratified value would otherwise persist silently
+    # and `compute` would take the per-unit branch for it, which is a wrong
+    # amount rather than an error. The publish act refuses the same value the
+    # same way (`book_service._CLOSED_VALUE_SETS`).
+    if payload.rate_structure not in RATE_STRUCTURE_VALUES:
         raise Problem("validation_error",
-                      f"pricing_model must be one of {sorted(valid_models)}")
+                      f"rate_structure must be one of "
+                      f"{sorted(RATE_STRUCTURE_VALUES)}")
     # WHICH DECLARED QUANTITY THIS RATE PRICES, RESOLVED BEFORE ANYTHING IS
     # WRITTEN (#326). A name this tenant has not declared has no record to
     # reference, and a priced rule against a name nobody declared is the typo
@@ -1243,11 +1248,11 @@ def add_rate(request, book_id: UUID, payload: RateIn):
                 measurement=declaration, provider=payload.provider,
                 event_type=payload.event_type, task_type=payload.task_type,
                 subtask_type=payload.subtask_type,
-                # Six published properties onto six of the ten columns (#276);
-                # `SLOT_PROPERTY_COLUMNS` states why there are only six.
-                **{column: getattr(payload, name)
-                   for name, column in SLOT_PROPERTY_COLUMNS.items()},
-                pricing_model=payload.pricing_model,
+                # All ten slots, under the column names the body now uses (#366)
+                # — so there is no translation step left to get wrong, and a
+                # rule pinned on any slot can be added and then repriced.
+                **{slot: getattr(payload, slot) for slot in SLOTS},
+                rate_structure=payload.rate_structure,
                 rate_per_unit_micros=payload.rate_per_unit_micros,
                 unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
                 currency=book.currency,
@@ -1267,7 +1272,7 @@ def add_rate(request, book_id: UUID, payload: RateIn):
                 metadata={
                     "book_id": str(book.id),
                     "measurement_key": rate.measurement_key,
-                    "pricing_model": rate.pricing_model,
+                    Rate.STRUCTURE_COLUMN: rate.rate_structure,
                     "rate_per_unit_micros": rate.rate_per_unit_micros,
                     "currency": rate.currency,
                 },
@@ -1291,7 +1296,11 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
     _gate_card_type(request, book.card_type)
     _refuse_an_immediate_change_to_an_override(book)
     try:
-        BookService.publish(book, [rate_change_body(c.dict(exclude_none=True))
+        # The body's own keys, handed over untranslated (#366). They ARE the
+        # column names now, which is what deleting the join dictionary bought:
+        # a reprice body and `Rate.SELECTORS` speak one vocabulary, so nothing
+        # between them can rename a slot into the wrong one.
+        BookService.publish(book, [c.dict(exclude_none=True)
                                    for c in payload.changes])
     except ValueError as e:
         raise Problem("validation_error", str(e))

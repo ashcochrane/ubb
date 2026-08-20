@@ -222,19 +222,29 @@ def _component(measurement_key, quantity, card):
     in one place, so that nothing in a component is a reference somebody could
     follow for a figure.
 
-    ⚠ Two of the keys below are spelled with words the registry has retired and
-    they stay that way here. Not because nowhere else says them — the rate's own
-    model and the book service both do — but because THIS file's occurrences are
-    what keep it inside the counted sets those words are ledgered at. Re-spelling
-    them would take the file out and report a word leaving the tree, in a commit
-    that is not about the word: the ledger refuses an entry recording more files
-    than the tree has. The ticket that renames the rule's arithmetic shape owns
-    both.
+    ⚠ **ONE OF THE TWO RETIRED SPELLINGS BELOW IS PAID HERE AND THE OTHER IS
+    NOT, AND THE INHERITED SENTENCE SAID OTHERWISE.** It read "the ticket that
+    renames the rule's arithmetic shape owns both". It owns one. The shape's key
+    is the rate's column name, so it follows `Rate.STRUCTURE_COLUMN` and moves
+    with the rename — the constant exists precisely so a reader tracks the
+    column instead of going quietly vacuous on the day it lands.
+
+    The QUANTITY key does not, and the difference is mechanical rather than a
+    preference. That word is a retired **sense**, not a retired term: it is not
+    sweep input, it holds no ledger seat, and no slice-4 entry counts it. So
+    re-spelling it here would be a change to the shape of a stored record with
+    no ticket behind it, in a commit whose subject is a different column — and
+    it would move the sense's own evidence block for a word this slice does not
+    own. It stays, and the ratchet's list is where it is claimed.
     """
     return {
         "measurement_key": measurement_key,
         "units": quantity,
-        "pricing_model": card.pricing_model,
+        # KEY THROUGH THE CONSTANT, VALUE OFF THE COLUMN — so the record's key
+        # and the column it holds cannot be renamed apart. Rename the column and
+        # this raises `AttributeError` on the first call rather than writing a
+        # component under a key nothing reads.
+        Rate.STRUCTURE_COLUMN: card.rate_structure,
         "rate_per_unit_micros": card.rate_per_unit_micros,
         "unit_quantity": card.unit_quantity,
         "fixed_micros": card.fixed_micros,

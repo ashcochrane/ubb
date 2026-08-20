@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
+from ..models.inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -40,6 +41,7 @@ class InheritedPricingRule:
             measurement_key (str):
             provider (str):
             rate_per_unit_micros (int):
+            rate_structure (InheritedPricingRuleRateStructure):
             rule_id (str):
             subtask_type (str):
             task_type (str):
@@ -55,6 +57,7 @@ class InheritedPricingRule:
     measurement_key: str
     provider: str
     rate_per_unit_micros: int
+    rate_structure: InheritedPricingRuleRateStructure
     rule_id: str
     subtask_type: str
     task_type: str
@@ -82,6 +85,8 @@ class InheritedPricingRule:
         provider = self.provider
 
         rate_per_unit_micros = self.rate_per_unit_micros
+
+        rate_structure = self.rate_structure.value
 
         rule_id = self.rule_id
 
@@ -114,6 +119,7 @@ class InheritedPricingRule:
             "measurement_key": measurement_key,
             "provider": provider,
             "rate_per_unit_micros": rate_per_unit_micros,
+            "rate_structure": rate_structure,
             "rule_id": rule_id,
             "subtask_type": subtask_type,
             "task_type": task_type,
@@ -145,6 +151,11 @@ class InheritedPricingRule:
         provider = d.pop("provider")
 
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
+
+        rate_structure = InheritedPricingRuleRateStructure(d.pop("rate_structure"))
+
+
+
 
         rule_id = d.pop("rule_id")
 
@@ -192,6 +203,7 @@ class InheritedPricingRule:
             measurement_key=measurement_key,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             rule_id=rule_id,
             subtask_type=subtask_type,
             task_type=task_type,

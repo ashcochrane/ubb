@@ -105,6 +105,11 @@ def sync_detailed(
         body (RateIn): A single Rate added under a book. card_type and currency are inherited
             from the book, so they are NOT accepted here (the book owns them).
 
+            The rule is pinned by the quantity it prices plus its selectors: the four
+            reserved axes and **all ten** grouping slots. An omitted selector means the
+            rule leaves it unpinned, which is what an empty selector means everywhere on
+            this surface.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -144,6 +149,11 @@ def sync(
         body (RateIn): A single Rate added under a book. card_type and currency are inherited
             from the book, so they are NOT accepted here (the book owns them).
 
+            The rule is pinned by the quantity it prices plus its selectors: the four
+            reserved axes and **all ten** grouping slots. An omitted selector means the
+            rule leaves it unpinned, which is what an empty selector means everywhere on
+            this surface.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -177,6 +187,11 @@ async def asyncio_detailed(
         book_id (UUID):
         body (RateIn): A single Rate added under a book. card_type and currency are inherited
             from the book, so they are NOT accepted here (the book owns them).
+
+            The rule is pinned by the quantity it prices plus its selectors: the four
+            reserved axes and **all ten** grouping slots. An omitted selector means the
+            rule leaves it unpinned, which is what an empty selector means everywhere on
+            this surface.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -216,6 +231,11 @@ async def asyncio(
         book_id (UUID):
         body (RateIn): A single Rate added under a book. card_type and currency are inherited
             from the book, so they are NOT accepted here (the book owns them).
+
+            The rule is pinned by the quantity it prices plus its selectors: the four
+            reserved axes and **all ten** grouping slots. An omitted selector means the
+            rule leaves it unpinned, which is what an empty selector means everywhere on
+            this surface.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

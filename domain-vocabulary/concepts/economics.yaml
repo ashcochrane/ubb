@@ -157,15 +157,28 @@ rate_structure:
     # #202's own note says a word in that position "would force the sweep into
     # exclusions broad enough to disarm it".
     #
-    # WHAT THE MOVE COSTS, stated rather than glossed. Most occurrences of the
-    # retired VALUE sit beside the field `pricing_model`, which IS swept and is
-    # owed by slice 4 — so they are caught by the field even though the value is
-    # not. One does not: `ProductFeeConfig.fee_type == "flat"`
+    # WHAT THE MOVE COST, stated rather than glossed. Most occurrences of the
+    # retired VALUE sat beside the field `pricing_model`, which IS swept and was
+    # owed by slice 4 — so they were caught by the field even though the value
+    # was not. One did not: `ProductFeeConfig.fee_type == "flat"`
     # (apps/billing/tenant_billing/services.py). That field is a bare
     # `CharField(max_length=100)` carrying `flat` / `percentage` /
     # `flat_monthly`, and the registry declares NO concept for it — so after
     # this move no gate sees that value. G7 cannot (the word is not input) and
     # G2 cannot (there is no concept to compare against).
+    #
+    # ⚠ **THE FIELD WAS PAID IN #366 AND THE COVER WENT WITH IT.** The column
+    # took its ratified name, its rows were converted from `flat` to
+    # `fixed_component` by a hand-written migration, and `Rate.compute`'s branch
+    # — the one place the value actually decided money — was converted by
+    # READING the method, since the sweep never had it as input and never would
+    # have found it. So the "caught by the field" half of the argument above is
+    # spent, not broken: it did its job for two slices and there is nothing left
+    # for it to catch. What survives is the residual named above, which is now
+    # the ONLY occurrence of this word in a value position anywhere in the tree
+    # and is still nobody's gate. It is #191 story 15's subject — a new public
+    # value must declare its kind before it ships — and the fix is to give
+    # `fee_type` a concept here, which belongs with #207's consumer gates.
     #
     # That is a real gap and it is not G7's to close. An undeclared public value
     # set is #191 story 15's subject — "a new public value must declare its kind

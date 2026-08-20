@@ -29,6 +29,7 @@ rebuild.
 
 **Consequences.** Reverses the tier work shipped in the F-program. The estimation walkthrough's
 "never knowingly under-hold" machinery (tier mirror, three-anchor worst case, ceiling-rounding
-guard) goes with it. `Rate.pricing_model` narrows to `per_unit`/`flat`. The settle-side correction
+guard) goes with it. The rate's arithmetic shape narrows to two values — today `rate_structure` ∈
+`{per_unit, fixed_component}`, under the column's own name at the time (#366). The settle-side correction
 path stays (config drift is still possible); the orphan-hold repair arithmetic
 ([#23](https://github.com/ashcochrane/ubb/issues/23)) gets exact inputs.

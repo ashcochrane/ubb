@@ -42,7 +42,7 @@ export const rateFormSchema = z
     provider: z.string().trim().max(100, "Keep the provider under 100 characters"),
     event_type: z.string().trim().max(100, "Keep the event type under 100 characters"),
     task_type: z.string().trim().max(64, "Keep the task type under 64 characters"),
-    pricing_model: z.enum(["per_unit", "flat"]),
+    rate_structure: z.enum(["per_unit", "fixed_component"]),
     rate: nonNegativeNumberString("Enter an amount of 0 or more"),
     unit_choice: z.enum(["1", "1000", "1000000", "custom"]),
     custom_unit: z.string().trim(),

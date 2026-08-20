@@ -7,6 +7,7 @@ import {
   toMicros,
   unitChoiceFor,
   unitQuantityLabel,
+  type RateShape,
 } from "./pricing-math";
 import { markupFormSchema, rateFormSchema, resolveUnitQuantity } from "./schemas";
 
@@ -30,7 +31,7 @@ describe("exampleChargeMicros", () => {
     // $2.50 per 1M units → 1,000 units = 2,500 micros ($0.0025).
     const charge = exampleChargeMicros(
       {
-        pricing_model: "per_unit",
+        rate_structure: "per_unit",
         rate_per_unit_micros: 2_500_000,
         unit_quantity: 1_000_000,
         fixed_micros: 0,
@@ -43,7 +44,7 @@ describe("exampleChargeMicros", () => {
   it("floors fractional micros and adds the fixed component", () => {
     const charge = exampleChargeMicros(
       {
-        pricing_model: "per_unit",
+        rate_structure: "per_unit",
         rate_per_unit_micros: 1,
         unit_quantity: 3,
         fixed_micros: 10,
@@ -56,7 +57,7 @@ describe("exampleChargeMicros", () => {
   it("charges only the fixed amount for flat rates", () => {
     const charge = exampleChargeMicros(
       {
-        pricing_model: "flat",
+        rate_structure: "fixed_component",
         rate_per_unit_micros: 999,
         unit_quantity: 1_000,
         fixed_micros: 40_000,
@@ -78,8 +79,8 @@ describe("unit quantity helpers", () => {
   });
 
   it("detects identical and differing rate values (publish diffing)", () => {
-    const base = {
-      pricing_model: "per_unit",
+    const base: RateShape = {
+      rate_structure: "per_unit",
       rate_per_unit_micros: 2_500_000,
       unit_quantity: 1_000_000,
       fixed_micros: 0,
@@ -102,7 +103,7 @@ describe("form schemas", () => {
       provider: "openai",
       event_type: "",
       task_type: "",
-      pricing_model: "per_unit",
+      rate_structure: "per_unit",
       rate: "2.5",
       unit_choice: "custom",
       fixed: "0",
@@ -119,7 +120,7 @@ describe("form schemas", () => {
       provider: "",
       event_type: "",
       task_type: "",
-      pricing_model: "flat",
+      rate_structure: "fixed_component",
       rate: "0",
       unit_choice: "1",
       custom_unit: "",

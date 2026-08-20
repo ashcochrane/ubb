@@ -200,13 +200,35 @@ class TheReverseIsExercisedTest(TestCase):
         """Make the live table accept the historical model's writes."""
         table = model._meta.db_table
         with connection.cursor() as cursor:
-            live = {column.name for column in
+            live = {column.name: column for column in
                     connection.introspection.get_table_description(
                         cursor, table)}
         with connection.schema_editor() as editor:
             for field in model._meta.local_fields:
                 if field.column not in live:
                     editor.add_field(model, field)
+        # AND A COLUMN THE HISTORICAL MODEL HAS NEVER HEARD OF LOSES ITS
+        # `NOT NULL`, for the same reason the check and the trigger come off
+        # below: it is not part of the table this migration ran against.
+        #
+        # ⚠ **A LATER *RENAME* IS WHAT MAKES THIS BITE, AND IT LOOKS NOTHING
+        # LIKE ONE.** The historical model writes every column it knows and
+        # Django keeps no database-level defaults, so a column added after this
+        # migration is simply absent from the INSERT — harmless while every such
+        # column is nullable. #366 renamed a NOT NULL column that this state
+        # knows under its OLD name: the loop above helpfully re-adds the old
+        # spelling, the new one is left out of the INSERT, and the write fails
+        # on a column whose value the historical row genuinely has, under
+        # another name. Reconstructing the older table is the honest repair; the
+        # alternative is teaching this fixture every future rename.
+        known = {field.column for field in model._meta.local_fields}
+        with connection.cursor() as cursor:
+            for name, column in live.items():
+                if name not in known and not column.null_ok:
+                    cursor.execute(
+                        f"ALTER TABLE {connection.ops.quote_name(table)} "
+                        f"ALTER COLUMN {connection.ops.quote_name(name)} "
+                        f"DROP NOT NULL")
         with connection.cursor() as cursor:
             cursor.execute(
                 f"ALTER TABLE {connection.ops.quote_name(table)} "

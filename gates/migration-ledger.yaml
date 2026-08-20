@@ -140,20 +140,18 @@ entries:
 
   # --- G12: method, mode and structure describe different things ------------
   #
-  # `pricing_model` sits one character from `pricing_mode`, a declared concept
-  # meaning something entirely different — which pricing regime governs a Task,
-  # rather than the arithmetic shape of a rate. #151 §13.2 ratified
-  # `rate_structure` precisely because a name "may not survive one character
-  # from `pricing_mode`".
-  - id: g12-rate-pricing-model
-    gate: G12
-    site: ubb-platform/apps/metering/pricing/models.py::Rate.pricing_model
-    expected: rate_structure
-    found: pricing_model
-    owner_slice: slice_4
-    reason: >-
-      One character from `pricing_mode`, and unrelated to it. Slice 4's pricing
-      rules carry `rate_structure ∈ {per_unit, fixed_component}` (#151 §13.2).
+  # G12 OWES NOTHING. Its one entry was the rate's arithmetic-shape column,
+  # which sat one character from `pricing_mode` — a declared concept about
+  # which pricing regime governs a Task, not about how a rate computes. #151
+  # §13.2 ratified `rate_structure` precisely because a name "may not survive
+  # one character from `pricing_mode`", and #366 took it: the column, its two
+  # values and the three schemas publishing it, in one commit.
+  #
+  # The entry is DELETED rather than marked paid, which is this ledger's rule in
+  # both directions — an excuse that no longer describes a real violation
+  # overstates the debt exactly as an understated `found:` count does.
+  # `apps/platform/tests/test_model_naming.py` holds the empty set beside its
+  # G9 and G11 siblings so the absence is a declaration rather than a silence.
 
   # --- G17: every hand-written SDK call targets a real operation -------------
   #
@@ -590,17 +588,6 @@ entries:
       It named when the question was asked rather than what was asked.
       Slice 6's admission control gives the answer its own vocabulary.
 
-  - id: g7-backend-pricing_model
-    gate: G7
-    site: backend::pricing_model
-    expected: rate_structure
-    found: 21 files
-    owner_slice: slice_4
-    reason: >-
-      It sat one character from `pricing_mode` and meant something
-      unrelated, which ADR-0006 §3 calls a defect rather than a
-      coincidence. Slice 4 rebuilds the pricing rules that carry it.
-
   - id: g7-backend-pricing_provenance
     gate: G7
     site: backend::pricing_provenance
@@ -985,17 +972,6 @@ entries:
     reason: >-
       The other half. Replaced by the Pricing Book slice 4 introduces.
 
-  - id: g7-console-pricing_model
-    gate: G7
-    site: console::pricing_model
-    expected: rate_structure
-    found: 12 files
-    owner_slice: slice_4
-    reason: >-
-      It sat one character from `pricing_mode` and meant something
-      unrelated, which ADR-0006 §3 calls a defect rather than a
-      coincidence. Slice 4 rebuilds the pricing rules that carry it.
-
   - id: g7-console-pricing_provenance
     gate: G7
     site: console::pricing_provenance
@@ -1215,17 +1191,6 @@ entries:
       the file left the swept set rather than being rewritten, and slice 6
       now pays three living documents instead of four. The word is still
       in the prototype, correctly, and no slice will remove it from there.
-
-  - id: g7-docs-pricing_model
-    gate: G7
-    site: docs::pricing_model
-    expected: rate_structure
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      It sat one character from `pricing_mode` and meant something
-      unrelated, which ADR-0006 §3 calls a defect rather than a
-      coincidence. Slice 4 rebuilds the pricing rules that carry it.
 
   - id: g7-docs-rate_card
     gate: G7
@@ -1460,17 +1425,6 @@ entries:
       The plural named an analytics grouping capability, not a value.
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
-
-  - id: g7-openapi-pricing_model
-    gate: G7
-    site: openapi::pricing_model
-    expected: rate_structure
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      It sat one character from `pricing_mode` and meant something
-      unrelated, which ADR-0006 §3 calls a defect rather than a
-      coincidence. Slice 4 rebuilds the pricing rules that carry it.
 
   - id: g7-openapi-pricing_provenance
     gate: G7
@@ -1762,12 +1716,21 @@ entries:
     gate: G7
     site: sdk::pricing_model
     expected: rate_structure
-    found: 9 files
+    found: 6 files
     owner_slice: slice_4
     reason: >-
       It sat one character from `pricing_mode` and meant something
       unrelated, which ADR-0006 §3 calls a defect rather than a
       coincidence. Slice 4 rebuilds the pricing rules that carry it.
+      PART PAID BY #366, which renamed the column, its values and the
+      three schemas publishing it: 9 files to 6. The three that went are
+      GENERATED — `ubb/_core/models/{rate_in,rate_out,rate_change_in}.py`
+      — and they moved because the contract did, in the same commit,
+      since a core regenerated from a moved spec is not a separate
+      change. What is left is hand-written and is #373's: the wrapper,
+      its type aliases, the README and three test modules. The backend,
+      console, openapi and docs entries for this term were DELETED in
+      that commit rather than decremented; this one alone survives it.
 
   - id: g7-sdk-pricing_provenance
     gate: G7
@@ -2080,18 +2043,6 @@ entries:
       than importing them from `core.vocabulary`. The receipt is authoritative
       under #148, and slice 4 is where it becomes a validated,
       schema-versioned record rather than a provenance dict.
-
-  - id: g2-backend-rate_structure
-    gate: G2
-    site: ubb-platform/apps/metering/pricing/models.py::rate_structure
-    expected: rate_structure
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #145 replaced the matching
-      engine with declared measurements, and slice 4 rebuilds the rates that
-      carry the structure.
 
   - id: g2-backend-spend_pool_enforce_mode
     gate: G2
@@ -2719,19 +2670,6 @@ entries:
       that. Slice 4 rebuilds Price, which is where #148's authoritative receipt
       lands. The metadata appears in that slice.
 
-  - id: g4-openapi-rate_structure
-    gate: G4
-    site: openapi/v1.json::rate_structure
-    expected: rate_structure
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 4 rebuilds Price, replacing today's rate cards with the
-      Pricing Book's rules. The metadata appears in that slice.
-
   - id: g4-openapi-reason_code
     gate: G4
     site: openapi/v1.json::reason_code
@@ -3087,6 +3025,14 @@ entries:
       that vocabulary — the same slice the concept's own value-list entry
       names, because a value list and the words for it cannot honestly move
       apart.
+      ⚠ ITS VALUES MOVED IN #366 AND ITS EXPORT NAME DID NOT, WHICH IS THIS
+      ENTRY'S OWN DOING. The keys are `per_unit` / `fixed_component` now,
+      because the console SENDS them and one still saying `flat` would post a
+      value the API refuses. The symbol keeps its spelling because this entry
+      addresses the map BY EXPORT NAME and the ledger's ratchet keys on that
+      address, so a rename reads as an entry ADDED and would cost a seeding
+      authorisation for a symbol this entry's own payment deletes. The debt is
+      unchanged either way: the wording is still hand-written here.
 
   - id: g6-map-referral-program-status-label
     gate: G6

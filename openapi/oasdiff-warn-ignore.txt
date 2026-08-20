@@ -381,3 +381,21 @@ PATCH /api/v1/tenant/config removed the request property `require_cost_card_cove
 # deleted and whose generated core is regenerated in this same commit.
 POST /api/v1/metering/usage removed the request property `billed_cost_micros`
 POST /api/v1/metering/usage/batch removed the request property `events/items/billed_cost_micros`
+
+# --- #366: the arithmetic shape on the two write surfaces -------------------
+#
+# The same rename, on the two bodies that state a rule rather than the two
+# responses that return one — the reason is in the error file's block under this
+# ticket and is not repeated here.
+#
+# ⚠ A THIRD WRITE SURFACE GAINS THE PROPERTY IN THE SAME COMMIT AND IS NOT A
+# BREAK. `BookChangeIn` — the change a publish carries, and the act that
+# replaces the two routes below — could not state a rule's arithmetic shape at
+# all: #358 wanted it there and found that the retired spelling would break its
+# ledger ceiling on a brand-new schema while the canonical spelling would
+# publish a field whose values were still the retired ones. It named the commit
+# that clears both, which is this one. Adding an optional property is additive,
+# so it emits nothing; what it ends is a real hole, because until now the ONLY
+# way to move a rule's shape was the immediate reprice route below.
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/pricing_model`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `pricing_model`

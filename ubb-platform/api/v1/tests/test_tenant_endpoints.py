@@ -510,7 +510,7 @@ class TenantConfigCurrencyTest(TestCase):
         Rate.objects.create(
             tenant=self.tenant, card_type="cost",
             measurement=declares_a_quantity(self.tenant, "tokens"),
-            pricing_model="per_unit", rate_per_unit_micros=10,
+            rate_structure="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency)
         self._assert_locked()
 
@@ -520,7 +520,7 @@ class TenantConfigCurrencyTest(TestCase):
         Rate.objects.create(
             tenant=self.tenant, card_type="cost",
             measurement=declares_a_quantity(self.tenant, "tokens"),
-            pricing_model="per_unit", rate_per_unit_micros=10,
+            rate_structure="per_unit", rate_per_unit_micros=10,
             currency=self.tenant.default_currency, valid_to=timezone.now())
         resp = self._patch({"default_currency": "eur"})
         self.assertEqual(resp.status_code, 200, resp.content)

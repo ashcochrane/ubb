@@ -47,23 +47,31 @@ function requireBook(bookId: string): Book {
 interface Selectors {
   task_type?: string | null;
   subtask_type?: string | null;
-  dim1?: string | null;
-  dim2?: string | null;
-  dim3?: string | null;
-  dim4?: string | null;
-  dim5?: string | null;
-  dim6?: string | null;
+  grouping_field_1?: string | null;
+  grouping_field_2?: string | null;
+  grouping_field_3?: string | null;
+  grouping_field_4?: string | null;
+  grouping_field_5?: string | null;
+  grouping_field_6?: string | null;
+  grouping_field_7?: string | null;
+  grouping_field_8?: string | null;
+  grouping_field_9?: string | null;
+  grouping_field_10?: string | null;
 }
 
 const SELECTOR_KEYS = [
   "task_type",
   "subtask_type",
-  "dim1",
-  "dim2",
-  "dim3",
-  "dim4",
-  "dim5",
-  "dim6",
+  "grouping_field_1",
+  "grouping_field_2",
+  "grouping_field_3",
+  "grouping_field_4",
+  "grouping_field_5",
+  "grouping_field_6",
+  "grouping_field_7",
+  "grouping_field_8",
+  "grouping_field_9",
+  "grouping_field_10",
 ] as const;
 
 function sameSelectors(a: Selectors, b: Selectors): boolean {
@@ -176,13 +184,17 @@ export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
     event_type: body.event_type ?? "",
     task_type: body.task_type ?? "",
     subtask_type: body.subtask_type ?? "",
-    dim1: body.dim1 ?? "",
-    dim2: body.dim2 ?? "",
-    dim3: body.dim3 ?? "",
-    dim4: body.dim4 ?? "",
-    dim5: body.dim5 ?? "",
-    dim6: body.dim6 ?? "",
-    pricing_model: body.pricing_model ?? "per_unit",
+    grouping_field_1: body.grouping_field_1 ?? "",
+    grouping_field_2: body.grouping_field_2 ?? "",
+    grouping_field_3: body.grouping_field_3 ?? "",
+    grouping_field_4: body.grouping_field_4 ?? "",
+    grouping_field_5: body.grouping_field_5 ?? "",
+    grouping_field_6: body.grouping_field_6 ?? "",
+    grouping_field_7: body.grouping_field_7 ?? "",
+    grouping_field_8: body.grouping_field_8 ?? "",
+    grouping_field_9: body.grouping_field_9 ?? "",
+    grouping_field_10: body.grouping_field_10 ?? "",
+    rate_structure: body.rate_structure ?? "per_unit",
     rate_per_unit_micros: body.rate_per_unit_micros ?? 0,
     unit_quantity: body.unit_quantity ?? 1_000_000,
     fixed_micros: body.fixed_micros ?? 0,
@@ -237,7 +249,7 @@ export async function publishBook(bookId: string, body: PublishIn): Promise<Book
       next: {
         ...active,
         id: nextId("rate"),
-        pricing_model: change.pricing_model ?? active.pricing_model,
+        rate_structure: change.rate_structure ?? active.rate_structure,
         rate_per_unit_micros: change.rate_per_unit_micros ?? active.rate_per_unit_micros,
         unit_quantity: change.unit_quantity ?? active.unit_quantity,
         fixed_micros: change.fixed_micros ?? active.fixed_micros,

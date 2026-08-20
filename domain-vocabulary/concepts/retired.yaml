@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,657 of 2,051 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,666 of 2,061 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1163,6 +1163,49 @@ measurement_key:
     # that control's six named files carrying it (#350). It is moved, not
     # renamed and not removed: touching those lines without touching that token
     # is what keeps both this numerator and that control where they are.
+    #
+    # #366 MOVED THE DENOMINATOR ONLY, UPWARD BY NINE (1,657 -> 1,666 swept,
+    # 2,051 -> 2,061 tracked, 52/129 unchanged), AND THE EXCLUSION MOVED BY ONE
+    # (`historical-migrations` 227 -> 228) — so tracked rises by TEN while swept
+    # rises by nine, which is #363's signature rather than #364's or #365's.
+    # The commit renames the rate's arithmetic-shape column to its ratified
+    # name, converts its values, and publishes all ten grouping slots under the
+    # column names.
+    #
+    # TWO ARE HAND-WRITTEN AND SEVEN ARE GENERATED, counted off
+    # `git diff --name-status` rather than from memory. The two are the test
+    # module for the rename and the one for the end-to-end reprice of a rule
+    # pinned on a previously unreachable slot. The seven are
+    # `generate_core.py`'s ENUM MODULES, one per schema carrying the
+    # newly-advertised closed concept — `RateIn`, `RateOut`, `RateChangeIn`,
+    # `BookChangeIn`, `RuleTermsOut`, `CustomerOverrideIn` and
+    # `InheritedPricingRule`. That is #355's mechanism exactly: one concept on
+    # seven schemas pays seven files.
+    #
+    # ⚠ THE LAST TWO OF THOSE SEVEN WERE FOUND BY A TEST RATHER THAN PLANNED,
+    # AND THE NUMBERS WERE RE-TAKEN AFTER THEM. `CustomerOverrideIn` declares
+    # that it states a WHOLE rule and an existing case holds its field set equal
+    # to a change body's; adding the shape to one and not the other reddened it
+    # immediately, and `InheritedPricingRule` followed because it is the row a
+    # client copies INTO that body. So the first taking of these counts was
+    # stale within the same session — the shape this ratchet has already
+    # recorded for mutation counts, in the file-count direction. The numbers
+    # here are from after `generate_core.py`'s last run with its output staged,
+    # which is #317's discipline and #361, #362 and #364's habit.
+    #
+    # ⚠ THE NUMERATOR SURVIVED A COMMIT WHOSE SUBJECT IS THE ARITHMETIC THAT
+    # CONSUMES A METERED QUANTITY, and it is the closest call of any re-take so
+    # far. `Rate.compute` takes the measured amount as its only argument and the
+    # renamed column decides which formula runs over it, so the word is one
+    # careless sentence away in the model, the migration, the new test module
+    # and the receipt's component keys. Three things kept it out: `compute`'s
+    # own parameter was already the retired plural and is UNTOUCHED (it is
+    # inside the 52), the receipt's quantity key is deliberately NOT re-spelled
+    # here — that word is a retired sense with no ledger seat and no slice-4
+    # entry, so moving it would be a stored-record change with no ticket behind
+    # it — and the new module says "quantity" wherever it means one. The
+    # inherited sentence in `pricing_service._component` claimed this ticket
+    # owned BOTH spellings; it owns one, and the corrected sentence is there.
 
     - term: units
       retired_as: >-
