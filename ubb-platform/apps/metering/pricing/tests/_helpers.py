@@ -163,6 +163,74 @@ def cost_rate_in_default_book(tenant, **fields):
     return rate_in_default_book(tenant, card_type="cost", **fields)
 
 
+#: THE DOOR FOR A FIXTURE THAT NEEDS AN EVENT TO BILL A PARTICULAR AMOUNT
+#: (#365). Before that commit a caller stated the customer price in the request
+#: body, so any test wanting an event that billed a chosen figure said so in one
+#: keyword. The price is now UBB's to resolve, and the only ways in are a rule
+#: and the markup rung — so a test that used to state an amount has to CONFIGURE
+#: one. Fifteen modules did, across metering, billing, subscriptions and the
+#: composition layer.
+#:
+#: This is that configuration, said once. `a_rule_that_prices_what_it_measures`
+#: puts a per-unit price rule in the tenant's own book; `priced_at(micros)`
+#: answers the quantities bag that rule charges exactly `micros` for. A caller
+#: still says one number and still never learns how the engine got there — the
+#: `cost_rate_in_default_book` pattern, on the other side of the ledger.
+#:
+#: ⚠ THE RATE IS NOT ONE MICRO A UNIT, DELIBERATELY. At a rate of one the price
+#: would EQUAL the quantity, and every assertion about a billed amount would be
+#: satisfiable by an engine that echoed the bag it was handed back — the
+#: identity-fixture hazard #364 paid for with a zero markup rung. A rate of a
+#: thousand keeps the two numbers different, so an echo is visibly wrong.
+PRICED_QUANTITY = "priced_calls"
+WHAT_A_UNIT_COSTS_THE_CUSTOMER = 1_000
+
+
+def a_rule_that_prices_what_it_measures(tenant, **fields):
+    """A price rule over `PRICED_QUANTITY`, and a cost rule of NOTHING beside it.
+
+    ⚠ THE SECOND RULE IS WHAT KEEPS THE SUBSTITUTION HONEST, and leaving it out
+    changes what half the fixtures assert. A body that stated a price carried NO
+    quantities, so the cost side saw an empty bag and settled at a KNOWN zero.
+    Handing those same events a quantity with nothing costing it would put the
+    cost at `unresolved` / `cost_rate_missing` instead — a different economic
+    state, on tests whose subject is a stop verdict or a counter and which would
+    have gone red for a reason having nothing to do with them. Declaring the
+    quantity costable at nothing is the state they were already in, said out
+    loud.
+
+    A fixture that wants a real supplier cost states it as it always did, and
+    the caller's figure wins over this rule without consulting it.
+    """
+    priced = rate_in_default_book(
+        tenant, measurement_key=PRICED_QUANTITY,
+        rate_per_unit_micros=WHAT_A_UNIT_COSTS_THE_CUSTOMER,
+        unit_quantity=1, **fields)
+    cost_rate_in_default_book(
+        tenant, measurement_key=PRICED_QUANTITY,
+        rate_per_unit_micros=0, unit_quantity=1, **fields)
+    return priced
+
+
+def priced_at(micros):
+    """The quantities the rule above charges exactly `micros` for.
+
+    Refuses an amount the rate cannot reach rather than rounding to one it can:
+    a fixture silently billing 999,000 where it asked for 999,500 would be a
+    test asserting a number nothing in it chose.
+    """
+    quantity, remainder = divmod(micros, WHAT_A_UNIT_COSTS_THE_CUSTOMER)
+    if remainder:
+        # ⚠ The message says "measured" rather than naming the plural a caller
+        # would reach for: that plural is a RETIRED SENSE with a counted
+        # numerator, and this file is not one of the files that carries it.
+        raise AssertionError(
+            f"{micros} is not a whole number of anything this rule can charge "
+            f"for: it prices each one measured at "
+            f"{WHAT_A_UNIT_COSTS_THE_CUSTOMER} micros")
+    return {PRICED_QUANTITY: quantity}
+
+
 #: What every posting in a recovery fixture measures, and the denominator its
 #: rules divide by — so a rule's per-unit figure IS the amount, and an assertion
 #: says one number rather than an arithmetic.

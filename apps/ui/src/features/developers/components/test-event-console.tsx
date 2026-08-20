@@ -57,7 +57,6 @@ export function TestEventConsole() {
       provider: "",
       product_id: "",
       provider_cost: "",
-      billed_cost: "",
       effective_at: "",
       idempotency_key: crypto.randomUUID(),
       measurements: [{ ...EMPTY_MEASUREMENT_ROW }],
@@ -236,26 +235,20 @@ export function TestEventConsole() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                label={`Provider cost (${currency.toUpperCase()})`}
-                error={errors.provider_cost?.message}
-                hint="Optional — your cost of goods."
-              >
-                {(id) => (
-                  <Input id={id} inputMode="decimal" placeholder="0.42" {...form.register("provider_cost")} />
-                )}
-              </FormField>
-              <FormField
-                label={`Billed cost (${currency.toUpperCase()})`}
-                error={errors.billed_cost?.message}
-                hint="Optional — overrides pricing. Converted to micros."
-              >
-                {(id) => (
-                  <Input id={id} inputMode="decimal" placeholder="0.60" {...form.register("billed_cost")} />
-                )}
-              </FormField>
-            </div>
+            {/* ONE COST FIELD, AND NO PRICE FIELD BESIDE IT. The price input
+                that used to sit here was hinted "overrides pricing", which is
+                exactly what the API stopped accepting: a customer price is
+                resolved from the tenant's own pricing rules and read off the
+                response below, never stated per call. */}
+            <FormField
+              label={`Provider cost (${currency.toUpperCase()})`}
+              error={errors.provider_cost?.message}
+              hint="Optional — your cost of goods. What you charge comes from your pricing rules."
+            >
+              {(id) => (
+                <Input id={id} inputMode="decimal" placeholder="0.42" {...form.register("provider_cost")} />
+              )}
+            </FormField>
 
             <FormField
               label="Effective at"

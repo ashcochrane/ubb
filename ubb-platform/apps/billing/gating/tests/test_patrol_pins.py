@@ -131,6 +131,8 @@ class TestPin2EmitFailureCompletes:
         # this completes it: the patrol fires the missed signal on its next
         # pass, from durable truth alone.
         from django.db import connection
+        from apps.metering.pricing.tests._helpers import (
+            a_rule_that_prices_what_it_measures, priced_at)
         from apps.metering.usage.services.usage_service import UsageService
 
         orig_create = OutboxEvent.objects.create
@@ -144,9 +146,11 @@ class TestPin2EmitFailureCompletes:
         monkeypatch.setattr(OutboxEvent.objects, "create", _create)
         t = _tenant()
         c = _customer(t, balance_micros=5_000_000)
+        # The crossing amount is what the tenant's rule charges (#365).
+        a_rule_that_prices_what_it_measures(t)
         UsageService.record_usage(
             tenant=t, customer=c, request_id="r1", idempotency_key="k1",
-            billed_cost_micros=6_000_000)  # crossing; stop.fired insert dies
+            measurements=priced_at(6_000_000))  # crossing; stop.fired insert dies
         assert not StopSignalState.objects.filter(owner=c).exists()
         monkeypatch.setattr(OutboxEvent.objects, "create", orig_create)
 

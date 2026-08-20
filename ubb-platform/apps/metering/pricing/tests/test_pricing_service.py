@@ -44,7 +44,7 @@ class TestPricing:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
             measurements=None, currency="usd",
-            caller_provider_cost=1_000_000, caller_billed=None)
+            caller_provider_cost=1_000_000)
         assert costing.provider_cost_micros == 1_000_000
         assert costing.billed_cost_micros == 1_200_000
         assert (costing.pricing_receipt["pricing"]["method"]
@@ -70,7 +70,7 @@ class TestPricing:
             selectors={"event_type": "chat", "provider": "openai",
                        "grouping_field_1": "gpt-4"},
             measurements={"input_tokens": 1000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert costing.provider_cost_micros == 5
         assert costing.billed_cost_micros is None
         assert costing.pricing_status == PRICING_STATUS_UNKNOWN
@@ -92,7 +92,7 @@ class TestPricing:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
             measurements={"input_tokens": 1000, "seats": 3}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert costing.provider_cost_micros == 5
         assert costing.billed_cost_micros == 9_000_000
         assert (costing.pricing_receipt["pricing"]["method"]
@@ -110,7 +110,7 @@ class TestPricing:
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "gpt-4"},
             measurements={"tok": 1_000_000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert costing.provider_cost_micros == 9_000
         fallback = PricingService.price(
             subject=a_usage_event_subject(),
@@ -118,7 +118,7 @@ class TestPricing:
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "other"},
             measurements={"tok": 1_000_000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert fallback.provider_cost_micros == 1_000
 
     def test_a_caller_supplied_cost_answers_for_a_quantity_with_no_rate(self):
@@ -134,7 +134,7 @@ class TestPricing:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             measurements={"unmatched_metric": 100}, currency="usd",
-            caller_provider_cost=500, caller_billed=None,
+            caller_provider_cost=500,
         )
         assert costing.provider_cost_micros == 500
         assert (costing.pricing_receipt["costing"]["method"]
@@ -157,7 +157,7 @@ class TestPricing:
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o"},
             measurements=None, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
         assert costing.provider_cost_micros == 0
 
     def test_caller_cost_with_no_metrics_is_accepted(self):
@@ -168,7 +168,7 @@ class TestPricing:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
             measurements=None, currency="usd",
-            caller_provider_cost=123, caller_billed=None)
+            caller_provider_cost=123)
         assert costing.provider_cost_micros == 123
         assert (costing.pricing_receipt["costing"]["method"]
                 == COSTING_METHOD_REPORTED)

@@ -9,7 +9,8 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at, rate_in_default_book)
 from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService, validate_effective_at,
@@ -264,8 +265,15 @@ class TestClosedPeriodGuard:
         rec = CustomerUsageInvoice.objects.create(
             tenant=t, customer=c, period_start=period_start, period_end=period_end,
             status="pending")
+        # The backfilled event bills 7,000,000 by rule now, not by keyword
+        # (#365) — and the rule has to have been IN FORCE at the instant the
+        # event says it happened, because that is the whole subject of this
+        # module: a price is resolved as of the posting's own moment, so a rule
+        # opened today reaches nothing dated last month.
+        a_rule_that_prices_what_it_measures(t, valid_from=eff - timedelta(days=1))
         r = UsageService.record_usage(t, c, "r1", "k1",
-                                      billed_cost_micros=7_000_000, effective_at=eff)
+                                      measurements=priced_at(7_000_000),
+                                      effective_at=eff)
         assert Posting.objects.filter(id=r["event_id"]).exists()
         # No stripe_customer_id: Phase 1 aggregates (proving the re-aggregation
         # picks the backfill up) then skips before any Stripe call.

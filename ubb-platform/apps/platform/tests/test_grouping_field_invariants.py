@@ -222,7 +222,7 @@ class TestGroupingFieldInvariants:
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors=selectors,
             measurements={"input_tokens": 1_000_000}, currency="usd",
-            caller_provider_cost=None, caller_billed=None)
+            caller_provider_cost=None)
 
         # The "" book's narrow, specificity-2 override wins over the openai
         # book's broad, specificity-1 rate — specificity beats source, and the

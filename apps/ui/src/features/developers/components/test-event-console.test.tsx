@@ -22,9 +22,25 @@ function renderConsole() {
   );
 }
 
+/**
+ * A priced measurement, and how many of it buys a chosen amount.
+ *
+ * ⚠ THE FORM NO LONGER HAS A PRICE INPUT, so a case that wants a particular
+ * billed figure has to buy it (#365). These cases used to type the amount
+ * straight into a "Billed cost" box hinted "overrides pricing" — the bypass the
+ * API deleted — and the amounts they assert are the same ones, now reached the
+ * way a real tenant reaches them: quantities, priced by configuration.
+ */
+const PRICED_MEASUREMENT = "requests";
+const MICROS_PER_REQUEST = 50_000;
+
+function requestsWorth(micros: number): string {
+  return String(micros / MICROS_PER_REQUEST);
+}
+
 async function sendEvent(fields: {
-  billedCost?: string;
   measurementKey?: string;
+  quantity?: string;
   eventType?: string;
 }) {
   const customerInput = screen.getByPlaceholderText("…or paste a customer UUID");
@@ -34,17 +50,12 @@ async function sendEvent(fields: {
       target: { value: fields.eventType },
     });
   }
-  if (fields.billedCost !== undefined) {
-    fireEvent.change(screen.getByPlaceholderText("0.60"), {
-      target: { value: fields.billedCost },
-    });
-  }
   if (fields.measurementKey !== undefined) {
     fireEvent.change(screen.getByLabelText("Measurement 1 name"), {
       target: { value: fields.measurementKey },
     });
     fireEvent.change(screen.getByLabelText("Measurement 1 quantity"), {
-      target: { value: "100" },
+      target: { value: fields.quantity ?? "100" },
     });
   }
   const sendButton = screen.getByRole("button", { name: "Send test event" });
@@ -52,10 +63,19 @@ async function sendEvent(fields: {
   fireEvent.click(sendButton);
 }
 
+/** Send an event whose configured price comes to exactly `micros`. */
+async function sendEventPricedAt(micros: number, eventType?: string) {
+  await sendEvent({
+    measurementKey: PRICED_MEASUREMENT,
+    quantity: requestsWorth(micros),
+    ...(eventType !== undefined && { eventType }),
+  });
+}
+
 describe("TestEventConsole", () => {
   it("sends an event and shows the priced response with the event id", async () => {
     renderConsole();
-    await sendEvent({ billedCost: "0.60" });
+    await sendEventPricedAt(600_000);
     expect(await screen.findByText("Usage event recorded")).toBeInTheDocument();
     expect(screen.getByText("Billed cost")).toBeInTheDocument();
     // Per-event amounts under 1 unit keep 4-decimal precision.
@@ -75,7 +95,7 @@ describe("TestEventConsole", () => {
     // merely absent from it: it lower-cased, stripped the underscore and
     // capitalised the first letter, turning this into "Anthropic.messages
     // create".
-    await sendEvent({ eventType: "anthropic.messages_CREATE", billedCost: "0.60" });
+    await sendEventPricedAt(600_000, "anthropic.messages_CREATE");
 
     // `textContent` on the heading, not `getByText`: a substring matcher would
     // pass on "Anthropic.messages CREATE (anthropic.messages_CREATE)", which is
@@ -120,7 +140,7 @@ describe("TestEventConsole", () => {
   it("shows the stop verdict block when the response says stop", async () => {
     renderConsole();
     // The mock wallet starts at $12.50 — a $20 event tips it past the floor.
-    await sendEvent({ billedCost: "20" });
+    await sendEventPricedAt(20_000_000);
     expect(await screen.findByText("Stop verdict")).toBeInTheDocument();
     expect(screen.getByText("Customer balance floor")).toBeInTheDocument();
     // Scope label ("Customer") joins the form's own "Customer" label.
@@ -133,9 +153,9 @@ describe("TestEventConsole", () => {
 
   it("keeps earlier responses so runs can be compared", async () => {
     renderConsole();
-    await sendEvent({ billedCost: "0.25" });
+    await sendEventPricedAt(250_000);
     expect(await screen.findByText("$0.2500")).toBeInTheDocument();
-    await sendEvent({ billedCost: "0.35" });
+    await sendEventPricedAt(350_000);
     expect(await screen.findByText("$0.3500")).toBeInTheDocument();
     // Both entries visible at once.
     expect(screen.getByText("$0.2500")).toBeInTheDocument();

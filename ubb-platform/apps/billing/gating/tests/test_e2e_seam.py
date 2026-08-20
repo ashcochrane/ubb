@@ -20,6 +20,8 @@ import pytest
 from django.core.cache import cache
 from django.test import Client
 
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
@@ -44,10 +46,14 @@ class TestEnforcementSeam:
             return client.post("/api/v1/billing/pre-check",
                                data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)
 
+        # Each event bills what the tenant's rule charges for it (#365) — the
+        # figures below are unchanged, they are configured rather than sent.
+        a_rule_that_prices_what_it_measures(t)
+
         def record(key, billed, task_id):
             return client.post("/api/v1/metering/usage", data=json.dumps({
                 "customer_id": str(c.id), "request_id": key, "idempotency_key": key,
-                "billed_cost_micros": billed, "task_id": task_id}), **hdr)
+                "measurements": priced_at(billed), "task_id": task_id}), **hdr)
 
         # 1. Start-gate allows a new task ($10 above floor).
         p1 = pre_check()
@@ -106,12 +112,13 @@ class TestEnforcementSeam:
         hdr = {"content_type": "application/json", "HTTP_AUTHORIZATION": f"Bearer {raw}"}
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=10_000_000)
+        a_rule_that_prices_what_it_measures(t)
         p1 = client.post("/api/v1/billing/pre-check",
                          data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)
         task_id = p1.json()["task_id"]
         r = client.post("/api/v1/metering/usage", data=json.dumps({
             "customer_id": str(c.id), "request_id": "k1", "idempotency_key": "k1",
-            "billed_cost_micros": 50_000_000, "task_id": task_id}), **hdr)  # way over balance
+            "measurements": priced_at(50_000_000), "task_id": task_id}), **hdr)  # way over balance
         assert r.json()["stop"] is False  # off => no stop verdict
         p2 = client.post("/api/v1/billing/pre-check",
                          data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)

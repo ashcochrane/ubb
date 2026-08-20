@@ -26,6 +26,8 @@ from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
@@ -51,6 +53,7 @@ class SubtaskPinMixin:
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=100_000_000)
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
+        a_rule_that_prices_what_it_measures(self.tenant)
 
     def tearDown(self):
         cache.clear()
@@ -74,6 +77,13 @@ class SubtaskPinMixin:
             # (#324). `extra` still wins, so a test may name another key.
             "event_type": DECLARED,
         }
+        # ⚠ WHAT AN EVENT BILLS IS CONFIGURED, NOT SENT (#365). Callers say
+        # `bills=N` exactly as they used to say the deleted request field, and
+        # it becomes the quantities this tenant's own rule charges N for — the
+        # `usage_payload` pattern, one concept along: one number in, and the
+        # caller never learns which key it lands under.
+        if "bills" in extra:
+            data["measurements"] = priced_at(extra.pop("bills"))
         data.update(extra)
         return self.http_client.post(
             "/api/v1/metering/usage", data=json.dumps(data),
@@ -103,7 +113,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(sub.id),
                                 provider_cost_micros=6_000_000,
-                                billed_cost_micros=9_000_000)
+                                bills=9_000_000)
 
         # The tipping event answers 200 and is durably recorded + billed.
         self.assertEqual(resp.status_code, 200)
@@ -147,7 +157,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(sub.id),
                                 provider_cost_micros=6_000_000,
-                                billed_cost_micros=6_000_000)
+                                bills=6_000_000)
         self.assertEqual(resp.status_code, 200)
 
         # Containment and rollup are both already true on this response.
@@ -167,7 +177,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         # Trip the subtask's own limit (kill executes at commit — #112).
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(sub.id), provider_cost_micros=6_000_000,
-                         billed_cost_micros=6_000_000)
+                         bills=6_000_000)
         sub.refresh_from_db()
         parent.refresh_from_db()
         self.assertEqual(sub.status, "killed")
@@ -178,9 +188,9 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         # The parent keeps running AND counting: direct parent events land,
         # and late events on the killed subtask still roll up.
         self._record(task_id=str(parent.id), provider_cost_micros=1_000_000,
-                     billed_cost_micros=1_000_000)
+                     bills=1_000_000)
         resp = self._record(task_id=str(sub.id), provider_cost_micros=2_000_000,
-                            billed_cost_micros=2_000_000)
+                            bills=2_000_000)
         body = resp.json()
         self.assertEqual(body["stop_reason"], "task_not_active")
         self.assertEqual(body["stop_scope"], "subtask")
@@ -199,7 +209,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(tripping_sub.id),
                                 provider_cost_micros=11_000_000,
-                                billed_cost_micros=11_000_000)
+                                bills=11_000_000)
         body = resp.json()
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], "task_limit")
@@ -228,7 +238,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(sub.id),
                                 provider_cost_micros=12_000_000,
-                                billed_cost_micros=12_000_000)
+                                bills=12_000_000)
         body = resp.json()
         # The WIDEST tripped scope wins the scalar slot: stop the whole tree.
         self.assertEqual(body["stop_reason"], "task_limit")
@@ -284,7 +294,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         sub = self._task(limit=5_000_000, parent=parent)
         # Billed way past the limit, provider under it -> nothing fires.
         resp = self._record(task_id=str(sub.id), provider_cost_micros=1_000_000,
-                            billed_cost_micros=50_000_000)
+                            bills=50_000_000)
         body = resp.json()
         self.assertFalse(body["stop"])
         sub.refresh_from_db()
@@ -301,7 +311,10 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(sub.id),
                                 provider_cost_micros=4_500_000,
-                                billed_cost_micros=1)
+                                # The least this tenant's rule can charge; the
+                                # figure is asserted nowhere and the number
+                                # beside it is what races the limit.
+                                bills=1_000)
         self.assertEqual(resp.json()["stop_reason"], "subtask_limit")
         sub.refresh_from_db()
         self.assertEqual(sub.status, "killed")

@@ -596,7 +596,7 @@ class PricingService:
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
-                 caller_provider_cost, caller_billed,
+                 caller_provider_cost,
                  resolve_declaration, resolve_card, resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
         returning the receipt. ``resolve_price`` is this spine under one card
@@ -781,43 +781,45 @@ class PricingService:
         # computes the amount and the terms that record it read the same local,
         # so a receipt cannot come to say the margin was taken over a figure the
         # arithmetic did not use.
+        #
+        # ⚠ AND THE SHORT-CIRCUIT ABOVE THE LADDER IS GONE (#365). A
+        # caller-stated price was never a rung — #147 §5.1 ratified a ladder
+        # that arrives CLOSED, with no caller rung on it — it was a branch above
+        # the whole thing, `if caller_billed is not None`, that answered before
+        # any rule was consulted. So a figure worked out somewhere else and
+        # pasted onto one call outranked every rule the tenant had written, and
+        # went stale the moment the supplier moved. It is deleted with the
+        # request field it came from, and `PricingSubject` no longer carries
+        # one, so *a price comes from configuration* is a property of what this
+        # function can be handed rather than of which branch it happens to take.
         resolved_markup, markup_basis = None, None
-        if caller_billed is not None:
-            billed = caller_billed
-            # A PRICE THE CALLER STATED IS A PRICE ATTACHED TO THE EVENT, which
-            # is what `direct_event_price` names — the ratified concept has two
-            # values and the distinction it draws is margin-over-cost versus
-            # a price of its own, not which door the price came through.
-            pricing_method = PRICING_METHOD_DIRECT_EVENT_PRICE
-            pricing_status = PRICING_STATUS_KNOWN
+        price_total, matched = 0, []
+        for measurement_key, units_val in sorted(measurements.items()):
+            card = resolve_card("price", measurement_key)
+            if card is None:
+                continue
+            matched.append(card)
+            component = _component(measurement_key, units_val, card)
+            price_total += component["micros"]
+            price_components.append(component)
+            price_rate_ids[measurement_key] = str(card.id)
+        if matched:
+            billed, pricing_method, pricing_status = _priced_by_rules(
+                matched, price_total, costing_status)
         else:
-            price_total, matched = 0, []
-            for measurement_key, units_val in sorted(measurements.items()):
-                card = resolve_card("price", measurement_key)
-                if card is None:
-                    continue
-                matched.append(card)
-                component = _component(measurement_key, units_val, card)
-                price_total += component["micros"]
-                price_components.append(component)
-                price_rate_ids[measurement_key] = str(card.id)
-            if matched:
-                billed, pricing_method, pricing_status = _priced_by_rules(
-                    matched, price_total, costing_status)
-            else:
-                # THE MARKUP RUNG — REACHED ONLY BECAUSE NO RULE WAS (#356).
-                #
-                # This is the else-branch of rule resolution and it stays one.
-                # "Base cost -> markup -> final charge" is false for any tenant
-                # with pricing rules, and a pipeline that marked up a rule's
-                # answer would silently re-price every catalogue in the system.
-                # What the rung supplies is a percentage AND its source, which
-                # is why it resolves a value here rather than being handed a
-                # number to multiply — `_priced_by_markup` says what it does
-                # with the three answers it can reach.
-                resolved_markup, markup_basis = resolve_markup(), computed_micros
-                billed, pricing_method, pricing_status = _priced_by_markup(
-                    resolved_markup, markup_basis, costing_status)
+            # THE MARKUP RUNG — REACHED ONLY BECAUSE NO RULE WAS (#356).
+            #
+            # This is the else-branch of rule resolution and it stays one.
+            # "Base cost -> markup -> final charge" is false for any tenant
+            # with pricing rules, and a pipeline that marked up a rule's
+            # answer would silently re-price every catalogue in the system.
+            # What the rung supplies is a percentage AND its source, which
+            # is why it resolves a value here rather than being handed a
+            # number to multiply — `_priced_by_markup` says what it does
+            # with the three answers it can reach.
+            resolved_markup, markup_basis = resolve_markup(), computed_micros
+            billed, pricing_method, pricing_status = _priced_by_markup(
+                resolved_markup, markup_basis, costing_status)
 
         # WHAT THE MARKUP RUNG PUT ON THE RECORD, AND THE TWO PLACES IT GOES
         # (#357). The percentage and the basis are TERMS and ride in the price
@@ -913,7 +915,7 @@ class PricingService:
 
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,
-              caller_provider_cost, caller_billed, as_of=None):
+              caller_provider_cost, as_of=None):
         """The recording path's adapter over :func:`resolve_price`.
 
         It does two things the seam deliberately does not. It assembles the
@@ -939,8 +941,7 @@ class PricingService:
                 receipt_subject=subject, tenant=tenant, customer=customer,
                 selectors=selectors, measurements=measurements or {},
                 currency=currency,
-                caller_provider_cost=caller_provider_cost,
-                caller_billed=caller_billed),
+                caller_provider_cost=caller_provider_cost),
             as_of or timezone.now()))
 
 
@@ -980,11 +981,19 @@ class PricingSubject:
     #: THE SUPPLIER'S OWN FIGURE, where the caller stated it. Whether it may be
     #: stated at all is decided before resolution and has its own refusal.
     caller_provider_cost: Optional[int] = None
-    #: THE CUSTOMER PRICE THE CALLER STATED, which is not a rung of the ladder:
-    #: it sits above it, and the ladder arrives closed with no caller rung
-    #: (#147 §5.1). The request field it comes from is deleted later in this
-    #: slice, and the day it is, this is the field that goes with it.
-    caller_billed: Optional[int] = None
+    # ⚠ THERE IS NO CUSTOMER PRICE ON THIS VALUE, AND THAT IS THE INVARIANT
+    # RATHER THAN AN OMISSION (#365). #147 §5.1's ladder arrives closed, with no
+    # caller rung on it; the field that used to sit here was not a rung but an
+    # answer given ABOVE the ladder, before any of it was consulted. The request
+    # field it arrived on is deleted and this field went with it, exactly as the
+    # sentence that stood here said it would. What an event is priced at is now
+    # decided from this subject and the configuration in force at its instant —
+    # so the price is UBB's answer, and there is nothing a caller can put in
+    # this value to make it theirs.
+    #
+    # Do not reintroduce one "for convenience", under this name or a softer one.
+    # #151 §9.2 records why the sentence is written down: it is small, it looks
+    # helpful, and the argument against it lives three documents away.
 
 
 def resolve_price(subject, as_of):
@@ -1060,7 +1069,6 @@ def resolve_price(subject, as_of):
         effective_at=as_of.isoformat(),
         measurements=subject.measurements,
         caller_provider_cost=subject.caller_provider_cost,
-        caller_billed=subject.caller_billed,
         resolve_declaration=resolve_declaration,
         resolve_card=resolve_card, resolve_markup=resolve_markup)
 

@@ -15,7 +15,6 @@ const BASE_VALUES: TestEventFormValues = {
   provider: "",
   product_id: "",
   provider_cost: "",
-  billed_cost: "",
   effective_at: "",
   idempotency_key: "idem-1",
   measurements: [{ key: "", value: "" }],
@@ -41,13 +40,12 @@ describe("buildTestEventRequest", () => {
     });
   });
 
-  it("converts costs to micros and assembles measurements", () => {
+  it("converts the supplier cost to micros and assembles measurements", () => {
     const body = buildTestEventRequest(
       {
         ...BASE_VALUES,
         event_type: "chat_completion",
         provider_cost: "0.42",
-        billed_cost: "0.6",
         measurements: [
           { key: "tokens_in", value: "1200" },
           { key: "", value: "" },
@@ -57,8 +55,38 @@ describe("buildTestEventRequest", () => {
     );
     expect(body.event_type).toBe("chat_completion");
     expect(body.provider_cost_micros).toBe(420_000);
-    expect(body.billed_cost_micros).toBe(600_000);
     expect(body.measurements).toEqual({ tokens_in: 1200 });
+  });
+
+  it("sends no customer price, on a body with every field filled in", () => {
+    // ⚠ THE WHOLE BODY, NOT A KEY AT A TIME, and this is the shape that would
+    // hide it: every optional filled in, so an extra key rides along beside
+    // seven legitimate ones. The API deleted `billed_cost_micros` and REFUSES a
+    // body carrying it (#365) — unlike every other retired key, which it drops
+    // — so a builder that still emitted one would 422 this whole panel.
+    const body = buildTestEventRequest(
+      {
+        ...BASE_VALUES,
+        event_type: "chat_completion",
+        provider: "anthropic",
+        product_id: "assistant-pro",
+        provider_cost: "0.42",
+        effective_at: "2026-07-20T10:30",
+        measurements: [{ key: "tokens_in", value: "1200" }],
+      },
+      "console-req-4",
+    );
+    expect(Object.keys(body).sort()).toEqual([
+      "customer_id",
+      "effective_at",
+      "event_type",
+      "idempotency_key",
+      "measurements",
+      "product_id",
+      "provider",
+      "provider_cost_micros",
+      "request_id",
+    ]);
   });
 
   it("sends effective_at as a tz-aware UTC ISO string", () => {

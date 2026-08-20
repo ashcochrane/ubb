@@ -65,10 +65,15 @@ def declared_grouping_values(values):
 #: while an undeclared field rides along beside it — which is how a read route
 #: in this repository sent two parameters it publishes nowhere and answered
 #: `200` on the axis default for years.
+#:
+#: ⚠ THE SET IS NOW THE WHOLE SURFACE, WHICH IT WAS NOT BEFORE #365. That commit
+#: gave the request `extra="forbid"`, so a key outside this set is refused
+#: rather than discarded — and the customer price left the set in the same
+#: commit, because a price is configured and never sent.
 THE_WHOLE_RECORDING_REQUEST = frozenset({
     "customer_id", "request_id", "idempotency_key", "metadata",
     "provider_cost_micros", "claimed_provider_cost_micros",
-    "billed_cost_micros", "measurements", "currency", "task_id", "event_type",
+    "measurements", "currency", "task_id", "event_type",
     "provider", "dimensions", "effective_at",
 })
 

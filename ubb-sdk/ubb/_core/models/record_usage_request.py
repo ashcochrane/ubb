@@ -33,7 +33,6 @@ class RecordUsageRequest:
             customer_id (UUID):
             idempotency_key (str):
             request_id (str):
-            billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
@@ -52,7 +51,6 @@ class RecordUsageRequest:
     customer_id: UUID
     idempotency_key: str
     request_id: str
-    billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: None | str | Unset = UNSET
     dimensions: RecordUsageRequestDimensions | Unset = UNSET
@@ -78,12 +76,6 @@ class RecordUsageRequest:
         idempotency_key = self.idempotency_key
 
         request_id = self.request_id
-
-        billed_cost_micros: int | None | Unset
-        if isinstance(self.billed_cost_micros, Unset):
-            billed_cost_micros = UNSET
-        else:
-            billed_cost_micros = self.billed_cost_micros
 
         claimed_provider_cost_micros: int | None | Unset
         if isinstance(self.claimed_provider_cost_micros, Unset):
@@ -155,8 +147,6 @@ class RecordUsageRequest:
             "idempotency_key": idempotency_key,
             "request_id": request_id,
         })
-        if billed_cost_micros is not UNSET:
-            field_dict["billed_cost_micros"] = billed_cost_micros
         if claimed_provider_cost_micros is not UNSET:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if currency is not UNSET:
@@ -196,16 +186,6 @@ class RecordUsageRequest:
         idempotency_key = d.pop("idempotency_key")
 
         request_id = d.pop("request_id")
-
-        def _parse_billed_cost_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
-
 
         def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -341,7 +321,6 @@ class RecordUsageRequest:
             customer_id=customer_id,
             idempotency_key=idempotency_key,
             request_id=request_id,
-            billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,
             dimensions=dimensions,

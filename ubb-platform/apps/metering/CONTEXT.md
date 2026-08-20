@@ -128,7 +128,14 @@ _Avoid_: "our cost" — this is what the upstream provider charged.
 
 **Billed cost**:
 What the customer is charged, in micros — from a matching pricing rule, else the markup rung, and
-**`NULL` where neither answered** (#351, #356). `pricing_status` beside it says which.
+**`NULL` where neither answered** (#351, #356). `pricing_status` beside it says which. Those are the
+only two sources: a caller cannot state one on the call, and since #365 a request carrying one is
+refused rather than ignored.
+_Avoid_: treating this as the symmetric twin of provider cost. **Cost is observed and price is
+decided** — a caller may report what their supplier charged them, because that is an external fact
+they saw, but what the tenant charges their own customer is a commercial decision UBB resolves and
+holds. Do not reintroduce a per-event price field for convenience, under any name; #151 §9.2 records
+that it will be re-proposed precisely because it is small and looks helpful.
 
 **Margin**:
 Realized `billed_cost − provider_cost`, computed on read and never stored.

@@ -3,7 +3,7 @@ from uuid import UUID
 from typing import Annotated, List, Literal, Optional
 
 from ninja import Schema, Field
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -135,6 +135,46 @@ CLAIMED_PROVIDER_COST_MEANING = (
 )
 
 
+#: THE ONE BODY KEY THIS REQUEST REFUSES RATHER THAN DROPS (#365). Spelled once,
+#: here, so the validator below and the tests that pin it cannot drift apart.
+A_PRICE_A_CALLER_MAY_NOT_STATE = "billed_cost_micros"
+
+
+# ⚠ WHY THAT ONE KEY IS REFUSED AND EVERY OTHER UNKNOWN ONE IS STILL DROPPED
+# (#365) — a COMMENT rather than a docstring, because a `Schema`'s docstring is
+# exported verbatim into `openapi/v1.json` and the generated SDK, and this is a
+# note to the next author.
+#
+# The customer price used to arrive on this request, and this commit deletes it:
+# a price is a commercial decision UBB resolves and holds, stated once as a rule
+# rather than pasted onto every call. Deleting the field alone would not have
+# made that true, because Django Ninja DROPS a body key no schema names rather
+# than refusing it — so a client still sending its own prices would keep getting
+# `200` and would read agreement into a route that discards the number. That is
+# the one population this deletion has to reach, so the refusal below is what
+# makes *there is no request-side path to a price* a fact rather than a claim
+# about this file.
+#
+# ⚠ AND `extra="forbid"` IS THE WRONG INSTRUMENT FOR IT, WHICH WAS MEASURED
+# RATHER THAN REASONED. It is the general form — refuse everything unpublished —
+# and it was written here first, on the argument that a list of forbidden
+# spellings says nothing about the next spelling somebody picks. The suite
+# answered with 64 failures, and three of them name the reason: *a stale client
+# still sending the retired field is accepted*, *the retired key is ignored
+# rather than refused*, *a stale caller is accepted and its labels are dropped*.
+# Dropping an unknown key is RATIFIED POSTURE here, argued in #272 and pinned
+# ever since — this re-model renames wire fields in every slice, and a caller
+# mid-migration must not be broken by each one in turn. The general rule would
+# have reversed that for every retired key at once, which is a slice-wide policy
+# change no ticket owns. So the refusal names its one subject.
+#
+# It is therefore a TOMBSTONE, with the cost tombstones have: it is a list of
+# one spelling, and it only answers for the name it holds. That is the trade
+# taken deliberately — the alternative was not "a stronger rule" but "a
+# different rule about other people's fields". It is also temporary: it exists
+# so this deletion is loud while the re-model is in flight, and the cutover
+# (slice 8) is where a key nothing has sent for eight slices stops needing a
+# headstone.
 class RecordUsageRequest(Schema):
     customer_id: UUID
     request_id: str = Field(min_length=1, max_length=500)
@@ -165,12 +205,6 @@ class RecordUsageRequest(Schema):
     claimed_provider_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
         description=CLAIMED_PROVIDER_COST_MEANING)
-    # STAYS UNTIL SLICE 4, WITH ITS REPLACEMENT. #146 §8 gives the deletion to
-    # slice 3; the direct-price rules that replace it are slice 4's, and
-    # deleting this first would leave a window in which nothing can supply a
-    # price directly. The ruling is a test rather than this comment —
-    # `test_two_request_fields_each_with_one_meaning.py`, last case.
-    billed_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
     # The measured quantities, keyed by the codes declared beneath this event's
     # Event Type (#274). The name is the declarations' own: a quantity is
     # costable exactly when a declaration matches its key, and one that matches
@@ -212,6 +246,41 @@ class RecordUsageRequest(Schema):
     # When the usage economically happened. Must be timezone-aware; bounded by
     # the tenant's backfill window. Omitted = now (server clock).
     effective_at: Optional[datetime] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_a_caller_supplied_customer_price(cls, body):
+        """The one key this request refuses instead of dropping — see the block
+        above the class for why it is one key and not every unpublished one.
+
+        The MESSAGE is most of the point. A 422 saying only "no" would leave an
+        integrator with a call that used to work, a field that has vanished, and
+        nowhere to go; this one names where a price comes from now and which
+        cost fields they may still send.
+
+        ⚠ A `mode="before"` VALIDATOR ON A NINJA `Schema` IS NOT HANDED A DICT.
+        `Schema` carries its own `mode="wrap"` root validator that replaces the
+        incoming value with a `DjangoGetter` — the adapter that lets a response
+        schema read attributes off an ORM object — so this runs against that
+        wrapper and an `isinstance(body, dict)` guard is DEAD. The first draft
+        had exactly that guard, and the refusal never fired once: every body
+        carrying the key answered `200`, which is the silence this validator
+        exists to end, produced by the code meant to end it. Its own test is
+        what found it. Unwrap `_obj`, and keep the plain-dict path for a caller
+        that builds the model directly.
+        """
+        body = getattr(body, "_obj", body)
+        if isinstance(body, dict) and A_PRICE_A_CALLER_MAY_NOT_STATE in body:
+            raise ValueError(
+                f"{A_PRICE_A_CALLER_MAY_NOT_STATE} is no longer accepted on a "
+                f"usage event. What you charge a customer is resolved by UBB "
+                f"from the pricing rules you configure and is returned on this "
+                f"response, rather than stated on the call — configure a price "
+                f"rule for the quantity this event measures. The supplier's "
+                f"own cost is still yours to report: provider_cost_micros "
+                f"where your Event Type declares it arrives on the call, or "
+                f"claimed_provider_cost_micros anywhere.")
+        return body
 
 
 class UsageBatchRequest(Schema):

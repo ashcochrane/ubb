@@ -15,6 +15,8 @@ from django.core.cache import cache
 from django.test import Client, TestCase
 
 from apps.billing.wallets.models import Wallet
+from apps.metering.pricing.tests._helpers import (
+    a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -46,6 +48,7 @@ class BrokerDownAtAcceptTest(TestCase):
             tenant=self.tenant, external_id="cust1")
         self.wallet = Wallet.objects.create(
             customer=self.customer, balance_micros=20_000_000)
+        a_rule_that_prices_what_it_measures(self.tenant)
 
     def tearDown(self):
         cache.clear()
@@ -66,7 +69,8 @@ class BrokerDownAtAcceptTest(TestCase):
                         "customer_id": str(self.customer.id),
                         "request_id": f"req-{uuid.uuid4()}",
                         "idempotency_key": f"idem-{uuid.uuid4()}",
-                        "billed_cost_micros": 1_000_000,
+                        # Billed by the tenant's own rule now (#365).
+                        "measurements": priced_at(1_000_000),
                     }),
                     content_type="application/json",
                     **self._auth(),

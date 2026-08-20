@@ -5376,19 +5376,6 @@
       },
       "RecordUsageRequest": {
         "properties": {
-          "billed_cost_micros": {
-            "anyOf": [
-              {
-                "maximum": 999999999999,
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Billed Cost Micros"
-          },
           "claimed_provider_cost_micros": {
             "anyOf": [
               {

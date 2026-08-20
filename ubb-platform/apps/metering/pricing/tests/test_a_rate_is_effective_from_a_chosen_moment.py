@@ -301,7 +301,7 @@ class APastRateResolvesOnlyAfterItsMomentTest(TestCase):
             subject=a_usage_event_subject(),
             tenant=self.tenant, customer=self.customer, selectors={},
             measurements={"tok": 100}, currency="usd",
-            caller_provider_cost=None, caller_billed=None,
+            caller_provider_cost=None,
             as_of=as_of).provider_cost_micros
 
     def test_an_event_after_the_declared_moment_resolves_against_it(self):
@@ -794,6 +794,6 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
             subject=a_usage_event_subject(),
             tenant=tenant, customer=customer, selectors={},
             measurements={"tok": 100}, currency="usd",
-            caller_provider_cost=None, caller_billed=None,
+            caller_provider_cost=None,
             as_of=boundary).provider_cost_micros
         self.assertEqual(cost, 9_000)
