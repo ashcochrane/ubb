@@ -2,7 +2,8 @@ import pytest
 
 from apps.platform.customers.models import Customer
 from apps.platform.plans import queries
-from apps.platform.plans.models import CustomerPlanAssignment, Plan
+from apps.platform.plans.models import CustomerPlanAssignment
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 
 
@@ -17,9 +18,9 @@ class TestPlanQueries:
             self.tenant.id, self.customer.id) is None
 
     def test_markup_for_assigned_customer_is_plain_data(self):
-        plan = Plan.objects.create(tenant=self.tenant, key="lite", name="Lite",
-                                   markup_percentage_micros=50_000_000,
-                                   fixed_uplift_micros=1_000)
+        plan = a_plan(tenant=self.tenant, key="lite", name="Lite",
+                      markup_percentage_micros=50_000_000,
+                      fixed_uplift_micros=1_000)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
         # The plan's ID rides with the terms (#357): a price resolved from this
@@ -34,9 +35,9 @@ class TestPlanQueries:
 
     def test_archived_plan_yields_no_markup(self):
         from django.utils import timezone
-        plan = Plan.objects.create(tenant=self.tenant, key="old", name="Old",
-                                   markup_percentage_micros=50_000_000,
-                                   archived_at=timezone.now())
+        plan = a_plan(tenant=self.tenant, key="old", name="Old",
+                      markup_percentage_micros=50_000_000,
+                      archived_at=timezone.now())
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
         assert queries.get_plan_markup_for_customer(
@@ -44,13 +45,13 @@ class TestPlanQueries:
 
     def test_list_plans_excludes_archived_by_default(self):
         from django.utils import timezone
-        Plan.objects.create(tenant=self.tenant, key="live", name="Live")
-        Plan.objects.create(tenant=self.tenant, key="gone", name="Gone",
-                            archived_at=timezone.now())
+        a_plan(tenant=self.tenant, key="live", name="Live")
+        a_plan(tenant=self.tenant, key="gone", name="Gone",
+               archived_at=timezone.now())
         assert [p.key for p in queries.list_plans(self.tenant.id)] == ["live"]
         assert len(queries.list_plans(self.tenant.id, include_archived=True)) == 2
 
     def test_get_plan_by_key(self):
-        Plan.objects.create(tenant=self.tenant, key="pro", name="Pro")
+        a_plan(tenant=self.tenant, key="pro", name="Pro")
         assert queries.get_plan_by_key(self.tenant.id, "pro").name == "Pro"
         assert queries.get_plan_by_key(self.tenant.id, "nope") is None

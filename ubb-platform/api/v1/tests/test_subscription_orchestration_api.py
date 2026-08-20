@@ -11,6 +11,7 @@ from unittest.mock import patch, MagicMock
 
 from django.test import Client
 
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.plans.models import Plan
@@ -138,8 +139,8 @@ class TestSubscriptionOrchestrationAPI:
         # this test is about charge-readiness, not entitlement.
         t2 = Tenant.objects.create(name="Poor", products=["metering", "billing"])
         _, raw2 = TenantApiKey.create_key(t2)
-        Plan.objects.create(tenant=t2, key="pro", name="Pro",
-                            access_fee_micros=50_000_000)
+        a_plan(tenant=t2, key="pro", name="Pro",
+               access_fee_micros=50_000_000)
         Customer.objects.create(tenant=t2, external_id="biz2")
         resp = self.client.post(
             "/api/v1/subscriptions/customers/biz2/subscribe",

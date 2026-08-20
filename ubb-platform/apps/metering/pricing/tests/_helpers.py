@@ -11,6 +11,8 @@ from apps.metering.pricing.services.pricing_service import (
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.plans.services import PlanService
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -91,6 +93,31 @@ def an_override_rule(tenant, customer, **fields):
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
         tenant=tenant, card_type="price", customer=customer, rate_card=book,
+        book_version_from=book.version, **fields)
+
+
+def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
+    """A price rule in the book the customer's PLAN prices them from (#362).
+
+    **THE CUSTOMER'S ONLY ROUTE TO THIS BOOK IS THE PLAN**, which is the state
+    the required reference makes ordinary: no override book, no assignment, and
+    nothing the tenant declared as a default. Both halves come from production
+    doors — `a_plan` creates the book and then the plan, `PlanService.assign`
+    puts the customer on it — so what a test exercises is the route a tenant
+    actually has (#354).
+
+    The word that separates a price book from a cost one and the column that
+    points a rule at its container are both retired, and this file is one of
+    the counted ones; callers say what they mean.
+    """
+    plan = a_plan(tenant=tenant, key=plan_key)
+    PlanService.assign(tenant, customer, plan)
+    book = plan.pricing_book
+    if "measurement" not in fields:
+        fields["measurement"] = declares_a_quantity(
+            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    return Rate.objects.create(
+        tenant=tenant, card_type="price", rate_card=book,
         book_version_from=book.version, **fields)
 
 
@@ -211,9 +238,11 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
                                    currency="usd", **fields):
     """A price rule in a book resolution never reads (#356).
 
-    A book becomes readable in exactly two ways — it is the tenant's default for
-    the event's provider, or a customer is assigned to it — and this is neither.
-    It exists so that "there is no fallthrough between books" can be asserted by
+    A book becomes readable in exactly four ways — it holds the customer's own
+    rules, their PLAN prices from it (#362), it is the tenant's default for the
+    event's provider, or a customer is assigned to it — and this is none of
+    them. It exists so that "there is no fallthrough between books" can be
+    asserted by
     a rule that WOULD match the event on every selector and is still not the
     answer, rather than by the absence of a rule, which proves nothing about
     reachability.

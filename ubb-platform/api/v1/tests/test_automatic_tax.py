@@ -6,6 +6,7 @@ import stripe
 from django.test import TestCase, Client
 
 from apps.platform.customers.models import Customer
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
@@ -106,8 +107,7 @@ class SubscribeTaxErrorSurfacingTest(TestCase):
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1")
-        from apps.platform.plans.models import Plan
-        self.plan = Plan.objects.create(
+        self.plan = a_plan(
             tenant=self.tenant, key="pro", name="Pro",
             access_fee_micros=50_000_000, interval="month",
             stripe_access_price_id="price_a",

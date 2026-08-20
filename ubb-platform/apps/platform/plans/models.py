@@ -23,6 +23,55 @@ class Plan(BaseModel):
     key = models.SlugField(max_length=64)
     name = models.CharField(max_length=255)
 
+    # THE PRICING BOOK THIS PLAN'S CUSTOMERS ARE PRICED FROM (#362, #151 §7.2).
+    #
+    # Assigning a plan is all it takes to price a customer: this is where their
+    # pricing resolves from, at the ladder's selected-book source
+    # (`apps/metering/pricing/services/pricing_service.py`). It is a KERNEL
+    # concept for the same reason the fee axes are — subscriptions realizes
+    # those as Stripe Prices and metering realizes pricing at rating time, and
+    # neither owns the catalogue that says which is which.
+    #
+    # **NOT NULLABLE, AND THE ARGUMENT IS SPECIFIC.** A nullable reference
+    # produces an alert nobody can act on, because *"this plan has no book"* is
+    # indistinguishable from *"this plan does not price usage"*. Required makes
+    # the second case expressible the honest way — a book holding no rules,
+    # which is a state a tenant can see and act on — rather than leaving one
+    # null standing for both.
+    #
+    # ⚠ WHAT SUCH A PLAN'S CUSTOMERS RESOLVE TO IS THE MARKUP RUNG'S ANSWER AND
+    # NOT THIS COLUMN'S, AND TODAY THE RUNG IS THE PLAN'S OWN. Every event
+    # falls past an empty book to `markup_percentage_micros` below, which
+    # defaults to zero and is therefore always a rung — so *"the tenant said
+    # nothing"* is served as *"the tenant said zero"*. That is deliberate and
+    # documented (`apps/platform/CONTEXT.md`, Markup precedence: an explicit
+    # zero pins the customer at provider cost), and it is why an empty book
+    # does NOT reach `unknown` while these columns exist. Ticket 22 (#369)
+    # deletes them, and the rung then falls to the tenant's declared default or
+    # to `unknown`.
+    #
+    # **REQUIRED MEANS CREATION IS ORDERED**, and that ordering is this
+    # column's, not a convention: nothing can write a Plan row before the book
+    # row exists, so `PlanService.create` takes the book it will name and the
+    # composition layer creates it first (`api/v1/plan_endpoints.py`).
+    #
+    # `PROTECT`, THE WAY A PRICING RULE ALREADY HOLDS THE BOOK IT LIVES IN. A
+    # book a plan prices from may not
+    # be deleted out from under it — the plan would then be a plan with no
+    # pricing, which is the state this column exists to make unreachable.
+    # ⚠ It is also why the sandbox reset takes plans before books when it is
+    # wiping configuration (`apps/platform/tenants/tasks.py`); a `PROTECT` the
+    # generic sweep reaches in the wrong order fails the WHOLE reset (#358).
+    #
+    # ⚠ THE KERNEL VALIDATES NOTHING BEYOND THIS FOREIGN KEY. ADR-001 forbids
+    # `apps/platform/**` importing a product, so the reference is declared by
+    # app label and the database is what refuses a book that does not exist.
+    # It names the container under its CURRENT internal name and travels with
+    # ticket 21's `RenameModel`, which rewrites the reference in migration
+    # state; this line is one string edit there and no import anywhere breaks.
+    pricing_book = models.ForeignKey("pricing.RateCard", on_delete=models.PROTECT,
+                                     related_name="plans")
+
     # Stripe-realized axes. 0 means "this axis is absent", not "free" — an
     # absent axis produces no Stripe Price and no subscription item.
     access_fee_micros = models.BigIntegerField(default=0)

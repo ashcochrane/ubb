@@ -375,9 +375,27 @@ snapshot; auditing reads or usage ingestion (telemetry, not governance).
 
 **Plan**:
 A tenant's commercial offer, with three axes — access fee, per-seat fee, and markup on metered
-compute. A kernel concept because subscriptions realizes the first two (as Stripe Prices) and
-metering realizes the third (at rating time), and neither owns it.
+compute — and the **Pricing Book its customers are priced from**. A kernel concept because
+subscriptions realizes the two fee axes (as Stripe Prices) and metering realizes the third and the
+book (at rating time), and neither owns them.
 (`apps/platform/plans/models.py:Plan`)
+
+**A Plan's Pricing Book**:
+The book of pricing rules a plan's customers resolve their price from, named by a **required,
+non-nullable** reference. Assigning a plan is therefore all it takes to price a customer.
+_Why required_: a nullable reference produces an alert nobody can act on, because "this plan has no
+book" cannot be told apart from "this plan does not price usage" — where the second is said honestly
+by a book holding no rules. _What follows_: creating a plan **sequences book creation first**
+(`BookService.the_book_a_plan_prices_from`, then `PlanService.create`, which takes the book's id and
+so cannot be called before one exists), and metering reads the reference through `queries.py`
+(`get_pricing_book_for_customer`) rather than off the model. Resolution ranks it at the
+**selected-book** source, one rung below a customer's own rules — a plan's book is a catalogue
+shared by everyone on the plan, so ranking it level with an override would let a catalogue reprice
+out-rank a negotiated deal.
+_Avoid_: treating a customer override as a substitute for a book (it is a rule at a rung inside
+resolution, not a route to a book); a plan adopting a book that carries a customer or is the
+tenant's default.
+(`apps/platform/plans/models.py:Plan.pricing_book`)
 
 **Markup-only plan**:
 A plan whose fee axes are both zero, e.g. $0 access + 50% markup. It has no Stripe Product, Price,

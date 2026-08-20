@@ -9,6 +9,7 @@ from apps.metering.pricing.receipts import (
     MARKUP_TERMS_KEY, ReceiptSubject, Resolution, build_receipt,
 )
 from apps.platform.event_types.costing import cost_declaration
+from apps.platform.plans.queries import get_pricing_book_for_customer
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
@@ -390,6 +391,46 @@ class PricingService:
         return a.rate_card if a else None
 
     @staticmethod
+    def _the_plans_book(tenant, customer, card_type, currency):
+        """THE BOOK THIS CUSTOMER'S PLAN PRICES THEM FROM (#362, #151 §7.2).
+
+        Assigning a plan is all it takes to price a customer: the plan names a
+        Pricing Book, the reference is `NOT NULL`, and this is where that
+        becomes a price. It is what lets ticket 21 delete the record that
+        assigns a book to a customer outright, because by then every customer
+        on a plan already reaches a book through it.
+
+        **THE READ CROSSES ADR-001's `queries.py` CHANNEL, AND METERING NEVER
+        IMPORTS THE PLAN.** The plan catalog is the kernel's; the contract
+        returns plain data and this app loads the book from its own models by
+        the id it answers. A plan the tenant has archived answers nothing,
+        which the read contract decides rather than this line.
+
+        **`FROM_THE_SELECTED_BOOK`, NOT THE CUSTOMER'S OWN RUNG, AND THE
+        DIFFERENCE IS LOAD-BEARING.** A plan's book is a catalogue shared by
+        every customer on the plan — the two books above hold rules written for
+        ONE customer. Ranking it at the customer's-own rung would put it level
+        with an override, where `ladder_rank`'s last key is `valid_from`: a
+        tenant repricing the plan's catalogue would then out-rank a negotiated
+        deal agreed before it, silently deleting the override #361 exists to
+        honour. At this rung an override beats it on SOURCE at every
+        specificity, whenever it was written.
+
+        It is appended ahead of the tenant's default books, which is the
+        narrowest-first order the list has: a plan's book is a statement about
+        the customers on that plan, a default is the tenant's answer for
+        everybody.
+        """
+        if customer is None or card_type != "price":
+            return None
+        book_id = get_pricing_book_for_customer(tenant.id, customer.id)
+        if book_id is None:
+            return None
+        return RateCard.objects.filter(
+            id=book_id, tenant=tenant, currency=currency,
+            card_type="price").first()
+
+    @staticmethod
     def _default_book(tenant, card_type, provider, currency):
         return RateCard.objects.filter(
             tenant=tenant, card_type=card_type, provider_key=provider or "",
@@ -401,12 +442,19 @@ class PricingService:
         """WHICH BOOKS THIS SUBJECT'S PRICE MAY BE RESOLVED FROM, chosen once.
 
         Selection and resolution are two steps and this is the first (#147
-        §5.3). A book becomes readable for one event in exactly three ways: it
-        holds the customer's own rules, it is the tenant's default for the
-        event's provider, or the customer is assigned to it. Anything else — a
-        book nobody is assigned to, another customer's book, the default book of
-        a provider this event is not from — is unreachable, and no rule inside
-        it can be the answer however well it matches.
+        §5.3). A book becomes readable for one event in exactly four ways: it
+        holds the customer's own rules, the customer's PLAN prices from it
+        (#362), it is the tenant's default for the event's provider, or the
+        customer is assigned to it. Anything else — a book nobody is assigned
+        to, another customer's book, the default book of a provider this event
+        is not from — is unreachable, and no rule inside it can be the answer
+        however well it matches.
+
+        ⚠ **THE ASSIGNMENT RECORD IS ON ITS WAY OUT AND THE PLAN'S BOOK IS WHAT
+        REPLACES IT.** Ticket 21 deletes the assignment, and it can only do so
+        because every customer on a plan already reaches a book here without
+        it. The two are NOT at the same source, and that is a judgement rather
+        than an oversight: the reasoning is on `_the_plans_book`.
 
         ⚠ **`the_customers_own=False` ANSWERS A DIFFERENT QUESTION AND ONLY ONE
         CALLER ASKS IT (#361):** *what would this customer be charged if they
@@ -460,6 +508,18 @@ class PricingService:
             if the_customers is not None and the_customers.id not in seen:
                 books.append((FROM_THE_CUSTOMERS_OWN_RULES, the_customers))
                 seen.add(the_customers.id)
+        # THE PLAN'S BOOK, AHEAD OF THE TENANT'S DEFAULTS AND AT THEIR SOURCE
+        # (#362). A plan's book is a catalogue the tenant chose for the
+        # customers on that plan, so it is the selected book rather than one of
+        # the customer's own — see `_the_plans_book` for why that rung matters
+        # rather than being a label — and it goes first among them because it
+        # is the narrower statement: a default is the tenant's answer for
+        # everybody.
+        the_plans = PricingService._the_plans_book(
+            tenant, customer, card_type, currency)
+        if the_plans is not None and the_plans.id not in seen:
+            books.append((FROM_THE_SELECTED_BOOK, the_plans))
+            seen.add(the_plans.id)
         # A LIST AND NOT A SET, because the order above is load-bearing: a set's
         # iteration order would decide ties between the provider's own default
         # book and the provider-agnostic one, differently between processes.
@@ -955,9 +1015,11 @@ def resolve_price(subject, as_of):
     selectors, currency = subject.selectors, subject.currency
 
     # THE BOOKS ARE SELECTED ONCE PER EVENT, NOT ONCE PER QUANTITY. Selection
-    # is two queries and a call prices every quantity the event measured, so
-    # asking again per quantity would multiply them by the bag's size on the
-    # hottest write path in the system. Nothing about the answer changes: which
+    # costs a handful of queries — at least one per way a book can be reached,
+    # and the plan's costs two (the read contract, then the book) — while a
+    # call prices every quantity the event measured, so asking again per
+    # quantity would multiply them by the bag's size on the hottest write path
+    # in the system. Nothing about the answer changes: which
     # books are in play is decided by the tenant, the customer, the event's
     # provider and the currency, and a single resolution holds all four fixed.
     books_in_play = {}

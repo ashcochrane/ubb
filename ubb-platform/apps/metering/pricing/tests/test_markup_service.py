@@ -15,6 +15,7 @@ that produces is `unknown` — asserted at the resolver, in
 about resolution rather than about this module.
 """
 import pytest
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import TenantDefaultMarkup, TenantMarkup
@@ -89,7 +90,7 @@ class TestMarkupService:
         assert resolved.fixed_uplift_micros == 0
 
 
-from apps.platform.plans.models import CustomerPlanAssignment, Plan
+from apps.platform.plans.models import CustomerPlanAssignment
 
 
 @pytest.mark.django_db
@@ -99,8 +100,8 @@ class TestMarkupPrecedenceWithPlans:
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
     def _assign(self, key, pct):
-        plan = Plan.objects.create(tenant=self.tenant, key=key, name=key,
-                                   markup_percentage_micros=pct)
+        plan = a_plan(tenant=self.tenant, key=key, name=key,
+                      markup_percentage_micros=pct)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
         return plan
@@ -140,9 +141,9 @@ class TestMarkupPrecedenceWithPlans:
         assert MarkupService.resolve(self.tenant, self.customer).source == "plan"
 
     def test_plan_fixed_uplift_is_applied(self):
-        plan = Plan.objects.create(tenant=self.tenant, key="p", name="P",
-                                   markup_percentage_micros=20_000_000,
-                                   fixed_uplift_micros=7_000)
+        plan = a_plan(tenant=self.tenant, key="p", name="P",
+                      markup_percentage_micros=20_000_000,
+                      fixed_uplift_micros=7_000)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
         assert _billed(500_000, self.tenant, self.customer) == 607_000

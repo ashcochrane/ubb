@@ -133,7 +133,12 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     def _wipe(label, fn):
         try:
             count, per_model = fn()
-            deleted[label] = count
+            # ACCUMULATED, NOT ASSIGNED. A model taken ahead of the generic
+            # sweep for an ordering reason is visited TWICE — once here and
+            # once by the sweep, which then reports 0 — so a plain assignment
+            # would answer "the reset deleted no rates" for the rows it had
+            # just deleted. Two such models now (#362).
+            deleted[label] = deleted.get(label, 0) + count
             if count:
                 logger.info("sandbox.reset_deleted", extra={"data": {
                     "tenant_id": str(tenant.id), "model": label,
@@ -170,11 +175,27 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    be an ordering nobody chose. Only when config is going too: with
     #    `keep_config` both sides stay, which is why the catalogue joined the
     #    set above rather than this step gaining a condition it cannot honour.
+    #    ⚠ AND PLANS BEFORE BOOKS, FOR THE SAME REASON ONE LAYER OUT (#362): a
+    #    Plan names the Pricing Book its customers are priced from and holds it
+    #    with PROTECT, so a sweep that reaches the book first is refused and the
+    #    WHOLE reset fails — the sandbox is left inactive with a RuntimeError.
+    #
+    #    ⚠ THIS LINE IS INSURANCE AND NO TEST CAN CURRENTLY FALSIFY IT, WHICH
+    #    IS SAID HERE RATHER THAN LEFT TO BE DISCOVERED. Measured on this
+    #    commit: dropping `plans.Plan` from this tuple leaves the sandbox
+    #    module fully GREEN, because the plan catalogue sits ahead of the
+    #    pricing app in INSTALLED_APPS and the generic sweep inherits that
+    #    order. That is precisely why it is stated: an ordering that happens to
+    #    hold is an ordering nobody chose, and re-ordering the app list would
+    #    break the reset with nothing pointing back here. The HAZARD is
+    #    covered — `plans/tests/test_a_plan_names_the_book_it_prices_from.py`
+    #    proves the book cannot be deleted while a plan names it — and what is
+    #    uncovered is only which statement gets there first.
     if not keep_config:
-        Rate = django_apps.get_model("pricing", "Rate")
-        manager = _wipe_manager(Rate)
-        _wipe("pricing.Rate",
-              lambda m=manager: m.filter(tenant=tenant).delete())
+        for label in ("pricing.Rate", "plans.Plan"):
+            model = django_apps.get_model(*label.split("."))
+            manager = _wipe_manager(model)
+            _wipe(label, lambda m=manager: m.filter(tenant=tenant).delete())
 
     # 4. Generic sweep: every remaining concrete model with a FK/O2O to Tenant.
     for model in django_apps.get_models():

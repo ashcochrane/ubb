@@ -461,6 +461,59 @@ class BookService:
         return book
 
     @staticmethod
+    def the_book_a_plan_prices_from(tenant, *, plan_key, plan_name=""):
+        """The Pricing Book a plan's customers are priced from (#362, #151 §7.2).
+
+        A Plan cannot exist without naming one, so this is the FIRST half of
+        creating a plan and the whole of what "creation sequences book creation
+        first" means: the book row is on disk before anything can write the
+        Plan row that names it.
+
+        **IT ARRIVES EMPTY, AND THAT IS THE STATE THE REQUIRED REFERENCE BUYS.**
+        UBB ships no catalogue — no starter rules, no seeded markup — so a plan
+        created today prices nothing from this book until a tenant publishes
+        rules into it, and every event falls past it to the markup rung. That
+        is the honest form of *"this plan does not price usage"*, which a
+        nullable reference could not tell apart from *"somebody forgot"*.
+
+        ⚠ **HERE RATHER THAN AT THE ROUTE, FOR `the_customers_own_book`'s OWN
+        REASON.** A test fixture needs a plan with a book, and a fixture that
+        hand-rolled the construction would be a second writer of it — passing
+        the day the real one changed (#354). The kernel may not import a
+        product (ADR-001), so the plan catalog cannot own this; the composition
+        layer calls it and then `PlanService.create`.
+
+        **KEYED ON THE PLAN'S OWN KEY, and `get_or_create` rather than
+        `create`,** so a tenant who already keeps a plain catalogue under that
+        key gets their plan pointed at it rather than a second book nobody
+        asked for.
+
+        ⚠ **BUT THE LOOKUP PINS `customer=None` AND `is_default=False`, AND
+        THAT IS A REFUSAL RATHER THAN A FILTER.** Adopting *any* book that
+        happens to share the key would let a plan pick up a book written for
+        something else — and one of those is sharp: a book carrying a customer
+        is that customer's OVERRIDE book (#361), so a plan keyed to match it
+        would serve one customer's negotiated rules to every customer on the
+        plan, at the selected-book source, with nothing saying so. The tenant's
+        provider default is the milder version of the same mistake: a plan
+        would silently be unable to price differently from the catalogue.
+        Because uniqueness is `(tenant, card_type, key)` and these two columns
+        are NOT in it, a book of either kind holding this key is not found and
+        not created either — the database refuses it, and the route turns that
+        into a conflict naming the book.
+
+        It is a PRICE book by construction, for the reason the override book
+        above is one: a supplier's cost does not change because of who the
+        tenant sells to.
+        """
+        book, _ = RateCard.objects.get_or_create(
+            tenant=tenant, card_type="price", key=plan_key,
+            customer=None, is_default=False,
+            defaults={"name": (plan_name or plan_key)[:255],
+                      "currency": tenant.default_currency or "usd"})
+        return book
+
+    @staticmethod
     def publish(book, changes, as_of=None):
         """Atomically reprice a set of the book's rates. Each change must match
         exactly one ACTIVE rate in the book by (measurement_key, plus the
