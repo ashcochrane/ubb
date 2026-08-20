@@ -63,7 +63,8 @@ from apps.metering.pricing.models import Rate, RateCard
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    a_usage_event_subject, cost_rate_in_default_book, rate_in_default_book)
+    a_usage_event_subject, cost_rate_in_default_book, database_rules_guarding,
+    rate_in_default_book, the_rate_table_as_this_migration_saw_it)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -173,15 +174,12 @@ def _trigger_rows():
     that ran is evidence that a file executed, not that a rule is installed.
     Returns `(name, type_bits, function_body)` per non-internal trigger, which
     is every fact the callers between them need.
+
+    The query itself moved to `_helpers` when #367 gave a second module the
+    same question to ask, under the rule that a shared setup helper lives
+    there rather than in whichever module needed it first.
     """
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT t.tgname, t.tgtype, p.prosrc "
-            "FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-        return cursor.fetchall()
+    return database_rules_guarding(TABLE)
 
 
 class TransitionRefusalMixin:
@@ -545,8 +543,15 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         rate = cost_rate_in_default_book(_tenant())
         moved = timezone.now() - timedelta(days=5)
 
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
+        # ⚠ BOTH HALVES SPELL THE TABLE, AND THE TABLE WAS RENAMED IN #367. A
+        # migration's DDL is history and must not be edited to follow a later
+        # rename, so what the replay reconstructs is the NAME — the same repair
+        # this suite already makes to the columns and rules that arrived after
+        # the migration being replayed. Held only around the two DDL calls: the
+        # writes between them go through the live model.
+        with the_rate_table_as_this_migration_saw_it(migration):
+            with connection.schema_editor() as editor:
+                run_python.reverse_code(None, editor)
         # This rule gone, and only this one: the table carries a second trigger
         # since #326, and asserting an empty catalogue would have meant
         # asserting that reversing one migration removed another's rule.
@@ -556,8 +561,9 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         rate.refresh_from_db()
         self.assertEqual(getattr(rate, VALID_FROM), moved)
 
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
+        with the_rate_table_as_this_migration_saw_it(migration):
+            with connection.schema_editor() as editor:
+                run_python.code(None, editor)
         self.assertIn(TRANSITION_TRIGGER,
                       {name for name, _, _ in _trigger_rows()})
         with self.assertRaises(IntegrityError):

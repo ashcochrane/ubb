@@ -118,7 +118,15 @@ DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
 #: mirror the payment rail's own field. None of the three is a copy of the
 #: tenant's frozen choice, which is what §7.3's list is about.
 UNOWNED_CURRENCY_COLUMNS = (
-    "ubb_rate_card",                 # Rate
+    # ⚠ **THE RULE TABLE'S ENTRY FOLLOWED ITS RENAME RATHER THAN BEING DELETED
+    # (#367).** Slice 4 moved this table to the name a rule's own name asks for.
+    # A rename moves a table; it does not touch the column — the rule's currency
+    # is still an unconstrained copy of the tenant's frozen choice, and this
+    # list exists to say so. Deleting the line would have retired a live gap by
+    # spelling, which is the opposite of what the list is for. The line that
+    # genuinely goes is the DELETED table's, three rows down, and that is
+    # ticket 21's.
+    "ubb_rate",                      # Rate
     "ubb_rate_card_container",       # RateCard
     "ubb_rate_card_assignment",      # RateCardAssignment — slice 4 deletes it
     "ubb_wallet",                    # Wallet

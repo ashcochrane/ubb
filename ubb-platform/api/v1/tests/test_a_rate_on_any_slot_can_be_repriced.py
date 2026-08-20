@@ -42,6 +42,7 @@ from django.test import Client, TestCase
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import cost_book
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 #: The slot the old contract could not name. `Rate.SELECTORS` carries all ten;
@@ -55,6 +56,13 @@ REACHABLE_SLOT = "grouping_field_2"
 
 QUANTITY = "input_tokens"
 
+#: The tenant's own key for each slot this module pins, because the act that
+#: OPENS a rule addresses a slot by the key the tenant declared rather than by
+#: the column (#367 — the body that named the column directly left with its
+#: route). The reprice under test still names columns, which is why the cases
+#: below are written in columns and only this map is in keys.
+DECLARED_KEY_OF = {UNREACHABLE_SLOT: "tier", REACHABLE_SLOT: "segment"}
+
 
 class ARulePinnedOnAnySlotIsReachableTest(TestCase):
     """Written on the seventh slot, then repriced through the API, end to end."""
@@ -64,20 +72,51 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         self.tenant = Tenant.objects.create(name="Slots", products=["metering"])
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
         declares_a_quantity(self.tenant, QUANTITY)
+        for slot, key in DECLARED_KEY_OF.items():
+            DimensionService.declare(self.tenant, key=key, slot=slot,
+                                     scope="tenant")
         self.book = cost_book(self.tenant, key="openai", provider="openai")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def _post(self, path, body):
-        return self.http.post(path, data=json.dumps(body),
+    def _post(self, path, body=None):
+        return self.http.post(path, data=json.dumps(body or {}),
                               content_type="application/json", **self._auth())
 
     def _add(self, **pins):
+        """Open a rule, through the only surface that still does it (#367).
+
+        The immediate add-a-rule route is gone — adding a rule is a declared
+        change on a publish — so this declares one and publishes it in the same
+        breath. The rule that lands is the same rule: this module's subject is
+        which SLOTS a rule can be pinned on and repriced by, and that is
+        unchanged by which act opened it.
+
+        ⚠ **THE TWO BODIES NAME A SLOT DIFFERENTLY, AND THAT IS THE POINT OF
+        HAVING BOTH.** A declared change carries the tenant's own grouping KEY,
+        which survives the key being rebound to another slot; the immediate
+        reprice body names the COLUMN. So a caller here passes the column and
+        this translates, which keeps every case below written in the one
+        vocabulary the reprice under test speaks.
+        """
+        pinned = {key: value for key, value in pins.items()
+                  if key.startswith("grouping_field_")}
+        terms = {key: value for key, value in pins.items() if key not in pinned}
+        change = {"kind": "add", "measurement_key": QUANTITY,
+                  "provider": "openai", "rate_per_unit_micros": 5_000,
+                  "unit_quantity": 1_000_000, **terms}
+        if pinned:
+            change["grouping_fields"] = {DECLARED_KEY_OF[slot]: value
+                                         for slot, value in pinned.items()}
+        declared = self._post(
+            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publishes",
+            {"changes": [change]})
+        if declared.status_code != 200:
+            return declared
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/rates",
-            {"measurement_key": QUANTITY, "provider": "openai",
-             "rate_per_unit_micros": 5_000, "unit_quantity": 1_000_000, **pins})
+            f"/api/v1/metering/pricing/rate-cards/{self.book.id}"
+            f"/publishes/{declared.json()['id']}/publish")
 
     def _reprice(self, *, to, **match):
         return self._post(
@@ -97,16 +136,23 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         """Half one: the property reaches the column.
 
         A body key no schema publishes is DROPPED by django-ninja rather than
-        refused, so before this commit this same request answered 200 with the
-        slot left empty — the rule was created, on the wrong shape, silently.
-        That is why this asserts the stored column rather than the status code.
+        refused, so before #366 this same request answered 200 with the slot
+        left empty — the rule was created, on the wrong shape, silently. That is
+        why this asserts the stored column rather than the status code.
+
+        ⚠ The act that opens a rule is a publish since #367, so what is read
+        back is the rule the publish opened rather than a create's echo of its
+        own request — which is the stronger of the two reads anyway: an echo can
+        agree with a body that never reached a column.
         """
         response = self._add(**{UNREACHABLE_SLOT: "batch"})
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()[UNREACHABLE_SLOT], "batch")
-        rule = Rate.objects.get(id=response.json()["id"])
-        self.assertEqual(getattr(rule, UNREACHABLE_SLOT), "batch")
+        (opened,) = response.json()["opened_rule_ids"]
+        self.assertEqual(
+            getattr(Rate.objects.get(id=opened), UNREACHABLE_SLOT), "batch")
+        (row,) = self._rules()
+        self.assertEqual(row[UNREACHABLE_SLOT], "batch")
 
     def test_a_rule_on_that_slot_reprices_through_the_publish_act(self):
         """Half two, and the half the schema assertion cannot make.

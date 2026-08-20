@@ -55,11 +55,33 @@ AUDIT_ACTIONS = (
     "grant.created",
     "grant.voided",
     # pricing / rate cards
+    #
+    # ⚠ **TWO NAMES LEFT THIS BLOCK AND NEITHER WAS RENAMED (#367, spec §19).**
+    # The acts they recorded — a rule was added to a book, a rule was retired
+    # from one — have ceased to exist: both are declared changes on a publish
+    # now, so there is no unversioned immediate act left for either name to
+    # record. **Deleting an action whose act no longer exists is not the rename
+    # ADR-004 §2 governs.** A rename carries an act forward under a new
+    # spelling and breaks a reader watching for the old one; these two have no
+    # successor to carry forward, because nothing replaced them — the publish
+    # record's three names above were already here recording a different act.
+    #
+    # **NO PART OF THE ONE-TIME PRE-PRODUCTION AUDIT-REGISTRY RESET IS SPENT ON
+    # THEM.** #154 §4.2 defines that exception and #154 §13 / #155 §14 allocate
+    # it to slice 8, for the actions that genuinely ARE renamed. This deletion
+    # needs none of it and must not be read as drawing against it.
+    #
+    # The mechanism is what makes it safe rather than merely defensible:
+    # `record()` refuses an unregistered name, so an action deleted while a
+    # route still wrote it would fail loudly — route and registry are forced
+    # into one commit and there is no window in which a dead action is written.
+    # That refusal is held for both deleted names, by name, in
+    # `apps/metering/pricing/tests/test_a_rate_sits_on_the_table_named_for_a_rate.py`
+    # — beside the deletion it is about rather than in this app's own tests,
+    # because what it is really asserting is that these two ACTS have ceased.
     "rate_card.created",
     "rate_card.assigned",
     "rate_card.published",
-    "rate.added",
-    "rate.deleted",
     "markup.set",
     "markup.deleted",
     # THE TENANT'S DEFAULT MARKUP RUNG (#357). The last rung of the price
@@ -173,7 +195,7 @@ AUDIT_ACTIONS = (
     # sense the two registries above are: it decides how usage is costed.
     #
     # ONE ACTION PER RECORD PER KIND OF ACT, which is the shape the pairs above
-    # already run (`rate.added`/`rate.deleted`, `webhook_config.created`/
+    # already run (`markup.set`/`markup.deleted`, `webhook_config.created`/
     # `.deleted`, `grant.created`/`.voided`). Declaring and re-declaring are
     # one act — a correction to a declaration is still a declaration, which is
     # why `grouping_field.declared` covers a re-PUT — but WITHDRAWING is not, and

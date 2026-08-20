@@ -182,7 +182,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         regression test quietly stops testing the regression.
         """
         return Rate.objects.create(
-            tenant=tenant, card_type="cost", provider="", event_type="",
+            tenant=tenant, provider="", event_type="",
             measurement=declares_a_quantity(tenant, "dummy_covered"),
             rate_per_unit_micros=1, unit_quantity=1)
 

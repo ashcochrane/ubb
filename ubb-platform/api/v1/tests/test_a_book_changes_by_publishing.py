@@ -357,23 +357,32 @@ class ADraftTheBookHasMovedUnderIsStillReadableTest(_APublishingTenantMixin,
     """
 
     def _a_draft_whose_rule_was_retired_beside_it(self):
-        """Declare a reprice, then retire the rule through the OTHER surface.
+        """Declare a reprice, then close the rule through the OTHER surface.
 
         ⚠ Two drafts naming one rule is NOT this state, and checking was worth
         it: a change names a rule by its identity — the quantity and the
         selectors — rather than by version, so a second draft repricing the
         replacement is perfectly coherent and publishes fine. What strands a
-        draft is the rule acquiring a close it cannot move: the immediate retire
-        route stamps `valid_to` at the moment of the call, which is AFTER this
-        draft was declared, so at the draft's own effective instant the rule is
-        still in force and already closing — and `Rate.valid_to` is declared
-        set_once, so no publish may move it.
+        draft is the rule acquiring a close it cannot move: the surviving
+        immediate route stamps `valid_to` at the moment of the call, which is
+        AFTER this draft was declared, so at the draft's own effective instant
+        the rule is still in force and already closing — and `Rate.valid_to` is
+        declared set_once, so no publish may move it.
+
+        ⚠ **THE OTHER SURFACE IS NOW THE ATOMIC REPRICE, NOT THE IMMEDIATE
+        RETIRE (#367).** The retire route is deleted; what still closes a rule
+        the instant it is called is the reprice, which supersedes the rule and
+        opens a replacement. The stranding is the same and for the same reason
+        — an unmovable close standing between the draft and its instant — and
+        it is worth saying that the state stops being reachable at all when the
+        last immediate route leaves with #369, at which point this class is
+        asserting about something that cannot happen.
         """
         draft = self.declare().json()
-        retired = self._delete(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}"
-            f"/rates/{self.rule.id}")
-        self.assertEqual(retired.status_code, 200, retired.content)
+        closed = self._post(
+            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publish",
+            {"changes": [self.a_change(rate_per_unit_micros=AFTER + 1)]})
+        self.assertEqual(closed.status_code, 200, closed.content)
         return draft
 
     def test_reading_it_answers_the_reason_rather_than_a_diff(self):
@@ -771,11 +780,11 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
     def test_all_three_routes_carry_the_marker_the_mutating_pin_reads(self):
         """The #82 pin walks the live API for exactly this attribute, and a
         route carrying neither it nor an exemption turns it red."""
-        from api.v1.tests.test_audit_sweep import _iter_mutating_ops
+        from api.v1.tests.test_audit_sweep import mutating_operations
 
         book = "/metering/pricing/rate-cards/{book_id}/publishes"
         marked = {(method, path): getattr(view, "_audit_actions", ())
-                  for method, path, view in _iter_mutating_ops()
+                  for method, path, view in mutating_operations()
                   if path.startswith(book)}
 
         self.assertEqual(marked, {

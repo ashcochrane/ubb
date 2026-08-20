@@ -176,8 +176,12 @@ GATE_OF_RULE = {
 # Django into a suite that deliberately has none.
 LEDGERED_VIOLATIONS = {
     "G9": {
-        "ubb-platform/apps/metering/pricing/models.py::Rate":
-            ("g9-rate-sits-on-the-rate-card-table", "ubb_rate_card"),
+        # ⚠ `Rate`'s entry is PAID and gone (#367). It sat on the table named
+        # for the container beside it; it sits on the table its own name asks
+        # for now, so the debt is discharged rather than excused and the entry
+        # is deleted from the ledger and from here in the one commit. The
+        # container's own half stays: ticket 21 does not rename it, it SPLITS
+        # it, and the name it takes then is the Pricing Book's.
         "ubb-platform/apps/metering/pricing/models.py::RateCard":
             ("g9-rate-card-sits-on-the-container-table",
              "ubb_rate_card_container"),

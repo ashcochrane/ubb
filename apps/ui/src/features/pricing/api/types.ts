@@ -9,7 +9,10 @@ export type BookIn = MeteringSchemas["BookIn"];
 export type PaginatedBooks = MeteringSchemas["PaginatedBooks"];
 
 export type Rate = MeteringSchemas["RateOut"];
-export type RateIn = MeteringSchemas["RateIn"];
+// ⚠ NO `RateIn` (#367). Opening a rule is a declared change on a publish, so
+// the body that added one immediately is deleted from the contract along with
+// its route. `RateChangeIn` below is the immediate reprice; the declaring body
+// is `BookChangeIn`, and the feature that speaks it arrives with #372.
 export type PaginatedRates = MeteringSchemas["PaginatedRates"];
 
 /**

@@ -185,7 +185,7 @@ def test_unassigned_customer_uses_provider_default_book(db):
     c = Customer.objects.create(tenant=t, external_id="c1")
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True)
-    r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    r = Rate.objects.create(tenant=t, provider="gemini",
                             measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                             rate_per_unit_micros=10, rate_card=book)
     got = PricingService._resolve_card(t, c, "price", {"provider": "gemini"},
@@ -207,16 +207,16 @@ def test_assigned_book_wins_then_falls_back_to_default(db):
                                   currency="usd", key="ent")
     RateCardAssignment.objects.create(tenant=t, customer=c, rate_card=ent, currency="usd")
     # Enterprise overrides input_tokens; output_tokens only exists in default.
-    ent_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    ent_in = Rate.objects.create(tenant=t, provider="gemini",
                                  measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                                  rate_per_unit_micros=5, rate_card=ent)
-    def_out = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    def_out = Rate.objects.create(tenant=t, provider="gemini",
                                   measurement=declares_a_quantity(t, "output_tokens"), currency="usd",
                                   rate_per_unit_micros=30, rate_card=default)
     # Conflicting default-book rate for the SAME quantity as ent_in — proves the
     # assigned book shadows the default book rather than resolving by
     # elimination (only possible because Rate uniqueness is now per-book).
-    def_in = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    def_in = Rate.objects.create(tenant=t, provider="gemini",
                                  measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                                  rate_per_unit_micros=99, rate_card=default)
     now = timezone.now()

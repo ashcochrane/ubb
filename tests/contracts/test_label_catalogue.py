@@ -97,7 +97,9 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/events/components/task-section.tsx",
     "apps/ui/src/features/events/components/timeseries-card.tsx",
     "apps/ui/src/features/events/lib/search.ts",
-    "apps/ui/src/features/pricing/components/add-rate-dialog.tsx",
+    # The add-a-rule dialog's line went with the dialog in #367 — its route is
+    # deleted, so the file is not an importer that stopped importing but a file
+    # that stopped existing. The count keeps meaning what it says.
     "apps/ui/src/features/pricing/components/book-detail-page.tsx",
     "apps/ui/src/features/pricing/components/books-table.tsx",
     "apps/ui/src/features/pricing/components/publish-row.tsx",

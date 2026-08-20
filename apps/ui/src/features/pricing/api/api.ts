@@ -11,9 +11,6 @@ import type {
   PaginatedBooks,
   PaginatedRates,
   PublishIn,
-  Rate,
-  RateIn,
-  StatusResponse,
   TenantMarkup,
   TenantMarkupIn,
 } from "./types";
@@ -72,26 +69,6 @@ export async function listRates(
           limit: params?.limit,
         },
       },
-    }),
-  );
-}
-
-export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
-  return unwrap(
-    await meteringApi.POST("/pricing/rate-cards/{book_id}/rates", {
-      params: { path: { book_id: bookId } },
-      body,
-    }),
-  );
-}
-
-export async function deleteRate(
-  bookId: string,
-  rateId: string,
-): Promise<StatusResponse> {
-  return unwrap(
-    await meteringApi.DELETE("/pricing/rate-cards/{book_id}/rates/{rate_id}", {
-      params: { path: { book_id: bookId, rate_id: rateId } },
     }),
   );
 }

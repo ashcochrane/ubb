@@ -818,7 +818,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # than merely inconsistent. That is what an equality buys over a
     # per-property check, and it is why "a rule states a whole rule" is
     # asserted as a SET.
-    "rate_structure": Published(7, ENUM),
+    #
+    # ⚠ SEVEN, THEN SIX (#367). The immediate add-a-rule body is deleted with
+    # its route — opening a rule is a declared change on a publish — so one
+    # node leaves. Every schema that still carries a rule still carries the
+    # shape, which is what the placement map below says and why a fall here
+    # cannot hide a surface quietly losing it.
+    "rate_structure": Published(6, ENUM),
 }
 
 
@@ -1048,12 +1054,17 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
                               "BookChangeIn", "CustomerOverrideIn",
                               "RuleTermsOut", "InheritedPricingRule"})
     # The rate's arithmetic shape (#366), on every schema carrying a rule in
-    # either direction. The three `Rate*` schemas are the immediate routes;
-    # `BookChangeIn` and `RuleTermsOut` are the publish act that replaces them;
-    # `CustomerOverrideIn` and `InheritedPricingRule` are the override that
-    # states a whole rule and the row a client copies into it. None of the last
-    # four could carry it until the column was renamed.
-    placed("rate_structure", {"RateIn", "RateOut", "RateChangeIn",
+    # either direction. The two `Rate*` schemas are the immediate reprice and
+    # the row a read answers with; `BookChangeIn` and `RuleTermsOut` are the
+    # publish act that replaces the immediate surface; `CustomerOverrideIn` and
+    # `InheritedPricingRule` are the override that states a whole rule and the
+    # row a client copies into it. None of the last four could carry it until
+    # the column was renamed.
+    #
+    # ⚠ `RateIn` WAS THE SEVENTH AND IS GONE (#367). The body that opened a
+    # rule immediately left with its route, so the shape is advertised on one
+    # fewer node — and on no fewer of the surfaces that still carry a rule.
+    placed("rate_structure", {"RateOut", "RateChangeIn",
                               "BookChangeIn", "RuleTermsOut",
                               "CustomerOverrideIn", "InheritedPricingRule"})
     # The first marker of any kind (#240), and the tenant's own product set is

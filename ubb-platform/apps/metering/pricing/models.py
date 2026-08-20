@@ -246,10 +246,29 @@ RATE_STRUCTURE_CHOICES = [(value, value) for value in sorted(RATE_STRUCTURE_VALU
 
 
 class Rate(BaseModel):
+    """A single priced line, on the table its own name asks for (#367).
+
+    ⚠ **THE KIND DISCRIMINATOR IS GONE FROM THIS TABLE, AND ITS ABSENCE IS THE
+    STATEMENT.** A rate used to carry a `cost`/`price` word of its own, copied
+    from the book it was created under and never read by resolution: the ladder
+    selects BOOKS by kind and then asks this table `rate_card__in`, so the
+    column decided nothing and could disagree with the book it was copied from.
+    Deleting it rather than re-spelling it is the point of the slice — one
+    table wearing a kind word is what stopped the model saying that a book of
+    supplier costs and a book of customer prices are different things governed
+    by different rules (#148 §5.4).
+
+    ⚠ **WHAT SURVIVES IT, AND WHERE.** The container still carries the word
+    until ticket 21 splits it into two separately shaped entities, so the
+    cost/price branch has not left the tree — it has left THIS table, and every
+    read of a rate's kind now goes through the book that holds it. Nothing in
+    resolution asks a rate what kind it is, which is what
+    `test_a_rate_sits_on_the_table_named_for_a_rate.py` holds.
+    """
+
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="rate_cards")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="rate_cards", null=True, blank=True)
-    card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
     # --- The fourteen selector columns (design D3) ---
     # "" means WILDCARD here (it means "not set" on a Posting). Among rates
     # matching an event, the winner has the most non-empty selectors. This is
@@ -449,10 +468,22 @@ class Rate(BaseModel):
     }
 
     class Meta:
-        db_table = "ubb_rate_card"
+        # THE TABLE ITS OWN NAME ASKS FOR (#367, #154 §6.2). It sat on
+        # `ubb_rate_card` — the name that belongs to the container beside it —
+        # because the misnamed original took it first, and the inversion is
+        # recorded on `RateCard` below. This is the rate half of it, corrected
+        # by a rename that carries its rows rather than by a rebuild.
+        db_table = "ubb_rate"
         indexes = [
-            models.Index(fields=["tenant", "card_type", "provider", "event_type", "measurement"],
-                         name="idx_ratecard_lookup"),
+            # THE LOOKUP INDEX, WITHOUT THE KIND WORD (#367). It led on
+            # `tenant` and then on a discriminator that no query filters —
+            # resolution reaches this table through the books it has already
+            # selected — so the column's deletion takes a dead leading term out
+            # of the index with it and leaves the terms a lookup really uses.
+            # Renamed with the table, because an index named for the container
+            # on a table named for a rate is the same wart one layer down.
+            models.Index(fields=["tenant", "provider", "event_type", "measurement"],
+                         name="idx_rate_lookup"),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -521,13 +552,15 @@ class Rate(BaseModel):
 
         DERIVED, NEVER STORED (#326), which is the whole of what the conversion
         bought: the name is the declaration's, so a rate cannot hold a spelling
-        the catalogue does not. It is still what the wire carries — `RateIn`,
-        `RateChangeIn` and `RateOut` all publish this key, and THIS KEY has not
+        the catalogue does not. It is still what the wire carries — every
+        schema naming a rule, `RateChangeIn`, `BookChangeIn`, `RateOut` and the
+        override bodies among them, publishes this key, and THIS KEY has not
         moved on any of them — and still what the pricing receipt and the audit
         record write, so #326's conversion changed nothing a caller can see.
-        ⚠ Those three schemas HAVE since been reshaped around it (#366 took
-        their slot properties to the column names and renamed the arithmetic
-        shape); the claim here is about this property, not about the schemas.
+        ⚠ Those schemas HAVE since been reshaped around it (#366 took their
+        slot properties to the column names and renamed the arithmetic shape,
+        and #367 deleted the immediate add-a-rule body outright with its
+        route); the claim here is about this property, not about the schemas.
 
         A deactivated rate answers with the name it was written with, off the
         column that preserved it. That is the point of preserving it: a rate
@@ -590,9 +623,19 @@ class Rate(BaseModel):
 class RateCard(BaseModel):
     """Container grouping many Rates, versioned and assigned as a unit.
 
-    Naming wart: the physical table is `ubb_rate_card_container` because the
-    legacy `ubb_rate_card` table now backs the `Rate` model (the old, misnamed
-    RateCard). The Python names are correct: RateCard = the sheet, Rate = a line.
+    ⚠ **THE INVERSION IS HALF CORRECTED, AND THIS IS THE HALF STILL OWING
+    (#367).** The wart this docstring used to record was mutual: the model
+    named for a single line sat on the table named for the container, and this
+    model was pushed onto `ubb_rate_card_container` to make room for it. The
+    rate has moved to `ubb_rate`, so the borrowed name is no longer taken —
+    what is left is this table's own suffix, and it stays until ticket 21,
+    which does not merely rename it: the container becomes a Pricing Book and a
+    cost book, two separately shaped entities, and the name it takes then is
+    the Pricing Book's rather than the one it lent out. Renaming it here and
+    again there would be two renames of one table to reach one name.
+
+    The Python names have always been correct: RateCard = the sheet, Rate = a
+    line.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="rate_card_containers")

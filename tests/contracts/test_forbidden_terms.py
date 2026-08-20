@@ -228,7 +228,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # refuses every edit to one.
         # 227 → 228 in #366: the rate's arithmetic-shape column takes its
         # ratified name, carrying its rows and converting its values.
-        "historical-migrations": (UNTIL_SLICE_8, 228, 19),
+        # 228 → 229 in #367: the rule moves to the table its own name asks for,
+        # and the kind word is deleted from it rather than re-spelled.
+        "historical-migrations": (UNTIL_SLICE_8, 229, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

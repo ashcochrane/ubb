@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
 import { cardTypeLabel } from "@/lib/labels";
 import { useBook } from "../api/queries";
-import { AddRateDialog } from "./add-rate-dialog";
 import { PublishDialog } from "./publish-dialog";
 import { RatesTable } from "./rates-table";
 
@@ -34,7 +33,6 @@ export function BookDetailPage({
 }) {
   const book = useBook(bookId);
   const isAdmin = useHasRole("admin");
-  const [addOpen, setAddOpen] = React.useState(false);
   const [publishOpen, setPublishOpen] = React.useState(false);
 
   if (book.isLoading) {
@@ -106,16 +104,6 @@ export function BookDetailPage({
         </div>
         <div className="flex items-center gap-2">
           <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAddOpen(true)}
-              disabled={!isAdmin}
-            >
-              Add rate
-            </Button>
-          </DisabledHint>
-          <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
             <Button size="sm" onClick={() => setPublishOpen(true)} disabled={!isAdmin}>
               Publish new prices
             </Button>
@@ -137,9 +125,8 @@ export function BookDetailPage({
         )}
       </p>
 
-      <RatesTable book={data} isAdmin={isAdmin} onAddRate={() => setAddOpen(true)} />
+      <RatesTable book={data} />
 
-      <AddRateDialog book={data} open={addOpen} onOpenChange={setAddOpen} />
       <PublishDialog book={data} open={publishOpen} onOpenChange={setPublishOpen} />
     </div>
   );

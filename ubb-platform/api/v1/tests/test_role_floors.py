@@ -150,7 +150,13 @@ _WRITE_ROUTES = {
 # The Read floor is the carve's default for a GET and it is right here for the
 # ordinary reason — they decide nothing. The act they project, which does not,
 # keeps its Admin floor one line above. 152 + 3 = 155.
-_EXPECTED_FLOORED = 155
+#
+# ⚠ AND THEN TWO LEFT, WHICH IS THE FIRST TIME THIS COUNT HAS FALLEN (#367).
+# The immediate add-a-rule and retire-a-rule routes are deleted — both are
+# declared changes on a publish now — so two Admin-floored routes went with
+# them. Neither was carved and neither was exempt, so the exempt count below is
+# untouched. 155 - 2 = 153.
+_EXPECTED_FLOORED = 153
 _EXPECTED_EXEMPT = 10
 
 

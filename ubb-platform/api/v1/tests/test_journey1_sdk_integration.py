@@ -30,6 +30,12 @@ def _post(api, path, body):
     return r.json()
 
 
+def _get(api, path):
+    r = api.get(path)
+    r.raise_for_status()
+    return r.json()
+
+
 @pytest.fixture
 def _no_outbox_dispatch():
     """Neutralize the transactional-outbox Celery dispatch for this test.
@@ -76,9 +82,11 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     rate_in_default_book(tenant, card_type="cost", measurement_key="input_tokens",
                             rate_structure="per_unit", rate_per_unit_micros=2, unit_quantity=1,
                             currency="usd")
-    # The quantity the rate added over HTTP below prices. A rate names a
-    # declared quantity (#326), and this journey adds one through the real
-    # route, so the declaration is part of the journey rather than of a fixture.
+    # The quantity the rule opened over HTTP below prices. A rule names a
+    # declared quantity (#326), and this journey opens one through the real
+    # surface — declaring the change and publishing it, since #367 deleted the
+    # immediate route — so the declaration is part of the journey rather than
+    # of a fixture.
     declares_a_quantity(tenant, "output_tokens")
 
     client = MeteringClient(api_key=raw_key, base_url=live_server.url)
@@ -90,12 +98,19 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         #     then add a rate under it -> every API rate is book-scoped.
         book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "extra", "provider_key": ""})["id"]
-        rate = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "output_tokens", "rate_structure": "per_unit",
-            "rate_per_unit_micros": 5, "unit_quantity": 1})
-        assert rate["card_type"] == "cost"
-        assert rate["measurement_key"] == "output_tokens"
-        assert rate["rate_card_id"] == book_id
+        # Opening a rule is a declared change published in the same breath
+        # (#367) — the immediate route this journey used to POST to is gone.
+        base = f"/api/v1/metering/pricing/rate-cards/{book_id}"
+        declared = _post(api, f"{base}/publishes", {"changes": [{
+            "kind": "add", "measurement_key": "output_tokens",
+            "rate_structure": "per_unit", "rate_per_unit_micros": 5,
+            "unit_quantity": 1}]})
+        published = _post(api, f"{base}/publishes/{declared['id']}/publish", {})
+        (opened,) = published["opened_rule_ids"]
+        (row,) = _get(api, f"{base}/rates")["data"]
+        assert row["id"] == opened
+        assert row["measurement_key"] == "output_tokens"
+        assert row["rate_card_id"] == book_id
 
         # (b) record usage with measurements and NO caller cost -> engine computes COGS.
         #     Drive the SDK's real record_usage() over HTTP: real route, real response

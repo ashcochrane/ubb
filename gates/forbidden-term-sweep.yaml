@@ -171,7 +171,11 @@ exclusions:
     # column to its ratified name and converting its values with it. It is the
     # exclusion's own worked example — `RenameField(old_name=...)` HAS to spell
     # the word being retired, which is exactly why a migration may.
-    files: 228
+    # 228 → 229 in #367: one migration, moving the rule to the table its own
+    # name asks for and DELETING the kind word from it. The same worked example
+    # in the other direction — a `RemoveField` names the column it removes, and
+    # a deletion that cannot name its subject is not reviewable.
+    files: 229
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

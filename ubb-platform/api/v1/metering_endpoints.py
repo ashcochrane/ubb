@@ -38,7 +38,7 @@ from api.v1.schemas import (
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     TaskAnalyticsOut,
-    RateIn, RateOut, BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
+    BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
     PaginatedBooks, PaginatedRates,
     BookPublishIn, BookPublishOut, PaginatedBookPublishes,
     CustomerOverrideIn, InheritedRuleOut, inherited_rule_out,
@@ -70,14 +70,13 @@ from apps.metering.queries import GROUPED_VALUE_KEY
 from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
-from apps.platform.event_types.quantities import declaration_named
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    RATE_STRUCTURE_VALUES, SOURCE_KIND_CALLER_SUPPLIED)
+    SOURCE_KIND_CALLER_SUPPLIED)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
-from apps.platform.grouping_fields.models import SLOT_CHOICES, SLOTS
+from apps.platform.grouping_fields.models import SLOT_CHOICES
 from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
@@ -1062,24 +1061,27 @@ _billing_check = ProductAccess("billing")
 
 
 def _refuse_an_immediate_change_to_an_override(book):
-    """The three immediate routes do not reach a customer's own book (#361).
+    """The one surviving immediate route does not reach a customer's own book.
 
     An override is created, changed and retired through a PUBLISH — the same
     draft, the same diff, the same forward-dating, the same
     reversal-by-further-publish — and this is what makes that true of the whole
-    surface rather than only of the two routes that declare one.
+    surface rather than only of the two routes that declare one (#361).
 
-    ⚠ **WITHOUT IT THE CLAIM WOULD BE FALSE, AND THE PATH IS SHORT.** A book
-    still has three immediate mutation surfaces beside the publish record —
-    adding a rule, repricing a set of them, retiring one — every one of which
-    takes a bare book id and is filtered by the tenant alone. A customer's own
-    book is one of that tenant's books, so a negotiated deal could be written,
+    ⚠ **IT GUARDED THREE ROUTES AND NOW GUARDS ONE, WHICH IS PROGRESS RATHER
+    THAN EROSION (#367).** A book used to have three immediate mutation
+    surfaces beside the publish record — adding a rule, repricing a set of
+    them, retiring one — every one of which took a bare book id and was
+    filtered by the tenant alone, so a negotiated deal could be written,
     repriced and retired with no record of who decided it or when it took
-    effect. That is the one thing an override must never be: it is the record
-    of a contract.
+    effect. Adding and retiring are gone: both are declared changes on a
+    publish now, and there is no unversioned immediate act left. What survives
+    is the atomic reprice, which DOES version the book but still takes effect
+    the instant it is called, so a customer's own book must stay out of its
+    reach for the reason above — an override is the record of a contract.
 
-    The three leave with the rest of this slice's vocabulary (#369) and this
-    refusal leaves with them.
+    The last one leaves with the rest of this slice's vocabulary (#369) and
+    this refusal leaves with it.
     """
     if book.customer_id is not None:
         raise Problem(
@@ -1195,91 +1197,6 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
     return 200, page(qs, cursor, limit, serialize=rate_out)
-
-
-@metering_router.post("/pricing/rate-cards/{book_id}/rates",
-                      response={200: RateOut, 404: ProblemOut,
-                                409: ProblemOut, 422: ProblemOut})
-@role_floor(ADMIN)
-@records_audit("rate.added")
-def add_rate(request, book_id: UUID, payload: RateIn):
-    """Add a rate to a book. card_type and currency are inherited from the book
-    (single source of truth); tier/enum validation mirrors the old flat create.
-    Creates dedupe on natural identity (#78): a duplicate rate answers 409."""
-    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
-    _gate_card_type(request, book.card_type)
-    _refuse_an_immediate_change_to_an_override(book)
-    if book.is_default and payload.provider != book.provider_key:
-        raise Problem("validation_error",
-                      f"rate provider {payload.provider!r} must match the "
-                      f"default book's provider {book.provider_key!r}")
-    # THE ARITHMETIC SHAPE'S VALUE SET IS CLOSED AND THIS IS WHERE A BODY MEETS
-    # IT. `choices=` on the column is not enforcement — Django never validates
-    # it on `save()` — so an unratified value would otherwise persist silently
-    # and `compute` would take the per-unit branch for it, which is a wrong
-    # amount rather than an error. The publish act refuses the same value the
-    # same way (`book_service._CLOSED_VALUE_SETS`).
-    if payload.rate_structure not in RATE_STRUCTURE_VALUES:
-        raise Problem("validation_error",
-                      f"rate_structure must be one of "
-                      f"{sorted(RATE_STRUCTURE_VALUES)}")
-    # WHICH DECLARED QUANTITY THIS RATE PRICES, RESOLVED BEFORE ANYTHING IS
-    # WRITTEN (#326). A name this tenant has not declared has no record to
-    # reference, and a priced rule against a name nobody declared is the typo
-    # this slice exists to make impossible — it matches nothing, costs nothing
-    # and looks configured.
-    #
-    # The lookup is a pure read and every statement below it writes, which is
-    # why it sits here rather than beside the create: a refusal placed under a
-    # write spends what it refuses, and this route's writes are a rate and an
-    # audit record.
-    declaration = declaration_named(tenant=request.auth.tenant,
-                                    measurement_key=payload.measurement_key)
-    if declaration is None:
-        raise Problem(
-            "validation_error",
-            f"no declared quantity is called {payload.measurement_key!r}. A "
-            f"rate prices a quantity this tenant has declared on an Event "
-            f"Type; declare it first, then price it.")
-    try:
-        with transaction.atomic():
-            rate = Rate.objects.create(
-                tenant=request.auth.tenant, rate_card=book, card_type=book.card_type,
-                measurement=declaration, provider=payload.provider,
-                event_type=payload.event_type, task_type=payload.task_type,
-                subtask_type=payload.subtask_type,
-                # All ten slots, under the column names the body now uses (#366)
-                # — so there is no translation step left to get wrong, and a
-                # rule pinned on any slot can be added and then repriced.
-                **{slot: getattr(payload, slot) for slot in SLOTS},
-                rate_structure=payload.rate_structure,
-                rate_per_unit_micros=payload.rate_per_unit_micros,
-                unit_quantity=payload.unit_quantity, fixed_micros=payload.fixed_micros,
-                currency=book.currency,
-                book_version_from=book.version)
-            audit_record(
-                action="rate.added",
-                tenant_id=request.auth.tenant.id,
-                resource_type="rate",
-                resource_id=rate.id,
-                # This key moved with the column (#275) and audit records
-                # already written are NOT rewritten, on the same ground as the
-                # pricing receipt: an audit row states what was done on a day,
-                # and back-dating it to a vocabulary that did not exist then
-                # would make it a worse record. Nothing queries this key — the
-                # audit read path filters on `action` and `resource_type`, both
-                # unchanged — so the split costs no reader a lookup.
-                metadata={
-                    "book_id": str(book.id),
-                    "measurement_key": rate.measurement_key,
-                    Rate.STRUCTURE_COLUMN: rate.rate_structure,
-                    "rate_per_unit_micros": rate.rate_per_unit_micros,
-                    "currency": rate.currency,
-                },
-            )
-    except IntegrityError:
-        raise Problem("conflict", "a rate with this identity already exists")
-    return 200, rate_out(rate)
 
 
 @metering_router.post("/pricing/rate-cards/{book_id}/publish",
@@ -1805,42 +1722,6 @@ def assign_book(request, customer_id: UUID, payload: AssignIn):
                       "currency": book.currency},
         )
     return 200, {"assigned": str(book.id)}
-
-
-@metering_router.delete("/pricing/rate-cards/{book_id}/rates/{rate_id}",
-                        response={200: StatusResponse, 404: ProblemOut,
-                                  422: ProblemOut})
-@role_floor(ADMIN)
-@records_audit("rate.deleted")
-def delete_rate(request, book_id: UUID, rate_id: UUID):
-    """Retire (soft-expire) a single rate within its book. Addressed under its
-    book — matching GET/POST /pricing/rate-cards/{book_id}/rates — so the path
-    noun (``rates``) agrees with the identifier it takes (#86 sweep: this route
-    previously took a rate id on a bare ``/pricing/rate-cards/{card_id}`` path).
-
-    A rule in a book that holds one customer's own pricing is refused (422): an
-    override is withdrawn through DELETE
-    /pricing/customers/{customer_id}/overrides/{override_id}, which takes
-    effect when its publish lands."""
-    _product_check(request)
-    rate = get_object_or_404(
-        Rate.objects.select_related("rate_card"), id=rate_id,
-        rate_card_id=book_id, tenant=request.auth.tenant,
-        valid_to__isnull=True)
-    _refuse_an_immediate_change_to_an_override(rate.rate_card)
-    with transaction.atomic():
-        rate.valid_to = timezone.now()
-        rate.save(update_fields=["valid_to", "updated_at"])
-        audit_record(
-            action="rate.deleted",
-            tenant_id=request.auth.tenant.id,
-            resource_type="rate",
-            resource_id=rate.id,
-            metadata={"book_id": str(book_id),
-                      "rate_id": str(rate.id),
-                      "valid_to": rate.valid_to.isoformat()},
-        )
-    return {"status": "deleted"}
 
 
 @metering_router.post("/pricing/resolution-runs",

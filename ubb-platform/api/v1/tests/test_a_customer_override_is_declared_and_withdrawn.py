@@ -217,34 +217,32 @@ class NoImmediateMutationPathReachesAnOverrideTest(_ATenantWithACustomerMixin,
                                                    TestCase):
     """AC 6, the half that is about the REST of the surface.
 
-    Two routes declaring a draft prove nothing on their own: a book still has
-    three immediate mutation surfaces beside the publish record, each taking a
-    bare book id filtered by the tenant alone, and a customer's own book is one
-    of that tenant's books. Without a refusal a negotiated deal could be
-    written, repriced and retired with no record of who decided it or when it
-    took effect.
+    Two routes declaring a draft prove nothing on their own: a book has an
+    immediate mutation surface beside the publish record, taking a bare book id
+    filtered by the tenant alone, and a customer's own book is one of that
+    tenant's books. Without a refusal a negotiated deal could be repriced with
+    no record of who decided it or when it took effect.
 
-    ⚠ **ONE TEST PER ACT, NOT THREE SUBTESTS OF ONE.** Mutating the refusal away
-    showed why: the reprice supersedes the very rule the retirement then
-    addresses, so a shared fixture made the third case answer `404` for a
-    reason that had nothing to do with the rule under test. Each act now gets
-    its own transaction.
+    ⚠ **IT GUARDED THREE ROUTES WHEN #361 WROTE IT AND GUARDS ONE NOW (#367).**
+    The immediate add-a-rule and retire-a-rule routes are deleted — both are
+    declared changes on a publish — so the two cases that drove them are gone
+    with them rather than relaxed, and what is left is the atomic reprice. The
+    claim has not weakened: it is the same claim over a surface with two fewer
+    ways to reach a customer's book. The refusal leaves with the last route
+    (#369), and this class leaves with it.
 
-    ⚠ **AND EACH ACT IS ONE THAT WOULD OTHERWISE SUCCEED.** The same mutation
-    showed the first case answering `409`: it added a rule with the identity
-    the override already holds, so the book's own uniqueness rule refused it
-    and the refusal under test was never the reason. It pins a further selector
-    now, which is a rule the book does not hold.
+    ⚠ **THE ACT IS ONE THAT WOULD OTHERWISE SUCCEED.** Mutating the refusal
+    away is what showed why that matters: a case whose request some OTHER rule
+    refuses passes while proving nothing.
 
-    Every case reads the book's rules back afterwards, because a 422 is not
-    evidence on its own — these routes have refusals of their own.
+    The case reads the book's rules back afterwards, because a 422 is not
+    evidence on its own — this route has refusals of its own.
     """
 
     def setUp(self):
         super().setUp()
         published = self.declare_and_publish()
         self.book_id = published["book_id"]
-        self.override_id = published["opened_rule_ids"][0]
         self.book = f"/api/v1/metering/pricing/rate-cards/{self.book_id}"
 
     def _rules(self):
@@ -257,16 +255,6 @@ class NoImmediateMutationPathReachesAnOverrideTest(_ATenantWithACustomerMixin,
                       response.json()["detail"])
         self.assertEqual(self._rules(), before)
 
-    def test_a_rule_cannot_be_added_to_a_customers_own_book(self):
-        before = self._rules()
-
-        response = self._post(f"{self.book}/rates", {
-            "measurement_key": QUANTITY, "provider": PROVIDER,
-            "event_type": EVENT_TYPE, "task_type": "batch",
-            "rate_per_unit_micros": 1})
-
-        self._assert_refused_and_nothing_written(response, before)
-
     def test_a_rule_in_a_customers_own_book_cannot_be_repriced_immediately(self):
         before = self._rules()
 
@@ -277,22 +265,15 @@ class NoImmediateMutationPathReachesAnOverrideTest(_ATenantWithACustomerMixin,
 
         self._assert_refused_and_nothing_written(response, before)
 
-    def test_a_rule_in_a_customers_own_book_cannot_be_retired_immediately(self):
-        before = self._rules()
-
-        response = self._delete(f"{self.book}/rates/{self.override_id}")
-
-        self._assert_refused_and_nothing_written(response, before)
-
-    def test_the_same_three_still_reach_an_ordinary_book(self):
+    def test_it_still_reaches_an_ordinary_book(self):
         """The control: the refusal is about WHOSE book it is, not about the
-        routes, which are untouched and still work everywhere else."""
+        route, which is untouched and still works everywhere else."""
         book = f"/api/v1/metering/pricing/rate-cards/{self.catalogue.id}"
 
-        response = self._post(f"{book}/rates", {
-            "measurement_key": QUANTITY, "provider": PROVIDER,
-            "event_type": EVENT_TYPE, "task_type": "batch",
-            "rate_per_unit_micros": 1})
+        response = self._post(f"{book}/publish", {
+            "changes": [{"measurement_key": QUANTITY, "provider": PROVIDER,
+                         "event_type": EVENT_TYPE,
+                         "rate_per_unit_micros": 1}]})
 
         self.assertEqual(response.status_code, 200, response.content)
 
@@ -547,10 +528,10 @@ class TheTwoActsAreGovernanceTest(_ATenantWithACustomerMixin, TestCase):
     def test_both_routes_carry_the_marker_the_mutating_pin_reads(self):
         """The #82 pin walks the live API for exactly this attribute, and a
         route carrying neither it nor an exemption turns it red."""
-        from api.v1.tests.test_audit_sweep import _iter_mutating_ops
+        from api.v1.tests.test_audit_sweep import mutating_operations
 
         marked = {(method, path): getattr(view, "_audit_actions", ())
-                  for method, path, view in _iter_mutating_ops()
+                  for method, path, view in mutating_operations()
                   if path.startswith(OVERRIDES)}
 
         self.assertEqual(marked, {("POST", OVERRIDES): (DECLARED,),
@@ -560,8 +541,8 @@ class TheTwoActsAreGovernanceTest(_ATenantWithACustomerMixin, TestCase):
         """The inherited-rule read answers a question and decides nothing, so
         it is outside the pin's subject entirely rather than exempted from it.
         """
-        from api.v1.tests.test_audit_sweep import _iter_mutating_ops
+        from api.v1.tests.test_audit_sweep import mutating_operations
 
         self.assertEqual(
-            [path for _, path, _ in _iter_mutating_ops()
+            [path for _, path, _ in mutating_operations()
              if path.endswith("/inherited-rule")], [])

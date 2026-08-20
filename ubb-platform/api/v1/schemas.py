@@ -430,11 +430,14 @@ PricingMethod = Annotated[
 #: quantity, or a component that applies once regardless). A schema carrying one
 #: says nothing about the other.
 #:
-#: **IT IS NON-NULL ON `RateIn` AND `RateOut` AND NULLABLE ON `RateChangeIn`**,
+#: **IT IS NON-NULL ON EVERY ROW SCHEMA AND NULLABLE ON EVERY CHANGE BODY**,
 #: and that is the difference between opening a rule and repricing one rather
 #: than an inconsistency: every rule HAS a shape, so a row always answers with
-#: one, while a reprice states only what moves and null there means *carry the
-#: superseded rule's over*. `Optional[RateStructure]` renders `anyOf: [string,
+#: one, while a change states only what moves and null there means *carry the
+#: superseded rule's over*. ⚠ The one body that was non-null — the immediate
+#: add-a-rule request — left with its route in #367, so the split is now
+#: exactly rows-versus-changes with no exception to remember.
+#: `Optional[RateStructure]` renders `anyOf: [string,
 #: null]` with the marker inside the STRING MEMBER — the rule
 #: `UnresolvedReason` argues in full, and the trap this slice was warned about
 #: by name.
@@ -1371,35 +1374,6 @@ class PostpaidConfigOut(Schema):
 # --- Two-level pricing: a RateCard BOOK groups many Rates ---
 
 
-class RateIn(Schema):
-    """A single Rate added under a book. card_type and currency are inherited
-    from the book, so they are NOT accepted here (the book owns them).
-
-    The rule is pinned by the quantity it prices plus its selectors: the four
-    reserved axes and **all ten** grouping slots. An omitted selector means the
-    rule leaves it unpinned, which is what an empty selector means everywhere on
-    this surface."""
-    measurement_key: str = Field(min_length=1, max_length=100)
-    provider: str = Field(default="", max_length=100)
-    event_type: str = Field(default="", max_length=100)
-    task_type: str = Field(default="", max_length=64)
-    subtask_type: str = Field(default="", max_length=64)
-    grouping_field_1: str = Field(default="", max_length=100)
-    grouping_field_2: str = Field(default="", max_length=100)
-    grouping_field_3: str = Field(default="", max_length=100)
-    grouping_field_4: str = Field(default="", max_length=100)
-    grouping_field_5: str = Field(default="", max_length=100)
-    grouping_field_6: str = Field(default="", max_length=100)
-    grouping_field_7: str = Field(default="", max_length=100)
-    grouping_field_8: str = Field(default="", max_length=100)
-    grouping_field_9: str = Field(default="", max_length=100)
-    grouping_field_10: str = Field(default="", max_length=100)
-    rate_structure: RateStructure = RATE_STRUCTURE_PER_UNIT
-    rate_per_unit_micros: int = Field(default=0, ge=0)
-    unit_quantity: int = Field(default=1_000_000, gt=0)
-    fixed_micros: int = Field(default=0, ge=0)
-
-
 class BookIn(Schema):
     card_type: str
     provider_key: str = Field(default="", max_length=100)
@@ -1481,7 +1455,6 @@ class RateOut(Schema):
     id: str
     rate_card_id: str
     lineage_id: str
-    card_type: str
     measurement_key: str
     provider: str
     event_type: str
@@ -1553,12 +1526,18 @@ class RateOut(Schema):
 
 
 def rate_out(r):
-    """RateOut's serializer — one rate version under a book."""
+    """RateOut's serializer — one rate version under a book.
+
+    ⚠ **THE KIND WORD IS GONE FROM THE ROW AND FROM THIS RESPONSE (#367).** It
+    was a copy of the book's, and a reader who wants it reads it off the book
+    the rules were listed under — which is the id already on every row here.
+    Publishing a second copy of it let a client compare two answers to one
+    question, and the row was the one that could be wrong.
+    """
     return {
         "id": str(r.id),
         "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
         "lineage_id": str(r.lineage_id),
-        "card_type": r.card_type,
         "measurement_key": r.measurement_key,
         "provider": r.provider,
         "event_type": r.event_type,
@@ -1807,10 +1786,13 @@ class BookPublishOut(Schema):
     #: boundaries and their lineage — rather than out of an echo of the request.
     diff: Optional[list[BookChangeDiffOut]] = None
     #: ⚠ WHY A DRAFT MAY HAVE NO DIFF EITHER, WHICH IS A REACHABLE STATE AND NOT
-    #: A DEFENSIVE ONE. A book still has three immediate mutation routes beside
-    #: this act, and two drafts can name one rule while only one of them
-    #: publishes — so a draft can be left stating a change that can no longer be
-    #: carried out. Reading it must say so rather than answer a diff nobody can
+    #: A DEFENSIVE ONE. Two drafts can name one rule while only one of them
+    #: publishes, so a draft can be left stating a change that can no longer be
+    #: carried out. The immediate reprice route beside this act reaches the same
+    #: rules and can do it too — it is the last of three, the other two having
+    #: left with #367 — but it is not what makes this reachable, and a book with
+    #: no immediate route at all would still get here through two drafts.
+    #: Reading such a draft must say so rather than answer a diff nobody can
     #: compute: `diff` is null and this carries the same sentence declaring the
     #: draft would now be refused with. Null on a draft with a diff, and null on
     #: a published record — where `declaration_status` is what tells a reader

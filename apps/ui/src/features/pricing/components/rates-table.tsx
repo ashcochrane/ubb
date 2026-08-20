@@ -1,8 +1,6 @@
 import * as React from "react";
 import { Layers } from "lucide-react";
 
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { LoadMore } from "@/components/shared/load-more";
@@ -24,23 +22,20 @@ import {
 import { formatDate, formatMicros, formatPrice, formatShortDate } from "@/lib/format";
 import { pricingModelLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
-import { toastOnError, toastSuccess } from "@/lib/mutations";
-import { useRates, useRetireRate } from "../api/queries";
+import { useRates } from "../api/queries";
 import type { Book, Rate } from "../api/types";
 
 /**
- * A book's rates: active by default, optional full history, optional
- * point-in-time ("as of") view. Retiring soft-expires a rate (history kept).
+ * A book's rules: active by default, optional full history, optional
+ * point-in-time ("as of") view.
+ *
+ * ⚠ READ-ONLY SINCE #367. The two immediate routes this table drove — add a
+ * rule, retire one — are deleted, because every change to a book is a publish
+ * now. The console does not speak the declaring body yet; #372 rebuilds this
+ * feature around books, rules and publishes, and until then the way to change
+ * a book is the publish dialog beside this table.
  */
-export function RatesTable({
-  book,
-  isAdmin,
-  onAddRate,
-}: {
-  book: Book;
-  isAdmin: boolean;
-  onAddRate: () => void;
-}) {
+export function RatesTable({ book }: { book: Book }) {
   const [includeHistory, setIncludeHistory] = React.useState(false);
   const [asOfLocal, setAsOfLocal] = React.useState("");
   const asOfIso = React.useMemo(() => {
@@ -50,8 +45,6 @@ export function RatesTable({
   }, [asOfLocal]);
 
   const rates = useRates(book.id, { include_history: includeHistory, as_of: asOfIso });
-  const [retireTarget, setRetireTarget] = React.useState<Rate | null>(null);
-  const retire = useRetireRate(book.id);
 
   const pointInTime = asOfIso !== undefined;
 
@@ -120,8 +113,7 @@ export function RatesTable({
           <EmptyState
             icon={Layers}
             title="No rates yet"
-            description="Add the first rate so events carrying this book's measurements get priced."
-            action={isAdmin ? { label: "Add rate", onClick: onAddRate } : undefined}
+            description="This book prices nothing yet. Rules are added by publishing a change to the book."
           />
         )
       ) : (
@@ -137,25 +129,11 @@ export function RatesTable({
                   <TableHead>Fixed</TableHead>
                   <TableHead>From</TableHead>
                   <TableHead>Until</TableHead>
-                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rates.rows.map((rate) => (
-                  <RateRow
-                    key={rate.id}
-                    rate={rate}
-                    currency={book.currency}
-                    canRetire={isAdmin && !pointInTime && rate.valid_to == null}
-                    retireHint={
-                      !isAdmin
-                        ? "Requires the Admin role."
-                        : pointInTime
-                          ? "Clear the point-in-time view to retire rates."
-                          : undefined
-                    }
-                    onRetire={() => setRetireTarget(rate)}
-                  />
+                  <RateRow key={rate.id} rate={rate} currency={book.currency} />
                 ))}
               </TableBody>
             </Table>
@@ -169,48 +147,21 @@ export function RatesTable({
           />
         </Card>
       )}
-
-      <ConfirmDialog
-        open={retireTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setRetireTarget(null);
-        }}
-        title="Retire this rate?"
-        description={
-          retireTarget
-            ? `"${retireTarget.measurement_key}" stops pricing new events immediately. Nothing is deleted — this version stays in the book's history, and past events keep their recorded price.`
-            : ""
-        }
-        confirmLabel="Retire rate"
-        destructive
-        pending={retire.isPending}
-        onConfirm={() => {
-          if (!retireTarget) return;
-          retire.mutate(retireTarget.id, {
-            onSuccess: () => {
-              toastSuccess("Rate retired", "It remains visible under history.");
-              setRetireTarget(null);
-            },
-            onError: toastOnError("Couldn't retire the rate"),
-          });
-        }}
-      />
     </div>
   );
 }
 
+// ⚠ NO RETIRE ACTION, AND NO ADD (#367). Both immediate routes are deleted:
+// a rule is opened and retired by a declared change on a publish now, and the
+// console does not speak that body yet — #372 rebuilds this feature around
+// books, rules and publishes. Leaving the buttons pointed at deleted routes
+// would have been worse than leaving the gap visible.
 function RateRow({
   rate,
   currency,
-  canRetire,
-  retireHint,
-  onRetire,
 }: {
   rate: Rate;
   currency: string;
-  canRetire: boolean;
-  retireHint: string | undefined;
-  onRetire: () => void;
 }) {
   const superseded = rate.valid_to != null;
   const dimensionEntries = (
@@ -273,15 +224,6 @@ function RateRow({
           <span title={formatDate(rate.valid_to)}>{formatShortDate(rate.valid_to)}</span>
         ) : (
           <Badge variant="secondary">Active</Badge>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        {rate.valid_to == null && (
-          <DisabledHint disabled={!canRetire} hint={retireHint}>
-            <Button variant="ghost" size="sm" onClick={onRetire} disabled={!canRetire}>
-              Retire
-            </Button>
-          </DisabledHint>
         )}
       </TableCell>
     </TableRow>

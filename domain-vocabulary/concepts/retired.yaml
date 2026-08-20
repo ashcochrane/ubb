@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,666 of 2,061 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,662 of 2,058 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    52 files, 129 occurrences
+    #     units    51 files, 127 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1206,6 +1206,49 @@ measurement_key:
     # it — and the new module says "quantity" wherever it means one. The
     # inherited sentence in `pricing_service._component` claimed this ticket
     # owned BOTH spellings; it owns one, and the corrected sentence is there.
+    #
+    # #367 MOVED BOTH NUMBERS DOWNWARD, WHICH NO EARLIER RE-TAKE HAS DONE
+    # (1,666 -> 1,662 swept, 2,061 -> 2,058 tracked, 52/129 -> 51/127), WHILE
+    # THE EXCLUSION ROSE BY ONE (`historical-migrations` 228 -> 229). Swept
+    # falls by four and tracked by three, which is the signature of a commit
+    # that DELETES published surface while adding a migration — no earlier
+    # re-take has it, because no earlier one deleted anything from the
+    # generated core.
+    #
+    # ⚠ **THE NUMERATOR FELL BY A WHOLE FILE, AND DOWNWARD IS THE ONE DIRECTION
+    # THAT NEEDS NO INVESTIGATION** — the three-case rule above asks for an
+    # account of a RISE. The file is the console's add-a-rule dialog, deleted
+    # with the route it drove: it spelled the retired plural twice, in the
+    # wording of a quantity field a tenant filled in. Neither occurrence was
+    # re-homed, because the surface they belonged to is gone rather than moved,
+    # and #372 rebuilds this feature around the acts that replace it.
+    #
+    # ⚠ IT IS ALSO WHY THIS BLOCK WAS WRITTEN TWICE. The first taking of these
+    # counts was made before the console half of the commit landed and recorded
+    # the numerator as unchanged; `tests/contracts` said otherwise. That is the
+    # measurement-expires shape this ratchet already records for mutation
+    # counts, in the file-count direction, and the discipline is the same: take
+    # the numbers after the LAST file moves, not after the first.
+    #
+    # THE ARITHMETIC, COUNTED OFF `git diff --name-status` RATHER THAN FROM
+    # MEMORY. Two files arrive — the migration that moves the rule to the table
+    # its own name asks for, which is EXCLUDED and so lifts tracked without
+    # lifting swept, and the test module holding what that migration claims,
+    # which is swept. FIVE leave, all of them swept: four generated (the request
+    # model for the deleted immediate add-a-rule route, its arithmetic-shape
+    # enum module, and the two endpoint modules for the two routes this commit
+    # deletes) and one hand-written (the console dialog that drove the add
+    # route). The retire action cost no file, because it was a block inside one
+    # that survives. Swept 1,666 + 1 - 5 = 1,662; excluded 395 + 1 = 396;
+    # tracked 1,662 + 396 = 2,058.
+    #
+    # ⚠ THE NUMERATOR SURVIVED A COMMIT THAT REWROTE FOUR TEST MODULES AROUND
+    # OPENING AND RETIRING A RULE, which is prose about work and therefore
+    # exactly where this word has been tripped before (#328's rollup docstring,
+    # #330's review-pass comment). What kept it out is not care about the
+    # surviving senses — #350 records that care about the sense does not help —
+    # but that a rule is opened and retired here, never "united": the acts have
+    # verbs of their own and the new prose uses them.
 
     - term: units
       retired_as: >-
