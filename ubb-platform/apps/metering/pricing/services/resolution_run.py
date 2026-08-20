@@ -54,7 +54,7 @@ has paid for that exact shape once already. A run that completes nothing answers
 with an outcome saying so.
 """
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
@@ -73,6 +73,7 @@ from apps.metering.pricing.services.pricing_service import (
 from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import SYSTEM, get_current_actor
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
+from core.cost_totals import cost_total, counts_as_unresolved
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
@@ -105,6 +106,12 @@ PAIR_BY_SECTION = {name: pair
 #: one stopped and there is no cursor to carry and nothing to get wrong. What is
 #: NOT safe is a bound nobody is told about, which reads as *"that was all of
 #: them"* — so a run that hit it says so in `more_to_do`.
+#:
+#: ⚠ IT BOUNDS THE PROJECTION TOO (#364), WHICH IS WHY THE FIGURE IS WHAT A RUN
+#: WOULD COMPLETE and not an estimate of it — but the two report the bound
+#: differently and must. A run's flag is an instruction that makes progress; a
+#: projection completes nothing, so the same request answers the same truncated
+#: figure forever and it reports a COUNT of what it did not reach instead.
 MAXIMUM_POSTINGS_PER_RUN = 200
 
 
@@ -142,22 +149,17 @@ def never_resolved_condition():
     return predicate
 
 
-def candidates(tenant, selector):
-    """The postings a run may reach, in the order it will reach them.
+def narrowed(postings, selector):
+    """The three axes, applied to any set of postings.
 
-    ⚠ **THE MEMBERSHIP TERM IS APPLIED SEPARATELY FROM THE SELECTOR AND THAT IS
-    VISIBLE HERE ON PURPOSE.** The three axes narrow a set that was already only
-    the never-resolved; they do not compose into one condition where a reader
-    has to work out which term is load-bearing. Delete every `if` below and the
-    query still cannot reach a posting that has an amount.
-
-    Ordered oldest-first so a bounded run works forward through a backlog, and
-    tie-broken on the id so two runs over the same data take the same postings —
-    an unbroken tie is handed to the query plan, which is how a repair becomes
-    dependent on the planner.
+    Separate from :func:`candidates` because the axes are the **selector** and
+    the never-resolved term is the **membership**, and the read surfaces built
+    on a run take one without the other (#364): what waiving has cost is a
+    question about postings a run can never reach, asked on exactly the three
+    axes a run accepts. One function is what stops the queue a tenant works
+    through, the projection over it and the waived-loss report coming to filter
+    differently from the run they describe.
     """
-    postings = (Posting.objects.filter(tenant=tenant)
-                .filter(never_resolved_condition()))
     if selector.selected_from is not None:
         postings = postings.filter(effective_at__gte=selector.selected_from)
     if selector.selected_to is not None:
@@ -166,7 +168,26 @@ def candidates(tenant, selector):
         postings = postings.filter(customer=selector.selected_customer)
     if selector.selected_event_type:
         postings = postings.filter(event_type=selector.selected_event_type)
-    return postings.order_by("effective_at", "id")
+    return postings
+
+
+def candidates(tenant, selector):
+    """The postings a run may reach, in the order it will reach them.
+
+    ⚠ **THE MEMBERSHIP TERM IS APPLIED SEPARATELY FROM THE SELECTOR AND THAT IS
+    VISIBLE HERE ON PURPOSE.** The three axes narrow a set that was already only
+    the never-resolved; they do not compose into one condition where a reader
+    has to work out which term is load-bearing. Take :func:`narrowed` away
+    entirely and the query still cannot reach a posting that has an amount.
+
+    Ordered oldest-first so a bounded run works forward through a backlog, and
+    tie-broken on the id so two runs over the same data take the same postings —
+    an unbroken tie is handed to the query plan, which is how a repair becomes
+    dependent on the planner.
+    """
+    return narrowed(Posting.objects.filter(tenant=tenant)
+                    .filter(never_resolved_condition()),
+                    selector).order_by("effective_at", "id")
 
 
 def execute(*, tenant, selector, actor=None):
@@ -252,20 +273,14 @@ def _complete(posting_id, run_id):
     # hundred times; `of` is what keeps it from also being a lock.
     posting = (Posting.objects.select_for_update(of=("self",))
                .select_related("tenant", "customer").get(pk=posting_id))
-    stored = getattr(posting, Posting.RECEIPT_COLUMN)
 
-    completable = {name for name, pair in PAIR_BY_SECTION.items()
-                   if getattr(posting, pair.status_column)
-                   == pair.unresolved_status}
-    if not completable \
-            or _the_record_cannot_account_for_a_completion(posting, stored):
+    evaluation = what_a_run_would_complete(posting)
+    if evaluation is None:
         return False, False
-
-    resolved = resolve_price(_subject_of(posting, stored),
-                             posting.effective_at)
+    stored, resolved = evaluation.stored, evaluation.resolved
 
     settled_cost = _settle_the_cost(posting, stored, resolved, run_id) \
-        if "costing" in completable else False
+        if "costing" in evaluation.completable else False
     # The stored record moves when the cost settles, and the price completion
     # is computed from what is on the row NOW rather than from the read above —
     # otherwise the price's statement would carry a receipt with the cost's
@@ -275,9 +290,188 @@ def _complete(posting_id, run_id):
         posting.refresh_from_db()
         stored = getattr(posting, Posting.RECEIPT_COLUMN)
     resolved_price = _resolve_the_price(posting, stored, resolved, run_id) \
-        if "pricing" in completable else False
+        if "pricing" in evaluation.completable else False
 
     return settled_cost, resolved_price
+
+
+@dataclass(frozen=True)
+class Evaluation:
+    """What a run would do to one posting, before anything is written.
+
+    Three facts a caller needs and cannot recover from each other: which
+    sections are open, the record they would be completed from, and what
+    re-resolving that record at the posting's own instant now answers.
+    """
+
+    #: The receipt section names whose pair is recorded as never resolved.
+    completable: frozenset
+    #: The stored receipt the completion would be assembled from.
+    stored: dict
+    #: What :func:`pricing_service.resolve_price` answered at the posting's own
+    #: effective instant — the whole receipt-shaped answer, both sections.
+    resolved: dict
+
+
+def what_a_run_would_complete(posting):
+    """Re-resolve one posting at its own instant, writing nothing.
+    `None` where a run would leave it alone.
+
+    ⚠ **THE ONE PLACE THAT QUESTION IS ASKED, WHICH IS WHAT MAKES A PROJECTION
+    HONEST (#364).** `_complete` asks it and puts the answer through each pair's
+    door; `project` asks it and puts the answer into a total. A figure a tenant
+    is told a recovery would be worth is therefore produced by **the code that
+    would produce the recovery**, rather than by a second implementation that
+    agrees with it on the day it is written. It is also what makes *this surface
+    moves no money* structural rather than asserted: there is no door on this
+    path at all, so a projection cannot settle anything by accident.
+
+    It writes nothing and locks nothing. The lock belongs to the caller that is
+    about to write — a read taking `FOR UPDATE` over a tenant's backlog would
+    block the runs it is reporting on.
+    """
+    stored = getattr(posting, Posting.RECEIPT_COLUMN)
+    completable = frozenset(
+        name for name, pair in PAIR_BY_SECTION.items()
+        if getattr(posting, pair.status_column) == pair.unresolved_status)
+    if not completable \
+            or _the_record_cannot_account_for_a_completion(posting, stored):
+        return None
+    return Evaluation(
+        completable=completable, stored=stored,
+        resolved=resolve_price(_subject_of(posting, stored),
+                               posting.effective_at))
+
+
+#: WHAT THE PROJECTION'S MONEY COLUMN IS CALLED, and why it is not the pair's
+#: own `billed_cost_micros`. That name is what a customer WAS charged; this is
+#: what one would be charged if the tenant chose to go back for it, and a
+#: reader who took the two for the same number would read a projection as a
+#: receivable. The completeness count beside it keeps the pair's own key,
+#: because the question it answers is the pair's: how many prices this total
+#: could not include.
+PROJECTED_AMOUNT_KEY = "projected_billed_cost_micros"
+
+
+@dataclass
+class _PerCustomer:
+    """One customer's projection, while it is being accumulated."""
+
+    #: `None` until a posting contributes, which is the empty sum
+    #: `core.cost_totals.cost_total` exists to tell apart from a resolved zero.
+    recoverable_micros: Optional[int] = None
+    recoverable_event_count: int = 0
+    unpriced_event_count: int = 0
+    usage_event_ids: list = field(default_factory=list)
+
+
+def project(tenant, selector):
+    """What recovering this selector would be WORTH, per customer (#364).
+
+    **A PROJECTION, NEVER AN INSTRUCTION.** The customer adjustment is the only
+    one of the four recovery mechanisms that moves money, and two documents
+    forbid it being automatic — so this produces a figure and its receipts and
+    stops there. Nothing here reaches a door, an invoice, a wallet or Stripe;
+    the tenant acts through the money path UBB already has, because Stripe owns
+    the billing engine and UBB never reimplements it.
+
+    **IT IS THE RUN, WITH THE WRITING TAKEN OUT.** The same candidate set, the
+    same bound, the same per-posting evaluation
+    (:func:`what_a_run_would_complete`) — so the figure is what a run over this
+    selector would actually complete rather than a second estimate of it.
+
+    **THE PRICE HALF ONLY, AND THAT IS THE SUBJECT RATHER THAN AN OMISSION.**
+    Recovering a supplier cost is worth nothing to go back to a customer for: it
+    is money UBB learns, not money a tenant can bill. What a recovery is *worth*
+    is the customer price, and a total that mixed the two would answer neither
+    question. A posting in the queue for its cost alone therefore contributes
+    nothing here and is not counted against the total — its price is not
+    missing.
+
+    **PER CUSTOMER AND PER CURRENCY.** A customer normally has one, and where
+    they have two the alternative is one number in no denomination. The rollups
+    in the read contract are silent on this; that silence is inherited and is
+    not widened here.
+
+    ⚠ **ONE PASS IS BOUNDED, AND THE BOUND IS REPORTED AS A COUNT RATHER THAN
+    AS A FLAG.** Re-resolving costs a handful of queries per posting, so a
+    projection over a whole history is a request that never returns — but a
+    total that stopped early and said only *"there is more"* would be exactly
+    the silently-short number this programme exists to delete. The postings the
+    bound left out are counted, so the figure states how far it may fall short
+    for that reason as well as for the prices it could not value.
+
+    A RUN'S OWN BOUND IS A BOOLEAN AND THIS ONE IS NOT, WHICH IS THE ASYMMETRY
+    RATHER THAN AN INCONSISTENCY. A run *writes*: everything it completes leaves
+    the candidate set, so `more_to_do` is an instruction — send the same body
+    again — and the number left is answered by doing so. A projection changes
+    nothing, so sending it again returns the same truncated figure forever, and
+    the only honest thing it can report is the size of what it did not reach.
+
+    The count is over the whole selector and cannot be attributed per customer:
+    working out whose postings they are is the examination the bound refused.
+
+    Returns plain data — no ORM objects — so the read contract can hand it
+    straight on (ADR-001).
+    """
+    selected = candidates(tenant, selector)
+    taking = list(selected[:MAXIMUM_POSTINGS_PER_RUN])
+    # A second query, deliberately. The bound means this pass cannot know how
+    # many it skipped from the rows it took, and the alternative to asking is
+    # not telling.
+    not_examined = max(selected.count() - len(taking), 0)
+
+    per_customer = {}
+    for posting in taking:
+        accumulating = per_customer.setdefault(
+            (posting.customer_id, posting.currency), _PerCustomer())
+        amount, status = _what_the_price_would_become(posting)
+        if amount is not None:
+            accumulating.recoverable_micros = (
+                (accumulating.recoverable_micros or 0) + amount)
+            accumulating.recoverable_event_count += 1
+            accumulating.usage_event_ids.append(str(posting.id))
+        elif counts_as_unresolved(CUSTOMER_PRICE, status):
+            # ⚠ THE SET IS THE REGISTRY'S AND NOT THIS MODULE'S. A price the
+            # recovery would WAIVE and one an Event Type says does not exist
+            # both leave the total without an amount, and neither is missing
+            # information — `core.amount_status_pairs` argues that once, for
+            # every total in the system, and a reader that picked its own set
+            # here would caveat a figure with rows that are not absent from it.
+            accumulating.unpriced_event_count += 1
+
+    return {
+        "postings_examined": len(taking),
+        "postings_not_examined": not_examined,
+        "rows": [
+            {"customer_id": str(customer_id), "currency": currency,
+             "recoverable_event_count": accumulating.recoverable_event_count,
+             "usage_event_ids": accumulating.usage_event_ids,
+             **cost_total(
+                 CUSTOMER_PRICE, key=PROJECTED_AMOUNT_KEY,
+                 resolved_micros=accumulating.recoverable_micros,
+                 unresolved_events=accumulating.unpriced_event_count)}
+            for (customer_id, currency), accumulating
+            in sorted(per_customer.items(), key=lambda e: str(e[0]))],
+    }
+
+
+def _what_the_price_would_become(posting):
+    """`(the amount a recovery would bill, the status it would carry)`.
+
+    The amount is `None` wherever a recovery would settle no price, and the
+    status is what the total's completeness count is then asked about — the
+    posting's own where re-resolution never happened, and the re-resolved one
+    where it did. Returning both is what keeps *nothing to add* and *nothing
+    missing* separable: they are the same `None` and different facts.
+    """
+    evaluation = what_a_run_would_complete(posting)
+    if evaluation is None or "pricing" not in evaluation.completable:
+        return None, posting.pricing_status
+    status = evaluation.resolved["pricing"]["status"]
+    if status != SECTIONS["pricing"].settled:
+        return None, status
+    return evaluation.resolved["totals"][CUSTOMER_PRICE.amount_column], status
 
 
 def _the_record_cannot_account_for_a_completion(posting, stored):

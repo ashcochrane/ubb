@@ -138,7 +138,19 @@ _WRITE_ROUTES = {
 # second act to undo one with; and what it completes is a customer-facing money
 # figure. Irreversible plus money-adjacent is the highest floor this table has.
 # 151 + 1 = 152.
-_EXPECTED_FLOORED = 152
+#
+# 152 -> 155 with #364's three recovery reads: the queue of everything that went
+# unresolved, what recovering a filter would be worth per customer, and what
+# waiving has cost. All three are Read GETs and none needs a _WRITE_ROUTES entry,
+# because none of them is a write at all — and that is the ruling rather than a
+# consequence of them happening to be reads. The customer adjustment is the only
+# one of the four recovery mechanisms that moves money, two documents forbid it
+# being automatic, and Stripe owns the billing engine UBB never reimplements: so
+# these produce a figure with its receipts and there is no button that bills.
+# The Read floor is the carve's default for a GET and it is right here for the
+# ordinary reason — they decide nothing. The act they project, which does not,
+# keeps its Admin floor one line above. 152 + 3 = 155.
+_EXPECTED_FLOORED = 155
 _EXPECTED_EXEMPT = 10
 
 

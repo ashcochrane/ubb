@@ -43,6 +43,7 @@ from api.v1.schemas import (
     BookPublishIn, BookPublishOut, PaginatedBookPublishes,
     CustomerOverrideIn, InheritedRuleOut, inherited_rule_out,
     ResolutionRunIn, ResolutionRunOut, resolution_run_out,
+    PaginatedUnresolvedQueue, ProjectedAdjustmentOut, WaivedLossOut,
     UndeclaredGroupingField,
     book_change_body, book_change_diff_out, book_publish_out,
     book_out, rate_change_body, rate_out, usage_event_out,
@@ -62,6 +63,12 @@ from apps.platform.audit.actors import get_current_actor
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.metering.queries import GROUPED_VALUE_KEY
+# THE MODULE RATHER THAN ITS FUNCTIONS, so that each route handler can carry
+# the SAME name as the read-contract call it makes without shadowing it.
+# ADR-0006 §2 wants one canonical public term per concept, and a handler's name
+# IS public: django-ninja builds the operationId from it, and the generated SDK
+# names a module and a constant after that.
+from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
 from apps.platform.event_types.quantities import declaration_named
@@ -1911,6 +1918,173 @@ def execute_resolution_run(request, payload: ResolutionRunIn):
                       "more_to_do": run.more_to_do},
         )
     return 200, resolution_run_out(run)
+
+
+# --- What a run is aimed at, what it would be worth, and what waiving cost ---
+#
+# The three READS a Resolution Run projects onto (#364, ruling 11). Every one of
+# them is a GET, and that is the ruling rather than the shape that fell out: the
+# customer adjustment is the only one of the four recovery mechanisms that moves
+# money, two documents forbid it being automatic, and Stripe owns the billing
+# engine UBB drives but never reimplements. So there is a figure with its
+# receipts and no button that bills.
+#
+# ⚠ THE METERING GATE, FOR #363'S REASON. Half of what these report is a
+# supplier cost UBB never learned, which is owed to a metering-only tenant who
+# charges nobody through UBB. Gating on `billing` would leave exactly the tenant
+# the unresolved-cost queue exists for unable to read it.
+#
+# ⚠ AND THE READ FLOOR IS SAFE ONLY BECAUSE BOTH BOUNDS BELOW EXIST. The
+# projection runs the same per-posting re-resolution the ADMIN-floored run does,
+# so an unbounded one would be expensive work at the lowest role. A stated
+# window is capped at `REPORT_WINDOW_MAX_DAYS` here and the work itself is
+# capped at `MAXIMUM_POSTINGS_PER_RUN` in the service, which is what keeps a
+# read a read. The floor is the carve's default for a GET (#74) because these
+# decide nothing; the act they project keeps its Admin floor above.
+#
+# ⚠ THE DOCSTRINGS BELOW ARE THE TENANT CONTRACT — exported verbatim into
+# `openapi/v1.json` and the generated SDK — so they say what a caller needs and
+# nothing about why. Each response also carries a `basis` field stating what its
+# figures are taken over; these do not repeat it.
+
+
+def _the_filter_axes_or_404(request, selected_from, selected_to,
+                            selected_customer_id, selected_event_type):
+    """The three axes as read-contract keyword arguments, or a refusal.
+
+    Two refusals, both before any work: a customer this tenant does not have is
+    a 404 rather than an empty answer — a filter that silently matched nothing
+    would read as *there is nothing to recover for them*, which is a different
+    and much worse statement — and a stated window longer than
+    `REPORT_WINDOW_MAX_DAYS` is refused, which
+    `docs/conventions/api-contract.md` requires of every computed report and
+    which the three rollups above already enforce.
+
+    ⚠ **AN OMITTED BOUND IS STILL UNPINNED, WHICH IS THE HOUSE READING AND NOT
+    AN OVERSIGHT.** The rule is about a *stated* window; the sibling reports
+    compare two dates and refuse the span, and a surface that demanded a range
+    would refuse the commonest question a tenant has — *what have I got
+    outstanding altogether*. What bounds the unbounded case is the work cap in
+    the service, which is reported as a count rather than left silent.
+
+    The axes travel as plain keyword arguments rather than as the run's own
+    `RunSelector` because the read contract returns and takes plain data
+    (ADR-001); `queries` builds the selector on the other side, in one place, so
+    that the surfaces and the run cannot come to filter differently.
+    """
+    if selected_customer_id is not None:
+        get_object_or_404(Customer, id=selected_customer_id,
+                          tenant=request.auth.tenant)
+    if selected_from is not None and selected_to is not None:
+        if selected_to < selected_from:
+            raise Problem("validation_error",
+                          "selected_to must not precede selected_from")
+        if (selected_to - selected_from).days > REPORT_WINDOW_MAX_DAYS:
+            raise Problem("validation_error",
+                          "date window must not exceed 366 days")
+    return {"selected_from": selected_from, "selected_to": selected_to,
+            "selected_customer_id": selected_customer_id,
+            "selected_event_type": selected_event_type}
+
+
+@metering_router.get("/pricing/unresolved-queue",
+                     response={200: PaginatedUnresolvedQueue, 404: ProblemOut,
+                               422: ProblemOut})
+@role_floor(READ)
+def get_unresolved_queue(request, selected_from: datetime = None,
+                         selected_to: datetime = None,
+                         selected_customer_id: UUID = None,
+                         selected_event_type: str = "",
+                         cursor: str = None, limit: int = 50):
+    """Everything UBB could not resolve: a supplier cost it never learned, a
+    customer price it could not work out, or both.
+
+    Each row carries the status that put it in the list and, for a supplier
+    cost, the recorded reason the cost is missing. An amount UBB does not have
+    is `null`, never a zero.
+
+    These are exactly the postings a Resolution Run over the same filter would
+    take up. The filter is the run's: a date range over the posting's own
+    effective instant (half-open, `[selected_from, selected_to)`), a customer,
+    and an Event Type, in any combination. A customer this tenant does not have
+    is a 404; a stated window longer than 366 days is a `validation_error`.
+
+    `totals` is over the whole filter rather than over one page, one row per
+    currency, and says how many postings each figure could not include.
+    """
+    _product_check(request)
+    return 200, metering_queries.get_unresolved_queue(
+        request.auth.tenant.id, cursor=cursor, limit=limit,
+        **_the_filter_axes_or_404(request, selected_from, selected_to,
+                                  selected_customer_id, selected_event_type))
+
+
+@metering_router.get("/pricing/projected-adjustment",
+                     response={200: ProjectedAdjustmentOut, 404: ProblemOut,
+                               422: ProblemOut})
+@role_floor(READ)
+def get_projected_adjustment(request, selected_from: datetime = None,
+                             selected_to: datetime = None,
+                             selected_customer_id: UUID = None,
+                             selected_event_type: str = ""):
+    """What recovering this filter would be worth, per customer.
+
+    A projection and not an instruction: reading it moves no money, creates no
+    invoice, credit note, charge or refund, and UBB will not bill your customer
+    for it. Deciding to go back to a customer stays yours, and you act on it
+    through the billing path you already use.
+
+    Each posting is re-resolved at its own effective instant, so nothing is
+    repriced against today's rules. `usage_event_ids` names the postings behind
+    each figure; each one's Pricing Receipt is at
+    GET /metering/usage/{event_id}.
+
+    One pass examines a bounded number of postings. `postings_not_examined`
+    says how many the filter matched beyond it — narrow the date range to reach
+    those — and `unpriced_event_count` says how many examined postings still
+    resolve to no price. Both make the figures a floor.
+
+    The filter is the Resolution Run's: a half-open date range, a customer and
+    an Event Type, in any combination. A customer this tenant does not have is
+    a 404; a stated window longer than 366 days is a `validation_error`.
+    """
+    _product_check(request)
+    return 200, metering_queries.get_projected_adjustment(
+        request.auth.tenant.id,
+        **_the_filter_axes_or_404(request, selected_from, selected_to,
+                                  selected_customer_id, selected_event_type))
+
+
+@metering_router.get("/pricing/waived-loss",
+                     response={200: WaivedLossOut, 404: ProblemOut,
+                               422: ProblemOut})
+@role_floor(READ)
+def get_waived_loss(request, selected_from: datetime = None,
+                    selected_to: datetime = None,
+                    selected_customer_id: UUID = None,
+                    selected_event_type: str = ""):
+    """What waiving has cost you over a period, as money.
+
+    A charge is waived where the margin rule had no supplier cost to take a
+    margin over, so a waived posting never carried a price and this figure
+    cannot be revenue forgone. `basis` states what it is instead, in the
+    response itself.
+
+    Waived postings whose own supplier cost UBB never learned are not in the
+    figure and are counted beside it, so the total is a floor. Waived postings
+    are never candidates for a Resolution Run: a decision somebody made is not
+    information UBB is missing.
+
+    Rows are per currency and there is no total across them. The filter is the
+    Resolution Run's: a half-open date range, a customer and an Event Type, in
+    any combination. A customer this tenant does not have is a 404; a stated
+    window longer than 366 days is a `validation_error`.
+    """
+    _product_check(request)
+    return 200, metering_queries.get_waived_loss(
+        request.auth.tenant.id,
+        **_the_filter_axes_or_404(request, selected_from, selected_to,
+                                  selected_customer_id, selected_event_type))
 
 
 @metering_router.put("/grouping-fields",

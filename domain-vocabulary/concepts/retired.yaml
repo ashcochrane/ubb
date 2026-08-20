@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,641 of 2,035 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,656 of 2,050 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1103,6 +1103,40 @@ measurement_key:
     # module already uses it, instead of reaching a 53rd file. The rename of
     # this key belongs to the ticket that renames the rule's arithmetic shape,
     # which owns both spellings at once.
+    #
+    # #364 MOVED THE DENOMINATOR ONLY, UPWARD BY FIFTEEN (1,641 -> 1,656 swept,
+    # 2,035 -> 2,050 tracked, 52/129 unchanged), AND NO EXCLUSION MOVED WITH IT:
+    # this commit adds three READ surfaces and therefore no migration, so
+    # `historical-migrations` stays at 227 and the two counts move together by
+    # the same fifteen. That is #359's and #360's signature rather than a new
+    # one — the three re-takes between them each added a migration and each
+    # moved the exclusion by one. Every one of the fifteen new tracked files is
+    # swept.
+    #
+    # TWO ARE HAND-WRITTEN AND THIRTEEN ARE GENERATED, counted off
+    # `git diff --name-status` rather than from memory. The two are the test
+    # modules for the service seam and for the HTTP surface; the read functions
+    # themselves landed in `apps/metering/queries.py`, the schemas in
+    # `api/v1/schemas.py` and the routes in `api/v1/metering_endpoints.py`, all
+    # of which were already counted. The thirteen are `generate_core.py`'s:
+    # three operation modules for the three new routes, seven model modules for
+    # the seven new schemas, and THREE ENUM MODULES — the costing status, the
+    # pricing status and the unresolved reason, all three landing on the single
+    # new row that publishes them. That is #355's mechanism read the other way
+    # round: one schema advertising three closed concepts pays three files,
+    # exactly as one concept on three schemas would. The numbers were taken
+    # after `generate_core.py` ran and its output was staged, which is the
+    # discipline #317 wrote down and #361 and #362 both kept.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT WHOSE WHOLE SUBJECT IS TOTALS OVER
+    # QUANTITIES UBB COULD NOT PRICE, which is closer to this word than any
+    # re-take before it. What kept it out is that these surfaces total MONEY
+    # and count ROWS: every figure is a `*_micros` amount and every caveat is a
+    # count of postings, so there is no place a metered magnitude is named at
+    # all. The projection re-resolves through `resolve_price`, which reads the
+    # record's own bag through `receipts.recorded_quantities` — the 52nd file's
+    # own reader, added by #363 for exactly this reason — so the quantities
+    # cross this commit without any module in it spelling them.
 
     - term: units
       retired_as: >-

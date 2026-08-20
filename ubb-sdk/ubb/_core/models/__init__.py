@@ -124,6 +124,7 @@ from .paginated_referrers import PaginatedReferrers
 from .paginated_subscription_invoices import PaginatedSubscriptionInvoices
 from .paginated_tasks import PaginatedTasks
 from .paginated_transactions import PaginatedTransactions
+from .paginated_unresolved_queue import PaginatedUnresolvedQueue
 from .paginated_usage_invoices import PaginatedUsageInvoices
 from .paginated_usage_response import PaginatedUsageResponse
 from .paginated_wallet_transactions import PaginatedWalletTransactions
@@ -149,6 +150,8 @@ from .program_create_request import ProgramCreateRequest
 from .program_create_request_reward_type import ProgramCreateRequestRewardType
 from .program_out import ProgramOut
 from .program_update_request import ProgramUpdateRequest
+from .projected_adjustment_out import ProjectedAdjustmentOut
+from .projected_adjustment_row import ProjectedAdjustmentRow
 from .provider_in import ProviderIn
 from .provider_out import ProviderOut
 from .provider_update_in import ProviderUpdateIn
@@ -233,6 +236,11 @@ from .top_up_response import TopUpResponse
 from .transaction_out import TransactionOut
 from .unprofitable_customer_row import UnprofitableCustomerRow
 from .unprofitable_out import UnprofitableOut
+from .unresolved_queue_row import UnresolvedQueueRow
+from .unresolved_queue_row_costing_status import UnresolvedQueueRowCostingStatus
+from .unresolved_queue_row_pricing_status import UnresolvedQueueRowPricingStatus
+from .unresolved_queue_row_unresolved_reason_type_0 import UnresolvedQueueRowUnresolvedReasonType0
+from .unresolved_queue_totals import UnresolvedQueueTotals
 from .usage_analytics_response import UsageAnalyticsResponse
 from .usage_analytics_response_breakdowns import UsageAnalyticsResponseBreakdowns
 from .usage_analytics_response_by_customer_item import UsageAnalyticsResponseByCustomerItem
@@ -266,6 +274,8 @@ from .usage_metric_out import UsageMetricOut
 from .usage_summary_response import UsageSummaryResponse
 from .usage_timeseries_response import UsageTimeseriesResponse
 from .usage_timeseries_response_series_item import UsageTimeseriesResponseSeriesItem
+from .waived_loss_out import WaivedLossOut
+from .waived_loss_row import WaivedLossRow
 from .wallet_transaction_out import WalletTransactionOut
 from .webhook_config_create_request import WebhookConfigCreateRequest
 from .webhook_config_list_response import WebhookConfigListResponse
@@ -402,6 +412,7 @@ __all__ = (
     "PaginatedSubscriptionInvoices",
     "PaginatedTasks",
     "PaginatedTransactions",
+    "PaginatedUnresolvedQueue",
     "PaginatedUsageInvoices",
     "PaginatedUsageResponse",
     "PaginatedWalletTransactions",
@@ -427,6 +438,8 @@ __all__ = (
     "ProgramCreateRequestRewardType",
     "ProgramOut",
     "ProgramUpdateRequest",
+    "ProjectedAdjustmentOut",
+    "ProjectedAdjustmentRow",
     "ProviderIn",
     "ProviderOut",
     "ProviderUpdateIn",
@@ -511,6 +524,11 @@ __all__ = (
     "TransactionOut",
     "UnprofitableCustomerRow",
     "UnprofitableOut",
+    "UnresolvedQueueRow",
+    "UnresolvedQueueRowCostingStatus",
+    "UnresolvedQueueRowPricingStatus",
+    "UnresolvedQueueRowUnresolvedReasonType0",
+    "UnresolvedQueueTotals",
     "UsageAnalyticsResponse",
     "UsageAnalyticsResponseBreakdowns",
     "UsageAnalyticsResponseByCustomerItem",
@@ -544,6 +562,8 @@ __all__ = (
     "UsageSummaryResponse",
     "UsageTimeseriesResponse",
     "UsageTimeseriesResponseSeriesItem",
+    "WaivedLossOut",
+    "WaivedLossRow",
     "WalletTransactionOut",
     "WebhookConfigCreateRequest",
     "WebhookConfigListResponse",

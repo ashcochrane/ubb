@@ -202,3 +202,29 @@ authorisations:
       written twice. What defers it is the split above, and the console surface
       that offers the filter (ruling 12b), which is a later ticket in this
       slice.
+  - id: slice-4-364-what-a-recovery-would-be-worth
+    issue: 364
+    operations_added: 3
+    reason: >-
+      Three new operations: the queue of everything that went unresolved, what
+      recovering a filter would be worth per customer, and what waiving has
+      cost. Reachable through the generated core and through none of the
+      hand-written clients. Gaps by the manifest's definition, and deliberate
+      ones.
+
+      They are the READS beside the Resolution Run authorised above, and they
+      defer for that entry's reason rather than for a new one. An integrator's
+      code records usage and reads a price back; working through a backlog of
+      what UBB could not resolve, and deciding whether to go back to a customer
+      for it, is a governance act performed by a person entitled to it. The
+      projection exists precisely so that decision stays a human one — it moves
+      no money and there is no route that would — and an ergonomic wrapper is a
+      statement that a client program should be doing something routinely.
+
+      The waived-loss report is the closest call of the three, because it is a
+      periodic figure a tenant might reasonably pull on a schedule. It goes the
+      same way for the reason the other two do: it is read next to the queue it
+      explains and acted on through the same console feature, and wrapping one
+      surface of a three-surface workflow would hand an integrator a third of
+      it. All three belong with the console feature that presents the filter
+      (ruling 12b), which is a later ticket in this slice.

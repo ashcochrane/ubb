@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 162
-  unwrapped: 84
+  operations: 165
+  unwrapped: 87
   wrapped: 78
-  generated_only: 84
+  generated_only: 87
   not_yet_wrapped: 0
 
 operations:
@@ -379,6 +379,10 @@ operations:
     method: GET
     path: /api/v1/metering/pricing/customers/{customer_id}/inherited-rule
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_get_projected_adjustment
+    method: GET
+    path: /api/v1/metering/pricing/projected-adjustment
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_task
     method: GET
     path: /api/v1/metering/tasks/{task_id}
@@ -393,6 +397,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_markup
+  - operation_id: api_v1_metering_endpoints_get_unresolved_queue
+    method: GET
+    path: /api/v1/metering/pricing/unresolved-queue
+    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_usage
     method: GET
     path: /api/v1/metering/customers/{customer_id}/usage
@@ -402,6 +410,10 @@ operations:
   - operation_id: api_v1_metering_endpoints_get_usage_event
     method: GET
     path: /api/v1/metering/usage/{event_id}
+    disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_get_waived_loss
+    method: GET
+    path: /api/v1/metering/pricing/waived-loss
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_book_publishes
     method: GET

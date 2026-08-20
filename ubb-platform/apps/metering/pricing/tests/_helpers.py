@@ -11,7 +11,9 @@ from apps.metering.pricing.services.pricing_service import (
     PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.event_types.models import Measurement
+from apps.platform.event_types.tests._helpers import (
+    declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.platform.plans.services import PlanService
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
@@ -168,6 +170,32 @@ RECOVERABLE_QUANTITY = "prompt_tokens"
 ONE_CALL = 1_000_000
 WHAT_IT_COST = 4_000_000
 
+#: A markup rung with a REAL percentage, and the customer price it answers over
+#: `WHAT_IT_COST` (a quarter, in micro-percent: 4,000,000 + 1,000,000).
+#:
+#: ⚠ **A ZERO RUNG MAKES A PROJECTED PRICE EQUAL THE SUPPLIER COST, AND THAT
+#: MAKES EVERY ASSERTION ABOUT THE FIGURE SATISFIABLE BY THE WRONG NUMBER**
+#: (#364). A projection that merely echoed what the call cost would answer
+#: correctly for a rung of nothing, which is the arithmetic-branch-by-accident
+#: shape this repository keeps paying for.
+#:
+#: BOTH DIRECTIONS WERE RUN, and the numbers are the reason this constant is not
+#: zero. Replacing the re-resolved amount with the posting's own
+#: `provider_cost_micros`:
+#:
+#:   * with the rung at 25%, SEVEN tests go red across both modules;
+#:   * with the rung at zero, FIVE of the projection class's six cases stay
+#:     GREEN — including *the figure is what a run then actually completes* —
+#:     and the only one that notices is
+#:     `test_the_figure_is_a_price_and_not_the_cost_it_was_derived_from`, which
+#:     fails on its own premise (`4000000 == 4000000`) rather than on the
+#:     projection. That case exists to be exactly that tripwire.
+#:
+#: Any case whose subject is the AMOUNT takes this rung; a case whose subject is
+#: a COUNT may keep a zero rung, and says so.
+A_REAL_MARKUP = 25_000_000
+WHAT_IT_WOULD_BILL = 5_000_000
+
 
 def a_tenant_with_unresolved_postings(name="Recovery"):
     """A tenant whose costs come from a Cost Rate and whose prices come from
@@ -208,6 +236,102 @@ def an_unresolved_posting(tenant, customer, key, *, event_type="chat",
         tenant, customer, f"corr-{key}", key, event_type=event_type,
         measurements={measures: ONE_CALL}, **fields)
     return Posting.objects.get(id=result["event_id"])
+
+
+#: A second quantity, and the one the tenant declared with a typo — so a Cost
+#: Rate written against the declaration prices a name no event ever measures,
+#: and every posting measuring the real one goes uncosted. Correcting the
+#: declaration is the recovery: it carries no effective moment, and the rate it
+#: repoints has been in force since before the posting.
+SECOND_QUANTITY = "completion_tokens"
+THE_TYPO = "completion_tokns"
+
+CALCULATED_CALL = "chat"
+#: The Event Type whose supplier reports its own figure. Recorded with none, it
+#: is unresolved for a cause no re-costing can answer — and its record keeps no
+#: quantities, which is what the guard against a silent zero exists for.
+REPORTED_CALL = "reported.call"
+#: The Event Type a price rule pins, so that some postings are priced and some
+#: are not without either state being a fixture accident.
+PRICED_CALL = "priced.call"
+
+WHAT_THE_RULE_CHARGES = 9_000_000
+
+
+class ATenantWithUnresolvedPostingsMixin:
+    """A tenant whose costs come from Cost Rates and whose prices come from
+    nothing at all — which is the state most postings in this repository are
+    recorded in, and the one a run exists for.
+
+    ⚠ **IT LIVES HERE BECAUSE THREE MODULES NEED IT** — the run's own service
+    and surface tests (#363) and the three read surfaces projected from it
+    (#364). `docs/conventions/testing.md:22` puts shared setup in a `_helpers`
+    module for the reason that bites here: every one of these seeds encodes an
+    answer the recording path gives today, and a second copy is a second thing
+    to edit the day that answer moves — with the day one of them is missed
+    being the day a fixture asserts a state the engine no longer produces.
+    """
+
+    def setUp(self):
+        self.tenant, self.customer = a_tenant_with_unresolved_postings()
+
+    # --- seeds ---------------------------------------------------------------
+
+    def a_posting(self, key, **fields):
+        return an_unresolved_posting(self.tenant, self.customer, key, **fields)
+
+    def a_rate_priced_against_a_typo(self):
+        """The Cost Rate the tenant meant to write, against the name they
+        mistyped when they declared it."""
+        declares_a_quantity(self.tenant, THE_TYPO)
+        return cost_rate_in_default_book(
+            self.tenant, measurement_key=THE_TYPO,
+            rate_per_unit_micros=WHAT_IT_COST, unit_quantity=ONE_CALL)
+
+    def the_tenant_corrects_the_declaration(self):
+        """The recovery, and the reason it is not backdating.
+
+        A declared quantity's code carries no effective moment — correcting one
+        is a statement about the tenant's catalogue, not about a price at a
+        date — and the Cost Rate it repoints has been in force since before the
+        posting was recorded. A *rule* written today could not reach that
+        posting at all, which is the difference this whole mechanism turns on.
+        """
+        Measurement.objects.filter(
+            event_type__tenant=self.tenant, code=THE_TYPO).update(
+            code=SECOND_QUANTITY)
+
+    def declares_a_reported_cost(self):
+        """An Event Type whose supplier reports its own figure."""
+        return declares_a_caller_supplied_cost(
+            self.tenant, REPORTED_CALL,
+            currency=self.tenant.default_currency or "usd")
+
+    def a_price_rule(self):
+        return rate_in_default_book(
+            self.tenant, event_type=PRICED_CALL,
+            measurement_key=RECOVERABLE_QUANTITY,
+            rate_per_unit_micros=WHAT_THE_RULE_CHARGES, unit_quantity=ONE_CALL)
+
+    # --- reading -------------------------------------------------------------
+
+    @staticmethod
+    def state_of(posting):
+        posting.refresh_from_db()
+        return (posting.costing_status, posting.provider_cost_micros,
+                posting.pricing_status, posting.billed_cost_micros)
+
+    @staticmethod
+    def receipt_of(posting):
+        posting.refresh_from_db()
+        return getattr(posting, Posting.RECEIPT_COLUMN)
+
+    def a_run(self, **selector):
+        from apps.metering.pricing.services.resolution_run import (
+            RunSelector, execute)
+
+        with transaction.atomic():
+            return execute(tenant=self.tenant, selector=RunSelector(**selector))
 
 
 def the_cost_rate_is_repriced(tenant, *, to_micros, **fields):
