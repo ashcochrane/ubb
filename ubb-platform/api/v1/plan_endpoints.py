@@ -12,11 +12,11 @@ from django.db import IntegrityError, transaction
 from ninja import Router
 
 from api.v1.schemas import AssignPlanIn, PlanIn, PlanListOut, PlanOut, PlanUpdateIn
+from apps.metering.pricing.services.book_service import BookService
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.platform.plans import queries
-from apps.platform.plans.models import Plan
 from apps.platform.plans.services import PlanInUse, PlanService
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
@@ -59,6 +59,31 @@ def get_plan(request, key: str):
     return 200, _plan_out(plan)
 
 
+def _the_new_plans_book(tenant, key, name):
+    """The book this plan will price from, refusing one it may not adopt (#362).
+
+    `the_book_a_plan_prices_from` will reuse a plain catalogue already keyed to
+    match, and will NOT reuse a customer's override book or the tenant's
+    provider default — neither is in the uniqueness key, so a book of either
+    kind holding this key is refused by the database rather than adopted.
+
+    That refusal arrives as an `IntegrityError` on the BOOK's uniqueness, and
+    the caller's own handler reads an `IntegrityError` as *the plan key is
+    taken* — which would be false and unactionable here. Answering it in its
+    own savepoint is what keeps the two conflicts distinguishable.
+    """
+    try:
+        with transaction.atomic():
+            return BookService.the_book_a_plan_prices_from(
+                tenant, plan_key=key, plan_name=name)
+    except IntegrityError as exc:
+        raise Problem(
+            "conflict",
+            f"a pricing book with key '{key}' already exists and is not one a "
+            f"plan may price from — it belongs to one customer, or it is the "
+            f"tenant's default book. Give the plan another key.") from exc
+
+
 @plan_router.post("/plans", response={201: PlanOut, 409: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("plan.created")
@@ -67,8 +92,22 @@ def create_plan(request, payload: PlanIn):
     tenant = request.auth.tenant
     try:
         with transaction.atomic():
-            plan = Plan.objects.create(
-                tenant=tenant, key=payload.key, name=payload.name,
+            # THE BOOK FIRST, AND THE ORDER IS THE POINT (#362, #151 §7.2).
+            # A Plan names the Pricing Book its customers are priced from and
+            # the column is NOT NULL, so there is no arrangement of these two
+            # statements that writes the plan first: `PlanService.create` takes
+            # the id, and the id does not exist until the line above has run.
+            # The book arrives empty — UBB ships no catalogue — so this plan
+            # prices nothing from it until the tenant publishes rules into it.
+            #
+            # NO AUDIT ACTION OF ITS OWN, on #361's precedent for the override
+            # book: the container is bookkeeping and the PLAN is the act, so a
+            # ledger reader counting two would be counting a decision nobody
+            # took.
+            book = _the_new_plans_book(tenant, payload.key, payload.name)
+            plan = PlanService.create(
+                tenant, pricing_book_id=book.id,
+                key=payload.key, name=payload.name,
                 access_fee_micros=payload.access_fee_micros,
                 per_seat_micros=payload.per_seat_micros,
                 markup_percentage_micros=payload.markup_percentage_micros,

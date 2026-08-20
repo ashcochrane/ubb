@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,630 of 2,022 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,633 of 2,026 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1066,6 +1066,24 @@ measurement_key:
     # is named `unit_quantity` at every site, which is the surviving RATE
     # ARITHMETIC sense's own spelling and is #275's caution holding once more:
     # this commit goes nowhere near `compute`.
+    #
+    # #362 MOVED THE DENOMINATOR ONLY, UPWARD BY THREE (1,630 -> 1,633 swept,
+    # 2,022 -> 2,026 tracked, 52/128 unchanged), and `historical-migrations`
+    # went 225 -> 226 with it, for the ordinary reason again: one migration
+    # added to a directory the rule already covers. Four new tracked files,
+    # three of them swept — the migration giving a Plan its required Pricing
+    # Book reference, and three hand-written modules: the shared plan fixture,
+    # the kernel-side behaviour module and the resolution-side one. NONE IS
+    # GENERATED, which is this commit's whole shape: the reference is internal,
+    # so the contract and the SDK core both regenerate with zero diff and the
+    # twelve-file generated share #361 paid does not recur.
+    #
+    # THE NUMERATOR SURVIVED A COMMIT THAT RESOLVES PRICES REPEATEDLY, on the
+    # same arrangement #361's did: every amount a case compares is a rule's own
+    # per-unit term against a denominator chosen to make the two equal, so the
+    # assertions read as *which rule answered*. The rate's denominator is
+    # `unit_quantity` wherever it is named, which is the surviving RATE
+    # ARITHMETIC sense's own spelling; `compute` is untouched.
 
     - term: units
       retired_as: >-

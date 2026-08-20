@@ -163,7 +163,9 @@ exclusions:
     # to a Pricing Book is, and the rule that freezes it once published.
     # 224 → 225 in #361: one migration, giving a Pricing Book the customer whose
     # own pricing rules it holds.
-    files: 225
+    # 225 → 226 in #362: one migration, giving a Plan the required reference to
+    # the Pricing Book its customers are priced from.
+    files: 226
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

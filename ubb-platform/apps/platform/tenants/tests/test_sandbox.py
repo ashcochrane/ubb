@@ -14,6 +14,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.webhook_models import TenantWebhookConfig
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.plans.models import Plan
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from apps.platform.tenants.tasks import reset_sandbox_tenant_sync
@@ -273,6 +275,14 @@ class SandboxResetTest(TestCase):
             tenant=tenant, book=book, effective_at=timezone.now(),
             changes=[], declaration_status=DECLARATION_STATUS_PUBLISHED,
             opened_rule_ids=[], closed_rule_ids=[])
+        # A PLAN AND THE BOOK IT PRICES FROM (#362). Seeded through the same
+        # doors the plans route uses, for the reason the book above is seeded
+        # at all: a Plan holds its Pricing Book with `PROTECT`, so the reset
+        # has to take plans BEFORE books when it is wiping configuration, and
+        # a generic sweep reaching them the other way round is refused by the
+        # database and fails the WHOLE reset. Nothing here saw that before,
+        # because no sandbox fixture had ever had a plan.
+        a_plan(tenant=tenant, key="sandbox-plan", name="Sandbox plan")
         BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(
             tenant=tenant, url="https://example.com/hook", secret="s")
@@ -323,9 +333,18 @@ class SandboxResetTest(TestCase):
         self.assertEqual(Posting.objects.filter(tenant=self.sandbox).count(), 0)
 
         # Config preserved — both rules, the one with no book and the one in
-        # a book, and the book itself.
+        # a book, and the books themselves: the seeded one and the one the
+        # plan prices from (#362).
         self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 2)
-        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 1)
+        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 2)
+        # THE PLAN AND ITS BOOK TOGETHER (#362). A kept plan whose book was
+        # wiped is not a state this reset may produce — the reference is NOT
+        # NULL, so the database refuses it and the whole reset fails — and a
+        # plan is what prices every customer created after the reset.
+        self.assertEqual(Plan.objects.filter(tenant=self.sandbox).count(), 1)
+        self.assertTrue(
+            RateCard.objects.filter(
+                plans__tenant=self.sandbox, plans__key="sandbox-plan").exists())
         # And the record that says who changed that book's prices and when
         # (#358). A reset keeping the rules while wiping the publishes leaves
         # exactly the untraceable price this record exists to remove.
@@ -368,14 +387,28 @@ class SandboxResetTest(TestCase):
 
     def test_reset_without_keep_config_wipes_config_too(self):
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import Rate
+        from apps.metering.pricing.models import Rate, RateCard
 
         self._seed_domain_rows(self.sandbox, "sb-")
         self._seed_config_rows(self.sandbox)
 
         result = reset_sandbox_tenant_sync(self.sandbox.id, keep_config=False)
+        # COMPLETED, WHICH IS THE ASSERTION AND NOT THE PREAMBLE (#362). A
+        # `PROTECT` the sweep reaches in the wrong order does not wipe less —
+        # it raises, every later model is skipped and the sandbox is left
+        # INACTIVE. So this line is what says plans are taken before the books
+        # they hold, and the counts below are what say the wipe still happened.
         self.assertEqual(result["status"], "completed")
         self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(Plan.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 0)
+        # And the rows the pre-sweep steps deleted are REPORTED as deleted.
+        # Both are visited twice — once ahead of the sweep for an ordering
+        # reason and once by the sweep, which finds nothing left — so a count
+        # that was assigned rather than accumulated would answer 0 for rows it
+        # had just removed.
+        self.assertEqual(result["deleted"]["pricing.Rate"], 2)
+        self.assertEqual(result["deleted"]["plans.Plan"], 1)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 0)

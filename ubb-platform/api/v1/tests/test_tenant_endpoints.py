@@ -2,6 +2,7 @@ import json
 from datetime import date
 from django.test import TestCase, Client
 from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
@@ -475,8 +476,7 @@ class TenantConfigCurrencyTest(TestCase):
         self._assert_locked()
 
     def test_409_after_provisioned_plan_price(self):
-        from apps.platform.plans.models import Plan
-        Plan.objects.create(
+        a_plan(
             tenant=self.tenant, key="pro", name="Pro",
             access_fee_micros=10_000_000,
             stripe_access_price_id="price_123")
@@ -527,8 +527,7 @@ class TenantConfigCurrencyTest(TestCase):
 
     def test_unprovisioned_plan_does_not_lock(self):
         """A plan with NO provisioned Stripe prices is not money yet."""
-        from apps.platform.plans.models import Plan
-        Plan.objects.create(
+        a_plan(
             tenant=self.tenant, key="draft", name="Draft",
             access_fee_micros=10_000_000)
         resp = self._patch({"default_currency": "eur"})

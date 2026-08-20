@@ -25,6 +25,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.utils import timezone
 
+from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.invoicing.models import (
@@ -54,7 +55,6 @@ def _customer(t, external_id="c1", stripe_customer_id="cus_1"):
 
 
 def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
-    from apps.platform.plans.models import Plan
     from apps.subscriptions.models import (
         CustomerSubscriptionItem, StripeSubscription)
     now = timezone.now()
@@ -65,7 +65,7 @@ def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
         current_period_end=now, last_synced_at=now, paused=paused)
     plan = None
     if with_plan:
-        plan = Plan.objects.create(
+        plan = a_plan(
             tenant=t, key=f"pro-{sub_id}", name="Pro", access_fee_micros=49_000_000)
     CustomerSubscriptionItem.objects.create(
         tenant=t, customer=c, stripe_subscription=sub,

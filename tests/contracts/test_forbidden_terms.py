@@ -223,7 +223,8 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 222 → 223 in #357: the tenant's declared default markup rung.
         # 223 → 224 in #358: the Pricing Book's publish record and its rule.
         # 224 → 225 in #361: the customer whose own rules a Pricing Book holds.
-        "historical-migrations": (UNTIL_SLICE_8, 225, 19),
+        # 225 → 226 in #362: the Plan's required Pricing Book reference.
+        "historical-migrations": (UNTIL_SLICE_8, 226, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
