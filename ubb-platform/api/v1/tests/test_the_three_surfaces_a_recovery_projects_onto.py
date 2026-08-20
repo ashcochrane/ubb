@@ -232,6 +232,44 @@ class TheDeclaredRowsNameTheirCountsTest(_AReadableBacklogMixin, TestCase):
                 self.assertTrue(self.body(path)["basis"].strip())
 
 
+class TheQueueIsPagedLikeEveryOtherListTest(_AReadableBacklogMixin, TestCase):
+    """A working list a tenant can get to the end of.
+
+    ⚠ **THE ENVELOPE IS EXERCISED RATHER THAN INHERITED.** `page` is covered by
+    `test_pagination.py` for its own shape, but what this route hands it —
+    `time_field="effective_at"` and the queue's own serializer — is this
+    route's, and a wrong time field would page correctly against a stale
+    ordering and silently repeat or skip rows. That is invisible on one page.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.postings = [self.a_posting(f"k{index}") for index in range(3)]
+
+    def test_a_cursor_reaches_the_rest_and_no_row_is_seen_twice(self):
+        first = self.body(QUEUE, limit=2)
+
+        self.assertTrue(first["has_more"])
+        self.assertIsNotNone(first["next_cursor"])
+
+        second = self.body(QUEUE, limit=2, cursor=first["next_cursor"])
+
+        self.assertFalse(second["has_more"])
+        seen = [row["usage_event_id"] for row in first["data"] + second["data"]]
+        self.assertEqual(len(seen), len(set(seen)))
+        self.assertEqual(set(seen),
+                         {str(posting.id) for posting in self.postings})
+
+    def test_the_totals_are_over_the_whole_filter_and_not_the_page(self):
+        """The page is two rows; the total is about three. A totals block that
+        moved with the page would make a tenant's backlog look smaller every
+        time they paged into it."""
+        first = self.body(QUEUE, limit=2)
+
+        self.assertEqual(len(first["data"]), 2)
+        self.assertEqual(first["totals"][0]["queued_event_count"], 3)
+
+
 class NoAmountUBBDoesNotHaveCrossesAsANumberTest(
         _AReadableBacklogMixin, TestCase):
     """AC 8, over the whole body of all three surfaces."""
