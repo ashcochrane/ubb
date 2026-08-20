@@ -194,9 +194,21 @@ SWEPT = {
 #: All three were retired as values of `rate_structure` and `pricing_status`,
 #: and `pricing_status` is a new concept whose values have never shipped — so
 #: there is not one occurrence of either word as a status value anywhere in the
-#: tree. Nothing is lost by the move: the value `flat` only ever appears beside
-#: the field `pricing_model`, which IS swept, and G2 refuses a consumer that
-#: declares a value the registry does not own.
+#: tree. Nothing was lost by the move: the value `flat` only ever appeared
+#: beside the field `pricing_model`, which IS swept, and G2 refuses a consumer
+#: that declares a value the registry does not own.
+#:
+#: ⚠ **THAT SAFETY NET IS SPENT, AND ITS SPENDING IS THE PROOF IT WORKED
+#: (#366).** The field was paid: the column, its two values and the schemas
+#: publishing them were converted in one commit, so the value `flat` no longer
+#: sits beside anything the sweep can see — it was found by reading
+#: `Rate.compute`, which is what a retired SENSE always costs. The argument for
+#: keeping the word out of `SWEPT` is unchanged and is now the whole of the
+#: reason rather than half of it: `values_list(..., flat=True)` is Django's own
+#: keyword and sweeping the bare token would condemn the ORM. What is left of
+#: the value's own retirement is recorded where the sense is —
+#: `domain-vocabulary/concepts/economics.yaml`, `rate_structure.retired_senses`
+#: — including the one occurrence no gate can reach, `ProductFeeConfig.fee_type`.
 #: `arrival` joins them from #246, and it is the clearest case of the pattern:
 #: as a name for real-time spend detection — or for the switch that governs it —
 #: it named an ingest lane slice 1 deleted, and the switch it named never was

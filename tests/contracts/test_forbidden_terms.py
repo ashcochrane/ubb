@@ -226,7 +226,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 225 → 226 in #362: the Plan's required Pricing Book reference.
         # 226 → 227 in #363: the Resolution Run record, and the rule that
         # refuses every edit to one.
-        "historical-migrations": (UNTIL_SLICE_8, 227, 19),
+        # 227 → 228 in #366: the rate's arithmetic-shape column takes its
+        # ratified name, carrying its rows and converting its values.
+        "historical-migrations": (UNTIL_SLICE_8, 228, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

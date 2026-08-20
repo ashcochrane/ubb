@@ -5,11 +5,12 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE, PRICING_MODEL_CHOICES,
+    CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE,
     PricingBookPublish, Rate, RateCard)
 from apps.platform.event_types.quantities import declaration_named
 from core.problems import Problem
-from core.vocabulary import DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES
+from core.vocabulary import (
+    DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES)
 
 _RATE_COPY_FIELDS = (
     "tenant_id", "customer_id", "card_type", "provider", "event_type",
@@ -18,29 +19,40 @@ _RATE_COPY_FIELDS = (
     # The REFERENCE, not the name (#326). A reprice copies which declaration the
     # outgoing rate priced; it never re-resolves the name, so a publish cannot
     # quietly move a rate onto a different declaration between versions.
-    "measurement_id", "pricing_model", "rate_per_unit_micros",
+    "measurement_id", Rate.STRUCTURE_COLUMN, "rate_per_unit_micros",
     "unit_quantity", "fixed_micros", "currency",
     "lineage_id", "rate_card_id",
 )
 
-#: WHAT A RULE CHARGES — the three columns a change body may state, and the
-#: three a diff compares.
-#:
-#: ⚠ **THE ARITHMETIC SHAPE IS NOT ONE OF THEM, AND THAT IS A DEFERRAL RATHER
-#: THAN A JUDGEMENT.** A rule declares whether its amount is per-unit or a fixed
-#: component, and a publish carries that column over from the rule it supersedes
-#: — a reprice cannot change it and an added rule takes the model's own default.
-#: The reason is mechanical: the column's name is retired, its ledger entry is a
-#: ceiling on how many files may still spell it, and every schema publishing it
-#: mints a generated SDK module that counts. Coining it here would put the
-#: retired spelling on two brand-new schemas for the ticket that renames it to
-#: convert; coining the canonical spelling would publish a field whose VALUES
-#: are still the retired ones, which is two spellings of one fact on one
-#: contract. Both belong to the ticket that converts the column, its values and
-#: the three schemas beside these in one commit — and until it lands, the
-#: immediate reprice route this act replaces still states the shape and is
-#: untouched here.
+#: WHAT A RULE CHARGES — the three money columns a change body may state, and
+#: the three a diff compares.
 _TERM_FIELDS = ("rate_per_unit_micros", "unit_quantity", "fixed_micros")
+
+#: WHICH ARITHMETIC RUNS — the fifth thing a change states, and the one the
+#: deferral above this line used to be about (#366).
+#:
+#: **A PUBLISH CAN MOVE IT NOW, AND THE REASON IT COULD NOT WAS NEVER A
+#: PRODUCT DECISION.** #358 wanted it here and could not have it: the column's
+#: name was retired, its ledger entry capped how many files might still spell
+#: it, and every schema publishing a field mints a generated SDK module that
+#: counts — so coining the retired spelling on two brand-new schemas would have
+#: pushed that count over its ceiling, and coining the canonical spelling
+#: instead would have published a field whose VALUES were still the retired
+#: ones. It named the commit that would clear both at once, which is the one
+#: that renames the column, converts its values and rebuilds the three rate
+#: schemas together. This is that commit, so the deferral is spent rather than
+#: renewed.
+#:
+#: ⚠ **IT WAS NOT COSMETIC WHILE IT LASTED.** Until this landed, the ONLY way to
+#: move a rule's arithmetic shape was the immediate reprice route this act
+#: replaces — so the day that route goes, a tenant who had set a rule up as a
+#: per-unit charge could never have made it a fixed component again without
+#: retiring the rule and adding another under a new lineage.
+#:
+#: Addressed through the model's own constant rather than spelled, which is
+#: what `_RATE_COPY_FIELDS` above does for the same column: the name is the
+#: rule's to state, and this module reads it from the rule.
+_STRUCTURE_FIELD = Rate.STRUCTURE_COLUMN
 
 #: HOW A RULE DERIVES ITS PRICE — the fourth thing a change states, and the one
 #: that makes an override a whole rule (#361, #151 §6).
@@ -66,17 +78,27 @@ _TERM_FIELDS = ("rate_per_unit_micros", "unit_quantity", "fixed_micros")
 #: another could not be explained by naming one rule, which is the property the
 #: whole receipt design rests on.
 #:
-#: ⚠ **NOT THE ARITHMETIC SHAPE, WHICH IS STILL UNSTATABLE AND STILL FOR THE
-#: SAME REASON** — see `_TERM_FIELDS` above. HOW A PRICE IS DERIVED and HOW THE
-#: ARITHMETIC RUNS are two adjacent columns with unrelated value sets, and only
-#: the first has a name a new schema may carry.
+#: ⚠ **NOT THE ARITHMETIC SHAPE, WHICH IS THE COLUMN BESIDE IT AND A DIFFERENT
+#: FACT** — see `_STRUCTURE_FIELD` above. HOW A PRICE IS DERIVED (a margin over
+#: cost, or a price of its own) and HOW THE ARITHMETIC RUNS (per unit of
+#: quantity, or once) are two adjacent columns with unrelated value sets, and a
+#: change body states each on its own.
 _METHOD_FIELD = "pricing_method"
 
-#: Everything a change may state about the rule it opens: what it charges, and
-#: how it derives it. `_TERM_FIELDS` is kept separate because the three money
-#: terms are what a `retire` refuses and what `Rate` defaults; this is the set
-#: a body carries and a diff row publishes.
-_RULE_FIELDS = (*_TERM_FIELDS, _METHOD_FIELD)
+#: Everything a change may state about the rule it opens: what it charges, how
+#: it derives it, and which arithmetic runs. `_TERM_FIELDS` is kept separate
+#: because the three money terms are what a diff compares side by side; this is
+#: the set a body carries, a `retire` refuses and `Rate` defaults.
+_RULE_FIELDS = (*_TERM_FIELDS, _METHOD_FIELD, _STRUCTURE_FIELD)
+
+#: The two closed value sets a change body can state, and the registry set each
+#: is measured against. Held as a pair rather than as two branches so that a
+#: third closed column cannot be added to `_RULE_FIELDS` with a refusal for it
+#: quietly missing — the shape #361 built one of and #366 needed the second of.
+_CLOSED_VALUE_SETS = {
+    _METHOD_FIELD: PRICING_METHOD_VALUES,
+    _STRUCTURE_FIELD: RATE_STRUCTURE_VALUES,
+}
 
 
 class PlannedChange:
@@ -329,24 +351,33 @@ def plan_changes(book, changes, effective_at):
                    if _identity_of_rule(rule) == identity]
         stated = {name: change[name] for name in _RULE_FIELDS
                   if change.get(name) is not None}
-        # THE METHOD'S VALUE SET IS CLOSED AND THE SERVICE IS WHERE A BODY
-        # MEETS IT (#361). The column's `CHECK` would refuse an unratified
-        # value too, as a 500 with a constraint name in it; this is the same
-        # refusal said where a tenant can act on it, and it is the shape the
-        # immediate add route already uses for the arithmetic shape beside it.
+        # THE CLOSED VALUE SETS ARE CLOSED AND THE SERVICE IS WHERE A BODY
+        # MEETS THEM (#361, #366). The method's column has a `CHECK` that would
+        # refuse an unratified value too, as a 500 with a constraint name in
+        # it; this is the same refusal said where a tenant can act on it, and
+        # it is the shape the immediate add route already uses for the
+        # arithmetic shape beside it.
         #
-        # It carries `validation_error` rather than a code of its own: on this
+        # ⚠ The two are NOT symmetrical at the database, and saying so is what
+        # stops a reader taking this loop for a restatement of the table. The
+        # method carries `ck_rate_pricing_method`; the arithmetic shape carries
+        # only `choices=`, which Django never validates on `save()`, so for
+        # that column this IS the enforcement rather than a friendlier copy of
+        # it. Both are refused here so that a tenant gets one answer for one
+        # kind of mistake either way.
+        #
+        # They carry `validation_error` rather than a code of their own: on this
         # route that code already means *"you have not declared that grouping
         # field"* and *"that rule is not there to reprice"* — body problems a
         # caller fixes by editing the body — and a value outside a published
         # enumeration is the same kind of answer. The codes #359 and #360
         # bought are for the INSTANT, where "that date is a typo" and "that
         # date has passed" are things a caller's automation must tell apart.
-        if _METHOD_FIELD in stated and stated[_METHOD_FIELD] not in PRICING_METHOD_VALUES:
-            raise ValueError(
-                f"change {position}: {_METHOD_FIELD} must be one of "
-                f"{sorted(PRICING_METHOD_VALUES)}; got "
-                f"{stated[_METHOD_FIELD]!r}")
+        for field, ratified in _CLOSED_VALUE_SETS.items():
+            if field in stated and stated[field] not in ratified:
+                raise ValueError(
+                    f"change {position}: {field} must be one of "
+                    f"{sorted(ratified)}; got {stated[field]!r}")
 
         if kind == CHANGE_ADD:
             if matched:
@@ -415,7 +446,8 @@ def plan_changes(book, changes, effective_at):
             if stated:
                 raise ValueError(
                     f"change {position}: a retirement opens no rule, so it "
-                    f"states neither terms nor a method; got {sorted(stated)}")
+                    f"states no terms, no method and no arithmetic shape; got "
+                    f"{sorted(stated)}")
             planned.append(PlannedChange(
                 kind=kind, measurement_key=measurement_key,
                 selectors=selectors, outgoing=outgoing, terms=None))
@@ -591,7 +623,7 @@ class BookService:
                     raise ValueError(
                         f"publish: no active rate for {ch['measurement_key']!r} in book {locked.key}")
                 data = {f: getattr(old, f) for f in _RATE_COPY_FIELDS}
-                for k in ("pricing_model", "rate_per_unit_micros", "unit_quantity",
+                for k in (_STRUCTURE_FIELD, "rate_per_unit_micros", "unit_quantity",
                           "fixed_micros"):
                     if k in ch:
                         data[k] = ch[k]
@@ -599,12 +631,12 @@ class BookService:
                 data["book_version_to"] = None
                 data["valid_from"] = as_of
                 # Re-validate the repriced shape so a publish can never create a
-                # rate with a retired/unknown pricing_model. Raises
-                # ValueError -> rolls back the whole publish (endpoint maps 422).
-                valid_models = {c[0] for c in PRICING_MODEL_CHOICES}
-                if data["pricing_model"] not in valid_models:
+                # rate with an unratified arithmetic shape. Raises ValueError ->
+                # rolls back the whole publish (endpoint maps 422).
+                if data[_STRUCTURE_FIELD] not in RATE_STRUCTURE_VALUES:
                     raise ValueError(
-                        f"pricing_model must be one of {sorted(valid_models)}")
+                        f"{_STRUCTURE_FIELD} must be one of "
+                        f"{sorted(RATE_STRUCTURE_VALUES)}")
                 # Close the old row at T, then open the new AT THE SAME T.
                 old.valid_to = as_of
                 old.book_version_to = locked.version

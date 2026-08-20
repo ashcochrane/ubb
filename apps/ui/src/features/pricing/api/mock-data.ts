@@ -10,13 +10,24 @@ import type { Book, Rate, TenantMarkup } from "./types";
 
 /**
  * A rate fixture, written with only the selectors this feature's story
- * actually uses (`model` maps onto `dim1`, the tenant's registered slot for
+ * actually uses (`model` maps onto `grouping_field_1`, the tenant's registered slot for
  * that grouping field) — the other nine selector columns default to ""
  * (wildcard).
  */
 type RateSeed = Omit<
   Rate,
-  "task_type" | "subtask_type" | "dim1" | "dim2" | "dim3" | "dim4" | "dim5" | "dim6"
+  | "task_type"
+  | "subtask_type"
+  | "grouping_field_1"
+  | "grouping_field_2"
+  | "grouping_field_3"
+  | "grouping_field_4"
+  | "grouping_field_5"
+  | "grouping_field_6"
+  | "grouping_field_7"
+  | "grouping_field_8"
+  | "grouping_field_9"
+  | "grouping_field_10"
 > & {
   model?: string;
 };
@@ -27,12 +38,16 @@ function rate(seed: RateSeed): Rate {
     ...rest,
     task_type: "",
     subtask_type: "",
-    dim1: model ?? "",
-    dim2: "",
-    dim3: "",
-    dim4: "",
-    dim5: "",
-    dim6: "",
+    grouping_field_1: model ?? "",
+    grouping_field_2: "",
+    grouping_field_3: "",
+    grouping_field_4: "",
+    grouping_field_5: "",
+    grouping_field_6: "",
+    grouping_field_7: "",
+    grouping_field_8: "",
+    grouping_field_9: "",
+    grouping_field_10: "",
   };
 }
 
@@ -100,7 +115,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "openai",
     event_type: "chat.completion",
     model: "gpt-4o",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 2_500_000, // $2.50 / 1M tokens
     unit_quantity: 1_000_000,
     fixed_micros: 0,
@@ -118,7 +133,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "openai",
     event_type: "chat.completion",
     model: "gpt-4o",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 5_000_000, // $5.00 / 1M before the June reprice
     unit_quantity: 1_000_000,
     fixed_micros: 0,
@@ -135,7 +150,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "openai",
     event_type: "chat.completion",
     model: "gpt-4o",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 10_000_000, // $10 / 1M tokens
     unit_quantity: 1_000_000,
     fixed_micros: 0,
@@ -151,7 +166,7 @@ export const MOCK_RATES: Rate[] = [
     measurement_key: "image_generation",
     provider: "openai",
     event_type: "image.generation",
-    pricing_model: "flat",
+    rate_structure: "fixed_component",
     rate_per_unit_micros: 0,
     unit_quantity: 1,
     fixed_micros: 40_000, // $0.04 per image
@@ -169,7 +184,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "anthropic",
     event_type: "chat.completion",
     model: "claude-sonnet",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 3_000_000, // $3 / 1M tokens
     unit_quantity: 1_000_000,
     fixed_micros: 0,
@@ -187,7 +202,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "openai",
     event_type: "chat.completion",
     model: "gpt-4o",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 5_000_000, // billed at $5 / 1M
     unit_quantity: 1_000_000,
     fixed_micros: 0,
@@ -204,7 +219,7 @@ export const MOCK_RATES: Rate[] = [
     provider: "openai",
     event_type: "chat.completion",
     model: "gpt-4o",
-    pricing_model: "per_unit",
+    rate_structure: "per_unit",
     rate_per_unit_micros: 20_000_000, // billed at $20 / 1M
     unit_quantity: 1_000_000,
     fixed_micros: 0,

@@ -56,7 +56,7 @@ class TestNegativeMetricSchemaRejection:
         Rate.objects.create(
             tenant=tenant, card_type="price",
             measurement=declares_a_quantity(tenant, "calls"),
-            pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
+            rate_structure="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )
         resp = _post(http, auth, customer, {
             "request_id": "r1", "idempotency_key": "k1",

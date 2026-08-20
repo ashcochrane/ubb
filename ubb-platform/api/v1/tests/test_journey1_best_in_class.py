@@ -141,11 +141,11 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             "card_type": "cost", "key": "cogs", "provider_key": "",
             "is_default": True})["id"]
         alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "tokens", "dim2": "alpha",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
+            "measurement_key": "tokens", "grouping_field_2": "alpha",
+            "rate_structure": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
         beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "tokens", "dim2": "beta",
-            "pricing_model": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
+            "measurement_key": "tokens", "grouping_field_2": "beta",
+            "rate_structure": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
         assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
 
         # ---- 3. record 8 events for C1: 2 products x 2 services x 2 agents,
@@ -283,7 +283,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # publish (supersedes v1, opens v2, bumps the book version) — the
         # book-scoped reprice path.
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"measurement_key": "tokens", "dim2": "alpha",
+            "changes": [{"measurement_key": "tokens", "grouping_field_2": "alpha",
                          "rate_per_unit_micros": 99}]})
         assert published["version"] == 2
 
@@ -295,7 +295,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 params["as_of"] = as_of
             rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
                         params=params or None)["data"]
-            return [r for r in rows if r["dim2"] == "alpha"]
+            return [r for r in rows if r["grouping_field_2"] == "alpha"]
 
         history = _alpha_rows(include_history=True)
         assert len(history) == 2                          # original + new version

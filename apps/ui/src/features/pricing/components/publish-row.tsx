@@ -46,26 +46,32 @@ export function PublishRow({
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Select
-          value={edit.pricing_model}
+          value={edit.rate_structure}
           onValueChange={(model) =>
-            onEdit({ ...edit, pricing_model: model === "flat" ? "flat" : "per_unit" })
+            onEdit({
+              ...edit,
+              rate_structure:
+                model === "fixed_component" ? "fixed_component" : "per_unit",
+            })
           }
         >
           <SelectTrigger
             className="w-full"
             aria-label={`Pricing model for ${rate.measurement_key}`}
           >
-            {pricingModelLabel(edit.pricing_model)}
+            {pricingModelLabel(edit.rate_structure)}
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="per_unit">{pricingModelLabel("per_unit")}</SelectItem>
-            <SelectItem value="flat">{pricingModelLabel("flat")}</SelectItem>
+            <SelectItem value="fixed_component">
+              {pricingModelLabel("fixed_component")}
+            </SelectItem>
           </SelectContent>
         </Select>
         <Input
           inputMode="decimal"
           value={edit.rate}
-          disabled={edit.pricing_model === "flat"}
+          disabled={edit.rate_structure === "fixed_component"}
           onChange={(event) => onEdit({ ...edit, rate: event.target.value })}
           aria-label={`Rate for ${rate.measurement_key} (${currency.toUpperCase()})`}
         />
@@ -79,7 +85,7 @@ export function PublishRow({
             <SelectTrigger
               className="w-full"
               aria-label={`Unit quantity for ${rate.measurement_key}`}
-              disabled={edit.pricing_model === "flat"}
+              disabled={edit.rate_structure === "fixed_component"}
             >
               {UNIT_QUANTITY_CHOICES.find((c) => c.value === edit.unit_choice)?.label ??
                 "per unit"}
@@ -92,7 +98,8 @@ export function PublishRow({
               ))}
             </SelectContent>
           </Select>
-          {edit.unit_choice === "custom" && edit.pricing_model !== "flat" && (
+          {edit.unit_choice === "custom" &&
+          edit.rate_structure !== "fixed_component" && (
             <Input
               inputMode="numeric"
               placeholder="Units"

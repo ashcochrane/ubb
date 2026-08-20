@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.rate_out_rate_structure import RateOutRateStructure
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -26,21 +27,25 @@ class RateOut:
         Attributes:
             card_type (str):
             currency (str):
-            dim1 (str):
-            dim2 (str):
-            dim3 (str):
-            dim4 (str):
-            dim5 (str):
-            dim6 (str):
             event_type (str):
             fixed_micros (int):
+            grouping_field_1 (str):
+            grouping_field_10 (str):
+            grouping_field_2 (str):
+            grouping_field_3 (str):
+            grouping_field_4 (str):
+            grouping_field_5 (str):
+            grouping_field_6 (str):
+            grouping_field_7 (str):
+            grouping_field_8 (str):
+            grouping_field_9 (str):
             id (str):
             lineage_id (str):
             measurement_key (str):
-            pricing_model (str):
             provider (str):
             rate_card_id (str):
             rate_per_unit_micros (int):
+            rate_structure (RateOutRateStructure):
             subtask_type (str):
             task_type (str):
             unit_quantity (int):
@@ -50,21 +55,25 @@ class RateOut:
 
     card_type: str
     currency: str
-    dim1: str
-    dim2: str
-    dim3: str
-    dim4: str
-    dim5: str
-    dim6: str
     event_type: str
     fixed_micros: int
+    grouping_field_1: str
+    grouping_field_10: str
+    grouping_field_2: str
+    grouping_field_3: str
+    grouping_field_4: str
+    grouping_field_5: str
+    grouping_field_6: str
+    grouping_field_7: str
+    grouping_field_8: str
+    grouping_field_9: str
     id: str
     lineage_id: str
     measurement_key: str
-    pricing_model: str
     provider: str
     rate_card_id: str
     rate_per_unit_micros: int
+    rate_structure: RateOutRateStructure
     subtask_type: str
     task_type: str
     unit_quantity: int
@@ -81,21 +90,29 @@ class RateOut:
 
         currency = self.currency
 
-        dim1 = self.dim1
-
-        dim2 = self.dim2
-
-        dim3 = self.dim3
-
-        dim4 = self.dim4
-
-        dim5 = self.dim5
-
-        dim6 = self.dim6
-
         event_type = self.event_type
 
         fixed_micros = self.fixed_micros
+
+        grouping_field_1 = self.grouping_field_1
+
+        grouping_field_10 = self.grouping_field_10
+
+        grouping_field_2 = self.grouping_field_2
+
+        grouping_field_3 = self.grouping_field_3
+
+        grouping_field_4 = self.grouping_field_4
+
+        grouping_field_5 = self.grouping_field_5
+
+        grouping_field_6 = self.grouping_field_6
+
+        grouping_field_7 = self.grouping_field_7
+
+        grouping_field_8 = self.grouping_field_8
+
+        grouping_field_9 = self.grouping_field_9
 
         id = self.id
 
@@ -103,13 +120,13 @@ class RateOut:
 
         measurement_key = self.measurement_key
 
-        pricing_model = self.pricing_model
-
         provider = self.provider
 
         rate_card_id = self.rate_card_id
 
         rate_per_unit_micros = self.rate_per_unit_micros
+
+        rate_structure = self.rate_structure.value
 
         subtask_type = self.subtask_type
 
@@ -131,21 +148,25 @@ class RateOut:
         field_dict.update({
             "card_type": card_type,
             "currency": currency,
-            "dim1": dim1,
-            "dim2": dim2,
-            "dim3": dim3,
-            "dim4": dim4,
-            "dim5": dim5,
-            "dim6": dim6,
             "event_type": event_type,
             "fixed_micros": fixed_micros,
+            "grouping_field_1": grouping_field_1,
+            "grouping_field_10": grouping_field_10,
+            "grouping_field_2": grouping_field_2,
+            "grouping_field_3": grouping_field_3,
+            "grouping_field_4": grouping_field_4,
+            "grouping_field_5": grouping_field_5,
+            "grouping_field_6": grouping_field_6,
+            "grouping_field_7": grouping_field_7,
+            "grouping_field_8": grouping_field_8,
+            "grouping_field_9": grouping_field_9,
             "id": id,
             "lineage_id": lineage_id,
             "measurement_key": measurement_key,
-            "pricing_model": pricing_model,
             "provider": provider,
             "rate_card_id": rate_card_id,
             "rate_per_unit_micros": rate_per_unit_micros,
+            "rate_structure": rate_structure,
             "subtask_type": subtask_type,
             "task_type": task_type,
             "unit_quantity": unit_quantity,
@@ -165,21 +186,29 @@ class RateOut:
 
         currency = d.pop("currency")
 
-        dim1 = d.pop("dim1")
-
-        dim2 = d.pop("dim2")
-
-        dim3 = d.pop("dim3")
-
-        dim4 = d.pop("dim4")
-
-        dim5 = d.pop("dim5")
-
-        dim6 = d.pop("dim6")
-
         event_type = d.pop("event_type")
 
         fixed_micros = d.pop("fixed_micros")
+
+        grouping_field_1 = d.pop("grouping_field_1")
+
+        grouping_field_10 = d.pop("grouping_field_10")
+
+        grouping_field_2 = d.pop("grouping_field_2")
+
+        grouping_field_3 = d.pop("grouping_field_3")
+
+        grouping_field_4 = d.pop("grouping_field_4")
+
+        grouping_field_5 = d.pop("grouping_field_5")
+
+        grouping_field_6 = d.pop("grouping_field_6")
+
+        grouping_field_7 = d.pop("grouping_field_7")
+
+        grouping_field_8 = d.pop("grouping_field_8")
+
+        grouping_field_9 = d.pop("grouping_field_9")
 
         id = d.pop("id")
 
@@ -187,13 +216,16 @@ class RateOut:
 
         measurement_key = d.pop("measurement_key")
 
-        pricing_model = d.pop("pricing_model")
-
         provider = d.pop("provider")
 
         rate_card_id = d.pop("rate_card_id")
 
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
+
+        rate_structure = RateOutRateStructure(d.pop("rate_structure"))
+
+
+
 
         subtask_type = d.pop("subtask_type")
 
@@ -216,21 +248,25 @@ class RateOut:
         rate_out = cls(
             card_type=card_type,
             currency=currency,
-            dim1=dim1,
-            dim2=dim2,
-            dim3=dim3,
-            dim4=dim4,
-            dim5=dim5,
-            dim6=dim6,
             event_type=event_type,
             fixed_micros=fixed_micros,
+            grouping_field_1=grouping_field_1,
+            grouping_field_10=grouping_field_10,
+            grouping_field_2=grouping_field_2,
+            grouping_field_3=grouping_field_3,
+            grouping_field_4=grouping_field_4,
+            grouping_field_5=grouping_field_5,
+            grouping_field_6=grouping_field_6,
+            grouping_field_7=grouping_field_7,
+            grouping_field_8=grouping_field_8,
+            grouping_field_9=grouping_field_9,
             id=id,
             lineage_id=lineage_id,
             measurement_key=measurement_key,
-            pricing_model=pricing_model,
             provider=provider,
             rate_card_id=rate_card_id,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             subtask_type=subtask_type,
             task_type=task_type,
             unit_quantity=unit_quantity,

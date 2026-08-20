@@ -40,7 +40,7 @@ def price_card_fixture(tenant):
         key="openai", is_default=True, version=1)
     rate = Rate.objects.create(
         tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
-        measurement=declares_a_quantity(tenant, "tokens"), currency="usd", pricing_model="per_unit",
+        measurement=declares_a_quantity(tenant, "tokens"), currency="usd", rate_structure="per_unit",
         rate_per_unit_micros=10_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     return book, rate

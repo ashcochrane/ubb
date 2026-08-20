@@ -18,20 +18,61 @@ run yet — in both cases the entry is recording what the surface was on its
 date, which is what it is for. An entry's *facts* are never rewritten: what
 changed, when, and why stay exactly as recorded.
 
+## 2026-08-20 — The rate's arithmetic shape, and all ten grouping slots (BREAKING)
+
+Two changes to the same three schemas, taken together because splitting them
+would have broken the same properties twice (issue #366).
+
+**The arithmetic shape takes its ratified name, values included.** The column
+saying how a rule computes sat one character from `pricing_mode`, a declared
+concept about which pricing regime governs a whole job — a pair ADR-0006 §3
+calls a defect rather than a coincidence. It is `rate_structure` now, and its
+values are `per_unit` / `fixed_component`. The values move with the name: a rule
+that charged once regardless of quantity said `flat` and says `fixed_component`.
+
+- **`POST /pricing/rate-cards/{book_id}/rates`**, **`POST
+  /pricing/rate-cards/{book_id}/publish`**, **`GET
+  /pricing/rate-cards/{book_id}/rates`** — the property is renamed on `RateIn`,
+  `RateChangeIn` and `RateOut`. It is a `closed` registry concept, so the
+  contract now publishes a real `enum` for it where it published a bare string.
+- **`BookChangeIn` and `RuleTermsOut` gain it** — additive. A publish could not
+  state a rule's arithmetic shape at all before this, so a rule set up as a
+  per-unit charge could not be made a fixed component except through the
+  immediate reprice route the publish act replaces.
+- **Model/migration** — `Rate.rate_structure`, with `choices=` taken from
+  `core.vocabulary` rather than hand-typed; migration
+  `0026_the_rates_arithmetic_shape_takes_its_ratified_name.py` is a
+  `RenameField` carrying its rows plus a reversible value conversion.
+
+**All ten grouping slots are published, under the column names.** A rule can be
+pinned on ten slots; the contract named six, as `dim1`..`dim6`. The other four
+were unreachable rather than merely unnamed — a reprice body left them empty,
+and empty is what matches a rule leaving a slot unpinned, so a rule pinned on
+the seventh slot could be written server-side and matched by no publish body at
+all.
+
+- **`RateIn`, `RateChangeIn`, `RateOut`** — `dim1`..`dim6` become
+  `grouping_field_1`..`grouping_field_10`. The join that mapped published names
+  to columns is deleted rather than widened, so a body and the rule's own
+  selector columns speak one vocabulary.
+- The tenant-key-keyed form on a publish's change body (`grouping_fields`) is
+  unchanged and is still the shape to prefer: it survives a key being rebound to
+  another slot.
+
 ## 2026-07-15 — Tiered pricing removed (BREAKING, ADR-0003)
 
 The `graduated` and `package` pricing models are **deleted end to end** — not
 gated (`docs/adr/0003-mvp-launches-without-tiered-pricing.md`; decided in
 issue #22, executed via issue #30). The MVP launches with `per_unit` and
-`flat` only; every arrival-time estimate now equals the settled price by
+`fixed_component` only; every arrival-time estimate now equals the settled price by
 construction (the only remaining accept-vs-settle difference is rate-card
 config drift).
 
-- **`POST /pricing/rate-cards/{book_id}/rates`** — `pricing_model` accepts
-  only `per_unit`/`flat` (anything else → 422); the `tiers` field is removed
+- **`POST /pricing/rate-cards/{book_id}/rates`** — `rate_structure` accepts
+  only `per_unit`/`fixed_component` (anything else → 422); the `tiers` field is removed
   from `RateIn`, `RateChangeIn` (publish), and `RateOut`.
 - **`POST /pricing/rate-cards/{book_id}/publish`** — validates
-  `pricing_model` against the narrowed choices (ValueError → 422, whole
+  `rate_structure` against the narrowed choices (ValueError → 422, whole
   publish rolls back).
 - **Model/migration** — `Rate.tiers` dropped; `PricingPeriodCounter` (the
   per-period tier ladder) deleted; migration
@@ -72,7 +113,7 @@ book assignment, which a flat per-rate model could not express safely.
     replaced by `BookOut` for books and a repurposed `RateOut` for rates.
 - **Rates now live under a book**, created via:
   - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`measurement_key`,
-    `provider`, `event_type`, `dimensions`, `pricing_model`,
+    `provider`, `event_type`, `dimensions`, `rate_structure`,
     `rate_per_unit_micros`, `unit_quantity`, `fixed_micros`, `tiers`,
     `product_id`). `card_type` and `currency` are no longer accepted here —
     they are inherited from the parent book (single source of truth).

@@ -484,7 +484,7 @@
         "type": "object"
       },
       "BookChangeIn": {
-        "description": "One change in a publish: what to do, and to which rule.\n\n`kind` is `add`, `reprice` or `retire` \u2014 the three surfaces a book used to\nhave, arriving as three kinds of one act. It is a plain string and the\nservice refuses anything else, which is how the book's own discriminators\nare already handled on this surface: these three name the shape of one\nrequest body, they are stored on no column and returned in no response, and\na `Literal` here would publish an enumeration the vocabulary registry does\nnot own.\n\nThe rule is identified by the quantity it prices plus its selectors \u2014\n`provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own\ndeclared grouping fields. An omitted selector means the rule leaves it\nunpinned, which is what an unpinned selector means everywhere on this\nsurface, so a change body names only what the rule pins.\n\nThe three terms and the method are nullable because a reprice states only\nwhat moves: anything unstated is carried over from the rule being\nsuperseded. An `add` takes the model's own defaults for what it leaves out,\nand a `retire` states none of them at all \u2014 it opens no rule.\n\n\u26a0 **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE\nIT.** Whether an amount is per-unit or a fixed component is carried over\nfrom the rule being superseded, and an added rule takes the default. The\ncolumn's name is retired and its ledger entry caps how many files may still\nspell it, so putting it on this schema would coin the retired spelling on a\nbrand-new surface for the ticket that renames it to convert \u2014 and putting\nthe canonical spelling here would publish a field whose values are still the\nretired ones. Both belong to the commit that converts the column, its values\nand the three rate schemas above together. The immediate reprice route this\nact replaces still states the shape and is untouched.",
+        "description": "One change in a publish: what to do, and to which rule.\n\n`kind` is `add`, `reprice` or `retire` \u2014 the three surfaces a book used to\nhave, arriving as three kinds of one act. It is a plain string and the\nservice refuses anything else, which is how the book's own discriminators\nare already handled on this surface: these three name the shape of one\nrequest body, they are stored on no column and returned in no response, and\na `Literal` here would publish an enumeration the vocabulary registry does\nnot own.\n\nThe rule is identified by the quantity it prices plus its selectors \u2014\n`provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own\ndeclared grouping fields. An omitted selector means the rule leaves it\nunpinned, which is what an unpinned selector means everywhere on this\nsurface, so a change body names only what the rule pins.\n\nThe three terms, the method and the arithmetic shape are nullable because a\nreprice states only what moves: anything unstated is carried over from the\nrule being superseded. An `add` takes the model's own defaults for what it\nleaves out, and a `retire` states none of them at all \u2014 it opens no rule.\n\n`rate_structure` says which arithmetic the rule runs: an amount per unit of\nquantity, or a component that applies once regardless of quantity. It is a\ndifferent fact from `pricing_method`, which says how the price is DERIVED,\nand a change may move either without the other.",
         "properties": {
           "event_type": {
             "default": "",
@@ -555,6 +555,22 @@
               }
             ],
             "title": "Rate Per Unit Micros"
+          },
+          "rate_structure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_unit",
+                  "fixed_component"
+                ],
+                "type": "string",
+                "x-ubb-concept": "rate_structure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Structure"
           },
           "subtask_type": {
             "default": "",
@@ -1589,6 +1605,22 @@
             ],
             "title": "Rate Per Unit Micros"
           },
+          "rate_structure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_unit",
+                  "fixed_component"
+                ],
+                "type": "string",
+                "x-ubb-concept": "rate_structure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Structure"
+          },
           "subtask_type": {
             "default": "",
             "maxLength": 64,
@@ -2425,6 +2457,15 @@
             "title": "Rate Per Unit Micros",
             "type": "integer"
           },
+          "rate_structure": {
+            "enum": [
+              "per_unit",
+              "fixed_component"
+            ],
+            "title": "Rate Structure",
+            "type": "string",
+            "x-ubb-concept": "rate_structure"
+          },
           "rule_id": {
             "title": "Rule Id",
             "type": "string"
@@ -2450,6 +2491,7 @@
           "event_type",
           "task_type",
           "subtask_type",
+          "rate_structure",
           "rate_per_unit_micros",
           "unit_quantity",
           "fixed_micros",
@@ -5020,38 +5062,8 @@
         "type": "object"
       },
       "RateChangeIn": {
-        "description": "One reprice in a publish. Match keys (measurement_key plus the ten\nselectors below \u2014 provider/event_type/task_type/subtask_type/dim1..dim6)\nlocate the active rate; the remaining (nullable) fields, when present,\noverride it in the new version.\n\nThese ten are not the whole selector set a rate can pin. A rate may also be\npinned on four further grouping-field slots that this body cannot name, and\nsuch a rate cannot be matched here \u2014 a publish naming it fails to find an\nactive rate. Reaching them is not yet possible through the API.",
+        "description": "One reprice in a publish. Match keys (measurement_key plus the fourteen\nselectors below \u2014 provider/event_type/task_type/subtask_type and the ten\ngrouping-field slots) locate the active rate; the remaining (nullable)\nfields, when present, override it in the new version.\n\n**These are the whole selector set a rate can pin.** A rate is pinned on the\nfour reserved axes and on any of the ten grouping slots, and every one of\nthem can be stated here \u2014 so a rule pinned on any slot is reachable. A\nselector left empty matches a rule that leaves that slot unpinned, which is\nwhat an empty selector means everywhere on this surface, so omitting one is\na statement about the rule rather than a gap in the body.",
         "properties": {
-          "dim1": {
-            "default": "",
-            "title": "Dim1",
-            "type": "string"
-          },
-          "dim2": {
-            "default": "",
-            "title": "Dim2",
-            "type": "string"
-          },
-          "dim3": {
-            "default": "",
-            "title": "Dim3",
-            "type": "string"
-          },
-          "dim4": {
-            "default": "",
-            "title": "Dim4",
-            "type": "string"
-          },
-          "dim5": {
-            "default": "",
-            "title": "Dim5",
-            "type": "string"
-          },
-          "dim6": {
-            "default": "",
-            "title": "Dim6",
-            "type": "string"
-          },
           "event_type": {
             "default": "",
             "title": "Event Type",
@@ -5069,20 +5081,59 @@
             ],
             "title": "Fixed Micros"
           },
+          "grouping_field_1": {
+            "default": "",
+            "title": "Grouping Field 1",
+            "type": "string"
+          },
+          "grouping_field_10": {
+            "default": "",
+            "title": "Grouping Field 10",
+            "type": "string"
+          },
+          "grouping_field_2": {
+            "default": "",
+            "title": "Grouping Field 2",
+            "type": "string"
+          },
+          "grouping_field_3": {
+            "default": "",
+            "title": "Grouping Field 3",
+            "type": "string"
+          },
+          "grouping_field_4": {
+            "default": "",
+            "title": "Grouping Field 4",
+            "type": "string"
+          },
+          "grouping_field_5": {
+            "default": "",
+            "title": "Grouping Field 5",
+            "type": "string"
+          },
+          "grouping_field_6": {
+            "default": "",
+            "title": "Grouping Field 6",
+            "type": "string"
+          },
+          "grouping_field_7": {
+            "default": "",
+            "title": "Grouping Field 7",
+            "type": "string"
+          },
+          "grouping_field_8": {
+            "default": "",
+            "title": "Grouping Field 8",
+            "type": "string"
+          },
+          "grouping_field_9": {
+            "default": "",
+            "title": "Grouping Field 9",
+            "type": "string"
+          },
           "measurement_key": {
             "title": "Measurement Key",
             "type": "string"
-          },
-          "pricing_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pricing Model"
           },
           "provider": {
             "default": "",
@@ -5100,6 +5151,22 @@
               }
             ],
             "title": "Rate Per Unit Micros"
+          },
+          "rate_structure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "per_unit",
+                  "fixed_component"
+                ],
+                "type": "string",
+                "x-ubb-concept": "rate_structure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Structure"
           },
           "subtask_type": {
             "default": "",
@@ -5131,44 +5198,8 @@
         "type": "object"
       },
       "RateIn": {
-        "description": "A single Rate added under a book. card_type and currency are inherited\nfrom the book, so they are NOT accepted here (the book owns them).",
+        "description": "A single Rate added under a book. card_type and currency are inherited\nfrom the book, so they are NOT accepted here (the book owns them).\n\nThe rule is pinned by the quantity it prices plus its selectors: the four\nreserved axes and **all ten** grouping slots. An omitted selector means the\nrule leaves it unpinned, which is what an empty selector means everywhere on\nthis surface.",
         "properties": {
-          "dim1": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim1",
-            "type": "string"
-          },
-          "dim2": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim2",
-            "type": "string"
-          },
-          "dim3": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim3",
-            "type": "string"
-          },
-          "dim4": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim4",
-            "type": "string"
-          },
-          "dim5": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim5",
-            "type": "string"
-          },
-          "dim6": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Dim6",
-            "type": "string"
-          },
           "event_type": {
             "default": "",
             "maxLength": 100,
@@ -5181,15 +5212,70 @@
             "title": "Fixed Micros",
             "type": "integer"
           },
+          "grouping_field_1": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 1",
+            "type": "string"
+          },
+          "grouping_field_10": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 10",
+            "type": "string"
+          },
+          "grouping_field_2": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 2",
+            "type": "string"
+          },
+          "grouping_field_3": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 3",
+            "type": "string"
+          },
+          "grouping_field_4": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 4",
+            "type": "string"
+          },
+          "grouping_field_5": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 5",
+            "type": "string"
+          },
+          "grouping_field_6": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 6",
+            "type": "string"
+          },
+          "grouping_field_7": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 7",
+            "type": "string"
+          },
+          "grouping_field_8": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 8",
+            "type": "string"
+          },
+          "grouping_field_9": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Grouping Field 9",
+            "type": "string"
+          },
           "measurement_key": {
             "maxLength": 100,
             "minLength": 1,
             "title": "Measurement Key",
-            "type": "string"
-          },
-          "pricing_model": {
-            "default": "per_unit",
-            "title": "Pricing Model",
             "type": "string"
           },
           "provider": {
@@ -5203,6 +5289,16 @@
             "minimum": 0,
             "title": "Rate Per Unit Micros",
             "type": "integer"
+          },
+          "rate_structure": {
+            "default": "per_unit",
+            "enum": [
+              "per_unit",
+              "fixed_component"
+            ],
+            "title": "Rate Structure",
+            "type": "string",
+            "x-ubb-concept": "rate_structure"
           },
           "subtask_type": {
             "default": "",
@@ -5239,30 +5335,6 @@
             "title": "Currency",
             "type": "string"
           },
-          "dim1": {
-            "title": "Dim1",
-            "type": "string"
-          },
-          "dim2": {
-            "title": "Dim2",
-            "type": "string"
-          },
-          "dim3": {
-            "title": "Dim3",
-            "type": "string"
-          },
-          "dim4": {
-            "title": "Dim4",
-            "type": "string"
-          },
-          "dim5": {
-            "title": "Dim5",
-            "type": "string"
-          },
-          "dim6": {
-            "title": "Dim6",
-            "type": "string"
-          },
           "event_type": {
             "title": "Event Type",
             "type": "string"
@@ -5270,6 +5342,46 @@
           "fixed_micros": {
             "title": "Fixed Micros",
             "type": "integer"
+          },
+          "grouping_field_1": {
+            "title": "Grouping Field 1",
+            "type": "string"
+          },
+          "grouping_field_10": {
+            "title": "Grouping Field 10",
+            "type": "string"
+          },
+          "grouping_field_2": {
+            "title": "Grouping Field 2",
+            "type": "string"
+          },
+          "grouping_field_3": {
+            "title": "Grouping Field 3",
+            "type": "string"
+          },
+          "grouping_field_4": {
+            "title": "Grouping Field 4",
+            "type": "string"
+          },
+          "grouping_field_5": {
+            "title": "Grouping Field 5",
+            "type": "string"
+          },
+          "grouping_field_6": {
+            "title": "Grouping Field 6",
+            "type": "string"
+          },
+          "grouping_field_7": {
+            "title": "Grouping Field 7",
+            "type": "string"
+          },
+          "grouping_field_8": {
+            "title": "Grouping Field 8",
+            "type": "string"
+          },
+          "grouping_field_9": {
+            "title": "Grouping Field 9",
+            "type": "string"
           },
           "id": {
             "title": "Id",
@@ -5283,10 +5395,6 @@
             "title": "Measurement Key",
             "type": "string"
           },
-          "pricing_model": {
-            "title": "Pricing Model",
-            "type": "string"
-          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -5298,6 +5406,15 @@
           "rate_per_unit_micros": {
             "title": "Rate Per Unit Micros",
             "type": "integer"
+          },
+          "rate_structure": {
+            "enum": [
+              "per_unit",
+              "fixed_component"
+            ],
+            "title": "Rate Structure",
+            "type": "string",
+            "x-ubb-concept": "rate_structure"
           },
           "subtask_type": {
             "title": "Subtask Type",
@@ -5337,13 +5454,17 @@
           "event_type",
           "task_type",
           "subtask_type",
-          "dim1",
-          "dim2",
-          "dim3",
-          "dim4",
-          "dim5",
-          "dim6",
-          "pricing_model",
+          "grouping_field_1",
+          "grouping_field_2",
+          "grouping_field_3",
+          "grouping_field_4",
+          "grouping_field_5",
+          "grouping_field_6",
+          "grouping_field_7",
+          "grouping_field_8",
+          "grouping_field_9",
+          "grouping_field_10",
+          "rate_structure",
           "rate_per_unit_micros",
           "unit_quantity",
           "fixed_micros",
@@ -6428,7 +6549,7 @@
         "type": "object"
       },
       "RuleTermsOut": {
-        "description": "What a rule charges and how it derives it \u2014 everything a change may move.\n\n\u26a0 The arithmetic shape is deliberately absent, for the reason `BookChangeIn`\ngives: a publish cannot move it. A reader comparing a `before` with an\n`after` therefore sees all three terms and is not told which one the rule\nactually charges on \u2014 `GET .../rates` answers that, and this row is a\nstatement about what a change does rather than a restatement of the rule.\n\n**THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer\noverride replaces a whole rule including its method, so the diff a tenant\nreads before committing to it has to show the method changing \u2014 otherwise\nthe one part of a negotiated deal that changes its shape is the one part\nthat is invisible until after it lands.",
+        "description": "What a rule charges, how it derives it, and which arithmetic it runs.\n\nEverything a change may move, so a `before` and an `after` side by side are\na complete account of what a publish does to a rule. `rate_structure`\ndecides which of the money terms is actually spent, so a rule going from a\nper-unit charge to a fixed component would read as *\"nothing moved\"* from\nthe terms alone.",
         "properties": {
           "fixed_micros": {
             "title": "Fixed Micros",
@@ -6454,6 +6575,15 @@
             "title": "Rate Per Unit Micros",
             "type": "integer"
           },
+          "rate_structure": {
+            "enum": [
+              "per_unit",
+              "fixed_component"
+            ],
+            "title": "Rate Structure",
+            "type": "string",
+            "x-ubb-concept": "rate_structure"
+          },
           "unit_quantity": {
             "title": "Unit Quantity",
             "type": "integer"
@@ -6462,7 +6592,8 @@
         "required": [
           "rate_per_unit_micros",
           "unit_quantity",
-          "fixed_micros"
+          "fixed_micros",
+          "rate_structure"
         ],
         "title": "RuleTermsOut",
         "type": "object"

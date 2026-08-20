@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+import { RATE_STRUCTURE_VALUES } from "@/lib/vocabulary";
+
 const nonNegativeNumberString = (message: string) =>
   z
     .string()
@@ -42,7 +44,12 @@ export const rateFormSchema = z
     provider: z.string().trim().max(100, "Keep the provider under 100 characters"),
     event_type: z.string().trim().max(100, "Keep the event type under 100 characters"),
     task_type: z.string().trim().max(64, "Keep the task type under 64 characters"),
-    pricing_model: z.enum(["per_unit", "flat"]),
+    // The registry's own set, imported rather than restated
+    // (`docs/conventions/coding-standards.md` §Vocabulary: code imports a
+    // registry value, it never spells the literal). A hand-typed pair here
+    // would be a form that refuses a value the API accepts on the day the
+    // concept moves — and this form SENDS what it validates.
+    rate_structure: z.enum(RATE_STRUCTURE_VALUES),
     rate: nonNegativeNumberString("Enter an amount of 0 or more"),
     unit_choice: z.enum(["1", "1000", "1000000", "custom"]),
     custom_unit: z.string().trim(),

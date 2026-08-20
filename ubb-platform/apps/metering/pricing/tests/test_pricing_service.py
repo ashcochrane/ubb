@@ -29,6 +29,7 @@ from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_STATUS_UNKNOWN,
+    RATE_STRUCTURE_FIXED_COMPONENT,
 )
 
 
@@ -85,9 +86,9 @@ class TestPricing:
         # instead of of price resolution. "This supplier charges nothing for
         # seats" is a thing a tenant can now say, and saying it is the point.
         rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
-            measurement_key="seats", pricing_model="flat", fixed_micros=0)
+            measurement_key="seats", rate_structure=RATE_STRUCTURE_FIXED_COMPONENT, fixed_micros=0)
         rate_in_default_book(t, card_type="price", provider="openai", event_type="chat",
-            measurement_key="seats", pricing_model="flat", fixed_micros=9_000_000)
+            measurement_key="seats", rate_structure=RATE_STRUCTURE_FIXED_COMPONENT, fixed_micros=9_000_000)
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},

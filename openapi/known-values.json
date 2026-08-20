@@ -221,10 +221,14 @@
       ]
     },
     "rate_structure": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "per_unit",
+        "fixed_component"
+      ]
     },
     "reason_code": {
       "advertised": false,

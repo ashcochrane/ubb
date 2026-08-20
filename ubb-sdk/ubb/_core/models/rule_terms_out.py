@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
+from ..models.rule_terms_out_rate_structure import RuleTermsOutRateStructure
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -23,29 +24,25 @@ T = TypeVar("T", bound="RuleTermsOut")
 
 @_attrs_define
 class RuleTermsOut:
-    """ What a rule charges and how it derives it — everything a change may move.
+    """ What a rule charges, how it derives it, and which arithmetic it runs.
 
-    ⚠ The arithmetic shape is deliberately absent, for the reason `BookChangeIn`
-    gives: a publish cannot move it. A reader comparing a `before` with an
-    `after` therefore sees all three terms and is not told which one the rule
-    actually charges on — `GET .../rates` answers that, and this row is a
-    statement about what a change does rather than a restatement of the rule.
-
-    **THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer
-    override replaces a whole rule including its method, so the diff a tenant
-    reads before committing to it has to show the method changing — otherwise
-    the one part of a negotiated deal that changes its shape is the one part
-    that is invisible until after it lands.
+    Everything a change may move, so a `before` and an `after` side by side are
+    a complete account of what a publish does to a rule. `rate_structure`
+    decides which of the money terms is actually spent, so a rule going from a
+    per-unit charge to a fixed component would read as *"nothing moved"* from
+    the terms alone.
 
         Attributes:
             fixed_micros (int):
             rate_per_unit_micros (int):
+            rate_structure (RuleTermsOutRateStructure):
             unit_quantity (int):
             pricing_method (None | RuleTermsOutPricingMethodType0 | Unset):
      """
 
     fixed_micros: int
     rate_per_unit_micros: int
+    rate_structure: RuleTermsOutRateStructure
     unit_quantity: int
     pricing_method: None | RuleTermsOutPricingMethodType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -58,6 +55,8 @@ class RuleTermsOut:
         fixed_micros = self.fixed_micros
 
         rate_per_unit_micros = self.rate_per_unit_micros
+
+        rate_structure = self.rate_structure.value
 
         unit_quantity = self.unit_quantity
 
@@ -75,6 +74,7 @@ class RuleTermsOut:
         field_dict.update({
             "fixed_micros": fixed_micros,
             "rate_per_unit_micros": rate_per_unit_micros,
+            "rate_structure": rate_structure,
             "unit_quantity": unit_quantity,
         })
         if pricing_method is not UNSET:
@@ -90,6 +90,11 @@ class RuleTermsOut:
         fixed_micros = d.pop("fixed_micros")
 
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
+
+        rate_structure = RuleTermsOutRateStructure(d.pop("rate_structure"))
+
+
+
 
         unit_quantity = d.pop("unit_quantity")
 
@@ -116,6 +121,7 @@ class RuleTermsOut:
         rule_terms_out = cls(
             fixed_micros=fixed_micros,
             rate_per_unit_micros=rate_per_unit_micros,
+            rate_structure=rate_structure,
             unit_quantity=unit_quantity,
             pricing_method=pricing_method,
         )

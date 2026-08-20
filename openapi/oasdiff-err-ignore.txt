@@ -472,3 +472,47 @@ PATCH /api/v1/tenant/config removed the required property `require_cost_card_cov
 # rather than as a charge of nothing.
 GET /api/v1/metering/usage/{event_id} response property `billed_cost_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
 GET /api/v1/metering/usage/{event_id} the response property `billed_cost_micros` became optional for the status `200`
+
+# --- #366: the rate's arithmetic shape takes its ratified name --------------
+#
+# THE COLUMN SAYING HOW A RULE COMPUTES — an amount for each unit of quantity,
+# or an amount that applies once regardless — sat ONE CHARACTER from
+# `pricing_mode`, a declared concept about something else entirely: which
+# pricing regime governs a whole job. ADR-0006 §3 forbids two public terms that
+# close together and calls the pair a defect rather than a coincidence. #151
+# §13.2 ratified `rate_structure` and #154 §3.3 locked it, so the rename is
+# forced rather than preferred.
+#
+# THE VALUES MOVE WITH THE NAME, WHICH IS WHY THIS IS ONE BREAK AND NOT TWO.
+# A rule that charges once said `flat`; it says `fixed_component` now. Renaming
+# the property and leaving the values would have published the ratified spelling
+# over the retired vocabulary — two names for one fact on one contract, which is
+# what ADR-0007 §3 refuses. Both lines below are the same edit read off the two
+# surfaces that return a rule.
+#
+# ⚠ THE VALUES ARE ALSO ADVERTISED FOR THE FIRST TIME, and that is additive
+# rather than breaking: the concept is `closed`, so the export now writes a real
+# `enum` where the field was a bare string. It could not do that before —
+# `openapi/known-values.json` refuses to advertise a concept its backend
+# consumer does not hold, and the consumer held neither value until this commit
+# imported both from `core.vocabulary`. The G4 and G2 entries recording that
+# debt are both deleted here.
+#
+# ⚠ THE TEN GROUPING SLOTS EMIT NOTHING AT ALL, AND THAT IS THE CUMULATIVE
+# COMPARISON WORKING RATHER THAN A GAP. The same commit replaces the rate's six
+# `dim<n>` properties with all ten under the column names — a larger change to
+# these schemas than the rename is. At the `api-v1-launch` baseline the three
+# rate schemas published `dimensions`, a free-form bag; the six slot properties
+# were added AFTER the tag and are removed before the next baseline, so the
+# comparison sees a surface that never reached it. Pasting the emitted lines in
+# would fail this gate as entries suppressing nothing, which is the case #277's
+# note above records for the posting side. The break is real for in-repo
+# consumers even so, and the console's whole pricing feature moves in this same
+# commit.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and both known consumers read this
+# property through generated code regenerated here — the SDK core and the
+# console's `src/api/generated/`.
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/pricing_model` from the response with the `200` status
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `pricing_model` from the response with the `200` status

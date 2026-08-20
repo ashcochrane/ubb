@@ -962,7 +962,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
 
 class RateCardValidationTest(TestCase):
     """Book-centric surface: a BOOK create validates card_type; adding a rate
-    validates the pricing_model/tier shape; a publish soft-versions history."""
+    validates the arithmetic shape; a publish soft-versions history."""
 
     def setUp(self):
         self.client = Client()
@@ -990,11 +990,11 @@ class RateCardValidationTest(TestCase):
                           {"card_type": "costs", "key": "x"})
         assert resp.status_code == 422
 
-    def test_add_rate_rejects_invalid_pricing_model(self):
+    def test_add_rate_rejects_an_unratified_arithmetic_shape(self):
         # graduated was deleted end to end (ADR-0003) — not a valid model -> 422.
         book_id = self._cost_book()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-                          {"measurement_key": "input_tokens", "pricing_model": "graduated"})
+                          {"measurement_key": "input_tokens", "rate_structure": "graduated"})
         assert resp.status_code == 422
 
     def test_record_usage_surfaces_uncosted_measurement_keys(self):
@@ -1014,7 +1014,7 @@ class RateCardValidationTest(TestCase):
         # create a cost book + a rate (rate 2)
         book_id = self._cost_book()
         r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"measurement_key": "tokens", "pricing_model": "per_unit",
+            {"measurement_key": "tokens", "rate_structure": "per_unit",
              "rate_per_unit_micros": 2, "unit_quantity": 1})
         assert r1.status_code == 200, r1.content
         rate1 = r1.json(); rid = rate1["id"]; lineage = rate1["lineage_id"]
@@ -1061,10 +1061,11 @@ class RateCardBatchCreateTest(TestCase):
         from apps.metering.pricing.models import Rate
         book_id = self._cost_book()
         r1 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"measurement_key": "tokens", "pricing_model": "per_unit",
+            {"measurement_key": "tokens", "rate_structure": "per_unit",
              "rate_per_unit_micros": 2, "unit_quantity": 1})
         r2 = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"measurement_key": "images", "pricing_model": "flat", "fixed_micros": 500})
+            {"measurement_key": "images", "rate_structure": "fixed_component",
+             "fixed_micros": 500})
         assert r1.status_code == 200 and r2.status_code == 200
         assert Rate.objects.filter(tenant=self.tenant, rate_card_id=book_id).count() == 2
 
@@ -1073,7 +1074,7 @@ class RateCardBatchCreateTest(TestCase):
         book_id = self._cost_book()
         before = Rate.objects.filter(tenant=self.tenant).count()
         resp = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
-            {"measurement_key": "bad", "pricing_model": "package"})  # retired model (ADR-0003)
+            {"measurement_key": "bad", "rate_structure": "package"})  # deleted shape (ADR-0003)
         assert resp.status_code == 422
         assert Rate.objects.filter(tenant=self.tenant).count() == before  # zero created
 

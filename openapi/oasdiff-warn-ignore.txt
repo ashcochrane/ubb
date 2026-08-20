@@ -279,12 +279,27 @@ POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request pro
 # free (ADR-0007 §5 — the launch tag is not what binds); the same change after
 # platform admission costs a 90-day cycle under ADR-0003 §4.
 #
-# THE RATE'S SIX SLOT PROPERTIES SURVIVE, AND NOT BY OVERSIGHT. `RateIn`,
-# `RateChangeIn` and `RateOut` still publish `dim1..dim6`. #193 §L puts the rate
-# selector list in slice 4 expressly "so that no ticket quietly widens", and
-# slice 4 rebuilds those three schemas. The residue is pinned in
-# `api/v1/tests/test_grouping_values_on_the_contract.py`, which fails if it ever
-# overstates what the contract actually publishes.
+# THE RATE'S SIX SLOT PROPERTIES SURVIVED THIS COMMIT, AND NOT BY OVERSIGHT.
+# `RateIn`, `RateChangeIn` and `RateOut` went on publishing `dim1..dim6` here.
+# #193 §L puts the rate selector list in slice 4 expressly "so that no ticket
+# quietly widens", and slice 4 rebuilds those three schemas.
+#
+# ⚠ **RESOLVED IN #366, AND RESOLVED BY EMITTING NOTHING — WHICH IS WHY THIS
+# PARAGRAPH IS EDITED RATHER THAN DELETED.** That commit replaced those six
+# properties with all TEN under the column names. The removal adds no line to
+# this file for exactly the reason given three paragraphs up, applied to a
+# different surface: at `api-v1-launch` these three schemas published
+# `dimensions`, a free-form bag, so the six slot properties were added AFTER the
+# tag and removed before the next baseline, and the cumulative comparison sees a
+# surface that never reached it. Pasting the emitted lines in would fail this
+# gate as six entries suppressing nothing. What #366 DID emit is its own block
+# at the foot of this file and of the error file — four lines, for the rename of
+# the arithmetic-shape property beside them.
+#
+# The residue those six were pinned against is gone with them. What
+# `api/v1/tests/test_grouping_values_on_the_contract.py` now holds is the end
+# state — an equality over every published property naming a slot in either
+# spelling — rather than a debt that only shrinks.
 #
 # #320 — THE UNCOSTED-QUANTITY LIST TAKES THE CANONICAL WORD FOR A DECLARED
 # QUANTITY, AND REPLACES THE OLD KEY RATHER THAN SITTING BESIDE IT.
@@ -381,3 +396,21 @@ PATCH /api/v1/tenant/config removed the request property `require_cost_card_cove
 # deleted and whose generated core is regenerated in this same commit.
 POST /api/v1/metering/usage removed the request property `billed_cost_micros`
 POST /api/v1/metering/usage/batch removed the request property `events/items/billed_cost_micros`
+
+# --- #366: the arithmetic shape on the two write surfaces -------------------
+#
+# The same rename, on the two bodies that state a rule rather than the two
+# responses that return one — the reason is in the error file's block under this
+# ticket and is not repeated here.
+#
+# ⚠ A THIRD WRITE SURFACE GAINS THE PROPERTY IN THE SAME COMMIT AND IS NOT A
+# BREAK. `BookChangeIn` — the change a publish carries, and the act that
+# replaces the two routes below — could not state a rule's arithmetic shape at
+# all: #358 wanted it there and found that the retired spelling would break its
+# ledger ceiling on a brand-new schema while the canonical spelling would
+# publish a field whose values were still the retired ones. It named the commit
+# that clears both, which is this one. Adding an optional property is additive,
+# so it emits nothing; what it ends is a real hole, because until now the ONLY
+# way to move a rule's shape was the immediate reprice route below.
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/pricing_model`
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the request property `pricing_model`

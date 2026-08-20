@@ -194,10 +194,14 @@ LEDGERED_VIOLATIONS = {
         "::Plan.markup_percentage_micros":
             ("g11-plan-markup-percentage-micros", "markup_percentage_micros"),
     },
-    "G12": {
-        "ubb-platform/apps/metering/pricing/models.py::Rate.pricing_model":
-            ("g12-rate-pricing-model", "pricing_model"),
-    },
+    # G12 IS EMPTY, AND EMPTY IS THE END STATE RATHER THAN AN OVERSIGHT (#366).
+    # It held one entry: the rate's arithmetic-shape column, which sat one
+    # character from `pricing_mode` and meant something unrelated — ADR-0006
+    # §3's own worked example. The column is `rate_structure` now, so the entry
+    # is deleted rather than left standing, which is the ledger's own rule: an
+    # excuse that no longer describes a real violation overstates the debt.
+    # A gate with nothing left to excuse is a gate that holds.
+    "G12": {},
 }
 
 PERMANENT_EXCEPTIONS = {
@@ -357,10 +361,20 @@ def classify_micros(fact, field):
 def classify_enum_word(fact, field):
     """G12 — ADR-0006 §3. Method, mode and structure describe different things.
 
-    Two conjuncts, and the first is the ADR's own example. A name one character
-    from a sanctioned name is the defect: ``pricing_model`` beside
-    ``pricing_mode`` reads as a typo of a real concept and is in fact a fourth
-    word for the shape of a rate.
+    Two conjuncts. A name one character from a sanctioned name is the defect: it
+    reads as a typo of a real concept while in fact naming something else, so a
+    reader has no way to tell a mistake from a fourth word for an existing idea.
+
+    ⚠ **THE ADR'S OWN WORKED EXAMPLE IS NOT SPELLED HERE, AND ITS ABSENCE IS THE
+    GATE WORKING (#366).** The pair this rule was written for was the rate's
+    arithmetic-shape column beside `pricing_mode`; that column is
+    `rate_structure` now, its ledger entry is deleted, and the retired spelling
+    has left the backend entirely — so writing it into this module would put a
+    file back into an extent the sweep records as empty. ADR-0006 §3 still names
+    the pair, because a document whose subject IS the retired vocabulary is
+    allowed to; a test module is a living surface and is not. The controls below
+    therefore drive the rule with other one-character pairs, which is what they
+    were always testing.
 
     The comparison set is the five names ADR-0006 §3 spells, NOT an edit
     distance against the three bare words — ``code`` is one character from
@@ -754,8 +768,19 @@ def test_negative_control_a_money_suffix_on_a_non_money_type_is_flagged():
 
 @isolate_apps(APP)
 def test_negative_control_a_name_one_character_from_a_sanctioned_one_is_flagged():
+    """The near-miss conjunct, driven by a plural of a sanctioned name.
+
+    ⚠ It used to be driven by ADR-0006 §3's own example — the rate's
+    arithmetic-shape column beside `pricing_mode` — and that spelling has left
+    the backend with #366, so it is not written here (the module docstring for
+    `classify_enum_word` says why). The pair below is the same defect in the
+    same class: `rate_structures` is one insertion from `rate_structure`, names
+    no concept the registry declares, and would read to any reviewer as the
+    sanctioned name typed carelessly. The rule cannot tell that from a
+    deliberate fourth word, which is exactly its point.
+    """
     class Widget(models.Model):
-        pricing_model = models.CharField(max_length=20)
+        rate_structures = models.CharField(max_length=20)
 
         class Meta:
             app_label = "tenants"
@@ -763,7 +788,7 @@ def test_negative_control_a_name_one_character_from_a_sanctioned_one_is_flagged(
 
     hits = classify(model_facts(Widget))
     assert [rule for rule, _, _ in hits] == [RULE_ENUM_WORD]
-    assert "`pricing_mode`" in hits[0][2]
+    assert "`rate_structure`" in hits[0][2]
 
 
 @isolate_apps(APP)
@@ -856,7 +881,7 @@ def test_positive_control_the_canonical_form_is_the_mechanical_one():
 
 
 def test_positive_control_one_character_apart_is_not_a_prefix_match():
-    assert _differs_by_one_character("pricing_model", "pricing_mode")
+    assert _differs_by_one_character("rate_structures", "rate_structure")
     assert _differs_by_one_character("costing_methd", "costing_method")
     assert _differs_by_one_character("pricing_modes", "pricing_mode")
     # Equal is not "differs", and two characters is not one.

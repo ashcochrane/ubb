@@ -12,6 +12,9 @@ from core.vocabulary import (
     DECLARATION_STATUS_VALUES,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_METHOD_VALUES,
+    RATE_STRUCTURE_FIXED_COMPONENT,
+    RATE_STRUCTURE_PER_UNIT,
+    RATE_STRUCTURE_VALUES,
 )
 
 
@@ -41,7 +44,7 @@ class TenantDefaultMarkup(BaseModel):
     and that row no longer prices anything, which is stated on the route.
 
     **NO UPLIFT COLUMN, AND THAT IS THE NON-COMPOSITION RULE (#147 §2).** A
-    rule that takes a margin over cost does not also carry a flat addend, a
+    rule that takes a margin over cost does not also carry a fixed addend, a
     floor or a cap — that is what makes a resolved price explicable by naming
     one thing. The per-event fixed uplift the records this replaces carry is
     deleted rather than folded in, so the replacement is not built with one.
@@ -179,7 +182,7 @@ DECLARES_A_RATIFIED_METHOD_CHECK = "ck_rate_pricing_method"
 #: A rule declaring that its price is a margin over what the call cost may not
 #: also carry a second component that would be added to, floored under or capped
 #: over that margin. The two components this table can express are the per-unit
-#: rate and the flat addend beside it, and a margin rule carries neither.
+#: rate and the fixed addend beside it, and a margin rule carries neither.
 #:
 #: **WHY A `CHECK` IS THE RIGHT MECHANISM HERE AND WAS NOT FOR #326's RULE.**
 #: This is a statement about the SHAPE OF A ROW, true at every instant, which is
@@ -188,14 +191,28 @@ DECLARES_A_RATIFIED_METHOD_CHECK = "ck_rate_pricing_method"
 #: cannot tell an `INSERT` from the conversion's `UPDATE`. Nothing here depends
 #: on how a row arrived.
 #:
-#: ⚠ **IT IS NOT THE WHOLE OF "RULES NEVER COMPOSE", AND THE REST IS NOT THIS
-#: TICKET'S.** A SECOND composition is expressible on this table and is left
-#: legal here: `compute` adds the flat term to the per-unit term, so one rule
-#: can carry both. That is a statement about the rule's ARITHMETIC SHAPE, whose
-#: two alternatives are `per_unit` and a fixed component and whose exclusivity
-#: is decided with the shape's own rename — not about which METHOD derived the
-#: price, which is what this check holds. Refusing it here would change what an
-#: existing rate may be, in a ticket that renames nothing.
+#: ⚠ **IT IS NOT THE WHOLE OF "RULES NEVER COMPOSE", AND THE SECOND HALF IS
+#: DECIDED RATHER THAN PENDING (#366).** A SECOND composition is expressible on
+#: this table: `compute` adds `fixed_micros` to the per-unit term, so a
+#: `per_unit` rule can carry both. #355 left that to "the shape's own rename",
+#: and the rename has now happened — so here is the answer rather than another
+#: hand-forward. **It stays legal, and the rename is not what decides it.**
+#: Renaming a discriminator says nothing about which rows may exist: the
+#: question is whether a row may hold both TERMS, which is a `CHECK` over
+#: `rate_per_unit_micros` and `fixed_micros` and would change what an existing
+#: rate may be. `compute` is what gives the shape its meaning, and it reads
+#: `rate_structure` as WHICH ARITHMETIC RUNS — the per-unit formula, or the
+#: fixed component alone — not as a promise that the other term is zero. A
+#: tenant charging so much per unit plus a joining fee has configured one rule
+#: that a reader can still explain by naming it, which is the property #147 §2
+#: asks for. Refusing it needs a ticket with a conversion for the rows that
+#: already do it; nothing in slice 4 assigns one.
+#:
+#: ⚠ The MIRRORED direction is a different fact and stays inexpressible: a
+#: `fixed_component` rule's `rate_per_unit_micros` is not added to anything,
+#: because `compute` returns before reaching it. That is a property of the
+#: method rather than of a constraint, which is why the branch has a test
+#: naming the discriminator beside the amount.
 NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
 
 #: HOW A PRICING RULE DERIVES A CUSTOMER PRICE, DERIVED FROM THE REGISTRY rather
@@ -210,13 +227,22 @@ NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
 PRICING_METHOD_CHOICES = [(value, value) for value in sorted(PRICING_METHOD_VALUES)]
 
 CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
-# per_unit/flat only: ADR-0003 — the MVP launches without tiered pricing
-# (graduated/package deleted end to end, not gated), so every arrival-time
-# estimate equals the settled price by construction.
-PRICING_MODEL_CHOICES = [
-    ("per_unit", "Per unit"),
-    ("flat", "Flat"),
-]
+
+#: THE ARITHMETIC SHAPE OF A RATE, DERIVED FROM THE REGISTRY rather than
+#: restated beside it — the construction `PRICING_METHOD_CHOICES` above uses,
+#: and the posting's four closed sets before it, for the same reason: a
+#: hand-typed list is correct on the day it is written and silently wrong the
+#: day `domain-vocabulary/` moves.
+#:
+#: TWO VALUES AND NOT FOUR, WHICH IS ADR-0003 RATHER THAN THIS FILE. The tiered
+#: shapes were deleted end to end rather than gated, so every arrival-time
+#: estimate equals the settled price by construction. That is a statement about
+#: which values the registry declares, and it is made there.
+#:
+#: The label is the token, for the reason `PRICING_METHOD_CHOICES` gives:
+#: Django's second element is not a translation hook, and English authored here
+#: would be a wording nobody can reach.
+RATE_STRUCTURE_CHOICES = [(value, value) for value in sorted(RATE_STRUCTURE_VALUES)]
 
 
 class Rate(BaseModel):
@@ -237,13 +263,13 @@ class Rate(BaseModel):
     # Ten, matching the registry and the Posting since #276: a slot a tenant
     # can declare and attribute but cannot PRICE on would be a grouping axis
     # that silently is not a rate selector, which is the split D3 exists to
-    # close. Only six of these reach the published contract UNDER THEIR OWN
-    # SPELLING, and no slice-2 ticket widens that;
-    # `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS` holds the join and what is left
-    # of the gap. All ten are addressable since #358, by the tenant's declared
-    # KEY rather than by the slot, on the act that replaces the three immediate
-    # mutation routes — which is what "this entity's published surface is
-    # rebuilt in slice 4" meant.
+    # close. All ten reach the published contract under THESE names since #366:
+    # `RateIn`, `RateChangeIn` and `RateOut` publish the column names, so the
+    # dictionary that used to join six published names to their columns is
+    # gone and there is no spelling left for the contract and the table to
+    # disagree about. All ten are also addressable by the tenant's declared KEY
+    # rather than by the slot (#358), on the act that replaces the three
+    # immediate mutation routes.
     grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
@@ -330,12 +356,13 @@ class Rate(BaseModel):
     # column's mutability but the receipt, which holds VALUES: editing a rule
     # cannot move a number a tenant was already shown.
     #
-    # ⚠ AND IT SITS ONE WORD FROM `pricing_model` BELOW, WHICH HOLDS THE RULE'S
+    # ⚠ AND IT SITS BESIDE `rate_structure` BELOW, WHICH HOLDS THE RULE'S
     # ARITHMETIC SHAPE AND HAS NOTHING TO DO WITH THIS. Two adjacent character
-    # fields, near-identical names, unrelated value sets: HOW A PRICE IS DERIVED
-    # (a margin, or a price of its own) versus HOW THE ARITHMETIC RUNS (per unit
-    # of quantity, or once). Reach the second through `STRUCTURE_COLUMN` rather
-    # than by name, and read the two comments together before touching either.
+    # fields, unrelated value sets: HOW A PRICE IS DERIVED (a margin, or a price
+    # of its own) versus HOW THE ARITHMETIC RUNS (per unit of quantity, or
+    # once). They used to be one character apart, which is why ADR-0006 §3 names
+    # the pair; the second is `rate_structure` now and the collision is gone.
+    # Read the two comments together before touching either.
     pricing_method = models.CharField(
         max_length=32, choices=PRICING_METHOD_CHOICES, null=True, blank=True)
     #: WHICH COLUMN HOLDS THE RATE'S ARITHMETIC SHAPE, NAMED ONCE (#350).
@@ -344,17 +371,19 @@ class Rate(BaseModel):
     #: of quantity, or a component that applies once regardless — and a reader
     #: rebuilding an amount out of a Pricing Receipt has to know which.
     #:
-    #: The column below still carries the retired spelling of the concept
-    #: (`rate_structure`), and re-spelling it is a later ticket's, with the rest
-    #: of the retired vocabulary. Until then this constant is how a module that
-    #: may not spell the word addresses the column — the same reason
-    #: `Posting.RECEIPT_COLUMN` exists, and the same payoff: a reader that goes
-    #: through it follows the rename instead of going quietly vacuous on the day
-    #: it lands. The two live spellings here are deliberately NOT routed through
-    #: it, because this file's own occurrences are what keep it inside the
-    #: ledger's counted set for that word.
-    STRUCTURE_COLUMN = "pricing_model"
-    pricing_model = models.CharField(max_length=20, choices=PRICING_MODEL_CHOICES, default="per_unit")
+    #: ⚠ **IT EXISTED BECAUSE THE COLUMN'S NAME WAS RETIRED, AND THAT REASON IS
+    #: NOW SPENT.** It was the `Posting.RECEIPT_COLUMN` pattern: a way for a
+    #: module barred from spelling a retired word to address the column anyway,
+    #: written so that its readers would follow the rename rather than go
+    #: quietly vacuous on the day it landed. This is that day, and they did.
+    #: What survives is the smaller claim it also made — that the receipt's
+    #: component key and this column are ONE name, so a reader rebuilding an
+    #: amount and the writer that recorded it cannot drift apart. Delete it only
+    #: with a reader that reads the column some other way.
+    STRUCTURE_COLUMN = "rate_structure"
+    rate_structure = models.CharField(
+        max_length=20, choices=RATE_STRUCTURE_CHOICES,
+        default=RATE_STRUCTURE_PER_UNIT)
     rate_per_unit_micros = models.BigIntegerField(default=0)
     unit_quantity = models.BigIntegerField(default=1_000_000)
     fixed_micros = models.BigIntegerField(default=0)
@@ -472,13 +501,13 @@ class Rate(BaseModel):
             #
             # ⚠ THIS ENFORCES ONE DIRECTION OF THE PROPERTY AND ONLY ONE, and
             # saying which is the difference between a rule and a claim. The two
-            # components this table can express — the per-unit rate and the flat
-            # addend — are `direct_event_price`'s own terms, so the refusal is
-            # over a margin rule carrying them. The mirrored refusal (a direct
-            # rule carrying a margin term) is not expressible here: no percentage
-            # column exists on this table, because markup is still a separate
-            # record. The ticket that moves it is the ticket that adds the other
-            # half.
+            # components this table can express — the per-unit rate and the
+            # fixed addend — are `direct_event_price`'s own terms, so the
+            # refusal is over a margin rule carrying them. The mirrored refusal
+            # (a direct rule carrying a margin term) is not expressible here: no
+            # percentage column exists on this table, because markup is still a
+            # separate record. The ticket that moves it is the ticket that adds
+            # the other half.
             models.CheckConstraint(
                 condition=(
                     ~models.Q(pricing_method=PRICING_METHOD_MARGIN_OVER_COST)
@@ -493,10 +522,12 @@ class Rate(BaseModel):
         DERIVED, NEVER STORED (#326), which is the whole of what the conversion
         bought: the name is the declaration's, so a rate cannot hold a spelling
         the catalogue does not. It is still what the wire carries — `RateIn`,
-        `RateChangeIn` and `RateOut` all publish this key and none of them
-        moved — and still what the pricing receipt and the audit record write,
-        so the published surface of this entity is unchanged by the move
-        underneath it.
+        `RateChangeIn` and `RateOut` all publish this key, and THIS KEY has not
+        moved on any of them — and still what the pricing receipt and the audit
+        record write, so #326's conversion changed nothing a caller can see.
+        ⚠ Those three schemas HAVE since been reshaped around it (#366 took
+        their slot properties to the column names and renamed the arithmetic
+        shape); the claim here is about this property, not about the schemas.
 
         A deactivated rate answers with the name it was written with, off the
         column that preserved it. That is the point of preserving it: a rate
@@ -533,7 +564,24 @@ class Rate(BaseModel):
         return sum(1 for v in self.selector_tuple if v)
 
     def compute(self, units):
-        if self.pricing_model == "flat":
+        """What this rule charges for a measured quantity.
+
+        ⚠ **THE BRANCH BELOW WAS A RETIRED *SENSE*, NOT A RETIRED TERM, AND
+        NOTHING MECHANICAL COULD FIND IT.** The value this method compared
+        against for a component that applies once was `flat` — retired as a
+        `rate_structure` value in `domain-vocabulary/concepts/retired.yaml`,
+        where it sits under `retired_senses` rather than `retired_aliases`
+        because `values_list(..., flat=True)` is Django's own keyword and
+        sweeping the bare token would condemn the ORM. So the forbidden-term
+        sweep never had this line as input: it was green over it on the day the
+        word was retired and would have stayed green over it forever. It is
+        converted by reading the method, not by grepping for a token.
+
+        The comparison goes through the registry's own constant rather than a
+        literal, so the day a value moves again this stops compiling instead of
+        silently taking the other branch.
+        """
+        if self.rate_structure == RATE_STRUCTURE_FIXED_COMPONENT:
             return self.fixed_micros
         units = units or 0
         return (units * self.rate_per_unit_micros + self.unit_quantity // 2) // self.unit_quantity + self.fixed_micros

@@ -167,7 +167,11 @@ exclusions:
     # the Pricing Book its customers are priced from.
     # 226 → 227 in #363: one migration, creating the Resolution Run record and
     # the rule that refuses every edit to one.
-    files: 227
+    # 227 → 228 in #366: one migration, renaming the rate's arithmetic-shape
+    # column to its ratified name and converting its values with it. It is the
+    # exclusion's own worked example — `RenameField(old_name=...)` HAS to spell
+    # the word being retired, which is exactly why a migration may.
+    files: 228
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

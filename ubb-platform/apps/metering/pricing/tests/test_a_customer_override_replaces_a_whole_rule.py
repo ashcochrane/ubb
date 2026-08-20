@@ -367,8 +367,12 @@ class NoPartialOverrideIsExpressibleTest(_ACustomerWithADealMixin, TestCase):
         that states terms for it is refused rather than half-applied."""
         self.the_deal()
 
+        # The message names all THREE things a retirement may not state since
+        # #366 gave a change body the rule's arithmetic shape. Matched on the
+        # clause rather than the whole sentence, so the refusal is still pinned
+        # to its own reason and not to a wording.
         with self.assertRaisesRegex(
-                ValueError, "states neither terms nor a method"):
+                ValueError, "states no terms, no method and no arithmetic shape"):
             plan_changes(
                 self.book,
                 [{**self._an_added_override(

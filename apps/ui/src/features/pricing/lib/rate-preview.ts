@@ -9,7 +9,7 @@ import { resolveUnitQuantity, type RateFormValues } from "./schemas";
 export function buildRatePreview(values: RateFormValues, currency: string): string | null {
   const fixed = Number(values.fixed);
   if (values.fixed.trim() === "" || !Number.isFinite(fixed) || fixed < 0) return null;
-  if (values.pricing_model === "flat") {
+  if (values.rate_structure === "fixed_component") {
     return `Each event → ${formatMicros(toMicros(values.fixed), currency)}`;
   }
   const rate = Number(values.rate);
@@ -18,7 +18,7 @@ export function buildRatePreview(values: RateFormValues, currency: string): stri
   if (!Number.isInteger(unitQuantity) || unitQuantity <= 0) return null;
   const example = exampleChargeMicros(
     {
-      pricing_model: "per_unit",
+      rate_structure: "per_unit",
       rate_per_unit_micros: toMicros(values.rate),
       unit_quantity: unitQuantity,
       fixed_micros: toMicros(values.fixed),

@@ -1,9 +1,19 @@
-"""No published schema names a physical slot (#277, ticket 20, AC 2).
+"""Which published schemas name a physical slot, and which may (#277, #366).
 
-This is an ABSENCE, and an absence is the claim that most easily passes for the
-wrong reason — so it carries both halves of a vacuity guard: a positive control
-proving the walk FAILS on a document that does expose a slot, and a pin on the
-two schemas the ticket changed proving the walk read its actual subject.
+Two claims held as ONE EQUALITY, because they are the same fact read in two
+directions: no schema exposes a physical slot except the rate's three, and those
+three expose all ten of them under the column names.
+
+⚠ **IT STARTED AS A PURE ABSENCE AND IS NOT ONE ANY MORE (#366).** Ticket 20's
+version asserted that nothing published a slot beyond a declared residue of
+eighteen `dim<n>` pairs it could not remove. Ruling 15 decided that residue the
+other way: a rate's selectors ARE its columns, so the rate schemas keep them,
+take the column names, and gain the four slots that had no published property at
+all. What remains an absence is everything else — a posting's grouping values,
+an analytics row, a change body — and that half still carries both halves of a
+vacuity guard: a positive control proving the walk FAILS on a document that does
+expose a slot, and a pin on the two schemas ticket 20 changed proving the walk
+read its actual subject.
 
 **The positive half of the ticket is not here.** That a posting's grouping
 values arrive keyed by the tenant's own declared key is proved end to end in
@@ -24,7 +34,9 @@ import re
 
 from django.test import TestCase
 
+from api.v1 import schemas
 from api.v1.openapi_export import COMMITTED_SPEC_PATH as COMMITTED
+from apps.platform.grouping_fields.models import SLOTS
 
 #: A property NAMED for a physical slot, in either spelling one has ever had.
 #: `dim<n>` was the column name until #276 renamed the columns and deliberately
@@ -37,28 +49,46 @@ from api.v1.openapi_export import COMMITTED_SPEC_PATH as COMMITTED
 #: the physical slot is legitimately the subject.
 SLOT_NAMED = re.compile(r"(dim|grouping_field_)\d+")
 
-#: The published slot properties this ticket does NOT remove, and who does.
+#: WHERE A PHYSICAL SLOT IS PUBLISHED ON PURPOSE — the rate's selector list, and
+#: nothing else.
 #:
-#: The rate's selector list reaches the contract as six `dim<n>` properties.
-#: Ticket 20's body is about a posting and says nothing about a rate, but its
-#: acceptance criteria are worded wider — "no physical slot field is exposed on
-#: any public schema" — so the scope is a real question rather than an oversight,
-#: and #276 left it open in `schemas.py` for whoever got here first.
+#: ⚠ **THIS SET CHANGED CHARACTER WITH #366 AND IT IS NOT A DEBT ANY MORE.** It
+#: was eighteen pairs of `dim<n>` on three schemas: six published names sitting
+#: over six differently-named columns, held here as a residue that only ever
+#: shrank because #276 had renamed the columns and deliberately renamed no
+#: published property. Ticket 20 (#277) read its own acceptance criteria wider
+#: ("no physical slot field is exposed on any public schema") and left the
+#: question open; **#193 §L decided it** — "the rate entity, the rate book, the
+#: card-type discriminator, **the rate selector list**, specificity ranking, and
+#: the tenant markup" are slice 4's, listed there expressly "so that no ticket
+#: quietly widens".
 #:
-#: **#193 §L answers it.** "The rate entity, the rate book, the card-type
-#: discriminator, **the rate selector list**, specificity ranking, and the tenant
-#: markup" are slice 4's, listed there expressly "so that no ticket quietly
-#: widens". Slice 4 rebuilds these three schemas; converting them here would be
-#: the same work twice and a second breaking change on the same six properties.
+#: Slice 4 took it, and the answer was NOT to remove the properties. **A rate's
+#: selectors are ITS COLUMNS, and there are ten of them.** The three schemas now
+#: publish `grouping_field_1`..`grouping_field_10` under the column names, so the
+#: count goes UP — eighteen to thirty — while the thing this file was written to
+#: refuse goes away entirely: there is no longer a second spelling for a slot,
+#: and the join dictionary that translated one into the other is deleted.
 #:
-#: THIS SET ONLY EVER SHRINKS, and it is not a suppression list — it is the
-#: exact residue. `test_every_exemption_is_still_a_real_exposure` fails if an
-#: entry stops describing a real exposure, on the same principle as the
-#: migration ledger's `found:` counts being true in both directions.
-SLICE_4_RATE_SELECTORS = frozenset(
-    (schema, f"dim{i}")
+#: **WHY THAT IS NOT THE DEFECT THE POSTING SIDE HAS.** A posting's grouping
+#: values are the TENANT'S facts, keyed by the tenant's own declared key, so a
+#: physical slot on that surface leaks UBB's internal identity for a binding the
+#: tenant knows by another name — and re-binding a key would silently change
+#: what a published field meant. A rate's selector list is the RULE'S own shape:
+#: a rule is pinned on the columns it is pinned on, `Rate.SELECTORS` is exactly
+#: those columns, and a body naming them says precisely which rule it addresses.
+#: The tenant-key spelling exists too, on the publish act (#358's
+#: `grouping_fields` object), and it is the one to reach for. These three are the
+#: immediate routes, and they speak the table's vocabulary.
+#:
+#: THE SET IS AN EQUALITY IN BOTH DIRECTIONS. Larger means a slot property was
+#: published somewhere nobody decided it should be; smaller means this file
+#: claims an exposure the contract does not have, which is the migration
+#: ledger's `found:` rule applied to a set.
+RATE_SELECTOR_PROPERTIES = frozenset(
+    (schema, slot)
     for schema in ("RateIn", "RateChangeIn", "RateOut")
-    for i in range(1, 7)
+    for slot in SLOTS
 )
 
 
@@ -97,17 +127,77 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         super().setUpClass()
         cls.document = json.loads(COMMITTED.read_text(encoding="utf-8"))
 
-    def test_no_physical_slot_field_is_exposed_beyond_the_declared_residue(self):
-        """Equality, so the residue is exact in BOTH directions.
+    def test_no_physical_slot_field_is_exposed_beyond_the_rate_selector_list(self):
+        """Equality, so the set is exact in BOTH directions.
 
-        A superset means a slot property was published — the thing this ticket
-        removed. A subset means a declared exemption no longer describes a real
-        exposure, which overstates the debt; the ledger's rule for that is to
-        delete the entry rather than let it stand, so slice 4 cannot half-pay
-        this and leave the set claiming the whole of it.
+        A superset means a slot property reached a schema nobody decided should
+        carry one — the thing this file was written to catch. A subset means the
+        set claims an exposure the contract does not have, which is the same
+        defect as a ledger entry recording more files than the tree holds.
+
+        ⚠ **THIRTY, NOT EIGHTEEN, AND THE RISE IS THE POINT (#366).** Reading a
+        growth here as a regression would be reading the count instead of the
+        claim: twelve of these pairs are the four slots that had NO published
+        property at all, and their absence is what made a rule pinned on the
+        seventh slot unreachable through the API.
         """
         self.assertEqual(_slot_named_properties(self.document),
-                         set(SLICE_4_RATE_SELECTORS))
+                         set(RATE_SELECTOR_PROPERTIES))
+
+    def test_the_rate_schemas_name_the_columns_and_no_second_spelling(self):
+        """The rename half, which the equality above cannot separate out.
+
+        `SLOT_NAMED` matches BOTH spellings a slot has ever had, so the set
+        above would be satisfied by thirty `dim<n>` properties just as happily
+        as by thirty column names — and the whole of ruling 15's second half is
+        that the published property IS the column. Asserted positively on the
+        three schemas, and negatively over the whole document so no other schema
+        can quietly reintroduce the retired spelling.
+        """
+        published = _slot_named_properties(self.document)
+        for schema, prop in published:
+            with self.subTest(schema=schema, property=prop):
+                self.assertIn(prop, SLOTS)
+        for schema in ("RateIn", "RateChangeIn", "RateOut"):
+            properties = self.document["components"]["schemas"][schema]["properties"]
+            self.assertEqual({p for p in properties if SLOT_NAMED.fullmatch(p)},
+                             set(SLOTS), schema)
+
+    def test_nothing_maps_a_published_name_to_a_column(self):
+        """The join dictionary is DELETED rather than widened (#366).
+
+        Widening it to ten would have coined four more published properties
+        under the spelling this slice retires, and left a translation step
+        between a reprice body and `Rate.SELECTORS` that could rename a slot
+        into the wrong one. The properties take the column names, so there is
+        nothing to join — and an absence needs asserting, because the module
+        would import perfectly well with the dict quietly restored.
+
+        Read off the MODULE rather than by trying an import: `assertRaises(
+        ImportError)` around one name proves nothing about a differently-named
+        map doing the same job. This asks the stronger question — does anything
+        at `api.v1.schemas`'s top level map a published property name onto a
+        column name — and it catches such a map under ANY name.
+
+        ⚠ **THE SCOPE IS THE MODULE, NOT THE TREE, AND SAYING SO IS THE POINT.**
+        A dict built inside a function body, or one that reappeared in
+        `metering_endpoints.py`, is outside this walk. That is not a hole left
+        open: the dict was a module constant here and this is where a
+        reintroduction would go, while a translation reintroduced anywhere at
+        all is caught behaviourally instead — the equality above pins what the
+        three schemas publish, and
+        `api/v1/tests/test_a_rate_on_any_slot_can_be_repriced.py` fails if a
+        body key reaches the wrong column, which is the only damage such a map
+        can actually do.
+        """
+        maps = {
+            name: value for name, value in vars(schemas).items()
+            if isinstance(value, dict)
+            and any(isinstance(k, str) and isinstance(v, str)
+                    and k != v and SLOT_NAMED.fullmatch(v)
+                    for k, v in value.items())
+        }
+        self.assertEqual(maps, {})
 
     def test_the_two_posting_schemas_publish_the_object_instead(self):
         """The vacuity guard, half one: the walk read its subject.

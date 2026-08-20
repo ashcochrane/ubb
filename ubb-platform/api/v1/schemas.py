@@ -7,9 +7,11 @@ from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
-from apps.platform.grouping_fields.models import SLOT_CHOICES, SLOT_MAX_LENGTH
+from apps.platform.grouping_fields.models import (
+    SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
+from core.vocabulary import RATE_STRUCTURE_PER_UNIT
 
 #: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
 #:
@@ -416,6 +418,32 @@ NotApplicableReason = Annotated[
 #: restating either here would be a second copy no gate reads.
 PricingMethod = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_method"})]
+
+#: WHICH ARITHMETIC A RULE RUNS (#366, #151 §13.2). `closed` — UBB owns both
+#: values — so the export writes a real `enum` here and this file spells
+#: neither of them.
+#:
+#: NOT THE SAME FACT AS `PricingMethod` ABOVE, and the two used to sit one
+#: character apart on the model, which is the collision ADR-0006 §3 names as its
+#: own worked example. HOW A PRICE IS DERIVED (a margin over what the call cost,
+#: or a price of its own) versus HOW THE ARITHMETIC RUNS (so much per unit of
+#: quantity, or a component that applies once regardless). A schema carrying one
+#: says nothing about the other.
+#:
+#: **IT IS NON-NULL ON `RateIn` AND `RateOut` AND NULLABLE ON `RateChangeIn`**,
+#: and that is the difference between opening a rule and repricing one rather
+#: than an inconsistency: every rule HAS a shape, so a row always answers with
+#: one, while a reprice states only what moves and null there means *carry the
+#: superseded rule's over*. `Optional[RateStructure]` renders `anyOf: [string,
+#: null]` with the marker inside the STRING MEMBER — the rule
+#: `UnresolvedReason` argues in full, and the trap this slice was warned about
+#: by name.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+RateStructure = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "rate_structure"})]
 
 
 class RecordUsageResponse(Schema):
@@ -1345,19 +1373,28 @@ class PostpaidConfigOut(Schema):
 
 class RateIn(Schema):
     """A single Rate added under a book. card_type and currency are inherited
-    from the book, so they are NOT accepted here (the book owns them)."""
+    from the book, so they are NOT accepted here (the book owns them).
+
+    The rule is pinned by the quantity it prices plus its selectors: the four
+    reserved axes and **all ten** grouping slots. An omitted selector means the
+    rule leaves it unpinned, which is what an empty selector means everywhere on
+    this surface."""
     measurement_key: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
     event_type: str = Field(default="", max_length=100)
     task_type: str = Field(default="", max_length=64)
     subtask_type: str = Field(default="", max_length=64)
-    dim1: str = Field(default="", max_length=100)
-    dim2: str = Field(default="", max_length=100)
-    dim3: str = Field(default="", max_length=100)
-    dim4: str = Field(default="", max_length=100)
-    dim5: str = Field(default="", max_length=100)
-    dim6: str = Field(default="", max_length=100)
-    pricing_model: str = "per_unit"
+    grouping_field_1: str = Field(default="", max_length=100)
+    grouping_field_2: str = Field(default="", max_length=100)
+    grouping_field_3: str = Field(default="", max_length=100)
+    grouping_field_4: str = Field(default="", max_length=100)
+    grouping_field_5: str = Field(default="", max_length=100)
+    grouping_field_6: str = Field(default="", max_length=100)
+    grouping_field_7: str = Field(default="", max_length=100)
+    grouping_field_8: str = Field(default="", max_length=100)
+    grouping_field_9: str = Field(default="", max_length=100)
+    grouping_field_10: str = Field(default="", max_length=100)
+    rate_structure: RateStructure = RATE_STRUCTURE_PER_UNIT
     rate_per_unit_micros: int = Field(default=0, ge=0)
     unit_quantity: int = Field(default=1_000_000, gt=0)
     fixed_micros: int = Field(default=0, ge=0)
@@ -1400,27 +1437,33 @@ def book_out(b):
 
 
 class RateChangeIn(Schema):
-    """One reprice in a publish. Match keys (measurement_key plus the ten
-    selectors below — provider/event_type/task_type/subtask_type/dim1..dim6)
-    locate the active rate; the remaining (nullable) fields, when present,
-    override it in the new version.
+    """One reprice in a publish. Match keys (measurement_key plus the fourteen
+    selectors below — provider/event_type/task_type/subtask_type and the ten
+    grouping-field slots) locate the active rate; the remaining (nullable)
+    fields, when present, override it in the new version.
 
-    These ten are not the whole selector set a rate can pin. A rate may also be
-    pinned on four further grouping-field slots that this body cannot name, and
-    such a rate cannot be matched here — a publish naming it fails to find an
-    active rate. Reaching them is not yet possible through the API."""
+    **These are the whole selector set a rate can pin.** A rate is pinned on the
+    four reserved axes and on any of the ten grouping slots, and every one of
+    them can be stated here — so a rule pinned on any slot is reachable. A
+    selector left empty matches a rule that leaves that slot unpinned, which is
+    what an empty selector means everywhere on this surface, so omitting one is
+    a statement about the rule rather than a gap in the body."""
     measurement_key: str
     provider: str = ""
     event_type: str = ""
     task_type: str = ""
     subtask_type: str = ""
-    dim1: str = ""
-    dim2: str = ""
-    dim3: str = ""
-    dim4: str = ""
-    dim5: str = ""
-    dim6: str = ""
-    pricing_model: Optional[str] = None
+    grouping_field_1: str = ""
+    grouping_field_2: str = ""
+    grouping_field_3: str = ""
+    grouping_field_4: str = ""
+    grouping_field_5: str = ""
+    grouping_field_6: str = ""
+    grouping_field_7: str = ""
+    grouping_field_8: str = ""
+    grouping_field_9: str = ""
+    grouping_field_10: str = ""
+    rate_structure: Optional[RateStructure] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
@@ -1444,13 +1487,17 @@ class RateOut(Schema):
     event_type: str
     task_type: str
     subtask_type: str
-    dim1: str
-    dim2: str
-    dim3: str
-    dim4: str
-    dim5: str
-    dim6: str
-    pricing_model: str
+    grouping_field_1: str
+    grouping_field_2: str
+    grouping_field_3: str
+    grouping_field_4: str
+    grouping_field_5: str
+    grouping_field_6: str
+    grouping_field_7: str
+    grouping_field_8: str
+    grouping_field_9: str
+    grouping_field_10: str
+    rate_structure: RateStructure
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
@@ -1459,60 +1506,50 @@ class RateOut(Schema):
     valid_to: Optional[str] = None
 
 
-#: THE WHOLE OF THE PROPERTY/COLUMN MISMATCH, IN ONE PLACE.
+#: THE PROPERTY/COLUMN MISMATCH IS GONE, AND THE JOIN THAT HELD IT WENT WITH IT
+#: (#366, ruling 15).
 #:
 #: #276 renamed the rate's slot columns to the canonical noun and deliberately
 #: renamed no published property — its acceptance criteria forbid it. So six
-#: published names now sit over six differently-named columns, and this dict is
-#: the join.
+#: published `dim<n>` names sat over six differently-named columns, and a
+#: dictionary here joined them. **`SLOT_PROPERTY_COLUMNS` is DELETED rather than
+#: widened to ten**: widening it would have coined four new published properties
+#: under a spelling this slice retires, and the properties take the COLUMN names
+#: instead, so there is nothing left for a join to state.
 #:
-#: **WHO CLOSES THIS IS SETTLED, AND IT IS SLICE 4.** #276 left the question
+#: **WHO CLOSED IT WAS SETTLED, AND IT WAS SLICE 4.** #276 left the question
 #: open here; ticket 20 (#277) answered it and did not take it. Its body is
 #: about a posting's grouping values and says nothing about a rate, while its
 #: acceptance criteria are worded wider ("no physical slot field is exposed on
-#: any public schema") — so the two readings really do differ, and **#193 §L
-#: decides between them**: "the rate entity, the rate book, the card-type
+#: any public schema") — so the two readings really did differ, and **#193 §L
+#: decided between them**: "the rate entity, the rate book, the card-type
 #: discriminator, **the rate selector list**, specificity ranking, and the
 #: tenant markup" belong to slice 4, listed there expressly "so that no ticket
 #: quietly widens". Slice 4 rebuilds all three of these schemas, so converting
 #: them in #277 would have been the same work twice and a second breaking change
 #: on the same six properties.
 #:
+#: ⚠ **THE SIX-OF-TEN GAP WAS FUNCTIONAL, NOT COSMETIC.** A rate can pin ten
+#: slots; these three schemas named six. A reprice body left the other four at
+#: "", which is exactly what matches a rate that leaves them UNPINNED — so a
+#: rule pinned on the seventh slot could be written server-side and then matched
+#: by no publish body at all. It is not a spelling difference that closes here
+#: but that unreachability: all ten are stated, and
+#: `api/v1/tests/test_a_rate_on_any_slot_can_be_repriced.py` reprices one
+#: end to end.
+#:
 #: The residue is not left to memory. `api/v1/tests/
-#: test_grouping_values_on_the_contract.py` walks every published schema, allows
-#: exactly these eighteen (schema, property) pairs, and fails if the set ever
-#: overstates what the contract actually publishes — so slice 4 cannot half-pay
-#: it, and nothing else can quietly join it.
+#: test_grouping_values_on_the_contract.py` walks every published schema, holds
+#: the (schema, property) pairs as an EQUALITY, and fails if the set ever
+#: overstates or understates what the contract actually publishes.
 #:
-#: The join below is DELETED rather than edited: once the properties
-#: carry the column names there is nothing left to state. What must not happen
-#: is someone widening this dict to ten, which would coin four new published
-#: properties under a spelling both candidates are about to retire.
-#:
-#: Six, not ten. A rate can hold ten slots and the three schemas above can name
-#: six, so through THOSE bodies the other four are unreachable — a reprice body
-#: leaves them at "", which matches a rate that leaves them unpinned.
-#:
-#: ⚠ **THAT IS NO LONGER A STATEMENT ABOUT THE API (#358).** A rule pinned on
-#: slot seven used to be writable server-side and repriceable through no route
-#: at all. It is reachable now, through the act that replaces those three: a
+#: ⚠ **THE SAME FACT IS REACHABLE TWO WAYS AND THAT IS DELIBERATE (#358).** A
 #: publish's change body carries `grouping_fields` keyed by what the TENANT
-#: declared, and the registry resolves the key to whichever slot it is bound
-#: to. What survives is this join and the three schemas it serves, and they
-#: leave with the ticket that converts them.
-SLOT_PROPERTY_COLUMNS = {f"dim{i}": f"grouping_field_{i}" for i in range(1, 7)}
-
-
-def rate_change_body(change: dict) -> dict:
-    """One reprice body with its slot properties renamed to the columns.
-
-    `BookService.publish` matches an active rate on `Rate.SELECTORS`, which are
-    column names. Handing it the request body untranslated would match every
-    slot against "" and silently reprice the wrong rate — or, more often, fail
-    to find one at all and abort the publish.
-    """
-    return {SLOT_PROPERTY_COLUMNS.get(name, name): value
-            for name, value in change.items()}
+#: declared, and the registry resolves the key to whichever slot it is bound to;
+#: these three name the slot directly. The first is the shape a tenant should
+#: reach for — it survives a slot being rebound — and the second is what the
+#: three immediate routes have always spoken. They agree on which rule they
+#: address because both end at the same columns.
 
 
 def rate_out(r):
@@ -1527,9 +1564,13 @@ def rate_out(r):
         "event_type": r.event_type,
         "task_type": r.task_type,
         "subtask_type": r.subtask_type,
-        **{name: getattr(r, column)
-           for name, column in SLOT_PROPERTY_COLUMNS.items()},
-        "pricing_model": r.pricing_model,
+        # Ten slots under their own column names, walked off the ROW's own
+        # selector list rather than off a map: a slot the model gains and this
+        # schema does not name would then be a `KeyError` a reader can act on,
+        # where a map walk would drop it silently (#361's lesson, one schema
+        # over).
+        **{slot: getattr(r, slot) for slot in SLOTS},
+        "rate_structure": r.rate_structure,
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
         "fixed_micros": r.fixed_micros,
@@ -1544,16 +1585,23 @@ def rate_out(r):
 # One act replacing three, so a book has one mutation surface and a tenant has
 # one thing to read: *your book changes on 1 August; here is the diff*.
 #
-# ⚠ **THESE SCHEMAS NAME NO PHYSICAL SLOT, AND THAT IS DELIBERATE RATHER THAN
-# INCIDENTAL.** The three schemas above publish the rate's selector list as six
-# `dim<n>` properties, which is a debt `api/v1/tests/
-# test_grouping_values_on_the_contract.py` holds as an EXACT residue that only
-# ever shrinks. Reusing that spelling here would have coined six more published
-# properties under a name this slice is retiring, and left the ticket that
-# converts those three schemas with a fourth to convert. So a change body names
-# its grouping fields the way a recording call already does — by the tenant's
-# own declared key, in an object — which reaches all TEN slots rather than six
-# and is the shape the converted schemas will have anyway.
+# ⚠ **THESE SCHEMAS NAME NO PHYSICAL SLOT, AND THAT IS STILL DELIBERATE — BUT
+# NOT FOR THE REASON IT WAS (#366).** #358 kept the slot spelling off this act
+# because the three schemas above published the rate's selector list as six
+# `dim<n>` properties under a name slice 4 was retiring, and reusing it here
+# would have coined six more for the converting ticket to convert. That ticket
+# has landed: those three publish all TEN slots now, under the COLUMN names, and
+# the join dictionary between the two spellings is gone.
+#
+# **SO THE TWO SHAPES ARE BOTH LIVE AND THEY ARE NOT REDUNDANT.** A change body
+# names its grouping fields the way a recording call does — by the tenant's own
+# declared key, in an object — and the three above name the slot directly. The
+# key-keyed form is the one to reach for, because a key rebound to another slot
+# takes its rules with it while a body naming the slot silently starts
+# addressing something else; the slot-named form is what the three immediate
+# routes have always spoken, and it is how a rule with no declared key for a
+# slot is addressable at all. Both end at the same columns, so they cannot
+# disagree about which rule they mean.
 
 
 class BookChangeIn(Schema):
@@ -1573,21 +1621,15 @@ class BookChangeIn(Schema):
     unpinned, which is what an unpinned selector means everywhere on this
     surface, so a change body names only what the rule pins.
 
-    The three terms and the method are nullable because a reprice states only
-    what moves: anything unstated is carried over from the rule being
-    superseded. An `add` takes the model's own defaults for what it leaves out,
-    and a `retire` states none of them at all — it opens no rule.
+    The three terms, the method and the arithmetic shape are nullable because a
+    reprice states only what moves: anything unstated is carried over from the
+    rule being superseded. An `add` takes the model's own defaults for what it
+    leaves out, and a `retire` states none of them at all — it opens no rule.
 
-    ⚠ **A RULE'S ARITHMETIC SHAPE IS NOT STATED HERE AND A PUBLISH CANNOT MOVE
-    IT.** Whether an amount is per-unit or a fixed component is carried over
-    from the rule being superseded, and an added rule takes the default. The
-    column's name is retired and its ledger entry caps how many files may still
-    spell it, so putting it on this schema would coin the retired spelling on a
-    brand-new surface for the ticket that renames it to convert — and putting
-    the canonical spelling here would publish a field whose values are still the
-    retired ones. Both belong to the commit that converts the column, its values
-    and the three rate schemas above together. The immediate reprice route this
-    act replaces still states the shape and is untouched.
+    `rate_structure` says which arithmetic the rule runs: an amount per unit of
+    quantity, or a component that applies once regardless of quantity. It is a
+    different fact from `pricing_method`, which says how the price is DERIVED,
+    and a change may move either without the other.
     """
     kind: str
     measurement_key: str = Field(min_length=1, max_length=100)
@@ -1611,6 +1653,22 @@ class BookChangeIn(Schema):
     #: customer's typical cost and enter a number that approximates it — a
     #: price computed outside UBB, going stale the moment the supplier moves.
     pricing_method: Optional[PricingMethod] = None
+    #: WHICH ARITHMETIC THE RULE RUNS — per unit of quantity, or once
+    #: regardless (#366, #151 §13.2).
+    #:
+    #: ⚠ It arrives one ticket after everything beside it, and the reason was
+    #: never a product decision: the column's name was retired until this
+    #: commit, and coining either spelling on a new schema would have broken a
+    #: ledger ceiling or published a field whose values were still the retired
+    #: ones. #358 recorded the deferral by naming the commit that could clear
+    #: both at once. Until it landed, the only way to move a rule's arithmetic
+    #: shape was the immediate reprice route this act replaces.
+    #:
+    #: Nullable for the same reason as the terms beside it — a reprice states
+    #: what moves — and NOT for the method's reason: null here is not a value
+    #: the rule can end up carrying. Every rule has a shape, so an `add` that
+    #: omits this takes the column's default rather than a null.
+    rate_structure: Optional[RateStructure] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
@@ -1644,25 +1702,31 @@ class BookPublishIn(Schema):
 
 
 class RuleTermsOut(Schema):
-    """What a rule charges and how it derives it — everything a change may move.
+    """What a rule charges, how it derives it, and which arithmetic it runs.
 
-    ⚠ The arithmetic shape is deliberately absent, for the reason `BookChangeIn`
-    gives: a publish cannot move it. A reader comparing a `before` with an
-    `after` therefore sees all three terms and is not told which one the rule
-    actually charges on — `GET .../rates` answers that, and this row is a
-    statement about what a change does rather than a restatement of the rule.
-
-    **THE METHOD IS HERE BECAUSE A CHANGE CAN MOVE IT (#361).** A customer
-    override replaces a whole rule including its method, so the diff a tenant
-    reads before committing to it has to show the method changing — otherwise
-    the one part of a negotiated deal that changes its shape is the one part
-    that is invisible until after it lands.
+    Everything a change may move, so a `before` and an `after` side by side are
+    a complete account of what a publish does to a rule. `rate_structure`
+    decides which of the money terms is actually spent, so a rule going from a
+    per-unit charge to a fixed component would read as *"nothing moved"* from
+    the terms alone.
     """
+    # ⚠ WHY THE LAST TWO FIELDS ARRIVED LATE, in a COMMENT rather than the
+    # docstring above: a `Schema`'s docstring is exported verbatim into
+    # `openapi/v1.json` and the generated SDK, and this repository's slice
+    # history is not something a caller needs. The method joined in #361,
+    # because a customer override replaces a whole rule INCLUDING its method
+    # and a diff that hid the change would hide the one part of a negotiated
+    # deal that changes shape. The arithmetic shape joined in #366 for the same
+    # reason one ticket later — it was absent only while a publish could not
+    # move it, which was a retired column name rather than a decision.
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
     #: Null where the rule derives no price of its own — see `BookChangeIn`.
     pricing_method: Optional[PricingMethod] = None
+    #: Never null: every rule has an arithmetic shape, and this row is a rule's
+    #: terms rather than a statement of what a body said.
+    rate_structure: RateStructure
 
 
 def rule_terms_out(terms):
@@ -1684,6 +1748,7 @@ def rule_terms_out(terms):
         "unit_quantity": terms["unit_quantity"],
         "fixed_micros": terms["fixed_micros"],
         "pricing_method": terms["pricing_method"],
+        "rate_structure": terms["rate_structure"],
     }
 
 
@@ -1890,6 +1955,19 @@ class CustomerOverrideIn(Schema):
     subtask_type: str = Field(default="", max_length=64)
     grouping_fields: dict[str, str] = {}
     pricing_method: Optional[PricingMethod] = None
+    #: WHICH ARITHMETIC THE OVERRIDE RUNS (#366). It joins because "every field
+    #: a rule has is stated here" is a claim this body makes about itself, and
+    #: a whole-rule replacement that could not state the shape would be exactly
+    #: the partial override the paragraph above says is inexpressible: the terms
+    #: would come from the negotiated deal and the shape from whatever the
+    #: model's default happens to be. `BookChangeIn`'s own note records why it
+    #: could not arrive until the column was renamed.
+    #:
+    #: The agreement is not left to a reader —
+    #: `api/v1/tests/test_a_customer_override_is_declared_and_withdrawn.py`
+    #: asserts this field set EQUALS a change body's, minus the act, plus the
+    #: instant. It is the test that found this omission.
+    rate_structure: Optional[RateStructure] = None
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
@@ -1913,6 +1991,14 @@ class InheritedPricingRule(Schema):
     subtask_type: str
     grouping_fields: dict[str, str] = {}
     pricing_method: Optional[PricingMethod] = None
+    #: Never null: this is a rule, and every rule has an arithmetic shape. It
+    #: joins with #366 because the override body it seeds now states one, and a
+    #: starting point missing a field the destination requires makes "copy
+    #: rather than translate" false for exactly the field a client is least
+    #: likely to notice — a per-unit rule copied into a body that omits the
+    #: shape takes the model's default, which happens to agree, while a fixed
+    #: component copied the same way silently becomes a per-unit charge.
+    rate_structure: RateStructure
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
@@ -1963,6 +2049,7 @@ def inherited_rule_out(rule, selectors, keys):
                             for slot, value in selectors.items()
                             if slot not in reserved and value},
         "pricing_method": rule.pricing_method,
+        "rate_structure": rule.rate_structure,
         "rate_per_unit_micros": rule.rate_per_unit_micros,
         "unit_quantity": rule.unit_quantity,
         "fixed_micros": rule.fixed_micros,

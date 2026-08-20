@@ -67,12 +67,12 @@ def test_publish_preserves_lineage_across_reprice():
                                    currency="usd", key="gemini", is_default=True, version=1)
     r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
                             measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                            pricing_model="per_unit", rate_per_unit_micros=10,
+                            rate_structure="per_unit", rate_per_unit_micros=10,
                             rate_card=book, book_version_from=1)
     old_lineage = r.lineage_id
     BookService.publish(book, changes=[{
         "measurement_key": "input_tokens", "provider": "gemini", "event_type": "",
-        "pricing_model": "per_unit",
+        "rate_structure": "per_unit",
         "rate_per_unit_micros": 12}])
     new = Rate.objects.get(rate_card=book, valid_to__isnull=True)
     assert new.lineage_id == old_lineage  # price-history linkage intact

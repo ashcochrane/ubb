@@ -224,7 +224,20 @@ export const COSTING_METHODS = COSTING_METHOD_VALUES;
 export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 
 export const cardTypeLabel = legacyLabelMap({ cost: "Cost card", price: "Price card" });
-export const pricingModelLabel = legacyLabelMap({ per_unit: "Per unit", flat: "Flat" });
+// ⚠ THE VALUES MOVED IN #366 AND THE EXPORT NAME DELIBERATELY DID NOT.
+// The keys are the rate's ratified arithmetic shapes now, because this
+// feature both renders and SENDS them and a console still saying `flat`
+// would post a value the API refuses. The symbol keeps its old spelling
+// because `gates/migration-ledger.yaml`'s G6 entry addresses this map BY
+// EXPORT NAME, and the ledger's ratchet keys on that address — so renaming
+// it here reads as an entry ADDED and costs a seeding authorisation for a
+// symbol the ticket that pays the entry deletes outright. That ticket
+// replaces the whole thing with `labelMap(RATE_STRUCTURE_LABEL_KEYS)` off
+// the locale catalogue, which already carries this exact wording.
+export const pricingModelLabel = legacyLabelMap({
+  per_unit: "Per unit",
+  fixed_component: "Fixed component",
+});
 
 export const stopScopeLabel = legacyLabelMap({
   task: "Task",

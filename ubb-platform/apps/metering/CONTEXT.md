@@ -196,9 +196,16 @@ _Avoid_: "book"/"sheet"/"container" as the canonical name — it is `RateCard`.
 **card_type**:
 Whether a card derives provider cost (`cost`) or billed cost (`price`).
 
-**pricing_model**:
-The shape of a rate — `per_unit` or `flat`. (Tiered models — `graduated`/`package` — were deleted
-end to end by ADR-0003: the MVP launches without tiered pricing.)
+**rate_structure**:
+The arithmetic shape of a rate — `per_unit`, an amount for each unit of quantity, or
+`fixed_component`, an amount that applies once regardless of quantity. `Rate.compute` branches on
+it, so it is what decides which arithmetic produced an amount rather than a label beside one. Not to
+be confused with `pricing_method`, the column beside it, which says how a price is DERIVED (a margin
+over cost, or a price of its own); the two used to sit one character apart, which is the collision
+ADR-0006 §3 names. (Two values and not four: the tiered shapes were deleted end to end by ADR-0003,
+so the MVP launches without tiered pricing.)
+_Avoid_: any name ending in the framework's own noun — ADR-0006 §7, and the reason this column was
+renamed.
 
 **lineage_id**:
 The stable identity a Rate keeps across version supersessions, linking its whole price history.

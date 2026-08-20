@@ -186,10 +186,10 @@ class TestHistoricalPricing:
         t, c = _setup()
         now = timezone.now()
         v1 = rate_in_default_book(t, card_type="price", measurement_key="tok",
-            pricing_model="per_unit", rate_per_unit_micros=10, unit_quantity=1,
+            rate_structure="per_unit", rate_per_unit_micros=10, unit_quantity=1,
             valid_from=now - timedelta(days=40), valid_to=now - timedelta(days=10))
         v2 = rate_in_default_book(t, card_type="price", measurement_key="tok", lineage_id=v1.lineage_id,
-            pricing_model="per_unit", rate_per_unit_micros=50, unit_quantity=1,
+            rate_structure="per_unit", rate_per_unit_micros=50, unit_quantity=1,
             valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(

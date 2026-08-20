@@ -214,7 +214,18 @@ function RateRow({
 }) {
   const superseded = rate.valid_to != null;
   const dimensionEntries = (
-    ["dim1", "dim2", "dim3", "dim4", "dim5", "dim6"] as const
+    [
+      "grouping_field_1",
+      "grouping_field_2",
+      "grouping_field_3",
+      "grouping_field_4",
+      "grouping_field_5",
+      "grouping_field_6",
+      "grouping_field_7",
+      "grouping_field_8",
+      "grouping_field_9",
+      "grouping_field_10",
+    ] as const
   )
     .map((key) => [key, rate[key]] as const)
     .filter(([, value]) => value !== "");
@@ -243,9 +254,11 @@ function RateRow({
             )}
         </div>
       </TableCell>
-      <TableCell className="text-[12px]">{pricingModelLabel(rate.pricing_model)}</TableCell>
+      <TableCell className="text-[12px]">
+        {pricingModelLabel(rate.rate_structure)}
+      </TableCell>
       <TableCell className="text-[12px] whitespace-nowrap">
-        {rate.pricing_model === "flat"
+        {rate.rate_structure === "fixed_component"
           ? "—"
           : formatPrice(rate.rate_per_unit_micros, rate.unit_quantity, undefined, currency)}
       </TableCell>

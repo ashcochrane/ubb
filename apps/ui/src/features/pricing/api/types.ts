@@ -12,6 +12,20 @@ export type Rate = MeteringSchemas["RateOut"];
 export type RateIn = MeteringSchemas["RateIn"];
 export type PaginatedRates = MeteringSchemas["PaginatedRates"];
 
+/**
+ * Which arithmetic a rule runs — per unit of quantity, or once regardless.
+ *
+ * ⚠ RE-EXPORTED FROM THE REGISTRY RATHER THAN DERIVED FROM THE SCHEMA. The
+ * first draft wrote `Rate["rate_structure"]`, which is the same two members and
+ * is still the wrong source: `@/lib/vocabulary` is this console's declared
+ * consumer of the registry (`docs/conventions/coding-standards.md` §Vocabulary),
+ * and a type read off the generated contract makes the CONTRACT the authority
+ * on a value set the registry owns. It is re-exported here rather than imported
+ * at each use so this feature has one name for the concept, which is what the
+ * other aliases in this file are for.
+ */
+export type { RateStructure } from "@/lib/vocabulary";
+
 export type PublishIn = MeteringSchemas["PublishIn"];
 export type RateChangeIn = MeteringSchemas["RateChangeIn"];
 
