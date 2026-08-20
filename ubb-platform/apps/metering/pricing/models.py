@@ -522,10 +522,12 @@ class Rate(BaseModel):
         DERIVED, NEVER STORED (#326), which is the whole of what the conversion
         bought: the name is the declaration's, so a rate cannot hold a spelling
         the catalogue does not. It is still what the wire carries — `RateIn`,
-        `RateChangeIn` and `RateOut` all publish this key and none of them
-        moved — and still what the pricing receipt and the audit record write,
-        so the published surface of this entity is unchanged by the move
-        underneath it.
+        `RateChangeIn` and `RateOut` all publish this key, and THIS KEY has not
+        moved on any of them — and still what the pricing receipt and the audit
+        record write, so #326's conversion changed nothing a caller can see.
+        ⚠ Those three schemas HAVE since been reshaped around it (#366 took
+        their slot properties to the column names and renamed the arithmetic
+        shape); the claim here is about this property, not about the schemas.
 
         A deactivated rate answers with the name it was written with, off the
         column that preserved it. That is the point of preserving it: a rate
