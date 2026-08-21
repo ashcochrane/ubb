@@ -594,10 +594,16 @@ def test_every_seeded_table_entry_still_names_the_table_it_recorded():
     """An excuse covers the violation recorded, not whatever the site does next.
 
     `_excused` keys on the gate and the site, which is the ledger's own notion of
-    identity — and on its own that is too generous for G9. If `Rate` moved from
-    `ubb_rate_card` to a THIRD wrong table, the site would still be excused, the
-    gate would stay green, and the entry's `found:` would quietly become untrue.
-    So the recorded `found` is checked against the live table.
+    identity — and on its own that is too generous for G9. If a seeded model
+    moved from the table its entry records to a THIRD wrong one, the site would
+    still be excused, the gate would stay green, and the entry's `found:` would
+    quietly become untrue. So the recorded `found` is checked against the live
+    table.
+
+    ⚠ The worked example used to be `Rate`, and that entry is PAID (#367): the
+    rule sits on the table its own name asks for and the entry is deleted. What
+    the example described is still exactly what this test refuses — it is the
+    container's entry, and every other gate's, that it now guards.
 
     G11 and G12 need no equivalent: their sites end in the field name, so a
     field that changed its name changed its site, and the entry goes stale by

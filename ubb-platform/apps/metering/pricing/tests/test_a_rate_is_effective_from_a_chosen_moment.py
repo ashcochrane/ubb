@@ -693,6 +693,15 @@ class SliceFourInheritsConstrainedColumnsRatherThanAFlagTest(TestCase):
         A subset assertion would let slice 4 add a column to this mapping
         without anyone choosing its class. Equality makes that a deliberate edit
         here — and the gate then makes it a rule in the database.
+
+        ⚠ **SLICE 4 SCHEDULED THIS AS A TRIPWIRE FOR #367 AND IT CORRECTLY DID
+        NOT FIRE — RECORDED RATHER THAN LEFT SILENT.** That ticket renames the
+        table and deletes a column; it adds none, so the mapping is untouched
+        and there was no triple-set to move. The set is keyed on the MODEL name
+        rather than the table, so a rename cannot move it either. A tripwire
+        that does not fire is a prediction that was wrong about WHICH commit,
+        not a check that was skipped, and the next commit to add a term to this
+        table still meets it.
         """
         self.assertEqual(Rate.transition_classes,
                          {VALID_FROM: FROZEN, VALID_TO: SET_ONCE})

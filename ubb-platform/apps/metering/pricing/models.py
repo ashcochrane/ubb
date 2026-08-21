@@ -283,12 +283,13 @@ class Rate(BaseModel):
     # can declare and attribute but cannot PRICE on would be a grouping axis
     # that silently is not a rate selector, which is the split D3 exists to
     # close. All ten reach the published contract under THESE names since #366:
-    # `RateIn`, `RateChangeIn` and `RateOut` publish the column names, so the
-    # dictionary that used to join six published names to their columns is
-    # gone and there is no spelling left for the contract and the table to
-    # disagree about. All ten are also addressable by the tenant's declared KEY
-    # rather than by the slot (#358), on the act that replaces the three
-    # immediate mutation routes.
+    # `RateChangeIn` and `RateOut` publish the column names, so the dictionary
+    # that used to join six published names to their columns is gone and there
+    # is no spelling left for the contract and the table to disagree about. (A
+    # third schema published them until #367 deleted the immediate add-a-rule
+    # body with its route.) All ten are also addressable by the tenant's
+    # declared KEY rather than by the slot (#358), on the act that replaced
+    # those routes — which is now the only way a rule is opened or retired.
     grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_3 = models.CharField(max_length=100, blank=True, default="")

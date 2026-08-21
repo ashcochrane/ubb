@@ -43,18 +43,22 @@ version: 1
 entries:
   # --- G9: `db_table == canonical(model_name)` ------------------------------
   #
-  # The `Rate` / `RateCard` inversion — each model sitting on the other's
-  # table. #154 §6.2 records that it resolves BY CONSTRUCTION rather than by a
-  # rename: #138 splits `Rate` into supplier cost and pricing rules, #148
-  # replaces `RateCard` with the Pricing Book, and both tables are rebuilt
-  # regardless. The replacements take correct names instead of inheriting
-  # inverted legacy ones, which is why renaming them earlier would be work with
-  # no product (#155 §3.1).
+  # The `Rate` / `RateCard` inversion — two models, each sitting on the other's
+  # table. #154 §6.2 recorded that it would resolve BY CONSTRUCTION rather than
+  # by a rename: #138 splits the rule entity into supplier cost and pricing
+  # rules, #148 replaces the container with the Pricing Book, and both tables
+  # are rebuilt regardless — so renaming them earlier would be work with no
+  # product (#155 §3.1).
   #
-  # Owned by slice 4 rather than slice 3: `Rate` carries both halves of the
-  # split (`card_type ∈ {cost, price}`), so the model — and its table — can
-  # only go when the price half goes too. Slice 4 is where `Rate` stops
-  # existing.
+  # ⚠ **HALF OF THAT PREDICTION WAS WRONG, AND #367 IS WHERE IT WAS PAID
+  # INSTEAD.** The rule side resolved BY A RENAME after all: nothing rebuilt
+  # `Rate`, and the kind column it was supposed to be waiting on was DELETED
+  # rather than split, so there was no rebuild left to inherit a correct name
+  # from. A hand-written `AlterModelTable` carried the rows to `ubb_rate` and
+  # the entry went with the debt. What survives is the container's half, and
+  # for that the original reasoning still holds: ticket 21 does not rename it,
+  # it splits it into a Pricing Book and a cost book, and the name it takes
+  # then is the Pricing Book's rather than the one it lent out.
   - id: g9-rate-card-sits-on-the-container-table
     gate: G9
     site: ubb-platform/apps/metering/pricing/models.py::RateCard
@@ -914,14 +918,16 @@ entries:
       plural. Two more were comments describing identifiers #280 renamed.
 
       5 -> 4 in #367, which is slice 4 and not this entry's owner. The
-      dialog that added a rule immediately carried the plural in a
-      comment; the dialog is deleted with its route, so the file left the
-      tree and the entry would otherwise overstate. Paying a debt early
-      from another slice is allowed — an owner may move earlier, never
-      later — and the sweep refuses the alternative outright.
-      The five left are the genuine grouping axis: the committed schema
-      mirror, the analytics query parameter and its picker, the rate
-      identity message and the label module's own list.
+      occurrence that went is THE RATE IDENTITY MESSAGE named below — a
+      user-facing 409 string in the dialog that added a rule immediately,
+      not a comment — and it went because the dialog is deleted with its
+      route. Paying a debt early from another slice is allowed, an owner
+      may move earlier and never later, and the sweep refuses the
+      alternative outright: an entry may not record more files than the
+      tree holds.
+      The four left are the genuine grouping axis: the committed schema
+      mirror, the analytics query parameter and its picker, and the label
+      module's own list.
 
   - id: g7-console-markup.deleted
     gate: G7

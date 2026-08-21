@@ -64,7 +64,8 @@ AUDIT_ACTIONS = (
     # ADR-004 §2 governs.** A rename carries an act forward under a new
     # spelling and breaks a reader watching for the old one; these two have no
     # successor to carry forward, because nothing replaced them — the publish
-    # record's three names above were already here recording a different act.
+    # record's three names (`pricing_book_publish.*`, further down this tuple)
+    # were already here, recording a different act.
     #
     # **NO PART OF THE ONE-TIME PRE-PRODUCTION AUDIT-REGISTRY RESET IS SPENT ON
     # THEM.** #154 §4.2 defines that exception and #154 §13 / #155 §14 allocate

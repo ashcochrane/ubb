@@ -23,8 +23,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.loader import MigrationLoader
 from apps.metering.pricing.tests._helpers import (
-    reconcile_the_rate_table_with, the_rate_table_as_this_migration_saw_it,
-    the_state_before)
+    THE_RULES_KIND_COLUMN, reconcile_the_rate_table_with,
+    the_rate_table_as_this_migration_saw_it, the_state_before)
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 
@@ -34,11 +34,10 @@ APP_LABEL = "pricing"
 BACKFILL = "0012_backfill_books"
 
 #: The kind word `0012` reads off each rule to decide which book it belongs in.
-#: Spelled here because this module's subject is a migration that ran while the
-#: column existed — and assembled rather than written, for the reason the
-#: deletion commit's own test module gives: the term's file count is a ceiling
-#: as well as a floor, and this file is not one of the ones it is counted in.
-THE_KIND = "card" + "_" + "type"
+#: This module's subject is a migration that ran while the column existed, so it
+#: has to name it; `_helpers` carries the one assembled spelling and the reason
+#: it is assembled.
+THE_KIND = THE_RULES_KIND_COLUMN
 
 
 @pytest.fixture

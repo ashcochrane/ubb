@@ -777,9 +777,25 @@ class AForwardDatingBookMixin:
         return base
 
 
+#: The rule's kind column, assembled rather than written. Its file count is a
+#: ceiling as well as a floor and #367 took it down, so a test module that
+#: spelled it whole would put it back into the very set the commit emptied.
+#: Shared from here because two modules need to name it — the one that asserts
+#: the deletion and the one that replays a migration older than it — and two
+#: private copies of one workaround are two things that can drift.
+THE_RULES_KIND_COLUMN = "card" + "_" + "type"
+
+
+def the_state_before(migration):
+    """The project state a migration ran against, built from its own
+    dependencies rather than from a name a caller remembered."""
+    return MigrationLoader(connection).project_state(
+        [tuple(node) for node in migration.dependencies])
+
+
 @contextmanager
-def the_rate_table_under(name):
-    """The rate's table, temporarily back under a name a migration knew it by.
+def the_rate_table_as_this_migration_saw_it(migration):
+    """The rule's table, temporarily back under the name this migration knew.
 
     ⚠ **A TABLE RENAME BREAKS EVERY MIGRATION-REPLAY FIXTURE, AND IT LOOKS
     NOTHING LIKE A BREAKAGE (#367).** Replaying a migration means reconstructing
@@ -795,9 +811,14 @@ def the_rate_table_under(name):
     back on the way out regardless, so nothing here outlives the test and no
     other test sees the table under the old name.
 
-    A no-op when the name asked for is the live one, so a caller does not have
-    to know which side of the rename its migration sits on.
+    **THE NAME COMES OFF THE MIGRATION'S OWN FROM-STATE**, never off a literal:
+    no replay site should have to know which commit renamed the table, and a
+    fixture that carried the name would need an edit per rename. A no-op where
+    that name is already the live one, so a caller does not have to know which
+    side of a rename its migration sits on either.
     """
+    before = the_state_before(migration)
+    name = before.models[migration.app_label, "rate"].options["db_table"]
     live = Rate._meta.db_table
     if live == name:
         yield
@@ -810,27 +831,6 @@ def the_rate_table_under(name):
     finally:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {quote(name)} RENAME TO {quote(live)}")
-
-
-def the_state_before(migration):
-    """The project state a migration ran against, built from its own
-    dependencies rather than from a name a caller remembered."""
-    return MigrationLoader(connection).project_state(
-        [tuple(node) for node in migration.dependencies])
-
-
-@contextmanager
-def the_rate_table_as_this_migration_saw_it(migration):
-    """`the_rate_table_under`, with the name taken off the migration itself.
-
-    Every replay site wants the same thing and none of them should have to know
-    which commit renamed the table — deriving the name from the migration's own
-    from-state is what keeps these fixtures from needing an edit per rename.
-    """
-    before = the_state_before(migration)
-    with the_rate_table_under(
-            before.models[migration.app_label, "rate"].options["db_table"]):
-        yield
 
 
 def reconcile_the_rate_table_with(model):

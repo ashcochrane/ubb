@@ -410,16 +410,18 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/bil
 #
 # ⚠ A THIRD WRITE SURFACE GAINS THE PROPERTY IN THE SAME COMMIT AND IS NOT A
 # BREAK. `BookChangeIn` — the change a publish carries, and the act that
-# replaces the two routes below — could not state a rule's arithmetic shape at
-# all: #358 wanted it there and found that the retired spelling would break its
-# ledger ceiling on a brand-new schema while the canonical spelling would
-# publish a field whose values were still the retired ones. It named the commit
-# that clears both, which is this one. Adding an optional property is additive,
-# so it emits nothing; what it ends is a real hole, because until then the ONLY
-# way to move a rule's shape was the immediate reprice route.
+# replaces the immediate mutation routes — could not state a rule's arithmetic
+# shape at all: #358 wanted it there and found that the retired spelling would
+# break its ledger ceiling on a brand-new schema while the canonical spelling
+# would publish a field whose values were still the retired ones. It named the
+# commit that clears both, which is this one. Adding an optional property is
+# additive, so it emits nothing; what it ends is a real hole, because until
+# then the ONLY way to move a rule's shape was the immediate reprice route.
 #
-# ⚠ "THE TWO ROUTES BELOW" WAS TRUE FOR ONE COMMIT (#367). The immediate
-# add-a-rule route is deleted, so the line for its body goes with it and only
-# the publish body's line is left here. The immediate REPRICE survives until
-# #369; the act `BookChangeIn` replaces is now the two that are gone.
+# ⚠ THIS BLOCK HAD TWO LINES UNDER IT AND NOW HAS ONE (#367). The immediate
+# add-a-rule route is deleted, so the entry for its body went with it — a
+# removed route subsumes every property-level break on it, and the gate refuses
+# an entry that suppresses nothing. What is left is the publish body's. The
+# immediate REPRICE survives until #369; the two acts `BookChangeIn` has
+# actually replaced are the ones #367 deleted.
 POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/pricing_model`

@@ -792,3 +792,69 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
             ("POST", f"{book}/{{publish_id}}/publish"): (PUBLISHED,),
             ("DELETE", f"{book}/{{publish_id}}"): (DISCARDED,),
         })
+
+
+class EveryChangeToABookGoesThroughAPublishTest(TestCase):
+    """#367: no unversioned immediate mutation act is left on a book.
+
+    This module's own headline, finally true of the whole surface rather than
+    of the act it describes — which is why it lives here, beside the three
+    routes that replaced the ones #367 deleted, rather than with the deletion.
+
+    ⚠ **THE ASSERTION IS OVER THE ROUTES THAT COMMIT DID NOT WRITE.** Checking
+    that the two deleted routes are gone would be a claim about a diff; what
+    matters is the whole surface, and #361 already paid once for the difference
+    — three immediate routes each took a bare book id, and a claim made about
+    the two that declare a draft said nothing about them.
+
+    So this enumerates every mutating operation on the book's path family off
+    the live API and asserts each one either records a publish act or is the
+    atomic reprice, which DOES version the book. There is no third kind left.
+
+    ⚠ It walks the router through `mutating_operations`, which is the audit
+    sweep's own walker and public for exactly this second caller — a private
+    copy would be two searches agreeing with each other rather than evidence.
+    """
+
+    #: The one immediate act that survives, and why it is not the thing this
+    #: test refuses. It bumps the book's version and closes each superseded
+    #: rule at a boundary, so the change it makes is a versioned one; what it
+    #: is not is FORWARD-DATED. It leaves with the rest of this slice's
+    #: vocabulary (#369) and the customer's own book is already out of its
+    #: reach.
+    THE_VERSIONED_IMMEDIATE_ACT = "/metering/pricing/rate-cards/{book_id}/publish"
+
+    def _book_family(self):
+        from api.v1.tests.test_audit_sweep import mutating_operations
+
+        family = "/metering/pricing/rate-cards/{book_id}"
+        return [(method, path) for method, path, _ in mutating_operations()
+                if path == family or path.startswith(family + "/")]
+
+    def test_the_walker_still_sees_the_book_family(self):
+        self.assertTrue(self._book_family(),
+                        "no mutating route was found under the book's path, "
+                        "so every assertion below is vacuous")
+
+    def test_no_route_writes_a_rule_outside_a_publish(self):
+        """Every survivor names the publish record or is the versioned reprice.
+
+        A route that added or retired a rule directly would answer neither
+        description, which is what the two deletions in this commit removed.
+        """
+        stray = [(method, path) for method, path in self._book_family()
+                 if "publishes" not in path
+                 and path != self.THE_VERSIONED_IMMEDIATE_ACT]
+        self.assertEqual(stray, [])
+
+    def test_the_rules_collection_takes_no_mutating_method(self):
+        """Named separately because it is the one that changed.
+
+        `POST .../rates` and `DELETE .../rates/{rate_id}` were the immediate
+        add and retire. Both are gone, and the collection now answers reads
+        only — which is the sentence the acceptance criterion asks for, made
+        against the router rather than against the diff.
+        """
+        rules = [(method, path) for method, path in self._book_family()
+                 if "/rates" in path]
+        self.assertEqual(rules, [])

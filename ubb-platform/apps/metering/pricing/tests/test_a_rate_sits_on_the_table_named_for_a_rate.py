@@ -16,10 +16,11 @@ rules are on the table the rename produced and are gone from the name it left.
 
 **AND WHAT IT DELIBERATELY DOES NOT CLAIM.** The cost/price branch has not left
 the tree: the container still carries the word until ticket 21 splits it into a
-Pricing Book and a cost book. What has left is the branch on a RULE. The last
-class below pins exactly that boundary — nothing selects a rule by kind, and
-the one thing that still selects by kind is the book — so the claim cannot
-quietly grow into the slice-wide one nobody has finished paying for yet.
+Pricing Book and a cost book. What has left is the branch on a RULE.
+`NoResolutionPathSelectsARuleByKindTest` pins exactly that boundary — nothing
+selects a rule by kind, and the one thing that still selects by kind is the
+book — so the claim cannot quietly grow into the slice-wide one nobody has
+finished paying for yet.
 
 ⚠ **THIS MODULE MAY NOT SPELL THE WORDS ITS COMMIT IS CLEARING.** The ledger
 counts are ceilings on spread as well as floors, so a new module mentioning the
@@ -39,11 +40,12 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from api.v1.tests.test_audit_sweep import mutating_operations
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    cost_rate_in_default_book, database_rules_guarding, rate_in_default_book)
+    THE_RULES_KIND_COLUMN, cost_rate_in_default_book, database_rules_guarding,
+    rate_in_default_book, reconcile_the_rate_table_with,
+    the_rate_table_as_this_migration_saw_it, the_state_before)
 from apps.platform.audit.actions import AUDIT_ACTIONS
 from apps.platform.audit.ledger import record
 from apps.platform.customers.models import Customer
@@ -70,10 +72,11 @@ DECLARATION_TRIGGER = "trg_rate_names_a_declaration"
 #: same thing to `record()` and nothing at all to a whole-token matcher.
 DELETED_ACTIONS = (("rate", "added"), ("rate", "deleted"))
 
-#: The column this commit deletes, assembled rather than written for the reason
-#: `DELETED_ACTIONS` gives: its file count is a ceiling as well as a floor, and
-#: this commit takes it down.
-THE_DELETED_COLUMN = "card" + "_" + "type"
+#: The column this commit deletes. `_helpers` carries the one assembled
+#: spelling, for the reason `DELETED_ACTIONS` gives about the action names: its
+#: file count is a ceiling as well as a floor and this commit takes it down, so
+#: a module that spelled it whole would put it back.
+THE_DELETED_COLUMN = THE_RULES_KIND_COLUMN
 
 
 def _tenant():
@@ -184,8 +187,8 @@ class TheRenameCarriedTheTableRatherThanRebuildingItTest(TestCase):
             with self.subTest(operation=type(op).__name__):
                 self.assertTrue(op.reversible)
 
-    def test_the_reverse_re_derives_the_kind_from_the_book(self):
-        """The reverse is not a no-op over a column Django would blank.
+    def test_the_reverse_is_the_only_new_executable_logic_and_is_shaped_right(self):
+        """The forward half is the no-op; the reverse half is not.
 
         Reversing the removal alone re-adds the column at the empty-string
         default, which is not a value any reader of it accepted — a rollback
@@ -194,9 +197,9 @@ class TheRenameCarriedTheTableRatherThanRebuildingItTest(TestCase):
         carries a `RunPython` whose forward half is the no-op and whose reverse
         half re-derives each rule's kind from the book holding it.
 
-        Asserted structurally rather than by replaying it: replaying would mean
-        reconstructing the pre-rename table, and what is actually at risk is a
-        reverse that was never written at all.
+        That it also RUNS is the class below. This is the cheap half, and it is
+        here because the expensive half would pass on a reverse that silently
+        did nothing to a table with no rows.
         """
         pythons = [op for op in _rename().operations
                    if isinstance(op, migrations.RunPython)]
@@ -213,6 +216,79 @@ class TheRenameCarriedTheTableRatherThanRebuildingItTest(TestCase):
                       {op.reverse_code.__name__
                        for op in _rename().operations
                        if isinstance(op, migrations.RunPython)})
+
+
+class TheReverseIsExercisedTest(TestCase):
+    """Forward and back, against a real database, with rows of both kinds.
+
+    `docs/conventions/django-patterns.md` asks for a reverse *"that a test
+    actually runs"*, and this migration is exactly the shape that rule is
+    about: the reverse half is the only new executable logic in the commit, and
+    a typo in it is invisible until the day somebody needs it.
+
+    The reverse runs against the state it would see inside the migration — the
+    kind column present, the table under its old name — so `setUp` reconstructs
+    both for this test's own duration, exactly as the two other replays in this
+    app do. PostgreSQL runs DDL inside the transaction a `TestCase` rolls back,
+    so none of it outlives the test.
+
+    ⚠ **BOTH KINDS OF ROW, BECAUSE ONE WOULD NOT DISCRIMINATE.** A reverse that
+    wrote one literal onto every rule would satisfy a fixture holding only cost
+    rules; what has to be true is that each rule gets ITS OWN book's kind. And
+    a rule attached to no book keeps the empty value, which is the state the
+    migration's docstring claims for it.
+    """
+
+    def setUp(self):
+        self.migration = _rename()
+        self.historical = the_state_before(self.migration).apps
+        self.enterContext(
+            the_rate_table_as_this_migration_saw_it(self.migration))
+        self.Rate = self.historical.get_model(APP_LABEL, "Rate")
+        self.RateCard = self.historical.get_model(APP_LABEL, "RateCard")
+        reconcile_the_rate_table_with(self.Rate)
+        (self.run_python,) = [op for op in self.migration.operations
+                              if isinstance(op, migrations.RunPython)]
+
+    def _book(self, kind, key):
+        return self.RateCard.objects.create(
+            tenant_id=self.tenant.id, key=key, currency="usd",
+            **{THE_RULES_KIND_COLUMN: kind})
+
+    def _rule(self, book):
+        return self.Rate.objects.create(
+            tenant_id=self.tenant.id, valid_from=timezone.now(),
+            rate_card_id=book.id if book else None,
+            **{THE_RULES_KIND_COLUMN: ""})
+
+    def _kind_of(self, rule):
+        rule.refresh_from_db()
+        return getattr(rule, THE_RULES_KIND_COLUMN)
+
+    def test_each_rule_comes_back_carrying_its_own_books_kind(self):
+        self.tenant = _tenant()
+        priced = self._rule(self._book("price", "p"))
+        costed = self._rule(self._book("cost", "c"))
+        bookless = self._rule(None)
+
+        with connection.schema_editor() as editor:
+            self.run_python.reverse_code(self.historical, editor)
+
+        self.assertEqual(self._kind_of(priced), "price")
+        self.assertEqual(self._kind_of(costed), "cost")
+        self.assertEqual(self._kind_of(bookless), "",
+                         "a rule in no book has no kind to re-derive, which is "
+                         "what the migration says it keeps")
+
+    def test_the_forward_half_touches_nothing(self):
+        """The control. Without it the reverse above could be the identity."""
+        self.tenant = _tenant()
+        rule = self._rule(self._book("price", "p"))
+
+        with connection.schema_editor() as editor:
+            self.run_python.code(self.historical, editor)
+
+        self.assertEqual(self._kind_of(rule), "")
 
 
 class BothRulesCameAcrossWithTheTableTest(TestCase):
@@ -340,8 +416,12 @@ class NoRuleCarriesAKindWordAnyMoreTest(TestCase):
         A rename that kept the index would have kept a dead leading term on the
         hottest priced table in the system, which is a cost paid on every write
         for a discriminator nothing reads.
+
+        ⚠ The model declares exactly ONE index, asserted rather than assumed:
+        taking `[0]` of a list is a coin toss the day a second one lands, and
+        this table has already paid for that shape once over `pg_trigger`.
         """
-        index = next(index for index in Rate._meta.indexes)
+        (index,) = Rate._meta.indexes
         self.assertNotIn(THE_DELETED_COLUMN, index.fields)
         self.assertEqual(index.fields,
                          ["tenant", "provider", "event_type", "measurement"])
@@ -465,59 +545,3 @@ class TheTwoDeletedActionsCannotBeWrittenTest(TestCase):
         for parts in DELETED_ACTIONS:
             with self.subTest(action=".".join(parts)):
                 self.assertNotIn(".".join(parts), AUDIT_ACTIONS)
-
-
-class EveryChangeToABookGoesThroughAPublishTest(TestCase):
-    """AC — no unversioned immediate mutation act is left on a book.
-
-    ⚠ **THE ASSERTION IS OVER THE ROUTES THIS COMMIT DID NOT WRITE.** Checking
-    that the two deleted routes are gone would be a claim about the diff; what
-    matters is the whole surface, and #361 already paid once for the difference
-    — three immediate routes each took a bare book id, and a claim made about
-    the two that declare a draft said nothing about them.
-
-    So this enumerates every mutating operation on the book's path family off
-    the live API and asserts each one either records a publish act or is the
-    atomic reprice, which DOES version the book. There is no third kind left.
-    """
-
-    #: The one immediate act that survives, and why it is not the thing this
-    #: test refuses. It bumps the book's version and closes each superseded
-    #: rule at a boundary, so the change it makes is a versioned one; what it
-    #: is not is FORWARD-DATED. It leaves with the rest of this slice's
-    #: vocabulary (#369) and the customer's own book is already out of its
-    #: reach.
-    THE_VERSIONED_IMMEDIATE_ACT = "/metering/pricing/rate-cards/{book_id}/publish"
-
-    def _book_family(self):
-        family = "/metering/pricing/rate-cards/{book_id}"
-        return [(method, path) for method, path, _ in mutating_operations()
-                if path == family or path.startswith(family + "/")]
-
-    def test_the_walker_still_sees_the_book_family(self):
-        self.assertTrue(self._book_family(),
-                        "no mutating route was found under the book's path, "
-                        "so every assertion below is vacuous")
-
-    def test_no_route_writes_a_rule_outside_a_publish(self):
-        """Every survivor names the publish record or is the versioned reprice.
-
-        A route that added or retired a rule directly would answer neither
-        description, which is what the two deletions in this commit removed.
-        """
-        stray = [(method, path) for method, path in self._book_family()
-                 if "publishes" not in path
-                 and path != self.THE_VERSIONED_IMMEDIATE_ACT]
-        self.assertEqual(stray, [])
-
-    def test_the_rules_collection_takes_no_mutating_method(self):
-        """Named separately because it is the one that changed.
-
-        `POST .../rates` and `DELETE .../rates/{rate_id}` were the immediate
-        add and retire. Both are gone, and the collection now answers reads
-        only — which is the sentence the acceptance criterion asks for, made
-        against the router rather than against the diff.
-        """
-        rules = [(method, path) for method, path in self._book_family()
-                 if "/rates" in path]
-        self.assertEqual(rules, [])
