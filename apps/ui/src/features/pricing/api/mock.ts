@@ -34,7 +34,7 @@ import type {
 // kind field would be this mock re-inventing the column the split deleted.
 let pricingBooks: PricingBook[] = MOCK_PRICING_BOOKS.map((book) => ({ ...book }));
 let costBooks: CostBook[] = MOCK_COST_BOOKS.map((book) => ({ ...book }));
-let rates: Rate[] = MOCK_RATES.map((rate) => ({ ...rate }));
+const rates: Rate[] = MOCK_RATES.map((rate) => ({ ...rate }));
 let markup: TenantMarkup = { ...MOCK_TENANT_MARKUP };
 let idCounter = 0;
 

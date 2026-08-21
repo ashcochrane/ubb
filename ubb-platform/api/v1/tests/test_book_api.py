@@ -303,6 +303,79 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
 
         self.assertEqual(r.status_code, 409, r.content)
 
+    def test_a_book_whose_rules_are_all_RETIRED_still_answers_409(self):
+        """The case the 409's own wording used to get wrong (#368, review).
+
+        The message said "retire its rules through a publish first", which
+        reads as a remedy. It is not one: retiring a rule stamps its end and
+        KEEPS the row, so the book still holds it and `PROTECT` still fires —
+        the caller who followed the advice would get the same 409 with no way
+        forward. Withdrawal is for a book that was declared and never used, and
+        this is the case that says so.
+        """
+        book_id = self._a_pricing_book(is_default=True).json()["id"]
+        self._open_rule(book_id, measurement_key="input_tokens",
+                        rate_per_unit_micros=10)
+        retired = self._post(
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
+            {"changes": [{"kind": "retire", "measurement_key": "input_tokens"}]})
+        self.assertEqual(retired.status_code, 200, retired.content)
+        self.assertEqual(
+            self._post(f"/api/v1/metering/pricing/books/{book_id}"
+                       f"/publishes/{retired.json()['id']}/publish").status_code,
+            200)
+        self.assertEqual(
+            self._get(f"/api/v1/metering/pricing/books/{book_id}/rates")
+            .json()["data"], [],
+            "the rule is retired, so nothing is active in the book")
+
+        r = self._delete(f"/api/v1/metering/pricing/pricing-books/{book_id}")
+
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn("retired rule is kept", r.json()["detail"])
+
+    def test_a_book_with_a_pending_change_is_not_withdrawn(self):
+        """The publish record CASCADES from its book, so without a refusal the
+        withdrawal would take a tenant's pending intention with it silently.
+
+        A draft is the only thing exposed — a published record opened or closed
+        a rule, and a rule holds its book with `PROTECT` — so the message
+        points at the act that clears one.
+        """
+        book_id = self._a_pricing_book().json()["id"]
+        declared = self._post(
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
+            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+                          "rate_per_unit_micros": 10}]})
+        self.assertEqual(declared.status_code, 200, declared.content)
+
+        r = self._delete(f"/api/v1/metering/pricing/pricing-books/{book_id}")
+
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn("Discard", r.json()["detail"])
+        # And the draft is still there, which is the half a 409 alone does not
+        # say: a refusal that had already cascaded would look identical.
+        self.assertEqual(
+            len(self._get(f"/api/v1/metering/pricing/books/{book_id}/publishes")
+                .json()["data"]), 1)
+
+    def test_discarding_the_draft_makes_the_book_withdrawable(self):
+        """The remedy the message names, driven — because a refusal pointing at
+        an unreachable act is what the case above exists to have caught."""
+        book_id = self._a_pricing_book().json()["id"]
+        declared = self._post(
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
+            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+                          "rate_per_unit_micros": 10}]})
+        self.http.delete(
+            f"/api/v1/metering/pricing/books/{book_id}"
+            f"/publishes/{declared.json()['id']}", **self._auth())
+
+        r = self._delete(f"/api/v1/metering/pricing/pricing-books/{book_id}")
+
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(PricingBook.objects.filter(id=book_id).exists())
+
     def test_one_kind_of_book_is_not_withdrawn_through_the_others_route(self):
         """The control. Without it a route that ignored its own model would
         pass every case above."""
@@ -389,3 +462,43 @@ class BookGatingTest(_ABookApiMixin, TestCase):
     def test_metering_only_can_list_cost_books(self):
         self.assertEqual(
             self._get("/api/v1/metering/pricing/cost-books").status_code, 200)
+
+    def test_metering_only_cannot_read_a_pricing_books_rules(self):
+        """⚠ THE HOLE REVIEW FOUND, DRIVEN (#368).
+
+        The three acts performed on EITHER kind of book — list its rules, list
+        its pending changes, read one of them — took the bare metering check
+        they had when one container served both halves. After the split the
+        collection routes gated per kind and these did not, so this tenant was
+        refused at `/pricing/pricing-books` and served the same workspace's
+        Pricing Book rules one path over. It is the mistake the deleted
+        kind-word gate made in the other direction (#363), and no walker sees
+        it: they check that a route HAS a floor, never which product it names.
+        """
+        # The book is declared while the workspace still has billing, because
+        # a metering-only tenant cannot declare one — which is the whole reason
+        # the read had to be gated separately.
+        self.tenant.products = ["metering", "billing"]
+        self.tenant.save(update_fields=["products"])
+        book_id = self._a_pricing_book(is_default=True).json()["id"]
+        self._open_rule(book_id, measurement_key="input_tokens",
+                        rate_per_unit_micros=10)
+        self.tenant.products = ["metering"]
+        self.tenant.save(update_fields=["products"])
+
+        for path in (f"/api/v1/metering/pricing/books/{book_id}/rates",
+                     f"/api/v1/metering/pricing/books/{book_id}/publishes"):
+            with self.subTest(path=path):
+                self.assertEqual(self._get(path).status_code, 403)
+
+    def test_metering_only_can_still_read_a_cost_books_rules(self):
+        """The control. A gate that refused every per-book read would pass the
+        case above while breaking the product this tenant actually has."""
+        book_id = self._a_cost_book(is_default=True).json()["id"]
+        self._open_rule(book_id, measurement_key="input_tokens",
+                        provider="openai", rate_per_unit_micros=3)
+
+        for path in (f"/api/v1/metering/pricing/books/{book_id}/rates",
+                     f"/api/v1/metering/pricing/books/{book_id}/publishes"):
+            with self.subTest(path=path):
+                self.assertEqual(self._get(path).status_code, 200)

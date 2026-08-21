@@ -13159,7 +13159,7 @@
     },
     "/api/v1/metering/pricing/books/{book_id}/rates": {
       "get": {
-        "description": "List the rules in a book, newest first. Active-only by default;\n``include_history`` returns every version (superseded rows carry a\n``valid_to``), and ``as_of`` returns the version active at that instant\n(point-in-time).\n\nThe book may be a Pricing Book or a cost book: listing what is in one is\nthe same act either way.",
+        "description": "List the rules in a book, newest first. Active-only by default;\n``include_history`` returns every version (superseded rows carry a\n``valid_to``), and ``as_of`` returns the version active at that instant\n(point-in-time).\n\nThe book may be a Pricing Book or a cost book: listing what is in one is\nthe same act either way, and it is gated on the product that BOOK belongs\nto rather than on metering alone.",
         "operationId": "api_v1_metering_endpoints_list_book_rates",
         "parameters": [
           {
@@ -13363,7 +13363,7 @@
     },
     "/api/v1/metering/pricing/cost-books/{book_id}": {
       "delete": {
-        "description": "Withdraw a cost book the tenant no longer records costs from.\n\n**A book holding rules is not withdrawn, it answers 409**, for the reason\n`withdraw_pricing_book` gives: the receipts explaining what past work cost\npoint at those rules.",
+        "description": "Withdraw a cost book the tenant no longer records costs from.\n\n**A book that has EVER held a rule is not withdrawn, it answers 409**, for\nthe reason `withdraw_pricing_book` gives in full: a retired rule is kept\nrather than removed, and the receipts explaining what past work cost point\nat it. So does a book with a change recorded against it.",
         "operationId": "api_v1_metering_endpoints_withdraw_cost_book",
         "parameters": [
           {
@@ -14057,7 +14057,7 @@
     },
     "/api/v1/metering/pricing/pricing-books/{book_id}": {
       "delete": {
-        "description": "Withdraw a Pricing Book the tenant no longer prices from.\n\n**A book holding rules is not withdrawn, it answers 409.** Rules are what\na tenant was charged from, and the receipts that explain past charges\npoint at them; taking a book away underneath them would delete the reason\na price was what it was. Retire the rules through a publish first, or\nwithdraw a book that never held any.\n\nA book a Plan prices from answers 409 for the same reason: the plan would\nbe left naming nothing, which is the state its required reference exists\nto make unreachable.",
+        "description": "Withdraw a Pricing Book the tenant no longer prices from.\n\n**A book that has EVER held a rule is not withdrawn, it answers 409** \u2014\nand \"ever\" is the operative word rather than a hedge. Rules are what a\ntenant was charged from and the receipts explaining past charges point at\nthem, so retiring a rule stamps its end and KEEPS the row; the book still\nholds it. Withdrawal is therefore for a book that was declared and never\nused, which is the state it exists to clear up.\n\nA book a Plan prices from answers 409 for the same reason: the plan would\nbe left naming nothing, which is the state its required reference exists\nto make unreachable. So does a book with a change recorded against it.",
         "operationId": "api_v1_metering_endpoints_withdraw_pricing_book",
         "parameters": [
           {

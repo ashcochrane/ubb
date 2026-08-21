@@ -1088,13 +1088,59 @@ def _gate_the_books_product(request, book):
     Which product a book belongs to is a property of the ENTITY — a Pricing
     Book is billing, a cost book is metering — so the two named gates above are
     reached through the book rather than through a value read off it. The
-    routes that know which kind they serve call those directly; the four that
+    routes that know which kind they serve call those directly; the SIX that
     act on either kind come here.
+
+    ⚠ **THE THREE READS CAME HERE LATE, AND UNTIL THEY DID A METERING-ONLY
+    TENANT COULD READ A PRICING BOOK.** Listing a book's rules, listing its
+    pending changes and reading one of them each took the bare metering check
+    they had when one container served both halves — correct then, because one
+    gate covered one entity. After the split the collection routes gate per
+    kind while these three did not, so `/pricing/pricing-books` answered 403
+    and `/pricing/books/{id}/rates` answered the same tenant's Pricing Book
+    rules. It is the mistake the deleted kind-word gate made in the other
+    direction (#363), found by review rather than by a gate: the walkers check
+    that a route HAS a floor, never which product it names.
     """
     if isinstance(book, PricingBook):
         _gate_a_pricing_book(request)
     else:
         _gate_a_cost_book(request)
+
+
+def _refuse_to_withdraw_a_book_with_a_pending_change(book):
+    """A book with a change waiting on it is not withdrawn (#368, review).
+
+    ⚠ **`PricingBookPublish` CASCADES FROM ITS BOOK, SO WITHOUT THIS THE
+    WITHDRAWAL DELETES THE GOVERNANCE TRAIL SILENTLY.** The cascade is right
+    for what it was written for — a publish record EXPLAINS a book and means
+    nothing once the book is gone, and a `PROTECT` there would make a wipe fail
+    from a record nobody asked about (#354, #358). What it is wrong for is a
+    tenant withdrawing a book that still has an intention pending on it: the
+    draft vanishes with no record that it ever existed, on a surface whose
+    whole argument is that an intention and a publication are separate acts a
+    governance reader can tell apart.
+
+    ⚠ **THE EXPOSURE IS DRAFTS AND ONLY DRAFTS, WHICH IS WHY THE FILTER SAYS
+    SO RATHER THAN COUNTING EVERY RECORD.** A PUBLISHED record opened or closed
+    a rule, and a rule holds its book with `PROTECT` — so a book carrying
+    one is already unwithdrawable by the refusal below it, and its history was
+    never reachable by this path. Counting published records here would refuse
+    nothing new while REPLACING the honest message about rules with a
+    misleading one about drafts, on exactly the book whose rules are all
+    retired. What can be lost is what a tenant has not committed to yet, and
+    discarding a draft is a route they already have. This points at it.
+    """
+    drafts = PricingBookPublish.objects.filter(
+        declaration_status=DECLARATION_STATUS_DRAFT,
+        **{book.REFERENCE_COLUMN: book}).count()
+    if drafts:
+        raise Problem(
+            "conflict",
+            f"this book has {drafts} change(s) declared against it and not "
+            f"yet published. Discard them at DELETE /pricing/books/"
+            f"{book.id}/publishes/{{publish_id}} first — withdrawing the "
+            f"book would take the record of what was proposed with it")
 
 
 def _book_or_404(request, book_id):
@@ -1106,9 +1152,10 @@ def _book_or_404(request, book_id):
     this and the column the slice deletes. Ids are UUIDs, so at most one
     answers.
 
-    It exists because the acts BELOW a book — list its rules, declare a change
-    to it, publish that change, discard it — are genuinely one act each,
-    whichever kind of book they are performed on. Splitting those five
+    It exists because the acts BELOW a book — list its rules, list the
+    changes declared against it, read one of them, declare a change, publish
+    that change, discard it — are genuinely one act each, whichever kind of
+    book they are performed on. Splitting those six
     operations per kind would have put the kind back into the surface as a
     path segment, which is the same conflation wearing a different hat, and
     doubled the operation ids the SDK mints for no difference a caller can
@@ -1204,19 +1251,21 @@ def declare_pricing_book(request, payload: PricingBookIn):
 def withdraw_pricing_book(request, book_id: UUID):
     """Withdraw a Pricing Book the tenant no longer prices from.
 
-    **A book holding rules is not withdrawn, it answers 409.** Rules are what
-    a tenant was charged from, and the receipts that explain past charges
-    point at them; taking a book away underneath them would delete the reason
-    a price was what it was. Retire the rules through a publish first, or
-    withdraw a book that never held any.
+    **A book that has EVER held a rule is not withdrawn, it answers 409** —
+    and "ever" is the operative word rather than a hedge. Rules are what a
+    tenant was charged from and the receipts explaining past charges point at
+    them, so retiring a rule stamps its end and KEEPS the row; the book still
+    holds it. Withdrawal is therefore for a book that was declared and never
+    used, which is the state it exists to clear up.
 
     A book a Plan prices from answers 409 for the same reason: the plan would
     be left naming nothing, which is the state its required reference exists
-    to make unreachable.
+    to make unreachable. So does a book with a change recorded against it.
     """
     _gate_a_pricing_book(request)
     book = get_object_or_404(PricingBook, id=book_id,
                              tenant=request.auth.tenant)
+    _refuse_to_withdraw_a_book_with_a_pending_change(book)
     try:
         with transaction.atomic():
             book.delete()
@@ -1230,9 +1279,10 @@ def withdraw_pricing_book(request, book_id: UUID):
     except ProtectedError:
         raise Problem(
             "conflict",
-            "this book still holds rules, or a plan still prices from it. "
-            "Retire its rules through a publish and move any plan onto "
-            "another book first")
+            "this book holds rules, or a plan still prices from it. A "
+            "retired rule is kept rather than removed, so a book that has "
+            "ever been published into cannot be withdrawn; move any plan onto "
+            "another book instead")
     return 200, {"status": "ok"}
 
 
@@ -1299,12 +1349,14 @@ def declare_cost_book(request, payload: CostBookIn):
 def withdraw_cost_book(request, book_id: UUID):
     """Withdraw a cost book the tenant no longer records costs from.
 
-    **A book holding rules is not withdrawn, it answers 409**, for the reason
-    `withdraw_pricing_book` gives: the receipts explaining what past work cost
-    point at those rules.
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
     """
     _gate_a_cost_book(request)
     book = get_object_or_404(CostBook, id=book_id, tenant=request.auth.tenant)
+    _refuse_to_withdraw_a_book_with_a_pending_change(book)
     try:
         with transaction.atomic():
             book.delete()
@@ -1320,8 +1372,9 @@ def withdraw_cost_book(request, book_id: UUID):
     except ProtectedError:
         raise Problem(
             "conflict",
-            "this book still holds rules. Retire them through a publish "
-            "first")
+            "this book holds rules. A retired rule is kept rather than "
+            "removed, so a book that has ever been published into cannot be "
+            "withdrawn")
     return 200, {"status": "ok"}
 
 
@@ -1336,9 +1389,10 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
     (point-in-time).
 
     The book may be a Pricing Book or a cost book: listing what is in one is
-    the same act either way."""
-    _product_check(request)
+    the same act either way, and it is gated on the product that BOOK belongs
+    to rather than on metering alone."""
     book = _book_or_404(request, book_id)
+    _gate_the_books_product(request, book)
     # The declaration is joined, not fetched per row: `rate_out` reads the
     # quantity's name off it since #326, and a page of fifty rates would
     # otherwise be fifty-one queries. A deactivated rate references nothing and
@@ -1536,8 +1590,8 @@ def list_book_publishes(request, book_id: UUID, cursor: str = None,
     ledger is where history is read, filtered by action; here it would cost a
     diff computation per row for a record whose diff is null anyway.
     """
-    _product_check(request)
     book = _book_or_404(request, book_id)
+    _gate_the_books_product(request, book)
     pending = PricingBookPublish.objects.filter(
         tenant=request.auth.tenant,
         declaration_status=DECLARATION_STATUS_DRAFT,
@@ -1551,9 +1605,9 @@ def list_book_publishes(request, book_id: UUID, cursor: str = None,
 @role_floor(READ)
 def get_book_publish(request, book_id: UUID, publish_id: UUID):
     """One change to a book, with its diff while it is still a draft."""
-    _product_check(request)
-    return 200, _publish_response(
-        request, _book_publish_or_404(request, book_id, publish_id))
+    record = _book_publish_or_404(request, book_id, publish_id)
+    _gate_the_books_product(request, record.book)
+    return 200, _publish_response(request, record)
 
 
 @metering_router.post(

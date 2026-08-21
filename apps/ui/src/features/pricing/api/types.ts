@@ -7,8 +7,12 @@ import type { MeteringSchemas } from "@/api/types";
 // ⚠ THE CONTAINER IS TWO ENTITIES (#368). A Pricing Book is a catalogue of
 // what this tenant charges and names neither a supplier nor a currency; a cost
 // book records what one supplier charges and names both. They are separate
-// component schemas because they are separate things, and a `Book` alias over
-// either would put back exactly the conflation the split removed.
+// component schemas because they are separate things, and one FLATTENED `Book`
+// type carrying every field of both — a supplier that is sometimes there, a
+// currency that is sometimes meaningful — would put back exactly the
+// conflation the split removed. `AnyBook` below is not that: it is a union a
+// caller must narrow before it can read anything only one side has, which is
+// the difference the compiler enforces.
 export type PricingBook = MeteringSchemas["PricingBookOut"];
 export type PricingBookIn = MeteringSchemas["PricingBookIn"];
 export type PaginatedPricingBooks = MeteringSchemas["PaginatedPricingBooks"];

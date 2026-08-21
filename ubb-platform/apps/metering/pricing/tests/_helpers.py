@@ -561,9 +561,9 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
                                    currency="usd", **fields):
     """A price rule in a book resolution never reads (#356).
 
-    A book becomes readable in exactly four ways — it holds the customer's own
-    rules, their PLAN prices from it (#362), or it is the tenant's default —
-    and this is none of them. It exists so that "there is no fallthrough
+    A book becomes readable in exactly three ways — it holds the customer's
+    own rules, their PLAN prices from it (#362), or it is the tenant's default
+    — and this is none of them. It exists so that "there is no fallthrough
     between books" can be asserted by a rule that WOULD match the event on
     every selector and is still not the answer, rather than by the absence of a
     rule, which proves nothing about reachability.

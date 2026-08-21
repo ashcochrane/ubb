@@ -127,7 +127,7 @@ def test_one_default_pricing_book_per_tenant():
     t = _tenant()
     PricingBook.objects.create(tenant=t, key="a", name="A", is_default=True)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match="uq_pricing_book_one_default"):
         PricingBook.objects.create(tenant=t, key="b", name="B", is_default=True)
 
 
@@ -141,7 +141,8 @@ def test_one_default_cost_book_per_supplier_and_currency():
     CostBook.objects.create(tenant=t, key="gemini", provider_key="gemini",
                             currency="usd", is_default=True)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError,
+                       match="uq_cost_book_one_default_per_provider"):
         CostBook.objects.create(tenant=t, key="gemini-2", provider_key="gemini",
                                 currency="usd", is_default=True)
 
@@ -173,7 +174,8 @@ def test_one_override_book_per_customer():
     c = Customer.objects.create(tenant=t, external_id="c1")
     PricingBook.objects.create(tenant=t, key="ov-1", customer=c)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError,
+                       match="uq_pricing_book_one_override_per_customer"):
         PricingBook.objects.create(tenant=t, key="ov-2", customer=c)
 
 

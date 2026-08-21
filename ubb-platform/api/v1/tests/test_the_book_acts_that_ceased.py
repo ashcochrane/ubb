@@ -56,11 +56,20 @@ class TheFourNewActsAreGovernanceTest(SimpleTestCase):
     later is the rename ADR-004 §2 calls a breaking change, and it is free now.
     """
 
-    def test_all_four_are_registered_and_distinct(self):
-        self.assertEqual(len(set(THE_ACTS_THAT_ARRIVED)), 4)
-        for name in THE_ACTS_THAT_ARRIVED:
-            with self.subTest(name):
-                self.assertIn(name, AUDIT_ACTIONS)
+    def test_the_registry_holds_these_four_book_acts_AND_NO_OTHERS(self):
+        """Equality against the registry, not membership in it.
+
+        ⚠ The first version of this asserted `len(set(...)) == 4` over the
+        literal declared above — which is a statement about a tuple this file
+        wrote, true whatever the registry holds. What makes the literal a SPEC
+        is reading the registry's book actions back and requiring the two sets
+        to match: a fifth arriving, or one of these four never landing, is then
+        a failure rather than a silence.
+        """
+        registered = {name for name in AUDIT_ACTIONS
+                      if name.split(".")[0].endswith("book")}
+
+        self.assertEqual(registered, set(THE_ACTS_THAT_ARRIVED))
 
     def test_declaring_and_withdrawing_are_not_one_act(self):
         """The split the registry's rule asks for, said as a property.
@@ -73,10 +82,22 @@ class TheFourNewActsAreGovernanceTest(SimpleTestCase):
                 self.assertIn(f"{noun}.declared", AUDIT_ACTIONS)
                 self.assertIn(f"{noun}.withdrawn", AUDIT_ACTIONS)
 
-    def test_the_two_records_do_not_share_a_noun(self):
-        """The half a generic name would quietly lose."""
-        self.assertNotIn("book.declared", AUDIT_ACTIONS)
-        self.assertNotIn("book.withdrawn", AUDIT_ACTIONS)
+    def test_no_registered_act_names_a_book_GENERICALLY(self):
+        """The half a shared noun would quietly lose, asked of the whole
+        registry rather than of two names nobody proposed.
+
+        ⚠ The first version named `book.declared` and `book.withdrawn` and
+        asserted their absence — two strings this file invented, which nothing
+        would ever have added. Walking every registered action instead means a
+        generic noun arriving under ANY verb fails here, which is the claim the
+        docstring above actually makes.
+        """
+        for name in AUDIT_ACTIONS:
+            with self.subTest(name):
+                self.assertNotEqual(
+                    name.split(".")[0], "book",
+                    "a governance reader asking which KIND of book this was "
+                    "would be back to reading `resource_type`")
 
 
 class NoneOfTheFourRoutesTakesTheExemptionTest(SimpleTestCase):

@@ -607,7 +607,8 @@ class PricingService:
         if books is None:
             books = PricingService._selected_pricing_books(tenant, customer)
         return PricingService._rank_and_take_one(
-            books, "pricing_book", selectors, measurement_key, currency, as_of)
+            books, PricingBook.REFERENCE_COLUMN, selectors, measurement_key,
+            currency, as_of)
 
     @staticmethod
     def resolve_the_cost_rule(tenant, selectors, measurement_key, currency,
@@ -623,7 +624,8 @@ class PricingService:
             books = PricingService._selected_cost_books(
                 tenant, selectors.get("provider") or "", currency)
         return PricingService._rank_and_take_one(
-            books, "cost_book", selectors, measurement_key, currency, as_of)
+            books, CostBook.REFERENCE_COLUMN, selectors, measurement_key,
+            currency, as_of)
 
     @staticmethod
     def the_rule_a_customer_inherits(*, tenant, customer, selectors,
@@ -1098,25 +1100,31 @@ def resolve_price(subject, as_of):
     # in the system. Nothing about the answer changes: which
     # books are in play is decided by the tenant, the customer, the event's
     # provider and the currency, and a single resolution holds all four fixed.
-    books_in_play = {}
-
-    def _once(kind, select):
-        if kind not in books_in_play:
-            books_in_play[kind] = select()
-        return books_in_play[kind]
+    # Two cells rather than one keyed store, because a key is a kind word and
+    # a kind word in this module is what the slice spent itself deleting. They
+    # start as `None` and not as `[]`: a selection that legitimately finds no
+    # book is a result worth keeping, and a falsy test would re-run it once per
+    # quantity — which is the whole cost this memo exists to avoid.
+    selected_cost_books = None
+    selected_pricing_books = None
 
     def resolve_the_cost_rule(measurement_key):
-        books = _once("cost", lambda: PricingService._selected_cost_books(
-            tenant, selectors.get("provider") or "", currency))
+        nonlocal selected_cost_books
+        if selected_cost_books is None:
+            selected_cost_books = PricingService._selected_cost_books(
+                tenant, selectors.get("provider") or "", currency)
         return PricingService.resolve_the_cost_rule(
-            tenant, selectors, measurement_key, currency, as_of, books=books)
+            tenant, selectors, measurement_key, currency, as_of,
+            books=selected_cost_books)
 
     def resolve_the_price_rule(measurement_key):
-        books = _once("price", lambda: PricingService._selected_pricing_books(
-            tenant, customer))
+        nonlocal selected_pricing_books
+        if selected_pricing_books is None:
+            selected_pricing_books = PricingService._selected_pricing_books(
+                tenant, customer)
         return PricingService.resolve_the_price_rule(
             tenant, customer, selectors, measurement_key, currency, as_of,
-            books=books)
+            books=selected_pricing_books)
 
     def resolve_declaration():
         """What this event's Event Type declares about cost, or None.

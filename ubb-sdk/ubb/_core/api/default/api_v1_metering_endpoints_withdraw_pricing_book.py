@@ -78,19 +78,20 @@ def sync_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[ProblemOut | StatusResponse]:
-    """ Withdraw Pricing Book
+    r""" Withdraw Pricing Book
 
      Withdraw a Pricing Book the tenant no longer prices from.
 
-    **A book holding rules is not withdrawn, it answers 409.** Rules are what
-    a tenant was charged from, and the receipts that explain past charges
-    point at them; taking a book away underneath them would delete the reason
-    a price was what it was. Retire the rules through a publish first, or
-    withdraw a book that never held any.
+    **A book that has EVER held a rule is not withdrawn, it answers 409** —
+    and \"ever\" is the operative word rather than a hedge. Rules are what a
+    tenant was charged from and the receipts explaining past charges point at
+    them, so retiring a rule stamps its end and KEEPS the row; the book still
+    holds it. Withdrawal is therefore for a book that was declared and never
+    used, which is the state it exists to clear up.
 
     A book a Plan prices from answers 409 for the same reason: the plan would
     be left naming nothing, which is the state its required reference exists
-    to make unreachable.
+    to make unreachable. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -121,19 +122,20 @@ def sync(
     client: AuthenticatedClient,
 
 ) -> ProblemOut | StatusResponse | None:
-    """ Withdraw Pricing Book
+    r""" Withdraw Pricing Book
 
      Withdraw a Pricing Book the tenant no longer prices from.
 
-    **A book holding rules is not withdrawn, it answers 409.** Rules are what
-    a tenant was charged from, and the receipts that explain past charges
-    point at them; taking a book away underneath them would delete the reason
-    a price was what it was. Retire the rules through a publish first, or
-    withdraw a book that never held any.
+    **A book that has EVER held a rule is not withdrawn, it answers 409** —
+    and \"ever\" is the operative word rather than a hedge. Rules are what a
+    tenant was charged from and the receipts explaining past charges point at
+    them, so retiring a rule stamps its end and KEEPS the row; the book still
+    holds it. Withdrawal is therefore for a book that was declared and never
+    used, which is the state it exists to clear up.
 
     A book a Plan prices from answers 409 for the same reason: the plan would
     be left naming nothing, which is the state its required reference exists
-    to make unreachable.
+    to make unreachable. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -159,19 +161,20 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
 
 ) -> Response[ProblemOut | StatusResponse]:
-    """ Withdraw Pricing Book
+    r""" Withdraw Pricing Book
 
      Withdraw a Pricing Book the tenant no longer prices from.
 
-    **A book holding rules is not withdrawn, it answers 409.** Rules are what
-    a tenant was charged from, and the receipts that explain past charges
-    point at them; taking a book away underneath them would delete the reason
-    a price was what it was. Retire the rules through a publish first, or
-    withdraw a book that never held any.
+    **A book that has EVER held a rule is not withdrawn, it answers 409** —
+    and \"ever\" is the operative word rather than a hedge. Rules are what a
+    tenant was charged from and the receipts explaining past charges point at
+    them, so retiring a rule stamps its end and KEEPS the row; the book still
+    holds it. Withdrawal is therefore for a book that was declared and never
+    used, which is the state it exists to clear up.
 
     A book a Plan prices from answers 409 for the same reason: the plan would
     be left naming nothing, which is the state its required reference exists
-    to make unreachable.
+    to make unreachable. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -202,19 +205,20 @@ async def asyncio(
     client: AuthenticatedClient,
 
 ) -> ProblemOut | StatusResponse | None:
-    """ Withdraw Pricing Book
+    r""" Withdraw Pricing Book
 
      Withdraw a Pricing Book the tenant no longer prices from.
 
-    **A book holding rules is not withdrawn, it answers 409.** Rules are what
-    a tenant was charged from, and the receipts that explain past charges
-    point at them; taking a book away underneath them would delete the reason
-    a price was what it was. Retire the rules through a publish first, or
-    withdraw a book that never held any.
+    **A book that has EVER held a rule is not withdrawn, it answers 409** —
+    and \"ever\" is the operative word rather than a hedge. Rules are what a
+    tenant was charged from and the receipts explaining past charges point at
+    them, so retiring a rule stamps its end and KEEPS the row; the book still
+    holds it. Withdrawal is therefore for a book that was declared and never
+    used, which is the state it exists to clear up.
 
     A book a Plan prices from answers 409 for the same reason: the plan would
     be left naming nothing, which is the state its required reference exists
-    to make unreachable.
+    to make unreachable. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):

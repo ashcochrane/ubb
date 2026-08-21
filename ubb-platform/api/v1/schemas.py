@@ -1371,7 +1371,7 @@ class PostpaidConfigOut(Schema):
     consolidate_with_subscription: bool = False
 
 
-# --- Two-level pricing: a RateCard BOOK groups many Rates ---
+# --- Two-level pricing: a BOOK groups many rules, and there are two ---
 
 
 class PricingBookIn(Schema):

@@ -236,8 +236,9 @@ class TheDeclaredMomentSurvivesTheInsertTest(TestCase):
         ⚠ THAT IS THE COLUMN'S HALF AND IT IS NOT THE WHOLE FEATURE, which is
         worth saying here because the shortest reading of this test is "a
         tenant can now schedule next month's rise" and they cannot. Two things
-        stand in the way and neither is this ticket's. `uq_rate_active_in_book`
-        is unique on the selectors WHERE `valid_to IS NULL`, so a future-dated
+        stand in the way and neither is this ticket's. A book's active-rule
+        key (`uq_rate_active_in_pricing_book`, and its cost-side twin since
+        #368) is unique on the selectors WHERE `valid_to IS NULL`, so a future-dated
         row cannot be written beside the open row it is meant to replace — the
         pair has to be created by one act that closes the outgoing rule, which
         is the Pricing Book Publish record (2026-07-31 decision, §6.3).

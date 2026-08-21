@@ -503,7 +503,7 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
         first, then in the database — this goes red and names the tables that
         moved, which is the right moment to revisit who owns the others.
 
-        Scoped to the eight columns §7.3's table is about, and the exclusion is
+        Scoped to the columns §7.3's table is about, and the exclusion is
         the interesting part. `ubb_reported_cost_mapping` DOES carry a CHECK
         touching `currency` — `ck_reported_cost_currency_pinned_once`, landed by
         #266 in this same slice — and it is not a counter-example: it is an XOR

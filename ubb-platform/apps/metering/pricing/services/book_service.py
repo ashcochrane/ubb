@@ -414,7 +414,7 @@ def plan_changes(book, changes, effective_at):
                     f"change {position}: the book holds an open rule for "
                     f"{measurement_key!r} on these selectors that opens after "
                     f"the effective instant. Two open rules for one identity "
-                    f"is what `uq_rate_active_in_book` refuses")
+                    f"is what this book's active-rule key refuses")
             # A RULE IN A PROVIDER'S DEFAULT COST BOOK MUST NAME THAT
             # PROVIDER, OR IT CAN NEVER RESOLVE (#367, carried from the
             # deleted route).

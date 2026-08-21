@@ -87,8 +87,14 @@ AUDIT_ACTIONS = (
     # `record()` refuses an unregistered name, so an action deleted while a
     # route still wrote it would fail loudly — route and registry are forced
     # into one commit and there is no window in which a dead action is written.
-    # The refusal is held for all three, by name, in
-    # `api/v1/tests/test_the_book_acts_that_ceased.py`.
+    # The refusal is held for all three in
+    # `apps/metering/pricing/tests/test_a_book_of_costs_and_a_book_of_prices_
+    # are_two_shapes.py`, which composes the three names from a prefix it
+    # derives rather than spelling them — a new module writing them would put
+    # their ledger counts over entries that reach zero here. The ROUTER half —
+    # which routes write the four names below, and that none of them takes the
+    # audit sweep's exemption — is `api/v1/tests/test_the_book_acts_that_
+    # ceased.py`.
     #
     # ⚠ **FOUR NAMES ARRIVE WHERE THE TICKET SAID TWO, AND THE ARITHMETIC IS
     # THE REGISTRY'S OWN RULE RATHER THAN A WIDENING.** The rule stated below —

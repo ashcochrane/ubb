@@ -82,9 +82,10 @@ def sync_detailed(
 
      Withdraw a cost book the tenant no longer records costs from.
 
-    **A book holding rules is not withdrawn, it answers 409**, for the reason
-    `withdraw_pricing_book` gives: the receipts explaining what past work cost
-    point at those rules.
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -119,9 +120,10 @@ def sync(
 
      Withdraw a cost book the tenant no longer records costs from.
 
-    **A book holding rules is not withdrawn, it answers 409**, for the reason
-    `withdraw_pricing_book` gives: the receipts explaining what past work cost
-    point at those rules.
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -151,9 +153,10 @@ async def asyncio_detailed(
 
      Withdraw a cost book the tenant no longer records costs from.
 
-    **A book holding rules is not withdrawn, it answers 409**, for the reason
-    `withdraw_pricing_book` gives: the receipts explaining what past work cost
-    point at those rules.
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
@@ -188,9 +191,10 @@ async def asyncio(
 
      Withdraw a cost book the tenant no longer records costs from.
 
-    **A book holding rules is not withdrawn, it answers 409**, for the reason
-    `withdraw_pricing_book` gives: the receipts explaining what past work cost
-    point at those rules.
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):

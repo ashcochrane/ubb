@@ -237,8 +237,9 @@ NAMES_ITS_CURRENCY_CHECK = "ck_cost_book_names_its_currency"
 #:
 #: ⚠ **AT MOST ONE, NOT EXACTLY ONE, AND THE DIFFERENCE IS NOT A COMPROMISE.**
 #: A rule with no book at all has been writable since before the container
-#: existed — the column has always been nullable and fifteen callers in this
-#: tree still rely on it — so refusing one would be a second, unrelated change
+#: existed — the column has always been nullable and callers across this
+#: tree still rely on it — so refusing one would be a second, unrelated
+#: change
 #: riding on this commit, with its own conversion. What the split makes
 #: impossible is the shape the discriminator used to admit: one rule reachable
 #: from both halves, which is the conflation the whole slice exists to end.
@@ -835,8 +836,8 @@ class PricingBook(BaseModel):
     # written where rules are written and published the way rules are
     # published. Putting the customer on the book rather than on the rule is
     # what buys that: a book is what `PricingBookPublish` changes, what
-    # `uq_rate_active_in_book` scopes uniqueness to, and what `plan_changes`
-    # resolves a change against. Scoping rules to a customer INSIDE a shared
+    # `uq_rate_active_in_pricing_book` scopes uniqueness to, and what
+    # `plan_changes` resolves a change against. Scoping rules to a customer INSIDE a shared
     # book would put the customer into a rule's IDENTITY and move all three at
     # once; putting it on the book moves none of them.
     #

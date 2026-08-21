@@ -115,7 +115,8 @@ def sync_detailed(
     (point-in-time).
 
     The book may be a Pricing Book or a cost book: listing what is in one is
-    the same act either way.
+    the same act either way, and it is gated on the product that BOOK belongs
+    to rather than on metering alone.
 
     Args:
         book_id (UUID):
@@ -166,7 +167,8 @@ def sync(
     (point-in-time).
 
     The book may be a Pricing Book or a cost book: listing what is in one is
-    the same act either way.
+    the same act either way, and it is gated on the product that BOOK belongs
+    to rather than on metering alone.
 
     Args:
         book_id (UUID):
@@ -212,7 +214,8 @@ async def asyncio_detailed(
     (point-in-time).
 
     The book may be a Pricing Book or a cost book: listing what is in one is
-    the same act either way.
+    the same act either way, and it is gated on the product that BOOK belongs
+    to rather than on metering alone.
 
     Args:
         book_id (UUID):
@@ -263,7 +266,8 @@ async def asyncio(
     (point-in-time).
 
     The book may be a Pricing Book or a cost book: listing what is in one is
-    the same act either way.
+    the same act either way, and it is gated on the product that BOOK belongs
+    to rather than on metering alone.
 
     Args:
         book_id (UUID):

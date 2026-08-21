@@ -1233,11 +1233,14 @@ measurement_key:
     # renamed, TWO new test modules arriving, and one new migration excluded
     # rather than swept.
     #
-    # ⚠ **THE NUMBERS WERE TAKEN THREE TIMES AND THE FIRST TWO WERE STALE
+    # ⚠ **THE NUMBERS WERE TAKEN FOUR TIMES AND THE FIRST THREE WERE STALE
     # BEFORE THEY WERE WRITTEN.** A re-take expires the moment another file
-    # lands, and this commit landed two test modules after the first reading
-    # and one more after the second. The figures above are the last reading,
-    # taken after the final module and re-run to confirm.
+    # lands: this commit landed two test modules after the first reading, one
+    # more after the second, and a registry change after the third. The figures
+    # above are the last reading, taken after the final edit and re-run to
+    # confirm. ⚠ The paragraph originally said THREE and TWO, which was itself
+    # a stale count of the re-takes — the failure it exists to warn about,
+    # committed inside the warning. Found by review.
     #
     # ⚠ **THE NUMERATOR FELL BY A WHOLE FILE AGAIN, AND DOWNWARD STILL NEEDS NO
     # INVESTIGATION** — the three-case rule above asks for an account of a

@@ -59,11 +59,17 @@ DISTINCT — so no two rows would ever collide and `uq_rate_active_in_book` woul
 have survived as a no-op wearing its own name. Two partial keys, each scoped to
 the half whose column is present, is what keeps the rule a rule.
 
-**THE REVERSE IS RUN, NOT ASSERTED.** Every operation here is reversible by
-Django's own inverse: the renames swap back, the removed columns come back at
-their previous definitions, and the created table drops. The one thing an
-inverse cannot restore is the assignment table's ROWS, which is true of any
-`DeleteModel` and is stated rather than papered over — there are none.
+**THE REVERSE IS DJANGO'S OWN INVERSE, AND NOTHING HERE RUNS IT.** There is no
+`RunPython` in this file, so the convention asking for a hand-written reverse
+that a test actually exercises (`docs/conventions/django-patterns.md`) does not
+bind: every operation is one Django reverses itself — the renames swap back,
+the removed columns come back at their previous definitions, and the created
+table drops. ⚠ What no inverse restores is DATA: the container's
+`card_type`, `provider_key` and `currency` VALUES go with their columns, and the
+assignment table's rows go with the table. Both are stated rather than papered
+over — this tree is deployed nowhere and every one of those tables is empty.
+The heading used to read "THE REVERSE IS RUN, NOT ASSERTED", which was the one
+thing in it that was not true.
 
 The migrations tree is a declared sweep exclusion
 (`gates/forbidden-term-sweep.yaml`), so the retired words legitimately survive
