@@ -3,6 +3,12 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  NOT_APPLICABLE_REASON_EXPLANATIONS,
+  PRICING_STATUS_EXPLANATIONS,
+  notApplicableReasonLabel,
+  pricingStatusLabel,
+} from "@/lib/customer-price";
 import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   COSTING_STATUS_EXPLANATIONS,
@@ -12,6 +18,7 @@ import {
 
 import {
   CUSTOMER_A_ID,
+  EVENT_COST_NOT_APPLICABLE_ID,
   EVENT_PRUNED_ID,
   EVENT_RICH_ID,
   EVENT_TASK_CHARGE_ID,
@@ -46,6 +53,26 @@ function renderPage(props: { eventId: string; customerId?: string }) {
     </QueryClientProvider>
   );
   return render(ui);
+}
+
+/** The receipt's two money sections, by the titles they render under. */
+const CUSTOMER_PRICE = "Customer price";
+const SUPPLIER_COST = "Supplier cost";
+
+/**
+ * Everything one section of the receipt says.
+ *
+ * ⚠ THE SECTION IS THE UNIT NOW (#371), and it has to be. The catalogue gives
+ * `costing_status.known` and `pricing_status.known` the same word, so a
+ * page-wide query for "Known" finds two nodes and cannot say which side it
+ * found — and the two are opposite facts about the same posting. Scoping the
+ * question to a section is what keeps an assertion about the price from
+ * passing on the cost.
+ */
+function sectionText(title: string): string {
+  const section = screen.getByText(title).closest("section");
+  expect(section).not.toBeNull();
+  return section?.textContent ?? "";
 }
 
 describe("EventDetailPage", () => {
@@ -238,12 +265,10 @@ describe("EventDetailPage", () => {
     // computed against that zero would read as the whole billed amount — the
     // flattering direction, on the one screen a tenant opens to check a single
     // event.
-    const section = screen.getByText("Cost").closest("section");
-    expect(section).not.toBeNull();
-    expect(section?.textContent ?? "").not.toContain("$0.00");
+    expect(sectionText(SUPPLIER_COST)).not.toContain("$0.00");
 
     // The absence is NAMED, in the catalogue's words rather than the console's.
-    expect(screen.getByText(costingStatusLabel("unresolved"))).toBeInTheDocument();
+    expect(sectionText(SUPPLIER_COST)).toContain(costingStatusLabel("unresolved"));
     expect(
       screen.getByText(COSTING_STATUS_EXPLANATIONS.unresolved),
     ).toBeInTheDocument();
@@ -270,16 +295,15 @@ describe("EventDetailPage", () => {
   // cost figure asserted below is what proves the absence is about the price
   // rather than about the screen.
   //
-  // NAMING which of the three it is remains the pricing feature's, exactly as
-  // #330 named the supplier half's after #317 stopped its zero. What this
-  // ticket owes, and what these assert, is that none of them renders as money.
+  // NAMING which of the three it is arrives in #371, below. What #351 owed, and
+  // what these assert, is that none of them renders as money.
   it.each([
-    ["unresolved", EVENT_UNPRICED_ID, "$0.0190"],
+    ["unknown", EVENT_UNPRICED_ID, "$0.0190"],
     ["waived", EVENT_WAIVED_ID, "$0.0125"],
-    ["not applicable", EVENT_PRICE_NOT_APPLICABLE_ID, "$0.0084"],
-  ])(
+    ["not_applicable", EVENT_PRICE_NOT_APPLICABLE_ID, "$0.0084"],
+  ] as const)(
     "renders a %s customer price AS ABSENT — never as zero",
-    async (_state, eventId, settledCost) => {
+    async (status, eventId, settledCost) => {
       renderPage({ eventId, customerId: CUSTOMER_A_ID });
 
       expect(await screen.findByText("Event receipt")).toBeInTheDocument();
@@ -292,24 +316,125 @@ describe("EventDetailPage", () => {
       expect(billed?.textContent ?? "").not.toContain("$0.00");
       expect(billed?.textContent ?? "").toContain(ABSENT_LABEL);
 
-      // The SUPPLIER cost on the same posting is settled and still a figure.
+      // ⚠ AND #371'S HALF: THE ABSENCE IS NAMED. A dash says something is not
+      // there; the status says WHICH not-there this is, and the three mean
+      // different things about whether anything is missing — only `unknown` is.
+      // In the catalogue's words, never the console's.
+      expect(sectionText(CUSTOMER_PRICE)).toContain(pricingStatusLabel(status));
+      // No currency amount anywhere in the section, not merely no `$0.00`:
+      // "at least $0.00" and "$0.0000" would both slip past the narrower test.
+      expect(sectionText(CUSTOMER_PRICE)).not.toMatch(/[$£€]\s*-?[\d,]/);
+
+      // The SUPPLIER cost on the same posting is settled and still a figure —
+      // which is what proves the absence is about the price rather than about
+      // the screen.
       expect(screen.getByText(settledCost)).toBeInTheDocument();
-      expect(screen.getByText(costingStatusLabel("known"))).toBeInTheDocument();
+      expect(sectionText(SUPPLIER_COST)).toContain(costingStatusLabel("known"));
 
       // And with no price there is nothing to refund.
       expect(screen.queryByText("Refund this charge")).not.toBeInTheDocument();
     },
   );
 
+  // ⚠ AC 5. THE TWO NOT-APPLICABLE REASONS ARE DIFFERENT ANSWERS, and this is
+  // the one of them a coherent workspace can seed. `fixed_task_pricing` leaves
+  // a real charge to go and look at — it sits on the Task — so the receipt must
+  // send the reader there rather than shrug.
+  //
+  // Its sibling, `tenant_not_billing`, cannot be seeded from this mock: this
+  // workspace bills. It is rendered in `event-receipt-price.test.tsx` from a
+  // fixture the mock does not author, which is also where the narrowing proof
+  // lives.
+  it("says WHY a price does not apply, and sends the reader to the Task", async () => {
+    renderPage({
+      eventId: EVENT_PRICE_NOT_APPLICABLE_ID,
+      customerId: CUSTOMER_A_ID,
+    });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+
+    expect(screen.getByText("Why")).toBeInTheDocument();
+    expect(sectionText(CUSTOMER_PRICE)).toContain(
+      notApplicableReasonLabel("fixed_task_pricing"),
+    );
+    expect(
+      screen.getByText(NOT_APPLICABLE_REASON_EXPLANATIONS.fixed_task_pricing),
+    ).toBeInTheDocument();
+
+    // NOT the other cause, and NOT the generic status sentence: a screen that
+    // fell back to either would answer "why is there no price here?" with the
+    // shrug the reason exists to replace.
+    expect(
+      screen.queryByText(NOT_APPLICABLE_REASON_EXPLANATIONS.tenant_not_billing),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(PRICING_STATUS_EXPLANATIONS.not_applicable),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks WHY only where the status has a reason to give", async () => {
+    renderPage({ eventId: EVENT_UNPRICED_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(screen.getByText(PRICING_STATUS_EXPLANATIONS.unknown)).toBeInTheDocument();
+    expect(screen.queryByText("Why")).not.toBeInTheDocument();
+  });
+
+  it("names a settled price as settled", async () => {
+    renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(sectionText(CUSTOMER_PRICE)).toContain(pricingStatusLabel("known"));
+    expect(screen.getByText(PRICING_STATUS_EXPLANATIONS.known)).toBeInTheDocument();
+    expect(screen.queryByText("Why")).not.toBeInTheDocument();
+  });
+
+  // Slice 3's third canonical cost scenario, which reached nothing but its own
+  // unit test until this commit (#371, ruling 10(b)). A cost the Event Type
+  // never declared and a cost UBB tried to learn and could not are the SAME
+  // null column and opposite facts — one is missing from every total, the other
+  // was never in one — so the screen has to tell them apart.
+  it("renders a cost that was never owed distinctly from one never learned", async () => {
+    renderPage({
+      eventId: EVENT_COST_NOT_APPLICABLE_ID,
+      customerId: CUSTOMER_A_ID,
+    });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+
+    expect(sectionText(SUPPLIER_COST)).toContain(
+      costingStatusLabel("not_applicable"),
+    );
+    expect(
+      screen.getByText(COSTING_STATUS_EXPLANATIONS.not_applicable),
+    ).toBeInTheDocument();
+
+    // Not the other empty-cost state, and no input is asked for: there is no
+    // recovery that would ever fill this in.
+    expect(sectionText(SUPPLIER_COST)).not.toContain(
+      costingStatusLabel("unresolved"),
+    );
+    expect(screen.queryByText("Missing input")).not.toBeInTheDocument();
+    expect(sectionText(SUPPLIER_COST)).not.toContain("$0.00");
+
+    // The customer price on the same posting is settled and still a figure.
+    expect(screen.getByText("$0.0150")).toBeInTheDocument();
+  });
+
   it("names a settled cost as settled, and asks for no missing input", async () => {
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
-    expect(screen.getByText(costingStatusLabel("known"))).toBeInTheDocument();
+    // ⚠ SCOPED TO THE SECTION, because `costing_status.known` and
+    // `pricing_status.known` are the same word in the catalogue and #371 put
+    // both statuses on this page. A page-wide `getByText("Known")` now finds
+    // two nodes and throws — and the two are DIFFERENT facts, so the fix is to
+    // ask the right side rather than to relax the query to `getAllByText`.
+    expect(sectionText(SUPPLIER_COST)).toContain(costingStatusLabel("known"));
     expect(screen.queryByText("Missing input")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(costingStatusLabel("unresolved")),
-    ).not.toBeInTheDocument();
+    expect(sectionText(SUPPLIER_COST)).not.toContain(
+      costingStatusLabel("unresolved"),
+    );
   });
 
   it("closes a task holding an unlearned cost and says the total is a floor", async () => {

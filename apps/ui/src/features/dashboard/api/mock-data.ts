@@ -15,6 +15,8 @@
 // COGS and no recognised revenue). Every breakdown below sums exactly to
 // those totals so the page reads as one consistent business.
 
+import { completeTotal, incompleteTotal } from "@/lib/economic-scenarios";
+
 import { WIRE_GROUP_VALUE_KEY } from "./types";
 import type {
   ApiKeyList,
@@ -36,6 +38,48 @@ export const CUSTOMER_IDS = {
   seatRes: "5d4a5e62-4b86-495a-9b7f-0e5300000005",
 } as const;
 
+// Each customer's supplier cost for the period, and how much of it UBB knows.
+//
+// COMPOSED, NEVER STATED FIELD BY FIELD (#371), for the reason the customers
+// feature's identical block gives: a total and the count of events it had to
+// skip are ONE fact, and `@/lib/economic-scenarios` returns them as one object
+// so a fixture cannot take half. Both rosters compose them from the SAME
+// module, which is as close as the layering lets these two files get to sharing
+// the number — a cross-feature import is forbidden, and `lib/` is the seam that
+// is not.
+//
+// nova-ai is the one incomplete customer in this story: its provider total
+// renders as "at least $88.00" and its margin as a bound.
+const ACME_PROVIDER_COST = completeTotal(274_000_000);
+const LUNA_PROVIDER_COST = completeTotal(55_900_000);
+const NOVA_PROVIDER_COST = incompleteTotal(88_000_000, 4);
+const SEAT_ENG_PROVIDER_COST = completeTotal(96_300_000);
+const SEAT_RES_PROVIDER_COST = completeTotal(49_400_000);
+
+/**
+ * The whole workspace's supplier cost for the window.
+ *
+ * SUMMED FROM THE ROSTER rather than typed out, which is what the comments on
+ * the summary and the analytics totals below already promised and nothing
+ * enforced. It is a floor by nova-ai's four events and by no others, so the
+ * count comes from that row rather than from a second literal — the overview's
+ * "at least $563.60" is this object rendered.
+ */
+const WINDOW_PROVIDER_COST = incompleteTotal(
+  ACME_PROVIDER_COST.micros +
+    LUNA_PROVIDER_COST.micros +
+    NOVA_PROVIDER_COST.micros +
+    SEAT_ENG_PROVIDER_COST.micros +
+    SEAT_RES_PROVIDER_COST.micros,
+  NOVA_PROVIDER_COST.unresolved_event_count,
+);
+
+/** Every window this workspace has ever had, rolled up. */
+const LIFETIME_PROVIDER_COST = incompleteTotal(
+  6_690_150_000,
+  WINDOW_PROVIDER_COST.unresolved_event_count,
+);
+
 // Mirrors MOCK_MARGIN_ROWS in src/features/customers/api/mock-data.ts —
 // byte-identical economics, keep in sync.
 export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
@@ -45,8 +89,8 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 199_000_000,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
-    provider_cost_micros: 274_000_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: ACME_PROVIDER_COST.micros,
+    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 267_500_000,
     margin_percentage: 49.4,
@@ -57,8 +101,8 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
-    provider_cost_micros: 55_900_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: LUNA_PROVIDER_COST.micros,
+    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: -14_700_000,
     margin_percentage: -35.7,
@@ -76,8 +120,8 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
-    provider_cost_micros: 88_000_000,
-    unresolved_event_count: 4,
+    provider_cost_micros: NOVA_PROVIDER_COST.micros,
+    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
@@ -88,8 +132,8 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
-    provider_cost_micros: 96_300_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 24_100_000,
     margin_percentage: 20,
@@ -100,8 +144,8 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
-    provider_cost_micros: 49_400_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 12_400_000,
     margin_percentage: 20.1,
@@ -115,11 +159,12 @@ export function mockMarginSummary(window: Window): MarginSummary {
     subscription_revenue_micros: 199_000_000,
     usage_billed_micros: 653_900_000,
     usage_revenue_micros: 565_900_000,
-    provider_cost_micros: 563_600_000,
+    provider_cost_micros: WINDOW_PROVIDER_COST.micros,
     // The exact sum over MOCK_MARGIN_CUSTOMERS, this figure included: only
     // nova-ai holds uncosted events, so the window's total is a floor by the
-    // same four.
-    unresolved_event_count: 4,
+    // same four. Both halves come from one object now, so "the exact sum" is
+    // arithmetic rather than a promise (#371).
+    unresolved_event_count: WINDOW_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 764_900_000,
     gross_margin_micros: 201_300_000,
@@ -135,7 +180,10 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       customer_id: CUSTOMER_IDS.nova,
       external_id: "nova-ai",
       gross_margin_micros: -88_000_000,
-      unresolved_event_count: 4,
+      // The count is the ROSTER ROW's, not a second literal: this is the same
+      // customer over the same window, and a margin beside a non-zero count is
+      // a CEILING for exactly those events (#371).
+      unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
       margin_percentage: -100,
     },
@@ -157,11 +205,11 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
 const WINDOW_TOTALS = {
   total_events: 93_558,
   total_billed_cost_micros: 653_900_000,
-  total_provider_cost_micros: 563_600_000,
+  total_provider_cost_micros: WINDOW_PROVIDER_COST.micros,
   // The same four events the margin summary counts — analytics and margin read
   // the same postings over the same window, so a story where they disagreed
-  // would be a story no server could produce.
-  unresolved_event_count: 4,
+  // would be a story no server could produce. The same object, so they cannot.
+  unresolved_event_count: WINDOW_PROVIDER_COST.unresolved_event_count,
   unpriced_event_count: 0,
   usage_markup_margin_micros: 90_300_000,
 };
@@ -252,9 +300,9 @@ export function mockWindowAnalytics(
 export const MOCK_LIFETIME_ANALYTICS: UsageAnalytics = {
   total_events: 812_441,
   total_billed_cost_micros: 7_845_300_000,
-  total_provider_cost_micros: 6_690_150_000,
+  total_provider_cost_micros: LIFETIME_PROVIDER_COST.micros,
   // Lifetime spans the window, so it cannot count FEWER than the window does.
-  unresolved_event_count: 4,
+  unresolved_event_count: LIFETIME_PROVIDER_COST.unresolved_event_count,
   unpriced_event_count: 0,
   usage_markup_margin_micros: 1_155_150_000,
   by_provider: [],

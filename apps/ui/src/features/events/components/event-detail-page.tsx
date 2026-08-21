@@ -15,6 +15,13 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasProduct } from "@/hooks/use-tenant-config";
 import { formatDate } from "@/lib/format";
+import {
+  customerPriceAmount,
+  customerPriceExplanation,
+  notApplicableReasonLabel,
+  pricingStatusLabel,
+  settledPriceMicros,
+} from "@/lib/customer-price";
 import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   COSTING_STATUS_EXPLANATIONS,
@@ -169,8 +176,15 @@ export function EventDetailPage({
   // tenant they charged their customer nothing, which is the unflattering
   // direction of the identical mistake. The margin needs BOTH sides, so it is
   // absent when either is.
+  //
+  // ⚠ THE MARGIN READS THE STATUS TOO, THROUGH THE SAME FUNCTION THE AMOUNT
+  // DOES (#371). Guarding the displayed price with the status while computing
+  // the margin off the raw column would put a dash in the Billed row and a real
+  // signed figure below it, derived from the very zero the dash exists to deny —
+  // and the two would sit four lines apart on one screen. `settledPriceMicros`
+  // is the only place either of them asks.
   const providerCost = detail.provider_cost_micros ?? null;
-  const billed = detail.billed_cost_micros ?? null;
+  const billed = settledPriceMicros(detail);
   const margin =
     providerCost === null || billed === null ? null : billed - providerCost;
   const hasMetadata = Object.keys(detail.metadata).length > 0;
@@ -206,14 +220,47 @@ export function EventDetailPage({
     })),
   ];
 
-  const moneyItems: DetailItem[] = [
+  // THE TWO SIDES ARE TWO SECTIONS NOW (#371), and the split is what the
+  // absences forced. Each is an amount with a status of its own and a cause of
+  // its own, and each owes the reader a sentence saying which not-there this
+  // is — one section could carry one description, so the price half's was the
+  // one that went unsaid. #351 stopped the customer price rendering as `£0.00`
+  // and left NAMING it to this commit, exactly as #317 stopped the supplier
+  // half's zero and #330 named it.
+  const priceItems: DetailItem[] = [
     {
       label: "Billed",
-      value:
-        billed === null
-          ? ABSENT_LABEL
-          : formatEventMicros(billed, detail.currency),
+      // Reads the STATUS rather than testing the amount for null, which is the
+      // rule `@/lib/customer-price` exists to hold: a zero beside `waived`
+      // renders as money under the amount test and as the absence it is under
+      // this one.
+      value: customerPriceAmount(detail, (micros) =>
+        formatEventMicros(micros, detail.currency),
+      ),
     },
+    { label: "Price status", value: pricingStatusLabel(detail.pricing_status) },
+    // Read only where the status is `not_applicable`, and never on its own —
+    // the registry's rule, and the same one the missing input follows below. A
+    // status saying a price does not apply without saying WHY sends a reader
+    // looking for a number nobody wrote, and the two causes send them to
+    // opposite places: one to the Task's own charge, one nowhere at all.
+    ...(detail.pricing_status === "not_applicable" &&
+    detail.not_applicable_reason != null
+      ? [
+          {
+            label: "Why",
+            value: notApplicableReasonLabel(detail.not_applicable_reason),
+          },
+        ]
+      : []),
+    // ONE POSTING, ONE CURRENCY, said once. It denominates both amounts on this
+    // screen, so repeating it under the supplier cost would be the same fact
+    // twice — and the first place a reader looks for what they were charged in
+    // is beside what they were charged.
+    { label: "Currency", value: detail.currency.toUpperCase() },
+  ];
+
+  const costItems: DetailItem[] = [
     {
       label: "Provider cost",
       value:
@@ -234,13 +281,16 @@ export function EventDetailPage({
         ]
       : []),
     {
+      // Beside the COST rather than beside the price, because the cost is the
+      // side that bounds it: `@/lib/supplier-cost`'s `marginBound` owns the
+      // rule that a margin computed against a partial cost is a ceiling, and a
+      // margin needs both halves so it can sit under only one of them.
       label: "Margin on this event",
       value:
         margin === null
           ? ABSENT_LABEL
           : formatSignedEventMicros(margin, detail.currency),
     },
-    { label: "Currency", value: detail.currency.toUpperCase() },
   ];
 
   return (
@@ -263,10 +313,17 @@ export function EventDetailPage({
 
         <div className="space-y-4">
           <Section
-            title="Cost"
+            title="Customer price"
+            description={customerPriceExplanation(detail)}
+          >
+            <DetailList items={priceItems} />
+          </Section>
+
+          <Section
+            title="Supplier cost"
             description={COSTING_STATUS_EXPLANATIONS[detail.costing_status]}
           >
-            <DetailList items={moneyItems} />
+            <DetailList items={costItems} />
           </Section>
 
           <Measurements detail={detail} />

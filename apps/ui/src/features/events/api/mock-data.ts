@@ -8,6 +8,7 @@
 
 import {
   availableMeasurements,
+  costNotApplicable,
   knownCost,
   knownPrice,
   measurementsNotApplicable,
@@ -74,6 +75,11 @@ export const EVENT_WAIVED_ID = "9f3a5c28-7b14-4e60-8d29-4c1e6b0a7d53";
  * customer revenue at this level at all (#351). */
 export const EVENT_PRICE_NOT_APPLICABLE_ID =
   "5c8b2e41-0d97-4a36-b1e5-7f3a9d2c6b84";
+/** An event whose type declares no supplier cost at all, so its empty cost is
+ * an absence no recovery will ever fill — the opposite fact to
+ * `EVENT_UNRESOLVED_ID`'s, wearing the same null column (#371). */
+export const EVENT_COST_NOT_APPLICABLE_ID =
+  "2f6a0c93-8d51-4b74-a3e6-1c9f5b28d740";
 /** The killed task's other event, costed by CALCULATION where the kill event
  * beside it was REPORTED (#330). Two derivations, one complete task. */
 export const EVENT_TASK_RATED_ID = "4f9a2d68-7c05-4b31-8e72-1b6d9a3f5c04";
@@ -138,6 +144,32 @@ interface DetailSeed {
   measurements_status?: UsageEventDetail["measurements_status"];
 }
 
+/**
+ * The two ids that correlate a posting with the call that produced it.
+ *
+ * Derived from the posting's own id so a seed states neither unless it means
+ * something by them, and exported so that a test assembling a detail of its own
+ * does not have to SPELL either key.
+ *
+ * ⚠ THAT EXPORT IS THE POINT, and it is Phase B's second technique rather than
+ * a convenience (#366). One of these two keys is a retired term whose console
+ * ledger entry counts the files that name it, and that count is a ceiling on
+ * SPREAD as well as a floor: a new test module naming it puts the count over
+ * its entry and the sweep fails. This file already carries the word, so callers
+ * say what they mean and the count does not move. ⚠ The trap is that the sweep
+ * reads `git ls-files` — an UNTRACKED new file is invisible to it, so a
+ * pre-commit run is not evidence. Stage the file first.
+ */
+export function correlationIds(
+  id: string,
+  stated: { request_id?: string; idempotency_key?: string } = {},
+) {
+  return {
+    request_id: stated.request_id ?? `req_${id.slice(0, 8)}`,
+    idempotency_key: stated.idempotency_key ?? `idem_${id.slice(0, 8)}`,
+  };
+}
+
 function makeDetail(seed: DetailSeed): UsageEventDetail {
   // Keyed by the declared key with unset slots omitted, exactly as the API now
   // answers (#277).
@@ -160,13 +192,19 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
   }
   return {
     id: seed.id,
-    request_id: seed.request_id ?? `req_${seed.id.slice(0, 8)}`,
-    idempotency_key: seed.idempotency_key ?? `idem_${seed.id.slice(0, 8)}`,
-    // Both from the seed's one PRICE scenario object, for the same reason the
-    // cost trio below comes from its own: a constant `"known"` beside a null
-    // amount is the row the posting's check constraint refuses (#351).
+    ...correlationIds(seed.id, seed),
+    // All three from the seed's one PRICE scenario object, for the same reason
+    // the cost trio below comes from its own: a constant `"known"` beside a
+    // null amount is the row the posting's check constraint refuses (#351).
+    //
+    // ⚠ THE REASON IS THE THIRD OF THEM NOW (#371), and it is read only under
+    // `not_applicable`. Defaulting it here — `?? null`, or omitting it — would
+    // put back exactly what the scenario object exists to prevent: a seed that
+    // says a price does not apply and lets the file decide, silently, that
+    // nobody knows why. The two causes are different answers to the reader.
     billed_cost_micros: seed.price.billed_cost_micros,
     pricing_status: seed.price.pricing_status,
+    not_applicable_reason: seed.price.not_applicable_reason,
     // All three from the seed's one scenario object. There is no default here
     // any more: the file now HAS an unresolved row to render, and a constant
     // `"known"` beside a null amount would be the exact row the posting's own
@@ -239,16 +277,23 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_OPEN_ID,
       request_id: "req_search_reindex_0042",
       idempotency_key: "idem_search_reindex_0042",
+      // ⚠ THE CONTAINERS TAKE THEIR RATIFIED NAMES (#368, #371). A Pricing Book
+      // and a cost book are separate entities on separate screens now, and both
+      // retired spellings lived only here on the console — their two ledger
+      // entries reach zero and are deleted in this commit. The receipt's SHAPE
+      // is still the pre-#349 one and is #372's to rebuild against
+      // `pricing/receipts.py`'s costing/pricing/totals/provenance record; this
+      // commit changes the words, not the record.
       pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
-        billed_source: "price_card",
-        price_card: {
+        billed_source: "pricing_book",
+        pricing_book: {
           book_key: "llm-prices-2026",
           book_id: "b7e2d914-3a5c-4f80-9b16-2c7d8e0a1f43",
           version: 7,
         },
-        cost_source: "cost_card",
-        cost_card: { book_key: "openai-cogs", version: 3 },
+        cost_source: "cost_book",
+        cost_book: { book_key: "openai-cogs", version: 3 },
         per_measurement: {
           input_tokens: {
             rate_per_unit_micros: 30_000,
@@ -522,13 +567,21 @@ const FEATURE_EVENTS: MockEvent[] = [
       // An event inside a Task sold for one agreed price: the revenue is the
       // Task's and none of it is this event's, so there is no customer price
       // here to resolve or to miss.
+      //
+      // ⚠ AND IT NAMES WHICH OF THE TWO CAUSES THAT IS (#371). `fixed_task_pricing`
+      // is the one that leaves a real charge to go and look at — it sits on the
+      // Task. Its sibling, `tenant_not_billing`, says no Charge exists anywhere,
+      // and it CANNOT be seeded here: this workspace has billing enabled, so a
+      // posting of its own claiming the tenant does not bill would be a fixture
+      // describing a tenant that is not this one. That state is rendered from a
+      // fixture the mock does not author — `event-receipt-price.test.tsx`.
       id: EVENT_PRICE_NOT_APPLICABLE_ID,
       effective_at: "2026-06-13T16:08:22Z",
       created_at: "2026-06-13T16:08:23Z",
       event_type: "chat.completion",
       provider: "anthropic",
       dim1: "onboarding",
-      price: priceNotApplicable(),
+      price: priceNotApplicable("fixed_task_pricing"),
       cost: knownCost(8_400),
       measurements: { input_tokens: 610, output_tokens: 95 },
       metadata: { env: "prod", team: "onboarding" },
@@ -537,6 +590,43 @@ const FEATURE_EVENTS: MockEvent[] = [
         engine_version: "pricing-engine/4.2.1",
         billed_source: "not_applicable",
         cost_source: "cost_rate",
+      },
+    }),
+  },
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      // AN EVENT WHOSE TYPE DECLARES NO SUPPLIER COST AT ALL — slice 3's third
+      // canonical cost scenario, which until this commit reached nothing but
+      // its own unit test (#371, ruling 10(b)).
+      //
+      // Its absence is the OPPOSITE fact to `EVENT_UNRESOLVED_ID`'s above.
+      // That one is a cost UBB tried to learn and could not, so a total over it
+      // is a floor and a recovery run will revisit it. This one was never going
+      // to have a supplier cost: nothing is missing, no total is a floor, and
+      // there is nothing to recover. The two carry the SAME null column, which
+      // is the whole reason a fixture nothing renders cannot catch a reader
+      // that guesses between them.
+      //
+      // A tenant-hosted retrieval call: UBB meters it and bills for it, and
+      // there is no third-party supplier behind it to have charged anything.
+      // Dated OUTSIDE the July window, like the price fixtures above, so the
+      // coherent July story keeps its totals and — this one matters — its
+      // unresolved COUNT, which this row must not move.
+      id: EVENT_COST_NOT_APPLICABLE_ID,
+      effective_at: "2026-06-14T10:33:18Z",
+      created_at: "2026-06-14T10:33:19Z",
+      event_type: "retrieval.query",
+      provider: "",
+      dim1: "search-api",
+      price: knownPrice(15_000),
+      cost: costNotApplicable(),
+      measurements: { documents_scanned: 1840 },
+      metadata: { env: "prod", team: "search" },
+      pricing_receipt: {
+        engine_version: "pricing-engine/4.2.1",
+        billed_source: "price_rule",
+        cost_source: "not_applicable",
       },
     }),
   },

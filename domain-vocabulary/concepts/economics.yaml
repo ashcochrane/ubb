@@ -436,6 +436,16 @@ not_applicable_reason:
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py
+    # The module that decides what the console may say about a price it does
+    # not have, and the only place either cause is turned into words (#371).
+    # ⚠ NOT `apps/ui/src/lib/labels.ts`, where this concept's four neighbours
+    # are declared: that file is the LEGACY adapter #210 is emptying, and a
+    # concept arriving after the split is declared where it actually lives.
+    # `unresolved_reason` next door has no console consumer at all and this one
+    # does, which is the difference between a cause a screen names and one it
+    # only passes through.
+    - surface: console
+      path: apps/ui/src/lib/customer-price.ts
     - surface: openapi
       path: openapi/v1.json
 

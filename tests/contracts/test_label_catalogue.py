@@ -105,7 +105,12 @@ ADAPTER_IMPORTERS = (
     # stopped importing the adapter when `cardTypeLabel` went — the map that
     # worded which of two kinds a book was, on the commit that made them two
     # separately shaped entities with two screens.
-    "apps/ui/src/features/pricing/components/rates-table.tsx",
+    # ⚠ AND THE FOURTH LEFT IN #371, so the pricing feature reaches the adapter
+    # nowhere at all. `rates-table.tsx` took its one word — the rate's
+    # arithmetic shape — from `pricingModelLabel`, which is deleted with its
+    # ledger entry; the table now binds `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in
+    # `features/pricing/lib/rates.ts`. The file did not stop existing, so this
+    # is a conversion rather than #367's deletion.
     "apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx",
     "apps/ui/src/features/referrals/components/ledger-dialog.tsx",
     "apps/ui/src/features/referrals/components/program-form.tsx",
@@ -367,7 +372,8 @@ def test_every_adapter_export_is_classified(legacy):
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
         HUMANISER, "roleRank",
-        "BILLING_MODES", "COSTING_METHODS", "COSTING_STATUSES", "PRODUCTS",
+        "BILLING_MODES", "COSTING_METHODS", "COSTING_STATUSES",
+        "PRICING_METHODS", "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES",
         "ROLES",
         "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",

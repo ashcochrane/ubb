@@ -13,6 +13,11 @@ import { AlertTriangle, OctagonAlert } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { Badge } from "@/components/ui/badge";
+import {
+  notApplicableReasonLabel,
+  pricingStatusLabel,
+  settledPriceMicros,
+} from "@/lib/customer-price";
 import { formatDate, formatMicros } from "@/lib/format";
 import { stopReasonLabel, stopScopeLabel } from "@/lib/labels";
 import { tenantDefinedLabel } from "@/lib/localisation";
@@ -37,6 +42,7 @@ export function TestEventResponseCard({
   currency: string;
 }) {
   const { response } = entry;
+  const settledPrice = settledPriceMicros(response);
   return (
     <div className="space-y-3 rounded-lg border border-border bg-bg-surface p-3">
       <div className="flex items-start justify-between gap-2">
@@ -56,14 +62,31 @@ export function TestEventResponseCard({
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px] sm:grid-cols-3">
+        {/* An absent customer price is NAMED here too, on the same argument as
+            the supplier cost below and one slice later (#351, #371). It used to
+            fall back to a bare dash, which is the asymmetry #330 fixed on the
+            cost half and left standing on this one: three of the four statuses
+            null this column, they mean different things, and an integrator
+            reading this card cannot tell them apart from the absence.
+
+            ⚠ IT ASKS `settledPriceMicros`, NOT THE COLUMN. A zero beside
+            `waived` would render as money under a null test and as the decided
+            loss it is under this one. */}
         <ResponseStat
           label="Billed cost"
           value={
-            response.billed_cost_micros != null
-              ? formatEventMicros(response.billed_cost_micros, currency)
-              : "—"
+            settledPrice !== null
+              ? formatEventMicros(settledPrice, currency)
+              : pricingStatusLabel(response.pricing_status)
           }
         />
+        {response.pricing_status === "not_applicable" &&
+          response.not_applicable_reason != null && (
+            <ResponseStat
+              label="Why"
+              value={notApplicableReasonLabel(response.not_applicable_reason)}
+            />
+          )}
         {/* An absent supplier cost is NAMED here, never zeroed (#320, #330).
             This card is what an integrator reads to learn what UBB recorded, so
             a dash that could mean "could not learn it" or "never had one" is

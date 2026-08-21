@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,653 of 2,053 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,659 of 2,059 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1370,6 +1370,37 @@ measurement_key:
     #
     # Taken after the console half, after the SDK core regeneration and after
     # `git add`, for the reason #369's paragraph gives.
+    #
+    # #371 MOVED BOTH DENOMINATORS UP BY SIX AND LEFT THE NUMERATOR EXACTLY
+    # WHERE IT WAS (1,653 -> 1,659 swept, 2,053 -> 2,059 tracked, `units`
+    # unchanged at 50 files / 125 occurrences), WITH THE EXCLUSION UNCHANGED AT
+    # 400. The cleanest arithmetic this block has recorded: SIX files arrive,
+    # all six swept, none excluded, and none leave. No migration, so the two
+    # denominators move by the same six. The commit is console-only —
+    # `lib/customer-price.ts` and its test, the fixture-reachability test,
+    # `features/pricing/lib/rates.ts`, and two rendering tests that assemble
+    # their own payloads — and it touches no backend module at all, which is
+    # why a numerator counted over rate arithmetic and currency minor units
+    # could not have moved.
+    #
+    # ⚠ THE PROCEDURAL LESSON THIS ENTRY EXISTS TO CARRY, AND IT COST A REAL
+    # REVIEW CYCLE. The sweep reads `git ls-files`, so an UNTRACKED file is
+    # INVISIBLE to it — and to this test. #371's first commit ran both gates
+    # green while five of its six new modules were still untracked, and one of
+    # them spelled `request_id`, whose console ledger entry counts six files and
+    # is a ceiling on SPREAD. Staging the commit turned both gates red at once:
+    # the sweep on the seventh file, this test on the denominator. **Run
+    # `git add` BEFORE the sweep and before this suite, not after** — #369's and
+    # #370's paragraphs both say so and both were read as bookkeeping advice
+    # rather than as the load-bearing instruction they are.
+    #
+    # ⚠ NO NEW TEST MODULE NAMES A RETIRED WORD AND NONE TOOK AN ALLOWLIST SEAT
+    # (still 14). The `request_id` occurrence was removed by Phase B's SECOND
+    # technique — the word stays once in `features/events/api/mock-data.ts`,
+    # which already carried it, behind a `correlationIds` helper the rendering
+    # test calls instead of spelling the key. Deriving it from a rename
+    # operation was not available here: nothing in this commit renames it, and
+    # it is slice 5's word rather than this slice's.
 
     - term: units
       retired_as: >-

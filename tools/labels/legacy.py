@@ -95,10 +95,12 @@ MAP_CONSTRUCTOR = "legacyLabelMap"
 #: never notice. An export that is not here and is not a map or a humanising
 #: renderer is a FAULT — the gate refuses to guess.
 #:
-#: The six value lists and three types are pinned BY NAME rather than matched by
-#: shape. A rule saying "an `as const` array is a value list, and a value list
-#: is G2's subject" would be true of these nine and false of the tenth somebody
-#: adds, and nothing would say so.
+#: The nine value lists and three types are pinned BY NAME rather than matched
+#: by shape. A rule saying "an `as const` array is a value list, and a value
+#: list is G2's subject" would be true of these twelve and false of the
+#: thirteenth somebody adds, and nothing would say so. #371 added three of them
+#: in one commit and each one had to be classified by hand, which is the gate
+#: working rather than the gate being in the way.
 _VALUE_SET = ("a canonical value set the console still restates. Not this "
               "gate's subject: G2 and G3 ask whether a consumer holds a value "
               "BY REFERENCE, and this file already has their ledger entries")
@@ -118,7 +120,10 @@ DECLARED_NON_LABEL_EXPORTS = {
     "BILLING_MODES": _VALUE_SET,
     "COSTING_METHODS": _BY_REFERENCE,
     "COSTING_STATUSES": _BY_REFERENCE,
+    "PRICING_METHODS": _BY_REFERENCE,
+    "PRICING_STATUSES": _BY_REFERENCE,
     "PRODUCTS": _BY_REFERENCE,
+    "RATE_STRUCTURES": _BY_REFERENCE,
     "ROLES": _VALUE_SET,
     "ANALYTICS_DIMENSIONS": _VALUE_SET,
     "TIMESERIES_GROUP_BY": _VALUE_SET,

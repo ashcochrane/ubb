@@ -20,9 +20,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate, formatMicros, formatPrice, formatShortDate } from "@/lib/format";
-import { pricingModelLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useRates } from "../api/queries";
+import { rateStructureLabel } from "../lib/rates";
 import type { AnyBook, Rate } from "../api/types";
 
 /**
@@ -206,7 +206,7 @@ function RateRow({
         </div>
       </TableCell>
       <TableCell className="text-[12px]">
-        {pricingModelLabel(rate.rate_structure)}
+        {rateStructureLabel(rate.rate_structure)}
       </TableCell>
       <TableCell className="text-[12px] whitespace-nowrap">
         {rate.rate_structure === "fixed_component"

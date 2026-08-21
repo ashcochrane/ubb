@@ -32,6 +32,9 @@
 import {
   COSTING_METHOD_VALUES,
   COSTING_STATUS_VALUES,
+  PRICING_METHOD_VALUES,
+  PRICING_STATUS_VALUES,
+  RATE_STRUCTURE_VALUES,
   TENANT_PRODUCT_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
@@ -229,20 +232,41 @@ export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 // two G9 table entries that name the same models". Both of those are paid in
 // the same commit. A Pricing Book and a cost book are separate entities on
 // separate screens now, so nothing needs a word for which of two a book is.
-// ⚠ THE VALUES MOVED IN #366 AND THE EXPORT NAME DELIBERATELY DID NOT.
-// The keys are the rate's ratified arithmetic shapes now, because this
-// feature both renders and SENDS them and a console still saying `flat`
-// would post a value the API refuses. The symbol keeps its old spelling
-// because `gates/migration-ledger.yaml`'s G6 entry addresses this map BY
-// EXPORT NAME, and the ledger's ratchet keys on that address — so renaming
-// it here reads as an entry ADDED and costs a seeding authorisation for a
-// symbol the ticket that pays the entry deletes outright. That ticket
-// replaces the whole thing with `labelMap(RATE_STRUCTURE_LABEL_KEYS)` off
-// the locale catalogue, which already carries this exact wording.
-export const pricingModelLabel = legacyLabelMap({
-  per_unit: "Per unit",
-  fixed_component: "Fixed component",
-});
+
+// ⚠ `pricingModelLabel` IS DELETED (#371), WHICH IS WHAT ITS LEDGER ENTRY
+// ASKED FOR: *"it becomes `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in the slice
+// that rebuilds that vocabulary — the same slice the concept's own value-list
+// entry names, because a value list and the words for it cannot honestly move
+// apart."* Both halves are paid in this commit — the words moved to
+// `features/pricing/lib/rates.ts`, off the locale catalogue, which already
+// carried this exact wording; the value list stays here, by reference, on the
+// line below.
+//
+// #366 had already moved the KEYS to the rate's ratified arithmetic shapes
+// while leaving the export name alone, because this entry addressed the map by
+// export name and a rename would have read to the ratchet as an entry ADDED.
+// Deleting it is what that spelling was being preserved for.
+
+// The rate's arithmetic shape, the two methods a pricing rule may declare, and
+// whether a customer price is settled — the registry's three, held BY
+// REFERENCE (#371), on the same terms and for the same reason as `PRODUCTS`,
+// `COSTING_METHODS` and `COSTING_STATUSES` above. `domain-vocabulary/` names
+// this file as the console's consumer of all three, so re-homing a list is a
+// registry edit rather than a console one.
+//
+// The WORDS are in the catalogue under `rate_structure.*`, `pricing_method.*`
+// and `pricing_status.*`, bound where they are rendered:
+// `features/pricing/lib/rates.ts` for the rate's arithmetic shape, and
+// `@/lib/customer-price` — the module that decides what a price UBB does not
+// have may render as — for the status. `pricing_method` has no binding
+// anywhere yet, exactly as `costing_method` above has none: nothing renders a
+// method until #372 rebuilds the pricing feature, and the rule two lines up
+// says a surface binds the words when it comes to show them. Nothing here, and
+// no map: this file is the legacy adapter, and a concept that has been migrated
+// leaves behind its value list and nothing else.
+export const RATE_STRUCTURES = RATE_STRUCTURE_VALUES;
+export const PRICING_METHODS = PRICING_METHOD_VALUES;
+export const PRICING_STATUSES = PRICING_STATUS_VALUES;
 
 export const stopScopeLabel = legacyLabelMap({
   task: "Task",

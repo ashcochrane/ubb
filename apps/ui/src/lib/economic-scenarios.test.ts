@@ -18,6 +18,7 @@ import { isPartial, supplierCostTotal } from "./supplier-cost";
 import {
   COSTING_STATUS_VALUES,
   MEASUREMENTS_STATUS_VALUES,
+  NOT_APPLICABLE_REASON_VALUES,
   PRICING_STATUS_VALUES,
 } from "./vocabulary";
 
@@ -179,7 +180,11 @@ describe("customer price scenarios", () => {
   // amount cannot say which a fixture meant, and the three mean different
   // things about whether anything is missing — only `unknown` is.
   it("says a NULL amount is three different states, told apart by the status", () => {
-    const absent = [unknownPrice(), waivedPrice(), priceNotApplicable()];
+    const absent = [
+      unknownPrice(),
+      waivedPrice(),
+      priceNotApplicable("fixed_task_pricing"),
+    ];
 
     for (const scenario of absent) {
       expect(scenario.billed_cost_micros).toBeNull();
@@ -196,12 +201,46 @@ describe("customer price scenarios", () => {
       knownPrice(1),
       unknownPrice(),
       waivedPrice(),
-      priceNotApplicable(),
+      priceNotApplicable("tenant_not_billing"),
     ]) {
       expect(Object.keys(scenario)).toEqual([
         "billed_cost_micros",
         "pricing_status",
+        "not_applicable_reason",
       ]);
+    }
+  });
+
+  // ⚠ THE SIXTH AND SEVENTH STATES THIS SLICE INTRODUCES, and the reason the
+  // reason is an ARGUMENT rather than a constant. `not_applicable` says a price
+  // does not apply; it does not say why, and a reader given only that goes
+  // looking for a number nobody wrote. The two causes send them to opposite
+  // places — one to the Task's own charge, one nowhere at all — so a scenario
+  // that fixed the reason would make half of this slice's owed states
+  // unreachable from any fixture.
+  it("names WHY a price does not apply, and both causes are composable", () => {
+    for (const reason of NOT_APPLICABLE_REASON_VALUES) {
+      const scenario = priceNotApplicable(reason);
+
+      expect(scenario.billed_cost_micros).toBeNull();
+      expect(scenario.pricing_status).toBe("not_applicable");
+      expect(scenario.not_applicable_reason).toBe(reason);
+    }
+  });
+
+  // Read only where the status is `not_applicable`, exactly as the registry
+  // says: a reason beside any other status would be a row describing a cause
+  // for an absence that has one of its own.
+  it("carries a reason on the one status the registry reads it under", () => {
+    for (const scenario of [
+      knownPrice(1),
+      unknownPrice(),
+      waivedPrice(),
+      priceNotApplicable("fixed_task_pricing"),
+    ]) {
+      expect(scenario.not_applicable_reason === null).toBe(
+        scenario.pricing_status !== "not_applicable",
+      );
     }
   });
 
@@ -213,7 +252,7 @@ describe("customer price scenarios", () => {
       knownPrice(1),
       unknownPrice(),
       waivedPrice(),
-      priceNotApplicable(),
+      priceNotApplicable("tenant_not_billing"),
     ]) {
       const settled = scenario.pricing_status === "known";
       expect(scenario.billed_cost_micros === null).toBe(!settled);
@@ -228,7 +267,7 @@ describe("customer price scenarios", () => {
       knownPrice(0),
       unknownPrice(),
       waivedPrice(),
-      priceNotApplicable(),
+      priceNotApplicable("fixed_task_pricing"),
     ].map((scenario) => scenario.pricing_status);
 
     expect([...produced].sort()).toEqual([...PRICING_STATUS_VALUES].sort());

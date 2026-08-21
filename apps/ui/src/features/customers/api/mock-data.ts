@@ -7,7 +7,12 @@
 // nova-ai       — individual pinned to metered_only; usage tracked at cost.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
-import { knownCost, unknownCost } from "@/lib/economic-scenarios";
+import {
+  completeTotal,
+  incompleteTotal,
+  knownCost,
+  unknownCost,
+} from "@/lib/economic-scenarios";
 
 import type {
   BalanceResponse,
@@ -35,6 +40,36 @@ export const CUS_LUNA = "2a1d8b3f-7e19-4c2d-8e4c-7b2000000002";
 export const CUS_NOVA = "3b2e7c40-6d08-4b3c-9f5d-8c3100000003";
 export const CUS_SEAT_ENG = "4c3f6d51-5c97-4a4b-8a6e-9d4200000004";
 export const CUS_SEAT_RES = "5d4a5e62-4b86-495a-9b7f-0e5300000005";
+
+// ---------------------------------------------------------------------------
+// Each customer's supplier cost for the period, and how much of it UBB knows.
+//
+// COMPOSED, NEVER STATED FIELD BY FIELD (#371). A total and the count of events
+// it had to skip are ONE fact — a total beside a non-zero count is a FLOOR
+// rather than a figure, and the margin computed from it is a CEILING — so
+// `@/lib/economic-scenarios` returns them as one object and a fixture cannot
+// take half. Until this commit those two scenarios reached nothing but their
+// own unit test (ruling 10(b)), which is how a canonical fixture comes to
+// describe a state no screen is checked against.
+//
+// ⚠ ONE CONSTANT SERVES BOTH THE LIST ROW AND THE DETAIL, and that is the
+// second thing this buys. The two describe one customer over one period, so
+// they cannot honestly differ, and until now the only thing keeping them equal
+// was that somebody typed the same number twice.
+//
+// nova-ai is the one incomplete customer in this story: four of its events
+// carry a supplier cost UBB never learned, so its provider total renders as
+// "at least $88.00" and its margin as a bound. That wording is #151 §10.3's
+// requirement, and this is the fixture behind it.
+const ACME_PROVIDER_COST = completeTotal(274_000_000);
+const LUNA_PROVIDER_COST = completeTotal(55_900_000);
+const NOVA_PROVIDER_COST = incompleteTotal(88_000_000, 4);
+const SEAT_ENG_PROVIDER_COST = completeTotal(96_300_000);
+const SEAT_RES_PROVIDER_COST = completeTotal(49_400_000);
+/** The two seats' costs rolled up — the business total is the sum of its seats. */
+const BUSINESS_PROVIDER_COST = completeTotal(
+  SEAT_ENG_PROVIDER_COST.micros + SEAT_RES_PROVIDER_COST.micros,
+);
 
 export interface MockCustomer {
   id: string;
@@ -88,8 +123,8 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 199_000_000,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
-    provider_cost_micros: 274_000_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: ACME_PROVIDER_COST.micros,
+    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 267_500_000,
     margin_percentage: 49.4,
@@ -99,8 +134,8 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
-    provider_cost_micros: 55_900_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: LUNA_PROVIDER_COST.micros,
+    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: -14_700_000,
     margin_percentage: -35.7,
@@ -116,8 +151,8 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
-    provider_cost_micros: 88_000_000,
-    unresolved_event_count: 4,
+    provider_cost_micros: NOVA_PROVIDER_COST.micros,
+    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: -88_000_000,
     margin_percentage: 0,
@@ -127,8 +162,8 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
-    provider_cost_micros: 96_300_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 24_100_000,
     margin_percentage: 20,
@@ -138,8 +173,8 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
-    provider_cost_micros: 49_400_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     gross_margin_micros: 12_400_000,
     margin_percentage: 20.1,
@@ -158,8 +193,8 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     subscription_revenue_micros: 199_000_000,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
-    provider_cost_micros: 274_000_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: ACME_PROVIDER_COST.micros,
+    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 541_500_000,
     gross_margin_micros: 267_500_000,
@@ -174,8 +209,8 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     subscription_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
-    provider_cost_micros: 55_900_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: LUNA_PROVIDER_COST.micros,
+    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 41_200_000,
     gross_margin_micros: -14_700_000,
@@ -190,9 +225,9 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     subscription_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
-    provider_cost_micros: 88_000_000,
+    provider_cost_micros: NOVA_PROVIDER_COST.micros,
     // Same four events as the list row above — one customer, one fact.
-    unresolved_event_count: 4,
+    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 0,
     gross_margin_micros: -88_000_000,
@@ -207,8 +242,8 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     subscription_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
-    provider_cost_micros: 96_300_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 120_400_000,
     gross_margin_micros: 24_100_000,
@@ -223,8 +258,8 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     subscription_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
-    provider_cost_micros: 49_400_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
+    unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 61_800_000,
     gross_margin_micros: 12_400_000,
@@ -303,8 +338,8 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       subscription_revenue_micros: 0,
       usage_billed_micros: 120_400_000,
       usage_revenue_micros: 120_400_000,
-      provider_cost_micros: 96_300_000,
-      unresolved_event_count: 0,
+      provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
+      unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
       total_revenue_micros: 120_400_000,
       gross_margin_micros: 24_100_000,
@@ -317,8 +352,8 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       subscription_revenue_micros: 0,
       usage_billed_micros: 61_800_000,
       usage_revenue_micros: 61_800_000,
-      provider_cost_micros: 49_400_000,
-      unresolved_event_count: 0,
+      provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
+      unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
       total_revenue_micros: 61_800_000,
       gross_margin_micros: 12_400_000,
@@ -329,8 +364,8 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
     event_count: 26_409,
     subscription_revenue_micros: 0,
     usage_revenue_micros: 182_200_000,
-    provider_cost_micros: 145_700_000,
-    unresolved_event_count: 0,
+    provider_cost_micros: BUSINESS_PROVIDER_COST.micros,
+    unresolved_event_count: BUSINESS_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     total_revenue_micros: 182_200_000,
     gross_margin_micros: 36_500_000,
@@ -637,8 +672,8 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
   [CUS_ACME]: {
     total_events: 48_213,
     total_billed_cost_micros: 342_500_000,
-    total_provider_cost_micros: 274_000_000,
-    unresolved_event_count: 0,
+    total_provider_cost_micros: ACME_PROVIDER_COST.micros,
+    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     usage_markup_margin_micros: 68_500_000,
     by_provider: [
@@ -664,8 +699,8 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
   [CUS_LUNA]: {
     total_events: 6_054,
     total_billed_cost_micros: 41_200_000,
-    total_provider_cost_micros: 55_900_000,
-    unresolved_event_count: 0,
+    total_provider_cost_micros: LUNA_PROVIDER_COST.micros,
+    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     usage_markup_margin_micros: -14_700_000,
     by_provider: [],
@@ -682,8 +717,8 @@ export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
   [CUS_NOVA]: {
     total_events: 12_882,
     total_billed_cost_micros: 88_000_000,
-    total_provider_cost_micros: 88_000_000,
-    unresolved_event_count: 4,
+    total_provider_cost_micros: NOVA_PROVIDER_COST.micros,
+    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
     usage_markup_margin_micros: 0,
     by_provider: [],
