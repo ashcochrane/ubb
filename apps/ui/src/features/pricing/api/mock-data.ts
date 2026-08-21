@@ -12,7 +12,7 @@
 // One array with a kind field would be this fixture re-inventing the column
 // the split deleted.
 
-import type { CostBook, PricingBook, Rate, TenantMarkup } from "./types";
+import type { CostBook, PricingBook, Rate } from "./types";
 
 /**
  * A rate fixture, written with only the selectors this feature's story
@@ -56,11 +56,6 @@ function rate(seed: RateSeed): Rate {
     grouping_field_10: "",
   };
 }
-
-export const MOCK_TENANT_MARKUP: TenantMarkup = {
-  markup_percentage_micros: 15_000_000, // 15%
-  fixed_uplift_micros: 0,
-};
 
 export const MOCK_COST_BOOKS: CostBook[] = [
   {

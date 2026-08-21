@@ -15,15 +15,21 @@ import { cn } from "@/lib/utils";
 import { useCustomerMargin } from "../api/queries";
 import { BillingTab } from "./billing-tab";
 import { OverviewTab } from "./overview-tab";
-import { PricingTab } from "./pricing-tab";
 import { SubscriptionTab } from "./subscription-tab";
 import { UsageTab } from "./usage-tab";
 
+// ⚠ THERE IS NO PRICING TAB (#368, #369). It held two cards and both are gone
+// with the records behind them: a book picker, whose assignment record was
+// deleted outright, and a markup override, whose record and five routes were
+// deleted next. What one named customer is charged is a RULE in their own
+// pricing book now — a record that says which quantity it prices — and this
+// console has no way to read or write one until #372 rebuilds the pricing
+// feature around books, rules and publishes. An empty tab would say the
+// console had lost the answer; no tab says the surface moved.
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "usage", label: "Usage" },
   { value: "billing", label: "Billing" },
-  { value: "pricing", label: "Pricing" },
   { value: "subscription", label: "Subscription" },
 ] as const;
 
@@ -138,9 +144,6 @@ export function CustomerDetailPage({
           <ProductGate product="billing">
             <BillingTab customerId={customerId} externalId={detail.external_id} />
           </ProductGate>
-        </TabsContent>
-        <TabsContent value="pricing" className="pt-3">
-          <PricingTab customerId={customerId} />
         </TabsContent>
         <TabsContent value="subscription" className="pt-3">
           <ProductGate product="billing">

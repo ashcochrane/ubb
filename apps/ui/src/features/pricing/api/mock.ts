@@ -1,19 +1,18 @@
 // Mock implementation — same exported signatures as api.ts, backed by
-// module-level state so mutations are coherent within a session: created
-// books appear in the list and markup edits stick.
+// module-level state so mutations are coherent within a session: a declared
+// book appears in the list.
 //
 // ⚠ IT NO LONGER SUPERSEDES RATES (#368). The immediate reprice this mocked is
 // deleted with the route it stood for; a book changes by a declared publish
 // now, and the feature that speaks that body arrives with #372.
+//
+// ⚠ AND IT NO LONGER HOLDS A MARKUP (#369). The record those two routes read
+// and wrote is deleted; the rung that replaced it has no console surface until
+// #372, so there is nothing here to mock.
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
-import {
-  MOCK_COST_BOOKS,
-  MOCK_PRICING_BOOKS,
-  MOCK_RATES,
-  MOCK_TENANT_MARKUP,
-} from "./mock-data";
+import { MOCK_COST_BOOKS, MOCK_PRICING_BOOKS, MOCK_RATES } from "./mock-data";
 import type {
   AnyBook,
   CostBook,
@@ -26,8 +25,6 @@ import type {
   PricingBook,
   PricingBookIn,
   Rate,
-  TenantMarkup,
-  TenantMarkupIn,
 } from "./types";
 
 // ⚠ TWO LISTS, BECAUSE THERE ARE TWO ENTITIES (#368). A single array with a
@@ -35,7 +32,6 @@ import type {
 let pricingBooks: PricingBook[] = MOCK_PRICING_BOOKS.map((book) => ({ ...book }));
 let costBooks: CostBook[] = MOCK_COST_BOOKS.map((book) => ({ ...book }));
 const rates: Rate[] = MOCK_RATES.map((rate) => ({ ...rate }));
-let markup: TenantMarkup = { ...MOCK_TENANT_MARKUP };
 let idCounter = 0;
 
 function nextId(prefix: string): string {
@@ -160,16 +156,3 @@ export async function listRates(
   return { data: sorted, has_more: false, next_cursor: null };
 }
 
-export async function getTenantMarkup(): Promise<TenantMarkup> {
-  await mockDelay();
-  return { ...markup };
-}
-
-export async function putTenantMarkup(body: TenantMarkupIn): Promise<TenantMarkup> {
-  await mockDelay();
-  markup = {
-    markup_percentage_micros: body.markup_percentage_micros ?? 0,
-    fixed_uplift_micros: body.fixed_uplift_micros ?? 0,
-  };
-  return { ...markup };
-}

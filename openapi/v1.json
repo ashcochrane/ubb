@@ -4151,12 +4151,6 @@
             "title": "Access Fee Micros",
             "type": "integer"
           },
-          "fixed_uplift_micros": {
-            "default": 0,
-            "minimum": 0,
-            "title": "Fixed Uplift Micros",
-            "type": "integer"
-          },
           "interval": {
             "default": "month",
             "enum": [
@@ -4171,13 +4165,6 @@
             "minLength": 1,
             "title": "Key",
             "type": "string"
-          },
-          "markup_percentage_micros": {
-            "default": 0,
-            "maximum": 1000000000,
-            "minimum": 0,
-            "title": "Markup Percentage Micros",
-            "type": "integer"
           },
           "name": {
             "maxLength": 255,
@@ -4232,10 +4219,6 @@
             ],
             "title": "Archived At"
           },
-          "fixed_uplift_micros": {
-            "title": "Fixed Uplift Micros",
-            "type": "integer"
-          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -4247,10 +4230,6 @@
           "key": {
             "title": "Key",
             "type": "string"
-          },
-          "markup_percentage_micros": {
-            "title": "Markup Percentage Micros",
-            "type": "integer"
           },
           "name": {
             "title": "Name",
@@ -4271,8 +4250,6 @@
           "name",
           "access_fee_micros",
           "per_seat_micros",
-          "markup_percentage_micros",
-          "fixed_uplift_micros",
           "interval",
           "pricing_version"
         ],
@@ -4292,31 +4269,6 @@
               }
             ],
             "title": "Access Fee Micros"
-          },
-          "fixed_uplift_micros": {
-            "anyOf": [
-              {
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fixed Uplift Micros"
-          },
-          "markup_percentage_micros": {
-            "anyOf": [
-              {
-                "maximum": 1000000000,
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Markup Percentage Micros"
           },
           "migrate_existing": {
             "default": false,
@@ -7436,42 +7388,6 @@
         "title": "TenantInvoiceOut",
         "type": "object"
       },
-      "TenantMarkupIn": {
-        "properties": {
-          "fixed_uplift_micros": {
-            "default": 0,
-            "minimum": 0,
-            "title": "Fixed Uplift Micros",
-            "type": "integer"
-          },
-          "markup_percentage_micros": {
-            "default": 0,
-            "minimum": 0,
-            "title": "Markup Percentage Micros",
-            "type": "integer"
-          }
-        },
-        "title": "TenantMarkupIn",
-        "type": "object"
-      },
-      "TenantMarkupOut": {
-        "properties": {
-          "fixed_uplift_micros": {
-            "title": "Fixed Uplift Micros",
-            "type": "integer"
-          },
-          "markup_percentage_micros": {
-            "title": "Markup Percentage Micros",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "markup_percentage_micros",
-          "fixed_uplift_micros"
-        ],
-        "title": "TenantMarkupOut",
-        "type": "object"
-      },
       "TenantUsageInvoiceListResponse": {
         "properties": {
           "data": {
@@ -10245,7 +10161,7 @@
     },
     "/api/v1/customers/{external_id}/plan": {
       "post": {
-        "description": "Put a customer on a plan.\n\nThis is the plan-membership write and it never touches Stripe. Starting the\nStripe subscription for a plan's fee axes is a separate call\n(POST /subscriptions/customers/{external_id}/subscribe), because a\nmarkup-only plan has no Stripe subscription to start.",
+        "description": "Put a customer on a plan.\n\nThis is the plan-membership write and it never touches Stripe. Starting the\nStripe subscription for a plan's fee axes is a separate call\n(POST /subscriptions/customers/{external_id}/subscribe), because a\nusage-only plan has no Stripe subscription to start.",
         "operationId": "api_v1_plan_endpoints_assign_plan",
         "parameters": [
           {
@@ -13552,118 +13468,6 @@
         "summary": "Get Inherited Rule"
       }
     },
-    "/api/v1/metering/pricing/customers/{customer_id}/markup": {
-      "delete": {
-        "description": "Remove a customer's markup override so they revert to inheriting the\ntenant default. This is NOT the same as PUT-ing 0/0 \u2014 a 0/0 row still\nresolves as the customer's markup and SHADOWS the tenant default, pinning\nthe customer at cost. Idempotent: 'no_override' when none existed; a bad\ncustomer id is a 404.",
-        "operationId": "api_v1_metering_endpoints_delete_customer_markup",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Delete Customer Markup"
-      },
-      "get": {
-        "operationId": "api_v1_metering_endpoints_get_customer_markup",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantMarkupOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Customer Markup"
-      },
-      "put": {
-        "operationId": "api_v1_metering_endpoints_upsert_customer_markup",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TenantMarkupIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantMarkupOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Upsert Customer Markup"
-      }
-    },
     "/api/v1/metering/pricing/customers/{customer_id}/overrides": {
       "post": {
         "description": "Declare one customer's own pricing rule, as a draft.\n\nThe override states a WHOLE rule \u2014 the quantity it prices, the selectors it\npins, how it derives its price and what it charges \u2014 and replaces whatever\nthis customer inherits for that rule. Nothing is inherited into it: a field\nleft out takes the rule defaults, never the superseded rule's value, so a\ncustomer moved from a margin over cost onto a flat price is stated in one\nbody. `GET /pricing/customers/{customer_id}/inherited-rule` answers what\nthey get today, which is what a client offers as the starting point.\n\n**This writes no rule.** It declares a draft on the customer's own book,\nexactly as a change to any other book is declared, and publishing it\nthrough `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`\nis what puts the deal in force. The response carries that book's id and the\ndiff.\n\n`effective_at` dates the override forward and omitting it means now, under\nthe bounds every publish takes: timezone-aware (`effective_at_naive`), not\nin the past (`effective_at_in_past`), within 366 days\n(`effective_at_too_far_ahead`), and at or after the latest boundary already\nscheduled on this customer's book\n(`effective_at_before_scheduled_boundary`).",
@@ -13892,62 +13696,6 @@
           }
         ],
         "summary": "Declare Tenant Default Markup"
-      }
-    },
-    "/api/v1/metering/pricing/markup": {
-      "get": {
-        "operationId": "api_v1_metering_endpoints_get_tenant_markup",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantMarkupOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Tenant Markup"
-      },
-      "put": {
-        "operationId": "api_v1_metering_endpoints_upsert_tenant_markup",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TenantMarkupIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantMarkupOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Upsert Tenant Markup"
       }
     },
     "/api/v1/metering/pricing/pricing-books": {
@@ -14538,7 +14286,7 @@
         "summary": "List Task Types"
       },
       "put": {
-        "description": "Declare the tenant's work vocabulary and its per-kind COGS ceilings\n(design D7). Idempotent; the ceiling and required_dimensions may be updated\non a re-PUT. Admin-floored: a task type's ceiling prices usage the same way\nmarkup.set and the book acts do, so it takes the write-default Admin floor\nrather\nthan a Write carve-out.",
+        "description": "Declare the tenant's work vocabulary and its per-kind COGS ceilings\n(design D7). Idempotent; the ceiling and required_dimensions may be updated\non a re-PUT. Admin-floored: a task type's ceiling prices usage the same way\ndeclaring a book or a markup rung does, so it takes the write-default Admin\nfloor rather than a Write carve-out.",
         "operationId": "api_v1_metering_endpoints_declare_task_types",
         "parameters": [],
         "requestBody": {
@@ -14958,7 +14706,7 @@
     },
     "/api/v1/plans/{key}": {
       "delete": {
-        "description": "Archive a plan. Refused while customers are still assigned \u2014 archiving\nan assigned plan would silently drop their markup to the tenant default.",
+        "description": "Archive a plan. Refused while customers are still assigned \u2014 archiving\nan assigned plan would silently move every one of them off the book it\nprices them from.",
         "operationId": "api_v1_plan_endpoints_archive_plan",
         "parameters": [
           {
@@ -15046,7 +14794,7 @@
         "summary": "Get Plan"
       },
       "patch": {
-        "description": "Edit a plan.\n\nThe two axis families reprice differently, deliberately:\n  - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit\n    mints a new versioned Price and existing subscribers keep the old one\n    unless migrate_existing=true.\n  - MARKUP is live. It has no Stripe object, so an edit applies to the next\n    rated event for every customer on the plan.\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
+        "description": "Edit a plan.\n\nFEE axes are grandfathered: Stripe Prices are immutable, so a fee edit\nmints a new versioned Price and existing subscribers keep the old one unless\nmigrate_existing=true.\n\nWhat the plan's customers pay for usage is not edited here. It is the rules\nin the Pricing Book the plan names, changed through a publish on that book,\nwhich is what gives a tenant a diff to read before a price moves.\n\nTrials and coupons are deliberate non-goals: Stripe owns those levers.",
         "operationId": "api_v1_plan_endpoints_update_plan",
         "parameters": [
           {

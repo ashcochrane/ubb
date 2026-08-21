@@ -90,12 +90,13 @@ def sync_detailed(
 
      Edit a plan.
 
-    The two axis families reprice differently, deliberately:
-      - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit
-        mints a new versioned Price and existing subscribers keep the old one
-        unless migrate_existing=true.
-      - MARKUP is live. It has no Stripe object, so an edit applies to the next
-        rated event for every customer on the plan.
+    FEE axes are grandfathered: Stripe Prices are immutable, so a fee edit
+    mints a new versioned Price and existing subscribers keep the old one unless
+    migrate_existing=true.
+
+    What the plan's customers pay for usage is not edited here. It is the rules
+    in the Pricing Book the plan names, changed through a publish on that book,
+    which is what gives a tenant a diff to read before a price moves.
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
 
@@ -135,12 +136,13 @@ def sync(
 
      Edit a plan.
 
-    The two axis families reprice differently, deliberately:
-      - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit
-        mints a new versioned Price and existing subscribers keep the old one
-        unless migrate_existing=true.
-      - MARKUP is live. It has no Stripe object, so an edit applies to the next
-        rated event for every customer on the plan.
+    FEE axes are grandfathered: Stripe Prices are immutable, so a fee edit
+    mints a new versioned Price and existing subscribers keep the old one unless
+    migrate_existing=true.
+
+    What the plan's customers pay for usage is not edited here. It is the rules
+    in the Pricing Book the plan names, changed through a publish on that book,
+    which is what gives a tenant a diff to read before a price moves.
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
 
@@ -175,12 +177,13 @@ async def asyncio_detailed(
 
      Edit a plan.
 
-    The two axis families reprice differently, deliberately:
-      - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit
-        mints a new versioned Price and existing subscribers keep the old one
-        unless migrate_existing=true.
-      - MARKUP is live. It has no Stripe object, so an edit applies to the next
-        rated event for every customer on the plan.
+    FEE axes are grandfathered: Stripe Prices are immutable, so a fee edit
+    mints a new versioned Price and existing subscribers keep the old one unless
+    migrate_existing=true.
+
+    What the plan's customers pay for usage is not edited here. It is the rules
+    in the Pricing Book the plan names, changed through a publish on that book,
+    which is what gives a tenant a diff to read before a price moves.
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
 
@@ -220,12 +223,13 @@ async def asyncio(
 
      Edit a plan.
 
-    The two axis families reprice differently, deliberately:
-      - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit
-        mints a new versioned Price and existing subscribers keep the old one
-        unless migrate_existing=true.
-      - MARKUP is live. It has no Stripe object, so an edit applies to the next
-        rated event for every customer on the plan.
+    FEE axes are grandfathered: Stripe Prices are immutable, so a fee edit
+    mints a new versioned Price and existing subscribers keep the old one unless
+    migrate_existing=true.
+
+    What the plan's customers pay for usage is not edited here. It is the rules
+    in the Pricing Book the plan names, changed through a publish on that book,
+    which is what gives a tenant a diff to read before a price moves.
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
 

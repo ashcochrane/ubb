@@ -395,8 +395,6 @@ class SubscriptionOrchestrationClientTest(unittest.TestCase):
                 "name": "Pro",
                 "access_fee_micros": 50_000_000,
                 "per_seat_micros": 8_000_000,
-                "markup_percentage_micros": 0,
-                "fixed_uplift_micros": 0,
                 "interval": "month",
             },
         )

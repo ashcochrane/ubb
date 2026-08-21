@@ -76,7 +76,8 @@ def sync_detailed(
     """ Archive Plan
 
      Archive a plan. Refused while customers are still assigned — archiving
-    an assigned plan would silently drop their markup to the tenant default.
+    an assigned plan would silently move every one of them off the book it
+    prices them from.
 
     Args:
         key (str):
@@ -110,7 +111,8 @@ def sync(
     """ Archive Plan
 
      Archive a plan. Refused while customers are still assigned — archiving
-    an assigned plan would silently drop their markup to the tenant default.
+    an assigned plan would silently move every one of them off the book it
+    prices them from.
 
     Args:
         key (str):
@@ -139,7 +141,8 @@ async def asyncio_detailed(
     """ Archive Plan
 
      Archive a plan. Refused while customers are still assigned — archiving
-    an assigned plan would silently drop their markup to the tenant default.
+    an assigned plan would silently move every one of them off the book it
+    prices them from.
 
     Args:
         key (str):
@@ -173,7 +176,8 @@ async def asyncio(
     """ Archive Plan
 
      Archive a plan. Refused while customers are still assigned — archiving
-    an assigned plan would silently drop their markup to the tenant default.
+    an assigned plan would silently move every one of them off the book it
+    prices them from.
 
     Args:
         key (str):

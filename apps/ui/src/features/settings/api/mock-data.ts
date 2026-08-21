@@ -338,12 +338,24 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "mem-mia",
     actor_kind: "member",
     actor_display: "mia@acme.ai",
-    action: "markup.updated",
-    resource_type: "markup_config",
-    resource_id: "markup-default",
+    // ⚠ THE ACT THIS ROW SHOWED NO LONGER EXISTS (#369). It recorded a change
+    // to the tenant-level markup record, which is deleted with its routes and
+    // both of its audit action names. The tenant's DECLARED default markup rung
+    // is what replaced it, and declaring one is its own act with its own name —
+    // so the row names that instead of an act the ledger can never carry again.
+    //
+    // The name is a LITERAL rather than an import from `@/lib/vocabulary`, as
+    // every other row in this fixture is, and that is the fixture's shape
+    // rather than an oversight: it mocks STORED HISTORY, and stored history
+    // legitimately holds names the live registry no longer has — several rows
+    // above already do. Binding one row to a live constant would assert the
+    // opposite of what an audit ledger is for.
+    action: "tenant_default_markup.declared",
+    resource_type: "tenant_default_markup",
+    resource_id: "rung-default",
     correlation_id: "corr-b7d3",
     metadata: {
-      markup_percentage_micros: { from: 15_000_000, to: 20_000_000 },
+      markup_micro_percent: 20_000_000,
     },
   },
   {

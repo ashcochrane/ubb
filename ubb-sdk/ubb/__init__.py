@@ -19,7 +19,6 @@ from ubb._core.models.grant_out import GrantOut
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.refund_response import RefundResponse
 from ubb._core.models.status_response import StatusResponse
-from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
@@ -64,7 +63,7 @@ __all__ = [
     "RecordUsageResponse", "CloseTaskResponse", "CustomerResponse", "BalanceResponse",
     "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
-    "TenantMarkupOut", "TopUpCheckoutResponse", "RevenueProfileOut",
+    "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types
     "PreCheckResult", "PaginatedResponse", "BatchItemResult", "BatchResult",

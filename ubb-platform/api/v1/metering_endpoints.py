@@ -33,7 +33,6 @@ from api.v1.schemas import (
     UsageBatchRequest, UsageBatchResponse,
     PaginatedUsageResponse,
     UsageEventDetailOut,
-    TenantMarkupIn, TenantMarkupOut,
     TenantDefaultMarkupIn, TenantDefaultMarkupOut,
     CloseTaskResponse,
     TaskDetailOut, PaginatedTasks, task_out,
@@ -687,133 +686,23 @@ def withdraw_tenant_default_markup(request):
     return {"status": "withdrawn"}
 
 
-# --- Pricing Markup ---
+# THE FIVE MARKUP ROUTES ARE GONE, AND SO IS THE RECORD THEY WROTE (#369).
 #
-# ⚠ THE TENANT-SCOPE PAIR BELOW NO LONGER PRICES ANYTHING (#357). Resolution's
-# tenant-default rung reads the declaration above; what these two write and read
-# is a row that survives only until the record is deleted, along with these
-# routes, their two schemas and their two audit action names. The
-# customer-scope routes further down are unaffected: a customer override is
-# still a rung, until it becomes a rule in the customer's own Pricing Book.
-
-
-@metering_router.get("/pricing/markup", response=TenantMarkupOut)
-@role_floor(READ)
-def get_tenant_markup(request):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
-    if markup is None:
-        return {"markup_percentage_micros": 0, "fixed_uplift_micros": 0}
-    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
-
-
-@metering_router.put("/pricing/markup", response=TenantMarkupOut)
-@role_floor(ADMIN)
-@records_audit("markup.set")
-def upsert_tenant_markup(request, payload: TenantMarkupIn):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    with transaction.atomic():
-        markup, _ = TenantMarkup.objects.update_or_create(
-            tenant=request.auth.tenant,
-            customer=None,
-            defaults={
-                "markup_percentage_micros": payload.markup_percentage_micros,
-                "fixed_uplift_micros": payload.fixed_uplift_micros,
-            },
-        )
-        audit_record(
-            action="markup.set",
-            tenant_id=request.auth.tenant.id,
-            resource_type="markup",
-            resource_id=markup.id,
-            metadata={
-                "scope": "tenant",
-                "markup_percentage_micros": markup.markup_percentage_micros,
-                "fixed_uplift_micros": markup.fixed_uplift_micros,
-            },
-        )
-    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
-
-
-@metering_router.get("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
-@role_floor(READ)
-def get_customer_markup(request, customer_id: UUID):
-    _product_check(request)
-    from apps.metering.pricing.services.markup_service import MarkupService
-
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    markup = MarkupService.resolve(tenant=request.auth.tenant, customer=customer)
-    if markup is None:
-        return {"markup_percentage_micros": 0, "fixed_uplift_micros": 0}
-    # The rung answers in the honest unit spelling and this response publishes
-    # the retired one, so the two are joined here rather than either being
-    # renamed: this schema is deleted with the record it describes (#369).
-    return {"markup_percentage_micros": markup.markup_micro_percent, "fixed_uplift_micros": markup.fixed_uplift_micros}
-
-
-@metering_router.put("/pricing/customers/{customer_id}/markup", response=TenantMarkupOut)
-@role_floor(ADMIN)
-@records_audit("markup.set")
-def upsert_customer_markup(request, customer_id: UUID, payload: TenantMarkupIn):
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    with transaction.atomic():
-        markup, _ = TenantMarkup.objects.update_or_create(
-            tenant=request.auth.tenant,
-            customer=customer,
-            defaults={
-                "markup_percentage_micros": payload.markup_percentage_micros,
-                "fixed_uplift_micros": payload.fixed_uplift_micros,
-            },
-        )
-        audit_record(
-            action="markup.set",
-            tenant_id=request.auth.tenant.id,
-            resource_type="markup",
-            resource_id=markup.id,
-            metadata={
-                "scope": "customer",
-                "customer_id": str(customer.id),
-                "markup_percentage_micros": markup.markup_percentage_micros,
-                "fixed_uplift_micros": markup.fixed_uplift_micros,
-            },
-        )
-    return {"markup_percentage_micros": markup.markup_percentage_micros, "fixed_uplift_micros": markup.fixed_uplift_micros}
-
-
-@metering_router.delete("/pricing/customers/{customer_id}/markup",
-                        response=StatusResponse)
-@role_floor(ADMIN)
-@records_audit("markup.deleted")
-def delete_customer_markup(request, customer_id: UUID):
-    """Remove a customer's markup override so they revert to inheriting the
-    tenant default. This is NOT the same as PUT-ing 0/0 — a 0/0 row still
-    resolves as the customer's markup and SHADOWS the tenant default, pinning
-    the customer at cost. Idempotent: 'no_override' when none existed; a bad
-    customer id is a 404."""
-    _product_check(request)
-    from apps.metering.pricing.models import TenantMarkup
-
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    markup = TenantMarkup.objects.filter(tenant=request.auth.tenant, customer=customer).first()
-    if markup is None:
-        return {"status": "no_override"}
-    with transaction.atomic():
-        markup.delete()  # instance delete — the model layer bumps MarkupCache's version
-        audit_record(
-            action="markup.deleted",
-            tenant_id=request.auth.tenant.id,
-            resource_type="markup",
-            resource_id=customer.id,
-            metadata={"scope": "customer", "customer_id": str(customer.id)},
-        )
-    return {"status": "deleted"}
+# A tenant-scope pair read and wrote a percentage and a per-event flat
+# addend for the whole tenant; a customer-scope trio did the same for one
+# named customer, and a resolve behind the read walked a three-rung ladder to
+# answer it. The record is deleted. What replaced each rung is a record that
+# can say what it prices: the tenant's default markup rung is declared at
+# `/pricing/default-markup` above (#357), a customer's own price is a rule in
+# their own Pricing Book (#361), and a plan's is a rule in the book the plan
+# names (#362).
+#
+# Their two schemas went with them, and so did the two audit action names they
+# wrote — deleting an action whose act no longer exists is not the rename
+# ADR-004 §2 governs, and `record()` refuses an unregistered name, which is
+# what forced the routes and the registry into one commit. The names are cited
+# rather than spelled: their ledger entries reach zero here, and a file naming
+# one would put the count back over its own entry.
 
 
 # --- Analytics ---
@@ -2205,9 +2094,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     """Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set and the book acts do, so it takes the write-default Admin floor
-    rather
-    than a Write carve-out."""
+    declaring a book or a markup rung does, so it takes the write-default Admin
+    floor rather than a Write carve-out."""
     _product_check(request)
     from apps.platform.grouping_fields.queries import slot_map
     from apps.platform.work.models import TaskType

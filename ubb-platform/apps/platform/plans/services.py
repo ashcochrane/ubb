@@ -80,8 +80,8 @@ class PlanService:
     @staticmethod
     def archive(plan):
         """Soft-archive a plan. Refuses while customers are still on it —
-        archiving an assigned plan would silently drop their markup to the
-        tenant default."""
+        archiving an assigned plan would silently move every one of them off
+        the book it prices them from."""
         if CustomerPlanAssignment.objects.filter(plan=plan).exists():
             raise PlanInUse(f"plan '{plan.key}' still has assigned customers")
         plan.archived_at = timezone.now()

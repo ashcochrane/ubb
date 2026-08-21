@@ -27,28 +27,28 @@ makes the second sayable: a book holding no rules, which is the state every
 plan created today is in, because UBB ships no catalogue.
 
 ⚠ **WHAT SUCH A PLAN'S CUSTOMERS ARE CHARGED IS THE MARKUP RUNG'S ANSWER AND
-NOT THE BOOK'S, AND THE TICKET'S "`unknown`" IS THE END STATE RATHER THAN
-TODAY'S.** No rule matches, so every event falls past the book to the rung —
-and a customer on a plan ALWAYS has one, because `Plan.markup_percentage_micros`
-defaults to `0` and the read contract answers with it for any live assignment.
-`_priced_by_markup` reaches `unknown` only where the rung is absent. So the
-answer is the zero rung's, which depends on what UBB knows the call cost, and
-`AnEmptyPlanBookLeavesTheAnswerToTheMarkupRungTest` walks all three:
+NOT THE BOOK'S, AND SINCE #369 THE PLAN SUPPLIES NO RUNG.** No rule matches, so
+every event falls past the book to the rung — and which rung answers is now the
+TENANT'S declaration or nothing at all. It used to be the plan's own column,
+which defaulted to `0`, so a customer on a plan ALWAYS had a rung and
+`_priced_by_markup` could never reach `unknown` for one. Deleting the column is
+what made the honest answer reachable, and the two classes below hold both
+halves:
 
 ```
-  cost unresolved       -> waived        no basis to take a margin over
-  cost not_applicable   -> known, 0      the basis is genuinely zero (#147 §7.3)
-  cost known            -> known, = cost an explicit zero rung pins provider cost
+  no rung declared      -> unknown       whatever UBB knows the call cost to be
+  a rung, cost unresolved     -> waived  no basis to take a margin over
+  a rung, cost not_applicable -> known, 0  the basis is genuinely zero (#147 §7.3)
+  a rung, cost known          -> known, cost + the margin
 ```
 
-None of the three is a defect and none is this ticket's to change. The second
-and third are ratified behaviour (`apps/platform/CONTEXT.md`, *Markup
-precedence*: an explicit zero *"pins the customer at provider cost rather than
-falling through"*). What IS transitional is that `0` here means *the tenant said
-nothing*: ticket 22 (#369) deletes those columns, the rung falls to the tenant's
-declared default or to nothing, and `unknown` becomes reachable. ⚠ Ticket 16
-(#363) lands FIRST and a Resolution Run never reconsiders a `waived` posting,
-so in that window the unresolved-cost row above is not recoverable.
+The first row is the whole point of the deletion: *the tenant has said nothing
+about what to charge* used to be served as *the tenant said charge cost*, which
+settles a price nobody stated. The rest are the tenant's declaration doing what
+it has always done, one rung further down than the plan's column sat. ⚠ A
+Resolution Run never reconsiders a `waived` posting (#363), and it DOES
+reconsider an `unknown` one — so the deletion also moves the empty-book,
+no-rung case from unrecoverable to recoverable.
 """
 
 from datetime import timedelta
@@ -58,13 +58,15 @@ from django.utils import timezone
 
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.markup_service import (
-    MARKUP_RUNG_PLAN, MarkupService)
+    MARKUP_RUNG_TENANT_DEFAULT, MarkupService)
 from apps.metering.pricing.services.pricing_service import (
     FROM_THE_CUSTOMERS_OWN_RULES, FROM_THE_SELECTED_BOOK, PricingService,
     PricingSubject, resolve_price)
 from apps.metering.pricing.tests._helpers import (
+    A_REAL_MARKUP,
     a_usage_event_subject,
     an_override_rule,
+    declares_a_markup,
     rate_in_a_plans_book,
     rate_in_default_book,
     the_book_holding,
@@ -73,8 +75,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import EventType
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.plans.models import Plan
-from apps.platform.plans.queries import (
-    get_plan_markup_for_customer, get_pricing_book_for_customer)
+from apps.platform.plans.queries import get_pricing_book_for_customer
 from apps.platform.plans.services import PlanService
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
@@ -213,14 +214,19 @@ class APlanIsTheWholeRouteToABookTest(_ACustomerOnAPlanMixin, TestCase):
 
     def test_a_plan_the_tenant_archived_prices_nothing(self):
         """Archival has to stop a plan pricing new events, and the book it
-        names is as much a part of that as the markup rung beside it.
+        names is the whole of what it prices them from.
 
         ⚠ The column is written directly rather than through
         `PlanService.archive`, which refuses a plan customers are still on. So
-        this filter is a DEFENCE and not a path a tenant can walk today — which
-        is exactly the standing of the identical filter on the markup rung it
-        copies, and the reason to copy it: the two reads of one plan must not
-        disagree about whether it is still in force.
+        this filter is a DEFENCE and not a path a tenant can walk today.
+
+        ⚠ **IT HAD A TWIN UNTIL #369** — a second case asserting that the plan
+        read and the markup read agreed about archival, because the read
+        contract carried two functions over one row and two readers must not
+        disagree about whether it is still in force. The markup read is deleted
+        with the columns it read, so the agreement has nothing to hold between
+        and the case went with it rather than being weakened into a restatement
+        of this one.
         """
         plan = self.customer.plan_assignments.get().plan
         Plan.objects.filter(pk=plan.pk).update(archived_at=timezone.now())
@@ -228,35 +234,21 @@ class APlanIsTheWholeRouteToABookTest(_ACustomerOnAPlanMixin, TestCase):
         self.assertEqual(self.selected_books(), [])
         self.assertEqual(self.resolved()["pricing"]["status"],
                          PRICING_STATUS_UNKNOWN)
-
-    def test_the_book_read_and_the_markup_read_agree_about_archival(self):
-        """The claim above, stated where it can go wrong: two functions in one
-        read contract asking the same question of one plan."""
-        plan = self.customer.plan_assignments.get().plan
-        Plan.objects.filter(pk=plan.pk).update(archived_at=timezone.now())
-
+        # The read contract's own answer, beside the resolver's: the filter
+        # lives there, and a resolver that had stopped calling it would pass
+        # the two assertions above on an empty fixture alone.
         self.assertIsNone(get_pricing_book_for_customer(
             self.tenant.id, self.customer.id))
-        self.assertIsNone(get_plan_markup_for_customer(
-            self.tenant.id, self.customer.id))
 
 
-class AnEmptyPlanBookLeavesTheAnswerToTheMarkupRungTest(
-        _ACustomerOnAPlanMixin, TestCase):
-    """AC 5 — the case the nullable reference was hiding, and all three of it.
+class _AnEmptyPlanBookMixin(_ACustomerOnAPlanMixin):
+    """A customer on a plan whose book holds no rules.
 
     A plan naming a book with no rules is legal, and it is how a tenant says
     *this plan does not price usage*. No rule can answer, so every event falls
-    past the book to the markup rung — and the rung's answer depends on what
-    UBB knows the call cost, which is why one case here would be three answers'
-    worth of coverage pretending to be one.
-
-    The module docstring carries the table and the argument. What matters at
-    each assertion: the FIRST is a nothing, the SECOND and THIRD are settled
-    numbers, and neither of those is a defect — a basis of genuinely zero times
-    any margin is zero (#147 §7.3), and an explicit zero rung is documented as
-    pinning the customer at provider cost. What makes them transitional is that
-    this rung's zero was never stated by anyone.
+    past the book to the markup rung — and what happens then is the two classes
+    below, which differ in exactly one thing: whether the tenant has declared a
+    rung.
     """
 
     def setUp(self):
@@ -270,21 +262,98 @@ class AnEmptyPlanBookLeavesTheAnswerToTheMarkupRungTest(
                          [self.plan.pricing_book_id])
 
     def test_no_rule_answers(self):
-        """The book half, on its own. Everything below is the rung's."""
+        """The book half, on its own. Everything else is the rung's."""
         self.assertIsNone(self.the_rule_that_answered())
 
-    def test_the_rung_that_answers_is_the_plans_and_its_zero_is_nobodys(self):
-        """The cause, asserted — otherwise every case below reads as a
-        decision somebody made about empty books."""
-        rung = MarkupService.resolve(self.tenant, self.customer)
 
-        self.assertEqual(rung.source, MARKUP_RUNG_PLAN)
-        self.assertEqual(rung.markup_micro_percent, 0)
-        # And the plan never stated it: this is the model's own default, which
-        # is what makes the rung's existence an accident of a column rather
-        # than something the tenant decided. Ticket 22 deletes it.
-        self.assertEqual(
-            Plan._meta.get_field("markup_percentage_micros").default, 0)
+class AnEmptyPlanBookAndNoDeclaredRungIsUnknownTest(
+        _AnEmptyPlanBookMixin, TestCase):
+    """AC 5, ARRIVED — the answer the plan's deleted column made unreachable.
+
+    ⚠ **THIS CLASS IS AN INVERSION RATHER THAN A NEW CASE (#369).** It used to
+    assert that the rung answering here was the PLAN's, at a percentage of zero
+    that nobody had stated, and that the three cost states therefore settled at
+    `waived`, `known 0` and `known = the cost`. That was ratified behaviour and
+    not a defect (`apps/platform/CONTEXT.md`, *Markup precedence*) — but the
+    zero came from a column's DEFAULT, so *the tenant has said nothing about
+    what to charge* was served as *the tenant said charge cost*. Deleting the
+    column is what makes the honest answer reachable, and it is the same answer
+    whatever UBB knows the call cost to be, because a missing rung is asked
+    about FIRST (`_priced_by_markup`).
+    """
+
+    def test_there_is_no_rung_at_all(self):
+        """The cause, asserted — otherwise every case below reads as a
+        statement about empty books rather than about a missing rung."""
+        self.assertIsNone(MarkupService.resolve(self.tenant))
+
+    def test_an_unresolved_cost_is_unknown_rather_than_waived(self):
+        """⚠ THE STATUS THIS COMMIT MOVED, AND THE MOVE IS RECOVERABILITY.
+
+        `waived` says somebody decided not to pursue a charge, and a Resolution
+        Run never revisits one. Nobody decided anything here, and `unknown` is
+        the status a run does revisit — so a posting that was permanently lost
+        under the plan's accidental zero is now recoverable.
+        """
+        receipt = self.resolved()
+
+        self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_UNKNOWN)
+        self.assertIsNone(receipt["totals"]["billed_cost_micros"])
+
+    def test_an_event_type_declaring_no_cost_is_unknown_rather_than_zero(self):
+        """The basis is genuinely zero — the tenant SAID this call has no cost
+        — and it still does not produce a price, because no rung was ever
+        declared to take a margin with. Built inline rather than through a
+        shared helper: one caller wants an Event Type that declares nothing.
+        """
+        EventType.objects.create(
+            tenant=self.tenant, key=EVENT_TYPE,
+            costing_method=COSTING_METHOD_CALCULATED)
+
+        receipt = self.resolved()
+
+        self.assertEqual(receipt["costing"]["status"],
+                         COSTING_STATUS_NOT_APPLICABLE)
+        self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_UNKNOWN)
+        self.assertIsNone(receipt["totals"]["billed_cost_micros"])
+
+    def test_a_known_cost_is_unknown_rather_than_billed_at_the_cost(self):
+        """The row that used to bill a customer exactly what the call cost with
+        nobody having decided that. The cost is still recorded — UBB knows what
+        it paid — and the customer price is the thing nobody stated."""
+        receipt = self.resolved(caller_provider_cost=WHAT_THE_CALL_COST)
+
+        self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_UNKNOWN)
+        self.assertIsNone(receipt["totals"]["billed_cost_micros"])
+        self.assertEqual(receipt["totals"]["provider_cost_micros"],
+                         WHAT_THE_CALL_COST)
+
+
+class AnEmptyPlanBookFallsToTheTenantsDeclaredRungTest(
+        _AnEmptyPlanBookMixin, TestCase):
+    """The other half: the rung the tenant DID declare answers for the plan.
+
+    The same fixture with one row added, so the pair discriminates the rung's
+    presence from every other thing about an empty book. The three cost states
+    are walked here because the rung's answer depends on them, which is why one
+    case would be three answers' worth of coverage pretending to be one.
+
+    ⚠ **THE PERCENTAGE IS REAL RATHER THAN ZERO, DELIBERATELY.** A rung of zero
+    makes the customer price equal the supplier cost, and every amount assertion
+    below would then be satisfiable by a resolver that ignored the rung and
+    echoed the cost.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.rung = declares_a_markup(self.tenant,
+                                      percentage_micros=A_REAL_MARKUP)
+
+    def test_the_rung_that_answers_is_the_tenants_own_declaration(self):
+        resolved = MarkupService.resolve(self.tenant)
+
+        self.assertEqual(resolved.source, MARKUP_RUNG_TENANT_DEFAULT)
+        self.assertEqual(resolved.source_id, str(self.rung.id))
 
     def test_an_unresolved_cost_is_waived_with_no_amount(self):
         """A margin over a cost UBB never learned is a decided loss, not a
@@ -297,10 +366,7 @@ class AnEmptyPlanBookLeavesTheAnswerToTheMarkupRungTest(
     def test_an_event_type_declaring_no_cost_settles_at_zero(self):
         """Not the silent zero this programme deletes: the basis is genuinely
         zero because the tenant SAID this call has no cost, so a margin over it
-        is zero and settles (#147 §7.3). Built inline rather than through a
-        shared helper — one caller wants an Event Type that declares nothing,
-        and a helper for it would be a fixture nobody else asks for.
-        """
+        is zero and settles (#147 §7.3)."""
         EventType.objects.create(
             tenant=self.tenant, key=EVENT_TYPE,
             costing_method=COSTING_METHOD_CALCULATED)
@@ -312,19 +378,20 @@ class AnEmptyPlanBookLeavesTheAnswerToTheMarkupRungTest(
         self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_KNOWN)
         self.assertEqual(receipt["totals"]["billed_cost_micros"], 0)
 
-    def test_a_known_cost_settles_at_the_cost_itself(self):
-        """A zero rung over a known cost bills exactly what the call cost, and
-        `apps/platform/CONTEXT.md` (*Markup precedence*) records that as the
-        decision rather than the accident: an explicit zero *"pins the customer
-        at provider cost rather than falling through"*. It is only this plan's
-        zero that nobody stated."""
+    def test_a_known_cost_settles_at_the_cost_plus_the_margin(self):
         receipt = self.resolved(caller_provider_cost=WHAT_THE_CALL_COST)
 
         self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_KNOWN)
-        self.assertEqual(receipt["totals"]["billed_cost_micros"],
-                         WHAT_THE_CALL_COST)
+        self.assertEqual(
+            receipt["totals"]["billed_cost_micros"],
+            WHAT_THE_CALL_COST + (WHAT_THE_CALL_COST * A_REAL_MARKUP
+                                  + 50_000_000) // 100_000_000)
         self.assertEqual(receipt["totals"]["provider_cost_micros"],
                          WHAT_THE_CALL_COST)
+        # The figure is not the cost — the case that keeps every assertion
+        # above from being satisfiable by an echo.
+        self.assertNotEqual(receipt["totals"]["billed_cost_micros"],
+                            WHAT_THE_CALL_COST)
 
 
 class ThePlansBookIsOneRungBelowTheCustomersOwnTest(

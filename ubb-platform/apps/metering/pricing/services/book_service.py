@@ -250,26 +250,33 @@ def _refuse_an_instant_behind_the_books_own_diary(book, effective_at):
     field* and *that rule is not there to reprice*, and a tenant's automation
     has to be able to tell a date it can fix from a body it cannot.
 
-    ⚠ **A NAMED RESIDUAL: THIS HOLDS ON THE PUBLISHING PATH AND ON NO OTHER.**
-    `BookService.publish` — the last of the three immediate mutation surfaces
-    #358 deliberately kept alive, and the one #369 deletes — never calls
-    `plan_changes`, so it is not bound by this rule.
+    ⚠ **THE RESIDUAL THIS PARAGRAPH RECORDED IS DISCHARGED, AND IT NAMED THE
+    WRONG TICKET AND A SYMBOL THAT DOES NOT EXIST.** It read: *"this holds on
+    the publishing path and on no other — `BookService.publish` never calls
+    `plan_changes`, so it is not bound by this rule"*, and it named #369 as the
+    commit that would delete that surface. Three things are wrong with it now.
+    There is no `BookService.publish`: the third immediate mutation surface was
+    the atomic reprice route, and **#368 deleted it** with the record and the
+    action names it wrote. `publish_declared` is what survives, and it RE-PLANS
+    through `plan_changes` against the book as it stands — so it is bound by
+    this rule rather than exempt from it. And #369 deleted the tenant markup
+    record, which is a different subject entirely. Nothing type-checks a symbol
+    in a docstring, which is how the name outlived the thing.
 
-    ⚠ **THE WORST OF THE THREE HAS ALREADY GONE (#367), AND WHAT IT COULD DO IS
-    RECORDED HERE RATHER THAN DELETED WITH IT** — because the surviving one can
-    still reach the same shape and a reader needs to know what shape that is.
-    The immediate retire route selected on *"the rule that is still
-    open"*, which matches a replacement **scheduled to open in the future**,
-    and wrote `valid_to = now`. That is a legal null-to-value write, nothing
-    on this table refuses a close before an opening, and the result is an
-    inverted window covering no instant at all — while the rule it superseded
-    is already closed at the boundary, so from that boundary onward the book
-    prices nothing and resolution falls through to markup, which returns a
-    plausible number and raises nothing. Reachable only since a publish could
-    be dated forward at all (#359); not introduced here and not closed here,
-    because closing it means deleting those surfaces — two of which have now
-    gone with the audit action names they wrote, and the last of which is
-    #369's.
+    ⚠ **WHAT THE DELETED SURFACES COULD DO IS KEPT HERE RATHER THAN DELETED
+    WITH THEM**, because it is what this rule exists to prevent and a reader
+    needs to know the shape. The immediate retire route selected on *"the rule
+    that is still open"*, which matches a replacement **scheduled to open in
+    the future**, and wrote `valid_to = now`. That is a legal null-to-value
+    write, nothing on this table refuses a close before an opening, and the
+    result is an inverted window covering no instant at all — while the rule it
+    superseded is already closed at the boundary, so from that boundary onward
+    the book prices nothing and resolution falls through to markup, which
+    returns a plausible number and raises nothing. Reachable only since a
+    publish could be dated forward at all (#359), and reachable only from a
+    surface that wrote a boundary without planning: all three are gone (#367,
+    #368), and `plan_changes` refuses a change touching a rule already
+    scheduled to close.
     """
     boundary = latest_scheduled_boundary(book)
     if boundary is None or effective_at >= boundary:

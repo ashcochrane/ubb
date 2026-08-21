@@ -52,8 +52,6 @@ export type PaginatedRates = MeteringSchemas["PaginatedRates"];
  */
 export type { RateStructure } from "@/lib/vocabulary";
 
-export type TenantMarkup = MeteringSchemas["TenantMarkupOut"];
-export type TenantMarkupIn = MeteringSchemas["TenantMarkupIn"];
 
 export type StatusResponse = MeteringSchemas["StatusResponse"];
 

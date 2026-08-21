@@ -285,15 +285,17 @@ class UBBClient:
     # ---- subscription orchestration (plan / subscribe / seats) ----
 
     def create_plan(self, key: str, name: str, *, access_fee_micros: int = 0,
-                    per_seat_micros: int = 0, markup_percentage_micros: int = 0,
-                    fixed_uplift_micros: int = 0, interval: str = "month") -> dict:
+                    per_seat_micros: int = 0, interval: str = "month") -> dict:
         """Define a tenant billing plan via the platform API.
 
         Calls POST /api/v1/plans and returns the created plan as a dict.
 
-        Units: access_fee_micros, per_seat_micros, and fixed_uplift_micros are
-        money-micros (1_000_000 == 1 major unit). markup_percentage_micros is
-        percentage-micros (1_000_000 == 1 percent), so 50% is 50_000_000.
+        Units: access_fee_micros and per_seat_micros are money-micros
+        (1_000_000 == 1 major unit).
+
+        A plan's third axis — what its customers pay for usage — is the pricing
+        book created with the plan, not an argument here. It carried a markup
+        percentage and a per-event flat amount until #369 deleted both columns.
         """
         metering = self._require_metering()
         r = metering._request(*ops.API_V1_PLAN_ENDPOINTS_CREATE_PLAN, json={
@@ -301,8 +303,6 @@ class UBBClient:
             "name": name,
             "access_fee_micros": access_fee_micros,
             "per_seat_micros": per_seat_micros,
-            "markup_percentage_micros": markup_percentage_micros,
-            "fixed_uplift_micros": fixed_uplift_micros,
             "interval": interval,
         })
         return r.json()
@@ -336,8 +336,6 @@ class UBBClient:
 
     def update_plan(self, key: str, *, access_fee_micros: int | None = None,
                     per_seat_micros: int | None = None,
-                    markup_percentage_micros: int | None = None,
-                    fixed_uplift_micros: int | None = None,
                     migrate_existing: bool = False) -> dict:
         """Edit a plan's fees (F5.4). Only non-None axes are changed.
 
@@ -347,9 +345,12 @@ class UBBClient:
         PATCH /api/v1/plans/{key} and returns the updated plan dict
         (includes pricing_version).
 
-        Units: access_fee_micros, per_seat_micros, and fixed_uplift_micros are
-        money-micros (1_000_000 == 1 major unit). markup_percentage_micros is
-        percentage-micros (1_000_000 == 1 percent), so 50% is 50_000_000.
+        Units: access_fee_micros and per_seat_micros are money-micros
+        (1_000_000 == 1 major unit).
+
+        What a plan's customers pay for usage is not edited here: it is the
+        rules in the pricing book the plan names, changed through a publish on
+        that book (#369).
         """
         metering = self._require_metering()
         body: dict = {"migrate_existing": migrate_existing}
@@ -357,10 +358,6 @@ class UBBClient:
             body["access_fee_micros"] = access_fee_micros
         if per_seat_micros is not None:
             body["per_seat_micros"] = per_seat_micros
-        if markup_percentage_micros is not None:
-            body["markup_percentage_micros"] = markup_percentage_micros
-        if fixed_uplift_micros is not None:
-            body["fixed_uplift_micros"] = fixed_uplift_micros
         r = metering._request(*ops.API_V1_PLAN_ENDPOINTS_UPDATE_PLAN(key), json=body)
         return r.json()
 
@@ -655,19 +652,13 @@ class UBBClient:
     def get_customer_revenue(self, customer_id):
         return self._require_metering().get_customer_revenue(customer_id)
 
-    # ---- markup delegates ----
-
-    def get_markup(self):
-        return self._require_metering().get_markup()
-
-    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0):
-        return self._require_metering().set_markup(markup_percentage_micros=markup_percentage_micros, fixed_uplift_micros=fixed_uplift_micros)
-
-    def get_customer_markup(self, customer_id):
-        return self._require_metering().get_customer_markup(customer_id)
-
-    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0):
-        return self._require_metering().set_customer_markup(customer_id, markup_percentage_micros=markup_percentage_micros, fixed_uplift_micros=fixed_uplift_micros)
+    # ---- NO MARKUP DELEGATES (#369) ----
+    #
+    # Four of them forwarded to the metering client's markup methods, over a
+    # record that is deleted with its five routes. The reasoning is written out
+    # at the methods themselves, in `ubb/metering.py`; the short of it is that
+    # the tenant's declared default markup rung is deliberately unwrapped, and
+    # a customer's own price is a rule in their own pricing book.
 
     # ---- lifecycle ----
 

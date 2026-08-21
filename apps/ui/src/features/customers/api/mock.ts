@@ -20,7 +20,6 @@ import {
   MOCK_GRANTS,
   MOCK_MARGIN_DETAILS,
   MOCK_MARGIN_ROWS,
-  MOCK_MARKUPS,
   MOCK_PAST_LIMIT_REPORTS,
   MOCK_REVENUE_MODES,
   MOCK_REVENUE_PROFILES,
@@ -61,8 +60,6 @@ import type {
   StripeSubscriptionOut,
   SubscribeIn,
   SubscriptionInvoiceOut,
-  TenantMarkupIn,
-  TenantMarkupOut,
   TopUpCheckoutResponse,
   UsageAnalyticsResponse,
   UsageInvoiceOut,
@@ -89,7 +86,6 @@ const revenueProfiles: Record<string, RevenueProfileOut> =
   structuredClone(MOCK_REVENUE_PROFILES);
 const revenueModes: Record<string, RevenueModeOut> =
   structuredClone(MOCK_REVENUE_MODES);
-const markups: Record<string, TenantMarkupOut> = structuredClone(MOCK_MARKUPS);
 const subscriptions: Record<string, StripeSubscriptionOut> =
   structuredClone(MOCK_SUBSCRIPTIONS);
 
@@ -711,37 +707,10 @@ export async function configureAutoTopUp(
 
 // ---------------------------------------------------------------------------
 // Metering — pricing
-
-export async function getCustomerMarkup(customerId: string): Promise<TenantMarkupOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  return markups[customerId] ?? { markup_percentage_micros: 0, fixed_uplift_micros: 0 };
-}
-
-export async function putCustomerMarkup(
-  customerId: string,
-  body: TenantMarkupIn,
-): Promise<TenantMarkupOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  const saved: TenantMarkupOut = {
-    markup_percentage_micros: body.markup_percentage_micros,
-    fixed_uplift_micros: body.fixed_uplift_micros,
-  };
-  markups[customerId] = saved;
-  return saved;
-}
-
-const overridden = new Set<string>([]);
-
-export async function deleteCustomerMarkup(customerId: string): Promise<StatusResponse> {
-  await mockDelay();
-  requireCustomer(customerId);
-  const had = overridden.has(customerId) || customerId in markups;
-  delete markups[customerId];
-  overridden.delete(customerId);
-  return { status: had ? "deleted" : "no_override" };
-}
+//
+// ⚠ NOTHING TO MOCK (#369). The resolved markup read, the override write and
+// the override delete all called routes that are deleted with the record
+// behind them.
 
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ import { dateRangeSearchSchema } from "@/lib/date-range";
 // Unknown ?tab= values coerce to undefined → the Overview tab, never a blank panel.
 const detailSearchSchema = dateRangeSearchSchema.extend({
   tab: z
-    .enum(["overview", "usage", "billing", "pricing", "subscription"])
+    .enum(["overview", "usage", "billing", "subscription"])
     .optional()
     .catch(undefined),
 });

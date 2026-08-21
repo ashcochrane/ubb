@@ -298,14 +298,25 @@ REQUIRED_COMPONENT_KEYS = frozenset({
 #: declared, and a margin quietly acquiring one is the composition #147 §2
 #: refuses.
 #:
-#: ⚠ **THE FLAT ADDEND IS HERE BECAUSE A RUNG CAN STILL SUPPLY ONE, AND IT IS
-#: LEAVING.** Rules never compose, and the tenant-default rung a tenant declares
-#: today cannot carry an uplift at all. The customer-override record and the
-#: plan catalog's column still can, and both are deleted in the commit that
-#: deletes them from this set (#369) — until then a receipt that omitted the
-#: term would be a receipt whose amount does not follow from its own terms.
+#: ⚠ **THE FLAT ADDEND LEFT THIS SET WITH THE RECORDS THAT COULD SUPPLY ONE
+#: (#369).** It was here because two rungs carried a per-event uplift column —
+#: the customer-override record and the plan catalog — and a receipt omitting a
+#: term its own amount depended on explains nothing. Both records are deleted
+#: and the rung that remains never had such a column, so the term would now be a
+#: zero nobody declared, which is the composition #147 §2 refuses wearing the
+#: clothes of completeness.
+#:
+#: ⚠ **A RECEIPT WRITTEN WITH THREE TERMS IS REFUSED BY THIS BOUNDARY, AND
+#: THAT REACHES ONE PATH BEYOND CONSTRUCTION.** Reading a stored receipt does
+#: not come through here — the readers below take what the record declares —
+#: but :func:`completed_receipt` re-validates the whole assembled record, so
+#: completing the COST side of a posting whose price was already settled by
+#: markup would put the older price section through this set and fail. It is
+#: stated rather than handled: **this tree is deployed nowhere and holds no
+#: stored receipt**, and #155 §11 squashes at cutover. A tolerant set would be a
+#: boundary that accepts the term forever, which is the debt this deletes.
 REQUIRED_MARKUP_KEYS = frozenset({
-    "micro_percent", "fixed_uplift_micros", "basis_micros",
+    "micro_percent", "basis_micros",
 })
 
 #: WHAT THE MARKUP RUNG'S OWN ENTRY IS CALLED, IN BOTH SECTIONS THAT HOLD ONE.

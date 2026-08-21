@@ -194,9 +194,12 @@ function markupProvenance(providerCostMicros: number): Record<string, unknown> {
     engine_version: "pricing-engine/4.2.1",
     billed_source: "markup",
     cost_source: "caller_reported",
+    // ⚠ NO FLAT ADDEND (#369). A per-event uplift used to sit beside the
+    // percentage here, because two markup rungs could supply one; both records
+    // are deleted and the rung that remains takes ONE term, so a receipt
+    // carrying a second would be recording a zero nobody declared.
     markup: {
       markup_percentage_micros: 28_000_000,
-      fixed_uplift_micros: 0,
       base_provider_cost_micros: providerCostMicros,
     },
   };

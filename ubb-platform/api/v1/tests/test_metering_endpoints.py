@@ -10,10 +10,7 @@ from apps.platform.event_types.tests._helpers import (
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.services import TaskService
 from apps.billing.wallets.models import Wallet
-from apps.metering.pricing.models import (
-    TenantDefaultMarkup, TenantMarkup)
-from apps.metering.pricing.services import markup_cache
-from apps.metering.pricing.services.markup_cache import MarkupCache
+from apps.metering.pricing.models import TenantDefaultMarkup
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
 
@@ -140,155 +137,21 @@ class MeteringProductGatingTest(TestCase):
         self.assertIn("has_more", body)
 
 
-class PricingMarkupsCRUDTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(name="Test", products=["metering"])
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
-        # Module-level L1 + contextvar are in-process state: reset per test,
-        # mirroring apps/metering/pricing/tests/test_markup_cache.py.
-        markup_cache._l1.clear()
-        markup_cache._ctx_versions.set({})
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
-
-    def test_get_tenant_markup_no_markup_returns_zeros(self):
-        resp = self.http_client.get("/api/v1/metering/pricing/markup", **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["markup_percentage_micros"], 0)
-        self.assertEqual(body["fixed_uplift_micros"], 0)
-
-    def test_put_tenant_markup_upserts(self):
-        # Create
-        resp = self.http_client.put(
-            "/api/v1/metering/pricing/markup",
-            data=json.dumps({"markup_percentage_micros": 20000000, "fixed_uplift_micros": 0}),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["markup_percentage_micros"], 20000000)
-
-        # GET returns set values
-        resp = self.http_client.get("/api/v1/metering/pricing/markup", **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["markup_percentage_micros"], 20000000)
-
-        # PUT again with different values updates in place — still exactly one row
-        resp = self.http_client.put(
-            "/api/v1/metering/pricing/markup",
-            data=json.dumps({"markup_percentage_micros": 30000000, "fixed_uplift_micros": 500}),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["markup_percentage_micros"], 30000000)
-        self.assertEqual(TenantMarkup.objects.filter(tenant=self.tenant, customer__isnull=True).count(), 1)
-
-    def test_put_and_get_customer_markup_override(self):
-        resp = self.http_client.put(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            data=json.dumps({"markup_percentage_micros": 50000000, "fixed_uplift_micros": 0}),
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-
-        resp = self.http_client.get(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["markup_percentage_micros"], 50000000)
-
-    def test_get_customer_markup_falls_back_to_tenant_default(self):
-        # The tenant default is the DECLARED rung (#357), not this record's
-        # customer-less row: that row survives and prices nothing.
-        declares_a_markup(self.tenant, percentage_micros=15000000)
-        resp = self.http_client.get(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["markup_percentage_micros"], 15000000)
-
-    def test_customer_markup_zero_shadows_tenant_default(self):
-        # Documents WHY delete exists: a 0/0 override is NOT the same as
-        # inheriting — it shadows the tenant default and pins the customer at cost.
-        declares_a_markup(self.tenant, percentage_micros=15000000)
-        self.http_client.put(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            data=json.dumps({"markup_percentage_micros": 0, "fixed_uplift_micros": 0}),
-            content_type="application/json", **self._auth())
-        resp = self.http_client.get(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth())
-        self.assertEqual(resp.json()["markup_percentage_micros"], 0)
-
-    def test_delete_customer_markup_reverts_to_tenant_default(self):
-        declares_a_markup(self.tenant, percentage_micros=15000000)
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=self.customer,
-            markup_percentage_micros=50000000, fixed_uplift_micros=0)
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "deleted")
-        # Now resolves to the tenant default (15%), NOT to zero.
-        resp = self.http_client.get(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth())
-        self.assertEqual(resp.json()["markup_percentage_micros"], 15000000)
-
-    def test_delete_customer_markup_idempotent_when_no_override(self):
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "no_override")
-
-    def test_delete_customer_markup_unknown_customer_404(self):
-        resp = self.http_client.delete(
-            "/api/v1/metering/pricing/customers/00000000-0000-0000-0000-000000000000/markup",
-            **self._auth())
-        self.assertEqual(resp.status_code, 404)
-
-    def test_delete_customer_markup_bumps_l1_cache_immediately(self):
-        """Regression: deleting a customer override that is LOWER than the
-        tenant default must not leave MarkupCache's L1 serving the stale,
-        lower markup for the TTL window — that under-estimates cost and
-        therefore under-holds (money leak). The endpoint must delete via the
-        model layer (TenantMarkup.delete()) so the version bump added in
-        8272e5a actually fires; a queryset .filter(...).delete() bypasses it."""
-        declares_a_markup(self.tenant, percentage_micros=50_000_000)  # 50%
-        TenantMarkup.objects.create(
-            tenant=self.tenant, customer=self.customer,
-            markup_percentage_micros=10_000_000, fixed_uplift_micros=0)  # customer discount 10%
-
-        # Pre-populate L1 with the override, as the estimation hot path would.
-        MarkupCache.begin_request(self.tenant.id)
-        cached = MarkupCache.resolve(self.tenant, self.customer)
-        self.assertIsNotNone(cached)
-        self.assertEqual(cached.markup_micro_percent, 10_000_000)
-
-        resp = self.http_client.delete(
-            f"/api/v1/metering/pricing/customers/{self.customer.id}/markup",
-            **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "deleted")
-
-        # A new request pins whatever version is current in Redis. If delete()
-        # bumped it, the stale L1 entry misses on version and resolve() falls
-        # through to a live ORM resolve — landing on the tenant default, not
-        # the deleted (lower) override.
-        MarkupCache.begin_request(self.tenant.id)
-        resolved = MarkupCache.resolve(self.tenant, self.customer)
-        self.assertIsNotNone(resolved)
-        self.assertEqual(resolved.markup_micro_percent, 50_000_000)
+# THE FIVE MARKUP ROUTES' CRUD CLASS WENT WITH THE ROUTES (#369). It exercised
+# a tenant-scope GET/PUT pair and a customer-scope GET/PUT/DELETE trio over a
+# configuration record that is now deleted. Two of its claims were not about
+# those routes and are held elsewhere rather than lost:
+#
+#   * *a customer override shadows the tenant default, and deleting one reverts
+#     to it* — a statement about a ladder that has one rung now. What replaced
+#     the override is a rule in the customer's own Pricing Book, and which rung
+#     answers for a customer on a plan is asserted in
+#     `apps/metering/pricing/tests/test_a_plan_names_the_book_it_prices_from.py`;
+#   * *the route must delete through the MODEL layer, or `MarkupCache`'s version
+#     key is never bumped and the L1 serves a stale rung for the TTL window* —
+#     a money leak, and true of the surviving withdrawal route for exactly the
+#     same reason. It moved to
+#     `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
 
 
 class UsageEventDetailEndpointTest(TestCase):

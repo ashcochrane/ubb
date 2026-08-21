@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
 import { pricingApi } from "./provider";
-import type { CostBookIn, PricingBookIn, TenantMarkupIn } from "./types";
+import type { CostBookIn, PricingBookIn } from "./types";
 
 // ⚠ TWO KEYS, NOT ONE KEYED ON A KIND (#368). A Pricing Book and a cost book
 // are separate entities on separate paths; one key carrying which kind it
@@ -21,7 +21,6 @@ const ratesKey = (
   bookId: string,
   view: { include_history: boolean; as_of: string | null },
 ) => ["metering", "pricing", "books", bookId, "rates", view] as const;
-const markupKey = ["metering", "pricing", "markup"] as const;
 
 export function usePricingBooks() {
   return useCursorList(pricingBooksKey, (cursor) =>
@@ -63,22 +62,13 @@ export function useRates(
   );
 }
 
-export function useTenantMarkup() {
-  return useQuery({
-    queryKey: markupKey,
-    queryFn: () => pricingApi.getTenantMarkup(),
-  });
-}
-
 /**
  * Invalidate everything pricing touches. The whole "metering" namespace, not
  * just ["metering","pricing"]: other features cache off-prefix metering keys
- * that pricing mutations affect (the customers feature's resolved
- * ["metering","customer-markup",id] — GET returns the customer override OR the
- * tenant default). "margin" derives from pricing; every one of these mutations
- * also writes an audit record (`pricing_book.declared`, `cost_book.declared`,
- * `markup.set`), so the settings audit ledger ("audit" namespace) must refetch
- * too. Over-invalidate rather than miss.
+ * that pricing mutations affect. "margin" derives from pricing; every one of
+ * these mutations also writes an audit record (`pricing_book.declared`,
+ * `cost_book.declared`), so the settings audit ledger ("audit" namespace) must
+ * refetch too. Over-invalidate rather than miss.
  */
 function usePricingInvalidation() {
   const queryClient = useQueryClient();
@@ -110,10 +100,3 @@ export function useDeclareCostBook() {
 // changes by a declared publish now — read as a diff first — and the feature
 // that speaks that body arrives with #372.
 
-export function useUpdateTenantMarkup() {
-  const invalidate = usePricingInvalidation();
-  return useMutation({
-    mutationFn: (body: TenantMarkupIn) => pricingApi.putTenantMarkup(body),
-    onSuccess: invalidate,
-  });
-}

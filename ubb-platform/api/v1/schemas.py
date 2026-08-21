@@ -1019,14 +1019,11 @@ class PaginatedGrants(Paginated[GrantOut]):
     pass
 
 
-class TenantMarkupIn(Schema):
-    markup_percentage_micros: int = Field(default=0, ge=0)
-    fixed_uplift_micros: int = Field(default=0, ge=0)
-
-
-class TenantMarkupOut(Schema):
-    markup_percentage_micros: int
-    fixed_uplift_micros: int
+# THE TWO SCHEMAS THAT DESCRIBED THE DELETED MARKUP RECORD ARE GONE (#369).
+# They published a percentage under the money suffix and a per-event flat
+# addend, on five routes that read and wrote a configuration row. Both are
+# deleted outright rather than reshaped: the record they described no longer
+# exists, and the pair below describes the rung that replaced it.
 
 
 class TenantDefaultMarkupIn(Schema):
@@ -2457,10 +2454,11 @@ class PlanIn(Schema):
     name: str = Field(min_length=1, max_length=255)
     access_fee_micros: int = Field(default=0, ge=0)
     per_seat_micros: int = Field(default=0, ge=0)
-    # 1_000_000 == 1%. Capped at 1000% — a higher value is far more likely a
-    # unit error (percent passed as micros) than a real commercial term.
-    markup_percentage_micros: int = Field(default=0, ge=0, le=1_000_000_000)
-    fixed_uplift_micros: int = Field(default=0, ge=0)
+    # THE USAGE AXIS IS THE BOOK, NOT A PERCENTAGE HERE (#369). A markup
+    # percentage and a per-event flat addend used to be stated on this body and
+    # written onto the Plan row. Both columns are deleted: a plan prices its
+    # customers through the Pricing Book it names, and where that book prices
+    # nothing the answer is the tenant's declared default markup rung.
     interval: Literal["month", "year"] = "month"
 
 
@@ -2470,8 +2468,6 @@ class PlanOut(Schema):
     name: str
     access_fee_micros: int
     per_seat_micros: int
-    markup_percentage_micros: int
-    fixed_uplift_micros: int
     interval: str
     pricing_version: int
     archived_at: Optional[str] = None
@@ -2486,8 +2482,6 @@ class PlanUpdateIn(Schema):
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     access_fee_micros: Optional[int] = Field(default=None, ge=0)
     per_seat_micros: Optional[int] = Field(default=None, ge=0)
-    markup_percentage_micros: Optional[int] = Field(default=None, ge=0, le=1_000_000_000)
-    fixed_uplift_micros: Optional[int] = Field(default=None, ge=0)
     migrate_existing: bool = False
 
 

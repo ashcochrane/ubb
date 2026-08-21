@@ -25,12 +25,21 @@ read metadata to see which happened.
 **GOVERNANCE, NOT TELEMETRY.** Both writes decide what a customer is charged, so
 neither takes the audit sweep's exemption list — the carve there is for usage
 ingestion and the start-gate call, and this is neither.
+
+⚠ **IT IS THE WHOLE MARKUP SURFACE NOW (#369).** Five other routes read and
+wrote a markup — a tenant-scope pair and a customer-scope trio, over a record
+that also carried a per-event flat addend. That record is deleted, so these two
+acts and this read are all there is, and the ladder they feed has one rung.
+What replaced the other rungs is a rule in a Pricing Book rather than a
+percentage on a configuration row.
 """
 import json
 
 from django.test import Client, TestCase
 
 from apps.metering.pricing.models import TenantDefaultMarkup
+from apps.metering.pricing.services import markup_cache
+from apps.metering.pricing.services.markup_cache import MarkupCache
 from apps.metering.pricing.services.markup_service import MarkupService
 from apps.platform.audit.actions import is_registered_action
 from apps.platform.audit.ledger import record as audit_record
@@ -79,7 +88,7 @@ class ATenantDeclaresAndWithdrawsItsRungTest(_TheRungsRoutesMixin, TestCase):
                          20_000_000)
         # And it is the rung resolution reads, not merely a stored row.
         self.assertEqual(
-            MarkupService.resolve(self.tenant, self.customer).markup_micro_percent,
+            MarkupService.resolve(self.tenant).markup_micro_percent,
             20_000_000)
 
     def test_re_declaring_corrects_the_rung_rather_than_adding_one(self):
@@ -100,7 +109,7 @@ class ATenantDeclaresAndWithdrawsItsRungTest(_TheRungsRoutesMixin, TestCase):
         self.assertEqual(withdrawn.status_code, 200)
         self.assertEqual(withdrawn.json()["status"], "withdrawn")
         self.assertIsNone(self._read().json()["markup_micro_percent"])
-        self.assertIsNone(MarkupService.resolve(self.tenant, self.customer))
+        self.assertIsNone(MarkupService.resolve(self.tenant))
 
     def test_withdrawing_nothing_is_idempotent_and_records_no_act(self):
         """There was no act, so there is no entry. An audit ledger that logged
@@ -135,8 +144,7 @@ class NoRungIsSeededAndAnAbsentOneIsNotAZeroTest(_TheRungsRoutesMixin,
 
         self.assertEqual(self._read().json()["markup_micro_percent"], 0)
         self.assertEqual(
-            MarkupService.resolve(self.tenant, self.customer).markup_micro_percent,
-            0)
+            MarkupService.resolve(self.tenant).markup_micro_percent, 0)
 
     def test_declaring_requires_the_percentage_to_be_stated(self):
         """No default on the request field either: a rung is declared on
@@ -221,3 +229,42 @@ class BothActsAreRecordedUnderTheirOwnNameTest(_TheRungsRoutesMixin, TestCase):
                                   (DECLARED,),
                                   ("DELETE", "/metering/pricing/default-markup"):
                                   (WITHDRAWN,)})
+
+
+class WithdrawingThroughTheRouteBumpsTheResolvedCacheTest(
+        _TheRungsRoutesMixin, TestCase):
+    """A withdrawn rung must stop being served IMMEDIATELY, not after a TTL.
+
+    ⚠ **INHERITED FROM THE RECORD #369 DELETED, WHERE IT WAS A MEASURED MONEY
+    LEAK.** `MarkupCache` keys on a per-tenant version held in Redis; the model
+    layer bumps that version from `save()` and `delete()`, so a route that
+    removes a row with `QuerySet.delete()` — which never loads an instance —
+    leaves the version where it was and the L1 keeps answering the withdrawn
+    percentage for the whole TTL window. The route the claim moved off was a
+    customer override, where the stale answer under-priced; here the stale
+    answer prices at all, for a tenant who has said to stop.
+
+    It discriminates: with the route's `rung.delete()` swapped for a queryset
+    delete, the version does not move, `begin_request` re-pins the same number,
+    the L1 entry is still valid and the withdrawn rung is served.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Module-level L1 + contextvar are in-process state: reset per test,
+        # mirroring apps/metering/pricing/tests/test_markup_cache.py.
+        markup_cache._l1.clear()
+        markup_cache._ctx_versions.set({})
+
+    def test_the_l1_stops_serving_a_withdrawn_rung_within_the_request_boundary(
+            self):
+        self._declare(50_000_000)
+        MarkupCache.begin_request(self.tenant.id)
+        # Populated as the pricing path would, before anything is withdrawn.
+        self.assertEqual(
+            MarkupCache.resolve(self.tenant).markup_micro_percent, 50_000_000)
+
+        self.assertEqual(self._withdraw().json()["status"], "withdrawn")
+
+        MarkupCache.begin_request(self.tenant.id)
+        self.assertIsNone(MarkupCache.resolve(self.tenant))

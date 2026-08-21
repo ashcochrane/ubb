@@ -30,18 +30,17 @@ _SKIP_LABELS = frozenset({
 })
 
 # Tenant-level CONFIG rows preserved when keep_config=True (the default).
-# Customer-scoped config (per-customer rate cards, markups, budgets, billing
-# profiles, auto-top-up configs) always dies with the customers it points at.
+# Customer-scoped config (per-customer pricing, budgets, billing profiles,
+# auto-top-up configs) always dies with the customers it points at.
 CONFIG_MODEL_LABELS = frozenset({
     "pricing.Rate",
-    "pricing.TenantMarkup",
-    # The tenant's declared default markup rung (#357). Configuration in
-    # exactly the sense the record above it is — it is the half of that record
-    # that was the tenant default, moved onto a declaration of its own — and
-    # the sweep discovers tenant-scoped models generically, so a rung left out
-    # of this set is wiped by a reset that says it is keeping configuration.
-    # A tenant would then have no markup rung and every event after the reset
-    # would price to `unknown`, silently.
+    # The tenant's declared default markup rung (#357). The sweep discovers
+    # tenant-scoped models generically, so a rung left out of this set is wiped
+    # by a reset that says it is keeping configuration. A tenant would then
+    # have no markup rung and every event after the reset would price to
+    # `unknown`, silently. ⚠ It is the LAST markup record: #369 deleted the one
+    # that used to sit beside it here, whose per-customer rows were the
+    # customer rung of the same ladder.
     "pricing.TenantDefaultMarkup",
     # ⚠ THE BOOKS A RULE LIVES IN, AND THE RECORD OF EVERY CHANGE TO THEM
     # (#358, split in two by #368).

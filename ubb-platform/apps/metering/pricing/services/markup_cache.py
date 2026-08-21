@@ -2,14 +2,21 @@
 
 L1 caches the single resolved ``ResolvedMarkup`` instance (or ``None``, a
 negative cache — "no markup configured" is the common case and must also be
-one dict hit) per (tenant, customer) key for TTL_SECONDS. Version key
-ubb:markupver:{tenant} is read at most once per request: begin_request pins
-the observed version in a contextvars.ContextVar (request-scoped — a stale
-concurrent request can never clobber a fresher request's view) and resolve
-compares cached entries against it. Both records a rung can be read from —
-the tenant's declared default and a customer's override — bump the version from
-their own `save()`/`delete()` at the MODEL layer, so no write path can bypass
-invalidation; a bump therefore propagates within one request boundary + TTL.
+one dict hit) per tenant for TTL_SECONDS. Version key ubb:markupver:{tenant} is
+read at most once per request: begin_request pins the observed version in a
+contextvars.ContextVar (request-scoped — a stale concurrent request can never
+clobber a fresher request's view) and resolve compares cached entries against
+it. The one record a rung can be read from — the tenant's declared default —
+bumps the version from its own `save()`/`delete()` at the MODEL layer, so no
+write path can bypass invalidation; a bump therefore propagates within one
+request boundary + TTL.
+
+⚠ **THE KEY IS THE TENANT, AND IT USED TO BE (tenant, customer) (#369).** Two
+rungs read a customer — their own override row and their plan's percentage —
+and both records are deleted, so the resolved answer cannot vary by customer.
+A customer left in the key would be a cache partitioned on something the
+resolve does not read: N times the entries for one answer, and every one of
+them invalidated by the same bump.
 
 Money rule: a missing markup would under-price, so every fallback — L1 miss,
 stale version, Redis failure — is a live ORM resolve via
@@ -39,7 +46,7 @@ from django.conf import settings
 
 TTL_SECONDS = 30
 _L1_MAX = 4096   # crude bound: clear-on-full (not an LRU), mirrors CardCache
-_l1 = {}         # (tenant_id, customer_id) -> (version, expires_monotonic, ResolvedMarkup | None)
+_l1 = {}         # tenant_id -> (version, expires_monotonic, ResolvedMarkup | None)
 _ctx_versions = contextvars.ContextVar("markup_cache_versions")
 
 _redis = None  # lazy singleton; bound to settings.REDIS_URL at first use
@@ -75,18 +82,18 @@ class MarkupCache:
             pass  # TTL bounds staleness
 
     @staticmethod
-    def resolve(tenant, customer):
+    def resolve(tenant):
         """MarkupService.resolve via the L1 cache. Returns a ResolvedMarkup
         (frozen) or None. Instances are shared cache objects; the frozen
         dataclass makes accidental mutation an error rather than a silent
         cross-request bug."""
         from apps.metering.pricing.services.markup_service import MarkupService
-        ver = _ctx_versions.get({}).get(str(tenant.id), 0)
-        key = (str(tenant.id), str(customer.id) if customer else "")
+        key = str(tenant.id)
+        ver = _ctx_versions.get({}).get(key, 0)
         hit = _l1.get(key)
         if hit and hit[0] == ver and hit[1] > time.monotonic():
             return hit[2]
-        markup = MarkupService.resolve(tenant, customer)
+        markup = MarkupService.resolve(tenant)
         if len(_l1) >= _L1_MAX:
             _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, markup)

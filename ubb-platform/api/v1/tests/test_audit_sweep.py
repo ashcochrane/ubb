@@ -125,7 +125,18 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # sense every pair on this list is, so they register names. The exempt count
 # below is untouched. 80 - 2 + 4 - 1 = 81, where the last term is the single
 # create route the two declares replace.
-_EXPECTED_MUTATING = 81
+#
+# 81 -> 78 with #369's three: the tenant-level markup record is deleted, and the
+# writes that set a tenant-wide percentage, set one customer's override and
+# removed that override go with it. (Its two READ routes leave the surface in
+# the same commit and are not on this list, which counts mutating routes only.)
+# ⚠ **THE TWO ACTION NAMES THEY WROTE LEFT THE REGISTRY IN THE SAME COMMIT**,
+# which `record()`'s refusal of an unregistered name makes compulsory rather
+# than merely tidy — and deleting an action whose act no longer exists is not
+# the rename ADR-004 §2 governs, so no part of the one-time pre-production
+# audit-registry reset is spent on it. Neither was exempt, so the exempt count
+# below is untouched. 81 - 3 = 78.
+_EXPECTED_MUTATING = 78
 _EXPECTED_EXEMPT = 5
 
 

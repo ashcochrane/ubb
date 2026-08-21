@@ -24,29 +24,29 @@ class TestPlan:
         a_plan(tenant=b, key="pro", name="Pro")
         assert Plan.objects.count() == 2
 
-    def test_defaults_are_a_zero_fee_zero_markup_plan(self):
+    def test_defaults_are_a_zero_fee_plan(self):
         t = self._t()
         p = a_plan(tenant=t, key="lite", name="Lite")
         assert p.access_fee_micros == 0
         assert p.per_seat_micros == 0
-        assert p.markup_percentage_micros == 0
-        assert p.fixed_uplift_micros == 0
         assert p.interval == "month"
         assert p.archived_at is None
 
-    def test_personal_lite_shape_is_representable(self):
-        # $0 access, $0 seat, 50% markup — the plan with no Stripe presence.
+    def test_a_usage_only_plan_is_representable(self):
+        # $0 access, $0 seat, priced entirely from the book it names — the plan
+        # with no Stripe presence. ⚠ It used to be spelled as a markup
+        # PERCENTAGE on this row; #369 deleted that column, and the shape the
+        # case is about is the absence of the two fee axes either way.
         t = self._t()
-        p = a_plan(tenant=t, key="personal-lite", name="Personal Lite",
-                   markup_percentage_micros=50_000_000)
+        p = a_plan(tenant=t, key="personal-lite", name="Personal Lite")
         assert p.has_stripe_axes is False
+        assert p.pricing_book_id is not None
 
     def test_enterprise_shape_has_stripe_axes(self):
         t = self._t()
         p = a_plan(tenant=t, key="enterprise", name="Enterprise",
                    access_fee_micros=100_000_000,
-                   per_seat_micros=10_000_000,
-                   markup_percentage_micros=20_000_000)
+                   per_seat_micros=10_000_000)
         assert p.has_stripe_axes is True
 
 

@@ -378,10 +378,13 @@ snapshot; auditing reads or usage ingestion (telemetry, not governance).
 ## Plans
 
 **Plan**:
-A tenant's commercial offer, with three axes — access fee, per-seat fee, and markup on metered
-compute — and the **Pricing Book its customers are priced from**. A kernel concept because
-subscriptions realizes the two fee axes (as Stripe Prices) and metering realizes the third and the
-book (at rating time), and neither owns them.
+A tenant's commercial offer, with two fee axes — access fee and per-seat fee — and the **Pricing
+Book its customers are priced from**, which is what they pay for metered compute. A kernel concept
+because subscriptions realizes the fee axes (as Stripe Prices) and metering realizes the book (at
+rating time), and neither owns them.
+_It had a third axis until #369_: a markup percentage and a per-event flat amount, stated on the
+plan row. Both columns are deleted — a percentage on a catalogue row could not say what it applied
+to, and the book can.
 (`apps/platform/plans/models.py:Plan`)
 
 **A Plan's Pricing Book**:
@@ -401,22 +404,32 @@ resolution, not a route to a book); a plan adopting a book that carries a custom
 tenant's default.
 (`apps/platform/plans/models.py:Plan.pricing_book`)
 
-**Markup-only plan**:
-A plan whose fee axes are both zero, e.g. $0 access + 50% markup. It has no Stripe Product, Price,
-or Subscription at all — plan membership lives in `CustomerPlanAssignment`, so such a customer is
-on a real plan with zero presence in Stripe Billing. (`Plan.has_stripe_axes`)
+**Usage-only plan**:
+A plan whose fee axes are both zero, priced entirely from the Pricing Book it names. It has no
+Stripe Product, Price, or Subscription at all — plan membership lives in `CustomerPlanAssignment`,
+so such a customer is on a real plan with zero presence in Stripe Billing.
+(`Plan.has_stripe_axes`)
 
 **Repricing asymmetry**:
 Fee edits are **grandfathered** (Stripe Prices are immutable, so a new versioned Price is minted and
-existing subscribers keep the old one unless migrated); markup edits are **live** (no Stripe object
-exists, so the change applies to the next rated event).
+existing subscribers keep the old one unless migrated). What a plan's customers pay for usage is not
+edited on the plan at all: it is the rules in the book the plan names, changed through a **publish**
+on that book, which is what gives a tenant a diff to read before a price moves.
 
 **Markup precedence**:
-`customer TenantMarkup override -> customer's Plan -> tenant default -> none`. The plan rung is what
-stops a Personal Lite customer silently billing at the tenant default. A plan with an explicit
-zero markup (fee-only; the UI labels this "Blank = no markup") shadows the tenant default the same
-way a zero customer override does — it pins the customer at provider cost rather than falling
-through.
+`the tenant's declared default markup rung -> none`. One rung, and the last step of the ladder: it
+prices what no rule matched. A tenant that has declared nothing has NO rung and its unruled events
+resolve to `unknown` with no amount; a rung declared AT zero is the tenant saying *charge exactly
+what the call cost*, and it settles.
+_It had three rungs until #369_, and the two above it were a percentage on a configuration row: a
+customer's own override, and the plan's own column. Both records are deleted, and what replaced each
+is a **rule** — in the customer's own Pricing Book (#361), and in the book the plan names (#362) —
+resolved further up the ladder, on a record that says which quantity it prices.
+_The entry this replaces recorded a ratified behaviour that has now stopped being reachable_: a plan
+with an explicit zero markup shadowed the tenant default and pinned the customer at provider cost.
+It was ratified rather than a defect — but the zero came from a column's DEFAULT, so "the tenant has
+said nothing" was served as "the tenant said charge cost". Deleting the column is what makes the
+honest answer reachable.
 (`apps/metering/pricing/services/markup_service.py`)
 
 ## Cross-cutting primitives

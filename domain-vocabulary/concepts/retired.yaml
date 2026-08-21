@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,659 of 2,056 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,650 of 2,049 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1286,6 +1286,44 @@ measurement_key:
     # surviving senses — #350 records that care about the sense does not help —
     # but that a rule is opened and retired here, never "united": the acts have
     # verbs of their own and the new prose uses them.
+    #
+    # #369 MOVED BOTH DENOMINATORS DOWN AND LEFT THE NUMERATOR EXACTLY WHERE IT
+    # WAS (1,659 -> 1,650 swept, 2,056 -> 2,049 tracked, `units` unchanged at
+    # 50 files / 125 occurrences), WITH THE EXCLUSION UP BY TWO
+    # (`historical-migrations` 230 -> 232). The largest fall this denominator
+    # has taken, and the shape is the slice's second demolition commit: the
+    # tenant-level markup record is deleted with its five routes, its two
+    # component schemas and both of its audit action names, and the plan
+    # catalog's two markup columns go with it.
+    #
+    # THE ARITHMETIC, COUNTED OFF `git diff --name-status` RATHER THAN FROM
+    # MEMORY. FOUR files arrive: two migrations, both EXCLUDED — so they lift
+    # tracked without lifting swept — and two swept test modules, the two halves
+    # of the claim that the deleted acts really ceased (the refusal, which
+    # DERIVES the retired noun from the deleting migration's own from-state, and
+    # the router walk, which spells nothing because it asks what is not served).
+    # ELEVEN leave, all swept: seven generated (five endpoint modules for the
+    # five deleted routes, and the two model modules for the two deleted
+    # component schemas), and four hand-written — the pricing app's admin
+    # module, which registered the deleted record and nothing else; that
+    # record's own model test module; the plans app's markup-cache invalidation
+    # module, whose subject was hooks this commit deletes because no plan fact
+    # reaches a resolved markup any more; and the console's customer pricing
+    # tab, whose last card was the markup override. Swept 1,659 + 2 - 11 =
+    # 1,650; excluded 397 + 2 = 399; tracked 1,650 + 399 = 2,049.
+    #
+    # ⚠ **NEITHER NEW MODULE GREW AN ALLOWLIST OR MOVED A LEDGER ENTRY**, which
+    # is the whole point of the derivation: admitting a file to the sweep's
+    # *checks-whose-subject-is-a-retired-word* rule would have grown a PERMANENT
+    # exclusion (still 14), on the very commit that takes those words to zero.
+    #
+    # ⚠ THE NUMERATOR HELD THROUGH A COMMIT THAT REWROTE PROSE IN THIRTY-ODD
+    # FILES, INCLUDING THE CONSOLE HALF — which is where #367 lost a file it had
+    # recorded as unchanged, because the numbers were taken after the backend.
+    # They were taken here after the console, after the SDK regeneration and
+    # after `git add`, which is the other half of the same discipline: the
+    # denominator counts GIT-TRACKED files, so an untracked new file makes a
+    # local green precede a red CI.
 
     - term: units
       retired_as: >-

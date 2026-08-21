@@ -11,8 +11,6 @@ export function formatMicros(micros: number): string {
   return `$${(micros / 1_000_000).toFixed(2)}`;
 }
 
-/** Markup micros -> percent. 1_000_000 micros == 1%. */
-export function formatMarkup(micros: number): string {
-  const pct = micros / 1_000_000;
-  return `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%`;
-}
+// ⚠ NO `formatMarkup` (#369). It rendered the plan's markup percentage column,
+// which is deleted. `formatPercentMicros` in `@/lib/format` is the general
+// formatter for a percentage held in micros, for whoever needs one next.

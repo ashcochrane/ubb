@@ -32,22 +32,29 @@ class TestPlanEndpoints:
     def _get(self, path):
         return self.client.get(path, **self._auth())
 
-    def test_create_plan_with_all_three_axes(self):
+    def test_create_plan_with_both_fee_axes(self):
+        """⚠ IT USED TO SAY "all three axes" AND STATE A PERCENTAGE (#369).
+
+        The third axis is the Pricing Book the route creates, not a number in
+        this body: the plan's two markup columns are deleted. The case below
+        is the same plan with neither fee axis.
+        """
         r = self._post("/api/v1/plans", {
             "key": "enterprise", "name": "Enterprise",
             "access_fee_micros": 100_000_000, "per_seat_micros": 10_000_000,
-            "markup_percentage_micros": 20_000_000, "interval": "month"})
+            "interval": "month"})
         assert r.status_code == 201
         body = r.json()
         assert body["key"] == "enterprise"
-        assert body["markup_percentage_micros"] == 20_000_000
+        assert body["access_fee_micros"] == 100_000_000
+        assert body["per_seat_micros"] == 10_000_000
 
-    def test_create_markup_only_plan(self):
+    def test_create_usage_only_plan(self):
         r = self._post("/api/v1/plans", {
-            "key": "personal-lite", "name": "Personal Lite",
-            "markup_percentage_micros": 50_000_000})
+            "key": "personal-lite", "name": "Personal Lite"})
         assert r.status_code == 201
         assert r.json()["access_fee_micros"] == 0
+        assert r.json()["per_seat_micros"] == 0
 
     def test_creating_a_plan_creates_the_book_it_prices_from_first(self):
         """AC 3 at the surface a tenant reaches (#362).
@@ -77,15 +84,21 @@ class TestPlanEndpoints:
         assert book.customer_id is None
         assert book.is_default is False
 
-    def test_the_response_body_is_unchanged_by_the_reference(self):
-        """The reference is internal to this commit. A tenant reads the same
-        plan they always did, and the published contract does not move."""
+    def test_the_response_body_names_the_fee_axes_and_no_markup(self):
+        """⚠ IT USED TO SAY "unchanged by the reference" (#362) AND IT MOVED.
+
+        #362's claim was that adding the book reference published nothing new,
+        and it held. #369 is the commit that changes this body: the plan's
+        markup percentage and per-event flat addend are deleted, so two keys
+        leave. The set is EXACT in both directions — a key arriving here is a
+        published field somebody added, and the book reference staying INTERNAL
+        is still what this asserts.
+        """
         r = self._post("/api/v1/plans", {"key": "pro", "name": "Pro"})
 
         assert set(r.json()) == {
             "id", "key", "name", "access_fee_micros", "per_seat_micros",
-            "markup_percentage_micros", "fixed_uplift_micros", "interval",
-            "pricing_version", "archived_at"}
+            "interval", "pricing_version", "archived_at"}
 
     def test_creating_a_plan_records_one_act_and_not_two(self):
         """The book is bookkeeping and the PLAN is the act (#361's precedent
@@ -146,14 +159,17 @@ class TestPlanEndpoints:
         assert self._get("/api/v1/plans/pro").status_code == 200
         assert self._get("/api/v1/plans/nope").status_code == 404
 
-    def test_patch_updates_markup_without_touching_stripe(self):
-        a_plan(tenant=self.tenant, key="lite", name="Lite",
-               markup_percentage_micros=50_000_000)
+    def test_patch_updates_the_name_without_touching_stripe(self):
+        """The UBB-side branch of the PATCH, which used to carry the plan's two
+        markup columns beside the name and now carries the name alone (#369).
+        What a plan's customers pay for usage is changed through a publish on
+        the book it names, which is what gives a tenant a diff to read first."""
+        a_plan(tenant=self.tenant, key="lite", name="Lite")
         r = self.client.patch("/api/v1/plans/lite",
-                              data={"markup_percentage_micros": 60_000_000},
+                              data={"name": "Lite (renamed)"},
                               content_type="application/json", **self._auth())
         assert r.status_code == 200
-        assert r.json()["markup_percentage_micros"] == 60_000_000
+        assert r.json()["name"] == "Lite (renamed)"
 
     def test_assign_customer_to_plan(self):
         a_plan(tenant=self.tenant, key="lite", name="Lite")
@@ -173,21 +189,16 @@ class TestPlanEndpoints:
         assert r.status_code == 404
         assert not CustomerPlanAssignment.objects.filter(plan__key="lite").exists()
 
-    def test_patch_markup_invalidates_markup_cache(self):
-        # Review finding (minor): pins that a markup edit actually invalidates
-        # the markup cache, protecting against a future change to
-        # Plan.save()'s unconditional-invalidate hook.
-        a_plan(tenant=self.tenant, key="lite", name="Lite",
-               markup_percentage_micros=50_000_000)
-        with patch(
-            "apps.metering.pricing.services.markup_cache.MarkupCache.invalidate"
-        ) as mock_invalidate:
-            r = self.client.patch(
-                "/api/v1/plans/lite",
-                data={"markup_percentage_micros": 60_000_000},
-                content_type="application/json", **self._auth())
-        assert r.status_code == 200
-        mock_invalidate.assert_called_once_with(self.tenant.id)
+    # THE MARKUP-CACHE CASE WENT WITH THE HOOK IT GUARDED (#369). It pinned
+    # that a PATCH editing the plan's markup invalidated `MarkupCache`, because
+    # `Plan.save()` bumped that cache's per-tenant version. The plan supplies no
+    # markup rung any more, so nothing a plan write changes can move a resolved
+    # markup, and the hook is deleted rather than left bumping a key for a fact
+    # nobody reads. The rung that DOES feed that cache invalidates from its own
+    # model layer, asserted in
+    # `apps/metering/pricing/tests/test_markup_cache.py` and, through the
+    # withdrawal route, in
+    # `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
 
     def test_patch_noop_payload_records_no_audit(self):
         # Review finding 2: an empty (or migrate_existing-only) PATCH changes
@@ -203,12 +214,13 @@ class TestPlanEndpoints:
             tenant_id=self.tenant.id, action="plan.updated").count()
         assert after == before
 
-    def test_patch_markup_is_audited_even_when_fee_branch_fails(self):
-        # Review finding 1: markup/name commit + audit independently of the
-        # fee branch's outcome — a fee-branch failure must not silently drop
-        # the already-durable markup change from the audit trail.
-        a_plan(tenant=self.tenant, key="lite", name="Lite",
-               markup_percentage_micros=50_000_000)
+    def test_the_ubb_side_edit_is_audited_even_when_the_fee_branch_fails(self):
+        # Review finding 1: the UBB-side edit commits + audits independently of
+        # the fee branch's outcome — a fee-branch failure must not silently drop
+        # an already-durable change from the audit trail. ⚠ That branch carried
+        # the plan's markup columns beside the name until #369; the name is what
+        # is left, and the ordering property is the same one.
+        a_plan(tenant=self.tenant, key="lite", name="Lite")
         with patch(
             "apps.subscriptions.orchestration.service."
             "SubscriptionOrchestrator.update_plan_prices",
@@ -216,12 +228,12 @@ class TestPlanEndpoints:
         ):
             r = self.client.patch(
                 "/api/v1/plans/lite",
-                data={"markup_percentage_micros": 60_000_000,
+                data={"name": "Lite (renamed)",
                       "access_fee_micros": 5_000_000},
                 content_type="application/json", **self._auth())
         assert r.status_code == 422
         plan = Plan.objects.get(tenant=self.tenant, key="lite")
-        assert plan.markup_percentage_micros == 60_000_000
+        assert plan.name == "Lite (renamed)"
         assert AuditRecord.objects.filter(
             tenant_id=self.tenant.id, action="plan.updated", resource_id="lite",
         ).count() == 1

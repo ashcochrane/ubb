@@ -9,7 +9,7 @@ import {
   unitQuantityLabel,
   type RateShape,
 } from "./pricing-math";
-import { markupFormSchema, rateFormSchema, resolveUnitQuantity } from "./schemas";
+import { rateFormSchema, resolveUnitQuantity } from "./schemas";
 
 describe("toMicros", () => {
   it("converts currency-unit input to integer micros with rounding", () => {
@@ -91,11 +91,9 @@ describe("unit quantity helpers", () => {
 });
 
 describe("form schemas", () => {
-  it("rejects non-numeric and negative markup input", () => {
-    expect(markupFormSchema.safeParse({ percent: "abc", fixed: "0" }).success).toBe(false);
-    expect(markupFormSchema.safeParse({ percent: "-5", fixed: "0" }).success).toBe(false);
-    expect(markupFormSchema.safeParse({ percent: "15", fixed: "0.05" }).success).toBe(true);
-  });
+  // ⚠ THE MARKUP FORM'S CASES WENT WITH THE SCHEMA (#369). They exercised the
+  // shared non-negative-number-string refinement, which the rate form's cases
+  // below still exercise; nothing was left uncovered by their going.
 
   it("requires a positive whole number for custom unit quantities", () => {
     const base = {

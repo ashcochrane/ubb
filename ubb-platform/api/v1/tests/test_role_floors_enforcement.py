@@ -75,7 +75,7 @@ class RoleFloorEnforcementTest(TestCase):
     MATRIX = [
         ("get", "/api/v1/tenant/config", READ, None),
         ("get", "/api/v1/billing/budget", READ, None),
-        ("get", "/api/v1/metering/pricing/markup", READ, None),
+        ("get", "/api/v1/metering/pricing/default-markup", READ, None),
         ("post", "/api/v1/subscriptions/sync", WRITE, None),
         ("patch", "/api/v1/tenant/config", ADMIN, {}),
         ("post", "/api/v1/tenant/api-keys", ADMIN, {}),

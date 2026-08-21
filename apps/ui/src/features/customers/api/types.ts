@@ -62,8 +62,6 @@ export type UsageInvoiceOut = BillingSchemas["UsageInvoiceOut"];
 
 export type UsageAnalyticsResponse = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseriesResponse = MeteringSchemas["UsageTimeseriesResponse"];
-export type TenantMarkupIn = MeteringSchemas["TenantMarkupIn"];
-export type TenantMarkupOut = MeteringSchemas["TenantMarkupOut"];
 export type PastLimitReportResponse = MeteringSchemas["PastLimitReportResponse"];
 
 // ---------------------------------------------------------------------------

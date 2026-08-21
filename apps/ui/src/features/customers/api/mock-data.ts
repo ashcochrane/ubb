@@ -24,7 +24,6 @@ import type {
   RevenueProfileOut,
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
-  TenantMarkupOut,
   UsageInvoiceOut,
   UsageAnalyticsResponse,
   UsageTimeseriesResponse,
@@ -854,12 +853,11 @@ export function emptyPastLimitReport(customerId: string): PastLimitReport {
 
 // ---------------------------------------------------------------------------
 // Pricing
-
-export const MOCK_MARKUPS: Record<string, TenantMarkupOut> = {
-  [CUS_ACME]: { markup_percentage_micros: 25_000_000, fixed_uplift_micros: 0 },
-  [CUS_LUNA]: { markup_percentage_micros: 20_000_000, fixed_uplift_micros: 50_000 },
-  [CUS_NOVA]: { markup_percentage_micros: 0, fixed_uplift_micros: 0 },
-};
+//
+// ⚠ NO FIXTURE (#369). The per-customer markup overrides that were here
+// described a record that is deleted, with its five routes. A customer's price
+// comes from a rule in a pricing book now, and this feature has no read for one
+// until #372.
 
 
 // ---------------------------------------------------------------------------

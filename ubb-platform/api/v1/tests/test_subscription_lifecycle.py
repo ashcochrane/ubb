@@ -16,8 +16,7 @@ class TestLifecycleRoutesMoved:
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
         Customer.objects.create(tenant=self.tenant, external_id="c1")
-        a_plan(tenant=self.tenant, key="lite", name="Lite",
-               markup_percentage_micros=50_000_000)
+        a_plan(tenant=self.tenant, key="lite", name="Lite")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

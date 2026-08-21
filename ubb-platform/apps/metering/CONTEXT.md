@@ -147,9 +147,10 @@ last rung of the ladder, and the path that produces most prices. A tenant declar
 withdraw it; **UBB seeds none**, so a tenant that has declared nothing has NO rung and its unruled
 events resolve to `unknown` with no amount — never to zero and never to the supplier's own figure
 (#356). A rung declared AT zero is a different thing: it is the tenant saying *charge exactly what the
-call cost*, and it settles. (`apps/metering/pricing/models.py:TenantDefaultMarkup`; the customer
-override still lives on `TenantMarkup`, whose tenant-default row prices nothing and is deleted with
-that record.)
+call cost*, and it settles. It is the ladder's ONLY markup rung: #369 deleted the record that held a
+customer's own override and the plan catalog's percentage column, and what replaced each is a rule in
+a Pricing Book rather than a percentage on a configuration row.
+(`apps/metering/pricing/models.py:TenantDefaultMarkup`)
 _Avoid_: reading an absent rung as a zero one — that is the silently wrong price this slice deletes;
 and calling the percentage a "margin", which names only the derived figure above.
 

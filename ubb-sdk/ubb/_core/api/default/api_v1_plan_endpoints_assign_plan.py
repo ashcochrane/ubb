@@ -86,7 +86,7 @@ def sync_detailed(
     This is the plan-membership write and it never touches Stripe. Starting the
     Stripe subscription for a plan's fee axes is a separate call
     (POST /subscriptions/customers/{external_id}/subscribe), because a
-    markup-only plan has no Stripe subscription to start.
+    usage-only plan has no Stripe subscription to start.
 
     Args:
         external_id (str):
@@ -127,7 +127,7 @@ def sync(
     This is the plan-membership write and it never touches Stripe. Starting the
     Stripe subscription for a plan's fee axes is a separate call
     (POST /subscriptions/customers/{external_id}/subscribe), because a
-    markup-only plan has no Stripe subscription to start.
+    usage-only plan has no Stripe subscription to start.
 
     Args:
         external_id (str):
@@ -163,7 +163,7 @@ async def asyncio_detailed(
     This is the plan-membership write and it never touches Stripe. Starting the
     Stripe subscription for a plan's fee axes is a separate call
     (POST /subscriptions/customers/{external_id}/subscribe), because a
-    markup-only plan has no Stripe subscription to start.
+    usage-only plan has no Stripe subscription to start.
 
     Args:
         external_id (str):
@@ -204,7 +204,7 @@ async def asyncio(
     This is the plan-membership write and it never touches Stripe. Starting the
     Stripe subscription for a plan's fee axes is a separate call
     (POST /subscriptions/customers/{external_id}/subscribe), because a
-    markup-only plan has no Stripe subscription to start.
+    usage-only plan has no Stripe subscription to start.
 
     Args:
         external_id (str):

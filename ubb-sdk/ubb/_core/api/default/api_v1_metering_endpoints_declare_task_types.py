@@ -82,9 +82,8 @@ def sync_detailed(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set and the book acts do, so it takes the write-default Admin floor
-    rather
-    than a Write carve-out.
+    declaring a book or a markup rung does, so it takes the write-default Admin
+    floor rather than a Write carve-out.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -120,9 +119,8 @@ def sync(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set and the book acts do, so it takes the write-default Admin floor
-    rather
-    than a Write carve-out.
+    declaring a book or a markup rung does, so it takes the write-default Admin
+    floor rather than a Write carve-out.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -153,9 +151,8 @@ async def asyncio_detailed(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set and the book acts do, so it takes the write-default Admin floor
-    rather
-    than a Write carve-out.
+    declaring a book or a markup rung does, so it takes the write-default Admin
+    floor rather than a Write carve-out.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -191,9 +188,8 @@ async def asyncio(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set and the book acts do, so it takes the write-default Admin floor
-    rather
-    than a Write carve-out.
+    declaring a book or a markup rung does, so it takes the write-default Admin
+    floor rather than a Write carve-out.
 
     Args:
         body (TaskTypeRegistryIn):

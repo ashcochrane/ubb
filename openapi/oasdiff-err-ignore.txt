@@ -621,3 +621,48 @@ POST /api/v1/metering/pricing/customers/{customer_id}/rate-card api path removed
 POST /api/v1/metering/pricing/rate-cards api path removed without deprecation
 POST /api/v1/metering/pricing/rate-cards/{book_id}/publish api path removed without deprecation
 POST /api/v1/metering/pricing/rate-cards/{book_id}/rates api path removed without deprecation
+
+# --- #369 (slice 4, ticket 22): the tenant markup surface is deleted ---------
+#
+# FIVE ROUTES REMOVED, AND THE RECORD BEHIND THEM WITH THEM. A tenant-scope
+# read and write set one percentage and one per-event flat amount for a whole
+# workspace; a customer-scope read, write and delete did the same for one named
+# customer, with the read answering the RESOLVED value so a caller could not
+# tell an override from an inherited default. The record they wrote is deleted
+# outright, along with its two component schemas.
+#
+# WHY EACH IS A REMOVAL RATHER THAN A RENAME AT THE WIRE. Nothing on the
+# contract answers what these answered, and the two things that replace them are
+# different acts on different records rather than the same act respelled:
+#
+#   * the tenant half is the DECLARED default markup rung at
+#     `/pricing/default-markup` (#357) — one term rather than two, because a
+#     margin over cost never composes with a flat addend, and NULL rather than
+#     zero where a tenant has declared nothing, because an absent declaration
+#     and a declared zero are different facts;
+#   * the customer half is a RULE in that customer's own Pricing Book (#361),
+#     declared and published like any other rule, on a record that says which
+#     quantity it prices. A percentage on a configuration row could not.
+#
+# ⚠ THE TWO DELETED COMPONENT SCHEMAS EMIT NOTHING OF THEIR OWN, AND THAT IS
+# THE PATH REMOVAL SUBSUMING THEM. `oasdiff` reports the path going and says
+# nothing about what its bodies used to carry, exactly as #367 recorded. Pasting
+# lines for them would fail this gate as suppressions that suppress nothing.
+#
+# ⚠ AND THE PLAN'S TWO MARKUP PROPERTIES EMIT NOTHING EITHER, WHICH IS THE
+# CUMULATIVE COMPARISON WORKING RATHER THAN A GAP. Measured against the
+# baseline: `PlanIn`, `PlanOut` and `PlanUpdateIn` carried NO markup property at
+# the `api-v1-launch` tag. They gained them after it and lose them here, so a
+# diff against the tag sees neither the arrival nor the departure — the same
+# shape #368 recorded for the publish family.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and every known consumer moves in this
+# same commit — the SDK core and its four hand-written markup methods, the
+# console's `src/api/generated/`, and the console screens that read these
+# routes, which are deleted rather than left pointing at a 405.
+DELETE /api/v1/metering/pricing/customers/{customer_id}/markup api path removed without deprecation
+GET /api/v1/metering/pricing/customers/{customer_id}/markup api path removed without deprecation
+GET /api/v1/metering/pricing/markup api path removed without deprecation
+PUT /api/v1/metering/pricing/customers/{customer_id}/markup api path removed without deprecation
+PUT /api/v1/metering/pricing/markup api path removed without deprecation

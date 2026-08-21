@@ -234,7 +234,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # cost book. That migration names both retired words and cannot avoid
         # either — `RemoveField` names the column it deletes and `RenameModel`
         # names the class it renames.
-        "historical-migrations": (UNTIL_SLICE_8, 230, 19),
+        # 230 -> 232 in #369: one migration in each of two apps, deleting the
+        # tenant-level markup record and the plan catalog's two markup columns.
+        # ⚠ Unlike the entries above it, NEITHER names a retired term: this
+        # rule covers every migration directory wholesale, so any new migration
+        # moves it whatever it spells. The unit collision those columns carried
+        # was G11, a naming gate over model columns, which is not sweep input.
+        "historical-migrations": (UNTIL_SLICE_8, 232, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
