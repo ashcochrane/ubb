@@ -15,8 +15,6 @@ import type {
   PaginatedRates,
   PublishIn,
   Rate,
-  RateIn,
-  StatusResponse,
   TenantMarkup,
   TenantMarkupIn,
 } from "./types";
@@ -142,83 +140,6 @@ export async function listRates(
   }
   const sorted = [...inBook].sort((a, b) => b.valid_from.localeCompare(a.valid_from));
   return { data: sorted, has_more: false, next_cursor: null };
-}
-
-export async function addRate(bookId: string, body: RateIn): Promise<Rate> {
-  await mockDelay();
-  const book = requireBook(bookId);
-  const provider = body.provider ?? "";
-  if (book.is_default && provider !== book.provider_key) {
-    throw problem(
-      422,
-      "validation_error",
-      "Validation error",
-      `This book is the default for "${book.provider_key}" — rates must use that provider.`,
-    );
-  }
-  const duplicate = rates.some(
-    (rate) =>
-      rate.rate_card_id === bookId &&
-      rate.valid_to == null &&
-      rate.measurement_key === body.measurement_key &&
-      rate.provider === provider &&
-      rate.event_type === (body.event_type ?? "") &&
-      sameSelectors(rate, body),
-  );
-  if (duplicate) {
-    throw problem(
-      409,
-      "conflict",
-      "Conflict",
-      "An active rate with this exact identity already exists in this book.",
-    );
-  }
-  const created: Rate = {
-    id: nextId("rate"),
-    rate_card_id: bookId,
-    lineage_id: nextId("lineage"),
-    card_type: book.card_type,
-    currency: book.currency,
-    measurement_key: body.measurement_key,
-    provider,
-    event_type: body.event_type ?? "",
-    task_type: body.task_type ?? "",
-    subtask_type: body.subtask_type ?? "",
-    grouping_field_1: body.grouping_field_1 ?? "",
-    grouping_field_2: body.grouping_field_2 ?? "",
-    grouping_field_3: body.grouping_field_3 ?? "",
-    grouping_field_4: body.grouping_field_4 ?? "",
-    grouping_field_5: body.grouping_field_5 ?? "",
-    grouping_field_6: body.grouping_field_6 ?? "",
-    grouping_field_7: body.grouping_field_7 ?? "",
-    grouping_field_8: body.grouping_field_8 ?? "",
-    grouping_field_9: body.grouping_field_9 ?? "",
-    grouping_field_10: body.grouping_field_10 ?? "",
-    rate_structure: body.rate_structure ?? "per_unit",
-    rate_per_unit_micros: body.rate_per_unit_micros ?? 0,
-    unit_quantity: body.unit_quantity ?? 1_000_000,
-    fixed_micros: body.fixed_micros ?? 0,
-    valid_from: new Date().toISOString(),
-    valid_to: null,
-  };
-  rates = [created, ...rates];
-  return { ...created };
-}
-
-export async function deleteRate(
-  bookId: string,
-  rateId: string,
-): Promise<StatusResponse> {
-  await mockDelay();
-  requireBook(bookId);
-  const target = rates.find(
-    (rate) => rate.rate_card_id === bookId && rate.id === rateId && rate.valid_to == null,
-  );
-  if (!target) {
-    throw problem(404, "not_found", "Not found", "This rate is unknown or already retired.");
-  }
-  target.valid_to = new Date().toISOString();
-  return { status: "deleted" };
 }
 
 export async function publishBook(bookId: string, body: PublishIn): Promise<Book> {

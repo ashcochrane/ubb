@@ -118,7 +118,25 @@ DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
 #: mirror the payment rail's own field. None of the three is a copy of the
 #: tenant's frozen choice, which is what §7.3's list is about.
 UNOWNED_CURRENCY_COLUMNS = (
-    "ubb_rate_card",                 # Rate
+    # ⚠ **THE RULE TABLE'S ENTRY FOLLOWED ITS RENAME RATHER THAN BEING DELETED
+    # (#367).** Slice 4 moved this table to the name a rule's own name asks for.
+    # A rename moves a table; it does not touch the column — the rule's currency
+    # is still an unconstrained copy of the tenant's frozen choice, and this
+    # list exists to say so. Deleting the line would have retired a live gap by
+    # spelling, which is the opposite of what the list is for.
+    #
+    # ⚠⚠ **A HAND-FORWARD TO TICKET 21, BECAUSE ITS OWN TEXT SAYS OTHERWISE.**
+    # That ticket reads *"All three of this slice's lines are deleted — two
+    # renamed tables and one deleted table."* Under the rule above only the
+    # DELETED table's line goes; the two renamed ones follow their renames,
+    # because a rename does not discharge the debt this list records. One of
+    # those two is handled here. The other is the container's, and ticket 21
+    # should RENAME it to whatever the Pricing Book's table becomes rather than
+    # delete it — unless it also constrains the column, in which case the line
+    # is genuinely payable and the deletion is right. Whoever lands that ticket
+    # decides; what this note refuses is deleting it by default and calling the
+    # gap paid.
+    "ubb_rate",                      # Rate
     "ubb_rate_card_container",       # RateCard
     "ubb_rate_card_assignment",      # RateCardAssignment — slice 4 deletes it
     "ubb_wallet",                    # Wallet

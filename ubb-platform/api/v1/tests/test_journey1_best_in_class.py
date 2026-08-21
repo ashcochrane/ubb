@@ -48,6 +48,20 @@ def _post(api, path, body):
     return r.json()
 
 
+def _open_rule(api, book_id, **change):
+    """Open a rule over HTTP: declare the change, then publish it (#367).
+
+    The immediate add-a-rule route is gone — every change to a book is a
+    publish — so a journey that used to POST a rule now takes the two steps a
+    tenant takes. Returns the publish record; `opened_rule_ids` names what it
+    opened.
+    """
+    base = f"/api/v1/metering/pricing/rate-cards/{book_id}"
+    declared = _post(api, f"{base}/publishes", {"changes": [{"kind": "add",
+                                                             **change}]})
+    return _post(api, f"{base}/publishes/{declared['id']}/publish", {})
+
+
 def _get(api, path, params=None):
     r = api.get(path, params=params)
     r.raise_for_status()
@@ -140,13 +154,18 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "cogs", "provider_key": "",
             "is_default": True})["id"]
-        alpha = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "tokens", "grouping_field_2": "alpha",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 2, "unit_quantity": 1})
-        beta = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "tokens", "grouping_field_2": "beta",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 5, "unit_quantity": 1})
-        assert alpha["rate_card_id"] == book_id and beta["rate_card_id"] == book_id
+        # A declared change names a slot by the tenant's own KEY, which is the
+        # one declared just above — so the journey states what a tenant states.
+        alpha = _open_rule(api, book_id, measurement_key="tokens",
+                           grouping_fields={"service": "alpha"},
+                           rate_structure="per_unit", rate_per_unit_micros=2,
+                           unit_quantity=1)
+        beta = _open_rule(api, book_id, measurement_key="tokens",
+                          grouping_fields={"service": "beta"},
+                          rate_structure="per_unit", rate_per_unit_micros=5,
+                          unit_quantity=1)
+        assert len(alpha["opened_rule_ids"]) == 1
+        assert len(beta["opened_rule_ids"]) == 1
 
         # ---- 3. record 8 events for C1: 2 products x 2 services x 2 agents,
         # spread across 3 days; ONE event carries a mis-typed agent value. ----
@@ -285,7 +304,9 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
             "changes": [{"measurement_key": "tokens", "grouping_field_2": "alpha",
                          "rate_per_unit_micros": 99}]})
-        assert published["version"] == 2
+        # Four: the book started at 1 and each of the two rules opened above was
+        # itself a publish (#367), so this reprice is the third act on it.
+        assert published["version"] == 4
 
         def _alpha_rows(include_history=False, as_of=None):
             params = {}

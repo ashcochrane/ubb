@@ -82,12 +82,15 @@ POST /api/v1/platform/plans api path removed without deprecation
 # Usage analytics groups by declared dimensions/task_type, not the old by_product bucket:
 GET /api/v1/metering/analytics/usage removed the required property `by_product` from the response with the `200` status
 # Rate write/read contract moves from a JSONB `dimensions` blob + `product_id` to
-# the ten named selector columns (dim1..dim6, task_type, subtask_type) — both the
-# single-rate create route and the book's rate LIST route carry this:
+# the ten named selector columns (dim1..dim6, task_type, subtask_type) — the
+# book's rate LIST route carries this:
+#
+# ⚠ THE SINGLE-RATE CREATE ROUTE CARRIED IT TOO AND ITS TWO LINES ARE DELETED
+# (#367). That route is gone — adding a rule is a declared change on a publish —
+# and its removal subsumes every property-level break on it, so the entries stop
+# suppressing anything and the gate refuses an inert entry.
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/dimensions` from the response with the `200` status
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/product_id` from the response with the `200` status
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `dimensions` from the response with the `200` status
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `product_id` from the response with the `200` status
 
 # 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE, not a deprecation.
 #
@@ -298,10 +301,12 @@ GET /api/v1/me/usage-summary removed the required property `total_units` from th
 # shape-of-charge column, all still visible in these findings' neighbours — is
 # that slice's to pay. Renaming this column at slice 2 anyway is not an
 # oversight: the ledger owns it here, and an owner may move earlier, never later.
+#
+# ⚠ THE CREATE ROUTE'S TWO LINES ARE DELETED HERE (#367), for the reason the
+# first block in this file now records: the route is gone and its removal
+# subsumes them.
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/metric_name` from the response with the `200` status
 POST /api/v1/metering/pricing/rate-cards/{book_id}/publish added the new required request property `changes/items/measurement_key`
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates added the new required request property `measurement_key`
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `metric_name` from the response with the `200` status
 
 # ---------------------------------------------------------------------------
 # #278 (slice 2, ticket 21) — THE WHOLE GROUPING FIELD ROUTE FAMILY MOVES AT
@@ -514,5 +519,45 @@ GET /api/v1/metering/usage/{event_id} the response property `billed_cost_micros`
 # §5 — the launch tag is not what binds), and both known consumers read this
 # property through generated code regenerated here — the SDK core and the
 # console's `src/api/generated/`.
+#
+# ⚠ THE CREATE ROUTE'S LINE IS DELETED HERE (#367) — same reason, third block.
 GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/pricing_model` from the response with the `200` status
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `pricing_model` from the response with the `200` status
+# ---------------------------------------------------------------------------
+# #367 (slice 4, ticket 20) — THE RULE'S OWN TABLE, AND THE END OF THE
+# UNVERSIONED IMMEDIATE ACT. Two routes and one response property.
+#
+# Every change to a Pricing Book is a publish (#358 built that act). What this
+# commit removes is what the publish replaced: the routes that added a rule and
+# retired one **immediately**, each writing a row the moment it was called, each
+# recorded under an audit action of its own, and neither able to say what the
+# book would look like afterwards. Adding a rule is a declared change now, and
+# so is retiring one. There is no unversioned immediate act left on a book.
+#
+# The two audit action names went out of the registry in the same commit, which
+# `record()`'s refusal of an unregistered name makes compulsory rather than
+# tidy: a route still writing a deleted action fails loudly, so route and
+# registry cannot be split across two commits.
+#
+# THE RESPONSE PROPERTY IS THE KIND DISCRIMINATOR, and it is deleted rather than
+# re-spelled. A rule carried a `cost`/`price` word copied from its book that
+# nothing read — resolution selects BOOKS by kind and then asks for the rules
+# inside them — so the copy on the row decided nothing while being free to
+# disagree with the book it came from. A client that wants it reads it off the
+# book, whose id is on every row here.
+#
+# ⚠ NINE ENTRIES IN THESE TWO FILES STOPPED SUPPRESSING ANYTHING IN THE SAME
+# COMMIT, AND THEY ARE DELETED RATHER THAN LEFT. Every one named a
+# property-level break on `POST .../rate-cards/{book_id}/rates` — the route that
+# is now gone — and a removed route subsumes each of them: oasdiff reports the
+# path removal and nothing about what the body used to carry. The gate fails on
+# an inert entry exactly as it fails on an unreviewed finding, which is what
+# forced the accounting to be exact in both directions.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and both known consumers move in this
+# same commit — the SDK core and the console's `src/api/generated/`, each
+# regenerated here, plus the console's own add-a-rule dialog and retire action,
+# which are deleted rather than pointed somewhere else.
+DELETE /api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id} api path removed without deprecation
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/card_type` from the response with the `200` status
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates api removed without deprecation

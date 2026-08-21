@@ -211,10 +211,10 @@ class BothActsAreRecordedUnderTheirOwnNameTest(_TheRungsRoutesMixin, TestCase):
     def test_both_routes_carry_the_marker_the_mutating_pin_reads(self):
         """The #82 pin walks the live API for exactly this attribute, and a
         route carrying neither it nor an exemption turns it red."""
-        from api.v1.tests.test_audit_sweep import _iter_mutating_ops
+        from api.v1.tests.test_audit_sweep import mutating_operations
 
         marked = {(method, path): getattr(view, "_audit_actions", ())
-                  for method, path, view in _iter_mutating_ops()
+                  for method, path, view in mutating_operations()
                   if path == "/metering/pricing/default-markup"}
 
         self.assertEqual(marked, {("PUT", "/metering/pricing/default-markup"):

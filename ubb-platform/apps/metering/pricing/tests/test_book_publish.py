@@ -12,10 +12,10 @@ def _book_with_two_rates():
     t = Tenant.objects.create(name="T", default_currency="usd")
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True, version=1)
-    ri = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    ri = Rate.objects.create(tenant=t, provider="gemini",
                              measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                              rate_per_unit_micros=10, rate_card=book, book_version_from=1)
-    ro = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    ro = Rate.objects.create(tenant=t, provider="gemini",
                              measurement=declares_a_quantity(t, "output_tokens"), currency="usd",
                              rate_per_unit_micros=30, rate_card=book, book_version_from=1)
     return t, book, ri, ro
@@ -65,7 +65,7 @@ def test_publish_preserves_lineage_across_reprice():
     t = Tenant.objects.create(name="T", default_currency="usd")
     book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
                                    currency="usd", key="gemini", is_default=True, version=1)
-    r = Rate.objects.create(tenant=t, card_type="price", provider="gemini",
+    r = Rate.objects.create(tenant=t, provider="gemini",
                             measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
                             rate_structure="per_unit", rate_per_unit_micros=10,
                             rate_card=book, book_version_from=1)

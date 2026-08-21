@@ -103,15 +103,29 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # pointed it at is exactly what this ledger exists to answer, and there is no
 # second act that could record it later. One action rather than a pair, because
 # a run has no withdrawal. 81 + 1 = 82.
-_EXPECTED_MUTATING = 82
+# ⚠ TWO ROUTES LEFT THE SURFACE IN #367 AND THIS IS THE FIRST TIME THIS COUNT
+# HAS FALLEN. The immediate add-a-rule and retire-a-rule routes are deleted:
+# both are declared changes on a publish now, so there is no unversioned
+# immediate act left on a book. Their two action names went out of the registry
+# in the same commit, which `record()`'s refusal of an unregistered name makes
+# compulsory rather than merely tidy. 82 - 2 = 80.
+_EXPECTED_MUTATING = 80
 _EXPECTED_EXEMPT = 5
 
 
-def _iter_mutating_ops():
+def mutating_operations():
     """(method, full_path, view_func) for every mutating operation on the API.
 
     ``full_path`` is the mount-prefixed path without the ``/api/v1`` root — the
-    same shape ``_EXEMPT`` is keyed on (mirrors the role-floor walker)."""
+    same shape ``_EXEMPT`` is keyed on (mirrors the role-floor walker).
+
+    **PUBLIC FOR ITS SECOND CALLER (#367).** A test whose subject is that a
+    whole path family has no unversioned mutation left has to enumerate that
+    family off the live router, and a second copy of this walk would be two
+    searches agreeing with each other rather than evidence. Same reason
+    `columns_the_database_does_not_defend` is public in the transition-class
+    gate.
+    """
     for prefix, router in api._routers:
         for path, path_view in router.path_operations.items():
             segments = [s for s in (prefix.strip("/"), path.strip("/")) if s]
@@ -124,7 +138,7 @@ def _iter_mutating_ops():
 
 def test_walker_sees_the_whole_mutating_surface():
     """Fail loudly if introspection breaks rather than passing vacuously."""
-    mutating = list(_iter_mutating_ops())
+    mutating = list(mutating_operations())
     assert len(mutating) == _EXPECTED_MUTATING, (
         f"expected {_EXPECTED_MUTATING} mutating routes, saw {len(mutating)} — "
         f"the surface changed; audit the new route (mark it @records_audit or "
@@ -137,7 +151,7 @@ def test_walker_sees_the_whole_mutating_surface():
 def test_every_mutating_route_records_or_is_exempt():
     """The load-bearing pin: no un-audited principal-initiated mutation."""
     offenders = []
-    for method, full, view_func in _iter_mutating_ops():
+    for method, full, view_func in mutating_operations():
         if (method, full) in _EXEMPT:
             continue
         actions = getattr(view_func, "_audit_actions", None)
@@ -153,7 +167,7 @@ def test_every_mutating_route_records_or_is_exempt():
 def test_declared_actions_are_registered():
     """Every action a route declares must be in the additive-only registry."""
     offenders = []
-    for method, full, view_func in _iter_mutating_ops():
+    for method, full, view_func in mutating_operations():
         for action in getattr(view_func, "_audit_actions", ()) or ():
             if not is_registered_action(action):
                 offenders.append(f"{method} {full}: unregistered action {action!r}")
@@ -164,6 +178,6 @@ def test_exemptions_are_real_mutating_routes():
     """No stale exemption: every _EXEMPT entry maps to a live mutating route,
     so the reviewable list can never quietly cover a route that no longer
     exists (or was renamed by a restructure)."""
-    live = {(m, p) for m, p, _ in _iter_mutating_ops()}
+    live = {(m, p) for m, p, _ in mutating_operations()}
     stale = sorted(_EXEMPT - live)
     assert not stale, f"exemptions with no matching live route: {stale}"

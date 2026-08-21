@@ -18,6 +18,34 @@ run yet — in both cases the entry is recording what the surface was on its
 date, which is what it is for. An entry's *facts* are never rewritten: what
 changed, when, and why stay exactly as recorded.
 
+## 2026-08-21 — Adding and retiring a rule become publishes (BREAKING)
+
+Every change to a Pricing Book is a publish. The two routes that wrote a rule
+**immediately** — one to add, one to retire — are deleted, and with them the
+last unversioned act on a book (issue #367).
+
+- **`POST /pricing/rate-cards/{book_id}/rates` — REMOVED.** A rule is opened by
+  declaring the change and publishing it: `POST
+  /pricing/rate-cards/{book_id}/publishes` with a change whose `kind` is `add`,
+  then `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`. The
+  declaring body names a grouping slot by the key the tenant declared rather
+  than by the column, and it can be dated forward; the deleted route could do
+  neither. `RateIn` is removed from the contract with it.
+- **`DELETE /pricing/rate-cards/{book_id}/rates/{rate_id}` — REMOVED.** A rule
+  is retired the same way, with `kind` `retire`.
+- **`GET /pricing/rate-cards/{book_id}/rates`** — a row no longer reports which
+  KIND of book it belongs to. That was a copy of the book's own value, carried
+  on the row and read by nothing; a client that wants it reads it off the book
+  the rules were listed under, whose id is on every row.
+- **What did NOT move.** The immediate reprice, `POST
+  /pricing/rate-cards/{book_id}/publish`, is untouched. Reading a book's rules,
+  their history and their state at an instant are untouched.
+- **Model/migration** — the rule's table takes the name its own name asks for;
+  migration `0027_the_rate_moves_to_the_table_named_for_a_rate.py` is a rename
+  carrying its rows, both its database rules and every constraint on them.
+- **SDK** — `MeteringClient.delete_rate` is removed. There was no wrapper for
+  the other route.
+
 ## 2026-08-20 — The rate's arithmetic shape, and all ten grouping slots (BREAKING)
 
 Two changes to the same three schemas, taken together because splitting them

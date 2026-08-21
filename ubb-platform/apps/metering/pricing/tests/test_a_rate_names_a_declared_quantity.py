@@ -38,10 +38,12 @@ from django.db.migrations.loader import MigrationLoader
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
+from apps.metering.pricing.models import (
+    CHANGE_ADD, NAMES_ONE_QUANTITY_CHECK, PricingBookPublish, Rate)
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    cost_book, cost_rate_in_default_book)
+    cost_book, cost_rate_in_default_book, reconcile_the_rate_table_with,
+    the_rate_table_as_this_migration_saw_it)
 from apps.platform.audit.models import AuditRecord
 from apps.platform.event_types.models import EventType, Measurement
 from apps.platform.event_types.quantities import declaration_named
@@ -192,55 +194,27 @@ class TheReverseIsExercisedTest(TestCase):
                 op.state_forwards(APP_LABEL, state)
         self.historical = state.apps
         self.Rate = self.historical.get_model(APP_LABEL, "Rate")
+        # THE TABLE'S NAME IS PART OF WHAT HAS TO BE RECONSTRUCTED (#367). The
+        # historical model addresses the table this migration ran against, and
+        # that table was renamed two commits later — so every write below lands
+        # on a relation that does not exist until the name is back. Held for the
+        # whole class rather than around one call: the historical model is what
+        # every test here uses, and the live one is used by none of them.
+        self.enterContext(
+            the_rate_table_as_this_migration_saw_it(self.migration))
         self._reconcile(self.Rate)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
 
     def _reconcile(self, model):
-        """Make the live table accept the historical model's writes."""
-        table = model._meta.db_table
-        with connection.cursor() as cursor:
-            live = {column.name: column for column in
-                    connection.introspection.get_table_description(
-                        cursor, table)}
-        with connection.schema_editor() as editor:
-            for field in model._meta.local_fields:
-                if field.column not in live:
-                    editor.add_field(model, field)
-        # AND A COLUMN THE HISTORICAL MODEL HAS NEVER HEARD OF LOSES ITS
-        # `NOT NULL`, for the same reason the check and the trigger come off
-        # below: it is not part of the table this migration ran against.
-        #
-        # ⚠ **A LATER *RENAME* IS WHAT MAKES THIS BITE, AND IT LOOKS NOTHING
-        # LIKE ONE.** The historical model writes every column it knows and
-        # Django keeps no database-level defaults, so a column added after this
-        # migration is simply absent from the INSERT — harmless while every such
-        # column is nullable. #366 renamed a NOT NULL column that this state
-        # knows under its OLD name: the loop above helpfully re-adds the old
-        # spelling, the new one is left out of the INSERT, and the write fails
-        # on a column whose value the historical row genuinely has, under
-        # another name. Reconstructing the older table is the honest repair; the
-        # alternative is teaching this fixture every future rename.
-        known = {field.column for field in model._meta.local_fields}
-        with connection.cursor() as cursor:
-            for name, column in live.items():
-                if name not in known and not column.null_ok:
-                    cursor.execute(
-                        f"ALTER TABLE {connection.ops.quote_name(table)} "
-                        f"ALTER COLUMN {connection.ops.quote_name(name)} "
-                        f"DROP NOT NULL")
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"ALTER TABLE {connection.ops.quote_name(table)} "
-                f"DROP CONSTRAINT IF EXISTS {NAMES_ONE_QUANTITY_CHECK}")
-            # And the rule `0020` installs, for the same reason and one more:
-            # the rows this test writes are pre-conversion rows, which reference
-            # no declaration BECAUSE the conversion has not run — that is the
-            # state it exists to fix. A rule added AFTER the migration being
-            # replayed is not part of the table it ran against.
-            cursor.execute(
-                f"DROP TRIGGER IF EXISTS {DECLARATION_TRIGGER} "
-                f"ON {connection.ops.quote_name(table)}")
+        """Make the live table accept the historical model's writes.
+
+        The reconstruction moved to `_helpers` when #367 gave a second
+        replay the same problem, under the rule that a shared setup helper
+        lives there rather than in whichever module needed it first. Its
+        docstring carries the reasoning this one used to.
+        """
+        reconcile_the_rate_table_with(model)
 
     def _run(self, code):
         with connection.schema_editor() as editor:
@@ -374,10 +348,20 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
                               HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _add_rate(self, measurement_key):
+        """Adding a rule, through the only surface that still does it (#367).
+
+        This was the immediate add-a-rule route until that route was deleted:
+        every change to a book is a publish now, so a rule arrives as a declared
+        change and the refusal it meets is the same one, raised while the tenant
+        is still deciding rather than after a row was written. The route moved;
+        the claim did not.
+        """
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book}/rates",
-            {"measurement_key": measurement_key, "provider": "openai",
-             "rate_per_unit_micros": 5})
+            f"/api/v1/metering/pricing/rate-cards/{self.book}/publishes",
+            {"changes": [{"kind": CHANGE_ADD,
+                          "measurement_key": measurement_key,
+                          "provider": "openai",
+                          "rate_per_unit_micros": 5}]})
 
     def test_the_route_refuses_a_name_this_tenant_has_not_declared(self):
         self.assertFalse(
@@ -400,25 +384,34 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         response = self._add_rate(UNDECLARED_NAME)
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["measurement_key"], UNDECLARED_NAME)
+        self.assertEqual(
+            [change["measurement_key"] for change in response.json()["diff"]],
+            [UNDECLARED_NAME])
 
     def test_the_refusal_spends_nothing(self):
         """A refusal placed under a write spends what it refuses (#324).
 
-        This route writes twice — the rate, and the audit record beside it — and
-        the lookup that refuses is a pure read, so it hoists above both for
-        free. **Today that ordering is structural rather than chosen**: the
-        create needs the declaration the lookup returns, so it cannot precede
-        it, and this test cannot be made red by moving the lookup.
+        The surface that adds a rule writes twice — the draft record, and the
+        audit entry beside it — and the lookup that refuses is a pure read
+        inside the planner, which runs before either. **That ordering is
+        structural rather than chosen**: a change cannot be planned without the
+        declaration the lookup returns, so this test cannot be made red by
+        moving the lookup.
 
-        It is here for what a diff will not show later. A refused write on this
-        route is expected to leave the tenant's account exactly as it was, and
-        the way that stops being true is a NEW write appearing above the
-        refusal — the shape #324 shipped and had to unpick, where an
-        admission-time write recorded against a request that recorded nothing.
-        A statement of the property, not a mutation of it.
+        It is here for what a diff will not show later. A refused request is
+        expected to leave the tenant's account exactly as it was, and the way
+        that stops being true is a NEW write appearing above the refusal — the
+        shape #324 shipped and had to unpick, where an admission-time write
+        recorded against a request that recorded nothing. A statement of the
+        property, not a mutation of it.
+
+        ⚠ It is about THIS refusal, not about the route in general: the
+        instant-refusal twin lives in `test_a_book_changes_by_publishing.py`,
+        which pins the order of the checks that hoist above the atomic block.
+        Two different refusals, one property each.
         """
-        rates = Rate.objects.count()
+        drafts = PricingBookPublish.objects.count()
+        rules = Rate.objects.count()
         # Every audit entry this tenant has, not the one this route writes: the
         # claim is that the refusal recorded NOTHING, and a per-action check
         # would pass while some other entry rode along beside it.
@@ -426,7 +419,8 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
 
         self.assertEqual(self._add_rate(UNDECLARED_NAME).status_code, 422)
 
-        self.assertEqual(Rate.objects.count(), rates)
+        self.assertEqual(PricingBookPublish.objects.count(), drafts)
+        self.assertEqual(Rate.objects.count(), rules)
         self.assertEqual(
             AuditRecord.objects.filter(tenant_id=self.tenant.id).count(),
             recorded)
@@ -502,8 +496,17 @@ class TheDeclarationTriggerReversesTest(TestCase):
                         if isinstance(op, operations.RunPython)]
 
     def _run(self, code):
-        with connection.schema_editor() as editor:
-            code(None, editor)
+        """The migration's own DDL, under the table name it was written with.
+
+        Both halves spell the table, and the table was renamed in #367 — so
+        replaying either against the live name is a `ProgrammingError` about a
+        relation that does not exist. Reconstructing the name is the same
+        repair this module already makes to the checks and triggers that
+        arrived after the migration being replayed.
+        """
+        with the_rate_table_as_this_migration_saw_it(self.migration):
+            with connection.schema_editor() as editor:
+                code(None, editor)
 
     def _refused(self):
         """The write, in its own transaction.

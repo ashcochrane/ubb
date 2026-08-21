@@ -404,14 +404,6 @@ class MeteringClient:
                           json={"cards": cards})
         return r.json()
 
-    def delete_rate(self, book_id, rate_id):
-        """Retire (soft-expire) a single rate within its book. Addressed under
-        its book — the path noun (``rates``) matches the ``rate_id`` it takes
-        (#86 sweep; formerly ``delete_rate_card(card_id)``)."""
-        self._request(
-            *ops.API_V1_METERING_ENDPOINTS_DELETE_RATE(book_id, rate_id))
-        return True
-
     def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,
                          customer_id=None, group_by=None) -> dict:
         """Time-series spend rollup via GET /api/v1/metering/analytics/usage/timeseries.

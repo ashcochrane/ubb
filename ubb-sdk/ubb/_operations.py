@@ -186,10 +186,6 @@ API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_REPORTED_COST_MAPPING = Operation(
     'api_v1_event_type_endpoints_withdraw_reported_cost_mapping',
     'delete',
     '/api/v1/event-types/{key}/reported-cost-mapping')
-API_V1_METERING_ENDPOINTS_ADD_RATE = Operation(
-    'api_v1_metering_endpoints_add_rate',
-    'post',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/rates')
 API_V1_METERING_ENDPOINTS_ASSIGN_BOOK = Operation(
     'api_v1_metering_endpoints_assign_book',
     'post',
@@ -226,10 +222,6 @@ API_V1_METERING_ENDPOINTS_DELETE_CUSTOMER_MARKUP = Operation(
     'api_v1_metering_endpoints_delete_customer_markup',
     'delete',
     '/api/v1/metering/pricing/customers/{customer_id}/markup')
-API_V1_METERING_ENDPOINTS_DELETE_RATE = Operation(
-    'api_v1_metering_endpoints_delete_rate',
-    'delete',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id}')
 API_V1_METERING_ENDPOINTS_DISCARD_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_discard_book_publish',
     'delete',

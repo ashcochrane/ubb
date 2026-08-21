@@ -1,10 +1,13 @@
+from contextlib import contextmanager
 from uuid import uuid4
 
 from django.db import IntegrityError, connection, transaction
+from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_REPRICE, Rate, RateCard, TenantDefaultMarkup)
+    CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, Rate, RateCard,
+    TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import (
@@ -71,7 +74,12 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="
     # spelled out as keyword defaults was already the longest line in this file
     # at six, and every one of them would have been ``slot=slot`` — the model's
     # own "" default says the same thing without the transcription.
-    return Rate.objects.create(tenant=tenant, card_type=card_type, provider=provider,
+    #
+    # THE KIND WORD REACHES THE BOOK ABOVE AND STOPS THERE (#367). A rule used
+    # to carry a copy of it; the column is deleted, so a rule's kind is a fact
+    # about its book and about nothing else. A caller still says which half it
+    # wants — that is what selects the book.
+    return Rate.objects.create(tenant=tenant, provider=provider,
                                event_type=event_type, task_type=task_type,
                                subtask_type=subtask_type,
                                customer=customer, rate_card=book,
@@ -95,7 +103,7 @@ def an_override_rule(tenant, customer, **fields):
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, card_type="price", customer=customer, rate_card=book,
+        tenant=tenant, customer=customer, rate_card=book,
         book_version_from=book.version, **fields)
 
 
@@ -120,7 +128,7 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, card_type="price", rate_card=book,
+        tenant=tenant, rate_card=book,
         book_version_from=book.version, **fields)
 
 
@@ -441,8 +449,13 @@ def the_cost_rate_is_repriced(tenant, *, to_micros, **fields):
     rule from a price one, and that word is retired with a ledger entry which is
     a ceiling as well as a floor. This file is already one of the counted ones,
     so the word stays here and callers say what they mean.
+
+    ⚠ **THE SELECTION GOES THROUGH THE BOOK NOW (#367).** A rule carries no
+    kind of its own any more, so "the cost rules" is a statement about which
+    books hold them — which is what it always meant and what resolution has
+    always done.
     """
-    Rate.objects.filter(tenant=tenant, card_type="cost",
+    Rate.objects.filter(tenant=tenant, rate_card__card_type="cost",
                         valid_to__isnull=True).update(valid_to=timezone.now())
     return cost_rate_in_default_book(tenant, rate_per_unit_micros=to_micros,
                                      **fields)
@@ -469,7 +482,7 @@ def rate_in_the_providers_default_book(tenant, provider, **fields):
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, card_type="price", rate_card=book,
+        tenant=tenant, rate_card=book,
         book_version_from=book.version, **fields)
 
 
@@ -547,7 +560,7 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, card_type="price", provider=provider, currency=currency,
+        tenant=tenant, provider=provider, currency=currency,
         rate_card=book, book_version_from=book.version, **fields)
 
 
@@ -762,6 +775,139 @@ class AForwardDatingBookMixin:
                     event_type=SCHEDULING_EVENT_TYPE)
         base.update(overrides)
         return base
+
+
+#: The rule's kind column, assembled rather than written. Its file count is a
+#: ceiling as well as a floor and #367 took it down, so a test module that
+#: spelled it whole would put it back into the very set the commit emptied.
+#: Shared from here because two modules need to name it — the one that asserts
+#: the deletion and the one that replays a migration older than it — and two
+#: private copies of one workaround are two things that can drift.
+THE_RULES_KIND_COLUMN = "card" + "_" + "type"
+
+
+def the_state_before(migration):
+    """The project state a migration ran against, built from its own
+    dependencies rather than from a name a caller remembered."""
+    return MigrationLoader(connection).project_state(
+        [tuple(node) for node in migration.dependencies])
+
+
+@contextmanager
+def the_rate_table_as_this_migration_saw_it(migration):
+    """The rule's table, temporarily back under the name this migration knew.
+
+    ⚠ **A TABLE RENAME BREAKS EVERY MIGRATION-REPLAY FIXTURE, AND IT LOOKS
+    NOTHING LIKE A BREAKAGE (#367).** Replaying a migration means reconstructing
+    the table it ran against, and #366 already paid for one half of that — a
+    renamed COLUMN leaves the historical model writing a spelling the table no
+    longer has. A renamed TABLE is the same lesson one level up, and it is
+    louder rather than subtler: the historical model, and any DDL the migration
+    itself spelled, address a relation that does not exist.
+
+    So the fixtures reconstruct the name for as long as they need it, exactly as
+    they already drop the checks and triggers that arrived later. PostgreSQL
+    runs DDL inside the transaction a test rolls back, and this puts the name
+    back on the way out regardless, so nothing here outlives the test and no
+    other test sees the table under the old name.
+
+    **THE NAME COMES OFF THE MIGRATION'S OWN FROM-STATE**, never off a literal:
+    no replay site should have to know which commit renamed the table, and a
+    fixture that carried the name would need an edit per rename. A no-op where
+    that name is already the live one, so a caller does not have to know which
+    side of a rename its migration sits on either.
+    """
+    before = the_state_before(migration)
+    name = before.models[migration.app_label, "rate"].options["db_table"]
+    live = Rate._meta.db_table
+    if live == name:
+        yield
+        return
+    quote = connection.ops.quote_name
+    with connection.cursor() as cursor:
+        cursor.execute(f"ALTER TABLE {quote(live)} RENAME TO {quote(name)}")
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {quote(name)} RENAME TO {quote(live)}")
+
+
+def reconcile_the_rate_table_with(model):
+    """Make the live table accept a historical model's writes.
+
+    The mirror image of `the_rate_table_under`: that one restores a NAME, this
+    one restores a SHAPE. Three separate reconstructions, and each is a rule
+    about what the table being replayed actually looked like rather than a
+    convenience.
+
+    * **Columns the historical model has and the table has lost.** A column
+      deleted after the migration being replayed is part of the table that
+      migration ran against.
+    * **`NOT NULL` on columns the historical model has never heard of.** The
+      historical model writes the columns IT knows and Django keeps no
+      database-level defaults, so a column added later is simply absent from
+      the INSERT — harmless while every such column is nullable, and a hard
+      failure the moment one is not. ⚠ A later RENAME is what makes this bite
+      and it looks nothing like one (#366): the loop above helpfully re-adds
+      the OLD spelling while the new column is left out of the INSERT.
+    * **The rules that arrived afterwards.** The check that makes a rule name
+      its quantity exactly once, and the trigger that refuses a rule
+      referencing no declaration, both describe the world AFTER the conversions
+      that installed them. The rows a replay writes are pre-conversion rows,
+      which satisfy neither — that is what the conversions are for. A rule
+      added after the migration being replayed is part of what has to come off.
+
+    PostgreSQL runs DDL inside the transaction a test rolls back, so nothing
+    here outlives the test.
+
+    Call it INSIDE `the_rate_table_under`, because it addresses the table by the
+    historical model's own `db_table`.
+    """
+    table = model._meta.db_table
+    quote = connection.ops.quote_name
+    with connection.cursor() as cursor:
+        live = {column.name: column for column in
+                connection.introspection.get_table_description(cursor, table)}
+    with connection.schema_editor() as editor:
+        for field in model._meta.local_fields:
+            if field.column not in live:
+                editor.add_field(model, field)
+    known = {field.column for field in model._meta.local_fields}
+    with connection.cursor() as cursor:
+        for name, column in live.items():
+            if name not in known and not column.null_ok:
+                cursor.execute(f"ALTER TABLE {quote(table)} "
+                               f"ALTER COLUMN {quote(name)} DROP NOT NULL")
+        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
+                       f"{NAMES_ONE_QUANTITY_CHECK}")
+        cursor.execute(f"DROP TRIGGER IF EXISTS trg_rate_names_a_declaration "
+                       f"ON {quote(table)}")
+
+
+def database_rules_guarding(table):
+    """What the catalogue holds about the triggers on `table`, now.
+
+    `(name, type_bits, function_body)` per non-internal trigger — every fact a
+    caller asking whether a rule is installed needs, and no more. A migration
+    that ran is evidence that a file executed, not that a rule is on the table.
+
+    **SHARED RATHER THAN COPIED, WHICH `docs/conventions/testing.md:22`
+    REQUIRES.** Two modules ask this question of the rate's table — the one
+    that owns the effective-moment rule and the one that owns the table's own
+    name — and two copies of one catalogue query are two things that can drift
+    apart while agreeing with each other. It takes the table as an argument
+    because the caller that cares about a RENAME must be able to ask about a
+    name the model no longer uses.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT t.tgname, t.tgtype, p.prosrc "
+            "FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid = t.tgrelid "
+            "JOIN pg_proc p ON p.oid = t.tgfoid "
+            "WHERE c.relname = %s AND NOT t.tgisinternal", [table])
+        return cursor.fetchall()
 
 
 def rules_snapshot(book):

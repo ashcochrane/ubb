@@ -437,10 +437,16 @@ class SlotOrderIsNotAlphabeticalOrderTest(TestCase):
                          list(SLOTS))
 
 
-#: The three schemas that publish a rate's selector list, and the reason they
-#: are named here rather than discovered: a walk that found two would report
-#: success just as loudly as one that found three.
-RATE_SCHEMAS = ("RateIn", "RateChangeIn", "RateOut")
+#: The schemas that publish a rate's selector list, and the reason they are
+#: named here rather than discovered: a walk that found one would report success
+#: just as loudly as one that found two.
+#:
+#: ⚠ **THREE UNTIL #367.** The immediate add-a-rule body is deleted with its
+#: route — a rule is opened by a declared change on a publish — so the list
+#: falls by one. Every slot is still published on both survivors, which is what
+#: the assertions below check per schema; a schema LEAVING cannot hide a slot
+#: going missing, because the check is over what each remaining schema carries.
+RATE_SCHEMAS = ("RateChangeIn", "RateOut")
 
 
 class ThePublishedContractCaughtUpWithTheWideningTest(SimpleTestCase):

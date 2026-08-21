@@ -39,7 +39,7 @@ def price_card_fixture(tenant):
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="openai", is_default=True, version=1)
     rate = Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
+        tenant=tenant, provider="openai", event_type="llm_call",
         measurement=declares_a_quantity(tenant, "tokens"), currency="usd", rate_structure="per_unit",
         rate_per_unit_micros=10_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
@@ -102,12 +102,12 @@ def test_dimensioned_card_is_cached_per_selector_set(tenant, customer):
         tenant=tenant, card_type="price", provider_key="openai", currency="usd",
         key="dimensioned", is_default=True, version=1)
     rate_gpt4 = Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
+        tenant=tenant, provider="openai", event_type="llm_call",
         measurement=declares_a_quantity(tenant, "tokens"), currency="usd", grouping_field_1="gpt-4",
         rate_per_unit_micros=20_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
     rate_gpt35 = Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai", event_type="llm_call",
+        tenant=tenant, provider="openai", event_type="llm_call",
         measurement=declares_a_quantity(tenant, "tokens"), currency="usd", grouping_field_1="gpt-3.5",
         rate_per_unit_micros=5_000_000, unit_quantity=1_000_000,
         rate_card=book, book_version_from=1)
@@ -202,12 +202,12 @@ def test_a_cached_resolution_answers_for_its_own_instant_and_no_other(
         key="openai", is_default=True, version=1)
     declaration = declares_a_quantity(tenant, "tokens")
     outgoing = Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai",
+        tenant=tenant, provider="openai",
         measurement=declaration, currency="usd", rate_per_unit_micros=10,
         rate_card=book, book_version_from=1,
         valid_from=boundary - timedelta(days=30), valid_to=boundary)
     incoming = Rate.objects.create(
-        tenant=tenant, card_type="price", provider="openai",
+        tenant=tenant, provider="openai",
         measurement=declaration, currency="usd", rate_per_unit_micros=30,
         rate_card=book, book_version_from=1, valid_from=boundary)
     selectors = {"provider": "openai"}

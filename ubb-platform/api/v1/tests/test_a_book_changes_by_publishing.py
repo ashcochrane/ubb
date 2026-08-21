@@ -357,23 +357,32 @@ class ADraftTheBookHasMovedUnderIsStillReadableTest(_APublishingTenantMixin,
     """
 
     def _a_draft_whose_rule_was_retired_beside_it(self):
-        """Declare a reprice, then retire the rule through the OTHER surface.
+        """Declare a reprice, then close the rule through the OTHER surface.
 
         ⚠ Two drafts naming one rule is NOT this state, and checking was worth
         it: a change names a rule by its identity — the quantity and the
         selectors — rather than by version, so a second draft repricing the
         replacement is perfectly coherent and publishes fine. What strands a
-        draft is the rule acquiring a close it cannot move: the immediate retire
-        route stamps `valid_to` at the moment of the call, which is AFTER this
-        draft was declared, so at the draft's own effective instant the rule is
-        still in force and already closing — and `Rate.valid_to` is declared
-        set_once, so no publish may move it.
+        draft is the rule acquiring a close it cannot move: the surviving
+        immediate route stamps `valid_to` at the moment of the call, which is
+        AFTER this draft was declared, so at the draft's own effective instant
+        the rule is still in force and already closing — and `Rate.valid_to` is
+        declared set_once, so no publish may move it.
+
+        ⚠ **THE OTHER SURFACE IS NOW THE ATOMIC REPRICE, NOT THE IMMEDIATE
+        RETIRE (#367).** The retire route is deleted; what still closes a rule
+        the instant it is called is the reprice, which supersedes the rule and
+        opens a replacement. The stranding is the same and for the same reason
+        — an unmovable close standing between the draft and its instant — and
+        it is worth saying that the state stops being reachable at all when the
+        last immediate route leaves with #369, at which point this class is
+        asserting about something that cannot happen.
         """
         draft = self.declare().json()
-        retired = self._delete(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}"
-            f"/rates/{self.rule.id}")
-        self.assertEqual(retired.status_code, 200, retired.content)
+        closed = self._post(
+            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publish",
+            {"changes": [self.a_change(rate_per_unit_micros=AFTER + 1)]})
+        self.assertEqual(closed.status_code, 200, closed.content)
         return draft
 
     def test_reading_it_answers_the_reason_rather_than_a_diff(self):
@@ -771,11 +780,11 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
     def test_all_three_routes_carry_the_marker_the_mutating_pin_reads(self):
         """The #82 pin walks the live API for exactly this attribute, and a
         route carrying neither it nor an exemption turns it red."""
-        from api.v1.tests.test_audit_sweep import _iter_mutating_ops
+        from api.v1.tests.test_audit_sweep import mutating_operations
 
         book = "/metering/pricing/rate-cards/{book_id}/publishes"
         marked = {(method, path): getattr(view, "_audit_actions", ())
-                  for method, path, view in _iter_mutating_ops()
+                  for method, path, view in mutating_operations()
                   if path.startswith(book)}
 
         self.assertEqual(marked, {
@@ -783,3 +792,69 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
             ("POST", f"{book}/{{publish_id}}/publish"): (PUBLISHED,),
             ("DELETE", f"{book}/{{publish_id}}"): (DISCARDED,),
         })
+
+
+class EveryChangeToABookGoesThroughAPublishTest(TestCase):
+    """#367: no unversioned immediate mutation act is left on a book.
+
+    This module's own headline, finally true of the whole surface rather than
+    of the act it describes — which is why it lives here, beside the three
+    routes that replaced the ones #367 deleted, rather than with the deletion.
+
+    ⚠ **THE ASSERTION IS OVER THE ROUTES THAT COMMIT DID NOT WRITE.** Checking
+    that the two deleted routes are gone would be a claim about a diff; what
+    matters is the whole surface, and #361 already paid once for the difference
+    — three immediate routes each took a bare book id, and a claim made about
+    the two that declare a draft said nothing about them.
+
+    So this enumerates every mutating operation on the book's path family off
+    the live API and asserts each one either records a publish act or is the
+    atomic reprice, which DOES version the book. There is no third kind left.
+
+    ⚠ It walks the router through `mutating_operations`, which is the audit
+    sweep's own walker and public for exactly this second caller — a private
+    copy would be two searches agreeing with each other rather than evidence.
+    """
+
+    #: The one immediate act that survives, and why it is not the thing this
+    #: test refuses. It bumps the book's version and closes each superseded
+    #: rule at a boundary, so the change it makes is a versioned one; what it
+    #: is not is FORWARD-DATED. It leaves with the rest of this slice's
+    #: vocabulary (#369) and the customer's own book is already out of its
+    #: reach.
+    THE_VERSIONED_IMMEDIATE_ACT = "/metering/pricing/rate-cards/{book_id}/publish"
+
+    def _book_family(self):
+        from api.v1.tests.test_audit_sweep import mutating_operations
+
+        family = "/metering/pricing/rate-cards/{book_id}"
+        return [(method, path) for method, path, _ in mutating_operations()
+                if path == family or path.startswith(family + "/")]
+
+    def test_the_walker_still_sees_the_book_family(self):
+        self.assertTrue(self._book_family(),
+                        "no mutating route was found under the book's path, "
+                        "so every assertion below is vacuous")
+
+    def test_no_route_writes_a_rule_outside_a_publish(self):
+        """Every survivor names the publish record or is the versioned reprice.
+
+        A route that added or retired a rule directly would answer neither
+        description, which is what the two deletions in this commit removed.
+        """
+        stray = [(method, path) for method, path in self._book_family()
+                 if "publishes" not in path
+                 and path != self.THE_VERSIONED_IMMEDIATE_ACT]
+        self.assertEqual(stray, [])
+
+    def test_the_rules_collection_takes_no_mutating_method(self):
+        """Named separately because it is the one that changed.
+
+        `POST .../rates` and `DELETE .../rates/{rate_id}` were the immediate
+        add and retire. Both are gone, and the collection now answers reads
+        only — which is the sentence the acceptance criterion asks for, made
+        against the router rather than against the diff.
+        """
+        rules = [(method, path) for method, path in self._book_family()
+                 if "/rates" in path]
+        self.assertEqual(rules, [])

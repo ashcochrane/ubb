@@ -43,29 +43,22 @@ version: 1
 entries:
   # --- G9: `db_table == canonical(model_name)` ------------------------------
   #
-  # The `Rate` / `RateCard` inversion — each model sitting on the other's
-  # table. #154 §6.2 records that it resolves BY CONSTRUCTION rather than by a
-  # rename: #138 splits `Rate` into supplier cost and pricing rules, #148
-  # replaces `RateCard` with the Pricing Book, and both tables are rebuilt
-  # regardless. The replacements take correct names instead of inheriting
-  # inverted legacy ones, which is why renaming them earlier would be work with
-  # no product (#155 §3.1).
+  # The `Rate` / `RateCard` inversion — two models, each sitting on the other's
+  # table. #154 §6.2 recorded that it would resolve BY CONSTRUCTION rather than
+  # by a rename: #138 splits the rule entity into supplier cost and pricing
+  # rules, #148 replaces the container with the Pricing Book, and both tables
+  # are rebuilt regardless — so renaming them earlier would be work with no
+  # product (#155 §3.1).
   #
-  # Owned by slice 4 rather than slice 3: `Rate` carries both halves of the
-  # split (`card_type ∈ {cost, price}`), so the model — and its table — can
-  # only go when the price half goes too. Slice 4 is where `Rate` stops
-  # existing.
-  - id: g9-rate-sits-on-the-rate-card-table
-    gate: G9
-    site: ubb-platform/apps/metering/pricing/models.py::Rate
-    expected: ubb_rate
-    found: ubb_rate_card
-    owner_slice: slice_4
-    reason: >-
-      `Rate` sits on the legacy `ubb_rate_card` table, which its own name says
-      belongs to `RateCard`. Resolved by construction when slice 4 finishes
-      replacing `Rate` with the Pricing Book's rules (#154 §6.2).
-
+  # ⚠ **HALF OF THAT PREDICTION WAS WRONG, AND #367 IS WHERE IT WAS PAID
+  # INSTEAD.** The rule side resolved BY A RENAME after all: nothing rebuilt
+  # `Rate`, and the kind column it was supposed to be waiting on was DELETED
+  # rather than split, so there was no rebuild left to inherit a correct name
+  # from. A hand-written `AlterModelTable` carried the rows to `ubb_rate` and
+  # the entry went with the debt. What survives is the container's half, and
+  # for that the original reasoning still holds: ticket 21 does not rename it,
+  # it splits it into a Pricing Book and a cost book, and the name it takes
+  # then is the Pricing Book's rather than the one it lent out.
   - id: g9-rate-card-sits-on-the-container-table
     gate: G9
     site: ubb-platform/apps/metering/pricing/models.py::RateCard
@@ -463,13 +456,21 @@ entries:
     gate: G7
     site: backend::card_type
     expected: pricing_book_name
-    found: 31 files
+    found: 28 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
       one table — the conflation the cost/price split exists to end
       (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
       sits on.
+
+      31 -> 28 in #367, which deleted the column from the RULE. Nothing
+      resolution does ever asked a rule what kind it was — the ladder
+      selects BOOKS by kind and then reads the rules inside them — so the
+      copy on the rule decided nothing while being free to disagree with
+      the book it was copied from. The word survives on the CONTAINER,
+      which ticket 21 splits into two separately shaped entities rather
+      than renaming; that is where the remainder is owed.
 
   - id: g7-backend-concurrency_limit
     gate: G7
@@ -598,30 +599,11 @@ entries:
       What a price receipt is about. Slice 4 introduces Pricing Receipts
       with `receipt_schema_version` and the subject type takes its name.
 
-  - id: g7-backend-rate.added
-    gate: G7
-    site: backend::rate.added
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action over the rate entity slice 4 replaces with the
-      Pricing Book's rules.
-
-  - id: g7-backend-rate.deleted
-    gate: G7
-    site: backend::rate.deleted
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The other half of the same pair, retired with the same subject.
-
   - id: g7-backend-rate_card
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 19 files
+    found: 16 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -634,6 +616,12 @@ entries:
       paid rather than moved, and the gate refuses an entry that may overstate
       because an excuse with no upper bound is not a migration plan. The
       container itself is untouched and the rename is still #366's.
+
+      19 -> 16 in #367. The rule's own table stopped being named for the
+      container — it is `ubb_rate` now — and the two immediate routes that
+      wrote a rule directly went with the acts they recorded, taking the
+      word out of three more files. The container's column is still the
+      pointer every rule carries, so the remainder is ticket 21's.
 
   - id: g7-backend-rate_card.assigned
     gate: G7
@@ -867,13 +855,18 @@ entries:
     gate: G7
     site: console::card_type
     expected: pricing_book_name
-    found: 15 files
+    found: 14 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
       one table — the conflation the cost/price split exists to end
       (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
       sits on.
+
+      15 -> 14 in #367. The dialog that added a rule immediately is
+      deleted with the route it drove, and the rule fixtures beside it
+      stopped carrying the word because the ROW stopped carrying it. The
+      rest is the book's, which ticket 21 splits into two entities.
 
   - id: g7-console-concurrency_limit
     gate: G7
@@ -910,7 +903,7 @@ entries:
     gate: G7
     site: console::dimensions
     expected: analytics_grouping_kind
-    found: 5 files
+    found: 4 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -923,9 +916,18 @@ entries:
       sentences — so the two could not be separated, and the ticket's own
       acceptance list names the vision note, whose ONLY occurrence was a
       plural. Two more were comments describing identifiers #280 renamed.
-      The five left are the genuine grouping axis: the committed schema
-      mirror, the analytics query parameter and its picker, the rate
-      identity message and the label module's own list.
+
+      5 -> 4 in #367, which is slice 4 and not this entry's owner. The
+      occurrence that went is THE RATE IDENTITY MESSAGE named below — a
+      user-facing 409 string in the dialog that added a rule immediately,
+      not a comment — and it went because the dialog is deleted with its
+      route. Paying a debt early from another slice is allowed, an owner
+      may move earlier and never later, and the sweep refuses the
+      alternative outright: an entry may not record more files than the
+      tree holds.
+      The four left are the genuine grouping axis: the committed schema
+      mirror, the analytics query parameter and its picker, and the label
+      module's own list.
 
   - id: g7-console-markup.deleted
     gate: G7
@@ -1635,13 +1637,19 @@ entries:
     gate: G7
     site: sdk::card_type
     expected: pricing_book_name
-    found: 12 files
+    found: 9 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
       one table — the conflation the cost/price split exists to end
       (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
       sits on.
+
+      12 -> 9 in #367, and not by a rename: the rule stopped carrying the
+      word, so the generated core lost the request model for the deleted
+      immediate route, its enum module and one endpoint module, and the
+      hand-written wrapper for the other went with its route. The
+      remaining nine are the CONTAINER's, which ticket 21 splits.
 
   - id: g7-sdk-customer_wide_stop
     gate: G7

@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
 import { pricingApi } from "./provider";
-import type { BookIn, PublishIn, RateIn, TenantMarkupIn } from "./types";
+import type { BookIn, PublishIn, TenantMarkupIn } from "./types";
 
 const booksKey = (cardType: string | undefined) =>
   ["metering", "pricing", "rate-cards", { card_type: cardType ?? null }] as const;
@@ -84,22 +84,6 @@ export function useCreateBook() {
   const invalidate = usePricingInvalidation();
   return useMutation({
     mutationFn: (body: BookIn) => pricingApi.createBook(body),
-    onSuccess: invalidate,
-  });
-}
-
-export function useAddRate(bookId: string) {
-  const invalidate = usePricingInvalidation();
-  return useMutation({
-    mutationFn: (body: RateIn) => pricingApi.addRate(bookId, body),
-    onSuccess: invalidate,
-  });
-}
-
-export function useRetireRate(bookId: string) {
-  const invalidate = usePricingInvalidation();
-  return useMutation({
-    mutationFn: (rateId: string) => pricingApi.deleteRate(bookId, rateId),
     onSuccess: invalidate,
   });
 }

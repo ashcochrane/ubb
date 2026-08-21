@@ -244,7 +244,7 @@ class SandboxResetTest(TestCase):
         from core.vocabulary import DECLARATION_STATUS_PUBLISHED
 
         Rate.objects.create(
-            tenant=tenant, card_type="cost",
+            tenant=tenant,
             measurement=declares_a_quantity(tenant, "tokens"),
             rate_per_unit_micros=10)
         # THE TENANT'S DECLARED MARKUP RUNG (#357). Seeded here because the
@@ -268,7 +268,7 @@ class SandboxResetTest(TestCase):
         book = RateCard.objects.create(
             tenant=tenant, card_type="price", key="sandbox", is_default=True)
         book.rates.create(
-            tenant=tenant, card_type="price",
+            tenant=tenant,
             measurement=declares_a_quantity(tenant, "book_tokens"),
             rate_per_unit_micros=20)
         PricingBookPublish.objects.create(

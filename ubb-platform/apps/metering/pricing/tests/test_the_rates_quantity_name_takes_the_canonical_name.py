@@ -56,8 +56,9 @@ from django.db.migrations.loader import MigrationLoader
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
-from api.v1.schemas import RateIn
-from apps.metering.pricing.models import NAMES_ONE_QUANTITY_CHECK, Rate
+from api.v1.schemas import BookChangeIn
+from apps.metering.pricing.models import (
+    CHANGE_ADD, NAMES_ONE_QUANTITY_CHECK, Rate)
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import a_usage_event_subject
 from apps.platform.event_types.models import Measurement
@@ -95,13 +96,23 @@ DECLARATION_FIELD = "measurement"
 #: REBUILT by the conversion that replaced the column with a reference, because
 #: an index over a text column and one over a foreign key are not the same
 #: object. Their names did not change, which is why these two constants did not.
-LOOKUP_INDEX = "idx_ratecard_lookup"
+#: The lookup index, DERIVED rather than spelled — it was renamed with the
+#: table in #367 (an index named for the container on a table named for a rule
+#: is the same wart one layer down), and a literal here would have gone on
+#: naming an index that no longer exists. The model declares exactly one.
+(LOOKUP_INDEX,) = [index.name for index in Rate._meta.indexes]
 ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
 
 #: The three published schemas the name appears on — the write, the reprice and
 #: the read. Named rather than discovered: a walk that found two would report
 #: success just as loudly.
-PUBLISHED_SCHEMAS = ("RateIn", "RateChangeIn", "RateOut")
+#: ⚠ **`BookChangeIn` STANDS WHERE THE IMMEDIATE ADD-A-RULE BODY STOOD (#367).**
+#: That body was this rename's third published carrier until its route was
+#: deleted — adding a rule is a declared change on a publish now — so the claim
+#: moved to the schema that inherited the act rather than being dropped with the
+#: schema that lost it. Three carriers before, three after, and the ONE
+#: substitution is what keeps this from quietly becoming a weaker assertion.
+PUBLISHED_SCHEMAS = ("BookChangeIn", "RateChangeIn", "RateOut")
 
 
 @cache
@@ -381,7 +392,7 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
         read side that means the server always sends it), but the two that a
         caller fills are the ones this claim is about.
         """
-        for name in ("RateIn", "RateChangeIn"):
+        for name in ("BookChangeIn", "RateChangeIn"):
             with self.subTest(schema=name):
                 self.assertIn(CANONICAL_COLUMN, schemas()[name]["required"])
 
@@ -405,13 +416,19 @@ class TheStaleWriterIsRefusedRatherThanIgnoredTest(SimpleTestCase):
     because that model IS what django-ninja validates the body with, and the
     endpoint's happy path is already driven end to end in
     `api/v1/tests/test_rate_card_crud.py`.
+
+    ⚠ **THE BODY UNDER TEST MOVED WITH THE ACT (#367).** It used to be the
+    immediate add-a-rule request; that route is gone and adding a rule is a
+    declared change on a publish, so the same claim is made against the body
+    that inherited the act. `kind` rides along because a change body names one,
+    which is the only difference between the two shapes that this test can see.
     """
 
     def test_a_body_carrying_only_the_retired_key_is_refused(self):
         from pydantic import ValidationError
 
         with self.assertRaises(ValidationError) as refusal:
-            RateIn(**{RETIRED_COLUMN: "input_tokens"})
+            BookChangeIn(kind=CHANGE_ADD, **{RETIRED_COLUMN: "input_tokens"})
 
         missing = {tuple(error["loc"]) for error in refusal.exception.errors()
                    if error["type"] == "missing"}
@@ -419,5 +436,6 @@ class TheStaleWriterIsRefusedRatherThanIgnoredTest(SimpleTestCase):
 
     def test_a_body_carrying_the_canonical_key_is_accepted(self):
         """The control. Without it the test above passes on a broken schema."""
-        payload = RateIn(**{CANONICAL_COLUMN: "input_tokens"})
+        payload = BookChangeIn(kind=CHANGE_ADD,
+                               **{CANONICAL_COLUMN: "input_tokens"})
         self.assertEqual(getattr(payload, CANONICAL_COLUMN), "input_tokens")

@@ -1,10 +1,15 @@
-"""Book-centric pricing API: create a price/cost BOOK, add rates under it,
-publish reprices (version bump + supersede), list rates with history, and
+"""Book-centric pricing API: create a price/cost BOOK, open rules under it,
+publish reprices (version bump + supersede), list rules with history, and
 assign a price book to a customer.
 
-The reshape (Task 6) makes every API-created rate live inside a RateCard book
-so book-scoped resolution can find it — the flat create/batch/update endpoints
-(which produced rate_card=NULL, silently unresolvable) are gone.
+The reshape (Task 6) makes every API-created rule live inside a book so
+book-scoped resolution can find it — the flat create/batch/update endpoints
+(which produced rules belonging to no book, silently unresolvable) are gone.
+
+⚠ **A RULE IS OPENED BY A PUBLISH SINCE #367.** The immediate add-a-rule route
+is deleted, so `_open_rule` below declares the change and publishes it. The
+version numbers here move accordingly: opening a rule is itself a publish, so a
+book with one rule in it is already at version 2.
 """
 import json
 
@@ -33,14 +38,29 @@ class BookApiTest(TestCase):
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def _post(self, path, body):
-        return self.http.post(path, data=json.dumps(body),
+    def _post(self, path, body=None):
+        return self.http.post(path, data=json.dumps(body or {}),
                               content_type="application/json", **self._auth())
 
     def _get(self, path):
         return self.http.get(path, **self._auth())
 
-    # ---- create book + add rate + publish ----
+    def _open_rule(self, book_id, **change):
+        """Declare a rule and publish it, which is how a book gains one.
+
+        Returns the publish record. `opened_rule_ids` is what a caller wanting
+        the rule it just opened reads — off the rows, rather than off a
+        create's echo of its own request.
+        """
+        declared = self._post(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/publishes",
+            {"changes": [{"kind": "add", **change}]})
+        if declared.status_code != 200:
+            return declared
+        return self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}"
+                          f"/publishes/{declared.json()['id']}/publish")
+
+    # ---- create book + open rule + publish ----
 
     def test_create_book_then_add_rate_then_publish(self):
         # 1. create a price book (version starts at 1).
@@ -55,23 +75,25 @@ class BookApiTest(TestCase):
         self.assertEqual(book["provider_key"], "gemini")
         self.assertTrue(book["is_default"])
 
-        # 2. add a rate to it -> the rate reports its book membership.
-        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "gemini",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
+        # 2. open a rule in it -> the rule reports its book membership.
+        r = self._open_rule(book_id, measurement_key="input_tokens",
+                            provider="gemini", rate_structure="per_unit",
+                            rate_per_unit_micros=10)
         self.assertEqual(r.status_code, 200, r.content)
-        rate = r.json()
-        self.assertEqual(rate["rate_per_unit_micros"], 10)
-        self.assertEqual(rate["rate_card_id"], book_id)
-        self.assertEqual(rate["card_type"], "price")   # inherited from the book
-        original_rate_id = rate["id"]
+        (original_rate_id,) = r.json()["opened_rule_ids"]
+        (row,) = self._get(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
+        self.assertEqual(row["rate_per_unit_micros"], 10)
+        self.assertEqual(row["rate_card_id"], book_id)
+        self.assertEqual(row["id"], original_rate_id)
 
-        # 3. publish a reprice -> book version bumps to 2, old rate superseded.
+        # 3. publish a reprice -> book version bumps to 3, old rule superseded.
+        # Three because opening the rule was itself a publish (#367).
         r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
             "changes": [{"measurement_key": "input_tokens", "provider": "gemini",
                          "rate_per_unit_micros": 12}]})
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(r.json()["version"], 2)
+        self.assertEqual(r.json()["version"], 3)
 
         # The active rate is now 12; the original (10) is closed (valid_to set).
         active = self._get(
@@ -81,48 +103,58 @@ class BookApiTest(TestCase):
         self.assertNotEqual(active[0]["id"], original_rate_id)
         self.assertIsNotNone(Rate.objects.get(id=original_rate_id).valid_to)
 
-    def test_add_rate_inherits_book_currency(self):
+    def test_a_rule_inherits_its_books_currency(self):
         r = self._post("/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "openai", "provider_key": "openai"})
         book_id = r.json()["id"]
         self.assertEqual(r.json()["currency"], "usd")  # tenant default
-        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "openai",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 5})
+        r = self._open_rule(book_id, measurement_key="input_tokens",
+                            provider="openai", rate_structure="per_unit",
+                            rate_per_unit_micros=5)
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(r.json()["currency"], "usd")
+        (row,) = self._get(
+            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates").json()["data"]
+        self.assertEqual(row["currency"], "usd")
 
-    def test_add_rate_provider_must_match_default_book_provider(self):
+    def test_a_rules_provider_must_match_the_default_books_provider(self):
+        """The refusal moved with the act it guards (#367).
+
+        It lived on the immediate add-a-rule route and would have left with it.
+        A default book is selected for one provider's events, so a rule naming
+        another provider inside it prices nothing and looks configured — which
+        is what this refuses, now on the publish path.
+        """
         r = self._post("/api/v1/metering/pricing/rate-cards", {
             "card_type": "price", "provider_key": "gemini", "key": "gemini",
             "name": "Gemini", "is_default": True})
         self.assertEqual(r.status_code, 200, r.content)
         book_id = r.json()["id"]
 
-        # Mismatched provider on a default book -> 422, unresolvable rate rejected.
-        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "openai",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
+        # Mismatched provider on a default book -> 422, unresolvable rule
+        # rejected while the tenant is still deciding.
+        r = self._open_rule(book_id, measurement_key="input_tokens",
+                            provider="openai", rate_structure="per_unit",
+                            rate_per_unit_micros=10)
         self.assertEqual(r.status_code, 422, r.content)
+        self.assertIn("must match the default book's provider",
+                      r.json()["detail"])
 
         # Matching provider -> 200.
-        r = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "gemini",
-            "rate_structure": "per_unit", "rate_per_unit_micros": 10})
+        r = self._open_rule(book_id, measurement_key="input_tokens",
+                            provider="gemini", rate_structure="per_unit",
+                            rate_per_unit_micros=10)
         self.assertEqual(r.status_code, 200, r.content)
 
     # ---- list ----
 
-    def test_list_books_and_rates(self):
+    def test_list_books_and_rules(self):
         r = self._post("/api/v1/metering/pricing/rate-cards", {
             "card_type": "cost", "key": "openai", "provider_key": "openai"})
         book_id = r.json()["id"]
-        self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "openai",
-            "rate_per_unit_micros": 5})
-        self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "output_tokens", "provider": "openai",
-            "rate_per_unit_micros": 15})
+        self._open_rule(book_id, measurement_key="input_tokens",
+                        provider="openai", rate_per_unit_micros=5)
+        self._open_rule(book_id, measurement_key="output_tokens",
+                        provider="openai", rate_per_unit_micros=15)
 
         books = self._get("/api/v1/metering/pricing/rate-cards").json()["data"]
         self.assertEqual(len(books), 1)
@@ -138,9 +170,8 @@ class BookApiTest(TestCase):
             "card_type": "price", "key": "gemini", "provider_key": "gemini",
             "is_default": True})
         book_id = r.json()["id"]
-        self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/rates", {
-            "measurement_key": "input_tokens", "provider": "gemini",
-            "rate_per_unit_micros": 10})
+        self._open_rule(book_id, measurement_key="input_tokens",
+                        provider="gemini", rate_per_unit_micros=10)
         self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
             "changes": [{"measurement_key": "input_tokens", "provider": "gemini",
                          "rate_per_unit_micros": 12}]})

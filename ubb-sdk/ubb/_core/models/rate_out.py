@@ -25,7 +25,6 @@ T = TypeVar("T", bound="RateOut")
 class RateOut:
     """ 
         Attributes:
-            card_type (str):
             currency (str):
             event_type (str):
             fixed_micros (int):
@@ -53,7 +52,6 @@ class RateOut:
             valid_to (None | str | Unset):
      """
 
-    card_type: str
     currency: str
     event_type: str
     fixed_micros: int
@@ -86,8 +84,6 @@ class RateOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        card_type = self.card_type
-
         currency = self.currency
 
         event_type = self.event_type
@@ -146,7 +142,6 @@ class RateOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "card_type": card_type,
             "currency": currency,
             "event_type": event_type,
             "fixed_micros": fixed_micros,
@@ -182,8 +177,6 @@ class RateOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        card_type = d.pop("card_type")
-
         currency = d.pop("currency")
 
         event_type = d.pop("event_type")
@@ -246,7 +239,6 @@ class RateOut:
 
 
         rate_out = cls(
-            card_type=card_type,
             currency=currency,
             event_type=event_type,
             fixed_micros=fixed_micros,

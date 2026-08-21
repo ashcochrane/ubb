@@ -12,8 +12,15 @@ from core.problems import Problem
 from core.vocabulary import (
     DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES)
 
+#: WHAT A REPRICE CARRIES FROM THE OUTGOING RULE TO ITS REPLACEMENT.
+#:
+#: ⚠ **THE KIND WORD IS NOT HERE ANY MORE, AND ITS ABSENCE IS NOT AN OMISSION
+#: (#367).** A rate used to carry a `cost`/`price` word copied from its book;
+#: the column is deleted, so there is nothing to copy and the book a
+#: replacement is created under is the only thing that says what kind it is —
+#: which is what it always was, one copy fewer.
 _RATE_COPY_FIELDS = (
-    "tenant_id", "customer_id", "card_type", "provider", "event_type",
+    "tenant_id", "customer_id", "provider", "event_type",
     "task_type", "subtask_type",
     *(f"grouping_field_{i}" for i in range(1, 11)),
     # The REFERENCE, not the name (#326). A reprice copies which declaration the
@@ -240,20 +247,25 @@ def _refuse_an_instant_behind_the_books_own_diary(book, effective_at):
     has to be able to tell a date it can fix from a body it cannot.
 
     ⚠ **A NAMED RESIDUAL: THIS HOLDS ON THE PUBLISHING PATH AND ON NO OTHER.**
-    `BookService.publish`, `add_rate` and `delete_rate` — the immediate
-    mutation surfaces #358 deliberately kept alive and a later ticket deletes —
-    never call `plan_changes`, so none of them is bound by this rule. The worst
-    of the three is `delete_rate`: it selects on *"the rule that is still
+    `BookService.publish` — the last of the three immediate mutation surfaces
+    #358 deliberately kept alive, and the one #369 deletes — never calls
+    `plan_changes`, so it is not bound by this rule.
+
+    ⚠ **THE WORST OF THE THREE HAS ALREADY GONE (#367), AND WHAT IT COULD DO IS
+    RECORDED HERE RATHER THAN DELETED WITH IT** — because the surviving one can
+    still reach the same shape and a reader needs to know what shape that is.
+    The immediate retire route selected on *"the rule that is still
     open"*, which matches a replacement **scheduled to open in the future**,
-    and writes `valid_to = now`. That is a legal null-to-value write, nothing
+    and wrote `valid_to = now`. That is a legal null-to-value write, nothing
     on this table refuses a close before an opening, and the result is an
     inverted window covering no instant at all — while the rule it superseded
     is already closed at the boundary, so from that boundary onward the book
     prices nothing and resolution falls through to markup, which returns a
     plausible number and raises nothing. Reachable only since a publish could
     be dated forward at all (#359); not introduced here and not closed here,
-    because closing it means deleting those three surfaces, which is the ticket
-    that also retires the three audit action names they write.
+    because closing it means deleting those surfaces — two of which have now
+    gone with the audit action names they wrote, and the last of which is
+    #369's.
     """
     boundary = latest_scheduled_boundary(book)
     if boundary is None or effective_at >= boundary:
@@ -397,6 +409,27 @@ def plan_changes(book, changes, effective_at):
                     f"{measurement_key!r} on these selectors that opens after "
                     f"the effective instant. Two open rules for one identity "
                     f"is what `uq_rate_active_in_book` refuses")
+            # A RULE IN A PROVIDER'S DEFAULT BOOK MUST NAME THAT PROVIDER, OR
+            # IT CAN NEVER RESOLVE (#367, carried from the deleted route).
+            #
+            # A default book is selected for one provider's events
+            # (`_default_book` keys on `provider_key`) and a rule pinning a
+            # DIFFERENT provider is then filtered out of every event that book
+            # is ever read for — so it prices nothing, costs nothing and looks
+            # configured, which is the shape this programme exists to delete.
+            #
+            # ⚠ **THIS REFUSAL LIVED ON THE IMMEDIATE ADD-A-RULE ROUTE AND
+            # WOULD HAVE LEFT WITH IT.** Deleting the route without moving the
+            # guard would have widened what a publish accepts, silently, in the
+            # commit whose subject is somewhere else. It is stated for `add`
+            # only because a provider is a MATCH key: a reprice cannot move
+            # one, so the rule it addresses already satisfies this.
+            if book.is_default and selectors["provider"] != book.provider_key:
+                raise ValueError(
+                    f"change {position}: rule provider "
+                    f"{selectors['provider']!r} must match the default book's "
+                    f"provider {book.provider_key!r}. A rule naming another "
+                    f"provider in this book would never resolve")
             declaration = declaration_named(tenant=book.tenant,
                                             measurement_key=measurement_key)
             if declaration is None:
@@ -772,7 +805,6 @@ class BookService:
                     # exactly that is why the book's column is `SET_NULL`.
                     data = {
                         "tenant_id": locked.tenant_id, "customer_id": None,
-                        "card_type": locked.card_type,
                         "measurement_id": change.declaration.id,
                         "currency": locked.currency,
                         "lineage_id": uuid.uuid4(),

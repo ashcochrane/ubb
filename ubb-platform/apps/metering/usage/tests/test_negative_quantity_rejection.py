@@ -54,7 +54,7 @@ class TestNegativeMetricSchemaRejection:
         """Schema rejects the negative quantity before pricing runs."""
         tenant, customer, http, auth = _setup_http()
         Rate.objects.create(
-            tenant=tenant, card_type="price",
+            tenant=tenant,
             measurement=declares_a_quantity(tenant, "calls"),
             rate_structure="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )

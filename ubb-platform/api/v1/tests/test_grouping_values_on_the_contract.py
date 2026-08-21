@@ -85,9 +85,20 @@ SLOT_NAMED = re.compile(r"(dim|grouping_field_)\d+")
 #: published somewhere nobody decided it should be; smaller means this file
 #: claims an exposure the contract does not have, which is the migration
 #: ledger's `found:` rule applied to a set.
+#: The published schemas that name a rule's selector columns — spelled once so
+#: the equality below and the rename check further down cannot drift apart.
+#:
+#: ⚠ **TWO, NOT THREE, SINCE #367.** The immediate add-a-rule body left with its
+#: route: adding a rule is a declared change on a publish now, and that body
+#: names a slot by the tenant's own KEY rather than by the column, so it is not
+#: one of these. What is left is the immediate reprice body and the row a read
+#: answers with — and the set below therefore falls by ten, which is a surface
+#: leaving rather than a slot being lost.
+RATE_SCHEMAS = ("RateChangeIn", "RateOut")
+
 RATE_SELECTOR_PROPERTIES = frozenset(
     (schema, slot)
-    for schema in ("RateIn", "RateChangeIn", "RateOut")
+    for schema in RATE_SCHEMAS
     for slot in SLOTS
 )
 
@@ -135,11 +146,17 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         set claims an exposure the contract does not have, which is the same
         defect as a ledger entry recording more files than the tree holds.
 
-        ⚠ **THIRTY, NOT EIGHTEEN, AND THE RISE IS THE POINT (#366).** Reading a
-        growth here as a regression would be reading the count instead of the
-        claim: twelve of these pairs are the four slots that had NO published
+        ⚠ **THIRTY, NOT EIGHTEEN, AND THE RISE WAS THE POINT (#366).** Reading
+        a growth here as a regression would be reading the count instead of the
+        claim: twelve of those pairs were the four slots that had NO published
         property at all, and their absence is what made a rule pinned on the
         seventh slot unreachable through the API.
+
+        ⚠ **AND THEN TWENTY, WHICH IS A SURFACE LEAVING RATHER THAN A SLOT
+        (#367).** The immediate add-a-rule body is deleted with its route, so
+        its ten pairs go with it — every slot is still published on both
+        surviving schemas, which is what the derivation from `SLOTS` says and
+        why the fall cannot hide one.
         """
         self.assertEqual(_slot_named_properties(self.document),
                          set(RATE_SELECTOR_PROPERTIES))
@@ -158,7 +175,7 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         for schema, prop in published:
             with self.subTest(schema=schema, property=prop):
                 self.assertIn(prop, SLOTS)
-        for schema in ("RateIn", "RateChangeIn", "RateOut"):
+        for schema in RATE_SCHEMAS:
             properties = self.document["components"]["schemas"][schema]["properties"]
             self.assertEqual({p for p in properties if SLOT_NAMED.fullmatch(p)},
                              set(SLOTS), schema)

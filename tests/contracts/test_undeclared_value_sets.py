@@ -98,7 +98,14 @@ VALUE_SETS = {
     # discriminator, declared once on the rule and once on its container, and
     # the rule's arithmetic shape — and a number nobody measured is a number
     # that can be wrong in either direction.
-    "ubb-platform/apps/metering/pricing/models.py": 4,
+    #
+    # ⚠ 4 → 3 in #367, and the one that went is the kind discriminator's use on
+    # the RULE. It was declared on the rule and on its container; the rule's
+    # column is deleted rather than re-spelled, so the container's is the only
+    # one left — which is what ticket 21 splits into two separately shaped
+    # entities. Re-taken from the census rather than decremented, for the reason
+    # the paragraph above gives.
+    "ubb-platform/apps/metering/pricing/models.py": 3,
     # 2 → 4 in #351: the price status and its reason, both DERIVED from the
     # registry frozensets exactly as the cost pair beside them. The count rises
     # because this inventory counts the shape and not the provenance — which is
