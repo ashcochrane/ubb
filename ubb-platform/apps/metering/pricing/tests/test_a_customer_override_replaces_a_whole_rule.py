@@ -154,8 +154,8 @@ class _ACustomerWithADealMixin:
     def the_rule_that_answered(self, as_of=None, **selectors):
         """WHICH rule the ladder chose, off the resolver rather than the
         receipt, because the question these cases ask is about the row."""
-        return PricingService._resolve_card(
-            self.tenant, self.customer, "price", self._selectors(**selectors),
+        return PricingService.resolve_the_price_rule(
+            self.tenant, self.customer, self._selectors(**selectors),
             QUANTITY, "usd", as_of or timezone.now())
 
 
@@ -230,8 +230,8 @@ class AnOverrideSuppliesTheWholeRuleTest(_ACustomerWithADealMixin, TestCase):
             measurement_key="completion_tokens",
             rate_per_unit_micros=WHAT_THE_CATALOGUE_CHARGES)
 
-        answered = PricingService._resolve_card(
-            self.tenant, self.customer, "price", self._selectors(),
+        answered = PricingService.resolve_the_price_rule(
+            self.tenant, self.customer, self._selectors(),
             "completion_tokens", "usd", timezone.now())
 
         self.assertEqual(answered.id, tied.id)
@@ -482,44 +482,60 @@ class SpecificityDecidesAndSourceIsTheTieBreakTest(
                            blanket_deal.specificity)
 
 
-class TheOverrideBookIsAheadOfTheAssignedOneTest(_ACustomerWithADealMixin,
-                                                 TestCase):
-    """The two ways the customer's-own rung is reached, and the tie between them.
+class TheCustomersOwnRungIsReachedExactlyOnceTest(_ACustomerWithADealMixin,
+                                                  TestCase):
+    """The tie that used to live here CANNOT arise any more, and this class is
+    its repair rather than its deletion (#368).
 
-    A customer's own rules are reachable twice while the assignment record
-    still exists: the book carrying the customer, and the book assigned to
-    them. Both carry the SAME source, so the ranking cannot separate them — and
-    `_selected_books` says in its own words that the order it returns them in
-    decides that tie. An ordering claim nothing exercises is the vacuous shape
-    this programme has already paid for once.
+    It was `TheOverrideBookIsAheadOfTheAssignedOneTest`. Its subject was that a
+    customer's own rules were reachable TWICE — through the book carrying the
+    customer, and through the record that assigned a book to them — both at the
+    same source, so nothing in the ranking could separate them and the order
+    `_selected_pricing_books` returned them in decided it. **The assignment
+    record is deleted.** There is one way in, so no tie of that shape exists to
+    break, and the strong form of the old claim is that the rung appears once.
 
-    ⚠ **THE TIE IS BUILT RATHER THAN HOPED FOR.** Every key above the one under
-    test is neutralised: the two rules pin exactly the same selectors (equal
-    specificity), come from the same source, and are given the same
-    `valid_from` — two rules created a microsecond apart are not tied at all,
-    which is how the last test of this shape came to be green over a reversed
-    key.
+    ⚠ **ASSERTED OVER THE SELECTION, NOT OVER A PRICE.** A case that merely
+    checked the deal won would be green against a selection returning the same
+    book twice — the ranking picks it either way — which is exactly the
+    ambiguity the old ordering rule existed to resolve. What has to be true is
+    that the customer's-own source occurs ONCE in the books in play, and that a
+    book reachable two ways is still listed once at the higher source.
     """
 
-    def test_at_a_genuine_tie_the_override_book_answers(self):
-        # ⚠ THE SHARED INSTANT IS PASSED AT INSERT, NOT SET AFTERWARDS.
-        # `valid_from` is FROZEN and a trigger holds it through `save()`,
-        # `QuerySet.update()` and raw SQL alike, so the only way two rules
-        # share an opening moment is to be born with it.
-        moment = timezone.now() - timedelta(hours=1)
-        assigned = rate_in_default_book(
-            self.tenant, customer=self.customer, provider=PROVIDER,
-            event_type=EVENT_TYPE, measurement_key=QUANTITY,
-            rate_per_unit_micros=WHAT_THE_CATALOGUE_CHARGES,
-            valid_from=moment)
-        override = self.the_deal(valid_from=moment)
+    def selected_books(self):
+        return PricingService._selected_pricing_books(
+            self.tenant, self.customer)
 
-        answered = self.the_rule_that_answered()
+    def test_the_customers_own_source_appears_exactly_once(self):
+        self.the_deal()
+        self.the_catalogues_rule()
 
-        self.assertEqual(ladder_rank(answered, FROM_THE_CUSTOMERS_OWN_RULES),
-                         ladder_rank(assigned, FROM_THE_CUSTOMERS_OWN_RULES),
-                         "the two rules are not actually tied")
-        self.assertEqual(answered.id, override.id)
+        own = [book for source, book in self.selected_books()
+               if source == FROM_THE_CUSTOMERS_OWN_RULES]
+
+        self.assertEqual(len(own), 1, own)
+        self.assertEqual(own[0].customer_id, self.customer.id)
+
+    def test_a_book_reachable_two_ways_is_still_listed_once(self):
+        """The de-duplication, kept honest.
+
+        A customer's own book can also be the tenant's default — nothing stops
+        a tenant marking it so — and a second entry for it would let the
+        ranking read the customer's own rules as the tenant's, silently
+        demoting every deal such a tenant wrote. The customer's own book is
+        appended first, so keeping the first entry keeps the higher source.
+        """
+        deal = self.the_deal()
+        theirs = the_book_holding(deal)
+        theirs.is_default = True
+        theirs.save(update_fields=["is_default"])
+
+        books = self.selected_books()
+
+        self.assertEqual([book.id for _, book in books], [theirs.id])
+        self.assertEqual([source for source, _ in books],
+                         [FROM_THE_CUSTOMERS_OWN_RULES])
 
 
 class TheInheritedRuleIsTheLadderOneRungShorterTest(

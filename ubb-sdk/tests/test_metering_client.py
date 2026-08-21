@@ -506,28 +506,39 @@ class MeteringClientTest(unittest.TestCase):
         self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.parent_task_id, "task_1")
 
-    # ---- rate-card URL correctness ----
+    # ---- book URL correctness ----
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_create_rate_card_url(self, mock_post):
+    def test_declare_pricing_book_url(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "id": "rc_1", "card_type": "cost", "measurement_key": "input_tokens",
-            "provider": "", "event_type": "", "dimensions": {},
-            "pricing_model": "per_unit", "rate_per_unit_micros": 0,
-            "unit_quantity": 1_000_000, "fixed_micros": 0, "currency": "usd",
-            "product_id": "", "customer_id": None,
+            "id": "pb_1", "key": "catalogue", "name": "", "version": 1,
+            "is_default": False, "customer_id": None,
         })
-        self.client.create_rate_card(card_type="cost", measurement_key="input_tokens")
-        call_args = mock_post.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+        self.client.declare_pricing_book(key="catalogue")
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/metering/pricing/pricing-books")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_declare_cost_book_url(self, mock_post):
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "id": "cb_1", "key": "openai", "provider_key": "openai",
+            "currency": "usd", "name": "", "version": 1, "is_default": False,
+        })
+        self.client.declare_cost_book(key="openai", provider_key="openai")
+        self.assertEqual(mock_post.call_args.args[0],
+                         "/api/v1/metering/pricing/cost-books")
 
     @patch("ubb.metering.httpx.Client.get")
-    def test_list_rate_cards_url(self, mock_get):
+    def test_list_books_urls(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [], "next_cursor": None, "has_more": False})
-        self.client.list_rate_cards()
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/rate-cards")
+
+        self.client.list_pricing_books()
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/metering/pricing/pricing-books")
+        self.client.list_cost_books()
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/metering/pricing/cost-books")
 
     # ---- usage_analytics ----
 

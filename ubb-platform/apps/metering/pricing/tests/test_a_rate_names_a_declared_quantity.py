@@ -43,7 +43,7 @@ from apps.metering.pricing.models import (
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     cost_book, cost_rate_in_default_book, reconcile_the_rate_table_with,
-    the_rate_table_as_this_migration_saw_it)
+    the_pricing_tables_as_this_migration_saw_them)
 from apps.platform.audit.models import AuditRecord
 from apps.platform.event_types.models import EventType, Measurement
 from apps.platform.event_types.quantities import declaration_named
@@ -72,7 +72,11 @@ UNDECLARED_NAME = "typo_tokens"
 #: The partial unique index the conversion rebuilt over the reference. Named
 #: because every refusal here asserts WHICH mechanism refused: several on this
 #: table answer `IntegrityError` and they hold entirely different things.
-ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
+#: ⚠ ONE KEY BECAME TWO (#368), and this module's cases build COST rules —
+#: a rule points at a Pricing Book or at a cost book, and a single key naming
+#: both columns would carry a NULL on every row, which Postgres treats as
+#: distinct. This is the half that guards the rules these cases write.
+ACTIVE_ROW_UNIQUE = "uq_rate_active_in_cost_book"
 
 
 def _migration():
@@ -201,7 +205,7 @@ class TheReverseIsExercisedTest(TestCase):
         # whole class rather than around one call: the historical model is what
         # every test here uses, and the live one is used by none of them.
         self.enterContext(
-            the_rate_table_as_this_migration_saw_it(self.migration))
+            the_pricing_tables_as_this_migration_saw_them(self.migration))
         self._reconcile(self.Rate)
         self.run_python = next(op for op in self.migration.operations
                                if isinstance(op, operations.RunPython))
@@ -357,7 +361,7 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         the claim did not.
         """
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book}/publishes",
+            f"/api/v1/metering/pricing/books/{self.book}/publishes",
             {"changes": [{"kind": CHANGE_ADD,
                           "measurement_key": measurement_key,
                           "provider": "openai",
@@ -504,7 +508,7 @@ class TheDeclarationTriggerReversesTest(TestCase):
         repair this module already makes to the checks and triggers that
         arrived after the migration being replayed.
         """
-        with the_rate_table_as_this_migration_saw_it(self.migration):
+        with the_pricing_tables_as_this_migration_saw_them(self.migration):
             with connection.schema_editor() as editor:
                 code(None, editor)
 
@@ -558,8 +562,8 @@ class ADeactivatedRateKeepsItsNameAndPricesNothingTest(TestCase):
     def test_it_resolves_against_nothing_including_its_own_name(self):
         for name in (UNDECLARED_NAME, DECLARED_NAME):
             with self.subTest(quantity=name):
-                self.assertIsNone(PricingService._resolve_card(
-                    self.tenant, None, "cost", {"provider": "openai"}, name,
+                self.assertIsNone(PricingService.resolve_the_cost_rule(
+                    self.tenant, {"provider": "openai"}, name,
                     "usd", timezone.now()))
 
     def test_it_is_still_there(self):
@@ -641,9 +645,8 @@ class ResolutionStillMatchesOnTheNameTest(TestCase):
             tenant, provider="openai", measurement_key=DECLARED_NAME,
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
 
-        resolved = PricingService._resolve_card(
-            tenant, None, "cost", {"provider": "openai",
-                                   "event_type": "second.call"},
+        resolved = PricingService.resolve_the_cost_rule(
+            tenant, {"provider": "openai", "event_type": "second.call"},
             DECLARED_NAME, "usd", timezone.now())
 
         self.assertEqual(resolved.id, rate.id)

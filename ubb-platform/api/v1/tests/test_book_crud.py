@@ -1,14 +1,22 @@
-"""Rule lifecycle over the book-centric surface: create a BOOK, open rules
+"""Rule lifecycle over the book surface: declare a BOOK, open rules
 under it, reprice them (soft-versioning), and retire one. The flat
 create/batch/update endpoints are gone (they produced rules belonging to no
 book, which book-scoped resolution could never find); every rule lives under a
 book.
 
-⚠ **OPENING AND RETIRING A RULE ARE DECLARED CHANGES ON A PUBLISH (#367).** The
-immediate routes that did both are deleted, so what this module drives is
-declare-then-publish for each — the same lifecycle, one act shorter in the
-vocabulary and one act longer on the wire. The atomic reprice beside them is
-untouched and still immediate; it leaves with #369.
+⚠ **EVERY CHANGE IS A DECLARED CHANGE ON A PUBLISH (#367, #368).** The
+immediate routes that opened and retired a rule went with #367; the atomic
+reprice beside them went with #368, together with the last of the retired audit
+action names it wrote. So what this module drives is declare-then-publish for
+all three — the same lifecycle, one act shorter in the vocabulary and one act
+longer on the wire, and a book with exactly one way to change.
+
+⚠ **AND THE BOOK IT DRIVES IS A COST BOOK, DECLARED AT ITS OWN PATH (#368).**
+The container split into two separately shaped entities: a cost book names the
+supplier it records and the currency that supplier bills in, a Pricing Book
+names neither. This module's subject is the rule lifecycle, which is the same
+for both, so it exercises one of them and `test_book_api.py` is where the two
+shapes are told apart.
 """
 import json
 
@@ -17,10 +25,10 @@ from django.test import TestCase, Client
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.metering.pricing.models import Rate
+from apps.metering.pricing.models import CostBook, Rate
 
-COST_BOOK = {"card_type": "cost", "key": "openai-cost", "provider_key": "openai"}
-PRICE_BOOK = {"card_type": "price", "key": "openai-price", "provider_key": "openai"}
+COST_BOOK = {"key": "openai-cost", "provider_key": "openai"}
+PRICING_BOOK = {"key": "openai-price"}
 
 #: The tenant's own key for the slot these rules pin. A declared change names a
 #: slot by the key the tenant declared rather than by the column, so the key has
@@ -28,8 +36,9 @@ PRICE_BOOK = {"card_type": "price", "key": "openai-price", "provider_key": "open
 SEGMENT_KEY = "model"
 SEGMENT_SLOT = "grouping_field_1"
 
-# A rule under the book, as the DECLARING body carries it. The book owns the
-# currency and, until #368, which kind of book it is; neither is stated here.
+# A rule under the book, as the DECLARING body carries it. Which kind of book
+# it is, is the TABLE the book is on now (#368), and the currency is the cost
+# book's own; neither is stated here.
 COST_RULE = {
     "measurement_key": "input_tokens",
     "provider": "openai",
@@ -40,14 +49,16 @@ COST_RULE = {
     "unit_quantity": 1000000,
 }
 
-# The immediate reprice change that re-prices that rule (must carry its match
-# keys). This body names the COLUMN, where the declaring body above names the
-# tenant's key — two vocabularies for one slot, which is #358's own design.
+# The change that re-prices that rule (it must carry its match keys). It names
+# the slot by the tenant's own declared KEY, exactly as the opening body above
+# does — the second vocabulary, which named the COLUMN, belonged to the
+# immediate reprice route and went with it (#368).
 _RULE_MATCH = {"measurement_key": "input_tokens", "provider": "openai",
-               "event_type": "chat", SEGMENT_SLOT: "gpt-4"}
+               "event_type": "chat",
+               "grouping_fields": {SEGMENT_KEY: "gpt-4"}}
 
 
-class RateCardCRUDTest(TestCase):
+class BookCRUDTest(TestCase):
     """Full metering+billing tenant: create book -> add/list/publish/delete rate."""
 
     def setUp(self):
@@ -72,7 +83,7 @@ class RateCardCRUDTest(TestCase):
             content_type="application/json", **self._auth())
 
     def _create_book(self, body=COST_BOOK):
-        return self._post("/api/v1/metering/pricing/rate-cards", body)
+        return self._post("/api/v1/metering/pricing/cost-books", body)
 
     def _change(self, book_id, *changes):
         """Declare the changes and publish them, which is how a book moves.
@@ -82,11 +93,11 @@ class RateCardCRUDTest(TestCase):
         echo of its own request, because the ids come off the rows.
         """
         declared = self._post(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/publishes",
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
             {"changes": list(changes)})
         if declared.status_code != 200:
             return declared
-        return self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}"
+        return self._post(f"/api/v1/metering/pricing/books/{book_id}"
                           f"/publishes/{declared.json()['id']}/publish")
 
     def _open_rule(self, book_id, body=COST_RULE):
@@ -101,18 +112,25 @@ class RateCardCRUDTest(TestCase):
 
     def _list_rates(self, book_id, query=""):
         return self.http_client.get(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates{query}", **self._auth())
+            f"/api/v1/metering/pricing/books/{book_id}/rates{query}", **self._auth())
 
-    def _publish(self, book_id, changes):
-        return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {"changes": changes})
+    def _reprice(self, book_id, changes):
+        """A reprice, through the one act a book has (#368).
+
+        It used to be `POST .../publish`, an immediate route that versioned the
+        book the instant it was called with no diff a tenant could read first.
+        That route is deleted; a reprice is a declared change like any other,
+        which is why this is one line over `_change`.
+        """
+        return self._change(book_id, *[dict(change, kind="reprice")
+                                       for change in changes])
 
     def test_create_book_and_rule_return_ids(self):
         book_resp = self._create_book()
         self.assertEqual(book_resp.status_code, 200, book_resp.content)
         book = book_resp.json()
         self.assertIn("id", book)
-        self.assertEqual(book["card_type"], "cost")
+        self.assertEqual(book["provider_key"], "openai")
         self.assertEqual(book["version"], 1)
 
         published = self._open_rule(book["id"])
@@ -122,7 +140,7 @@ class RateCardCRUDTest(TestCase):
         (row,) = self._list_rates(book["id"]).json()["data"]
         self.assertEqual(row["id"], opened)
         self.assertEqual(row["measurement_key"], "input_tokens")
-        self.assertEqual(row["rate_card_id"], book["id"])
+        self.assertEqual(row["book_id"], book["id"])
 
     def test_list_after_create_returns_one(self):
         book_id = self._create_book().json()["id"]
@@ -133,20 +151,26 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["measurement_key"], "input_tokens")
         # And exactly one book is listed.
-        books = self.http_client.get("/api/v1/metering/pricing/rate-cards", **self._auth())
+        books = self.http_client.get("/api/v1/metering/pricing/cost-books", **self._auth())
         self.assertEqual(len(books.json()["data"]), 1)
 
     def test_publish_soft_versions_old_and_active_reflects_new_price(self):
         book_id = self._create_book().json()["id"]
         (original_id,) = self._open_rule(book_id).json()["opened_rule_ids"]
 
-        pub = self._publish(book_id, [dict(_RULE_MATCH, rate_per_unit_micros=9999)])
+        pub = self._reprice(book_id, [dict(_RULE_MATCH, rate_per_unit_micros=9999)])
         self.assertEqual(pub.status_code, 200, pub.content)
         # THREE, not two, and the extra one is the rule being opened (#367).
         # Opening a rule is itself a publish now, so the book is already at 2
         # before this reprice moves it to 3 — where the immediate add-a-rule
         # route used to write a rule without moving the version at all.
-        self.assertEqual(pub.json()["version"], 3)
+        #
+        # ⚠ READ OFF THE BOOK RATHER THAN OFF THE RESPONSE (#368). The act
+        # answers with the PUBLISH record — what was changed, when it takes
+        # effect, which rule versions it opened and closed — where the deleted
+        # immediate route answered with the book. The version is the book's, so
+        # that is where it is read.
+        self.assertEqual(CostBook.objects.get(id=book_id).version, 3)
 
         # Active list shows exactly one rate: the new 9999 version, new id.
         items = self._list_rates(book_id).json()["data"]
@@ -180,7 +204,7 @@ class RateCardCRUDTest(TestCase):
 
         self.assertEqual(len(self._list_rates(book_id).json()["data"]), 1)
 
-        pub = self._publish(book_id, [dict(_RULE_MATCH, rate_per_unit_micros=7777)])
+        pub = self._reprice(book_id, [dict(_RULE_MATCH, rate_per_unit_micros=7777)])
         self.assertEqual(pub.status_code, 200, pub.content)
 
         items = self._list_rates(book_id).json()["data"]
@@ -193,7 +217,7 @@ class RateCardCRUDTest(TestCase):
         self.assertEqual(len(self._list_rates(book_id).json()["data"]), 0)
 
 
-class RateCardPriceGatingTest(TestCase):
+class BookGatingTest(TestCase):
     """metering-only tenant cannot create a PRICE book (billing-gated)."""
 
     def setUp(self):
@@ -206,24 +230,28 @@ class RateCardPriceGatingTest(TestCase):
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
-    def _post(self, body):
+    def _post(self, path, body):
         return self.http_client.post(
-            "/api/v1/metering/pricing/rate-cards",
+            f"/api/v1/metering/pricing/{path}",
             data=json.dumps(body), content_type="application/json", **self._auth())
 
-    def test_metering_only_tenant_cannot_create_price_book(self):
-        resp = self._post(PRICE_BOOK)
+    def test_metering_only_tenant_cannot_declare_a_pricing_book(self):
+        resp = self._post("pricing-books", PRICING_BOOK)
         self.assertEqual(resp.status_code, 403, resp.content)
 
-    def test_metering_only_tenant_can_create_cost_book(self):
-        resp = self._post(COST_BOOK)
+    def test_metering_only_tenant_can_declare_a_cost_book(self):
+        resp = self._post("cost-books", COST_BOOK)
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn("id", resp.json())
 
 
-class RateCardCurrencyPinTest(TestCase):
-    """CUR-1: books are pinned to the tenant's currency (422 on mismatch); rates
-    inherit the book's currency, so a book is the single place currency is set."""
+class CostBookCurrencyPinTest(TestCase):
+    """CUR-1: a cost book is pinned to the tenant's currency (422 on mismatch)
+    and its rules take that currency, so the book is the single place it is set.
+
+    ⚠ **ONLY THE COST BOOK ASKS THIS NOW (#368).** A Pricing Book has no
+    currency column at all, so there is nothing on it to pin — the same fact
+    this pin has always enforced, said by the schema instead of by a check."""
 
     def setUp(self):
         self.http_client = Client()
@@ -238,7 +266,7 @@ class RateCardCurrencyPinTest(TestCase):
 
     def _post(self, body):
         return self.http_client.post(
-            "/api/v1/metering/pricing/rate-cards",
+            "/api/v1/metering/pricing/cost-books",
             data=json.dumps(body), content_type="application/json", **self._auth())
 
     def test_create_book_with_mismatched_currency_returns_422(self):
@@ -257,7 +285,7 @@ class RateCardCurrencyPinTest(TestCase):
             name="Eur Pin", products=["metering", "billing"], default_currency="eur")
         _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
         resp = self.http_client.post(
-            "/api/v1/metering/pricing/rate-cards",
+            "/api/v1/metering/pricing/cost-books",
             data=json.dumps(COST_BOOK), content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {eur_key}")
         self.assertEqual(resp.status_code, 200, resp.content)

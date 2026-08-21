@@ -176,15 +176,16 @@ GATE_OF_RULE = {
 # Django into a suite that deliberately has none.
 LEDGERED_VIOLATIONS = {
     "G9": {
-        # ⚠ `Rate`'s entry is PAID and gone (#367). It sat on the table named
-        # for the container beside it; it sits on the table its own name asks
-        # for now, so the debt is discharged rather than excused and the entry
-        # is deleted from the ledger and from here in the one commit. The
-        # container's own half stays: ticket 21 does not rename it, it SPLITS
-        # it, and the name it takes then is the Pricing Book's.
-        "ubb-platform/apps/metering/pricing/models.py::RateCard":
-            ("g9-rate-card-sits-on-the-container-table",
-             "ubb_rate_card_container"),
+        # ⚠ BOTH HALVES OF THE PRICING INVERSION ARE PAID AND GONE — the rule's
+        # in #367, the container's in #368 — and this gate now owes nothing in
+        # that app. The rule sat on the table named for the container beside
+        # it and moved to the table its own name asks for; the container was
+        # not renamed onto the name it had lent out, because it SPLIT: a
+        # Pricing Book and a cost book, on `ubb_pricing_book` and
+        # `ubb_cost_book`, two entities whose columns disagree. Each entry was
+        # deleted from the ledger and from here in the commit that discharged
+        # it, which is what keeps paying a debt and recording the payment one
+        # act.
         "ubb-platform/apps/subscriptions/models.py::CustomerSubscriptionItem":
             ("g9-customer-subscription-item-table-abbreviated",
              "ubb_customer_sub_item"),
@@ -881,7 +882,8 @@ def test_positive_control_an_unmanaged_table_is_not_the_table_rule_s_business():
 
 def test_positive_control_the_canonical_form_is_the_mechanical_one():
     assert canonical_table("Rate") == "ubb_rate"
-    assert canonical_table("RateCard") == "ubb_rate_card"
+    assert canonical_table("PricingBook") == "ubb_pricing_book"
+    assert canonical_table("CostBook") == "ubb_cost_book"
     assert canonical_table("CustomerSubscriptionItem") == (
         "ubb_customer_subscription_item")
     # The acronym case, spelled out: this is what the permanent exception in

@@ -93,7 +93,7 @@ class _APublishingTenantMixin:
             self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
             measurement_key=QUANTITY, rate_per_unit_micros=BEFORE)
         self.book = the_book_holding(self.rule)
-        self.publishes = (f"/api/v1/metering/pricing/rate-cards/"
+        self.publishes = (f"/api/v1/metering/pricing/books/"
                           f"{self.book.id}/publishes")
 
     def _auth(self):
@@ -373,15 +373,26 @@ class ADraftTheBookHasMovedUnderIsStillReadableTest(_APublishingTenantMixin,
         RETIRE (#367).** The retire route is deleted; what still closes a rule
         the instant it is called is the reprice, which supersedes the rule and
         opens a replacement. The stranding is the same and for the same reason
-        — an unmovable close standing between the draft and its instant — and
-        it is worth saying that the state stops being reachable at all when the
-        last immediate route leaves with #369, at which point this class is
-        asserting about something that cannot happen.
+        — an unmovable close standing between the draft and its instant.
+
+        ⚠ **AND IT IS STILL REACHABLE, WHICH THE PREVIOUS NOTE HERE PREDICTED
+        IT WOULD NOT BE (#368).** That note said the state "stops being
+        reachable at all when the last immediate route leaves", at which point
+        this class would be "asserting about something that cannot happen". The
+        immediate route has left — and the state is produced just as easily by
+        two publishes, because what strands a draft is the BOOK moving under
+        it, not the act that moved it. A tenant declaring two changes and
+        publishing the second one first reaches exactly this. So the class is
+        live rather than vacuous, and the second change is made here the way
+        every change is made now.
         """
         draft = self.declare().json()
-        closed = self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publish",
+        beside_it = self._post(
+            self.publishes,
             {"changes": [self.a_change(rate_per_unit_micros=AFTER + 1)]})
+        self.assertEqual(beside_it.status_code, 200, beside_it.content)
+        closed = self._post(
+            f"{self.publishes}/{beside_it.json()['id']}/publish")
         self.assertEqual(closed.status_code, 200, closed.content)
         return draft
 
@@ -756,9 +767,15 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
         """Driven over near-misses of the three real names rather than over an
         obvious nonsense string, because what this has to catch is a typo or a
         name somebody meant to add and did not."""
+        # ⚠ `pricing_book.declared` WAS ONE OF THESE AND IS NOW REAL (#368):
+        # declaring a book is an act the registry knows, so it stopped being a
+        # near-miss and had to leave this list. `pricing_book.published` takes
+        # its place — the name the deleted immediate reprice would have been
+        # renamed to, which is exactly the sort of thing somebody might reach
+        # for.
         for unregistered in ("pricing_book_publish.created",
                              "pricing_book_publish.deleted",
-                             "pricing_book.declared", f"{PUBLISHED}_"):
+                             "pricing_book.published", f"{PUBLISHED}_"):
             with self.subTest(unregistered):
                 self.assertFalse(is_registered_action(unregistered))
                 with self.assertRaisesRegex(ValueError, "unregistered audit"):
@@ -770,7 +787,7 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
         own count, which would stay green if a route joined the carve."""
         from api.v1.tests.test_audit_sweep import _EXEMPT
 
-        book = "/metering/pricing/rate-cards/{book_id}/publishes"
+        book = "/metering/pricing/books/{book_id}/publishes"
         for method, path in (("POST", book),
                              ("POST", f"{book}/{{publish_id}}/publish"),
                              ("DELETE", f"{book}/{{publish_id}}")):
@@ -782,7 +799,7 @@ class TheThreeActsAreGovernanceTest(_APublishingTenantMixin, TestCase):
         route carrying neither it nor an exemption turns it red."""
         from api.v1.tests.test_audit_sweep import mutating_operations
 
-        book = "/metering/pricing/rate-cards/{book_id}/publishes"
+        book = "/metering/pricing/books/{book_id}/publishes"
         marked = {(method, path): getattr(view, "_audit_actions", ())
                   for method, path, view in mutating_operations()
                   if path.startswith(book)}
@@ -816,18 +833,10 @@ class EveryChangeToABookGoesThroughAPublishTest(TestCase):
     copy would be two searches agreeing with each other rather than evidence.
     """
 
-    #: The one immediate act that survives, and why it is not the thing this
-    #: test refuses. It bumps the book's version and closes each superseded
-    #: rule at a boundary, so the change it makes is a versioned one; what it
-    #: is not is FORWARD-DATED. It leaves with the rest of this slice's
-    #: vocabulary (#369) and the customer's own book is already out of its
-    #: reach.
-    THE_VERSIONED_IMMEDIATE_ACT = "/metering/pricing/rate-cards/{book_id}/publish"
-
     def _book_family(self):
         from api.v1.tests.test_audit_sweep import mutating_operations
 
-        family = "/metering/pricing/rate-cards/{book_id}"
+        family = "/metering/pricing/books/{book_id}"
         return [(method, path) for method, path, _ in mutating_operations()
                 if path == family or path.startswith(family + "/")]
 
@@ -837,14 +846,17 @@ class EveryChangeToABookGoesThroughAPublishTest(TestCase):
                         "so every assertion below is vacuous")
 
     def test_no_route_writes_a_rule_outside_a_publish(self):
-        """Every survivor names the publish record or is the versioned reprice.
+        """EVERY survivor names the publish record, with no exception left.
 
-        A route that added or retired a rule directly would answer neither
-        description, which is what the two deletions in this commit removed.
+        ⚠ **THIS CARRIED AN EXEMPTION UNTIL #368 AND NOW CARRIES NONE.** The
+        atomic reprice was excused here because the change it made WAS
+        versioned — what it was not was forward-dated, and a tenant could not
+        read its diff first. It is deleted with the last of the retired audit
+        action names it wrote, so the sentence is now unqualified: a book has
+        exactly one way to change, and it leaves a record.
         """
         stray = [(method, path) for method, path in self._book_family()
-                 if "publishes" not in path
-                 and path != self.THE_VERSIONED_IMMEDIATE_ACT]
+                 if "publishes" not in path]
         self.assertEqual(stray, [])
 
     def test_the_rules_collection_takes_no_mutating_method(self):

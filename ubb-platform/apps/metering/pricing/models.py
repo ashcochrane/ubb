@@ -226,7 +226,28 @@ NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
 #: a wording nobody can reach and one more copy to keep in step.
 PRICING_METHOD_CHOICES = [(value, value) for value in sorted(PRICING_METHOD_VALUES)]
 
-CARD_TYPE_CHOICES = [("cost", "Cost"), ("price", "Price")]
+#: The check that makes a cost book DECLARE the currency its supplier bills in
+#: (#368). Named here for the reason the checks above are: this table answers
+#: `IntegrityError` from a uniqueness key as well, so every test of this rule
+#: asserts the MESSAGE and "the write was rejected" is not evidence on its own.
+NAMES_ITS_CURRENCY_CHECK = "ck_cost_book_names_its_currency"
+
+#: The check that stops one rule sitting in a book of costs AND a book of
+#: prices at once (#368).
+#:
+#: ⚠ **AT MOST ONE, NOT EXACTLY ONE, AND THE DIFFERENCE IS NOT A COMPROMISE.**
+#: A rule with no book at all has been writable since before the container
+#: existed — the column has always been nullable and fifteen callers in this
+#: tree still rely on it — so refusing one would be a second, unrelated change
+#: riding on this commit, with its own conversion. What the split makes
+#: impossible is the shape the discriminator used to admit: one rule reachable
+#: from both halves, which is the conflation the whole slice exists to end.
+SITS_IN_AT_MOST_ONE_BOOK_CHECK = "ck_rate_sits_in_at_most_one_book"
+
+#: The same rule for the record that CHANGES a book (#368): a publish names a
+#: book of prices or a book of costs, never both. A draft naming both would be
+#: a change whose diff belongs to two catalogues.
+PUBLISH_CHANGES_AT_MOST_ONE_BOOK_CHECK = "ck_book_publish_at_most_one_book"
 
 #: THE ARITHMETIC SHAPE OF A RATE, DERIVED FROM THE REGISTRY rather than
 #: restated beside it — the construction `PRICING_METHOD_CHOICES` above uses,
@@ -251,24 +272,26 @@ class Rate(BaseModel):
     ⚠ **THE KIND DISCRIMINATOR IS GONE FROM THIS TABLE, AND ITS ABSENCE IS THE
     STATEMENT.** A rate used to carry a `cost`/`price` word of its own, copied
     from the book it was created under and never read by resolution: the ladder
-    selects BOOKS by kind and then asks this table `rate_card__in`, so the
-    column decided nothing and could disagree with the book it was copied from.
+    selected BOOKS by kind and then asked this table for the rules inside them,
+    so the column decided nothing and could disagree with the book it was
+    copied from.
     Deleting it rather than re-spelling it is the point of the slice — one
     table wearing a kind word is what stopped the model saying that a book of
     supplier costs and a book of customer prices are different things governed
     by different rules (#148 §5.4).
 
-    ⚠ **WHAT SURVIVES IT, AND WHERE.** The container still carries the word
-    until ticket 21 splits it into two separately shaped entities, so the
-    cost/price branch has not left the tree — it has left THIS table, and every
-    read of a rate's kind now goes through the book that holds it. Nothing in
-    resolution asks a rate what kind it is, which is what
-    `test_a_rate_sits_on_the_table_named_for_a_rate.py` holds.
+    ⚠ **AND NOTHING CARRIES IT ANY MORE (#368).** #367's note here said the
+    container still held the word "until ticket 21 splits it into two
+    separately shaped entities". It has: a rule now points at a `PricingBook`
+    or at a `CostBook`, two tables with different columns, and there is no
+    value anywhere that a reader could compare to decide which half a rule
+    belongs to. The kind of a rule is which column is set, which is a fact the
+    database holds rather than a word a writer copied.
     """
 
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="rate_cards")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="rules")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
-                                 related_name="rate_cards", null=True, blank=True)
+                                 related_name="rules", null=True, blank=True)
     # --- The fourteen selector columns (design D3) ---
     # "" means WILDCARD here (it means "not set" on a Posting). Among rates
     # matching an event, the winner has the most non-empty selectors. This is
@@ -408,7 +431,21 @@ class Rate(BaseModel):
     unit_quantity = models.BigIntegerField(default=1_000_000)
     fixed_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    rate_card = models.ForeignKey("pricing.RateCard", on_delete=models.PROTECT,
+    #: WHICH BOOK THIS RULE IS IN — one of two columns, at most one set
+    #: (#368). A rule used to point at a single container told apart by a
+    #: `cost`/`price` word; the two are separate entities now, so the pointer
+    #: is two pointers and `SITS_IN_AT_MOST_ONE_BOOK_CHECK` is what stops a
+    #: rule being reachable from both halves. `Rate.book` reads whichever is
+    #: set, for the many callers that want the container and not its kind.
+    #:
+    #: ⚠ **`PROTECT` ON BOTH, AND IT IS WHY WITHDRAWING A BOOK CAN BE
+    #: REFUSED.** A book holding rules cannot be deleted out from under them —
+    #: which is what makes `pricing_book.withdrawn` an act with a meaning
+    #: rather than a silent cascade over a tenant's price history.
+    pricing_book = models.ForeignKey("pricing.PricingBook",
+                                     on_delete=models.PROTECT,
+                                     related_name="rates", null=True, blank=True)
+    cost_book = models.ForeignKey("pricing.CostBook", on_delete=models.PROTECT,
                                   related_name="rates", null=True, blank=True)
     book_version_from = models.PositiveIntegerField(default=1)
     book_version_to = models.PositiveIntegerField(null=True, blank=True)
@@ -469,11 +506,12 @@ class Rate(BaseModel):
     }
 
     class Meta:
-        # THE TABLE ITS OWN NAME ASKS FOR (#367, #154 §6.2). It sat on
-        # `ubb_rate_card` — the name that belongs to the container beside it —
-        # because the misnamed original took it first, and the inversion is
-        # recorded on `RateCard` below. This is the rate half of it, corrected
-        # by a rename that carries its rows rather than by a rebuild.
+        # THE TABLE ITS OWN NAME ASKS FOR (#367, #154 §6.2). It sat on the
+        # name that belongs to the container beside it, because the misnamed
+        # original took it first; this is the rate half of that inversion,
+        # corrected by a rename that carries its rows rather than by a rebuild.
+        # The container half followed one commit later, and the freed name was
+        # not what it took — a book of prices is a `PricingBook` (#368).
         db_table = "ubb_rate"
         indexes = [
             # THE LOOKUP INDEX, WITHOUT THE KIND WORD (#367). It led on
@@ -487,15 +525,40 @@ class Rate(BaseModel):
                          name="idx_rate_lookup"),
         ]
         constraints = [
+            # ONE ACTIVE RULE PER IDENTITY PER BOOK — NOW TWO CONSTRAINTS,
+            # BECAUSE ONE OVER BOTH COLUMNS WOULD ENFORCE NOTHING (#368).
+            #
+            # ⚠ This is the trap the split walks into and it fails SILENTLY. A
+            # single key naming both book columns would carry a NULL in one of
+            # them on every row, and Postgres treats NULLs in a unique index as
+            # DISTINCT — so no two rows would ever collide and the constraint
+            # would be a no-op wearing the old name. Two partial keys, each
+            # scoped to the half whose column is present, is what keeps the
+            # rule the rule.
             models.UniqueConstraint(
-                fields=["rate_card", "measurement", "currency", "provider",
+                fields=["pricing_book", "measurement", "currency", "provider",
                         "event_type", "task_type", "subtask_type",
                         "grouping_field_1", "grouping_field_2", "grouping_field_3",
                         "grouping_field_4", "grouping_field_5", "grouping_field_6",
                         "grouping_field_7", "grouping_field_8", "grouping_field_9",
                         "grouping_field_10"],
-                condition=models.Q(valid_to__isnull=True),
-                name="uq_rate_active_in_book"),
+                condition=models.Q(valid_to__isnull=True,
+                                   pricing_book__isnull=False),
+                name="uq_rate_active_in_pricing_book"),
+            models.UniqueConstraint(
+                fields=["cost_book", "measurement", "currency", "provider",
+                        "event_type", "task_type", "subtask_type",
+                        "grouping_field_1", "grouping_field_2", "grouping_field_3",
+                        "grouping_field_4", "grouping_field_5", "grouping_field_6",
+                        "grouping_field_7", "grouping_field_8", "grouping_field_9",
+                        "grouping_field_10"],
+                condition=models.Q(valid_to__isnull=True,
+                                   cost_book__isnull=False),
+                name="uq_rate_active_in_cost_book"),
+            models.CheckConstraint(
+                condition=~models.Q(pricing_book__isnull=False,
+                                    cost_book__isnull=False),
+                name=SITS_IN_AT_MOST_ONE_BOOK_CHECK),
             # EXACTLY ONE OF THE TWO SAYS WHICH QUANTITY (#326). A live rate
             # references a declaration and carries no loose name; a rate the
             # conversion could not place carries its name and references
@@ -546,6 +609,24 @@ class Rate(BaseModel):
                     | models.Q(rate_per_unit_micros=0, fixed_micros=0)),
                 name=NEVER_COMPOSES_CHECK),
         ]
+
+    @property
+    def book(self):
+        """THE CONTAINER THIS RULE IS IN, WHICHEVER KIND IT IS (#368).
+
+        Most readers of a rule's container want the container — its version,
+        its key, whose rules it holds — and not which of the two tables it
+        came from. This answers that question once, so a caller that genuinely
+        needs the kind reads the column it means and everyone else does not
+        have to write the disjunction out.
+
+        ⚠ **IT IS NOT A DISCRIMINATOR COMING BACK.** The word that used to sit
+        on this table decided things: resolution read it, two routes wrote it,
+        and it could disagree with the book it was copied from. This derives
+        from the columns and can disagree with nothing — and it answers `None`
+        for a rule in no book, which is a state this table has always had.
+        """
+        return self.pricing_book or self.cost_book
 
     @property
     def measurement_key(self):
@@ -621,25 +702,125 @@ class Rate(BaseModel):
         return (units * self.rate_per_unit_micros + self.unit_quantity // 2) // self.unit_quantity + self.fixed_micros
 
 
-class RateCard(BaseModel):
-    """Container grouping many Rates, versioned and assigned as a unit.
+class CostBook(BaseModel):
+    """WHAT A SUPPLIER CHARGES UBB'S TENANT, PINNED TO THAT SUPPLIER AND TO
+    THE CURRENCY THEY BILL IN (#368, spec §1).
 
-    ⚠ **THE INVERSION IS HALF CORRECTED, AND THIS IS THE HALF STILL OWING
-    (#367).** The wart this docstring used to record was mutual: the model
-    named for a single line sat on the table named for the container, and this
-    model was pushed onto `ubb_rate_card_container` to make room for it. The
-    rate has moved to `ubb_rate`, so the borrowed name is no longer taken —
-    what is left is this table's own suffix, and it stays until ticket 21,
-    which does not merely rename it: the container becomes a Pricing Book and a
-    cost book, two separately shaped entities, and the name it takes then is
-    the Pricing Book's rather than the one it lent out. Renaming it here and
-    again there would be two renames of one table to reach one name.
+    **A SEPARATELY SHAPED ENTITY FROM THE PRICING BOOK BELOW, AND THE SHAPES
+    ARE THE WHOLE POINT.** One table used to serve as both, told apart by a
+    `cost`/`price` word — so a book of supplier costs and a book of customer
+    prices had, by construction, the same columns and the same rules, and the
+    model could not say that they are different things. They are: a cost is
+    OBSERVED, in whatever currency the supplier bills, from whichever supplier
+    was used. A price is DECIDED, by the tenant, and does not move because the
+    tenant switched supplier (#148 §5.4).
 
-    The Python names have always been correct: RateCard = the sheet, Rate = a
-    line.
+    So this book carries a provider and a currency and the Pricing Book
+    carries neither. That is not a tidier spelling of one column — it is two
+    entities whose columns disagree, which is the thing a discriminator can
+    never express.
+
+    **THE CURRENCY IS DECLARED, NOT STAMPED, AND THE DATABASE HOLDS IT.**
+    `ck_cost_book_names_its_currency` refuses the empty string: a cost book
+    that does not say which currency its supplier bills in prices nothing it
+    can be trusted about. This is why the container's line leaves the unowned
+    currency-column list rather than following the rename — see
+    `usage/tests/test_posting_rename.py`.
+
+    ⚠ **THE PROVIDER IS REQUIRED TO BE STATED AND `""` IS A STATED VALUE.**
+    The empty provider is the tenant's provider-agnostic cost book — a real
+    selection tier that `PricingService._selected_cost_books` reads alongside
+    the provider's own — so a `CHECK` refusing it would delete a feature under
+    cover of a rename. What is enforced at the database is the currency; what
+    is enforced by the SHAPE is that this book has a provider column at all
+    and the Pricing Book has none. Both halves are asserted, separately and by
+    name, in `test_a_book_of_costs_and_a_book_of_prices_are_two_shapes.py`.
     """
+    #: WHICH COLUMN POINTS AT A BOOK OF THIS KIND, said by the kind itself
+    #: (#368). `Rate` and `PricingBookPublish` each carry one reference per
+    #: kind of book, so every reader that has a book and wants its rules —
+    #: `book_service`, the routes, the resolver — asks the book which column
+    #: is its own rather than testing what type it is. A dispatch written once,
+    #: where the answer lives, instead of an `isinstance` at each call site.
+    REFERENCE_COLUMN = "cost_book"
+
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
-                               related_name="rate_card_containers")
+                               related_name="cost_books")
+    #: WHICH SUPPLIER'S PRICES THIS BOOK HOLDS. `""` is the provider-agnostic
+    #: bucket, which is a declared choice rather than an absence — see the
+    #: class docstring.
+    provider_key = models.CharField(max_length=100, blank=True, default="")
+    #: WHICH CURRENCY THAT SUPPLIER BILLS IN. No default, and the check below
+    #: refuses the empty string: this is a declaration, not a copy of the
+    #: tenant's own frozen choice.
+    currency = models.CharField(max_length=3)
+    key = models.SlugField(max_length=64)
+    name = models.CharField(max_length=255, blank=True, default="")
+    version = models.PositiveIntegerField(default=1)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "ubb_cost_book"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "key"], name="uq_cost_book_tenant_key"),
+            models.UniqueConstraint(
+                fields=["tenant", "provider_key", "currency"],
+                condition=models.Q(is_default=True),
+                name="uq_cost_book_one_default_per_provider"),
+            models.CheckConstraint(
+                condition=~models.Q(currency=""),
+                name=NAMES_ITS_CURRENCY_CHECK),
+        ]
+
+    @property
+    def rule_currency(self):
+        """The currency a rule written into this book is denominated in.
+
+        The book's own declared currency, because that is what the supplier
+        bills in. `PricingBook.rule_currency` answers the same question from a
+        different place, and asking the BOOK rather than reading a column off
+        it is what lets one publish path serve both kinds (#368).
+        """
+        return self.currency
+
+    def __str__(self):
+        return f"CostBook({self.key} v{self.version})"
+
+
+class PricingBook(BaseModel):
+    """WHAT THE TENANT CHARGES THEIR OWN CUSTOMERS, PINNED TO NEITHER A
+    SUPPLIER NOR A CURRENCY (#368, spec §1).
+
+    The container the whole pricing surface is built around, on the table its
+    own name asks for. It reached this name by two corrections, one ticket
+    apart: #367 moved the misnamed rate off `ubb_rate_card`, and this commit
+    took the freed name past it — the book is a Pricing Book, so the table it
+    sits on is `ubb_pricing_book` rather than the borrowed spelling with a
+    suffix bolted on to make room.
+
+    ⚠ **IT CARRIES NO PROVIDER AND NO CURRENCY, AND THE TWO ABSENCES ARE
+    DIFFERENT STATEMENTS.**
+
+    * **No provider**, because a tenant's price for a unit of work does not
+      change because they switched supplier (#148 §5.4). The provider-agnostic
+      default that used to be a selection tier on this side is not a tier any
+      more; it is what every Pricing Book is.
+    * **No currency**, because a tenant has exactly one (CUR-1: per-tenant
+      single currency, no FX) and a column repeating it here was a copy of a
+      choice made elsewhere — which is precisely what the unowned
+      currency-column list records as a debt. The copy is deleted rather than
+      constrained, so the debt is paid rather than moved.
+
+    The Python names have always been correct: a book is a sheet, a Rate is a
+    line on one.
+    """
+    #: The twin of `CostBook.REFERENCE_COLUMN`; see it for why this is an
+    #: attribute rather than a type test at each call site.
+    REFERENCE_COLUMN = "pricing_book"
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="pricing_books")
     # WHOSE OWN PRICING RULES THIS BOOK HOLDS, OR NOBODY'S (#361, #147 §4.1).
     #
     # A book carrying a customer is that customer's OVERRIDE book: every rule
@@ -667,10 +848,10 @@ class RateCard(BaseModel):
     #
     # **NULLABLE BECAUSE MOST BOOKS ARE NOBODY'S**, and the null is not a
     # second meaning: it says this book is not an override book. One override
-    # book per customer per currency is the constraint below.
+    # book per customer is the constraint below.
     #
     # `SET_NULL` RATHER THAN `CASCADE`, AND THE REASON IS A REFUSAL FURTHER
-    # DOWN THE CHAIN. `Rate.rate_card` is `PROTECT`, so cascading a customer's
+    # DOWN THE CHAIN. `Rate.pricing_book` is `PROTECT`, so cascading a customer's
     # deletion into their book would make the database refuse to delete a
     # customer who was ever given a negotiated price — and refuse it from a
     # record nobody deleting a customer asked about, which is how a tenant wipe
@@ -686,82 +867,78 @@ class RateCard(BaseModel):
     # receipt, which holds VALUES: withdrawing an override cannot move a number
     # a customer was already charged.
     #
-    # ⚠ NOTHING AT THE DATABASE SAYS AN OVERRIDE BOOK IS A PRICE BOOK, AND THAT
-    # IS DELIBERATE. A cost book has no customer — a supplier's price does not
-    # change because of who UBB's tenant sells to — but the column that
-    # separates the two is retired and leaves with #366, so a `CHECK` naming it
-    # would be a constraint written to be dropped. The one route that writes
-    # this column creates the book itself and creates a price book, which is
-    # where the property is held and where its test points.
+    # ⚠ AN OVERRIDE BOOK IS A PRICING BOOK BY CONSTRUCTION NOW, AND THE
+    # `CHECK` THAT USED TO BE OWED IS DISCHARGED BY THE SPLIT RATHER THAN
+    # WRITTEN (#368). The comment this replaces said a constraint naming the
+    # kind word would be "written to be dropped", and pointed at the route
+    # instead. The kind word is gone: a cost book is a different table with no
+    # customer column on it, so there is nowhere for a supplier's prices to
+    # acquire a customer. That is the strongest form of the property and it
+    # cost nothing to state — which is what splitting the entity buys.
     customer = models.ForeignKey("customers.Customer", on_delete=models.SET_NULL,
                                  related_name="pricing_override_books",
                                  null=True, blank=True)
-    card_type = models.CharField(max_length=10, choices=CARD_TYPE_CHOICES, db_index=True)
-    # provider_key pins the book to one provider so the per-provider default
-    # invariant is DB-enforceable ("" is the no-provider bucket).
-    provider_key = models.CharField(max_length=100, blank=True, default="")
-    currency = models.CharField(max_length=3, default="usd")
     key = models.SlugField(max_length=64)
     name = models.CharField(max_length=255, blank=True, default="")
     version = models.PositiveIntegerField(default=1)
     is_default = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "ubb_rate_card_container"
+        db_table = "ubb_pricing_book"
         constraints = [
             models.UniqueConstraint(
-                fields=["tenant", "card_type", "key"], name="uq_ratecard_tenant_key"),
+                fields=["tenant", "key"], name="uq_pricing_book_tenant_key"),
+            # ONE DEFAULT PRICING BOOK PER TENANT, AND THE KEY LOST TWO
+            # COLUMNS RATHER THAN GAINING A MEANING (#368). It used to be
+            # (tenant, kind, provider, currency): the kind is a different table
+            # now, the provider is not a thing a price depends on, and the
+            # currency is the tenant's. What is left is the sentence the
+            # constraint was always trying to say — a tenant has one default
+            # book of prices.
             models.UniqueConstraint(
-                fields=["tenant", "card_type", "provider_key", "currency"],
+                fields=["tenant"],
                 condition=models.Q(is_default=True),
-                name="uq_ratecard_one_default_per_provider"),
-            # ONE OVERRIDE BOOK PER CUSTOMER PER CURRENCY (#361). A customer
-            # with two would have two answers at one rung and nothing deciding
-            # between them, which is the second independent ranking layer
-            # specificity-before-source exists to dissolve (#147 §5.2). The
-            # currency is in the key because a book is priced in one, exactly
-            # as the assignment record beside it already scopes its own.
+                name="uq_pricing_book_one_default"),
+            # ONE OVERRIDE BOOK PER CUSTOMER (#361). A customer with two would
+            # have two answers at one rung and nothing deciding between them,
+            # which is the second independent ranking layer
+            # specificity-before-source exists to dissolve (#147 §5.2).
             #
             # ⚠ IT NAMES THE CUSTOMER AND NOT THE TENANT, and that is not an
             # omission: a customer belongs to exactly one tenant, so a pair
             # naming both would be a wider key that admits nothing more.
             #
-            # ⚠ AND EXACTLY ONE CURRENCY IS REACHABLE TODAY, WHICH IS CUR-1
-            # RATHER THAN ANYTHING HERE. A book lives in the tenant's own
-            # currency and the route that creates one refuses any other
-            # (`_resolve_card_currency`: per-tenant single currency, no FX), so
-            # the per-currency half of this key admits one row per customer in
-            # practice. It is keyed that way anyway because a book IS priced in
-            # one currency — the same shape the assignment record beside it
-            # already has — and a key that had to be widened later is a key
-            # that has to be rebuilt later.
+            # ⚠ THE CURRENCY LEFT THIS KEY WITH THE COLUMN (#368) AND THE KEY
+            # ADMITS EXACTLY WHAT IT ADMITTED BEFORE. #361 keyed it per
+            # currency while noting that "exactly one currency is reachable
+            # today, which is CUR-1 rather than anything here" — a tenant has
+            # one currency, so (customer, currency) and (customer) allowed the
+            # same one row. The narrower key is what survives, because a
+            # Pricing Book is no longer priced in a currency of its own.
             models.UniqueConstraint(
-                fields=["customer", "currency"],
+                fields=["customer"],
                 condition=models.Q(customer__isnull=False),
                 name="uq_pricing_book_one_override_per_customer"),
         ]
 
+    @property
+    def rule_currency(self):
+        """The currency a rule written into this book is denominated in.
+
+        The TENANT'S, because a Pricing Book has no currency of its own: a
+        tenant has exactly one (CUR-1, per-tenant single currency, no FX), so a
+        column here repeated a choice made elsewhere -- which is what the
+        unowned currency-column list records as a debt, and why this commit
+        deletes the column rather than constraining it.
+
+        It costs a tenant read on the publish path, which is configuration
+        rather than the recording hot path, and it buys the one thing a copy
+        could never give: this answer cannot disagree with the tenant.
+        """
+        return self.tenant.default_currency or "usd"
+
     def __str__(self):
-        return f"RateCard({self.key} v{self.version})"
-
-
-class RateCardAssignment(BaseModel):
-    """A customer's assigned PRICE book (one per customer per currency)."""
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
-                               related_name="rate_card_assignments")
-    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
-                                 related_name="rate_card_assignments")
-    rate_card = models.ForeignKey(RateCard, on_delete=models.CASCADE,
-                                  related_name="assignments")
-    currency = models.CharField(max_length=3, default="usd")
-
-    class Meta:
-        db_table = "ubb_rate_card_assignment"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tenant", "customer", "currency"],
-                name="uq_assignment_customer_currency"),
-        ]
+        return f"PricingBook({self.key} v{self.version})"
 
 
 #: THE THREE THINGS A TENANT CAN DO TO A BOOK, AND THERE IS NO FOURTH (#358).
@@ -775,9 +952,10 @@ class RateCardAssignment(BaseModel):
 #: of one request body on one route, they are never stored on a column a reader
 #: interprets, and they never cross the wire in a response. ADR-0006 governs the
 #: NAMES the domain publishes; a request enumerating its own three verbs is the
-#: same undeclared set `card_type` and the arithmetic shape are refused against
-#: at their own routes today, and giving it a concept would advertise a set that
-#: has no meaning outside this one body.
+#: same undeclared set the arithmetic shape is refused against at its own route
+#: today, and giving it a concept would advertise a set that has no meaning
+#: outside this one body. (The kind word that used to be the other example is
+#: gone: it is two tables now, so there is no set left to refuse against.)
 CHANGE_ADD = "add"
 CHANGE_REPRICE = "reprice"
 CHANGE_RETIRE = "retire"
@@ -849,13 +1027,25 @@ class PricingBookPublish(BaseModel):
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="pricing_book_publishes")
-    #: The book this changes. `CASCADE` rather than `PROTECT` on purpose: a
-    #: publish record explains a book, so it has no meaning once the book is
-    #: gone, and a `PROTECT` here would make deleting a book fail on the records
-    #: describing it — including under the sandbox reset, where a refusal from a
-    #: record nobody asked about is how a tenant wipe stops half way.
-    book = models.ForeignKey("pricing.RateCard", on_delete=models.CASCADE,
-                             related_name="publishes")
+    #: The book this changes — one of two columns, at most one set, the same
+    #: shape `Rate` takes for the same reason (#368). A change to a book of
+    #: supplier costs and a change to a book of customer prices are ONE act
+    #: with one record; what the split changed is the entity a book is, not
+    #: what publishing one means. Duplicating this record per kind would put
+    #: the discriminator back as a table name.
+    #:
+    #: `CASCADE` rather than `PROTECT` on both, on purpose: a publish record
+    #: explains a book, so it has no meaning once the book is gone, and a
+    #: `PROTECT` here would make deleting a book fail on the records describing
+    #: it — including under the sandbox reset, where a refusal from a record
+    #: nobody asked about is how a tenant wipe stops half way.
+    pricing_book = models.ForeignKey("pricing.PricingBook",
+                                     on_delete=models.CASCADE,
+                                     related_name="publishes",
+                                     null=True, blank=True)
+    cost_book = models.ForeignKey("pricing.CostBook", on_delete=models.CASCADE,
+                                  related_name="publishes",
+                                  null=True, blank=True)
     declaration_status = models.CharField(
         max_length=32, default=DECLARATION_STATUS_DRAFT, db_index=True)
     #: WHEN THE CHANGE TAKES EFFECT — the one value both boundaries are written
@@ -913,7 +1103,8 @@ class PricingBookPublish(BaseModel):
         "created_at": RECORD_RULE,
         "updated_at": RECORD_RULE,
         "tenant": RECORD_RULE,
-        "book": RECORD_RULE,
+        "pricing_book": RECORD_RULE,
+        "cost_book": RECORD_RULE,
         "declaration_status": RESOLVE_ONCE,
         "effective_at": RECORD_RULE,
         "changes": RECORD_RULE,
@@ -928,10 +1119,16 @@ class PricingBookPublish(BaseModel):
     class Meta:
         db_table = "ubb_pricing_book_publish"
         indexes = [
-            models.Index(fields=["book", "declaration_status"],
+            models.Index(fields=["pricing_book", "declaration_status"],
                          name="idx_book_publish_pending"),
+            models.Index(fields=["cost_book", "declaration_status"],
+                         name="idx_cost_book_publish_pending"),
         ]
         constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(pricing_book__isnull=False,
+                                    cost_book__isnull=False),
+                name=PUBLISH_CHANGES_AT_MOST_ONE_BOOK_CHECK),
             # The closed set at the database, which is where a value set
             # belongs (ADR-0002: an invariant no business situation can make
             # false). `choices=` is a form-layer courtesy and a `clean()` is a
@@ -944,6 +1141,21 @@ class PricingBookPublish(BaseModel):
 
     def __str__(self):
         return f"PricingBookPublish({self.declaration_status} @ {self.effective_at})"
+
+    @property
+    def book(self):
+        """The book this publish changes, whichever kind it is (#368).
+
+        `Rate.book`'s twin, for the same readers and with the same caveat: it
+        derives from the two columns and so can disagree with nothing. Every
+        publish has one — the routes will not create a record without a book —
+        so unlike a rule's, this never answers `None` in practice.
+        """
+        return self.pricing_book or self.cost_book
+
+    @property
+    def book_id(self):
+        return self.pricing_book_id or self.cost_book_id
 
     @property
     def is_published(self):

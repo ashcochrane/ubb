@@ -3,8 +3,10 @@ from datetime import date, datetime
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.db.models import Sum, Count, Q
 from django.db.models.fields.json import KeyTextTransform
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
 
@@ -38,22 +40,21 @@ from api.v1.schemas import (
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     TaskAnalyticsOut,
-    BookIn, BookOut, RateChangeIn, PublishIn, AssignIn,
-    PaginatedBooks, PaginatedRates,
+    PricingBookIn, PricingBookOut, CostBookIn, CostBookOut,
+    PaginatedPricingBooks, PaginatedCostBooks, PaginatedRates,
     BookPublishIn, BookPublishOut, PaginatedBookPublishes,
     CustomerOverrideIn, InheritedRuleOut, inherited_rule_out,
     ResolutionRunIn, ResolutionRunOut, resolution_run_out,
     PaginatedUnresolvedQueue, ProjectedAdjustmentOut, WaivedLossOut,
     UndeclaredGroupingField,
     book_change_body, book_change_diff_out, book_publish_out,
-    book_out, rate_out, usage_event_out,
+    pricing_book_out, cost_book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
     TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE,
-    PricingBookPublish, Rate, RateCard, RateCardAssignment,
-    CARD_TYPE_CHOICES,
+    CostBook, PricingBook, PricingBookPublish, Rate,
 )
 from api.v1.pagination import page
 from apps.platform.customers.models import Customer
@@ -1060,107 +1061,223 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
 _billing_check = ProductAccess("billing")
 
 
-def _refuse_an_immediate_change_to_an_override(book):
-    """The one surviving immediate route does not reach a customer's own book.
+def _gate_a_pricing_book(request):
+    """Reading or changing what a tenant CHARGES is a billing surface.
 
-    An override is created, changed and retired through a PUBLISH — the same
-    draft, the same diff, the same forward-dating, the same
-    reversal-by-further-publish — and this is what makes that true of the whole
-    surface rather than only of the two routes that declare one (#361).
-
-    ⚠ **IT GUARDED THREE ROUTES AND NOW GUARDS ONE, WHICH IS PROGRESS RATHER
-    THAN EROSION (#367).** A book used to have three immediate mutation
-    surfaces beside the publish record — adding a rule, repricing a set of
-    them, retiring one — every one of which took a bare book id and was
-    filtered by the tenant alone, so a negotiated deal could be written,
-    repriced and retired with no record of who decided it or when it took
-    effect. Adding and retiring are gone: both are declared changes on a
-    publish now, and there is no unversioned immediate act left. What survives
-    is the atomic reprice, which DOES version the book but still takes effect
-    the instant it is called, so a customer's own book must stay out of its
-    reach for the reason above — an override is the record of a contract.
-
-    The last one leaves with the rest of this slice's vocabulary (#369) and
-    this refusal leaves with it.
+    ⚠ The gate this replaces took the kind word as an argument and branched on
+    it, which is how a cost route came to be gated on billing at least once in
+    this programme (#363). Two named gates cannot make that mistake: a route
+    calls the one for the entity it serves, and there is no value to get wrong.
     """
-    if book.customer_id is not None:
-        raise Problem(
-            "validation_error",
-            "this book holds one customer's own pricing rules, which are "
-            "changed by a publish and never written directly. Declare an "
-            "override at POST /pricing/customers/{customer_id}/overrides, "
-            "withdraw one at DELETE "
-            "/pricing/customers/{customer_id}/overrides/{override_id}, and "
-            "reprice one through the book's own publish")
-
-
-def _gate_card_type(request, card_type):
     _product_check(request)
-    if card_type == "price":
-        _billing_check(request)
+    _billing_check(request)
 
 
-def _resolve_card_currency(tenant, raw_currency):
-    """CUR-1 rate-card currency pin: cards live in the tenant's currency.
+def _gate_a_cost_book(request):
+    """Recording what a SUPPLIER charges is metering, not billing.
+
+    A metering-only tenant tracks its supplier costs and has no customer
+    prices at all, so nothing here may ask for the billing product.
+    """
+    _product_check(request)
+
+
+def _gate_the_books_product(request, book):
+    """The product gate for an act performed on a book already looked up.
+
+    Which product a book belongs to is a property of the ENTITY — a Pricing
+    Book is billing, a cost book is metering — so the two named gates above are
+    reached through the book rather than through a value read off it. The
+    routes that know which kind they serve call those directly; the four that
+    act on either kind come here.
+    """
+    if isinstance(book, PricingBook):
+        _gate_a_pricing_book(request)
+    else:
+        _gate_a_cost_book(request)
+
+
+def _book_or_404(request, book_id):
+    """The book with this id, whichever kind it is (#368).
+
+    ⚠ **A LOOKUP, NOT A DISCRIMINATOR.** The two tables hold different
+    entities and this asks each in turn for one id; nothing reads a value off
+    a row to decide what kind of thing it is, which is the difference between
+    this and the column the slice deletes. Ids are UUIDs, so at most one
+    answers.
+
+    It exists because the acts BELOW a book — list its rules, declare a change
+    to it, publish that change, discard it — are genuinely one act each,
+    whichever kind of book they are performed on. Splitting those five
+    operations per kind would have put the kind back into the surface as a
+    path segment, which is the same conflation wearing a different hat, and
+    doubled the operation ids the SDK mints for no difference a caller can
+    act on.
+    """
+    for model in (PricingBook, CostBook):
+        book = model.objects.filter(
+            id=book_id, tenant=request.auth.tenant).first()
+        if book is not None:
+            return book
+    raise Http404("no book with that id")
+
+
+def _resolve_book_currency(tenant, raw_currency):
+    """CUR-1 currency pin: a cost book is declared in the tenant's currency.
 
     Omitted/empty currency defaults to the tenant's default_currency; an
     explicit value must match it case-insensitively. Returns the normalized
     lowercase currency, or raises ValueError (mapped to 422 by callers).
+
+    ⚠ **ONLY THE COST BOOK ASKS THIS NOW.** A Pricing Book has no currency
+    column at all, so there is nothing on it to pin — which is the same fact
+    this function has always enforced, said by the schema instead of by a
+    check.
     """
     tenant_currency = (tenant.default_currency or "usd").lower()
     if not raw_currency:
         return tenant_currency
-    card_currency = str(raw_currency).strip().lower()
-    if card_currency != tenant_currency:
+    book_currency = str(raw_currency).strip().lower()
+    if book_currency != tenant_currency:
         raise ValueError(
-            f"rate-card currency {card_currency!r} does not match tenant "
+            f"cost-book currency {book_currency!r} does not match tenant "
             f"currency {tenant_currency!r} (per-tenant single currency; "
             "multi-currency/FX is not supported)")
-    return card_currency
+    return book_currency
 
 
-@metering_router.get("/pricing/rate-cards", response=PaginatedBooks)
+@metering_router.get("/pricing/pricing-books", response=PaginatedPricingBooks)
 @role_floor(READ)
-def list_books(request, card_type: str = None, cursor: str = None, limit: int = 50):
-    """List the tenant's rate-card BOOKS (containers), newest first. Rates
-    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates."""
-    _product_check(request)
-    qs = RateCard.objects.filter(tenant=request.auth.tenant)
-    if card_type:
-        qs = qs.filter(card_type=card_type)
-    return page(qs, cursor, limit, serialize=book_out)
+def list_pricing_books(request, cursor: str = None, limit: int = 50):
+    """List the tenant's Pricing Books — the catalogues of what this tenant
+    charges — newest first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates."""
+    _gate_a_pricing_book(request)
+    return page(PricingBook.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=pricing_book_out)
 
 
-@metering_router.post("/pricing/rate-cards",
-                      response={200: BookOut, 409: ProblemOut, 422: ProblemOut})
+@metering_router.post("/pricing/pricing-books",
+                      response={200: PricingBookOut, 409: ProblemOut,
+                                422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("rate_card.created")
-def create_book(request, payload: BookIn):
-    """Create a rate-card BOOK. Rates are added under it (so every API-created
-    rate is book-scoped and therefore resolvable). Creates dedupe on natural
-    identity (#78): a duplicate book answers 409."""
-    _gate_card_type(request, payload.card_type)
-    valid_types = {c[0] for c in CARD_TYPE_CHOICES}
-    if payload.card_type not in valid_types:
-        raise Problem("validation_error",
-                      f"card_type must be one of {sorted(valid_types)}")
+@records_audit("pricing_book.declared")
+def declare_pricing_book(request, payload: PricingBookIn):
+    """Declare a Pricing Book: a catalogue of what this tenant charges.
+
+    It arrives EMPTY. UBB ships no catalogue — no starter rules, no default
+    rule set, no seeded markup — so a book prices nothing until rules are
+    published into it and every event falls past it to the markup rung.
+
+    A book names neither a supplier nor a currency; see the request schema for
+    why. Declarations dedupe on natural identity: a second book under the same
+    key, or a second default, answers 409.
+    """
+    _gate_a_pricing_book(request)
     try:
-        currency = _resolve_card_currency(request.auth.tenant, payload.currency)
+        with transaction.atomic():
+            book = PricingBook.objects.create(
+                tenant=request.auth.tenant, key=payload.key,
+                name=payload.name, is_default=payload.is_default)
+            audit_record(
+                action="pricing_book.declared",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book",
+                resource_id=book.id,
+                metadata={
+                    "key": book.key,
+                    "name": book.name,
+                    "is_default": book.is_default,
+                },
+            )
+    except IntegrityError:
+        raise Problem("conflict",
+                      "a Pricing Book with this identity already exists")
+    return 200, pricing_book_out(book)
+
+
+@metering_router.delete("/pricing/pricing-books/{book_id}",
+                        response={200: StatusResponse, 404: ProblemOut,
+                                  409: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("pricing_book.withdrawn")
+def withdraw_pricing_book(request, book_id: UUID):
+    """Withdraw a Pricing Book the tenant no longer prices from.
+
+    **A book holding rules is not withdrawn, it answers 409.** Rules are what
+    a tenant was charged from, and the receipts that explain past charges
+    point at them; taking a book away underneath them would delete the reason
+    a price was what it was. Retire the rules through a publish first, or
+    withdraw a book that never held any.
+
+    A book a Plan prices from answers 409 for the same reason: the plan would
+    be left naming nothing, which is the state its required reference exists
+    to make unreachable.
+    """
+    _gate_a_pricing_book(request)
+    book = get_object_or_404(PricingBook, id=book_id,
+                             tenant=request.auth.tenant)
+    try:
+        with transaction.atomic():
+            book.delete()
+            audit_record(
+                action="pricing_book.withdrawn",
+                tenant_id=request.auth.tenant.id,
+                resource_type="pricing_book",
+                resource_id=book.id,
+                metadata={"key": book.key, "name": book.name},
+            )
+    except ProtectedError:
+        raise Problem(
+            "conflict",
+            "this book still holds rules, or a plan still prices from it. "
+            "Retire its rules through a publish and move any plan onto "
+            "another book first")
+    return 200, {"status": "ok"}
+
+
+@metering_router.get("/pricing/cost-books", response=PaginatedCostBooks)
+@role_floor(READ)
+def list_cost_books(request, cursor: str = None, limit: int = 50):
+    """List the tenant's cost books — what each supplier charges — newest
+    first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates."""
+    _gate_a_cost_book(request)
+    return page(CostBook.objects.filter(tenant=request.auth.tenant),
+                cursor, limit, serialize=cost_book_out)
+
+
+@metering_router.post("/pricing/cost-books",
+                      response={200: CostBookOut, 409: ProblemOut,
+                                422: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("cost_book.declared")
+def declare_cost_book(request, payload: CostBookIn):
+    """Declare a cost book: a record of what one supplier charges this tenant.
+
+    It arrives EMPTY, for the reason a Pricing Book does: UBB ships no
+    catalogue of supplier prices and cannot — they are the supplier's.
+
+    Declarations dedupe on natural identity: a second book under the same key,
+    or a second default for one supplier and currency, answers 409.
+    """
+    _gate_a_cost_book(request)
+    try:
+        currency = _resolve_book_currency(request.auth.tenant, payload.currency)
     except ValueError as e:
         raise Problem("validation_error", str(e))
     try:
         with transaction.atomic():
-            book = RateCard.objects.create(
-                tenant=request.auth.tenant, card_type=payload.card_type,
-                provider_key=payload.provider_key, key=payload.key, name=payload.name,
-                currency=currency, is_default=payload.is_default)
+            book = CostBook.objects.create(
+                tenant=request.auth.tenant, provider_key=payload.provider_key,
+                key=payload.key, name=payload.name, currency=currency,
+                is_default=payload.is_default)
             audit_record(
-                action="rate_card.created",
+                action="cost_book.declared",
                 tenant_id=request.auth.tenant.id,
-                resource_type="rate_card",
+                resource_type="cost_book",
                 resource_id=book.id,
                 metadata={
-                    "card_type": book.card_type,
                     "provider_key": book.provider_key,
                     "key": book.key,
                     "name": book.name,
@@ -1169,68 +1286,73 @@ def create_book(request, payload: BookIn):
                 },
             )
     except IntegrityError:
-        raise Problem("conflict", "a rate-card book with this identity already exists")
-    return 200, book_out(book)
+        raise Problem("conflict",
+                      "a cost book with this identity already exists")
+    return 200, cost_book_out(book)
 
 
-@metering_router.get("/pricing/rate-cards/{book_id}/rates",
+@metering_router.delete("/pricing/cost-books/{book_id}",
+                        response={200: StatusResponse, 404: ProblemOut,
+                                  409: ProblemOut})
+@role_floor(ADMIN)
+@records_audit("cost_book.withdrawn")
+def withdraw_cost_book(request, book_id: UUID):
+    """Withdraw a cost book the tenant no longer records costs from.
+
+    **A book holding rules is not withdrawn, it answers 409**, for the reason
+    `withdraw_pricing_book` gives: the receipts explaining what past work cost
+    point at those rules.
+    """
+    _gate_a_cost_book(request)
+    book = get_object_or_404(CostBook, id=book_id, tenant=request.auth.tenant)
+    try:
+        with transaction.atomic():
+            book.delete()
+            audit_record(
+                action="cost_book.withdrawn",
+                tenant_id=request.auth.tenant.id,
+                resource_type="cost_book",
+                resource_id=book.id,
+                metadata={"key": book.key, "name": book.name,
+                          "provider_key": book.provider_key,
+                          "currency": book.currency},
+            )
+    except ProtectedError:
+        raise Problem(
+            "conflict",
+            "this book still holds rules. Retire them through a publish "
+            "first")
+    return 200, {"status": "ok"}
+
+
+@metering_router.get("/pricing/books/{book_id}/rates",
                      response={200: PaginatedRates, 404: ProblemOut})
 @role_floor(READ)
 def list_book_rates(request, book_id: UUID, include_history: bool = False,
                     as_of: datetime = None, cursor: str = None, limit: int = 50):
-    """List the rates in a book, newest first. Active-only by default;
+    """List the rules in a book, newest first. Active-only by default;
     ``include_history`` returns every version (superseded rows carry a
     ``valid_to``), and ``as_of`` returns the version active at that instant
-    (point-in-time)."""
+    (point-in-time).
+
+    The book may be a Pricing Book or a cost book: listing what is in one is
+    the same act either way."""
     _product_check(request)
-    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    book = _book_or_404(request, book_id)
     # The declaration is joined, not fetched per row: `rate_out` reads the
     # quantity's name off it since #326, and a page of fifty rates would
     # otherwise be fifty-one queries. A deactivated rate references nothing and
     # answers from its own column, which `select_related` handles without a
     # second path — it is a LEFT JOIN, not a filter.
     qs = Rate.objects.filter(
-        tenant=request.auth.tenant, rate_card=book).select_related("measurement")
+        tenant=request.auth.tenant,
+        **{book.REFERENCE_COLUMN: book}).select_related("measurement")
     if as_of is not None:
         qs = qs.filter(valid_from__lte=as_of).filter(
             Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
     return 200, page(qs, cursor, limit, serialize=rate_out)
-
-
-@metering_router.post("/pricing/rate-cards/{book_id}/publish",
-                      response={200: BookOut, 404: ProblemOut, 422: ProblemOut})
-@role_floor(ADMIN)
-@records_audit("rate_card.published")
-def publish_book(request, book_id: UUID, payload: PublishIn):
-    """Atomically reprice a set of the book's rates: each change supersedes the
-    matching active rate (same lineage, valid_to stamped) and opens a new
-    version; the book version bumps once. All-or-nothing."""
-    from apps.metering.pricing.services.book_service import BookService
-
-    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
-    _gate_card_type(request, book.card_type)
-    _refuse_an_immediate_change_to_an_override(book)
-    try:
-        # The body's own keys, handed over untranslated (#366). They ARE the
-        # column names now, which is what deleting the join dictionary bought:
-        # a reprice body and `Rate.SELECTORS` speak one vocabulary, so nothing
-        # between them can rename a slot into the wrong one.
-        BookService.publish(book, [c.dict(exclude_none=True)
-                                   for c in payload.changes])
-    except ValueError as e:
-        raise Problem("validation_error", str(e))
-    book.refresh_from_db()
-    audit_record(
-        action="rate_card.published",
-        tenant_id=request.auth.tenant.id,
-        resource_type="rate_card",
-        resource_id=book.id,
-        metadata={"version": book.version,
-                  "change_count": len(payload.changes)},
-    )
-    return 200, book_out(book)
 
 
 # --- Every change to a Pricing Book is a publish, and a draft is not one ------
@@ -1243,18 +1365,30 @@ def publish_book(request, book_id: UUID, payload: PublishIn):
 # not about collapsing governance — and `record()` refuses an unregistered name,
 # which is why the registry and these routes are one commit.
 #
-# ⚠ THE IMMEDIATE ROUTES ABOVE SURVIVE THIS COMMIT and still write rules with no
-# publish record behind them. `POST .../rates`, `DELETE .../rates/{rate_id}` and
-# `POST .../publish` are deleted by a later ticket together with the THREE
-# retired action names they write, so that nothing here decrements a count. (The
-# ticket names two of the three: the pair belonging to the add-rule and
-# retire-rule routes. The publish route's own name is retired with them.) Until
-# then a book has two ways to change and only one of them leaves a record.
+# ⚠ AND THERE IS NOTHING LEFT BESIDE THEM (#368). `POST .../rates` and
+# `DELETE .../rates/{rate_id}` went with #367; the atomic reprice that stood
+# here — a route that DID version the book but took effect the instant it was
+# called, with no diff a tenant could read first and no way to date the change
+# forward — goes with this commit, together with the third and last of the
+# retired action names. **A book has exactly one way to change now, and it
+# leaves a record.** That is what makes forward-dating, the readable diff and
+# reversal-by-further-publish properties of the BOOK rather than of one of its
+# two mutation paths.
 
 
 def _book_publish_or_404(request, book_id, publish_id):
+    """The draft on THIS book, whichever kind of book it is (#368).
+
+    The book is resolved first and then names its own column. Filtering on a
+    single `book_id` stopped being possible when the container split, and it
+    would have been wrong even if it had survived: a publish id alone does not
+    say which catalogue it belongs to, and a lookup that ignored the book would
+    let a draft be published through another book's path.
+    """
+    book = _book_or_404(request, book_id)
     return get_object_or_404(PricingBookPublish, id=publish_id,
-                             book_id=book_id, tenant=request.auth.tenant)
+                             tenant=request.auth.tenant,
+                             **{book.REFERENCE_COLUMN: book})
 
 
 def _publish_response(request, record):
@@ -1301,7 +1435,7 @@ def _publish_response(request, record):
         record, diff=[book_change_diff_out(row, keys) for row in rows])
 
 
-@metering_router.post("/pricing/rate-cards/{book_id}/publishes",
+@metering_router.post("/pricing/books/{book_id}/publishes",
                       response={200: BookPublishOut, 404: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
@@ -1359,8 +1493,8 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
     if payload.effective_at is not None:
         validate_scheduled_instant(payload.effective_at, timezone.now())
 
-    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
-    _gate_card_type(request, book.card_type)
+    book = _book_or_404(request, book_id)
+    _gate_the_books_product(request, book)
     slots = slot_map(request.auth.tenant.id)
     try:
         changes = [book_change_body(change.dict(), slots)
@@ -1389,7 +1523,7 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
     return 200, _publish_response(request, record)
 
 
-@metering_router.get("/pricing/rate-cards/{book_id}/publishes",
+@metering_router.get("/pricing/books/{book_id}/publishes",
                      response={200: PaginatedBookPublishes, 404: ProblemOut})
 @role_floor(READ)
 def list_book_publishes(request, book_id: UUID, cursor: str = None,
@@ -1403,15 +1537,16 @@ def list_book_publishes(request, book_id: UUID, cursor: str = None,
     diff computation per row for a record whose diff is null anyway.
     """
     _product_check(request)
-    book = get_object_or_404(RateCard, id=book_id, tenant=request.auth.tenant)
+    book = _book_or_404(request, book_id)
     pending = PricingBookPublish.objects.filter(
-        tenant=request.auth.tenant, book=book,
-        declaration_status=DECLARATION_STATUS_DRAFT)
+        tenant=request.auth.tenant,
+        declaration_status=DECLARATION_STATUS_DRAFT,
+        **{book.REFERENCE_COLUMN: book})
     return 200, page(pending, cursor, limit,
                      serialize=lambda record: _publish_response(request, record))
 
 
-@metering_router.get("/pricing/rate-cards/{book_id}/publishes/{publish_id}",
+@metering_router.get("/pricing/books/{book_id}/publishes/{publish_id}",
                      response={200: BookPublishOut, 404: ProblemOut})
 @role_floor(READ)
 def get_book_publish(request, book_id: UUID, publish_id: UUID):
@@ -1422,7 +1557,7 @@ def get_book_publish(request, book_id: UUID, publish_id: UUID):
 
 
 @metering_router.post(
-    "/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish",
+    "/pricing/books/{book_id}/publishes/{publish_id}/publish",
     response={200: BookPublishOut, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("pricing_book_publish.published")
@@ -1441,7 +1576,7 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
     from apps.metering.pricing.services.book_service import BookService
 
     record = _book_publish_or_404(request, book_id, publish_id)
-    _gate_card_type(request, record.book.card_type)
+    _gate_the_books_product(request, record.book)
     try:
         with transaction.atomic():
             BookService.publish_declared(record, actor=get_current_actor())
@@ -1461,7 +1596,7 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
 
 
 @metering_router.delete(
-    "/pricing/rate-cards/{book_id}/publishes/{publish_id}",
+    "/pricing/books/{book_id}/publishes/{publish_id}",
     response={200: StatusResponse, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("pricing_book_publish.discarded")
@@ -1476,7 +1611,7 @@ def discard_book_publish(request, book_id: UUID, publish_id: UUID):
     from apps.metering.pricing.services.book_service import BookService
 
     record = _book_publish_or_404(request, book_id, publish_id)
-    _gate_card_type(request, record.book.card_type)
+    _gate_the_books_product(request, record.book)
     try:
         with transaction.atomic():
             record_id = record.id
@@ -1528,7 +1663,7 @@ def declare_customer_override(request, customer_id: UUID,
 
     **This writes no rule.** It declares a draft on the customer's own book,
     exactly as a change to any other book is declared, and publishing it
-    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    through `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`
     is what puts the deal in force. The response carries that book's id and the
     diff.
 
@@ -1548,7 +1683,7 @@ def declare_customer_override(request, customer_id: UUID,
 
     from apps.metering.pricing.services.book_service import BookService
 
-    _gate_card_type(request, "price")
+    _gate_a_pricing_book(request)
     customer = get_object_or_404(Customer, id=customer_id,
                                  tenant=request.auth.tenant)
     slots = slot_map(request.auth.tenant.id)
@@ -1605,11 +1740,11 @@ def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
 
     from apps.metering.pricing.services.book_service import BookService
 
-    _gate_card_type(request, "price")
+    _gate_a_pricing_book(request)
     override = get_object_or_404(
-        Rate.objects.select_related("rate_card", "measurement"),
+        Rate.objects.select_related("pricing_book", "measurement"),
         id=override_id, tenant=request.auth.tenant,
-        rate_card__customer_id=customer_id)
+        pricing_book__customer_id=customer_id)
     # The change is built from the rule's OWN columns rather than from a body,
     # so what is retired is the rule the caller addressed and nothing that
     # merely resembles it. `plan_changes` identifies a rule by the quantity it
@@ -1619,7 +1754,7 @@ def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
               **{name: getattr(override, name) for name in Rate.SELECTORS}}
     try:
         with transaction.atomic():
-            record = BookService.declare(override.rate_card, [change],
+            record = BookService.declare(override.pricing_book, [change],
                                          effective_at=effective_at)
             audit_record(
                 action="customer_pricing_override.withdrawn",
@@ -1627,7 +1762,7 @@ def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
                 resource_type="pricing_book_publish",
                 resource_id=record.id,
                 metadata={"customer_id": str(customer_id),
-                          "book_id": str(override.rate_card_id),
+                          "book_id": str(override.pricing_book_id),
                           "override_id": str(override.id),
                           "measurement_key": override.measurement_key,
                           "effective_at": record.effective_at.isoformat()},
@@ -1696,32 +1831,6 @@ def get_inherited_rule(request, customer_id: UUID, measurement_key: str,
         {} if rule is None else {name: getattr(rule, name)
                                  for name in Rate.SELECTORS},
         keys_by_slot(request.auth.tenant.id))
-
-
-@metering_router.post("/pricing/customers/{customer_id}/rate-card", response={200: dict, 404: ProblemOut})
-@role_floor(ADMIN)
-@records_audit("rate_card.assigned")
-def assign_book(request, customer_id: UUID, payload: AssignIn):
-    """Assign a PRICE book to a customer (one per customer per currency).
-    Resolution consults the assigned book before the per-provider default."""
-    _billing_check(request)
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    book = get_object_or_404(RateCard, id=payload.rate_card_id,
-                             tenant=request.auth.tenant, card_type="price")
-    with transaction.atomic():
-        RateCardAssignment.objects.update_or_create(
-            tenant=request.auth.tenant, customer=customer, currency=book.currency,
-            defaults={"rate_card": book})
-        audit_record(
-            action="rate_card.assigned",
-            tenant_id=request.auth.tenant.id,
-            resource_type="rate_card",
-            resource_id=book.id,
-            metadata={"customer_id": str(customer.id),
-                      "rate_card_id": str(book.id),
-                      "currency": book.currency},
-        )
-    return 200, {"assigned": str(book.id)}
 
 
 @metering_router.post("/pricing/resolution-runs",
@@ -2042,7 +2151,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     """Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    markup.set and the book acts do, so it takes the write-default Admin floor
+    rather
     than a Write carve-out."""
     _product_check(request)
     from apps.platform.grouping_fields.queries import slot_map

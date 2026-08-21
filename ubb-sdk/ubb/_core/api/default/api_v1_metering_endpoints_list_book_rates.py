@@ -58,7 +58,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/pricing/rate-cards/{book_id}/rates".format(book_id=quote(str(book_id), safe=""),),
+        "url": "/api/v1/metering/pricing/books/{book_id}/rates".format(book_id=quote(str(book_id), safe=""),),
         "params": params,
     }
 
@@ -109,10 +109,13 @@ def sync_detailed(
 ) -> Response[PaginatedRates | ProblemOut]:
     """ List Book Rates
 
-     List the rates in a book, newest first. Active-only by default;
+     List the rules in a book, newest first. Active-only by default;
     ``include_history`` returns every version (superseded rows carry a
     ``valid_to``), and ``as_of`` returns the version active at that instant
     (point-in-time).
+
+    The book may be a Pricing Book or a cost book: listing what is in one is
+    the same act either way.
 
     Args:
         book_id (UUID):
@@ -157,10 +160,13 @@ def sync(
 ) -> PaginatedRates | ProblemOut | None:
     """ List Book Rates
 
-     List the rates in a book, newest first. Active-only by default;
+     List the rules in a book, newest first. Active-only by default;
     ``include_history`` returns every version (superseded rows carry a
     ``valid_to``), and ``as_of`` returns the version active at that instant
     (point-in-time).
+
+    The book may be a Pricing Book or a cost book: listing what is in one is
+    the same act either way.
 
     Args:
         book_id (UUID):
@@ -200,10 +206,13 @@ async def asyncio_detailed(
 ) -> Response[PaginatedRates | ProblemOut]:
     """ List Book Rates
 
-     List the rates in a book, newest first. Active-only by default;
+     List the rules in a book, newest first. Active-only by default;
     ``include_history`` returns every version (superseded rows carry a
     ``valid_to``), and ``as_of`` returns the version active at that instant
     (point-in-time).
+
+    The book may be a Pricing Book or a cost book: listing what is in one is
+    the same act either way.
 
     Args:
         book_id (UUID):
@@ -248,10 +257,13 @@ async def asyncio(
 ) -> PaginatedRates | ProblemOut | None:
     """ List Book Rates
 
-     List the rates in a book, newest first. Active-only by default;
+     List the rules in a book, newest first. Active-only by default;
     ``include_history`` returns every version (superseded rows carry a
     ``valid_to``), and ``as_of`` returns the version active at that instant
     (point-in-time).
+
+    The book may be a Pricing Book or a cost book: listing what is in one is
+    the same act either way.
 
     Args:
         book_id (UUID):

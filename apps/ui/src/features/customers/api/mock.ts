@@ -22,7 +22,6 @@ import {
   MOCK_MARGIN_ROWS,
   MOCK_MARKUPS,
   MOCK_PAST_LIMIT_REPORTS,
-  MOCK_PRICE_BOOKS,
   MOCK_REVENUE_MODES,
   MOCK_REVENUE_PROFILES,
   MOCK_SUB_INVOICES,
@@ -34,9 +33,7 @@ import {
   type MockCustomer,
 } from "./mock-data";
 import type {
-  AssignRateCardResult,
   BalanceResponse,
-  BookOut,
   BudgetConfigIn,
   BudgetConfigOut,
   BudgetStatusOut,
@@ -746,22 +743,6 @@ export async function deleteCustomerMarkup(customerId: string): Promise<StatusRe
   return { status: had ? "deleted" : "no_override" };
 }
 
-export async function listPriceBooks(): Promise<CursorPage<BookOut>> {
-  await mockDelay();
-  return page(MOCK_PRICE_BOOKS);
-}
-
-export async function assignRateCard(
-  customerId: string,
-  rateCardId: string,
-): Promise<AssignRateCardResult> {
-  await mockDelay();
-  requireCustomer(customerId);
-  if (!MOCK_PRICE_BOOKS.some((book) => book.id === rateCardId)) {
-    throw notFound("Unknown price book.");
-  }
-  return { assigned: rateCardId };
-}
 
 // ---------------------------------------------------------------------------
 // Subscriptions

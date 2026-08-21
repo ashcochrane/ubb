@@ -24,6 +24,8 @@ from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._core.models.pricing_book_out import PricingBookOut
+from ubb._core.models.cost_book_out import CostBookOut
 
 
 def _serialize_recorded_at(value):
@@ -358,17 +360,55 @@ class MeteringClient:
         return RateCard(**{k: v for k, v in row.items()
                            if k in RateCard.__dataclass_fields__})
 
-    def create_rate_card(self, *, card_type, measurement_key, provider="", event_type="",
-                         dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
-                         unit_quantity=1_000_000, fixed_micros=0, currency="usd",
-                         product_id="", customer_id=None):
-        body = {"card_type": card_type, "measurement_key": measurement_key, "provider": provider,
-                "event_type": event_type, "dimensions": dimensions or {}, "pricing_model": pricing_model,
-                "rate_per_unit_micros": rate_per_unit_micros, "unit_quantity": unit_quantity,
-                "fixed_micros": fixed_micros, "currency": currency,
-                "product_id": product_id, "customer_id": customer_id}
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_CREATE_BOOK, json=body)
-        return self._rate_card(r.json())
+    def declare_pricing_book(self, *, key, name="", is_default=False):
+        """Declare a Pricing Book: a catalogue of what this tenant charges.
+
+        It names neither a supplier nor a currency — a tenant's price for a
+        unit of work does not change because they switched supplier, and a
+        tenant has exactly one currency. A rule that should price one
+        supplier's work differently pins `provider` as a selector.
+
+        The book arrives EMPTY: UBB ships no catalogue, so it prices nothing
+        until rules are published into it.
+        """
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_DECLARE_PRICING_BOOK,
+                          json={"key": key, "name": name,
+                                "is_default": is_default})
+        return from_wire(PricingBookOut, r.json())
+
+    def withdraw_pricing_book(self, book_id):
+        """Withdraw a Pricing Book the tenant no longer prices from.
+
+        A book still holding rules answers 409: those rules are what customers
+        were charged from, and the receipts explaining past charges point at
+        them. Retire them through a publish first.
+        """
+        r = self._request(
+            *ops.API_V1_METERING_ENDPOINTS_WITHDRAW_PRICING_BOOK(book_id))
+        return r.json()
+
+    def declare_cost_book(self, *, key, provider_key="", name="",
+                          currency=None, is_default=False):
+        """Declare a cost book: what one supplier charges this tenant.
+
+        It names the supplier and the currency that supplier bills in.
+        `provider_key=""` is a stated value and means the book applies whatever
+        the supplier — the provider-agnostic bucket resolution reads alongside
+        a supplier's own.
+        """
+        body = {"key": key, "provider_key": provider_key, "name": name,
+                "is_default": is_default}
+        if currency is not None:
+            body["currency"] = currency
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_DECLARE_COST_BOOK,
+                          json=body)
+        return from_wire(CostBookOut, r.json())
+
+    def withdraw_cost_book(self, book_id):
+        """Withdraw a cost book, under `withdraw_pricing_book`'s own rule."""
+        r = self._request(
+            *ops.API_V1_METERING_ENDPOINTS_WITHDRAW_COST_BOOK(book_id))
+        return r.json()
 
     def update_rate_card(self, card_id, **fields):
         """Soft-version a rate card via PUT. Only the provided ``fields`` change;
@@ -382,16 +422,28 @@ class MeteringClient:
         r = self._request(*ops.UNPUBLISHED_GET_METERING_PRICING_RATE_CARDS_HISTORY(lineage_id))
         return [self._rate_card(row) for row in r.json()]
 
-    def list_rate_cards(self, card_type=None, include_history=False, as_of=None):
-        params = {}
-        if card_type:
-            params["card_type"] = card_type
-        if include_history:
-            params["include_history"] = include_history
-        if as_of is not None:
-            params["as_of"] = as_of
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_LIST_BOOKS, params=params or None)
-        return [self._rate_card(row) for row in r.json()["data"]]
+    def list_pricing_books(self, cursor=None, limit=None):
+        """The tenant's Pricing Books, newest first.
+
+        ⚠ **TWO METHODS WHERE THERE WAS ONE WITH A KIND ARGUMENT (#368).** A
+        Pricing Book and a cost book are separately shaped entities on separate
+        paths, so the argument that used to select between them has nothing
+        left to select: the two answer different types, and a caller says which
+        it wants by naming a method rather than by passing a word.
+        """
+        params = {k: v for k, v in {"cursor": cursor, "limit": limit}.items()
+                  if v is not None}
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_LIST_PRICING_BOOKS,
+                          params=params or None)
+        return list_from_wire(PricingBookOut, r.json()["data"])
+
+    def list_cost_books(self, cursor=None, limit=None):
+        """The tenant's cost books, newest first."""
+        params = {k: v for k, v in {"cursor": cursor, "limit": limit}.items()
+                  if v is not None}
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_LIST_COST_BOOKS,
+                          params=params or None)
+        return list_from_wire(CostBookOut, r.json()["data"])
 
     def bulk_create_rate_cards(self, cards: list[dict]) -> dict:
         """Atomically create multiple rate cards via POST /api/v1/metering/pricing/rate-cards/batch.

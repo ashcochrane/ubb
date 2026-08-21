@@ -8,44 +8,36 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.api_v1_metering_endpoints_assign_book_response import ApiV1MeteringEndpointsAssignBookResponse
-from ...models.assign_in import AssignIn
 from ...models.problem_out import ProblemOut
+from ...models.status_response import StatusResponse
 from typing import cast
 from uuid import UUID
 
 
 
 def _get_kwargs(
-    customer_id: UUID,
-    *,
-    body: AssignIn,
+    book_id: UUID,
 
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
-
+    
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/metering/pricing/customers/{customer_id}/rate-card".format(customer_id=quote(str(customer_id), safe=""),),
+        "method": "delete",
+        "url": "/api/v1/metering/pricing/cost-books/{book_id}".format(book_id=quote(str(book_id), safe=""),),
     }
 
-    _kwargs["json"] = body.to_dict()
 
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ApiV1MeteringEndpointsAssignBookResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | StatusResponse | None:
     if response.status_code == 200:
-        response_200 = ApiV1MeteringEndpointsAssignBookResponse.from_dict(response.json())
+        response_200 = StatusResponse.from_dict(response.json())
 
 
 
@@ -58,13 +50,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ApiV1MeteringEndpointsAssignBookResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | StatusResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,33 +73,33 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 
 def sync_detailed(
-    customer_id: UUID,
+    book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: AssignIn,
 
-) -> Response[ApiV1MeteringEndpointsAssignBookResponse | ProblemOut]:
-    """ Assign Book
+) -> Response[ProblemOut | StatusResponse]:
+    """ Withdraw Cost Book
 
-     Assign a PRICE book to a customer (one per customer per currency).
-    Resolution consults the assigned book before the per-provider default.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book holding rules is not withdrawn, it answers 409**, for the reason
+    `withdraw_pricing_book` gives: the receipts explaining what past work cost
+    point at those rules.
 
     Args:
-        customer_id (UUID):
-        body (AssignIn):
+        book_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ApiV1MeteringEndpointsAssignBookResponse | ProblemOut]
+        Response[ProblemOut | StatusResponse]
      """
 
 
     kwargs = _get_kwargs(
-        customer_id=customer_id,
-body=body,
+        book_id=book_id,
 
     )
 
@@ -111,65 +110,65 @@ body=body,
     return _build_response(client=client, response=response)
 
 def sync(
-    customer_id: UUID,
+    book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: AssignIn,
 
-) -> ApiV1MeteringEndpointsAssignBookResponse | ProblemOut | None:
-    """ Assign Book
+) -> ProblemOut | StatusResponse | None:
+    """ Withdraw Cost Book
 
-     Assign a PRICE book to a customer (one per customer per currency).
-    Resolution consults the assigned book before the per-provider default.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book holding rules is not withdrawn, it answers 409**, for the reason
+    `withdraw_pricing_book` gives: the receipts explaining what past work cost
+    point at those rules.
 
     Args:
-        customer_id (UUID):
-        body (AssignIn):
+        book_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ApiV1MeteringEndpointsAssignBookResponse | ProblemOut
+        ProblemOut | StatusResponse
      """
 
 
     return sync_detailed(
-        customer_id=customer_id,
+        book_id=book_id,
 client=client,
-body=body,
 
     ).parsed
 
 async def asyncio_detailed(
-    customer_id: UUID,
+    book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: AssignIn,
 
-) -> Response[ApiV1MeteringEndpointsAssignBookResponse | ProblemOut]:
-    """ Assign Book
+) -> Response[ProblemOut | StatusResponse]:
+    """ Withdraw Cost Book
 
-     Assign a PRICE book to a customer (one per customer per currency).
-    Resolution consults the assigned book before the per-provider default.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book holding rules is not withdrawn, it answers 409**, for the reason
+    `withdraw_pricing_book` gives: the receipts explaining what past work cost
+    point at those rules.
 
     Args:
-        customer_id (UUID):
-        body (AssignIn):
+        book_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ApiV1MeteringEndpointsAssignBookResponse | ProblemOut]
+        Response[ProblemOut | StatusResponse]
      """
 
 
     kwargs = _get_kwargs(
-        customer_id=customer_id,
-body=body,
+        book_id=book_id,
 
     )
 
@@ -180,33 +179,33 @@ body=body,
     return _build_response(client=client, response=response)
 
 async def asyncio(
-    customer_id: UUID,
+    book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: AssignIn,
 
-) -> ApiV1MeteringEndpointsAssignBookResponse | ProblemOut | None:
-    """ Assign Book
+) -> ProblemOut | StatusResponse | None:
+    """ Withdraw Cost Book
 
-     Assign a PRICE book to a customer (one per customer per currency).
-    Resolution consults the assigned book before the per-provider default.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book holding rules is not withdrawn, it answers 409**, for the reason
+    `withdraw_pricing_book` gives: the receipts explaining what past work cost
+    point at those rules.
 
     Args:
-        customer_id (UUID):
-        body (AssignIn):
+        book_id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ApiV1MeteringEndpointsAssignBookResponse | ProblemOut
+        ProblemOut | StatusResponse
      """
 
 
     return (await asyncio_detailed(
-        customer_id=customer_id,
+        book_id=book_id,
 client=client,
-body=body,
 
     )).parsed

@@ -88,13 +88,21 @@ SLOT_NAMED = re.compile(r"(dim|grouping_field_)\d+")
 #: The published schemas that name a rule's selector columns — spelled once so
 #: the equality below and the rename check further down cannot drift apart.
 #:
-#: ⚠ **TWO, NOT THREE, SINCE #367.** The immediate add-a-rule body left with its
-#: route: adding a rule is a declared change on a publish now, and that body
-#: names a slot by the tenant's own KEY rather than by the column, so it is not
-#: one of these. What is left is the immediate reprice body and the row a read
-#: answers with — and the set below therefore falls by ten, which is a surface
-#: leaving rather than a slot being lost.
-RATE_SCHEMAS = ("RateChangeIn", "RateOut")
+#: ⚠ **ONE, NOT THREE, SINCE #368.** Both bodies that named a slot by its
+#: COLUMN have left with their routes: the immediate add-a-rule body with #367,
+#: the immediate reprice body with #368. Adding, repricing and retiring a rule
+#: are declared changes on a publish now, and that body names a slot by the
+#: tenant's own declared KEY. What is left here is the row a read answers with.
+#:
+#: ⚠ **RULING 15's GAP STAYS CLOSED, THROUGH THE OTHER VOCABULARY.** The gap
+#: was that a rule pinned on the seventh slot could be written server-side and
+#: repriced by no body in existence. `BookChangeIn.grouping_fields` reaches
+#: every slot a tenant has declared, whichever slot the registry bound it to,
+#: so the rule is reachable — by key rather than by column. The set below falls
+#: by ten because a SURFACE left, not because a slot did, and
+#: `test_a_rate_on_any_slot_can_be_repriced.py` is where that is driven end to
+#: end.
+RATE_SCHEMAS = ("RateOut",)
 
 RATE_SELECTOR_PROPERTIES = frozenset(
     (schema, slot)
@@ -154,9 +162,16 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
 
         ⚠ **AND THEN TWENTY, WHICH IS A SURFACE LEAVING RATHER THAN A SLOT
         (#367).** The immediate add-a-rule body is deleted with its route, so
-        its ten pairs go with it — every slot is still published on both
+        its ten pairs go with it — every slot is still published on the
         surviving schemas, which is what the derivation from `SLOTS` says and
         why the fall cannot hide one.
+
+        ⚠ **AND THEN TEN, THE SAME WAY (#368).** The immediate reprice body
+        went with ITS route, and it was the second of the two schemas that
+        named a slot by its column. What is left is the row a read answers
+        with. A change to a book names a slot by the tenant's own declared KEY,
+        so `BookChangeIn` carries no slot property to count — which is why
+        ruling 15's gap stays closed while this number falls twice.
         """
         self.assertEqual(_slot_named_properties(self.document),
                          set(RATE_SELECTOR_PROPERTIES))
@@ -248,10 +263,10 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
     def test_the_walk_reaches_a_slot_nested_below_the_top_level(self):
         """The vacuity guard, half three — the recursion is load-bearing.
 
-        `PublishIn.changes` carries `RateChangeIn` by reference, but nothing
-        stops a future schema from inlining an object instead, and a slot
-        property inside one would be invisible to a top-level-only walk while
-        the absence above still reported clean.
+        A schema can carry another by reference, and nothing stops a future
+        one from inlining an object instead — a slot property inside one would
+        be invisible to a top-level-only walk while the absence above still
+        reported clean.
         """
         planted = {"components": {"schemas": {"SomeOut": {"properties": {
             "rows": {"items": {"properties": {"dim5": {"type": "string"}}}},

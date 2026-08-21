@@ -43,33 +43,25 @@ version: 1
 entries:
   # --- G9: `db_table == canonical(model_name)` ------------------------------
   #
-  # The `Rate` / `RateCard` inversion — two models, each sitting on the other's
-  # table. #154 §6.2 recorded that it would resolve BY CONSTRUCTION rather than
-  # by a rename: #138 splits the rule entity into supplier cost and pricing
-  # rules, #148 replaces the container with the Pricing Book, and both tables
-  # are rebuilt regardless — so renaming them earlier would be work with no
-  # product (#155 §3.1).
+  # The pricing inversion — two models, each sitting on the other's table.
+  # #154 §6.2 recorded that it would resolve BY CONSTRUCTION rather than by a
+  # rename: #138 splits the rule entity into supplier cost and pricing rules,
+  # #148 replaces the container with the Pricing Book, and both tables are
+  # rebuilt regardless — so renaming them earlier would be work with no product
+  # (#155 §3.1).
   #
-  # ⚠ **HALF OF THAT PREDICTION WAS WRONG, AND #367 IS WHERE IT WAS PAID
-  # INSTEAD.** The rule side resolved BY A RENAME after all: nothing rebuilt
-  # `Rate`, and the kind column it was supposed to be waiting on was DELETED
-  # rather than split, so there was no rebuild left to inherit a correct name
-  # from. A hand-written `AlterModelTable` carried the rows to `ubb_rate` and
-  # the entry went with the debt. What survives is the container's half, and
-  # for that the original reasoning still holds: ticket 21 does not rename it,
-  # it splits it into a Pricing Book and a cost book, and the name it takes
-  # then is the Pricing Book's rather than the one it lent out.
-  - id: g9-rate-card-sits-on-the-container-table
-    gate: G9
-    site: ubb-platform/apps/metering/pricing/models.py::RateCard
-    expected: ubb_rate_card
-    found: ubb_rate_card_container
-    owner_slice: slice_4
-    reason: >-
-      The other half of the inversion: `RateCard` was pushed onto
-      `ubb_rate_card_container` when the misnamed original took its table.
-      Slice 4's Pricing Book replaces it and takes the correct name (#154 §6.2).
-
+  # ⚠ **BOTH HALVES ARE NOW PAID, AND THE PREDICTION WAS RIGHT ABOUT ONE AND
+  # WRONG ABOUT THE OTHER.** The rule side resolved BY A RENAME after all
+  # (#367): nothing rebuilt `Rate`, and the kind column it was supposed to be
+  # waiting on was DELETED rather than split, so there was no rebuild left to
+  # inherit a correct name from — a hand-written `AlterModelTable` carried the
+  # rows to `ubb_rate`. The container side resolved as predicted (#368): it was
+  # not renamed onto the name it had lent out, it SPLIT into a Pricing Book on
+  # `ubb_pricing_book` and a cost book on `ubb_cost_book`, and each took the
+  # name its own entity asks for. Both entries went with their debts, in the
+  # commits that discharged them. **This gate now owes nothing in the pricing
+  # app.**
+  #
   # No domain slice touches `CustomerSubscriptionItem` — #194's slice table
   # never names subscriptions — so nothing earlier than the cutover removes this
   # debt, and recording it against a slice that does not do the work would be
@@ -456,7 +448,7 @@ entries:
     gate: G7
     site: backend::card_type
     expected: pricing_book_name
-    found: 28 files
+    found: 4 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
@@ -603,7 +595,7 @@ entries:
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 16 files
+    found: 3 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -622,34 +614,6 @@ entries:
       wrote a rule directly went with the acts they recorded, taking the
       word out of three more files. The container's column is still the
       pointer every rule carries, so the remainder is ticket 21's.
-
-  - id: g7-backend-rate_card.assigned
-    gate: G7
-    site: backend::rate_card.assigned
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-
-  - id: g7-backend-rate_card.created
-    gate: G7
-    site: backend::rate_card.created
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-
-  - id: g7-backend-rate_card.published
-    gate: G7
-    site: backend::rate_card.published
-    expected: audit_action
-    found: 5 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-      Slice 4's immutable Publish records are what it becomes.
 
   - id: g7-backend-request_id
     gate: G7
@@ -855,7 +819,7 @@ entries:
     gate: G7
     site: console::card_type
     expected: pricing_book_name
-    found: 14 files
+    found: 2 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
@@ -988,7 +952,7 @@ entries:
     gate: G7
     site: console::rate_card
     expected: pricing_book_name
-    found: 8 files
+    found: 6 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -1007,7 +971,7 @@ entries:
     gate: G7
     site: console::rate_card.published
     expected: audit_action
-    found: 2 files
+    found: 1 files
     owner_slice: slice_4
     reason: >-
       An audit action naming the container the Pricing Book replaces.
@@ -1194,26 +1158,6 @@ entries:
       now pays three living documents instead of four. The word is still
       in the prototype, correctly, and no slice will remove it from there.
 
-  - id: g7-docs-rate_card
-    gate: G7
-    site: docs::rate_card
-    expected: pricing_book_name
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The container entity. #148 §5.4 replaces it with the Pricing Book,
-      and slice 4 is where it stops existing.
-
-  - id: g7-docs-rate_card.published
-    gate: G7
-    site: docs::rate_card.published
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-      Slice 4's immutable Publish records are what it becomes.
-
   - id: g7-docs-request_id
     gate: G7
     site: docs::request_id
@@ -1385,18 +1329,6 @@ entries:
     reason: >-
       The same, for the case where the family's state could not be read.
 
-  - id: g7-openapi-card_type
-    gate: G7
-    site: openapi::card_type
-    expected: pricing_book_name
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The discriminator that carried supplier cost and customer price in
-      one table — the conflation the cost/price split exists to end
-      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
-      sits on.
-
   - id: g7-openapi-concurrency_limit
     gate: G7
     site: openapi::concurrency_limit
@@ -1437,26 +1369,6 @@ entries:
     reason: >-
       What a price receipt is about. Slice 4 introduces Pricing Receipts
       with `receipt_schema_version` and the subject type takes its name.
-
-  - id: g7-openapi-rate_card
-    gate: G7
-    site: openapi::rate_card
-    expected: pricing_book_name
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The container entity. #148 §5.4 replaces it with the Pricing Book,
-      and slice 4 is where it stops existing.
-
-  - id: g7-openapi-rate_card.published
-    gate: G7
-    site: openapi::rate_card.published
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-      Slice 4's immutable Publish records are what it becomes.
 
   - id: g7-openapi-request_id
     gate: G7
@@ -1637,7 +1549,7 @@ entries:
     gate: G7
     site: sdk::card_type
     expected: pricing_book_name
-    found: 9 files
+    found: 3 files
     owner_slice: slice_4
     reason: >-
       The discriminator that carried supplier cost and customer price in
@@ -1724,7 +1636,7 @@ entries:
     gate: G7
     site: sdk::pricing_model
     expected: rate_structure
-    found: 6 files
+    found: 3 files
     owner_slice: slice_4
     reason: >-
       It sat one character from `pricing_mode` and meant something
@@ -1755,26 +1667,6 @@ entries:
       record by its retired column name and started describing what the record
       IS. The word survives in the three generated model modules, which take it
       from the property name — and that is #370's, with the wire key.
-
-  - id: g7-sdk-rate_card
-    gate: G7
-    site: sdk::rate_card
-    expected: pricing_book_name
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The container entity. #148 §5.4 replaces it with the Pricing Book,
-      and slice 4 is where it stops existing.
-
-  - id: g7-sdk-rate_card.published
-    gate: G7
-    site: sdk::rate_card.published
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-      Slice 4's immutable Publish records are what it becomes.
 
   - id: g7-sdk-request_id
     gate: G7
@@ -1953,7 +1845,13 @@ entries:
     # than a pair, because a run has no withdrawal — its write is a one-time
     # completion and the receipt is sealed after it. The numerator is
     # untouched a fifth time.
-    found: 0 of 74 values
+    #
+    # 74 -> 78: #368's four for the two books. The container split into two
+    # separately shaped entities, so declaring one and withdrawing one is a
+    # pair PER RECORD rather than a pair — the rule this registry states,
+    # applied to a split rather than to a new record. The numerator is
+    # untouched a sixth time.
+    found: 0 of 78 values
     owner_slice: slice_8
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -2572,8 +2470,10 @@ entries:
     # the tenant's default markup rung; 68 -> 71 with #358's three for the
     # Pricing Book's publish record; 71 -> 73 with #361's pair for a
     # customer's own pricing rule; 73 -> 74 with #363's single name for
-    # executing a Resolution Run.
-    found: 0 of 74 values
+    # executing a Resolution Run; 74 -> 78 with #368's four for the two books
+    # the container split into — a declare and a withdrawal for each, because
+    # they are two records rather than one.
+    found: 0 of 78 values
     owner_slice: slice_8
     reason: >-
       The contract may not advertise these values while the backend consumer
@@ -2884,18 +2784,6 @@ entries:
       the slice that rebuilds that vocabulary — the same slice the concept's
       own value-list entry names, because a value list and the words for it
       cannot honestly move apart.
-
-  - id: g6-map-card-type-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::cardTypeLabel
-    expected: pricing_book_name
-    owner_slice: slice_4
-    reason: >-
-      `cardTypeLabel` words the cost/price split on a rate card. #138 deletes
-      `card_type` outright and the registry retires the word, so this map is
-      not replaced by a label key at all — it goes when slice 4 replaces
-      `RateCard` with the Pricing Book, alongside the two G9 table entries that
-      name the same models.
 
   - id: g6-map-dimension-label
     gate: G6

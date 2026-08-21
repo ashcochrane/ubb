@@ -7,7 +7,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services import card_cache as card_cache_module
 from apps.metering.pricing.services.card_cache import CardCache
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate_in_default_book
 
 
 def _sel(**kw):
@@ -27,7 +27,7 @@ class TestCardCacheDimensions:
         convention the existing test_card_cache.py uses (lines 52, 62)."""
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", grouping_field_1="eu",
+        cost_rate_in_default_book(t, provider="openai", grouping_field_1="eu",
                              measurement_key="input_tokens", rate_per_unit_micros=1_000,
                              unit_quantity=1_000_000)
         card_cache_module._l1.clear()
@@ -43,16 +43,16 @@ class TestCardCacheDimensions:
         Bounded cardinality (design D4) is what makes the key safe."""
         t, c, now = self._tc()
         sel = _sel(provider="openai", grouping_field_1="eu")
-        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
+        CardCache.resolve_cost(t, sel, "input_tokens", "usd", now)
         with CaptureQueriesContext(connection) as ctx:
-            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
+            CardCache.resolve_cost(t, sel, "input_tokens", "usd", now)
         assert len(ctx) == 0, "second resolve must be served from L1"
 
     def test_different_dimension_values_do_not_collide(self):
         t, c, now = self._tc()
-        hit = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="eu"),
+        hit = CardCache.resolve_cost(t, _sel(provider="openai", grouping_field_1="eu"),
                                 "input_tokens", "usd", now)
-        miss = CardCache.resolve(t, c, "cost", _sel(provider="openai", grouping_field_1="us"),
+        miss = CardCache.resolve_cost(t, _sel(provider="openai", grouping_field_1="us"),
                                  "input_tokens", "usd", now)
         assert hit is not None and miss is None
 
@@ -61,9 +61,9 @@ class TestCardCacheDimensions:
         the bump via begin_request, which is what stales the L1 entry."""
         t, c, now = self._tc()
         sel = _sel(provider="openai", grouping_field_1="eu")
-        CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
+        CardCache.resolve_cost(t, sel, "input_tokens", "usd", now)
         CardCache.invalidate(t.id)
         CardCache.begin_request(t.id)
         with CaptureQueriesContext(connection) as ctx:
-            CardCache.resolve(t, c, "cost", sel, "input_tokens", "usd", now)
+            CardCache.resolve_cost(t, sel, "input_tokens", "usd", now)
         assert len(ctx) > 0, "a version bump must force a re-resolve"

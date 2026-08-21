@@ -6,7 +6,7 @@ from core.vocabulary import (
 
 
 @pytest.mark.django_db
-class TestRateCard:
+class TestRate:
     def test_selectors_and_per_unit_compute(self):
         from apps.metering.pricing.models import Rate
         t = Tenant.objects.create(name="T")
@@ -30,30 +30,30 @@ class TestRateCard:
         assert c.compute(5) == 2_000_000
 
     def test_one_active_rate_per_book_slice(self):
-        # Uniqueness is now book-scoped (rate_card is part of the constraint's
+        # Uniqueness is now book-scoped (the book pointer is part of the constraint's
         # key, not tenant/customer): two active rates for the same
         # (provider, event_type, measurement_key, dimensions_hash, currency) in
         # the SAME book still collide.
         from django.db.utils import IntegrityError
-        from apps.metering.pricing.models import Rate, RateCard
+        from apps.metering.pricing.models import CostBook, Rate
         t = Tenant.objects.create(name="T")
-        book = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="default")
+        book = CostBook.objects.create(tenant=t, currency="usd", key="default")
         Rate.objects.create(tenant=t, provider="openai",
-                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book)
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), cost_book=book)
         with pytest.raises(IntegrityError):
             Rate.objects.create(tenant=t, provider="openai",
-                                    event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book)
+                                    event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), cost_book=book)
 
     def test_same_metric_slice_in_different_books_does_not_conflict(self):
         # The entire point of book-scoped uniqueness: the SAME quantity may have
         # an active rate in two different books at once (e.g. an enterprise
         # book shadowing the tenant default for the same quantity).
-        from apps.metering.pricing.models import Rate, RateCard
+        from apps.metering.pricing.models import CostBook, Rate
         t = Tenant.objects.create(name="T")
-        book_a = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="a")
-        book_b = RateCard.objects.create(tenant=t, card_type="cost", currency="usd", key="b")
+        book_a = CostBook.objects.create(tenant=t, currency="usd", key="a")
+        book_b = CostBook.objects.create(tenant=t, currency="usd", key="b")
         Rate.objects.create(tenant=t, provider="openai",
-                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book_a)
-        # No IntegrityError: different rate_card, so the constraint doesn't fire.
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), cost_book=book_a)
+        # No IntegrityError: a different book, so the constraint doesn't fire.
         Rate.objects.create(tenant=t, provider="openai",
-                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), rate_card=book_b)
+                                event_type="chat", measurement=declares_a_quantity(t, "input_tokens"), cost_book=book_b)

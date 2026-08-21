@@ -960,7 +960,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         )
 
 
-class RateCardValidationTest(TestCase):
+class BookValidationTest(TestCase):
     """Book-centric surface: a BOOK create validates its kind; opening a rule
     validates the arithmetic shape; a publish soft-versions history."""
 
@@ -980,8 +980,8 @@ class RateCardValidationTest(TestCase):
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _cost_book(self):
-        r = self._post("/api/v1/metering/pricing/rate-cards",
-                       {"card_type": "cost", "key": "openai", "provider_key": "openai"})
+        r = self._post("/api/v1/metering/pricing/cost-books",
+                       {"key": "openai", "provider_key": "openai"})
         assert r.status_code == 200, r.content
         return r.json()["id"]
 
@@ -992,16 +992,38 @@ class RateCardValidationTest(TestCase):
         `opened_rule_ids` off it rather than an echo of its own request.
         """
         declared = self._post(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/publishes",
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
             {"changes": [{"kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
-        return self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}"
+        return self._post(f"/api/v1/metering/pricing/books/{book_id}"
                           f"/publishes/{declared.json()['id']}/publish", {})
 
-    def test_create_book_rejects_invalid_card_type(self):
-        resp = self._post("/api/v1/metering/pricing/rate-cards",
-                          {"card_type": "costs", "key": "x"})
+    def _reprice_rule(self, book_id, **change):
+        """A reprice, declared and published — the one act a book has (#368).
+
+        The immediate reprice route this replaces took effect the instant it
+        was called, with no diff a tenant could read first; it is deleted with
+        the last of the retired audit action names it wrote.
+        """
+        declared = self._post(
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
+            {"changes": [{"kind": "reprice", **change}]})
+        if declared.status_code != 200:
+            return declared
+        return self._post(f"/api/v1/metering/pricing/books/{book_id}"
+                          f"/publishes/{declared.json()['id']}/publish", {})
+
+    def test_declaring_a_cost_book_rejects_a_body_with_no_key(self):
+        """⚠ THIS WAS `test_create_book_rejects_invalid_card_type` (#368).
+
+        There is no kind word to get wrong: a cost book and a Pricing Book are
+        declared at different paths against different bodies, so the whole
+        class of mistake that case guarded stopped existing. What is left to
+        refuse on this body is a book that names itself nothing.
+        """
+        resp = self._post("/api/v1/metering/pricing/cost-books",
+                          {"provider_key": "openai"})
         assert resp.status_code == 422
 
     def test_opening_a_rule_rejects_an_unratified_arithmetic_shape(self):
@@ -1035,15 +1057,18 @@ class RateCardValidationTest(TestCase):
         from apps.metering.pricing.models import Rate
         (rid,) = r1.json()["opened_rule_ids"]
         lineage = Rate.objects.get(id=rid).lineage_id
-        # reprice the rule via publish -> new version supersedes the old
-        pub = self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}/publish",
-            {"changes": [{"measurement_key": "tokens", "rate_per_unit_micros": 9}]})
+        # Reprice the rule -> a new version supersedes the old.
+        pub = self._reprice_rule(book_id, measurement_key="tokens",
+                                 rate_per_unit_micros=9)
         assert pub.status_code == 200, pub.content
-        # Three, not two: opening the rule was itself a publish (#367).
-        assert pub.json()["version"] == 3
+        # Three, not two: opening the rule was itself a publish (#367). The
+        # version is the BOOK's, and the act answers with the PUBLISH record
+        # since #368, so it is read where it lives.
+        from apps.metering.pricing.models import CostBook
+        assert CostBook.objects.get(id=book_id).version == 3
         # history: both versions, newest first
         h = self.client.get(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/rates?include_history=true",
+            f"/api/v1/metering/pricing/books/{book_id}/rates?include_history=true",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()["data"]
         assert len(h) == 2
         assert h[0]["rate_per_unit_micros"] == 9 and h[1]["rate_per_unit_micros"] == 2
@@ -1054,7 +1079,7 @@ class RateCardValidationTest(TestCase):
         assert h[1]["valid_to"] is not None and h[0]["valid_to"] is None
 
 
-class RateCardBatchCreateTest(TestCase):
+class ManyRulesInOneBookTest(TestCase):
     """Opening several rules in one book (the batch endpoint is gone)."""
 
     def setUp(self):
@@ -1071,8 +1096,8 @@ class RateCardBatchCreateTest(TestCase):
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _cost_book(self):
-        r = self._post("/api/v1/metering/pricing/rate-cards",
-                       {"card_type": "cost", "key": "openai", "provider_key": "openai"})
+        r = self._post("/api/v1/metering/pricing/cost-books",
+                       {"key": "openai", "provider_key": "openai"})
         assert r.status_code == 200, r.content
         return r.json()["id"]
 
@@ -1083,11 +1108,11 @@ class RateCardBatchCreateTest(TestCase):
         `opened_rule_ids` off it rather than an echo of its own request.
         """
         declared = self._post(
-            f"/api/v1/metering/pricing/rate-cards/{book_id}/publishes",
+            f"/api/v1/metering/pricing/books/{book_id}/publishes",
             {"changes": [{"kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
-        return self._post(f"/api/v1/metering/pricing/rate-cards/{book_id}"
+        return self._post(f"/api/v1/metering/pricing/books/{book_id}"
                           f"/publishes/{declared.json()['id']}/publish", {})
 
     def test_many_rules_can_be_opened_in_one_book(self):
@@ -1099,7 +1124,8 @@ class RateCardBatchCreateTest(TestCase):
         r2 = self._open_rule(book_id, measurement_key="images",
                              rate_structure="fixed_component", fixed_micros=500)
         assert r1.status_code == 200 and r2.status_code == 200
-        assert Rate.objects.filter(tenant=self.tenant, rate_card_id=book_id).count() == 2
+        assert Rate.objects.filter(tenant=self.tenant,
+                           cost_book_id=book_id).count() == 2
 
     def test_an_invalid_rule_creates_nothing(self):
         from apps.metering.pricing.models import Rate

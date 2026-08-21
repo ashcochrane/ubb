@@ -28,7 +28,7 @@ export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
 export type RevenueAnalytics = BillingSchemas["RevenueAnalyticsResponse"];
 export type ApiKeyList = TenantSchemas["ApiKeyListResponse"];
-export type RateCardBookList = MeteringSchemas["PaginatedBooks"];
+export type PricingBookList = MeteringSchemas["PaginatedPricingBooks"];
 
 /** The four breakdown dimensions the overview picker offers. */
 export const BREAKDOWN_DIMENSIONS = [

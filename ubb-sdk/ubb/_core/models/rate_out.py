@@ -25,6 +25,7 @@ T = TypeVar("T", bound="RateOut")
 class RateOut:
     """ 
         Attributes:
+            book_id (None | str):
             currency (str):
             event_type (str):
             fixed_micros (int):
@@ -42,7 +43,6 @@ class RateOut:
             lineage_id (str):
             measurement_key (str):
             provider (str):
-            rate_card_id (str):
             rate_per_unit_micros (int):
             rate_structure (RateOutRateStructure):
             subtask_type (str):
@@ -52,6 +52,7 @@ class RateOut:
             valid_to (None | str | Unset):
      """
 
+    book_id: None | str
     currency: str
     event_type: str
     fixed_micros: int
@@ -69,7 +70,6 @@ class RateOut:
     lineage_id: str
     measurement_key: str
     provider: str
-    rate_card_id: str
     rate_per_unit_micros: int
     rate_structure: RateOutRateStructure
     subtask_type: str
@@ -84,6 +84,9 @@ class RateOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        book_id: None | str
+        book_id = self.book_id
+
         currency = self.currency
 
         event_type = self.event_type
@@ -118,8 +121,6 @@ class RateOut:
 
         provider = self.provider
 
-        rate_card_id = self.rate_card_id
-
         rate_per_unit_micros = self.rate_per_unit_micros
 
         rate_structure = self.rate_structure.value
@@ -142,6 +143,7 @@ class RateOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "book_id": book_id,
             "currency": currency,
             "event_type": event_type,
             "fixed_micros": fixed_micros,
@@ -159,7 +161,6 @@ class RateOut:
             "lineage_id": lineage_id,
             "measurement_key": measurement_key,
             "provider": provider,
-            "rate_card_id": rate_card_id,
             "rate_per_unit_micros": rate_per_unit_micros,
             "rate_structure": rate_structure,
             "subtask_type": subtask_type,
@@ -177,6 +178,14 @@ class RateOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        def _parse_book_id(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        book_id = _parse_book_id(d.pop("book_id"))
+
+
         currency = d.pop("currency")
 
         event_type = d.pop("event_type")
@@ -211,8 +220,6 @@ class RateOut:
 
         provider = d.pop("provider")
 
-        rate_card_id = d.pop("rate_card_id")
-
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
 
         rate_structure = RateOutRateStructure(d.pop("rate_structure"))
@@ -239,6 +246,7 @@ class RateOut:
 
 
         rate_out = cls(
+            book_id=book_id,
             currency=currency,
             event_type=event_type,
             fixed_micros=fixed_micros,
@@ -256,7 +264,6 @@ class RateOut:
             lineage_id=lineage_id,
             measurement_key=measurement_key,
             provider=provider,
-            rate_card_id=rate_card_id,
             rate_per_unit_micros=rate_per_unit_micros,
             rate_structure=rate_structure,
             subtask_type=subtask_type,

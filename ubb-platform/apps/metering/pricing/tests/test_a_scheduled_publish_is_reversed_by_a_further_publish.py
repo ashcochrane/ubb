@@ -271,7 +271,7 @@ class TheHistoryIsCompleteTest(AForwardDatingBookMixin, TestCase):
             self.declare_at(self.boundary, FIRST), actor=self.who_reversed)
 
         history = list(PricingBookPublish.objects.filter(
-            book=self.book).order_by("published_at"))
+            **{self.book.REFERENCE_COLUMN: self.book}).order_by("published_at"))
 
         self.assertEqual(len(history), 2)
         self.assertTrue(all(record.is_published for record in history))
@@ -699,7 +699,7 @@ class ADiscardedDraftStillCostsNothingTest(AForwardDatingBookMixin, TestCase):
 
         self.assertEqual(rules_snapshot(self.book), before)
         self.assertEqual(PricingBookPublish.objects.filter(
-            book=self.book).count(), 0)
+            **{self.book.REFERENCE_COLUMN: self.book}).count(), 0)
 
     def test_declaring_a_draft_writes_no_rule_either(self):
         """Half of the case above is about DECLARING rather than discarding.

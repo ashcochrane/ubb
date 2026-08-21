@@ -240,7 +240,8 @@ class SandboxResetTest(TestCase):
 
         from apps.billing.gating.models import BudgetConfig
         from apps.metering.pricing.models import (
-            PricingBookPublish, Rate, RateCard, TenantDefaultMarkup)
+            CostBook, PricingBook, PricingBookPublish, Rate,
+            TenantDefaultMarkup)
         from core.vocabulary import DECLARATION_STATUS_PUBLISHED
 
         Rate.objects.create(
@@ -265,16 +266,32 @@ class SandboxResetTest(TestCase):
         # outright, so the whole reset failed. The publish record rides on the
         # same fix rather than beside it: it is CASCADEd from the book, so a
         # label of its own would have protected nothing.
-        book = RateCard.objects.create(
-            tenant=tenant, card_type="price", key="sandbox", is_default=True)
+        book = PricingBook.objects.create(
+            tenant=tenant, key="sandbox", is_default=True)
         book.rates.create(
             tenant=tenant,
             measurement=declares_a_quantity(tenant, "book_tokens"),
             rate_per_unit_micros=20)
         PricingBookPublish.objects.create(
-            tenant=tenant, book=book, effective_at=timezone.now(),
+            tenant=tenant, pricing_book=book, effective_at=timezone.now(),
             changes=[], declaration_status=DECLARATION_STATUS_PUBLISHED,
             opened_rule_ids=[], closed_rule_ids=[])
+        # ⚠ AND A COST BOOK WITH A RULE IN IT (#368). The container split into
+        # two separately shaped entities, so there are two labels to leave out
+        # of `CONFIG_MODEL_LABELS` instead of one — and a cost rule holds its
+        # cost book with `PROTECT` exactly as a price rule holds its Pricing
+        # Book, so a set naming only the price half would keep every rule and
+        # wipe half the books they point at, and the database would refuse the
+        # WHOLE reset. Nothing else in this fixture would notice: the
+        # label-resolution check asks whether each label resolves, never
+        # whether the right models are in the set.
+        costs = CostBook.objects.create(
+            tenant=tenant, key="sandbox-costs", provider_key="openai",
+            currency="usd", is_default=True)
+        costs.rates.create(
+            tenant=tenant,
+            measurement=declares_a_quantity(tenant, "supplier_tokens"),
+            rate_per_unit_micros=3)
         # A PLAN AND THE BOOK IT PRICES FROM (#362). Seeded through the same
         # doors the plans route uses, for the reason the book above is seeded
         # at all: a Plan holds its Pricing Book with `PROTECT`, so the reset
@@ -310,7 +327,8 @@ class SandboxResetTest(TestCase):
         from apps.billing.gating.models import BudgetConfig
         from apps.billing.wallets.models import Wallet, WalletTransaction
         from apps.metering.pricing.models import (
-            PricingBookPublish, Rate, RateCard, TenantDefaultMarkup)
+            CostBook, PricingBook, PricingBookPublish, Rate,
+            TenantDefaultMarkup)
         from apps.metering.usage.models import Posting
         from apps.platform.event_types.models import Measurement
 
@@ -332,18 +350,22 @@ class SandboxResetTest(TestCase):
             wallet__customer__tenant=self.sandbox).count(), 0)
         self.assertEqual(Posting.objects.filter(tenant=self.sandbox).count(), 0)
 
-        # Config preserved — both rules, the one with no book and the one in
-        # a book, and the books themselves: the seeded one and the one the
-        # plan prices from (#362).
-        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 2)
-        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 2)
+        # Config preserved — all three rules (the one with no book, the one
+        # in a Pricing Book and the one in a cost book), and the books
+        # themselves: the seeded Pricing Book, the one the plan prices from
+        # (#362), and the cost book (#368).
+        self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 3)
+        self.assertEqual(
+            PricingBook.objects.filter(tenant=self.sandbox).count(), 2)
+        self.assertEqual(
+            CostBook.objects.filter(tenant=self.sandbox).count(), 1)
         # THE PLAN AND ITS BOOK TOGETHER (#362). A kept plan whose book was
         # wiped is not a state this reset may produce — the reference is NOT
         # NULL, so the database refuses it and the whole reset fails — and a
         # plan is what prices every customer created after the reset.
         self.assertEqual(Plan.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertTrue(
-            RateCard.objects.filter(
+            PricingBook.objects.filter(
                 plans__tenant=self.sandbox, plans__key="sandbox-plan").exists())
         # And the record that says who changed that book's prices and when
         # (#358). A reset keeping the rules while wiping the publishes leaves
@@ -353,10 +375,11 @@ class SandboxResetTest(TestCase):
         # And the declarations those rates name, with them. A kept rate pointing
         # at a wiped quantity is not a state this reset may produce (#326) — it
         # is not merely undesirable, it is refused, and the whole reset fails.
-        # Two since #358, one per seeded rule.
+        # Two since #358 and THREE since #368, one per seeded rule — the
+        # third is the cost rule that exercises the cost book's own label.
         self.assertEqual(
             Measurement.objects.filter(
-                event_type__tenant=self.sandbox).count(), 2)
+                event_type__tenant=self.sandbox).count(), 3)
         # And the tenant's declared markup rung (#357). It is configuration in
         # exactly the sense the rate above is — it decides what a customer is
         # charged — and a reset that wiped it would leave the sandbox pricing
@@ -387,7 +410,7 @@ class SandboxResetTest(TestCase):
 
     def test_reset_without_keep_config_wipes_config_too(self):
         from apps.billing.gating.models import BudgetConfig
-        from apps.metering.pricing.models import Rate, RateCard
+        from apps.metering.pricing.models import CostBook, PricingBook, Rate
 
         self._seed_domain_rows(self.sandbox, "sb-")
         self._seed_config_rows(self.sandbox)
@@ -401,13 +424,16 @@ class SandboxResetTest(TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(Rate.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(Plan.objects.filter(tenant=self.sandbox).count(), 0)
-        self.assertEqual(RateCard.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(
+            PricingBook.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(
+            CostBook.objects.filter(tenant=self.sandbox).count(), 0)
         # And the rows the pre-sweep steps deleted are REPORTED as deleted.
         # Both are visited twice — once ahead of the sweep for an ordering
         # reason and once by the sweep, which finds nothing left — so a count
         # that was assigned rather than accumulated would answer 0 for rows it
         # had just removed.
-        self.assertEqual(result["deleted"]["pricing.Rate"], 2)
+        self.assertEqual(result["deleted"]["pricing.Rate"], 3)
         self.assertEqual(result["deleted"]["plans.Plan"], 1)
         self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(

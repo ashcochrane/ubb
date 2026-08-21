@@ -101,7 +101,7 @@ def sync_detailed(
 
     **This writes no rule.** It declares a draft on the customer's own book,
     exactly as a change to any other book is declared, and publishing it
-    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    through `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`
     is what puts the deal in force. The response carries that book's id and the
     diff.
 
@@ -177,7 +177,7 @@ def sync(
 
     **This writes no rule.** It declares a draft on the customer's own book,
     exactly as a change to any other book is declared, and publishing it
-    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    through `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`
     is what puts the deal in force. The response carries that book's id and the
     diff.
 
@@ -248,7 +248,7 @@ async def asyncio_detailed(
 
     **This writes no rule.** It declares a draft on the customer's own book,
     exactly as a change to any other book is declared, and publishing it
-    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    through `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`
     is what puts the deal in force. The response carries that book's id and the
     diff.
 
@@ -324,7 +324,7 @@ async def asyncio(
 
     **This writes no rule.** It declares a draft on the customer's own book,
     exactly as a change to any other book is declared, and publishing it
-    through `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`
+    through `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`
     is what puts the deal in force. The response carries that book's id and the
     diff.
 

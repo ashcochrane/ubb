@@ -2,7 +2,7 @@ import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.services.pricing_service import PricingService
-from apps.metering.pricing.tests._helpers import rate_in_default_book, a_usage_event_subject
+from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate_in_default_book, a_usage_event_subject
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -29,7 +29,7 @@ class TestWildcardResolution:
     def test_wildcard_rate_matches_any_provider(self):
         """The headline fix: one provider-agnostic rate, not one per provider."""
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
+        cost_rate_in_default_book(t, measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
         costing = self._price(t, c, provider="anthropic")
         assert costing.provider_cost_micros == 2_000
@@ -38,28 +38,28 @@ class TestWildcardResolution:
 
     def test_specific_rate_beats_the_wildcard(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
+        cost_rate_in_default_book(t, measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              measurement_key="input_tokens",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="openai")[0] == 9_000
 
     def test_wildcard_still_applies_to_other_providers(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", measurement_key="input_tokens",
+        cost_rate_in_default_book(t, measurement_key="input_tokens",
                              rate_per_unit_micros=2_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              measurement_key="input_tokens",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="anthropic")[0] == 2_000
 
     def test_more_pinned_selectors_wins(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              measurement_key="input_tokens",
                              rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              task_type="year_end_close", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         assert self._price(t, c, provider="openai",
@@ -67,7 +67,7 @@ class TestWildcardResolution:
 
     def test_non_matching_pinned_selector_excludes_the_rate(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              grouping_field_1="eu-west-1", measurement_key="input_tokens",
                              rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         costing = self._price(t, c, provider="openai", grouping_field_1="us-east-1")
@@ -79,7 +79,7 @@ class TestWildcardResolution:
 
     def test_task_type_can_price_a_kind_of_job(self):
         t, c = self._tc()
-        rate_in_default_book(t, card_type="price", task_type="year_end_close",
+        rate_in_default_book(t, task_type="year_end_close",
                              measurement_key="input_tokens",
                              rate_per_unit_micros=7_000, unit_quantity=1_000_000)
         costing = self._price(t, c, task_type="year_end_close")
@@ -99,10 +99,10 @@ class TestWildcardResolution:
         this file exercise "book absent" -> tier 3; this one exercises "book
         present, no matching rate" -> tier 3."""
         t, c = self._tc()
-        rate_in_default_book(t, card_type="cost", provider="openai",
+        cost_rate_in_default_book(t, provider="openai",
                              measurement_key="metric_x",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", measurement_key="metric_y",
+        cost_rate_in_default_book(t, measurement_key="metric_y",
                              rate_per_unit_micros=3_000, unit_quantity=1_000_000)
         base = {"provider": "openai", "event_type": "", "task_type": "",
                 "subtask_type": "", "dim1": "", "dim2": "", "dim3": "",

@@ -54,18 +54,29 @@ AUDIT_ACTIONS = (
     "usage.refunded",
     "grant.created",
     "grant.voided",
-    # pricing / rate cards
+    # THE BOOKS — DECLARING ONE AND WITHDRAWING ONE, PER KIND OF BOOK (#368,
+    # spec §1, §19).
     #
-    # ⚠ **TWO NAMES LEFT THIS BLOCK AND NEITHER WAS RENAMED (#367, spec §19).**
-    # The acts they recorded — a rule was added to a book, a rule was retired
-    # from one — have ceased to exist: both are declared changes on a publish
-    # now, so there is no unversioned immediate act left for either name to
-    # record. **Deleting an action whose act no longer exists is not the rename
-    # ADR-004 §2 governs.** A rename carries an act forward under a new
-    # spelling and breaks a reader watching for the old one; these two have no
-    # successor to carry forward, because nothing replaced them — the publish
-    # record's three names (`pricing_book_publish.*`, further down this tuple)
-    # were already here, recording a different act.
+    # ⚠ **THE LAST THREE NAMES OF THE OLD BLOCK LEFT HERE AND NONE WAS
+    # RENAMED.** #367 took two of the seven; these are the remaining three, and
+    # the acts they recorded have ceased to exist:
+    #
+    #   * *a book was created* — there is no such entity any more. The
+    #     container split into a Pricing Book and a cost book, two separately
+    #     shaped records, and they are DECLARED SEPARATELY below;
+    #   * *a book was assigned to a customer* — the record that assigned one is
+    #     deleted, and a customer reaches a book through their Plan (#362);
+    #   * *a book was published* — the route that wrote it repriced a book
+    #     immediately, with no record a tenant could read first. Every change
+    #     to a book is a publish now, and `pricing_book_publish.published`
+    #     below already records that act on the record that IS published. The
+    #     old name could also mean either half of the discriminated entity,
+    #     which is the second reason it has no successor.
+    #
+    # **Deleting an action whose act no longer exists is not the rename ADR-004
+    # §2 governs.** A rename carries an act forward under a new spelling and
+    # breaks a reader watching for the old one; these three have no successor
+    # to carry forward.
     #
     # **NO PART OF THE ONE-TIME PRE-PRODUCTION AUDIT-REGISTRY RESET IS SPENT ON
     # THEM.** #154 §4.2 defines that exception and #154 §13 / #155 §14 allocate
@@ -76,13 +87,30 @@ AUDIT_ACTIONS = (
     # `record()` refuses an unregistered name, so an action deleted while a
     # route still wrote it would fail loudly — route and registry are forced
     # into one commit and there is no window in which a dead action is written.
-    # That refusal is held for both deleted names, by name, in
-    # `apps/metering/pricing/tests/test_a_rate_sits_on_the_table_named_for_a_rate.py`
-    # — beside the deletion it is about rather than in this app's own tests,
-    # because what it is really asserting is that these two ACTS have ceased.
-    "rate_card.created",
-    "rate_card.assigned",
-    "rate_card.published",
+    # The refusal is held for all three, by name, in
+    # `api/v1/tests/test_the_book_acts_that_ceased.py`.
+    #
+    # ⚠ **FOUR NAMES ARRIVE WHERE THE TICKET SAID TWO, AND THE ARITHMETIC IS
+    # THE REGISTRY'S OWN RULE RATHER THAN A WIDENING.** The rule stated below —
+    # one action per record per kind of act, *"split now, when it is free"* —
+    # is what the ticket cites, and this commit creates TWO records: a Pricing
+    # Book and a cost book have different columns, different products gating
+    # them (a cost book is metering; a Pricing Book is billing) and different
+    # readers. The ticket names two ACTS, declaring and withdrawing, and both
+    # apply to both records. A shared noun would be the first place in this
+    # registry where one action spans two record types, and it would put a
+    # governance reader asking *"when did this tenant withdraw a PRICING
+    # book"* back to reading `resource_type` — which is the thing the rule
+    # below refuses. Splitting later is the rename ADR-004 §2 calls a breaking
+    # change, and it is free exactly now.
+    #
+    # DECLARING AND WITHDRAWING ARE SPLIT for the reason every pair here is:
+    # a correction to a declared book is still a declaration, and a reader
+    # asking when a book stopped existing must not read metadata to find out.
+    "pricing_book.declared",
+    "pricing_book.withdrawn",
+    "cost_book.declared",
+    "cost_book.withdrawn",
     "markup.set",
     "markup.deleted",
     # THE TENANT'S DEFAULT MARKUP RUNG (#357). The last rung of the price

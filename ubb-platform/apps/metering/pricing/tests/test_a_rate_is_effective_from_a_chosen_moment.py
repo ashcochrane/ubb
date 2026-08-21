@@ -59,12 +59,12 @@ from django.test import TestCase
 from django.utils import timezone
 
 import core.transitions
-from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.models import CostBook, Rate
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     a_usage_event_subject, cost_rate_in_default_book, database_rules_guarding,
-    rate_in_default_book, the_rate_table_as_this_migration_saw_it)
+    rate_in_default_book, the_pricing_tables_as_this_migration_saw_them)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -549,7 +549,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         # this suite already makes to the columns and rules that arrived after
         # the migration being replayed. Held only around the two DDL calls: the
         # writes between them go through the live model.
-        with the_rate_table_as_this_migration_saw_it(migration):
+        with the_pricing_tables_as_this_migration_saw_them(migration):
             with connection.schema_editor() as editor:
                 run_python.reverse_code(None, editor)
         # This rule gone, and only this one: the table carries a second trigger
@@ -561,7 +561,7 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         rate.refresh_from_db()
         self.assertEqual(getattr(rate, VALID_FROM), moved)
 
-        with the_rate_table_as_this_migration_saw_it(migration):
+        with the_pricing_tables_as_this_migration_saw_them(migration):
             with connection.schema_editor() as editor:
                 run_python.code(None, editor)
         self.assertIn(TRANSITION_TRIGGER,
@@ -792,13 +792,17 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
         tenant = _tenant()
         customer = _customer(tenant)
         opened = cost_rate_in_default_book(tenant, **self.RATE)
-        # The book is fetched rather than read off the rate: the property that
-        # points at it is a retired word slice 4 owns, and a count recorded
-        # there is a ceiling as much as a floor. This tenant has exactly one.
-        book = RateCard.objects.get(tenant=tenant)
+        # Fetched rather than read off the rule, so this asserts the fixture
+        # put it where a cost rule belongs: this tenant has exactly one cost
+        # book, and it is a different table from the Pricing Book (#368).
+        book = CostBook.objects.get(tenant=tenant)
 
-        BookService.publish(book, [{"measurement_key": "tok",
-                                    "rate_per_unit_micros": 90}])
+        # THE ONE MUTATION SURFACE A BOOK HAS (#368). The atomic reprice this
+        # used to call is deleted with the audit action it wrote, so the
+        # boundary is written by the act that writes every boundary now.
+        BookService.publish_declared(BookService.declare(
+            book, [{"kind": "reprice", "measurement_key": "tok",
+                    "rate_per_unit_micros": 90}]))
 
         opened.refresh_from_db()
         boundary = getattr(opened, VALID_TO)

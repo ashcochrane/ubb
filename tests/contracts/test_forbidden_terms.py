@@ -230,7 +230,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # ratified name, carrying its rows and converting its values.
         # 228 → 229 in #367: the rule moves to the table its own name asks for,
         # and the kind word is deleted from it rather than re-spelled.
-        "historical-migrations": (UNTIL_SLICE_8, 229, 19),
+        # 229 → 230 in #368: the container splits into a Pricing Book and a
+        # cost book. That migration names both retired words and cannot avoid
+        # either — `RemoveField` names the column it deletes and `RenameModel`
+        # names the class it renames.
+        "historical-migrations": (UNTIL_SLICE_8, 230, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

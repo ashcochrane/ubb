@@ -154,13 +154,13 @@ class _ACustomerOnAPlanMixin:
     def the_rule_that_answered(self, as_of=None, **selectors):
         """WHICH rule the ladder chose, off the resolver rather than the
         receipt, because these cases ask about the row."""
-        return PricingService._resolve_card(
-            self.tenant, self.customer, "price", self._selectors(**selectors),
+        return PricingService.resolve_the_price_rule(
+            self.tenant, self.customer, self._selectors(**selectors),
             QUANTITY, "usd", as_of or timezone.now())
 
     def selected_books(self):
-        return PricingService._selected_books(
-            self.tenant, self.customer, "price", PROVIDER, "usd")
+        return PricingService._selected_pricing_books(
+            self.tenant, self.customer)
 
 
 class APlanIsTheWholeRouteToABookTest(_ACustomerOnAPlanMixin, TestCase):
@@ -374,7 +374,7 @@ class AtAGenuineTieThePlansBookWinsTest(_ACustomerOnAPlanMixin, TestCase):
     The plan's book and the tenant's default sit at the SAME source, so
     `ladder_rank` decides nothing between two rules of equal specificity until
     its last key — `valid_from` — and only where that is equal too does the
-    order `_selected_books` returns the books in get to speak. That order is
+    order `_selected_pricing_books` returns the books in get to speak. That is
     narrowest first: the plan's book, then the tenant's answer for everybody.
 
     ⚠ **SO BOTH RULES ARE OPENED AT ONE INSTANT, PASSED AT INSERT.** Two rules

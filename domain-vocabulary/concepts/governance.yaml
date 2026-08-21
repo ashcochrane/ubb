@@ -91,6 +91,32 @@ audit_action:
     - pricing_book_publish.declared
     - pricing_book_publish.published
     - pricing_book_publish.discarded
+    # Declaring a book and withdrawing one, PER KIND OF BOOK (#368). The
+    # container that was one entity told apart by a discriminator is two:
+    # a Pricing Book is a catalogue of what the tenant charges and names
+    # neither a supplier nor a currency, a cost book records what one supplier
+    # charges and names both. They have different columns, different products
+    # gating them and different readers, so they are declared separately — and
+    # under the rule the pairs above follow, declaring and withdrawing are two
+    # acts rather than one with a flag.
+    #
+    # FOUR NAMES FOR TWO RECORDS AND TWO ACTS, which is what "one action per
+    # record per kind of act" means applied to a split. A shared noun would be
+    # the first place in this concept where one action spans two record types,
+    # and it would put a governance reader asking when a tenant withdrew a
+    # PRICING book back to reading `resource_type`.
+    #
+    # ⚠ NOT RENAMES OF `pricing_book.created` / `.assigned` / `.published`
+    # ABOVE, which are the ratified spellings of three acts that CEASE with
+    # the entity rather than carry forward: the container is replaced, the
+    # record that assigned one to a customer is deleted, and what is published
+    # is the publish record beside them. Those three stay declared until the
+    # cutover reconciles this registry with the live set; these four are what
+    # the routes actually write.
+    - pricing_book.declared
+    - pricing_book.withdrawn
+    - cost_book.declared
+    - cost_book.withdrawn
     # A customer's own pricing rule. A tenant honouring a negotiated deal
     # gives one customer a rule that replaces what they inherit — the whole
     # rule, method included — and takes it away again when the deal ends.

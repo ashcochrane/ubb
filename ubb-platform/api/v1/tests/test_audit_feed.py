@@ -108,9 +108,9 @@ class AuditFeedTest(TestCase):
         self.assertTrue(all(r["action"] == "wallet.credited" for r in body["data"]))
 
     def test_resource_filter_answers_who_changed_this(self):
-        record(action="rate_card.published", tenant_id=self.tenant.id,
+        record(action="pricing_book_publish.published", tenant_id=self.tenant.id,
                resource_type="rate_card", resource_id="card-42", metadata={})
-        record(action="rate_card.published", tenant_id=self.tenant.id,
+        record(action="pricing_book_publish.published", tenant_id=self.tenant.id,
                resource_type="rate_card", resource_id="card-99", metadata={})
         body = self._get(
             self.key,

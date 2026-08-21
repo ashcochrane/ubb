@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE,
-    PricingBookPublish, Rate, RateCard)
+    CostBook, PricingBook, PricingBookPublish, Rate)
 from apps.platform.event_types.quantities import declaration_named
 from core.problems import Problem
 from core.vocabulary import (
@@ -28,7 +28,10 @@ _RATE_COPY_FIELDS = (
     # quietly move a rate onto a different declaration between versions.
     "measurement_id", Rate.STRUCTURE_COLUMN, "rate_per_unit_micros",
     "unit_quantity", "fixed_micros", "currency",
-    "lineage_id", "rate_card_id",
+    # BOTH BOOK POINTERS, so a replacement lands in the book its predecessor
+    # was in whichever kind that is (#368). Copying only one would silently
+    # move every cost rule into no book at all on its first reprice.
+    "lineage_id", "pricing_book_id", "cost_book_id",
 )
 
 #: WHAT A RULE CHARGES — the three money columns a change body may state, and
@@ -180,7 +183,8 @@ def _rules_in_force_at(book, instant):
     reads: a rule covers `[valid_from, valid_to)`, so one closing exactly at
     `instant` is already gone and one opening exactly then is already there.
     """
-    return Rate.objects.filter(rate_card=book, valid_from__lte=instant).filter(
+    return Rate.objects.filter(
+        valid_from__lte=instant, **{book.REFERENCE_COLUMN: book}).filter(
         Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
 
 
@@ -280,9 +284,10 @@ def _refuse_an_instant_behind_the_books_own_diary(book, effective_at):
 
 
 #: WHAT IDENTIFIES ONE RULE INSIDE ONE BOOK: the quantity it prices and the
-#: fourteen selectors. `uq_rate_active_in_book` is the same identity plus the
-#: three the book already fixes — the book itself and its currency — so within
-#: one book these two agree with it about which rules may be open at once.
+#: fourteen selectors. The two `uq_rate_active_in_*_book` keys are the same
+#: identity plus the two the book already fixes — the book itself and its
+#: currency — so within one book these agree with them about which rules may be
+#: open at once.
 #:
 #: The two readings below take a stored rule and a change body to the same
 #: value, so "which rule does this change mean" is one comparison rather than a
@@ -334,7 +339,8 @@ def plan_changes(book, changes, effective_at):
     in_force = list(
         _rules_in_force_at(book, effective_at).select_related("measurement"))
     still_open = list(Rate.objects.filter(
-        rate_card=book, valid_to__isnull=True).select_related("measurement"))
+        valid_to__isnull=True,
+        **{book.REFERENCE_COLUMN: book}).select_related("measurement"))
     planned = []
     claimed = set()
 
@@ -409,14 +415,16 @@ def plan_changes(book, changes, effective_at):
                     f"{measurement_key!r} on these selectors that opens after "
                     f"the effective instant. Two open rules for one identity "
                     f"is what `uq_rate_active_in_book` refuses")
-            # A RULE IN A PROVIDER'S DEFAULT BOOK MUST NAME THAT PROVIDER, OR
-            # IT CAN NEVER RESOLVE (#367, carried from the deleted route).
+            # A RULE IN A PROVIDER'S DEFAULT COST BOOK MUST NAME THAT
+            # PROVIDER, OR IT CAN NEVER RESOLVE (#367, carried from the
+            # deleted route).
             #
-            # A default book is selected for one provider's events
-            # (`_default_book` keys on `provider_key`) and a rule pinning a
-            # DIFFERENT provider is then filtered out of every event that book
-            # is ever read for — so it prices nothing, costs nothing and looks
-            # configured, which is the shape this programme exists to delete.
+            # A default cost book is selected for one supplier's events
+            # (`_default_cost_book` keys on `provider_key`) and a rule pinning
+            # a DIFFERENT provider is then filtered out of every event that
+            # book is ever read for — so it prices nothing, costs nothing and
+            # looks configured, which is the shape this programme exists to
+            # delete.
             #
             # ⚠ **THIS REFUSAL LIVED ON THE IMMEDIATE ADD-A-RULE ROUTE AND
             # WOULD HAVE LEFT WITH IT.** Deleting the route without moving the
@@ -424,7 +432,15 @@ def plan_changes(book, changes, effective_at):
             # commit whose subject is somewhere else. It is stated for `add`
             # only because a provider is a MATCH key: a reprice cannot move
             # one, so the rule it addresses already satisfies this.
-            if book.is_default and selectors["provider"] != book.provider_key:
+            #
+            # ⚠ **AND IT NARROWED TO COST BOOKS WITH THE SPLIT (#368), WHICH
+            # IS THE GUARD SURVIVING RATHER THAN SHRINKING.** A Pricing Book
+            # has no provider at all now, so there is no book-level provider a
+            # price rule could contradict — the condition this refuses is
+            # unstatable on that half rather than unchecked. Every book that
+            # still HAS the column is still held.
+            if (isinstance(book, CostBook) and book.is_default
+                    and selectors["provider"] != book.provider_key):
                 raise ValueError(
                     f"change {position}: rule provider "
                     f"{selectors['provider']!r} must match the default book's "
@@ -513,14 +529,15 @@ class BookService:
         helpers may not import `api.*` to reach the route's version. One
         function, two callers, and the fixture exercises what a tenant reaches.
 
-        It is a PRICE book by construction, which is where "an override book is
-        a price book" is held: a supplier's cost does not change because of who
-        the tenant sells to, and the column that says so leaves with #366, so a
-        constraint naming it would be written to be dropped.
+        It is a Pricing Book because that is the only kind of book with a
+        customer column on it (#368) — a supplier's cost does not change
+        because of who the tenant sells to, and there is now no table on which
+        that sentence could be false. The comment this replaces had to point at
+        a route to hold the property, because the column that separated the two
+        kinds was still one table's.
         """
-        book, _ = RateCard.objects.get_or_create(
-            tenant=tenant, customer=customer, card_type="price",
-            currency=tenant.default_currency or "usd",
+        book, _ = PricingBook.objects.get_or_create(
+            tenant=tenant, customer=customer,
             defaults={"key": f"customer-override-{customer.id}"[:64],
                       "name": f"Overrides for {customer.external_id}"[:255]})
         return book
@@ -562,134 +579,31 @@ class BookService:
         plan, at the selected-book source, with nothing saying so. The tenant's
         provider default is the milder version of the same mistake: a plan
         would silently be unable to price differently from the catalogue.
-        Because uniqueness is `(tenant, card_type, key)` and these two columns
-        are NOT in it, a book of either kind holding this key is not found and
-        not created either — the database refuses it, and the route turns that
-        into a conflict naming the book.
+        Because uniqueness is `(tenant, key)` and these two columns are NOT
+        in it, a Pricing Book holding this key is not found and not created
+        either — the database refuses it, and the route turns that into a
+        conflict naming the book.
 
-        It is a PRICE book by construction, for the reason the override book
-        above is one: a supplier's cost does not change because of who the
-        tenant sells to.
+        ⚠ **AND THE KEY IT COLLIDES ON GOT NARROWER (#368).** It used to
+        include the kind word, so a plan's book and a cost book could share a
+        key; a Pricing Book's key is unique per tenant now, and a plan named
+        for a key a cost book already holds is no longer a collision at all —
+        they are different tables.
         """
-        book, _ = RateCard.objects.get_or_create(
-            tenant=tenant, card_type="price", key=plan_key,
-            customer=None, is_default=False,
-            defaults={"name": (plan_name or plan_key)[:255],
-                      "currency": tenant.default_currency or "usd"})
+        book, _ = PricingBook.objects.get_or_create(
+            tenant=tenant, key=plan_key, customer=None, is_default=False,
+            defaults={"name": (plan_name or plan_key)[:255]})
         return book
-
-    @staticmethod
-    def publish(book, changes, as_of=None):
-        """Atomically reprice a set of the book's rates. Each change must match
-        exactly one ACTIVE rate in the book by (measurement_key, plus the
-        fourteen selector columns — provider, event_type, task_type,
-        subtask_type and the ten slots). Only six of the slots can be pinned
-        through the published reprice body — no slice-2 ticket widens it — so a
-        change body leaves the other four at "", and a rate pinned on one of
-        them is not repriceable through this route.
-
-        ⚠ THAT GAP IS CLOSED ON THE ACT THAT REPLACES THIS ONE, AND STILL OPEN
-        HERE (#358). A publish record's change body names its grouping fields by
-        the tenant's own declared KEY rather than by six physical slot
-        spellings, so the registry resolves whichever slot the tenant bound it
-        to and all ten are reachable. This method keeps the gap because its own
-        body is the one being retired, not converted.
-        Supersedes it (valid_to=T, book_version_to=old
-        version) and inserts a new active rate (same lineage_id, valid_from=T,
-        book_version_from=new version). Bumps book.version once. All-or-nothing.
-
-        ONE CLOCK CLOSES THE BOUNDARY AND OPENS IT, AND THAT FIXED A LIVE BUG
-        (#325). Until the effective moment became suppliable, the replacement
-        opened at the instant of INSERT — `T + ε`, strictly after the moment the
-        outgoing rate closed at. Resolution asks for `valid_from <= as_of` and
-        `valid_to > as_of`, so no rate at all covered `[T, T + ε)`: an event
-        landing in that window matched nothing and fell through to markup
-        pricing, which returns a plausible number and raises nothing.
-        Microseconds wide, real and invisible. Both rows now take the same `T`,
-        which with a half-open range is exactly no gap and exactly no overlap.
-        `NoInstantFallsBetweenTwoVersionsTest` holds it.
-
-        A FUTURE `as_of` IS NOW HONOURED DOWNSTREAM, AND THIS METHOD
-        INVALIDATES NOTHING (#356). The two defects the pricing-versions
-        decision (§8.3) assigned to the work that introduces forward-dating are
-        both paid: `CardCache.resolve` takes the instant as a parameter instead
-        of reading a clock, and its key carries that instant — so a cached
-        resolution answers for the moment it was computed for and for no other.
-        A publish therefore has nothing to invalidate. Entries for instants
-        before the new boundary stay correct forever, and entries for instants
-        after it were never created; the alternative, invalidating *at* the
-        boundary, is the scheduled job forward-dated publishing exists to avoid,
-        and "nothing runs at the effective instant" is only literally true
-        without it.
-
-        What THIS method still does not do is REFUSE a moment, and it still has
-        no caller that supplies one: `PublishIn` carries no moment, so the
-        immediate route this survives beside always means now. The horizon a
-        dated change is bounded by landed in `core.scheduling` with #359 and is
-        enforced on the DECLARE route, which is the surface that advertises an
-        instant. This entity's published surface is still a later ticket's.
-        """
-        as_of = as_of or timezone.now()
-        with transaction.atomic():
-            locked = RateCard.objects.select_for_update().get(id=book.id)
-            new_version = locked.version + 1
-            for ch in changes:
-                # Matched on the NAME the change body carries, read through the
-                # reference (#326) — a reprice body names a quantity, not a
-                # declaration id, and nothing published gives a caller one to
-                # name. A rate the conversion deactivated references nothing and
-                # is therefore unmatchable here, which is the same answer it
-                # gives resolution: it cannot be repriced, and the refusal below
-                # says so with the name in it.
-                #
-                # `of=("self",)` locks the RATE and not the row it joins. The
-                # lock is here to serialise reprices of one rate; a declaration
-                # is read-only on this path, and locking it would make two
-                # publishes of two different rates that happen to price one
-                # quantity wait for each other.
-                old = Rate.objects.select_for_update(of=("self",)).filter(
-                    rate_card=locked, valid_to__isnull=True,
-                    measurement__code=ch["measurement_key"],
-                    **{s: ch.get(s, "") for s in Rate.SELECTORS},
-                ).first()
-                if old is None:
-                    raise ValueError(
-                        f"publish: no active rate for {ch['measurement_key']!r} in book {locked.key}")
-                data = {f: getattr(old, f) for f in _RATE_COPY_FIELDS}
-                for k in (_STRUCTURE_FIELD, "rate_per_unit_micros", "unit_quantity",
-                          "fixed_micros"):
-                    if k in ch:
-                        data[k] = ch[k]
-                data["book_version_from"] = new_version
-                data["book_version_to"] = None
-                data["valid_from"] = as_of
-                # Re-validate the repriced shape so a publish can never create a
-                # rate with an unratified arithmetic shape. Raises ValueError ->
-                # rolls back the whole publish (endpoint maps 422).
-                if data[_STRUCTURE_FIELD] not in RATE_STRUCTURE_VALUES:
-                    raise ValueError(
-                        f"{_STRUCTURE_FIELD} must be one of "
-                        f"{sorted(RATE_STRUCTURE_VALUES)}")
-                # Close the old row at T, then open the new AT THE SAME T.
-                old.valid_to = as_of
-                old.book_version_to = locked.version
-                old.save(update_fields=["valid_to", "book_version_to", "updated_at"])
-                Rate.objects.create(**data)
-            locked.version = new_version
-            locked.save(update_fields=["version", "updated_at"])
-            book.version = new_version
-            return book
 
     # --- Every change to a book is a publish, and a draft is not one (#358) ---
     #
-    # The three methods below replace the three immediate mutation surfaces
-    # above and beside this file with one act. The immediate ones SURVIVE this
-    # commit — `BookService.publish`, `add_rate` and `delete_rate` are still
-    # reachable and still write rules with no publish record behind them — and
-    # deleting them is a later ticket's, together with the three retired audit
-    # action names they write. Until then a book has two ways to change and only one of
-    # them leaves a record; that is the state this commit deliberately creates
-    # and the next one in the chain removes.
+    # The three methods below replaced three immediate mutation surfaces, and
+    # as of #368 there is nothing left beside them: the two that wrote a rule
+    # directly went with #367, and the atomic reprice that used to sit above
+    # this line goes here, with the audit action it wrote. **A book has exactly
+    # one way to change now, and it leaves a record.** That is what makes the
+    # forward-dating, the diff and the reversal properties true of the book
+    # rather than true of one of its two mutation paths.
 
     @staticmethod
     def declare(book, changes, effective_at=None):
@@ -722,8 +636,13 @@ class BookService:
         effective_at = effective_at or timezone.now()
         plan_changes(book, changes, effective_at)
         return PricingBookPublish.objects.create(
-            tenant=book.tenant, book=book, effective_at=effective_at,
-            changes=list(changes))
+            tenant=book.tenant, effective_at=effective_at,
+            changes=list(changes),
+            # THE BOOK NAMES ITS OWN COLUMN (#368). A publish record carries
+            # one reference per kind of book and at most one may be set; the
+            # entity is what says which is its own, so this construction does
+            # not have to ask what kind of thing it was handed.
+            **{book.REFERENCE_COLUMN: book})
 
     @staticmethod
     def diff(record):
@@ -771,7 +690,13 @@ class BookService:
         if record.is_published:
             raise ValueError("publish: this record is already published")
         with transaction.atomic():
-            locked = RateCard.objects.select_for_update().get(id=record.book_id)
+            # THE LOCK GOES ON THE BOOK'S OWN TABLE, WHICHEVER IT IS
+            # (#368). `record.book` reads whichever of the two columns is set,
+            # and its type names the table -- so this locks a row rather than
+            # asking one table about an id the other one owns.
+            of_this_kind = type(record.book)
+            locked = of_this_kind.objects.select_for_update().get(
+                id=record.book_id)
             new_version = locked.version + 1
             planned = plan_changes(locked, record.changes,
                                    record.effective_at)
@@ -795,8 +720,9 @@ class BookService:
                     # predecessor whose history it continues.
                     #
                     # ⚠ WHOSE RULE IT IS COMES FROM THE BOOK AND IS NOT
-                    # COPIED ONTO THE RULE (#361). `RateCard.customer` is what
-                    # resolution reads; `Rate.customer` is the pre-book model's
+                    # COPIED ONTO THE RULE (#361). `PricingBook.customer`
+                    # is what resolution reads; `Rate.customer` is the
+                    # pre-book model's
                     # own column and nothing in pricing reads it. Writing it
                     # here would be a second copy of one fact — and a copy with
                     # a DIFFERENT delete rule, since that column is `CASCADE`
@@ -806,9 +732,14 @@ class BookService:
                     data = {
                         "tenant_id": locked.tenant_id, "customer_id": None,
                         "measurement_id": change.declaration.id,
-                        "currency": locked.currency,
+                        # WHICH CURRENCY THE RULE IS WRITTEN IN, ASKED OF THE
+                        # BOOK RATHER THAN READ OFF A COLUMN IT NO LONGER HAS
+                        # (#368). A cost book declares one; a Pricing Book has
+                        # none, because a tenant has exactly one currency
+                        # (CUR-1) and a copy on the book was a copy of that.
+                        "currency": locked.rule_currency,
                         "lineage_id": uuid.uuid4(),
-                        "rate_card_id": locked.id,
+                        **{f"{locked.REFERENCE_COLUMN}_id": locked.id},
                         **change.selectors,
                     }
                 incoming = Rate.objects.create(**{

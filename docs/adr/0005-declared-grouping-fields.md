@@ -201,8 +201,8 @@ so they don't vanish silently. Each was re-checked against the tree when this AD
   a tenant that declares seven or more cannot require them all. The cap predates #276's widening and
   was not moved with it; it is stated here rather than changed, because the field's name is slice
   7's to retire and the two edits belong together.
-- The SDK's hand-written `MeteringClient.create_rate_card` still posts the pre-reshape rate shape.
-  The call 422s loudly rather than landing a wrong rate, because `BookIn.key` is a required field
-  the method never sends — so the ship gate is that an SDK caller cannot create a book-scoped rate
-  at all today, not that a quietly wrong one lands. Rebuilding the SDK's pricing surface for the
-  book/rate/publish/assign shape is real debt, and slice 4 owns it.
+- ~~The SDK's hand-written create-a-rule method still posts the pre-reshape rate shape.~~
+  **Resolved (#368).** That method is gone: the container split into a Pricing Book and a cost book,
+  which are declared separately, so the SDK declares each of them and the body that posted a flat
+  rate has no route to post to. What remains of this debt is the three methods calling routes that
+  exist in no spec and no router, which the ledger's own G17 entries own.

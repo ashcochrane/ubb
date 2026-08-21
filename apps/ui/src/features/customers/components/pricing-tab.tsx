@@ -4,36 +4,24 @@
 // assignment back).
 
 import * as React from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { DisabledHint } from "@/components/shared/disabled-hint";
-import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useHasProduct, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros, formatPercentMicros } from "@/lib/format";
 
 import {
-  useAssignRateCard,
   useCustomerMarkup,
-  usePriceBooks,
   useRemoveMarkup,
   useSaveMarkup,
 } from "../api/queries";
@@ -46,7 +34,6 @@ export function PricingTab({ customerId }: { customerId: string }) {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <MarkupCard customerId={customerId} />
-      <PriceBookCard customerId={customerId} />
     </div>
   );
 }
@@ -196,88 +183,10 @@ function MarkupCard({ customerId }: { customerId: string }) {
   );
 }
 
-function PriceBookCard({ customerId }: { customerId: string }) {
-  const navigate = useNavigate();
-  const isAdmin = useHasRole("admin");
-  const hasBilling = useHasProduct("billing");
-  const books = usePriceBooks(hasBilling);
-  const assign = useAssignRateCard(customerId);
-  const [selected, setSelected] = React.useState<string | null>(null);
-
-  const onAssign = async () => {
-    if (!selected) return;
-    try {
-      await assign.mutateAsync(selected);
-      toast.success("Price book assigned to this customer");
-    } catch (error) {
-      toast.error(problemMessage(error));
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Price book assignment</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {!hasBilling ? (
-          <p className="text-[12px] text-text-muted">
-            Assigning price books requires the Billing product, which isn't
-            enabled for this workspace.
-          </p>
-        ) : books.isLoading ? (
-          <Skeleton className="h-24 w-full" />
-        ) : books.isError ? (
-          <ErrorCard error={books.error} onRetry={() => void books.refetch()} />
-        ) : (books.data?.data.length ?? 0) === 0 ? (
-          <EmptyState
-            title="No price books yet"
-            description="Create a price-type rate card under Pricing first, then assign it here."
-            action={{
-              label: "Open Pricing",
-              onClick: () => void navigate({ to: "/pricing" }),
-            }}
-          />
-        ) : (
-          <>
-            <p className="text-[11px] text-text-muted">
-              Honest limitation: the API has no endpoint to read which book is
-              currently assigned, so this panel can't show the current
-              assignment — assigning replaces whatever is set for this currency.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={selected} onValueChange={setSelected}>
-                <SelectTrigger
-                  className="w-64"
-                  aria-label="Price book"
-                >
-                  <SelectValue placeholder="Choose a price book…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(books.data?.data ?? []).map((book) => (
-                    <SelectItem key={book.id} value={book.id}>
-                      {book.name || book.key} (v{book.version})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
-                <Button
-                  size="sm"
-                  onClick={() => void onAssign()}
-                  disabled={!selected || assign.isPending || !isAdmin}
-                >
-                  {assign.isPending ? "Working…" : "Assign book"}
-                </Button>
-              </DisabledHint>
-            </div>
-            <p className="text-[11px] text-text-muted">
-              Resolution order for billed cost: assigned price book → provider
-              default price book → markup fallback.
-            </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// ⚠ `PriceBookCard` IS DELETED (#368). It picked a price book from a list and
+// assigned it to this customer; the record that held that assignment is gone,
+// with its route. A customer reaches a book through their PLAN — which is
+// where their pricing already resolved from, and which the plans feature
+// already edits — or through a book that carries them, declared as an
+// override. There is no third way to reach one, so there is nothing here to
+// choose between.

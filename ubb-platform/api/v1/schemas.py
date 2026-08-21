@@ -1374,8 +1374,63 @@ class PostpaidConfigOut(Schema):
 # --- Two-level pricing: a RateCard BOOK groups many Rates ---
 
 
-class BookIn(Schema):
-    card_type: str
+class PricingBookIn(Schema):
+    """Declare a Pricing Book: a catalogue of what this tenant charges.
+
+    It names neither a supplier nor a currency, and both absences are
+    deliberate. A tenant's price for a unit of work does not change because
+    they switched supplier, and a tenant has exactly one currency
+    (per-tenant single currency; multi-currency and FX are not supported), so
+    a book that repeated either would be repeating a decision made elsewhere.
+    A rule that should price one supplier's work differently pins `provider`
+    as a selector, which is where that belongs.
+
+    `is_default` marks the book a customer is priced from when nothing
+    narrower applies. A tenant has at most one; declaring a second answers
+    409.
+    """
+    key: str = Field(min_length=1, max_length=64)
+    name: str = Field(default="", max_length=255)
+    is_default: bool = False
+
+
+class PricingBookOut(Schema):
+    id: str
+    key: str
+    name: str
+    version: int
+    is_default: bool
+    #: Set when this book holds one named customer's own rules — their
+    #: negotiated deal, declared and withdrawn through the override routes.
+    #: Null on a catalogue the tenant wrote for everybody.
+    customer_id: Optional[str]
+
+
+def pricing_book_out(b):
+    """PricingBookOut's serializer."""
+    return {
+        "id": str(b.id),
+        "key": b.key,
+        "name": b.name,
+        "version": b.version,
+        "is_default": b.is_default,
+        "customer_id": str(b.customer_id) if b.customer_id else None,
+    }
+
+
+class CostBookIn(Schema):
+    """Declare a cost book: a record of what one supplier charges this tenant.
+
+    It names the supplier and the currency that supplier bills in, and both
+    are required in the sense that matters: `currency` may not be empty, and
+    `provider_key` must be stated — the empty string is a stated value and
+    means the book applies whatever the supplier, which is a real choice
+    rather than an omission.
+
+    `is_default` marks the book a cost is resolved from for that supplier and
+    currency. A tenant has at most one per pair; declaring a second answers
+    409.
+    """
     provider_key: str = Field(default="", max_length=100)
     key: str = Field(min_length=1, max_length=64)
     name: str = Field(default="", max_length=255)
@@ -1385,75 +1440,35 @@ class BookIn(Schema):
     is_default: bool = False
 
 
-class BookOut(Schema):
+class CostBookOut(Schema):
     id: str
-    card_type: str
     provider_key: str
+    currency: str
     key: str
     name: str
-    currency: str
     version: int
     is_default: bool
 
 
-def book_out(b):
-    """BookOut's serializer — a rate-card book (the container)."""
+def cost_book_out(b):
+    """CostBookOut's serializer."""
     return {
         "id": str(b.id),
-        "card_type": b.card_type,
         "provider_key": b.provider_key,
+        "currency": b.currency,
         "key": b.key,
         "name": b.name,
-        "currency": b.currency,
         "version": b.version,
         "is_default": b.is_default,
     }
 
 
-class RateChangeIn(Schema):
-    """One reprice in a publish. Match keys (measurement_key plus the fourteen
-    selectors below — provider/event_type/task_type/subtask_type and the ten
-    grouping-field slots) locate the active rate; the remaining (nullable)
-    fields, when present, override it in the new version.
-
-    **These are the whole selector set a rate can pin.** A rate is pinned on the
-    four reserved axes and on any of the ten grouping slots, and every one of
-    them can be stated here — so a rule pinned on any slot is reachable. A
-    selector left empty matches a rule that leaves that slot unpinned, which is
-    what an empty selector means everywhere on this surface, so omitting one is
-    a statement about the rule rather than a gap in the body."""
-    measurement_key: str
-    provider: str = ""
-    event_type: str = ""
-    task_type: str = ""
-    subtask_type: str = ""
-    grouping_field_1: str = ""
-    grouping_field_2: str = ""
-    grouping_field_3: str = ""
-    grouping_field_4: str = ""
-    grouping_field_5: str = ""
-    grouping_field_6: str = ""
-    grouping_field_7: str = ""
-    grouping_field_8: str = ""
-    grouping_field_9: str = ""
-    grouping_field_10: str = ""
-    rate_structure: Optional[RateStructure] = None
-    rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
-    unit_quantity: Optional[int] = Field(default=None, gt=0)
-    fixed_micros: Optional[int] = Field(default=None, ge=0)
-
-
-class PublishIn(Schema):
-    changes: list[RateChangeIn]
-
-
-class AssignIn(Schema):
-    rate_card_id: UUID
-
-
 class RateOut(Schema):
     id: str
-    rate_card_id: str
+    #: The book this rule is in, whichever kind it is. A caller that needs to
+    #: know which kind reads the book: a cost book names a supplier and a
+    #: currency, a Pricing Book names neither.
+    book_id: Optional[str]
     lineage_id: str
     measurement_key: str
     provider: str
@@ -1536,7 +1551,7 @@ def rate_out(r):
     """
     return {
         "id": str(r.id),
-        "rate_card_id": str(r.rate_card_id) if r.rate_card_id else None,
+        "book_id": str(r.book.id) if r.book is not None else None,
         "lineage_id": str(r.lineage_id),
         "measurement_key": r.measurement_key,
         "provider": r.provider,
@@ -2024,7 +2039,7 @@ def inherited_rule_out(rule, selectors, keys):
     reserved = ("provider", "event_type", "task_type", "subtask_type")
     return {"rule": {
         "rule_id": str(rule.id),
-        "book_id": str(rule.rate_card_id),
+        "book_id": str(rule.book.id),
         "measurement_key": rule.measurement_key,
         **{name: selectors.get(name, "") for name in reserved},
         "grouping_fields": {keys[slot]: value
@@ -2290,7 +2305,11 @@ class PaginatedBookPublishes(Paginated[BookPublishOut]):
     pass
 
 
-class PaginatedBooks(Paginated[BookOut]):
+class PaginatedPricingBooks(Paginated[PricingBookOut]):
+    pass
+
+
+class PaginatedCostBooks(Paginated[CostBookOut]):
     pass
 
 

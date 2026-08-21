@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   useApiKeysCheck,
   useConnectStatus,
-  useRateCardBooksCheck,
+  usePricingBooksCheck,
 } from "../api/queries";
 
 type CheckState = "loading" | "done" | "todo" | "unknown";
@@ -50,7 +50,7 @@ function checkState<T>(
  */
 export function GettingStartedCard({ needsStripe }: { needsStripe: boolean }) {
   const keys = useApiKeysCheck();
-  const books = useRateCardBooksCheck();
+  const books = usePricingBooksCheck();
   const connect = useConnectStatus(needsStripe);
 
   const steps: Step[] = [

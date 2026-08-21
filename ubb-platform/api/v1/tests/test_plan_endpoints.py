@@ -116,14 +116,14 @@ class TestPlanEndpoints:
         409, and the book its first statement created is rolled back with it —
         otherwise a refused request would leave a catalogue nobody asked for.
         """
-        from apps.metering.pricing.models import RateCard
+        from apps.metering.pricing.models import PricingBook
         self._post("/api/v1/plans", {"key": "pro", "name": "Pro"})
-        before = RateCard.objects.filter(tenant=self.tenant).count()
+        before = PricingBook.objects.filter(tenant=self.tenant).count()
 
         r = self._post("/api/v1/plans", {"key": "pro", "name": "Pro Again"})
 
         assert r.status_code == 409
-        assert RateCard.objects.filter(tenant=self.tenant).count() == before
+        assert PricingBook.objects.filter(tenant=self.tenant).count() == before
 
     def test_duplicate_key_is_409(self):
         self._post("/api/v1/plans", {"key": "pro", "name": "Pro"})

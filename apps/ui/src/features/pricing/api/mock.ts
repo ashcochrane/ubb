@@ -1,25 +1,39 @@
 // Mock implementation — same exported signatures as api.ts, backed by
 // module-level state so mutations are coherent within a session: created
-// books appear in the list, retired rates gain a valid_to, publishes
-// supersede actives and bump the book version, markup edits stick.
+// books appear in the list and markup edits stick.
+//
+// ⚠ IT NO LONGER SUPERSEDES RATES (#368). The immediate reprice this mocked is
+// deleted with the route it stood for; a book changes by a declared publish
+// now, and the feature that speaks that body arrives with #372.
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
-import { MOCK_BOOKS, MOCK_RATES, MOCK_TENANT_MARKUP } from "./mock-data";
+import {
+  MOCK_COST_BOOKS,
+  MOCK_PRICING_BOOKS,
+  MOCK_RATES,
+  MOCK_TENANT_MARKUP,
+} from "./mock-data";
 import type {
-  Book,
-  BookIn,
+  AnyBook,
+  CostBook,
+  CostBookIn,
   ListBooksParams,
   ListRatesParams,
-  PaginatedBooks,
+  PaginatedCostBooks,
+  PaginatedPricingBooks,
   PaginatedRates,
-  PublishIn,
+  PricingBook,
+  PricingBookIn,
   Rate,
   TenantMarkup,
   TenantMarkupIn,
 } from "./types";
 
-let books: Book[] = MOCK_BOOKS.map((book) => ({ ...book }));
+// ⚠ TWO LISTS, BECAUSE THERE ARE TWO ENTITIES (#368). A single array with a
+// kind field would be this mock re-inventing the column the split deleted.
+let pricingBooks: PricingBook[] = MOCK_PRICING_BOOKS.map((book) => ({ ...book }));
+let costBooks: CostBook[] = MOCK_COST_BOOKS.map((book) => ({ ...book }));
 let rates: Rate[] = MOCK_RATES.map((rate) => ({ ...rate }));
 let markup: TenantMarkup = { ...MOCK_TENANT_MARKUP };
 let idCounter = 0;
@@ -33,65 +47,70 @@ function problem(status: number, code: string, title: string, detail: string): A
   return new ApiProblem({ status, code, title, detail });
 }
 
-function requireBook(bookId: string): Book {
-  const book = books.find((candidate) => candidate.id === bookId);
+function requireBook(bookId: string): AnyBook {
+  const book = [...pricingBooks, ...costBooks].find(
+    (candidate) => candidate.id === bookId,
+  );
   if (!book) {
-    throw problem(404, "not_found", "Not found", "This rate-card book no longer exists.");
+    throw problem(404, "not_found", "Not found", "This book no longer exists.");
   }
   return book;
 }
 
-/** The ten selector columns (provider/event_type handled by the caller). */
-interface Selectors {
-  task_type?: string | null;
-  subtask_type?: string | null;
-  grouping_field_1?: string | null;
-  grouping_field_2?: string | null;
-  grouping_field_3?: string | null;
-  grouping_field_4?: string | null;
-  grouping_field_5?: string | null;
-  grouping_field_6?: string | null;
-  grouping_field_7?: string | null;
-  grouping_field_8?: string | null;
-  grouping_field_9?: string | null;
-  grouping_field_10?: string | null;
-}
-
-const SELECTOR_KEYS = [
-  "task_type",
-  "subtask_type",
-  "grouping_field_1",
-  "grouping_field_2",
-  "grouping_field_3",
-  "grouping_field_4",
-  "grouping_field_5",
-  "grouping_field_6",
-  "grouping_field_7",
-  "grouping_field_8",
-  "grouping_field_9",
-  "grouping_field_10",
-] as const;
-
-function sameSelectors(a: Selectors, b: Selectors): boolean {
-  return SELECTOR_KEYS.every((key) => (a[key] ?? "") === (b[key] ?? ""));
-}
-
-export async function listBooks(params?: ListBooksParams): Promise<PaginatedBooks> {
+export async function listPricingBooks(
+  _params?: ListBooksParams,
+): Promise<PaginatedPricingBooks> {
   await mockDelay();
-  const filtered = params?.card_type
-    ? books.filter((book) => book.card_type === params.card_type)
-    : books;
-  return { data: [...filtered], has_more: false, next_cursor: null };
+  return { data: [...pricingBooks], has_more: false, next_cursor: null };
 }
 
-export async function createBook(body: BookIn): Promise<Book> {
+export async function listCostBooks(
+  _params?: ListBooksParams,
+): Promise<PaginatedCostBooks> {
   await mockDelay();
-  if (books.some((book) => book.key === body.key && book.card_type === body.card_type)) {
+  return { data: [...costBooks], has_more: false, next_cursor: null };
+}
+
+export async function declarePricingBook(
+  body: PricingBookIn,
+): Promise<PricingBook> {
+  await mockDelay();
+  if (pricingBooks.some((book) => book.key === body.key)) {
     throw problem(
       409,
       "conflict",
       "Conflict",
-      `A ${body.card_type} book with the key "${body.key}" already exists.`,
+      `A pricing book with the key "${body.key}" already exists.`,
+    );
+  }
+  if (body.is_default && pricingBooks.some((book) => book.is_default)) {
+    throw problem(
+      409,
+      "conflict",
+      "Conflict",
+      "This workspace already has a default pricing book.",
+    );
+  }
+  const created: PricingBook = {
+    id: nextId("book"),
+    key: body.key,
+    name: body.name ?? "",
+    is_default: body.is_default ?? false,
+    customer_id: null,
+    version: 1,
+  };
+  pricingBooks = [created, ...pricingBooks];
+  return { ...created };
+}
+
+export async function declareCostBook(body: CostBookIn): Promise<CostBook> {
+  await mockDelay();
+  if (costBooks.some((book) => book.key === body.key)) {
+    throw problem(
+      409,
+      "conflict",
+      "Conflict",
+      `A cost book with the key "${body.key}" already exists.`,
     );
   }
   if (body.currency && body.currency !== "usd") {
@@ -99,24 +118,23 @@ export async function createBook(body: BookIn): Promise<Book> {
       422,
       "validation_error",
       "Validation error",
-      "Rate-card currency must match the workspace currency (usd).",
+      "A cost book\u2019s currency must match the workspace currency (usd).",
     );
   }
-  const created: Book = {
+  const created: CostBook = {
     id: nextId("book"),
     key: body.key,
     name: body.name ?? "",
-    card_type: body.card_type,
     provider_key: body.provider_key ?? "",
     currency: "usd",
     is_default: body.is_default ?? false,
     version: 1,
   };
-  books = [created, ...books];
+  costBooks = [created, ...costBooks];
   return { ...created };
 }
 
-export async function getBook(bookId: string): Promise<Book> {
+export async function getBook(bookId: string): Promise<AnyBook> {
   await mockDelay();
   return { ...requireBook(bookId) };
 }
@@ -127,7 +145,7 @@ export async function listRates(
 ): Promise<PaginatedRates> {
   await mockDelay();
   requireBook(bookId);
-  let inBook = rates.filter((rate) => rate.rate_card_id === bookId);
+  let inBook = rates.filter((rate) => rate.book_id === bookId);
   if (params?.as_of) {
     const asOf = new Date(params.as_of).getTime();
     inBook = inBook.filter(
@@ -140,52 +158,6 @@ export async function listRates(
   }
   const sorted = [...inBook].sort((a, b) => b.valid_from.localeCompare(a.valid_from));
   return { data: sorted, has_more: false, next_cursor: null };
-}
-
-export async function publishBook(bookId: string, body: PublishIn): Promise<Book> {
-  await mockDelay();
-  const book = requireBook(bookId);
-  const now = new Date().toISOString();
-  const superseded: { old: Rate; next: Rate }[] = [];
-  for (const change of body.changes) {
-    const active = rates.find(
-      (rate) =>
-        rate.rate_card_id === bookId &&
-        rate.valid_to == null &&
-        rate.measurement_key === change.measurement_key &&
-        rate.provider === (change.provider ?? "") &&
-        rate.event_type === (change.event_type ?? "") &&
-        sameSelectors(rate, change),
-    );
-    if (!active) {
-      throw problem(
-        422,
-        "validation_error",
-        "Validation error",
-        `No active rate matches "${change.measurement_key}" — nothing was changed.`,
-      );
-    }
-    superseded.push({
-      old: active,
-      next: {
-        ...active,
-        id: nextId("rate"),
-        rate_structure: change.rate_structure ?? active.rate_structure,
-        rate_per_unit_micros: change.rate_per_unit_micros ?? active.rate_per_unit_micros,
-        unit_quantity: change.unit_quantity ?? active.unit_quantity,
-        fixed_micros: change.fixed_micros ?? active.fixed_micros,
-        valid_from: now,
-        valid_to: null,
-      },
-    });
-  }
-  // All-or-nothing: apply only after every change matched.
-  for (const { old, next } of superseded) {
-    old.valid_to = now;
-    rates = [next, ...rates];
-  }
-  book.version += 1;
-  return { ...book };
 }
 
 export async function getTenantMarkup(): Promise<TenantMarkup> {

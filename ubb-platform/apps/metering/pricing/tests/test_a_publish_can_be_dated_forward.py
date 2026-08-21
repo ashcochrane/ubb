@@ -140,7 +140,7 @@ class AFutureDatedPublishIsPersistedImmediatelyTest(
         self.assertLess(record.published_at, boundary)
         self.assertEqual(
             PricingBookPublish.objects.filter(
-                book=self.book,
+                **{self.book.REFERENCE_COLUMN: self.book},
                 declaration_status=DECLARATION_STATUS_DRAFT).count(), 0)
 
 

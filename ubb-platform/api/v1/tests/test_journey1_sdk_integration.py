@@ -8,7 +8,7 @@ running Django server. It proves a tenant can:
   - read per-customer / per-product provider cost (COGS) back through the SDK.
 
 This exists because mocked-httpx unit tests let real wire-level mismatches ship
-undetected (e.g. a `/api/v1/metering/pricing/rate-cards` 404, or a response body
+undetected (e.g. a `/api/v1/metering/pricing/cost-books` 404, or a response body
 the SDK can't deserialize). A live-server test exercises real URL routing and
 the real response contract end to end.
 """
@@ -20,7 +20,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.metering.pricing.models import Rate
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate_in_default_book
 
 
 def _post(api, path, body):
@@ -79,7 +79,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     # 2 micros per input token: per_unit, unit_quantity=1 token == 1 unit.
     # Rate.compute(units) == (units * rate + unit_quantity // 2) // unit_quantity + fixed
     #                         == (1000 * 2 + 0) // 1 + 0 == 2000.
-    rate_in_default_book(tenant, card_type="cost", measurement_key="input_tokens",
+    cost_rate_in_default_book(tenant, measurement_key="input_tokens",
                             rate_structure="per_unit", rate_per_unit_micros=2, unit_quantity=1,
                             currency="usd")
     # The quantity the rule opened over HTTP below prices. A rule names a
@@ -96,11 +96,11 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         # (a) the book-centric create routes reach the REAL server over HTTP (a
         #     404/422 on a renamed route would raise here). Create a cost book,
         #     then add a rate under it -> every API rate is book-scoped.
-        book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
-            "card_type": "cost", "key": "extra", "provider_key": ""})["id"]
+        book_id = _post(api, "/api/v1/metering/pricing/cost-books", {
+            "key": "extra", "provider_key": ""})["id"]
         # Opening a rule is a declared change published in the same breath
         # (#367) — the immediate route this journey used to POST to is gone.
-        base = f"/api/v1/metering/pricing/rate-cards/{book_id}"
+        base = f"/api/v1/metering/pricing/books/{book_id}"
         declared = _post(api, f"{base}/publishes", {"changes": [{
             "kind": "add", "measurement_key": "output_tokens",
             "rate_structure": "per_unit", "rate_per_unit_micros": 5,
@@ -110,7 +110,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         (row,) = _get(api, f"{base}/rates")["data"]
         assert row["id"] == opened
         assert row["measurement_key"] == "output_tokens"
-        assert row["rate_card_id"] == book_id
+        assert row["book_id"] == book_id
 
         # (b) record usage with measurements and NO caller cost -> engine computes COGS.
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
