@@ -819,12 +819,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # per-property check, and it is why "a rule states a whole rule" is
     # asserted as a SET.
     #
-    # ⚠ SEVEN, THEN SIX (#367). The immediate add-a-rule body is deleted with
-    # its route — opening a rule is a declared change on a publish — so one
-    # node leaves. Every schema that still carries a rule still carries the
+    # ⚠ SEVEN, THEN SIX (#367), THEN FIVE (#368). Both bodies that wrote a
+    # rule immediately are deleted with their routes — adding, repricing and
+    # retiring a rule are declared changes on a publish now — so one node left
+    # each time. Every schema that still carries a rule still carries the
     # shape, which is what the placement map below says and why a fall here
     # cannot hide a surface quietly losing it.
-    "rate_structure": Published(6, ENUM),
+    "rate_structure": Published(5, ENUM),
 }
 
 
@@ -1061,11 +1062,12 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # row a client copies into it. None of the last four could carry it until
     # the column was renamed.
     #
-    # ⚠ `RateIn` WAS THE SEVENTH AND IS GONE (#367). The body that opened a
-    # rule immediately left with its route, so the shape is advertised on one
-    # fewer node — and on no fewer of the surfaces that still carry a rule.
-    placed("rate_structure", {"RateOut", "RateChangeIn",
-                              "BookChangeIn", "RuleTermsOut",
+    # ⚠ `RateIn` WAS THE SEVENTH AND IS GONE (#367), AND `RateChangeIn` WAS THE
+    # SIXTH (#368). Both bodies that wrote a rule immediately left with their
+    # routes, so the shape is advertised on two fewer nodes — and on no fewer
+    # of the surfaces that still carry a rule, because a change to a book is
+    # `BookChangeIn` now whichever of the three kinds it is.
+    placed("rate_structure", {"RateOut", "BookChangeIn", "RuleTermsOut",
                               "CustomerOverrideIn", "InheritedPricingRule"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.

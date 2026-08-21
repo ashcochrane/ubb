@@ -71,6 +71,9 @@ from core.vocabulary import (
 )
 
 QUANTITY = "prompt_tokens"
+#: A SECOND quantity in the same book, so a publish of two changes can be
+#: told apart from two publishes of one (#368).
+OTHER_QUANTITY = "completion_tokens"
 ANOTHER_QUANTITY = "completion_tokens"
 ONE_DENOMINATOR = 1_000_000
 PROVIDER = "openai"
@@ -198,6 +201,75 @@ class ADraftClosesNothingTest(_ABookMixin, TestCase):
         record.refresh_from_db()
         self.assertEqual(record.changes[0]["kind"], CHANGE_RETIRE)
         self.assertEqual(_snapshot(self.book), before)
+
+
+class PublishingBumpsTheBooksVersionOnceTest(_ABookMixin, TestCase):
+    """What a publish does to the BOOK, as opposed to what it does to a rule.
+
+    ⚠ **THIS CLASS EXISTS BECAUSE DELETING A ROUTE ALMOST DELETED ITS ONLY
+    ASSERTION (#368).** The atomic reprice — a route that versioned a book the
+    instant it was called — carried the only positive statement in the tree
+    that publishing moves `book.version`, that it moves it by exactly one for a
+    publish of any size, and that both sides of the boundary are stamped with
+    the versions either side of it. Every other module asserts the NEGATIVE
+    (a draft leaves the version at 1), which stays green against a publish that
+    forgets to bump. Deleting the route without moving this would have removed
+    a property nobody would have noticed was gone.
+
+    `book_version_from` / `book_version_to` are what let a reader ask *which
+    version of this book was in force when that event was priced*, so a publish
+    that opened a rule without stamping it would leave the answer unreadable.
+    """
+
+    def test_one_publish_of_two_changes_bumps_the_version_exactly_once(self):
+        second = rate_in_default_book(
+            self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
+            measurement_key=OTHER_QUANTITY, rate_per_unit_micros=BEFORE)
+        self.assertEqual(the_book_holding(second).pk, self.book.pk)
+        before = self.book.version
+
+        record = self.a_draft(changes=[
+            self.a_change(**{THE_TERM: AFTER}),
+            self.a_change(measurement_key=OTHER_QUANTITY, **{THE_TERM: AFTER}),
+        ])
+        BookService.publish_declared(record)
+
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.version, before + 1)
+
+    def test_both_sides_of_the_boundary_carry_the_version_either_side_of_it(self):
+        before = self.book.version
+
+        record = self.a_draft()
+        BookService.publish_declared(record)
+
+        self.book.refresh_from_db()
+        outgoing = Rate.objects.get(pk=self.rule.pk)
+        incoming = Rate.objects.get(pk=record.opened_rule_ids[0])
+        self.assertEqual(outgoing.book_version_to, before)
+        self.assertEqual(incoming.book_version_from, self.book.version)
+        self.assertIsNone(incoming.book_version_to)
+
+    def test_a_refused_publish_leaves_the_version_where_it_was(self):
+        """All-or-nothing, read at the book rather than at the rules.
+
+        `test_nothing_is_written_when_one_change_of_a_set_is_refused` makes the
+        rule-side claim; this is the same rollback seen from the container, and
+        it is the half the deleted route's own test made.
+        """
+        before = self.book.version
+
+        with self.assertRaises(ValueError):
+            self.a_draft(changes=[
+                self.a_change(**{THE_TERM: AFTER}),
+                self.a_change(measurement_key="not_a_declared_quantity",
+                              **{THE_TERM: AFTER}),
+            ])
+
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.version, before)
+        self.assertEqual(
+            list(self.book.rates.values_list("pk", flat=True)), [self.rule.pk])
 
 
 class OneClockClosesTheBoundaryAndOpensItTest(_ABookMixin, TestCase):

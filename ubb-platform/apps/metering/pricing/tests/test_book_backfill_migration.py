@@ -23,8 +23,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.loader import MigrationLoader
 from apps.metering.pricing.tests._helpers import (
-    THE_RULES_KIND_COLUMN, reconcile_the_rate_table_with,
-    the_rate_table_as_this_migration_saw_it, the_state_before)
+    THE_RULES_KIND_COLUMN, reconcile_the_rate_table_with, restore_the_shape_of,
+    the_pricing_tables_as_this_migration_saw_them, the_state_before)
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 
@@ -45,9 +45,15 @@ def historical():
     """The models `0012` saw, over a table reconstructed to match them."""
     migration = MigrationLoader(connection).get_migration(APP_LABEL, BACKFILL)
     state = the_state_before(migration)
-    with the_rate_table_as_this_migration_saw_it(migration):
+    with the_pricing_tables_as_this_migration_saw_them(migration):
         apps = state.apps
         reconcile_the_rate_table_with(apps.get_model(APP_LABEL, "Rate"))
+        # THE OTHER TWO TABLES 0012 WROTE, RECONSTRUCTED THE SAME WAY (#368).
+        # The container lost three columns to the split and the record that
+        # assigned a book to a customer was deleted outright, so one needs its
+        # columns back and the other needs to exist at all.
+        for name in ("RateCard", "RateCardAssignment"):
+            restore_the_shape_of(apps.get_model(APP_LABEL, name))
         yield apps
 
 

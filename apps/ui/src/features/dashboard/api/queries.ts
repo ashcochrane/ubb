@@ -19,7 +19,7 @@ import type {
   ConnectStatus,
   MarginCustomerList,
   MarginSummary,
-  RateCardBookList,
+  PricingBookList,
   UsageAnalytics,
   Unprofitable,
   Window,
@@ -137,10 +137,10 @@ export function useApiKeysCheck(): UseQueryResult<ApiKeyList> {
   });
 }
 
-export function useRateCardBooksCheck(): UseQueryResult<RateCardBookList> {
+export function usePricingBooksCheck(): UseQueryResult<PricingBookList> {
   return useQuery({
     queryKey: ["metering", "pricing", "rate-cards", "first-page"] as const,
-    queryFn: () => dashboardApi.getRateCardBooksFirstPage(),
+    queryFn: () => dashboardApi.getPricingBooksFirstPage(),
   });
 }
 

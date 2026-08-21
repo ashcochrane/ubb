@@ -82,7 +82,8 @@ def sync_detailed(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    markup.set and the book acts do, so it takes the write-default Admin floor
+    rather
     than a Write carve-out.
 
     Args:
@@ -119,7 +120,8 @@ def sync(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    markup.set and the book acts do, so it takes the write-default Admin floor
+    rather
     than a Write carve-out.
 
     Args:
@@ -151,7 +153,8 @@ async def asyncio_detailed(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    markup.set and the book acts do, so it takes the write-default Admin floor
+    rather
     than a Write carve-out.
 
     Args:
@@ -188,7 +191,8 @@ async def asyncio(
      Declare the tenant's work vocabulary and its per-kind COGS ceilings
     (design D7). Idempotent; the ceiling and required_dimensions may be updated
     on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    markup.set/rate_card.* do, so it takes the write-default Admin floor rather
+    markup.set and the book acts do, so it takes the write-default Admin floor
+    rather
     than a Write carve-out.
 
     Args:

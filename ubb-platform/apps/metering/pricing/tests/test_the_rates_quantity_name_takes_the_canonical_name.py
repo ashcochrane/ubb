@@ -51,7 +51,7 @@ from importlib import import_module
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import (IntegrityError, connection, migrations as operations,
-                       transaction)
+                       models, transaction)
 from django.db.migrations.loader import MigrationLoader
 from django.test import SimpleTestCase, TestCase
 
@@ -101,18 +101,29 @@ DECLARATION_FIELD = "measurement"
 #: is the same wart one layer down), and a literal here would have gone on
 #: naming an index that no longer exists. The model declares exactly one.
 (LOOKUP_INDEX,) = [index.name for index in Rate._meta.indexes]
-ACTIVE_ROW_UNIQUE = "uq_rate_active_in_book"
+#: ⚠ ONE ACTIVE-ROW KEY BECAME TWO (#368), and they are read off the model for
+#: the reason the index above them is: a literal here would name a key that no
+#: longer exists. A rule points at a Pricing Book or at a cost book, and a
+#: single key naming both columns would carry a NULL on every row — which
+#: Postgres treats as distinct, so the key would have survived as a no-op
+#: wearing its own name. Both halves have to cover the reference, so both are
+#: asserted.
+ACTIVE_ROW_UNIQUE_KEYS = sorted(
+    constraint.name for constraint in Rate._meta.constraints
+    if isinstance(constraint, models.UniqueConstraint))
 
 #: The three published schemas the name appears on — the write, the reprice and
 #: the read. Named rather than discovered: a walk that found two would report
 #: success just as loudly.
-#: ⚠ **`BookChangeIn` STANDS WHERE THE IMMEDIATE ADD-A-RULE BODY STOOD (#367).**
-#: That body was this rename's third published carrier until its route was
-#: deleted — adding a rule is a declared change on a publish now — so the claim
-#: moved to the schema that inherited the act rather than being dropped with the
-#: schema that lost it. Three carriers before, three after, and the ONE
-#: substitution is what keeps this from quietly becoming a weaker assertion.
-PUBLISHED_SCHEMAS = ("BookChangeIn", "RateChangeIn", "RateOut")
+#: ⚠ **`BookChangeIn` STANDS WHERE BOTH IMMEDIATE BODIES STOOD (#367, #368).**
+#: The add-a-rule body was this rename's third published carrier until its
+#: route was deleted, and the immediate reprice body was the second until its
+#: route went the same way — adding, repricing and retiring a rule are all
+#: declared changes on a publish now. The claim moved to the schema that
+#: inherited the acts rather than being dropped with the schemas that lost
+#: them: **one write carrier and one read carrier, where there were two of
+#: each**, and no act is uncovered.
+PUBLISHED_SCHEMAS = ("BookChangeIn", "RateOut")
 
 
 @cache
@@ -220,10 +231,15 @@ class TheDatabaseObjectsFollowedTheColumnTest(TestCase):
         self.assertNotIn(RETIRED_COLUMN, columns)
 
     def test_the_active_row_uniqueness_covers_the_reference(self):
-        columns = _table_constraints()[ACTIVE_ROW_UNIQUE]["columns"]
-        self.assertIn(self.reference_column, columns)
-        self.assertNotIn(CANONICAL_COLUMN, columns)
-        self.assertNotIn(RETIRED_COLUMN, columns)
+        self.assertEqual(len(ACTIVE_ROW_UNIQUE_KEYS), 2,
+                         "one key per kind of book, or this asserts less than "
+                         "it reads as")
+        for key in ACTIVE_ROW_UNIQUE_KEYS:
+            with self.subTest(key=key):
+                columns = _table_constraints()[key]["columns"]
+                self.assertIn(self.reference_column, columns)
+                self.assertNotIn(CANONICAL_COLUMN, columns)
+                self.assertNotIn(RETIRED_COLUMN, columns)
 
     def test_the_table_carries_the_reference_and_neither_text_column(self):
         """The model and the table are two separate claims.
@@ -342,7 +358,8 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             measurements={"input_tokens": 3},
             caller_provider_cost=None,
             resolve_declaration=lambda: None,
-            resolve_card=lambda kind, key: rate,
+            resolve_the_cost_rule=lambda key: rate,
+            resolve_the_price_rule=lambda key: None,
             resolve_markup=lambda: None)
 
         # BOTH SECTIONS' COMPONENTS, not one of them. The two used to be one
@@ -388,11 +405,12 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
         since a stale caller is refused precisely BECAUSE the replacement is
         required.
 
-        Both write schemas, not one. It is required on all three of them (on the
-        read side that means the server always sends it), but the two that a
-        caller fills are the ones this claim is about.
+        The write schema. It is required on both of them (on the read side
+        that means the server always sends it), but the one a caller fills is
+        the one this claim is about — and there is one, because both immediate
+        bodies went with their routes.
         """
-        for name in ("BookChangeIn", "RateChangeIn"):
+        for name in ("BookChangeIn",):
             with self.subTest(schema=name):
                 self.assertIn(CANONICAL_COLUMN, schemas()[name]["required"])
 

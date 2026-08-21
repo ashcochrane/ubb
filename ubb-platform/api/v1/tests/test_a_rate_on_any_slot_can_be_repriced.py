@@ -110,24 +110,44 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
             change["grouping_fields"] = {DECLARED_KEY_OF[slot]: value
                                          for slot, value in pinned.items()}
         declared = self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publishes",
+            f"/api/v1/metering/pricing/books/{self.book.id}/publishes",
             {"changes": [change]})
         if declared.status_code != 200:
             return declared
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}"
+            f"/api/v1/metering/pricing/books/{self.book.id}"
             f"/publishes/{declared.json()['id']}/publish")
 
-    def _reprice(self, *, to, **match):
+    def _reprice(self, *, to, **pins):
+        """Reprice the rule pinned on these slots, and publish the change.
+
+        ⚠ **IT NAMES THE SLOT BY THE TENANT'S DECLARED KEY NOW (#368).** The
+        immediate reprice route took a body naming the physical COLUMN; it is
+        deleted with the last of the retired audit action names it wrote, so a
+        reprice is a declared change like any other and speaks the one
+        vocabulary a change body has. Ruling 15's gap stays closed either way:
+        what it asked for is that a rule pinned on any of the ten slots be
+        reachable, and the registry resolves whichever slot a declared key is
+        bound to.
+        """
+        change = {"kind": "reprice", "measurement_key": QUANTITY,
+                  "provider": "openai", "rate_per_unit_micros": to}
+        if pins:
+            change["grouping_fields"] = {DECLARED_KEY_OF[slot]: value
+                                         for slot, value in pins.items()}
+        declared = self._post(
+            f"/api/v1/metering/pricing/books/{self.book.id}/publishes",
+            {"changes": [change]})
+        if declared.status_code != 200:
+            return declared
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/publish",
-            {"changes": [{"measurement_key": QUANTITY, "provider": "openai",
-                          "rate_per_unit_micros": to, **match}]})
+            f"/api/v1/metering/pricing/books/{self.book.id}"
+            f"/publishes/{declared.json()['id']}/publish")
 
     def _rules(self):
         """Every version of every rule in the book, newest first."""
         response = self.http.get(
-            f"/api/v1/metering/pricing/rate-cards/{self.book.id}/rates"
+            f"/api/v1/metering/pricing/books/{self.book.id}/rates"
             f"?include_history=true", **self._auth())
         assert response.status_code == 200, response.content
         return response.json()["data"]

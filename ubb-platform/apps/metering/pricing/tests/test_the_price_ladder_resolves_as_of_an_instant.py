@@ -63,8 +63,8 @@ from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book,
     declares_a_markup,
     rate_in_a_book_nothing_selects,
+    cost_rule_in_the_providers_book,
     rate_in_default_book,
-    rate_in_the_providers_default_book,
 )
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -379,17 +379,26 @@ class SpecificityBeatsSourceTest(_ALadderMixin, TestCase):
         """The tie the ladder does NOT claim to break, pinned anyway (#356).
 
         Two rules of equal specificity from the same source — one in the
-        tenant's book for this provider, one in the provider-agnostic book —
-        are separated by nothing `ladder_rank` reads. Ranking is a stable sort,
-        and the candidates now arrive from ONE query, so without an order
+        tenant's cost book for this supplier, one in the provider-agnostic cost
+        book — are separated by nothing `ladder_rank` reads. Ranking is a stable
+        sort, and the candidates arrive from ONE query, so without an order
         imposed on them the answer would be whatever row order the database
-        happened to give: a tenant's price decided by a query plan, and
+        happened to give: a tenant's figures decided by a query plan, and
         differently on different days. The narrower book wins, which is the
         answer the tiered walk gave and the only one anybody can predict.
 
+        ⚠ **IT MOVED TO THE COST SIDE, AND THAT IS THE CLAIM SURVIVING RATHER
+        THAN RELAXING (#368).** It used to build two default PRICE books, one
+        per provider. A Pricing Book is pinned to no supplier and a tenant has
+        exactly one default, so that shape is not merely harder to build — it
+        is unstatable, and `uq_pricing_book_one_default` is what refuses it.
+        Two default books ranked together is now a cost-side fact, where a
+        supplier's own book and the provider-agnostic one are both selected, in
+        that order. Same ranking function, same stable sort, same claim.
+
         ⚠ **BUILDING THE TIE TAKES CARE, AND THE FIRST DRAFT OF THIS TEST DID
         NOT HAVE ONE.** Both rules must leave the provider UNPINNED, or the one
-        in the provider's book wins on specificity and the tie-break is never
+        in the supplier's book wins on specificity and the tie-break is never
         reached — which is why the fixture separates the book's provider from
         the rule's selector. And both must carry the SAME effective moment,
         because `ladder_rank`'s last key is `valid_from` and two rules created a
@@ -406,18 +415,18 @@ class SpecificityBeatsSourceTest(_ALadderMixin, TestCase):
             # insert would fail the active-rule uniqueness index instead of the
             # claim — four cascading errors hiding the one real answer.
             Rate.objects.filter(tenant=tenant).delete()
-            in_the_providers_book = rate_in_the_providers_default_book(
+            in_the_suppliers_book = cost_rule_in_the_providers_book(
                 tenant, PROVIDER, measurement_key=QUANTITY,
-                rate_per_unit_micros=RUNG_2_BOOKS_EXACT, valid_from=moment)
-            rate_in_default_book(
+                rate_per_unit_micros=SUPPLIER_COST, valid_from=moment)
+            cost_rate_in_default_book(
                 tenant, measurement_key=QUANTITY,
-                rate_per_unit_micros=RUNG_4_BOOKS_DEFAULT, valid_from=moment)
+                rate_per_unit_micros=SUPPLIER_COST * 2, valid_from=moment)
             receipt = resolve_price(self._subject(tenant, customer),
                                     timezone.now())
 
             with self.subTest(attempt=attempt):
-                self.assertEqual(receipt["provenance"]["price_rate_ids"],
-                                 {QUANTITY: str(in_the_providers_book.id)})
+                self.assertEqual(receipt["provenance"]["cost_rate_ids"],
+                                 {QUANTITY: str(in_the_suppliers_book.id)})
 
     def test_the_computed_field_counts_and_no_longer_decides(self):
         """The statement is made ONCE, and not here (#356).

@@ -112,8 +112,9 @@ def sync_detailed(
      This account's audit entries, newest first (cursor-paginated, #78 envelope).
 
     Optional exact-match filters narrow the feed: ``action`` (e.g.
-    ``rate_card.published``), or ``resource_type`` + ``resource_id`` together to
-    answer \"who changed THIS rate card?\" — both served by the ledger's indexes.
+    ``pricing_book_publish.published``), or ``resource_type`` +
+    ``resource_id`` together to answer \"who changed THIS record?\" — both
+    served by the ledger's indexes.
     Not product-gated: the trail spans every product a tenant uses.
 
     Args:
@@ -162,8 +163,9 @@ def sync(
      This account's audit entries, newest first (cursor-paginated, #78 envelope).
 
     Optional exact-match filters narrow the feed: ``action`` (e.g.
-    ``rate_card.published``), or ``resource_type`` + ``resource_id`` together to
-    answer \"who changed THIS rate card?\" — both served by the ledger's indexes.
+    ``pricing_book_publish.published``), or ``resource_type`` +
+    ``resource_id`` together to answer \"who changed THIS record?\" — both
+    served by the ledger's indexes.
     Not product-gated: the trail spans every product a tenant uses.
 
     Args:
@@ -207,8 +209,9 @@ async def asyncio_detailed(
      This account's audit entries, newest first (cursor-paginated, #78 envelope).
 
     Optional exact-match filters narrow the feed: ``action`` (e.g.
-    ``rate_card.published``), or ``resource_type`` + ``resource_id`` together to
-    answer \"who changed THIS rate card?\" — both served by the ledger's indexes.
+    ``pricing_book_publish.published``), or ``resource_type`` +
+    ``resource_id`` together to answer \"who changed THIS record?\" — both
+    served by the ledger's indexes.
     Not product-gated: the trail spans every product a tenant uses.
 
     Args:
@@ -257,8 +260,9 @@ async def asyncio(
      This account's audit entries, newest first (cursor-paginated, #78 envelope).
 
     Optional exact-match filters narrow the feed: ``action`` (e.g.
-    ``rate_card.published``), or ``resource_type`` + ``resource_id`` together to
-    answer \"who changed THIS rate card?\" — both served by the ledger's indexes.
+    ``pricing_book_publish.published``), or ``resource_type`` +
+    ``resource_id`` together to answer \"who changed THIS record?\" — both
+    served by the ledger's indexes.
     Not product-gated: the trail spans every product a tenant uses.
 
     Args:

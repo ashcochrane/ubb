@@ -198,19 +198,17 @@ class TestGroupingFieldInvariants:
         carries only a broad provider pin (specificity 1). The narrow one wins."""
         from apps.metering.pricing.models import Rate
         from apps.metering.pricing.services.pricing_service import PricingService
-        from apps.metering.pricing.tests._helpers import rate_in_default_book
+        from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate_in_default_book
 
         t = self._t()
         c = Customer.objects.create(tenant=t, external_id="cust-1")
 
         # "" (provider-agnostic) default book: narrow, highly-pinned override.
-        rate_in_default_book(
-            t, card_type="cost", provider="", task_type="invoice_batch",
+        cost_rate_in_default_book(t, provider="", task_type="invoice_batch",
             grouping_field_1="eu-west-1", measurement_key="input_tokens",
             rate_per_unit_micros=1_000, unit_quantity=1_000_000)
         # "openai" provider-specific default book: broad, single-selector rate.
-        rate_in_default_book(
-            t, card_type="cost", provider="openai", measurement_key="input_tokens",
+        cost_rate_in_default_book(t, provider="openai", measurement_key="input_tokens",
             rate_per_unit_micros=9_000, unit_quantity=1_000_000)
 
         # Everything wildcarded except the two this scenario pins, and built

@@ -63,8 +63,9 @@ def list_audit_records(request, action: str = None, resource_type: str = None,
     """This account's audit entries, newest first (cursor-paginated, #78 envelope).
 
     Optional exact-match filters narrow the feed: ``action`` (e.g.
-    ``rate_card.published``), or ``resource_type`` + ``resource_id`` together to
-    answer "who changed THIS rate card?" — both served by the ledger's indexes.
+    ``pricing_book_publish.published``), or ``resource_type`` +
+    ``resource_id`` together to answer "who changed THIS record?" — both
+    served by the ledger's indexes.
     Not product-gated: the trail spans every product a tenant uses.
     """
     qs = AuditRecord.objects.filter(tenant_id=request.auth.tenant.id)

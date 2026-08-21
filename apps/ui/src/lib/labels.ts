@@ -223,7 +223,12 @@ export const COSTING_METHODS = COSTING_METHOD_VALUES;
 // behind its value list and nothing else.
 export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 
-export const cardTypeLabel = legacyLabelMap({ cost: "Cost card", price: "Price card" });
+// ⚠ `cardTypeLabel` IS DELETED (#368), WHICH IS WHAT ITS LEDGER ENTRY ASKED
+// FOR. That entry said the map "is not replaced by a label key at all — it
+// goes when slice 4 replaces `RateCard` with the Pricing Book, alongside the
+// two G9 table entries that name the same models". Both of those are paid in
+// the same commit. A Pricing Book and a cost book are separate entities on
+// separate screens now, so nothing needs a word for which of two a book is.
 // ⚠ THE VALUES MOVED IN #366 AND THE EXPORT NAME DELIBERATELY DID NOT.
 // The keys are the rate's ratified arithmetic shapes now, because this
 // feature both renders and SENDS them and a console still saying `flat`

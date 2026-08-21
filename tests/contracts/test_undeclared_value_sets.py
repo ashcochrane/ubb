@@ -101,11 +101,15 @@ VALUE_SETS = {
     #
     # ⚠ 4 → 3 in #367, and the one that went is the kind discriminator's use on
     # the RULE. It was declared on the rule and on its container; the rule's
-    # column is deleted rather than re-spelled, so the container's is the only
-    # one left — which is what ticket 21 splits into two separately shaped
-    # entities. Re-taken from the census rather than decremented, for the reason
-    # the paragraph above gives.
-    "ubb-platform/apps/metering/pricing/models.py": 3,
+    # column was deleted rather than re-spelled, so the container's was the
+    # only one left.
+    #
+    # ⚠ 3 → 2 in #368, which is that last one going. The container split into
+    # two separately shaped entities, so there is no column left for a kind
+    # word to live on and no value set to declare: which kind a book is, is
+    # which TABLE it sits on. Re-taken from the census rather than decremented,
+    # for the reason the paragraph above gives.
+    "ubb-platform/apps/metering/pricing/models.py": 2,
     # 2 → 4 in #351: the price status and its reason, both DERIVED from the
     # registry frozensets exactly as the cost pair beside them. The count rises
     # because this inventory counts the shape and not the provenance — which is

@@ -157,20 +157,6 @@
         "title": "ApiKeyOut",
         "type": "object"
       },
-      "AssignIn": {
-        "properties": {
-          "rate_card_id": {
-            "format": "uuid",
-            "title": "Rate Card Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "rate_card_id"
-        ],
-        "title": "AssignIn",
-        "type": "object"
-      },
       "AssignPlanIn": {
         "properties": {
           "plan_key": {
@@ -604,103 +590,6 @@
         "title": "BookChangeIn",
         "type": "object"
       },
-      "BookIn": {
-        "properties": {
-          "card_type": {
-            "title": "Card Type",
-            "type": "string"
-          },
-          "currency": {
-            "anyOf": [
-              {
-                "maxLength": 3,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currency"
-          },
-          "is_default": {
-            "default": false,
-            "title": "Is Default",
-            "type": "boolean"
-          },
-          "key": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Key",
-            "type": "string"
-          },
-          "name": {
-            "default": "",
-            "maxLength": 255,
-            "title": "Name",
-            "type": "string"
-          },
-          "provider_key": {
-            "default": "",
-            "maxLength": 100,
-            "title": "Provider Key",
-            "type": "string"
-          }
-        },
-        "required": [
-          "card_type",
-          "key"
-        ],
-        "title": "BookIn",
-        "type": "object"
-      },
-      "BookOut": {
-        "properties": {
-          "card_type": {
-            "title": "Card Type",
-            "type": "string"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "is_default": {
-            "title": "Is Default",
-            "type": "boolean"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "provider_key": {
-            "title": "Provider Key",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "card_type",
-          "provider_key",
-          "key",
-          "name",
-          "currency",
-          "version",
-          "is_default"
-        ],
-        "title": "BookOut",
-        "type": "object"
-      },
       "BookPublishIn": {
         "description": "The intended changes, and when they take effect.\n\n**`effective_at` IS WHAT DATES A CHANGE FORWARD, AND OMITTING IT MEANS\nNOW.** A tenant who has agreed a rise from the first of next month states\nthat instant here and stops having to remember: publishing writes the rows\nimmediately, carrying the boundary as a value the resolver reads, so\n**nothing runs at the instant itself**. There is no job to be late, which\nmatters because a late job would price every event in the gap at the old\nrate and that wrong price would sit permanently on an authoritative record.\n\nThe instant must be timezone-aware (`effective_at_naive`). A change is dated\nforward or not at all, so an instant more than five minutes behind the\npresent is refused with `effective_at_in_past` \u2014 the allowance is clock\nskew, so that a caller stamping its own \"now\" is not told its clock is\nwrong. And it must be within the platform's forward horizon of **366 days**;\nbeyond it the request is refused with `effective_at_too_far_ahead`.\n\nEach of the three carries a code of its own so that *\"that date is a typo\"*\nis distinguishable from *\"that date has passed\"* and from every other reason\na body is refused. The horizon is a platform bound and no tenant setting\nmoves it.",
         "properties": {
@@ -1111,6 +1000,94 @@
           }
         },
         "title": "ConnectStartIn",
+        "type": "object"
+      },
+      "CostBookIn": {
+        "description": "Declare a cost book: a record of what one supplier charges this tenant.\n\nIt names the supplier and the currency that supplier bills in, and both\nare required in the sense that matters: `currency` may not be empty, and\n`provider_key` must be stated \u2014 the empty string is a stated value and\nmeans the book applies whatever the supplier, which is a real choice\nrather than an omission.\n\n`is_default` marks the book a cost is resolved from for that supplier and\ncurrency. A tenant has at most one per pair; declaring a second answers\n409.",
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          },
+          "provider_key": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Provider Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "CostBookIn",
+        "type": "object"
+      },
+      "CostBookOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provider_key": {
+            "title": "Provider Key",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "provider_key",
+          "currency",
+          "key",
+          "name",
+          "version",
+          "is_default"
+        ],
+        "title": "CostBookOut",
         "type": "object"
       },
       "CreateCustomerRequest": {
@@ -3349,11 +3326,11 @@
         "title": "PaginatedBookPublishes",
         "type": "object"
       },
-      "PaginatedBooks": {
+      "PaginatedCostBooks": {
         "properties": {
           "data": {
             "items": {
-              "$ref": "#/components/schemas/BookOut"
+              "$ref": "#/components/schemas/CostBookOut"
             },
             "title": "Data",
             "type": "array"
@@ -3378,7 +3355,7 @@
           "data",
           "has_more"
         ],
-        "title": "PaginatedBooks",
+        "title": "PaginatedCostBooks",
         "type": "object"
       },
       "PaginatedEventCategories": {
@@ -3603,6 +3580,38 @@
           "has_more"
         ],
         "title": "PaginatedMeasurements",
+        "type": "object"
+      },
+      "PaginatedPricingBooks": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/PricingBookOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedPricingBooks",
         "type": "object"
       },
       "PaginatedProviders": {
@@ -4568,6 +4577,78 @@
         "title": "PreCheckResponse",
         "type": "object"
       },
+      "PricingBookIn": {
+        "description": "Declare a Pricing Book: a catalogue of what this tenant charges.\n\nIt names neither a supplier nor a currency, and both absences are\ndeliberate. A tenant's price for a unit of work does not change because\nthey switched supplier, and a tenant has exactly one currency\n(per-tenant single currency; multi-currency and FX are not supported), so\na book that repeated either would be repeating a decision made elsewhere.\nA rule that should price one supplier's work differently pins `provider`\nas a selector, which is where that belongs.\n\n`is_default` marks the book a customer is priced from when nothing\nnarrower applies. A tenant has at most one; declaring a second answers\n409.",
+        "properties": {
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "PricingBookIn",
+        "type": "object"
+      },
+      "PricingBookOut": {
+        "properties": {
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "version",
+          "is_default",
+          "customer_id"
+        ],
+        "title": "PricingBookOut",
+        "type": "object"
+      },
       "ProblemOut": {
         "description": "RFC 9457 problem+json, for ``response=`` documentation of error\nstatuses. Extension members (e.g. ``balance_micros``) are open-world and\ndeliberately unmodeled.",
         "properties": {
@@ -5045,160 +5126,19 @@
         "title": "ProviderUpdateIn",
         "type": "object"
       },
-      "PublishIn": {
-        "properties": {
-          "changes": {
-            "items": {
-              "$ref": "#/components/schemas/RateChangeIn"
-            },
-            "title": "Changes",
-            "type": "array"
-          }
-        },
-        "required": [
-          "changes"
-        ],
-        "title": "PublishIn",
-        "type": "object"
-      },
-      "RateChangeIn": {
-        "description": "One reprice in a publish. Match keys (measurement_key plus the fourteen\nselectors below \u2014 provider/event_type/task_type/subtask_type and the ten\ngrouping-field slots) locate the active rate; the remaining (nullable)\nfields, when present, override it in the new version.\n\n**These are the whole selector set a rate can pin.** A rate is pinned on the\nfour reserved axes and on any of the ten grouping slots, and every one of\nthem can be stated here \u2014 so a rule pinned on any slot is reachable. A\nselector left empty matches a rule that leaves that slot unpinned, which is\nwhat an empty selector means everywhere on this surface, so omitting one is\na statement about the rule rather than a gap in the body.",
-        "properties": {
-          "event_type": {
-            "default": "",
-            "title": "Event Type",
-            "type": "string"
-          },
-          "fixed_micros": {
-            "anyOf": [
-              {
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fixed Micros"
-          },
-          "grouping_field_1": {
-            "default": "",
-            "title": "Grouping Field 1",
-            "type": "string"
-          },
-          "grouping_field_10": {
-            "default": "",
-            "title": "Grouping Field 10",
-            "type": "string"
-          },
-          "grouping_field_2": {
-            "default": "",
-            "title": "Grouping Field 2",
-            "type": "string"
-          },
-          "grouping_field_3": {
-            "default": "",
-            "title": "Grouping Field 3",
-            "type": "string"
-          },
-          "grouping_field_4": {
-            "default": "",
-            "title": "Grouping Field 4",
-            "type": "string"
-          },
-          "grouping_field_5": {
-            "default": "",
-            "title": "Grouping Field 5",
-            "type": "string"
-          },
-          "grouping_field_6": {
-            "default": "",
-            "title": "Grouping Field 6",
-            "type": "string"
-          },
-          "grouping_field_7": {
-            "default": "",
-            "title": "Grouping Field 7",
-            "type": "string"
-          },
-          "grouping_field_8": {
-            "default": "",
-            "title": "Grouping Field 8",
-            "type": "string"
-          },
-          "grouping_field_9": {
-            "default": "",
-            "title": "Grouping Field 9",
-            "type": "string"
-          },
-          "measurement_key": {
-            "title": "Measurement Key",
-            "type": "string"
-          },
-          "provider": {
-            "default": "",
-            "title": "Provider",
-            "type": "string"
-          },
-          "rate_per_unit_micros": {
-            "anyOf": [
-              {
-                "minimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rate Per Unit Micros"
-          },
-          "rate_structure": {
-            "anyOf": [
-              {
-                "enum": [
-                  "per_unit",
-                  "fixed_component"
-                ],
-                "type": "string",
-                "x-ubb-concept": "rate_structure"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rate Structure"
-          },
-          "subtask_type": {
-            "default": "",
-            "title": "Subtask Type",
-            "type": "string"
-          },
-          "task_type": {
-            "default": "",
-            "title": "Task Type",
-            "type": "string"
-          },
-          "unit_quantity": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unit Quantity"
-          }
-        },
-        "required": [
-          "measurement_key"
-        ],
-        "title": "RateChangeIn",
-        "type": "object"
-      },
       "RateOut": {
         "properties": {
+          "book_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Id"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -5267,10 +5207,6 @@
             "title": "Provider",
             "type": "string"
           },
-          "rate_card_id": {
-            "title": "Rate Card Id",
-            "type": "string"
-          },
           "rate_per_unit_micros": {
             "title": "Rate Per Unit Micros",
             "type": "integer"
@@ -5314,7 +5250,7 @@
         },
         "required": [
           "id",
-          "rate_card_id",
+          "book_id",
           "lineage_id",
           "measurement_key",
           "provider",
@@ -9014,7 +8950,7 @@
   "paths": {
     "/api/v1/audit/records": {
       "get": {
-        "description": "This account's audit entries, newest first (cursor-paginated, #78 envelope).\n\nOptional exact-match filters narrow the feed: ``action`` (e.g.\n``rate_card.published``), or ``resource_type`` + ``resource_id`` together to\nanswer \"who changed THIS rate card?\" \u2014 both served by the ledger's indexes.\nNot product-gated: the trail spans every product a tenant uses.",
+        "description": "This account's audit entries, newest first (cursor-paginated, #78 envelope).\n\nOptional exact-match filters narrow the feed: ``action`` (e.g.\n``pricing_book_publish.published``), or ``resource_type`` +\n``resource_id`` together to answer \"who changed THIS record?\" \u2014 both\nserved by the ledger's indexes.\nNot product-gated: the trail spans every product a tenant uses.",
         "operationId": "api_v1_audit_endpoints_list_audit_records",
         "parameters": [
           {
@@ -12899,6 +12835,588 @@
         "summary": "List Grouping Field Values"
       }
     },
+    "/api/v1/metering/pricing/books/{book_id}/publishes": {
+      "get": {
+        "description": "The changes PENDING on this book \u2014 the drafts, newest first, each with\nits diff.\n\nDrafts only, and that is the question this route answers: *what is about to\nhappen to my prices*. A published record is history and the governance\nledger is where history is read, filtered by action; here it would cost a\ndiff computation per row for a record whose diff is null anyway.",
+        "operationId": "api_v1_metering_endpoints_list_book_publishes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedBookPublishes"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Book Publishes"
+      },
+      "post": {
+        "description": "Declare a change to a book: the intended changes, and nothing written.\n\nA draft holds the changes and writes no rule, which is what makes it freely\neditable and freely discardable. The response carries the diff \u2014 what the\nbook will look like afterwards \u2014 so a tenant decides against the outcome\nrather than against their own request.\n\nEvery change is resolved before the draft is created, so a name the tenant\nhas not declared, or a rule that is not there, is a 422 while they are still\ndeciding rather than a surprise when the price was supposed to change.\n\n**The change can be dated forward, and nothing runs at the instant.**\n`effective_at` names when it takes effect and omitting it means now.\nPublishing writes the rows there and then, carrying the boundary as a value\nresolution reads, so no job has to run when the moment arrives.\n\nAn instant must be timezone-aware (`effective_at_naive`), must not be in the\npast (`effective_at_in_past`), and must be within 366 days\n(`effective_at_too_far_ahead`). It must also be at or after the latest\nboundary already scheduled in this book\n(`effective_at_before_scheduled_boundary`): changes to one book are dated\nforwards, so a change may follow what is scheduled or land exactly on it \u2014\nwhich is how a scheduled change is reversed \u2014 but never slip in behind it.\nThere is no limit on how many changes a book may have scheduled at once. A\nrefused declaration writes nothing and is recorded nowhere.",
+        "operationId": "api_v1_metering_endpoints_declare_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookPublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Book Publish"
+      }
+    },
+    "/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}": {
+      "delete": {
+        "description": "Discard a draft, leaving the book exactly as it stood.\n\nA draft closed nothing, so this reopens nothing. A published record is\nrefused: a publish that has already closed and opened rules is not an\nintention that can be withdrawn, and the act that undoes one is a further\npublish.",
+        "operationId": "api_v1_metering_endpoints_discard_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Discard Book Publish"
+      },
+      "get": {
+        "description": "One change to a book, with its diff while it is still a draft.",
+        "operationId": "api_v1_metering_endpoints_get_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Book Publish"
+      }
+    },
+    "/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}/publish": {
+      "post": {
+        "description": "Publish a declared change: close each superseded rule, open its\nreplacement, from one value.\n\nAll-or-nothing, and nothing runs at the effective instant \u2014 the rows are\nwritten now, carrying the boundary as a value the resolver reads.\n\nA draft is re-checked against the book as it stands now, so one that has\nfallen behind a boundary scheduled since it was declared is refused with\n`effective_at_before_scheduled_boundary` rather than published. Discard it\nand declare the change again at an instant at or after that boundary.",
+        "operationId": "api_v1_metering_endpoints_publish_book_publish",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "publish_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publish Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookPublishOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Publish Book Publish"
+      }
+    },
+    "/api/v1/metering/pricing/books/{book_id}/rates": {
+      "get": {
+        "description": "List the rules in a book, newest first. Active-only by default;\n``include_history`` returns every version (superseded rows carry a\n``valid_to``), and ``as_of`` returns the version active at that instant\n(point-in-time).\n\nThe book may be a Pricing Book or a cost book: listing what is in one is\nthe same act either way, and it is gated on the product that BOOK belongs\nto rather than on metering alone.",
+        "operationId": "api_v1_metering_endpoints_list_book_rates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include History",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedRates"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Book Rates"
+      }
+    },
+    "/api/v1/metering/pricing/cost-books": {
+      "get": {
+        "description": "List the tenant's cost books \u2014 what each supplier charges \u2014 newest\nfirst. Rules live under a book and are read via\nGET /pricing/books/{book_id}/rates.",
+        "operationId": "api_v1_metering_endpoints_list_cost_books",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedCostBooks"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Cost Books"
+      },
+      "post": {
+        "description": "Declare a cost book: a record of what one supplier charges this tenant.\n\nIt arrives EMPTY, for the reason a Pricing Book does: UBB ships no\ncatalogue of supplier prices and cannot \u2014 they are the supplier's.\n\nDeclarations dedupe on natural identity: a second book under the same key,\nor a second default for one supplier and currency, answers 409.",
+        "operationId": "api_v1_metering_endpoints_declare_cost_book",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostBookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostBookOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Cost Book"
+      }
+    },
+    "/api/v1/metering/pricing/cost-books/{book_id}": {
+      "delete": {
+        "description": "Withdraw a cost book the tenant no longer records costs from.\n\n**A book that has EVER held a rule is not withdrawn, it answers 409**, for\nthe reason `withdraw_pricing_book` gives in full: a retired rule is kept\nrather than removed, and the receipts explaining what past work cost point\nat it. So does a book with a change recorded against it.",
+        "operationId": "api_v1_metering_endpoints_withdraw_cost_book",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Cost Book"
+      }
+    },
     "/api/v1/metering/pricing/customers/{customer_id}/inherited-rule": {
       "get": {
         "description": "What this customer is charged for a rule where they have no override.\n\nThe starting point for writing one: the rule as it stands for this customer\nwith their own book taken out of the ladder, so a client can show the\nmethod and the current value the override is about to replace, and copy\nthem into `POST /pricing/customers/{customer_id}/overrides`.\n\nIt is the same ladder one rung shorter \u2014 same specificity-before-source,\nsame absence of fallthrough between books \u2014 so what is shown cannot drift\nfrom what is being overridden.\n\n`rule` is null where nothing is inherited, which is an ordinary state\nrather than an error: a quantity no book in play prices falls to the\ntenant's markup rung, and an override written there starts from nothing.\n\nEach `grouping_field` is `key=value`, naming a grouping field this tenant\nhas declared; repeat the parameter to pin more than one. `as_of` asks the\nquestion at an instant other than now.",
@@ -13148,7 +13666,7 @@
     },
     "/api/v1/metering/pricing/customers/{customer_id}/overrides": {
       "post": {
-        "description": "Declare one customer's own pricing rule, as a draft.\n\nThe override states a WHOLE rule \u2014 the quantity it prices, the selectors it\npins, how it derives its price and what it charges \u2014 and replaces whatever\nthis customer inherits for that rule. Nothing is inherited into it: a field\nleft out takes the rule defaults, never the superseded rule's value, so a\ncustomer moved from a margin over cost onto a flat price is stated in one\nbody. `GET /pricing/customers/{customer_id}/inherited-rule` answers what\nthey get today, which is what a client offers as the starting point.\n\n**This writes no rule.** It declares a draft on the customer's own book,\nexactly as a change to any other book is declared, and publishing it\nthrough `POST /pricing/rate-cards/{book_id}/publishes/{publish_id}/publish`\nis what puts the deal in force. The response carries that book's id and the\ndiff.\n\n`effective_at` dates the override forward and omitting it means now, under\nthe bounds every publish takes: timezone-aware (`effective_at_naive`), not\nin the past (`effective_at_in_past`), within 366 days\n(`effective_at_too_far_ahead`), and at or after the latest boundary already\nscheduled on this customer's book\n(`effective_at_before_scheduled_boundary`).",
+        "description": "Declare one customer's own pricing rule, as a draft.\n\nThe override states a WHOLE rule \u2014 the quantity it prices, the selectors it\npins, how it derives its price and what it charges \u2014 and replaces whatever\nthis customer inherits for that rule. Nothing is inherited into it: a field\nleft out takes the rule defaults, never the superseded rule's value, so a\ncustomer moved from a margin over cost onto a flat price is stated in one\nbody. `GET /pricing/customers/{customer_id}/inherited-rule` answers what\nthey get today, which is what a client offers as the starting point.\n\n**This writes no rule.** It declares a draft on the customer's own book,\nexactly as a change to any other book is declared, and publishing it\nthrough `POST /pricing/books/{book_id}/publishes/{publish_id}/publish`\nis what puts the deal in force. The response carries that book's id and the\ndiff.\n\n`effective_at` dates the override forward and omitting it means now, under\nthe bounds every publish takes: timezone-aware (`effective_at_naive`), not\nin the past (`effective_at_in_past`), within 366 days\n(`effective_at_too_far_ahead`), and at or after the latest boundary already\nscheduled on this customer's book\n(`effective_at_before_scheduled_boundary`).",
         "operationId": "api_v1_metering_endpoints_declare_customer_override",
         "parameters": [
           {
@@ -13295,64 +13813,6 @@
         "summary": "Withdraw Customer Override"
       }
     },
-    "/api/v1/metering/pricing/customers/{customer_id}/rate-card": {
-      "post": {
-        "description": "Assign a PRICE book to a customer (one per customer per currency).\nResolution consults the assigned book before the per-provider default.",
-        "operationId": "api_v1_metering_endpoints_assign_book",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssignIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Assign Book"
-      }
-    },
     "/api/v1/metering/pricing/default-markup": {
       "delete": {
         "description": "Withdraw the rung, leaving the tenant with none.\n\n\u26a0 **THIS IS NOT THE SAME AS DECLARING ZERO**, and the difference is the one\nthis rung exists to keep. A declared zero prices an event at exactly what\nthe call cost and settles; no rung at all resolves to `unknown` with no\namount, because nobody has said what to charge.\n\nIdempotent: withdrawing nothing answers `no_declaration` rather than 404,\nand writes no audit entry \u2014 there was no act.",
@@ -13490,6 +13950,167 @@
         "summary": "Upsert Tenant Markup"
       }
     },
+    "/api/v1/metering/pricing/pricing-books": {
+      "get": {
+        "description": "List the tenant's Pricing Books \u2014 the catalogues of what this tenant\ncharges \u2014 newest first. Rules live under a book and are read via\nGET /pricing/books/{book_id}/rates.",
+        "operationId": "api_v1_metering_endpoints_list_pricing_books",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedPricingBooks"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Pricing Books"
+      },
+      "post": {
+        "description": "Declare a Pricing Book: a catalogue of what this tenant charges.\n\nIt arrives EMPTY. UBB ships no catalogue \u2014 no starter rules, no default\nrule set, no seeded markup \u2014 so a book prices nothing until rules are\npublished into it and every event falls past it to the markup rung.\n\nA book names neither a supplier nor a currency; see the request schema for\nwhy. Declarations dedupe on natural identity: a second book under the same\nkey, or a second default, answers 409.",
+        "operationId": "api_v1_metering_endpoints_declare_pricing_book",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingBookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingBookOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Pricing Book"
+      }
+    },
+    "/api/v1/metering/pricing/pricing-books/{book_id}": {
+      "delete": {
+        "description": "Withdraw a Pricing Book the tenant no longer prices from.\n\n**A book that has EVER held a rule is not withdrawn, it answers 409** \u2014\nand \"ever\" is the operative word rather than a hedge. Rules are what a\ntenant was charged from and the receipts explaining past charges point at\nthem, so retiring a rule stamps its end and KEEPS the row; the book still\nholds it. Withdrawal is therefore for a book that was declared and never\nused, which is the state it exists to clear up.\n\nA book a Plan prices from answers 409 for the same reason: the plan would\nbe left naming nothing, which is the state its required reference exists\nto make unreachable. So does a book with a change recorded against it.",
+        "operationId": "api_v1_metering_endpoints_withdraw_pricing_book",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Withdraw Pricing Book"
+      }
+    },
     "/api/v1/metering/pricing/projected-adjustment": {
       "get": {
         "description": "What recovering this filter would be worth, per customer.\n\nA projection and not an instruction: reading it moves no money, creates no\ninvoice, credit note, charge or refund, and UBB will not bill your customer\nfor it. Deciding to go back to a customer stays yours, and you act on it\nthrough the billing path you already use.\n\nEach posting is re-resolved at its own effective instant, so nothing is\nrepriced against today's rules. `usage_event_ids` names the postings behind\neach figure; each one's Pricing Receipt is at\nGET /metering/usage/{event_id}.\n\nOne pass examines a bounded number of postings. `postings_not_examined`\nsays how many the filter matched beyond it \u2014 narrow the date range to reach\nthose \u2014 and `unpriced_event_count` says how many examined postings still\nresolve to no price. Both make the figures a floor.\n\nThe filter is the Resolution Run's: a half-open date range, a customer and\nan Event Type, in any combination. A customer this tenant does not have is\na 404; a stated window longer than 366 days is a `validation_error`.",
@@ -13595,614 +14216,6 @@
           }
         ],
         "summary": "Get Projected Adjustment"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards": {
-      "get": {
-        "description": "List the tenant's rate-card BOOKS (containers), newest first. Rates\nlive under a book and are read via GET /pricing/rate-cards/{book_id}/rates.",
-        "operationId": "api_v1_metering_endpoints_list_books",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "card_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Card Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedBooks"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Books"
-      },
-      "post": {
-        "description": "Create a rate-card BOOK. Rates are added under it (so every API-created\nrate is book-scoped and therefore resolvable). Creates dedupe on natural\nidentity (#78): a duplicate book answers 409.",
-        "operationId": "api_v1_metering_endpoints_create_book",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BookIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Create Book"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards/{book_id}/publish": {
-      "post": {
-        "description": "Atomically reprice a set of the book's rates: each change supersedes the\nmatching active rate (same lineage, valid_to stamped) and opens a new\nversion; the book version bumps once. All-or-nothing.",
-        "operationId": "api_v1_metering_endpoints_publish_book",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PublishIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Publish Book"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes": {
-      "get": {
-        "description": "The changes PENDING on this book \u2014 the drafts, newest first, each with\nits diff.\n\nDrafts only, and that is the question this route answers: *what is about to\nhappen to my prices*. A published record is history and the governance\nledger is where history is read, filtered by action; here it would cost a\ndiff computation per row for a record whose diff is null anyway.",
-        "operationId": "api_v1_metering_endpoints_list_book_publishes",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedBookPublishes"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Book Publishes"
-      },
-      "post": {
-        "description": "Declare a change to a book: the intended changes, and nothing written.\n\nA draft holds the changes and writes no rule, which is what makes it freely\neditable and freely discardable. The response carries the diff \u2014 what the\nbook will look like afterwards \u2014 so a tenant decides against the outcome\nrather than against their own request.\n\nEvery change is resolved before the draft is created, so a name the tenant\nhas not declared, or a rule that is not there, is a 422 while they are still\ndeciding rather than a surprise when the price was supposed to change.\n\n**The change can be dated forward, and nothing runs at the instant.**\n`effective_at` names when it takes effect and omitting it means now.\nPublishing writes the rows there and then, carrying the boundary as a value\nresolution reads, so no job has to run when the moment arrives.\n\nAn instant must be timezone-aware (`effective_at_naive`), must not be in the\npast (`effective_at_in_past`), and must be within 366 days\n(`effective_at_too_far_ahead`). It must also be at or after the latest\nboundary already scheduled in this book\n(`effective_at_before_scheduled_boundary`): changes to one book are dated\nforwards, so a change may follow what is scheduled or land exactly on it \u2014\nwhich is how a scheduled change is reversed \u2014 but never slip in behind it.\nThere is no limit on how many changes a book may have scheduled at once. A\nrefused declaration writes nothing and is recorded nowhere.",
-        "operationId": "api_v1_metering_endpoints_declare_book_publish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BookPublishIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookPublishOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Declare Book Publish"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}": {
-      "delete": {
-        "description": "Discard a draft, leaving the book exactly as it stood.\n\nA draft closed nothing, so this reopens nothing. A published record is\nrefused: a publish that has already closed and opened rules is not an\nintention that can be withdrawn, and the act that undoes one is a further\npublish.",
-        "operationId": "api_v1_metering_endpoints_discard_book_publish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "publish_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Publish Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StatusResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Discard Book Publish"
-      },
-      "get": {
-        "description": "One change to a book, with its diff while it is still a draft.",
-        "operationId": "api_v1_metering_endpoints_get_book_publish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "publish_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Publish Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookPublishOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Book Publish"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish": {
-      "post": {
-        "description": "Publish a declared change: close each superseded rule, open its\nreplacement, from one value.\n\nAll-or-nothing, and nothing runs at the effective instant \u2014 the rows are\nwritten now, carrying the boundary as a value the resolver reads.\n\nA draft is re-checked against the book as it stands now, so one that has\nfallen behind a boundary scheduled since it was declared is refused with\n`effective_at_before_scheduled_boundary` rather than published. Discard it\nand declare the change again at an instant at or after that boundary.",
-        "operationId": "api_v1_metering_endpoints_publish_book_publish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "publish_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Publish Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BookPublishOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Publish Book Publish"
-      }
-    },
-    "/api/v1/metering/pricing/rate-cards/{book_id}/rates": {
-      "get": {
-        "description": "List the rates in a book, newest first. Active-only by default;\n``include_history`` returns every version (superseded rows carry a\n``valid_to``), and ``as_of`` returns the version active at that instant\n(point-in-time).",
-        "operationId": "api_v1_metering_endpoints_list_book_rates",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "book_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Book Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_history",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include History",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "as_of",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "As Of"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedRates"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Book Rates"
       }
     },
     "/api/v1/metering/pricing/resolution-runs": {
@@ -14525,7 +14538,7 @@
         "summary": "List Task Types"
       },
       "put": {
-        "description": "Declare the tenant's work vocabulary and its per-kind COGS ceilings\n(design D7). Idempotent; the ceiling and required_dimensions may be updated\non a re-PUT. Admin-floored: a task type's ceiling prices usage the same way\nmarkup.set/rate_card.* do, so it takes the write-default Admin floor rather\nthan a Write carve-out.",
+        "description": "Declare the tenant's work vocabulary and its per-kind COGS ceilings\n(design D7). Idempotent; the ceiling and required_dimensions may be updated\non a re-PUT. Admin-floored: a task type's ceiling prices usage the same way\nmarkup.set and the book acts do, so it takes the write-default Admin floor\nrather\nthan a Write carve-out.",
         "operationId": "api_v1_metering_endpoints_declare_task_types",
         "parameters": [],
         "requestBody": {

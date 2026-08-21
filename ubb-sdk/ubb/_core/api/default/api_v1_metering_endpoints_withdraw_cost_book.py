@@ -8,9 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.book_out import BookOut
 from ...models.problem_out import ProblemOut
-from ...models.publish_in import PublishIn
+from ...models.status_response import StatusResponse
 from typing import cast
 from uuid import UUID
 
@@ -18,34 +17,27 @@ from uuid import UUID
 
 def _get_kwargs(
     book_id: UUID,
-    *,
-    body: PublishIn,
 
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
-
+    
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/api/v1/metering/pricing/rate-cards/{book_id}/publish".format(book_id=quote(str(book_id), safe=""),),
+        "method": "delete",
+        "url": "/api/v1/metering/pricing/cost-books/{book_id}".format(book_id=quote(str(book_id), safe=""),),
     }
 
-    _kwargs["json"] = body.to_dict()
 
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> BookOut | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | StatusResponse | None:
     if response.status_code == 200:
-        response_200 = BookOut.from_dict(response.json())
+        response_200 = StatusResponse.from_dict(response.json())
 
 
 
@@ -58,12 +50,12 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_404
 
-    if response.status_code == 422:
-        response_422 = ProblemOut.from_dict(response.json())
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
 
 
 
-        return response_422
+        return response_409
 
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
@@ -71,7 +63,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[BookOut | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | StatusResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -84,31 +76,31 @@ def sync_detailed(
     book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PublishIn,
 
-) -> Response[BookOut | ProblemOut]:
-    """ Publish Book
+) -> Response[ProblemOut | StatusResponse]:
+    """ Withdraw Cost Book
 
-     Atomically reprice a set of the book's rates: each change supersedes the
-    matching active rate (same lineage, valid_to stamped) and opens a new
-    version; the book version bumps once. All-or-nothing.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
-        body (PublishIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BookOut | ProblemOut]
+        Response[ProblemOut | StatusResponse]
      """
 
 
     kwargs = _get_kwargs(
         book_id=book_id,
-body=body,
 
     )
 
@@ -122,32 +114,32 @@ def sync(
     book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PublishIn,
 
-) -> BookOut | ProblemOut | None:
-    """ Publish Book
+) -> ProblemOut | StatusResponse | None:
+    """ Withdraw Cost Book
 
-     Atomically reprice a set of the book's rates: each change supersedes the
-    matching active rate (same lineage, valid_to stamped) and opens a new
-    version; the book version bumps once. All-or-nothing.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
-        body (PublishIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BookOut | ProblemOut
+        ProblemOut | StatusResponse
      """
 
 
     return sync_detailed(
         book_id=book_id,
 client=client,
-body=body,
 
     ).parsed
 
@@ -155,31 +147,31 @@ async def asyncio_detailed(
     book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PublishIn,
 
-) -> Response[BookOut | ProblemOut]:
-    """ Publish Book
+) -> Response[ProblemOut | StatusResponse]:
+    """ Withdraw Cost Book
 
-     Atomically reprice a set of the book's rates: each change supersedes the
-    matching active rate (same lineage, valid_to stamped) and opens a new
-    version; the book version bumps once. All-or-nothing.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
-        body (PublishIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BookOut | ProblemOut]
+        Response[ProblemOut | StatusResponse]
      """
 
 
     kwargs = _get_kwargs(
         book_id=book_id,
-body=body,
 
     )
 
@@ -193,31 +185,31 @@ async def asyncio(
     book_id: UUID,
     *,
     client: AuthenticatedClient,
-    body: PublishIn,
 
-) -> BookOut | ProblemOut | None:
-    """ Publish Book
+) -> ProblemOut | StatusResponse | None:
+    """ Withdraw Cost Book
 
-     Atomically reprice a set of the book's rates: each change supersedes the
-    matching active rate (same lineage, valid_to stamped) and opens a new
-    version; the book version bumps once. All-or-nothing.
+     Withdraw a cost book the tenant no longer records costs from.
+
+    **A book that has EVER held a rule is not withdrawn, it answers 409**, for
+    the reason `withdraw_pricing_book` gives in full: a retired rule is kept
+    rather than removed, and the receipts explaining what past work cost point
+    at it. So does a book with a change recorded against it.
 
     Args:
         book_id (UUID):
-        body (PublishIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BookOut | ProblemOut
+        ProblemOut | StatusResponse
      """
 
 
     return (await asyncio_detailed(
         book_id=book_id,
 client=client,
-body=body,
 
     )).parsed

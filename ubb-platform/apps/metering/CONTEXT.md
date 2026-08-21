@@ -1,6 +1,6 @@
 # Metering
 
-Usage recording, cost/margin tracking, and the RateCard pricing engine — *what happened, what it
+Usage recording, cost/margin tracking, and the pricing engine — *what happened, what it
 cost, and what it's billed at*. Present on every tenant. Code anchors are relative to
 `ubb-platform/`.
 
@@ -159,16 +159,19 @@ percentage itself (#357). The percentage rides BY VALUE and the record only as a
 markup record can be edited or withdrawn and the receipt is what a tenant shows a customer.
 (`apps/metering/pricing/services/markup_service.py:ResolvedMarkup`)
 
-## Pricing — the RateCard engine
+## Pricing — the books, the rules and the ladder
 
 **Rate**:
-A single priced *line* — one measurement key's rate for a combination of the ten declared selector columns
-— living in a RateCard, versioned via `lineage_id`. An empty selector is a wildcard; among the rates
-that match, the most-pinned (highest `specificity`) wins, **whichever book it came from** (#356).
+A single priced *line* — one measurement key's rate for a combination of the ten declared selector
+columns — living in a book, versioned via `lineage_id`. An empty selector is a wildcard; among the
+rates that match, the most-pinned (highest `specificity`) wins, **whichever book it came from**
+(#356). It points at a **Pricing Book or a cost book, never both**, which is what makes its kind a
+fact the database holds rather than a word a writer copied (#368;
+`ck_rate_sits_in_at_most_one_book`).
 (ADR-0005 clause 8, superseded; `apps/metering/pricing/models.py:Rate`)
-_Avoid_: calling a Rate a "rate card" — that name belongs to the container; assuming a rule in any
-book at all can be reached — resolution reads only the books in play for that event, and a rule in a
-book nobody selected is unreachable however well it matches.
+_Avoid_: assuming a rule in any book at all can be reached — resolution reads only the books in play
+for that event, and a rule in a book nobody selected is unreachable however well it matches;
+expecting a rule to say which kind it is — read the book it is in.
 
 **Selector**:
 One of the fourteen columns (`provider`, `event_type`, `task_type`, `subtask_type`,
@@ -188,13 +191,25 @@ composite rule is stated once, at `ladder_rank`.
 (`apps/metering/pricing/models.py:Rate.specificity`;
 `apps/metering/pricing/services/pricing_service.py:ladder_rank`)
 
-**RateCard**:
-The versioned container (informally a "book") grouping many Rates, pinned to one provider +
-currency; one may be the tenant default. (`apps/metering/pricing/models.py:RateCard`)
-_Avoid_: "book"/"sheet"/"container" as the canonical name — it is `RateCard`.
+**Pricing Book**:
+The versioned container of what this tenant **charges** — many Rates, one of which may be the
+tenant default. It is pinned to **neither a supplier nor a currency**: a tenant's price for a unit
+of work does not change because they switched supplier, and a tenant has exactly one currency
+(CUR-1), so a column repeating either was a copy of a decision made elsewhere. A book carrying a
+customer is that customer's override book. (#368; `apps/metering/pricing/models.py:PricingBook`)
+_Avoid_: "rate card" or "price card" — the container is a Pricing Book; expecting it to name a
+provider — a rule that should price one supplier's work differently pins `provider` as a selector,
+which is where that distinction belongs.
 
-**card_type**:
-Whether a card derives provider cost (`cost`) or billed cost (`price`).
+**Cost book**:
+The versioned container of what **one supplier charges this tenant** — pinned to that supplier and
+to the currency they bill in, the currency being a DECLARED value the database refuses to leave
+empty (`ck_cost_book_names_its_currency`). `provider_key = ""` is a stated value and means the book
+applies whatever the supplier, which resolution reads alongside that supplier's own book. (#368;
+`apps/metering/pricing/models.py:CostBook`)
+_Avoid_: "cost card"; treating it as the same entity as a Pricing Book under a different label —
+they are separate tables with different columns, which is the whole of what the split bought, and
+nothing selects between them at runtime.
 
 **rate_structure**:
 The arithmetic shape of a rate — `per_unit`, an amount for each unit of quantity, or
@@ -253,7 +268,7 @@ is what lets it be published, dated forward and reversed by exactly the machiner
 uses; resolution reads that book at the ladder's customer's-own source. Declaring one and
 withdrawing one are two governance acts with two registered audit actions, and both DECLARE a draft
 — publishing it is what puts the deal in force.
-(#361; `apps/metering/pricing/models.py:RateCard.customer`;
+(#361; `apps/metering/pricing/models.py:PricingBook.customer`;
 `apps/metering/pricing/services/pricing_service.py:_override_book`)
 _Avoid_: reading an override as an adjustment to the inherited rule — nothing is inherited into it,
 so a body stating a price and no method opens a rule with no method rather than the inherited one's;
@@ -269,7 +284,8 @@ actually charged reads the whole ladder.
 (#361; `apps/metering/pricing/services/pricing_service.py:the_rule_a_customer_inherits`)
 
 **Pricing provenance**:
-The audit trail stamped on each event — engine version, cost/price source, and rate-card ids.
+The audit trail stamped on each event — engine version, cost/price source, and the ids of the rules
+that priced it.
 
 ## Read contract & events
 

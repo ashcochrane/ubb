@@ -100,9 +100,11 @@ ADAPTER_IMPORTERS = (
     # The add-a-rule dialog's line went with the dialog in #367 — its route is
     # deleted, so the file is not an importer that stopped importing but a file
     # that stopped existing. The count keeps meaning what it says.
-    "apps/ui/src/features/pricing/components/book-detail-page.tsx",
-    "apps/ui/src/features/pricing/components/books-table.tsx",
-    "apps/ui/src/features/pricing/components/publish-row.tsx",
+    # ⚠ THREE OF THIS FEATURE'S FOUR IMPORTERS LEFT IN #368. `publish-row.tsx`
+    # is deleted with the immediate reprice dialog it built, and the book pages
+    # stopped importing the adapter when `cardTypeLabel` went — the map that
+    # worded which of two kinds a book was, on the commit that made them two
+    # separately shaped entities with two screens.
     "apps/ui/src/features/pricing/components/rates-table.tsx",
     "apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx",
     "apps/ui/src/features/referrals/components/ledger-dialog.tsx",

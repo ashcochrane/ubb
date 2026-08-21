@@ -156,7 +156,18 @@ _WRITE_ROUTES = {
 # declared changes on a publish now — so two Admin-floored routes went with
 # them. Neither was carved and neither was exempt, so the exempt count below is
 # untouched. 155 - 2 = 153.
-_EXPECTED_FLOORED = 153
+#
+# ⚠ AND THEN #368 SPLIT THE CONTAINER, WHICH MOVES THIS BY TWO IN A WAY THE NET
+# FIGURE HIDES. On the write side six book routes became seven (the atomic
+# reprice and the customer-assignment route left; a declare and a withdrawal
+# arrived for each of the two entities, replacing one create): +1, all at the
+# Admin floor, which is the carve's default for a write and right here because
+# each decides what a tenant may be charged from. On the read side one list
+# route became two — a Pricing Book and a cost book are listed apart because
+# they are different things — at the Read floor, the carve's default for a GET:
+# +1. Neither is carved and neither is exempt, so the exempt count below is
+# untouched. 153 + 2 = 155.
+_EXPECTED_FLOORED = 155
 _EXPECTED_EXEMPT = 10
 
 

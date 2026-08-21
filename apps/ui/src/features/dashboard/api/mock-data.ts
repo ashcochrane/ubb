@@ -21,7 +21,7 @@ import type {
   ConnectStatus,
   MarginCustomerRow,
   MarginSummary,
-  RateCardBookList,
+  PricingBookList,
   Unprofitable,
   UsageAnalytics,
   Window,
@@ -318,16 +318,14 @@ export const MOCK_API_KEYS: ApiKeyList = {
   next_cursor: null,
 };
 
-export const MOCK_RATE_CARD_BOOKS: RateCardBookList = {
+export const MOCK_PRICING_BOOKS: PricingBookList = {
   data: [
     {
       id: "b7c4e1d0-2f8a-4b6c-9d3e-5a7f0c1b8d29",
       key: "default-price-book",
       name: "Default price book",
-      card_type: "price",
-      provider_key: "",
-      currency: "usd",
       is_default: true,
+      customer_id: null,
       version: 3,
     },
   ],

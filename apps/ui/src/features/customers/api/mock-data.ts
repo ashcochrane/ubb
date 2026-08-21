@@ -11,7 +11,6 @@ import { knownCost, unknownCost } from "@/lib/economic-scenarios";
 
 import type {
   BalanceResponse,
-  BookOut,
   BudgetConfigOut,
   BudgetStatusOut,
   BusinessMarginOut,
@@ -862,28 +861,6 @@ export const MOCK_MARKUPS: Record<string, TenantMarkupOut> = {
   [CUS_NOVA]: { markup_percentage_micros: 0, fixed_uplift_micros: 0 },
 };
 
-export const MOCK_PRICE_BOOKS: BookOut[] = [
-  {
-    id: "6e54e9c6-0000-4000-8000-000000000501",
-    key: "standard-price",
-    name: "Standard price book",
-    card_type: "price",
-    provider_key: "",
-    currency: "usd",
-    is_default: true,
-    version: 3,
-  },
-  {
-    id: "6e54e9c6-0000-4000-8000-000000000502",
-    key: "enterprise-price",
-    name: "Enterprise price book",
-    card_type: "price",
-    provider_key: "",
-    currency: "usd",
-    is_default: false,
-    version: 1,
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Subscriptions

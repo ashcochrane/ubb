@@ -56,7 +56,7 @@ def _open_rule(api, book_id, **change):
     tenant takes. Returns the publish record; `opened_rule_ids` names what it
     opened.
     """
-    base = f"/api/v1/metering/pricing/rate-cards/{book_id}"
+    base = f"/api/v1/metering/pricing/books/{book_id}"
     declared = _post(api, f"{base}/publishes", {"changes": [{"kind": "add",
                                                              **change}]})
     return _post(api, f"{base}/publishes/{declared['id']}/publish", {})
@@ -151,9 +151,8 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # the event's OWN columns (design D3: "" wildcards, a pinned value must
         # match exactly). Every rate lives under a book -> book-scoped
         # resolution can find it. ----
-        book_id = _post(api, "/api/v1/metering/pricing/rate-cards", {
-            "card_type": "cost", "key": "cogs", "provider_key": "",
-            "is_default": True})["id"]
+        book_id = _post(api, "/api/v1/metering/pricing/cost-books", {
+            "key": "cogs", "provider_key": "", "is_default": True})["id"]
         # A declared change names a slot by the tenant's own KEY, which is the
         # one declared just above — so the journey states what a tenant states.
         alpha = _open_rule(api, book_id, measurement_key="tokens",
@@ -298,15 +297,24 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # Capture a timestamp strictly BEFORE the reprice (old rate active then).
         before_update = timezone.now()
 
-        # Reprice the {"service":"alpha"} rate (grouping_field_2="alpha") to 99 via
-        # publish (supersedes v1, opens v2, bumps the book version) — the
-        # book-scoped reprice path.
-        published = _post(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/publish", {
-            "changes": [{"measurement_key": "tokens", "grouping_field_2": "alpha",
-                         "rate_per_unit_micros": 99}]})
+        # Reprice the {"service": "alpha"} rule to 99. It is a declared change
+        # on a publish like every other change to a book since #368, and it
+        # names the slot by the tenant's own declared KEY — the immediate
+        # reprice, which named the column, went with the last of the retired
+        # audit action names it wrote.
+        declared = _post(
+            api, f"/api/v1/metering/pricing/books/{book_id}/publishes",
+            {"changes": [{"kind": "reprice", "measurement_key": "tokens",
+                          "grouping_fields": {"service": "alpha"},
+                          "rate_per_unit_micros": 99}]})
+        _post(api, f"/api/v1/metering/pricing/books/{book_id}"
+                   f"/publishes/{declared['id']}/publish", {})
         # Four: the book started at 1 and each of the two rules opened above was
-        # itself a publish (#367), so this reprice is the third act on it.
-        assert published["version"] == 4
+        # itself a publish (#367), so this reprice is the third act on it. The
+        # version is the BOOK's and the act answers with the publish record, so
+        # it is read off the book.
+        assert _get(api, "/api/v1/metering/pricing/cost-books")["data"][0][
+            "version"] == 4
 
         def _alpha_rows(include_history=False, as_of=None):
             params = {}
@@ -314,7 +322,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
                 params["include_history"] = "true"
             if as_of is not None:
                 params["as_of"] = as_of
-            rows = _get(api, f"/api/v1/metering/pricing/rate-cards/{book_id}/rates",
+            rows = _get(api, f"/api/v1/metering/pricing/books/{book_id}/rates",
                         params=params or None)["data"]
             return [r for r in rows if r["grouping_field_2"] == "alpha"]
 

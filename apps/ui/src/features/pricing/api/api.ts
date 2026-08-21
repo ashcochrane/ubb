@@ -4,53 +4,74 @@
 import { meteringApi } from "@/api/client";
 import { ApiProblem, unwrap } from "@/api/problem";
 import type {
-  Book,
-  BookIn,
+  AnyBook,
+  CostBook,
+  CostBookIn,
   ListBooksParams,
   ListRatesParams,
-  PaginatedBooks,
+  PaginatedCostBooks,
+  PaginatedPricingBooks,
   PaginatedRates,
-  PublishIn,
+  PricingBook,
+  PricingBookIn,
   TenantMarkup,
   TenantMarkupIn,
 } from "./types";
 
-export async function listBooks(params?: ListBooksParams): Promise<PaginatedBooks> {
+export async function listPricingBooks(
+  params?: ListBooksParams,
+): Promise<PaginatedPricingBooks> {
   return unwrap(
-    await meteringApi.GET("/pricing/rate-cards", {
-      params: {
-        query: {
-          card_type: params?.card_type,
-          cursor: params?.cursor,
-          limit: params?.limit,
-        },
-      },
+    await meteringApi.GET("/pricing/pricing-books", {
+      params: { query: { cursor: params?.cursor, limit: params?.limit } },
     }),
   );
 }
 
-export async function createBook(body: BookIn): Promise<Book> {
-  return unwrap(await meteringApi.POST("/pricing/rate-cards", { body }));
+export async function listCostBooks(
+  params?: ListBooksParams,
+): Promise<PaginatedCostBooks> {
+  return unwrap(
+    await meteringApi.GET("/pricing/cost-books", {
+      params: { query: { cursor: params?.cursor, limit: params?.limit } },
+    }),
+  );
+}
+
+export async function declarePricingBook(
+  body: PricingBookIn,
+): Promise<PricingBook> {
+  return unwrap(await meteringApi.POST("/pricing/pricing-books", { body }));
+}
+
+export async function declareCostBook(body: CostBookIn): Promise<CostBook> {
+  return unwrap(await meteringApi.POST("/pricing/cost-books", { body }));
 }
 
 /**
  * The contract has no GET-one-book endpoint; resolve a book by walking the
- * (small) books list. Throws a 404-shaped ApiProblem when absent.
+ * (small) lists. BOTH of them, because a book id names one book of one of two
+ * kinds and the screen that asks does not know which (#368). Throws a
+ * 404-shaped ApiProblem when absent.
  */
-export async function getBook(bookId: string): Promise<Book> {
-  let cursor: string | undefined;
-  for (let page = 0; page < 10; page++) {
-    const result = await listBooks({ cursor, limit: 100 });
-    const match = result.data.find((book) => book.id === bookId);
-    if (match) return match;
-    if (!result.has_more || !result.next_cursor) break;
-    cursor = result.next_cursor;
+export async function getBook(bookId: string): Promise<AnyBook> {
+  for (const list of [listPricingBooks, listCostBooks]) {
+    let cursor: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const result = await list({ cursor, limit: 100 });
+      const match = (result.data as AnyBook[]).find(
+        (book) => book.id === bookId,
+      );
+      if (match) return match;
+      if (!result.has_more || !result.next_cursor) break;
+      cursor = result.next_cursor;
+    }
   }
   throw new ApiProblem({
     status: 404,
     code: "not_found",
     title: "Not found",
-    detail: "This rate-card book no longer exists.",
+    detail: "This book no longer exists.",
   });
 }
 
@@ -59,7 +80,7 @@ export async function listRates(
   params?: ListRatesParams,
 ): Promise<PaginatedRates> {
   return unwrap(
-    await meteringApi.GET("/pricing/rate-cards/{book_id}/rates", {
+    await meteringApi.GET("/pricing/books/{book_id}/rates", {
       params: {
         path: { book_id: bookId },
         query: {
@@ -73,14 +94,13 @@ export async function listRates(
   );
 }
 
-export async function publishBook(bookId: string, body: PublishIn): Promise<Book> {
-  return unwrap(
-    await meteringApi.POST("/pricing/rate-cards/{book_id}/publish", {
-      params: { path: { book_id: bookId } },
-      body,
-    }),
-  );
-}
+// ⚠ NO `publishBook` (#368). The immediate reprice route it called is deleted
+// with the last of the retired audit action names it wrote — every change to a
+// book is a declared change on a publish now, read as a diff before it is
+// committed to. This console cannot change what is in a book until #372
+// rebuilds the feature around books, rules and publishes; the gap is visible
+// rather than hidden, which is the same trade #367 made when the add-a-rule
+// dialog went.
 
 export async function getTenantMarkup(): Promise<TenantMarkup> {
   return unwrap(await meteringApi.GET("/pricing/markup"));
