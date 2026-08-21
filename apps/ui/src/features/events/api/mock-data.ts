@@ -119,7 +119,7 @@ interface DetailSeed {
   metadata?: Record<string, unknown>;
   task_id?: string | null;
   stop_context?: Array<Record<string, unknown>> | null;
-  pricing_provenance?: Record<string, unknown>;
+  pricing_receipt?: Record<string, unknown>;
   request_id?: string;
   idempotency_key?: string;
   /**
@@ -182,14 +182,14 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     grouping_fields: groupingFields,
     measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
-    pricing_provenance: seed.pricing_provenance ?? {},
+    pricing_receipt: seed.pricing_receipt ?? {},
     metadata: seed.metadata ?? {},
     task_id: seed.task_id ?? null,
     stop_context: seed.stop_context ?? null,
   };
 }
 
-function markupProvenance(providerCostMicros: number): Record<string, unknown> {
+function markupReceipt(providerCostMicros: number): Record<string, unknown> {
   return {
     engine_version: "pricing-engine/4.2.1",
     billed_source: "markup",
@@ -239,7 +239,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_OPEN_ID,
       request_id: "req_search_reindex_0042",
       idempotency_key: "idem_search_reindex_0042",
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "price_card",
         price_card: {
@@ -274,7 +274,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(75_000),
       measurements: { input_tokens: 2100, output_tokens: 940 },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
-      pricing_provenance: markupProvenance(75_000),
+      pricing_receipt: markupReceipt(75_000),
       stop_context: [
         {
           limit: "customer_floor",
@@ -298,7 +298,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(42_000),
       measurements: { input_tokens: 1200, output_tokens: 480 },
       metadata: { env: "prod", team: "assist" },
-      pricing_provenance: markupProvenance(42_000),
+      pricing_receipt: markupReceipt(42_000),
       stop_context: [
         {
           limit: "customer_floor",
@@ -324,7 +324,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(24_000),
       measurements: { input_tokens: 800, output_tokens: 260 },
       metadata: { env: "prod", team: "assist" },
-      pricing_provenance: markupProvenance(24_000),
+      pricing_receipt: markupReceipt(24_000),
       stop_context: [
         {
           limit: "customer_floor",
@@ -351,7 +351,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { input_tokens: 1500, output_tokens: 620 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
-      pricing_provenance: markupProvenance(50_000),
+      pricing_receipt: markupReceipt(50_000),
       stop_context: [
         {
           limit: "task_limit",
@@ -387,7 +387,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { embedding_tokens: 7400 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "markup",
         cost_source: "cost_rate",
@@ -411,7 +411,7 @@ const FEATURE_EVENTS: MockEvent[] = [
         team: "search",
         backfill_batch: "2026-07-20-recovery",
       },
-      pricing_provenance: markupProvenance(17_500),
+      pricing_receipt: markupReceipt(17_500),
     }),
   },
   {
@@ -447,7 +447,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_OPEN_ID,
       // A billed amount with no supplier cost under it: the engine priced this
       // event directly rather than as a markup over a cost it does not have.
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "price_rule",
         cost_source: "unresolved",
@@ -482,7 +482,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(19_000),
       measurements: { rerank_documents: 240 },
       metadata: { env: "prod", team: "search" },
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "unresolved",
         cost_source: "cost_rate",
@@ -509,7 +509,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(12_500),
       measurements: { input_tokens: 900, output_tokens: 140 },
       metadata: { env: "prod", team: "support" },
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "waived",
         cost_source: "cost_rate",
@@ -533,7 +533,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { input_tokens: 610, output_tokens: 95 },
       metadata: { env: "prod", team: "onboarding" },
       task_id: TASK_FIXED_PRICE_ID,
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "not_applicable",
         cost_source: "cost_rate",
@@ -557,7 +557,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       price: knownPrice(94_000),
       cost: knownCost(73_000),
       metadata: { env: "prod", team: "search" },
-      pricing_provenance: markupProvenance(73_000),
+      pricing_receipt: markupReceipt(73_000),
       ...prunedMeasurements(),
     }),
   },
@@ -576,7 +576,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(1_840_000),
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_FIXED_PRICE_ID,
-      pricing_provenance: {
+      pricing_receipt: {
         engine_version: "pricing-engine/4.2.1",
         billed_source: "fixed_price",
         cost_source: "caller_reported",
@@ -629,7 +629,7 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
               ? "claude-5"
               : "mistral-large",
       },
-      pricing_provenance: markupProvenance(providerCost),
+      pricing_receipt: markupReceipt(providerCost),
       task_id: index % 6 === 0 ? TASK_OPEN_ID : null,
     }),
   };

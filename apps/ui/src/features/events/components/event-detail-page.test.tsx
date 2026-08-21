@@ -58,11 +58,11 @@ describe("EventDetailPage", () => {
     // Money from the fixture: billed 187,500 micros — sub-unit amounts keep
     // 4-decimal precision so micro-priced events never round to $0.00.
     expect(screen.getByText("$0.1875")).toBeInTheDocument();
-    // Usage measurements (the key also appears in the provenance receipt).
+    // Usage measurements (the key also appears in the receipt).
     expect(screen.getAllByText("input_tokens").length).toBeGreaterThan(0);
     expect(screen.getByText("4,200")).toBeInTheDocument();
-    // The provenance receipt renders structured, not as raw JSON.
-    expect(screen.getByText("Pricing provenance")).toBeInTheDocument();
+    // The receipt renders structured, not as raw JSON.
+    expect(screen.getByText("Pricing receipt")).toBeInTheDocument();
     expect(screen.getByText("llm-prices-2026")).toBeInTheDocument();
   });
 
@@ -176,8 +176,8 @@ describe("EventDetailPage", () => {
 
     // And no quantity was invented to fill the gap. Scoped to the section
     // rather than the page, because the page legitimately carries numbers
-    // elsewhere — a provenance receipt's own terms are real values and must
-    // stay readable.
+    // elsewhere — a receipt's own terms are real values and must stay
+    // readable.
     const section = screen.getByText("Usage measurements").closest("section");
     expect(section).not.toBeNull();
     expect(section?.textContent ?? "").not.toMatch(/\d/);

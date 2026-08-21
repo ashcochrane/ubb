@@ -435,3 +435,32 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/bil
 # because that is the commit where the third and last of the retired audit
 # action names ceased and `record()` refuses an unregistered name. `BookChangeIn`
 # has now replaced all three acts rather than two.
+
+# --- #370: the receipt's wire key takes the record's ratified name ----------
+#
+# The Pricing Receipt is published on exactly two responses — the recording ack
+# and the audit lookup — and on both it carried the retired spelling of the
+# record it holds. #370 moves the stored column and this wire key together, so
+# both responses lose the old property and gain `pricing_receipt` holding the
+# same record.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the only caller-side consumers of
+# this property in the tree are UBB's own console and the SDK's generated
+# models, both regenerated in this same commit because CI's contract check and
+# the SDK drift gate leave no window in which they could be stale.
+#
+# ⚠ THE REPLACEMENT PROPERTY EMITS NOTHING, AND NEITHER DOES THE SUBJECT TYPE
+# BESIDE IT. Adding an optional property is additive; that is two schemas
+# gaining `pricing_receipt` and two gaining `pricing_receipt_subject_type`, four
+# additions and no lines. Pasting a line for any of them would fail this gate as
+# a suppression that suppresses nothing, which is what the cumulative comparison
+# means in the direction people forget.
+#
+# ⚠ AND THE BREAK IS WARN-LEVEL RATHER THAN ERROR BECAUSE THE PROPERTY WAS
+# OPTIONAL ON BOTH, which is a fact about the schemas rather than a judgement:
+# the ack's was `Optional[dict]` and the lookup's carried a default, so neither
+# was required at the launch tag. The record still reaches every caller of both
+# routes; it reaches them under the name the registry ratified.
+GET /api/v1/metering/usage/{event_id} removed the optional property `pricing_provenance` from the response with the `200` status
+POST /api/v1/metering/usage removed the optional property `pricing_provenance` from the response with the `200` status

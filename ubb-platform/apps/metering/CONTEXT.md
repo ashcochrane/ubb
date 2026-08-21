@@ -284,9 +284,21 @@ one. A read, and the only caller that asks for it: every path that decides what 
 actually charged reads the whole ladder.
 (#361; `apps/metering/pricing/services/pricing_service.py:the_rule_a_customer_inherits`)
 
-**Pricing provenance**:
-The audit trail stamped on each event — engine version, cost/price source, and the ids of the rules
-that priced it.
+**Pricing Receipt**:
+The authoritative record of the ECONOMIC RESOLUTION behind one posting's amounts — what UBB
+resolved, how, and as of when. Values are authoritative and pointers ride along: the costing and
+pricing sections carry their method, status and detail BY VALUE, and the `provenance` section
+carries cross-reference ids that nothing reads to reconstruct an amount. It is **not** a guarantee
+that customer revenue exists and not evidence a customer was charged — a metering-only tenant has a
+receipt for every event it records and bills nobody through UBB.
+The record had three names and #370 settled them. This one is what the registry ratified, as
+`pricing_receipt_subject_type`; the stored column's older spelling is a retired alias on that
+concept and is not written here; and so is "audit trail", which is the name **this entry itself
+used** until #370 and which already names the governance ledger the platform keeps
+(`apps/platform`'s audit log). Two things sharing one word was the defect. The bare word
+`provenance` survives — but only as the section name above.
+(`apps/metering/pricing/receipts.py`; the column is `Posting.RECEIPT_COLUMN`, which is how
+everything addresses it and why the rename reached its callers without touching one.)
 
 ## Read contract & events
 

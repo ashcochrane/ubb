@@ -37,7 +37,7 @@ class TestRecordUsagePricing:
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
         e = Posting.objects.get(id=r["event_id"])
         assert e.measurements == {"input_tokens": 1000}
-        assert e.pricing_provenance["costing"]["method"] == COSTING_METHOD_CALCULATED
+        assert e.pricing_receipt["costing"]["method"] == COSTING_METHOD_CALCULATED
 
     def test_a_stale_callers_quantities_are_dropped_and_it_is_priced_at_zero(self):
         """WHAT THE #274 RENAME COSTS A CALLER THAT HAS NOT MIGRATED.

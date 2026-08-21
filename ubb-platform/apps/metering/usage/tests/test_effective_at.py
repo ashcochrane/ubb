@@ -202,7 +202,7 @@ class TestHistoricalPricing:
         # so a reader asking "which rule was this" does not reassemble the
         # answer out of the components and no component carries a pointer
         # somebody could follow for a figure.
-        assert (r_old["pricing_provenance"]["provenance"]["price_rate_ids"]
+        assert (r_old["pricing_receipt"]["provenance"]["price_rate_ids"]
                 == {"tok": str(v1.id)})
 
         r_new = UsageService.record_usage(

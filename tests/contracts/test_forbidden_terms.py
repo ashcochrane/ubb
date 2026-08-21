@@ -240,7 +240,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # rule covers every migration directory wholesale, so any new migration
         # moves it whatever it spells. The unit collision those columns carried
         # was G11, a naming gate over model columns, which is not sweep input.
-        "historical-migrations": (UNTIL_SLICE_8, 232, 19),
+        # 232 -> 233 in #370: the receipt's column takes the ratified name of
+        # what it holds, and the sealing rule is re-created over the new name
+        # because Postgres keeps a `plpgsql` body as text and a column rename
+        # does not reach inside one. This one DOES name a retired term —
+        # `RenameField`'s `old_name` is the retired spelling — and it is the
+        # last file in the tree where that word appears at all — a rename that
+        # could not name what it retires would not be reviewable.
+        "historical-migrations": (UNTIL_SLICE_8, 233, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

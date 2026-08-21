@@ -50,7 +50,7 @@ _RESULT_KEYS = {
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
     "task_total_unresolved_event_count", "task_total_unpriced_event_count",
     "stop", "stop_reason", "stop_scope", "stop_context",
-    "measurements", "pricing_provenance", "grouping_fields",
+    "measurements", "pricing_receipt", "grouping_fields",
 }
 
 
@@ -84,7 +84,7 @@ class ResultSignatureTest(TestCase):
             # attribute answers a truthy mock, so a priced posting would appear
             # to carry a `not_applicable_reason`.
             pricing_status="known", not_applicable_reason=None,
-            task_id=None, measurements={}, pricing_provenance={},
+            task_id=None, measurements={}, pricing_receipt={},
             stop_context=None, **{slot: "" for slot in SLOTS},
         )
         out = _result(event)

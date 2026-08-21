@@ -173,7 +173,8 @@ from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFi
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
 from .record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from .record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
-from .record_usage_response_pricing_provenance_type_0 import RecordUsageResponsePricingProvenanceType0
+from .record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
+from .record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
 from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from .record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from .referral_out import ReferralOut
@@ -260,7 +261,8 @@ from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasu
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from .usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
-from .usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
+from .usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
+from .usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
 from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from .usage_event_out import UsageEventOut
@@ -462,7 +464,8 @@ __all__ = (
     "RecordUsageResponseMeasurementsType0",
     "RecordUsageResponseNotApplicableReasonType0",
     "RecordUsageResponsePricingMethodType0",
-    "RecordUsageResponsePricingProvenanceType0",
+    "RecordUsageResponsePricingReceiptSubjectTypeType0",
+    "RecordUsageResponsePricingReceiptType0",
     "RecordUsageResponsePricingStatus",
     "RecordUsageResponseUnresolvedReasonType0",
     "ReferralOut",
@@ -549,7 +552,8 @@ __all__ = (
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutNotApplicableReasonType0",
     "UsageEventDetailOutPricingMethodType0",
-    "UsageEventDetailOutPricingProvenance",
+    "UsageEventDetailOutPricingReceipt",
+    "UsageEventDetailOutPricingReceiptSubjectTypeType0",
     "UsageEventDetailOutPricingStatus",
     "UsageEventDetailOutUnresolvedReasonType0",
     "UsageEventOut",

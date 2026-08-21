@@ -12,6 +12,7 @@ from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCo
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from ..models.usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
+from ..models.usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
 from ..models.usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from ..types import UNSET, Unset
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
   from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
   from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
   from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
-  from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
+  from ..models.usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
 
 
 
@@ -56,13 +57,14 @@ class UsageEventDetailOut:
             metadata (UsageEventDetailOutMetadata | Unset):
             not_applicable_reason (None | Unset | UsageEventDetailOutNotApplicableReasonType0):
             pricing_method (None | Unset | UsageEventDetailOutPricingMethodType0):
-            pricing_provenance (UsageEventDetailOutPricingProvenance | Unset): The Pricing Receipt: the authoritative record
-                of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of when. It is not a
+            pricing_receipt (UsageEventDetailOutPricingReceipt | Unset): The Pricing Receipt: the authoritative record of
+                the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of when. It is not a
                 guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has
                 a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the
                 version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a
                 pricing section holding their method, status and detail BY VALUE, the totals, and a provenance section of cross-
                 reference ids that nothing reads to reconstruct an amount.
+            pricing_receipt_subject_type (None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0):
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset):
             stop_context (list[Any] | None | Unset):
@@ -87,7 +89,8 @@ class UsageEventDetailOut:
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     not_applicable_reason: None | Unset | UsageEventDetailOutNotApplicableReasonType0 = UNSET
     pricing_method: None | Unset | UsageEventDetailOutPricingMethodType0 = UNSET
-    pricing_provenance: UsageEventDetailOutPricingProvenance | Unset = UNSET
+    pricing_receipt: UsageEventDetailOutPricingReceipt | Unset = UNSET
+    pricing_receipt_subject_type: None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0 = UNSET
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
@@ -103,7 +106,7 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
         from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
-        from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
+        from ..models.usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
         costing_status = self.costing_status.value
 
         created_at = self.created_at
@@ -164,9 +167,17 @@ class UsageEventDetailOut:
         else:
             pricing_method = self.pricing_method
 
-        pricing_provenance: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.pricing_provenance, Unset):
-            pricing_provenance = self.pricing_provenance.to_dict()
+        pricing_receipt: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.pricing_receipt, Unset):
+            pricing_receipt = self.pricing_receipt.to_dict()
+
+        pricing_receipt_subject_type: None | str | Unset
+        if isinstance(self.pricing_receipt_subject_type, Unset):
+            pricing_receipt_subject_type = UNSET
+        elif isinstance(self.pricing_receipt_subject_type, UsageEventDetailOutPricingReceiptSubjectTypeType0):
+            pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
+        else:
+            pricing_receipt_subject_type = self.pricing_receipt_subject_type
 
         provider = self.provider
 
@@ -231,8 +242,10 @@ class UsageEventDetailOut:
             field_dict["not_applicable_reason"] = not_applicable_reason
         if pricing_method is not UNSET:
             field_dict["pricing_method"] = pricing_method
-        if pricing_provenance is not UNSET:
-            field_dict["pricing_provenance"] = pricing_provenance
+        if pricing_receipt is not UNSET:
+            field_dict["pricing_receipt"] = pricing_receipt
+        if pricing_receipt_subject_type is not UNSET:
+            field_dict["pricing_receipt_subject_type"] = pricing_receipt_subject_type
         if provider is not UNSET:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
@@ -253,7 +266,7 @@ class UsageEventDetailOut:
         from ..models.usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
         from ..models.usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
         from ..models.usage_event_detail_out_metadata import UsageEventDetailOutMetadata
-        from ..models.usage_event_detail_out_pricing_provenance import UsageEventDetailOutPricingProvenance
+        from ..models.usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
         d = dict(src_dict)
         costing_status = UsageEventDetailOutCostingStatus(d.pop("costing_status"))
 
@@ -377,14 +390,34 @@ class UsageEventDetailOut:
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
-        _pricing_provenance = d.pop("pricing_provenance", UNSET)
-        pricing_provenance: UsageEventDetailOutPricingProvenance | Unset
-        if isinstance(_pricing_provenance,  Unset):
-            pricing_provenance = UNSET
+        _pricing_receipt = d.pop("pricing_receipt", UNSET)
+        pricing_receipt: UsageEventDetailOutPricingReceipt | Unset
+        if isinstance(_pricing_receipt,  Unset):
+            pricing_receipt = UNSET
         else:
-            pricing_provenance = UsageEventDetailOutPricingProvenance.from_dict(_pricing_provenance)
+            pricing_receipt = UsageEventDetailOutPricingReceipt.from_dict(_pricing_receipt)
 
 
+
+
+        def _parse_pricing_receipt_subject_type(data: object) -> None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_receipt_subject_type_type_0 = UsageEventDetailOutPricingReceiptSubjectTypeType0(data)
+
+
+
+                return pricing_receipt_subject_type_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0, data)
+
+        pricing_receipt_subject_type = _parse_pricing_receipt_subject_type(d.pop("pricing_receipt_subject_type", UNSET))
 
 
         provider = d.pop("provider", UNSET)
@@ -465,7 +498,8 @@ class UsageEventDetailOut:
             metadata=metadata,
             not_applicable_reason=not_applicable_reason,
             pricing_method=pricing_method,
-            pricing_provenance=pricing_provenance,
+            pricing_receipt=pricing_receipt,
+            pricing_receipt_subject_type=pricing_receipt_subject_type,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,

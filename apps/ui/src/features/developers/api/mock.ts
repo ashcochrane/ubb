@@ -227,7 +227,7 @@ export async function sendTestEvent(
     // anyway would make this panel warn about a declaration the API never
     // complained about.
     uncosted_measurement_keys: resolved ? [] : uncosted,
-    pricing_provenance: {
+    pricing_receipt: {
       engine_version: "mock-1",
       // ONE SOURCE, because there is only one: a caller cannot state a price,
       // so "explicit" is a branch nothing can reach any more (#365).

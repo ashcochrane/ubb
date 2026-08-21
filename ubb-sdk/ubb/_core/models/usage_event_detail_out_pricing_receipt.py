@@ -14,13 +14,19 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RecordUsageResponsePricingProvenanceType0")
+T = TypeVar("T", bound="UsageEventDetailOutPricingReceipt")
 
 
 
 @_attrs_define
-class RecordUsageResponsePricingProvenanceType0:
-    """ 
+class UsageEventDetailOutPricingReceipt:
+    """ The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts — what UBB
+    resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer
+    was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape
+    version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the
+    subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals,
+    and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.
+
      """
 
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -41,12 +47,12 @@ class RecordUsageResponsePricingProvenanceType0:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        record_usage_response_pricing_provenance_type_0 = cls(
+        usage_event_detail_out_pricing_receipt = cls(
         )
 
 
-        record_usage_response_pricing_provenance_type_0.additional_properties = d
-        return record_usage_response_pricing_provenance_type_0
+        usage_event_detail_out_pricing_receipt.additional_properties = d
+        return usage_event_detail_out_pricing_receipt
 
     @property
     def additional_keys(self) -> list[str]:

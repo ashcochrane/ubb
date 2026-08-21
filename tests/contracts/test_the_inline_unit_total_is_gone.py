@@ -113,10 +113,28 @@ FIELD = re.compile(
 
 #: A file that still carries the word field-shaped, in a sense that survives:
 #: the quantity a rate card was fed, recorded per measured key inside a pricing
-#: receipt. That is rate arithmetic, and slice 4's to rename. It is NOT in
-#: READERS, and the control below requires the matcher to find it there — which
-#: is what makes "sense-scoped" a fact about this module rather than a claim in
-#: its docstring.
+#: receipt. That is rate arithmetic. It is NOT in READERS, and the control below
+#: requires the matcher to find it there — which is what makes "sense-scoped" a
+#: fact about this module rather than a claim in its docstring.
+#:
+#: ⚠ **SLICE 4 SCHEDULED THIS CONTROL TO GO RED AND IT DID NOT, AND THAT IS
+#: WRITTEN DOWN HERE RATHER THAN LEFT AS A GREEN NOBODY EXPECTED.** The slice's
+#: tripwire schedule (spec §29) predicted that the receipt's per-quantity key
+#: would be renamed — which would EMPTY this control's subject, so the gate
+#: would go vacuous as well as red, and #370 was named as the commit. It was
+#: not: #366 ruled the key stays, and the argument is at
+#: `pricing_service._component`. This word is a retired SENSE and not a retired
+#: term — it is not sweep input, it holds no ledger seat, and no slice-4 ledger
+#: entry counts it — so re-spelling it would be a change to the shape of a
+#: STORED RECORD with no ticket behind it, and it would move the evidence block
+#: in `retired.yaml` for a word this slice does not own. #370 checked the
+#: prediction, found the subject intact, and left the control where it is.
+#:
+#: A prediction wrong about WHICH commit is not a check that was skipped. What
+#: the ticket asked for and what is worth having either way is below: the
+#: control is now shown to be carried by the word rather than passing for some
+#: other reason, so the day a rename does empty this file the difference between
+#: "red" and "red AND vacuous" is a test result instead of an argument.
 SURVIVING_SENSE = ("ubb-platform/apps/metering/pricing/services/"
                    "pricing_service.py")
 
@@ -253,7 +271,37 @@ def test_the_control_the_surviving_sense_is_untouched():
         f"would not have found the retired sense either")
     assert SURVIVING_SENSE not in READERS, (
         "the surviving sense's own file was added to the reader list, which "
-        "would condemn a spelling slice 4 owns")
+        "would condemn a spelling no ticket owns")
+
+
+def test_the_control_above_is_carried_by_the_word_and_not_by_something_else():
+    """The control's own control: take the word out and it fails (#370).
+
+    A positive control asserts that the matcher FINDS something. That is worth
+    exactly as much as the claim that what it finds is the word — and nothing
+    in the assertion above says so, because a matcher that had started matching
+    something else entirely in a 1,200-line module would satisfy it just as
+    well. Then the day a rename really did empty that file, the control would
+    stay green over a subject that had gone, which is the vacuous half of the
+    failure slice 4 was warned about by name.
+
+    So the removal is performed rather than argued: every whole-token
+    occurrence of the retired names is taken out of the subject's source, and
+    the matcher is fired at what is left. It must find nothing. That is the
+    ticket's *"remove the word from the subject file and confirm the control
+    fails"*, run in-process against the real file, on every run rather than
+    once by hand in a window nobody can re-open.
+    """
+    source = _read(SURVIVING_SENSE)
+    assert FIELD.search(source), "the control's own premise has already gone"
+
+    without = re.sub(rf"(?<![0-9A-Za-z_])(?:{_EITHER_NAME})(?![0-9A-Za-z_])",
+                     "quantity", source)
+
+    assert not FIELD.search(without), (
+        "the matcher still fires on the surviving-sense file with every "
+        "occurrence of the word removed — so the control above is passing for "
+        "some other reason and would go on passing over an empty subject")
 
 
 def test_the_control_the_match_is_field_shaped():

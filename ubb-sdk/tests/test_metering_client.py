@@ -405,7 +405,7 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(body["measurements"], {"input_tokens": 1000})
         self.assertNotIn("provider_cost_micros", body)
 
-    # ---- record_usage tolerates extra server fields (measurements/provenance/uncosted) ----
+    # ---- record_usage tolerates extra server fields (measurements/receipt/uncosted) ----
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_full_server_body_with_extra_fields(self, mock_post):
@@ -414,7 +414,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
             "provider_cost_micros": 2000, "billed_cost_micros": 2000,
             "measurements": {"input_tokens": 1000},
-            "pricing_provenance": {"engine_version": "x"},
+            "pricing_receipt": {"engine_version": "x"},
             "uncosted_measurement_keys": ["foo"],
         })
         res = self.client.record_usage(

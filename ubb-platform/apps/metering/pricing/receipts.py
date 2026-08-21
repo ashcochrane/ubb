@@ -935,3 +935,28 @@ def pricing_method_of(receipt):
     if version is None or version == LEGACY_SCHEMA_VERSION:
         return None
     return receipt["pricing"]["method"]
+
+
+def subject_type_of(receipt):
+    """WHAT THIS RECEIPT EXPLAINS — one usage row, one Charge, or `None` (#370).
+
+    The registry's `pricing_receipt_subject_type`, read out of the record. It is
+    a stored value rather than an inference, and that is the whole of the typed
+    subject: deriving it from whichever foreign key happens to be populated
+    would be a SECOND authority on what a receipt is about, able to disagree
+    with the one the record states. #148 §3.2 refuses a pair that must agree.
+
+    The three-way dispatch is :func:`_readable_version_of`, shared with the two
+    readers above.
+
+    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO SUBJECT, AND THIS DOES NOT INVENT
+    ONE.** That shape predates the typed subject, so there is nothing in the
+    record to read; answering *this record does not say* is what it is. The
+    alternative — reading the subject off the row the receipt is stored on — is
+    the inference this function exists to refuse, and it would be published on
+    the contract as a value some writer had recorded.
+    """
+    version = _readable_version_of(receipt)
+    if version is None or version == LEGACY_SCHEMA_VERSION:
+        return None
+    return receipt["subject_type"]

@@ -10,7 +10,16 @@ from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate
 from core.vocabulary import COSTING_METHOD_CALCULATED
 
 
-class RecordUsageProvenanceTest(TestCase):
+class RecordUsageReceiptTest(TestCase):
+    """The recording ack carries the receipt, under the receipt's own name.
+
+    The module and the class took that name in #370 with the wire key. The word
+    they carried before was the record's retired spelling, and it survives now
+    only as the name of a SECTION inside the record — so a module named for it
+    would have been the second public name for one concept that ADR-0006 §2
+    refuses, in the commit that removed the first.
+    """
+
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -33,7 +42,8 @@ class RecordUsageProvenanceTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_response_includes_pricing_provenance_and_measurements(self, mock_process):
+    def test_response_includes_the_pricing_receipt_and_measurements(
+            self, mock_process):
         response = self.http_client.post(
             "/api/v1/metering/usage",
             data=json.dumps({
@@ -51,6 +61,6 @@ class RecordUsageProvenanceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["provider_cost_micros"], 5)
-        self.assertEqual(body["pricing_provenance"]["costing"]["method"],
+        self.assertEqual(body["pricing_receipt"]["costing"]["method"],
                          COSTING_METHOD_CALCULATED)
         self.assertEqual(body["measurements"], {"input_tokens": 1000})

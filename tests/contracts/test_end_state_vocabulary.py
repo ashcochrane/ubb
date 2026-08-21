@@ -18,6 +18,7 @@ value here traces to a frozen decision record rather than to a judgement made
 in this file.
 """
 
+import json
 import re
 
 import pytest
@@ -149,6 +150,76 @@ def test_the_ceiling_statuses_no_longer_spell_a_retired_word(registry):
     assert set(concept.values) == {"within_ceiling", "ceiling_reached",
                                    "indeterminate", "not_applicable"}
     assert set(concept.retired_aliases) == {"within_limit", "limit_reached"}
+
+
+def test_the_receipts_two_rival_names_are_registered_as_retired(registry):
+    """AC (#370): the record had three names and the registry keeps one.
+
+    The two rivals are RETIRED ALIASES rather than absences, which is the whole
+    difference: an alias is sweep input, so the day somebody writes either word
+    on a living surface the gate says so and names the concept it belongs to. An
+    absence would just be silence.
+
+    ⚠ **AND THE THIRD WORD IS NOT ONE OF THEM.** `provenance` on its own is
+    alive — it names the receipt's cross-reference section — so retiring it as a
+    TERM would condemn the one place it is correct. That is the distinction this
+    file exists to keep: `pricing_provenance` was the record's name and is gone;
+    `audit_trail` was the record's name in a context document and already named
+    the governance ledger, which is what made two things share one word; the
+    bare word is a section inside the record and stays. The section itself is
+    asserted where the record's shape is, in the platform suite, which can
+    import it — this half is about what the registry declares.
+    """
+    concept = registry.concepts["pricing_receipt_subject_type"]
+    assert set(concept.values) == {"usage_event", "charge"}
+    assert set(concept.retired_aliases) == {"pricing_provenance", "audit_trail"}
+    assert "provenance" not in set(concept.retired_aliases)
+    # And both rivals are in the sweep's own input, which is what makes the
+    # retirement enforceable rather than recorded.
+    assert {"pricing_provenance", "audit_trail"} <= SWEPT
+
+
+def test_the_receipts_qualification_travels_with_its_name(registry):
+    """AC (#370): the qualification survives the rename, on BOTH carriers.
+
+    A Pricing Receipt is the record of an ECONOMIC RESOLUTION. It is **not** a
+    guarantee that customer revenue exists and not evidence a customer was
+    charged: a metering-only tenant has a receipt for every event it records and
+    bills nobody through UBB. Without that sentence beside the name, such a
+    tenant reads "pricing receipt" as *"UBB charged my customer"* (#154 §3).
+
+    ⚠ **BOTH CARRIERS, IN ONE TEST, BECAUSE THE RENAME MOVED THE FIELD THE
+    SENTENCE HANGS OFF.** The concept's summary is the registry's copy; the
+    published `description` is what a tenant reading the contract actually
+    meets, and it moved from one property name to another in the commit that
+    made this assertion. Nothing type-checks a sentence, and no gate reads
+    prose — so a rename that had dropped the description would have been silent
+    on a document whose whole audience is people who do not read this
+    repository. The two are asserted together rather than in two modules
+    because a rename that carried one and not the other is exactly the finding.
+    """
+    # Whitespace-normalised: a folded YAML scalar wraps where the line ended,
+    # so a phrase assertion over the raw text would be pinning the indentation.
+    summary = " ".join(
+        registry.concepts["pricing_receipt_subject_type"].summary.split())
+    assert "ECONOMIC RESOLUTION" in summary
+    assert "not a guarantee that customer revenue exists" in summary
+
+    spec = json.loads(
+        (REPO_ROOT / "openapi" / "v1.json").read_text(encoding="utf-8"))
+    described = [
+        node.get("description", "")
+        for schema in spec["components"]["schemas"].values()
+        for name, node in (schema.get("properties") or {}).items()
+        if name == "pricing_receipt"]
+
+    assert len(described) == 2, (
+        f"expected the receipt on the two responses that publish it, found "
+        f"{len(described)}")
+    for description in described:
+        assert "ECONOMIC RESOLUTION" in description
+        assert "not a guarantee that customer revenue exists" in description
+        assert "not evidence a customer was charged" in description
 
 
 # ---------------------------------------------------------------------------

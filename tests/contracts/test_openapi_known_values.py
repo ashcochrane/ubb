@@ -826,6 +826,39 @@ CONCEPTS_IN_THE_CONTRACT = {
     # shape, which is what the placement map below says and why a fall here
     # cannot hide a surface quietly losing it.
     "rate_structure": Published(5, ENUM),
+    # WHAT A PRICING RECEIPT EXPLAINS (#370) — one usage row, or one canonical
+    # Charge. Two nodes, and they are `pricing_method`'s original two for
+    # `pricing_method`'s original reason: the rule is "wherever the receipt
+    # goes", the receipt goes on the recording ack and the audit lookup, and
+    # this value lives INSIDE that record, which is published untyped. So it
+    # was already crossing to every caller of both surfaces with no schema
+    # saying what it may be.
+    #
+    # ⚠ IT REACHED THE CONTRACT ONLY WHEN THE BACKEND STOPPED HOLDING NONE OF
+    # ITS VALUES, and that was #317's mechanism a second time rather than a
+    # schedule anybody set. `advertised` is derived from the backend census
+    # alone, and the registry named `usage/models.py` as this concept's backend
+    # consumer while the receipt was still an untyped bag on a posting. #370
+    # re-pointed it at `receipts.py`, which validates a receipt's subject
+    # against the registry's whole-set name at the one construction boundary —
+    # so the census went 0 of 2 to 2 of 2 and BOTH ledger entries excusing the
+    # gap became false in the same commit.
+    #
+    # ⚠ NOT ON THE `usage.recorded` PAYLOAD, AND THAT WAS CHECKED RATHER THAN
+    # ASSUMED — the applier walks the `webhooks` section like any other, so a
+    # closed concept can reach the wire there unmarked with the count still
+    # right. `UsageRecorded` carries two amounts and their two statuses and no
+    # receipt at all; its readers are accumulators asking whether an amount may
+    # be included, and none of them asks what the receipt was about. The same
+    # ruling #328, #351 and #355 each made for the same payload.
+    #
+    # THE WHOLE SET SHIPS THOUGH ONE VALUE IS UNREACHABLE TODAY, which is the
+    # posture `measurements_status` states in the registry and the only one a
+    # CLOSED set may take: `charge` becomes reachable when slice 5 writes a
+    # receipt for a Task sold at one agreed price, and publishing one value now
+    # and the second later would make that slice a breaking change to a client
+    # that had switched exhaustively over a single-member enum.
+    "pricing_receipt_subject_type": Published(2, ENUM),
 }
 
 
@@ -1069,6 +1102,20 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # `BookChangeIn` now whichever of the three kinds it is.
     placed("rate_structure", {"RateOut", "BookChangeIn", "RuleTermsOut",
                               "CustomerOverrideIn", "InheritedPricingRule"})
+    # WHAT THE RECEIPT EXPLAINS (#370), on exactly the two schemas that publish
+    # the receipt. The rule is the mechanical one `pricing_method` states two
+    # lines up — wherever the receipt goes — and naming the schemas rather than
+    # a count is what makes it checkable: a third response gaining the record
+    # and not this marker is the finding, and so is this marker appearing on a
+    # response that carries no receipt.
+    #
+    # ⚠ THE `webhooks` SECTION IS INSIDE THIS WALK AND THE ANSWER THERE IS NO.
+    # `usage.recorded` publishes two amounts, their two statuses and no receipt,
+    # so there is nothing on that payload for a subject type to be about. Said
+    # here rather than left silent, because a marker missing from a payload and
+    # a marker that was never due there are indistinguishable from the count.
+    placed("pricing_receipt_subject_type", {"RecordUsageResponse",
+                                            "UsageEventDetailOut"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
@@ -1705,13 +1752,24 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     advertised `pricing_status` — the same concept one slice later on the other
     side of the margin, and the same single-entry step — 23 → 22 in #355, which
     advertised `pricing_method`, the second concept of that pair's own slice and
-    again one entry, and 22 → 21 in #366, which advertised `rate_structure`.
+    again one entry, 22 → 21 in #366, which advertised `rate_structure`, and
+    21 → 20 in #370, which advertised `pricing_receipt_subject_type`.
 
-    ⚠ THAT LAST ONE PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
+    ⚠ #366 AND #370 EACH PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
     right rather than an accounting slip: the G4 debt and the backend G2 debt
     were the SAME debt read from two sides, and the contract could not advertise
     the values until the backend consumer held them. Only the G4 entry is in
     this seeding, so only one comes out of it.
+
+    ⚠ #370 IS THE FIRST OF THE FIVE THAT PAID ITS G2 HALF WITHOUT WRITING ANY
+    CODE THAT HOLDS A VALUE, and it is worth saying so rather than letting a
+    reader infer the usual shape. The four before it made a declared consumer
+    import the generated constants. This one found that the module which
+    already held both values by reference — the receipt's construction
+    boundary, which validates a subject against the registry's whole-set name —
+    was not the module the registry named, and re-pointed the declaration at it.
+    The alternative was an import added to a model for a census to find, which
+    is holding a value in the vacuous sense.
 
     ⚠ #351 also COINED `not_applicable_reason`, and that moved the floor by
     nothing at all. A concept whose backend consumer holds every value on the
@@ -1729,6 +1787,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 21, (
+    assert len(_entries(programme)) >= 20, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

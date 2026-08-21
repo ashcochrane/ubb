@@ -77,9 +77,10 @@ amount. They are not required to be equal, nothing ever compares them, and no
 test below asserts they agree — see the note at the snapshot site in
 `pricing/services/pricing_service.py`.
 
-The receipt's column still carries the retired spelling of the concept and this
-module never spells it: `Posting.RECEIPT_COLUMN` is what addresses it, so the
-day the rename lands the module follows it rather than going quietly vacuous.
+This module never spells the receipt's column: `Posting.RECEIPT_COLUMN` is what
+addresses it. That was written while the column carried the retired spelling of
+the concept, and #370 is the day it paid — the rename landed and this module
+came with it rather than going quietly vacuous.
 """
 import pytest
 from django.db import IntegrityError, transaction

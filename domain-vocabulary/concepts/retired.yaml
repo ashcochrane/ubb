@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,650 of 2,049 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,653 of 2,053 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -136,8 +136,10 @@ measurement_key:
     # backend bar one living document, four more ledger entries went with it, and
     # every occurrence counted here is still one of the three surviving senses
     # above. Worth one extra line, because #275 touched `Rate.compute(units)`'s
-    # own module — the RATE ARITHMETIC sense, which slice 4 renames — and did NOT
-    # touch that method or its parameter. An unchanged numerator is what says so.
+    # own module — the RATE ARITHMETIC sense, which slice 4 was then expected to
+    # rename and does NOT (see #366's ruling in the `survives_as` scalar below)
+    # — and did NOT touch that method or its parameter. An unchanged numerator is
+    # what says so.
     #
     # #276 MOVED THE DENOMINATOR ONLY, UPWARD AGAIN (1,535 → 1,536 swept, 1,889
     # → 1,894 tracked, 51/127 unchanged) — one new test module in the swept set,
@@ -1324,6 +1326,50 @@ measurement_key:
     # after `git add`, which is the other half of the same discipline: the
     # denominator counts GIT-TRACKED files, so an untracked new file makes a
     # local green precede a red CI.
+    #
+    # #370 MOVED THE DENOMINATORS UP BY THREE AND FOUR AND LEFT THE NUMERATOR
+    # EXACTLY WHERE IT WAS (1,650 -> 1,653 swept, 2,049 -> 2,053 tracked,
+    # `units` unchanged at 50 files / 125 occurrences), WITH THE EXCLUSION UP BY
+    # ONE (`historical-migrations` 232 -> 233). The receipt's stored column and
+    # its wire key take the ratified name of the record they hold, and the
+    # retired spelling reaches zero on all four surfaces at once.
+    #
+    # THE ARITHMETIC, COUNTED OFF `git diff --name-status` RATHER THAN FROM
+    # MEMORY. SIX files arrive: one migration, EXCLUDED — so it lifts tracked
+    # without lifting swept — one swept test module over the rename itself, and
+    # four swept GENERATED SDK core modules. Two of those four are the receipt
+    # containers under the new property name and are the other half of two
+    # RENAMES (the modules under the old name leave, so those two net to
+    # nothing); the other two are the enum modules the generator mints when a
+    # closed concept is newly advertised, ONE PER SCHEMA CARRYING IT, and two
+    # schemas carry the subject type. TWO files leave, both those renamed
+    # generated containers. One further file is renamed with no net effect
+    # at all (`api/v1/tests/test_record_usage_provenance.py` ->
+    # `test_record_usage_receipt.py`, because a module named for the record's
+    # retired spelling would have been the second public name ADR-0006 §2
+    # refuses). Swept 1,650 + 5 - 2 = 1,653; excluded 399 + 1 = 400; tracked
+    # 1,653 + 400 = 2,053.
+    #
+    # ⚠ **THE NEW TEST MODULE NAMES THE RETIRED WORD NOWHERE AND TOOK NO
+    # ALLOWLIST SEAT.** It DERIVES the retired spelling from the rename
+    # operation's own `old_name`, which is #369's technique and slice 2's before
+    # it. Admitting it to the sweep's *checks-whose-subject-is-a-retired-word*
+    # rule would have grown a PERMANENT exclusion (still 14) on the very commit
+    # that takes the word to zero.
+    #
+    # ⚠ THE NUMERATOR HELD THROUGH THE COMMIT THAT WAS MOST LIKELY TO MOVE IT,
+    # and the reason is a ruling rather than luck. This slice's own tripwire
+    # schedule predicted that the receipt's per-quantity key — spelled with the
+    # retired plural — would be renamed here. #366 ruled otherwise and wrote the
+    # argument at `pricing_service._component`: that word is a retired SENSE
+    # rather than a retired term, it is not sweep input, it holds no ledger seat
+    # and no slice-4 entry counts it, so re-spelling it would be a change to the
+    # shape of a stored record with no ticket behind it — and it would move this
+    # very block for a word this slice does not own. The prediction was wrong
+    # about the commit, not about the mechanism, and the key still stands.
+    #
+    # Taken after the console half, after the SDK core regeneration and after
+    # `git add`, for the reason #369's paragraph gives.
 
     - term: units
       retired_as: >-
@@ -1335,9 +1381,14 @@ measurement_key:
       survives_as: >-
         three live senses UBB depends on. Currency MINOR units, which is
         `amount_representation`'s own English in the money module, the billing
-        services and every console money input. Rate arithmetic — `Rate.compute`
-        and the console's "per 1K units" — which slice 4 renames to a quantity
-        word. And ordinary English inside three GENERATED vocabulary modules,
+        services and every console money input. Rate arithmetic — `Rate.compute`,
+        the receipt's per-quantity component key, and the console's "per 1K
+        units" — which slice 4 was expected to rename to a quantity word and
+        does NOT: #366 ruled the key stays and #370 confirmed it, because this
+        is a retired SENSE with no ledger seat and no slice-4 entry counting it,
+        so re-spelling it would move this block for a word no ticket owns. The
+        rename belongs to whichever slice takes the sense itself.
+        And ordinary English inside three GENERATED vocabulary modules,
         whose text is rendered from concept summaries in this directory: that
         one is unremovable by any commit, since the registry may spell the word
         freely and its generated output may not be hand-edited.

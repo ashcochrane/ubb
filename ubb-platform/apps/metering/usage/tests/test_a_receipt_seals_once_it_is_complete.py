@@ -104,10 +104,10 @@ from core.vocabulary import (
 )
 
 #: The column under test, addressed through the model's own constant rather
-#: than spelled. The concept's stored name is still the retired one and the
-#: ticket that re-spells it is later in this slice — so every reader that goes
-#: through here follows the rename instead of quietly stopping being about this
-#: column on the day it lands.
+#: than spelled. That indirection was written while the column still carried
+#: the retired spelling, and #370 is what it was for: the rename landed and
+#: every reader going through here came with it, rather than quietly stopping
+#: being about this column. It stays for the same reason it was worth having.
 RECEIPT = Posting.RECEIPT_COLUMN
 
 PRICE = "billed_cost_micros"
@@ -122,7 +122,21 @@ TABLE = Posting._meta.db_table
 TRIGGER = "trg_posting_receipt_sealing"
 FUNCTION = "ubb_posting_receipt_sealing"
 
-MIGRATION = "0040_a_receipt_seals_when_its_unresolved_fields_complete"
+#: WHICH MIGRATION DEFINES THIS RULE TODAY, which is not the one that first
+#: installed it. `0040` installed it; `0042` took the rule off the table,
+#: renamed the column it is about, and put the rule back naming the new column
+#: — because Postgres stores a `plpgsql` body as text and a column rename does
+#: not reach inside one. So `0040`'s DDL now names a column that does not
+#: exist, and a reverse driven through it would fail against today's table
+#: while proving nothing about the rule that is actually installed. The claim
+#: is unchanged and it moves to the migration that carries it.
+MIGRATION = "0042_the_receipt_takes_the_ratified_name_of_what_it_holds"
+
+#: The operation inside it whose forward direction is the live rule. That
+#: migration runs THREE — take the rule off, rename the column, put it back —
+#: so `next(... isinstance(op, RunPython))` would find the first, whose
+#: forward direction is the removal. Addressed by the function's own name.
+INSTALLING_OPERATION = "install"
 
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -830,7 +844,8 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
         """
         migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
         run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
+                          if isinstance(op, migrations.RunPython)
+                          and op.code.__name__ == INSTALLING_OPERATION)
         sealed = _posting(_sealed())
 
         with connection.schema_editor() as editor:

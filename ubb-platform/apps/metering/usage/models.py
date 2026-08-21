@@ -251,16 +251,23 @@ class Posting(BaseModel):
     #: guarantee that customer revenue exists: a metering-only tenant records a
     #: receipt for every event and bills nobody through UBB.
     #:
-    #: The column below still carries the retired spelling of the concept, and
-    #: re-spelling it is a later ticket's, in one contiguous block with the rest
-    #: of the retired vocabulary. Until then this constant is how everything
-    #: else addresses the column — the gate over the construction boundary
-    #: included — so a gate that would otherwise hold its own copy of the name
-    #: follows the rename instead of going quietly vacuous on the day it lands.
-    #: The shape stored here, and the one function permitted to build it, are
-    #: `apps/metering/pricing/receipts.py`.
-    RECEIPT_COLUMN = "pricing_provenance"
-    pricing_provenance = models.JSONField(default=dict, blank=True)
+    #: The column below took the ratified spelling in #370, with the wire key
+    #: beside it. The record had three names — this column's, an endpoint
+    #: docstring calling it the receipt, and a context document calling it the
+    #: audit trail, which already names the governance ledger — and the registry
+    #: ratified one of them (`pricing_receipt_subject_type`), retiring the other
+    #: two as aliases. The `provenance` SECTION inside the record keeps that
+    #: word, which is the one sense of it that survives.
+    #:
+    #: This constant stays, and it is not decoration now that the name is
+    #: settled: it is how everything else addresses the column — the gate over
+    #: the construction boundary included — so a gate that would otherwise hold
+    #: its own copy of the name follows a rename instead of going quietly
+    #: vacuous on the day one lands. That is what let #370 move the column
+    #: without touching a caller. The shape stored here, and the one function
+    #: permitted to build it, are `apps/metering/pricing/receipts.py`.
+    RECEIPT_COLUMN = "pricing_receipt"
+    pricing_receipt = models.JSONField(default=dict, blank=True)
     # The exact unit of work this event belongs to. The ONLY unit attribution
     # — the open bag above is free-form labelling and never silently becomes a
     # limited thing (no label-fallback inference).

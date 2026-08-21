@@ -419,6 +419,32 @@ NotApplicableReason = Annotated[
 PricingMethod = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_method"})]
 
+#: WHAT A PRICING RECEIPT EXPLAINS (#370, ADR-0006). `closed` — UBB owns both
+#: values — so the export writes a real `enum` here and this file spells
+#: neither of them.
+#:
+#: ON THE WIRE FOR THE REASON `PricingMethod` ABOVE GIVES: this is a value INSIDE
+#: the record the two responses beside it publish, and that record is
+#: `additionalProperties: true`. So the subject type was already crossing to
+#: every caller with no schema saying what it may be — the unmarked-closed-
+#: concept shape the marker exists to remove — and lifting it into a typed
+#: field is what lets the contract carry the agreed set. The rule for WHERE it
+#: sits is therefore the mechanical one: wherever the receipt goes.
+#:
+#: NULLABLE, AND NULL MEANS THE RECORD DOES NOT SAY. A receipt written before
+#: the subject was typed carries no subject at all, and those receipts are read
+#: and never rewritten (#148 §4.6) — so the honest answer for one of them is
+#: that this record does not say, not a value invented by whoever read it. The
+#: marker therefore lands in the STRING MEMBER of `Optional[...]`, never on the
+#: union node, because `enum` and `anyOf` at one node are read conjunctively.
+#:
+#: NO HAND-WRITTEN `description`, for the reason `UnresolvedReason` gives: the
+#: registry owns this concept's summary and generates its values, and a sentence
+#: restating either here would be a second copy no gate reads.
+PricingReceiptSubjectType = Annotated[
+    str, Field(json_schema_extra={
+        "x-ubb-concept": "pricing_receipt_subject_type"})]
+
 #: WHICH ARITHMETIC A RULE RUNS (#366, #151 §13.2). `closed` — UBB owns both
 #: values — so the export writes a real `enum` here and this file spells
 #: neither of them.
@@ -521,8 +547,15 @@ class RecordUsageResponse(Schema):
     stop_context: Optional[list] = None
     # The quantities as recorded — see `RecordUsageRequest.measurements` (#274).
     measurements: Optional[dict] = None
-    pricing_provenance: Optional[dict] = Field(
+    pricing_receipt: Optional[dict] = Field(
         None, description=RECEIPT_DESCRIPTION)
+    # WHAT THAT RECEIPT EXPLAINS — one usage row, or one canonical Charge
+    # (#370). Read off the record rather than derived from whichever column is
+    # populated: the receipt is the authority, and a subject inferred at read
+    # time is a second answer able to disagree with the recorded one. Null says
+    # the record does not say, which is the honest answer for a receipt written
+    # before the subject was typed.
+    pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
     # WHICH declared quantities went uncosted — the status above says THAT the
     # cost is unresolved, and this says which declaration to fix. Both, because
     # neither answers the other's question (#320).
@@ -540,7 +573,7 @@ class RecordUsageResponse(Schema):
     #
     # ⚠ ON THIS RESPONSE BECAUSE THE RECORD IS ON THIS RESPONSE, which is the
     # whole rule — see `UsageEventDetailOut.pricing_method`. The value was
-    # already crossing here inside `pricing_provenance`, untyped and therefore
+    # already crossing here inside the receipt, untyped and therefore
     # advertised nowhere; publishing it typed is what puts the agreed value set
     # in front of a consumer that switches on it. An acknowledgement that
     # carried the record but not the vocabulary for what is in it would be the
@@ -644,10 +677,10 @@ MeasurementsStatus = Annotated[
 
 
 class UsageEventDetailOut(Schema):
-    # Full pricing receipt for one event — the audit lookup. pricing_provenance
-    # is the recorded "why this amount", omitted from the lean list view: the
-    # two versions, the typed subject, the costing and pricing sections by
-    # value, the totals and the cross-reference ids (#349).
+    # Full pricing receipt for one event — the audit lookup. The receipt is the
+    # recorded "why this amount", omitted from the lean list view: the two
+    # versions, the typed subject, the costing and pricing sections by value,
+    # the totals and the cross-reference ids (#349).
     id: UUID
     request_id: str
     idempotency_key: str
@@ -730,7 +763,7 @@ class UsageEventDetailOut(Schema):
     #
     # THE RULE FOR WHERE THIS SITS IS "WHEREVER THE RECEIPT DOES", and it is
     # mechanical rather than a judgement call: this value is INSIDE the record
-    # `pricing_provenance` publishes, which is untyped, so on every response
+    # `pricing_receipt` publishes, which is untyped, so on every response
     # carrying that record the method is already on the wire with no schema
     # saying what it may be. Lifting it into a typed field is what lets the
     # contract advertise the agreed value set for it, and leaving one of those
@@ -759,7 +792,10 @@ class UsageEventDetailOut(Schema):
     # empty bag shows an end customer "no usage" for detail that was removed on
     # schedule. Required rather than optional: every posting has an answer.
     measurements_status: MeasurementsStatus
-    pricing_provenance: dict = Field({}, description=RECEIPT_DESCRIPTION)
+    pricing_receipt: dict = Field({}, description=RECEIPT_DESCRIPTION)
+    # WHAT THE RECEIPT ABOVE EXPLAINS (#370) — see `RecordUsageResponse`, which
+    # publishes the same record and therefore the same field.
+    pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
     # The one open bag (#273) — see `RecordUsageRequest.metadata`.
     metadata: dict = {}
     task_id: Optional[str] = None
