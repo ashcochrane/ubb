@@ -13,23 +13,42 @@ made wearing a settled figure's clothes. It now means there is no rung, and what
 that produces is `unknown` — asserted at the resolver, in
 `test_the_price_ladder_resolves_as_of_an_instant.py`, because it is a statement
 about resolution rather than about this module.
+
+⚠ **THE LADDER HAD THREE RUNGS AND HAS ONE (#369).** A customer's own override
+row and their plan's percentage column were both read here; both records are
+deleted, and what one named customer or one plan's customers are charged is
+decided further up the ladder, by a rule in a Pricing Book. This module's
+precedence cases went with them — there is nothing left to take precedence over
+— and the two that mattered are INVERTED at their own addresses below rather
+than deleted, because what they pinned has changed rather than stopped being
+worth pinning:
+
+  * a plan's zero used to SHADOW a non-zero tenant default and pin the customer
+    at provider cost. It cannot now: the plan supplies no rung, so the tenant's
+    default is what answers;
+  * a customer on a plan could never reach "no rung at all", because the plan's
+    column defaulted to zero and a default is not a declaration. They can now,
+    and that is the whole point of deleting the column.
 """
 import pytest
+from apps.platform.customers.models import Customer
+from apps.platform.plans.models import CustomerPlanAssignment
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
-from apps.platform.customers.models import Customer
-from apps.metering.pricing.models import TenantDefaultMarkup, TenantMarkup
-from apps.metering.pricing.services.markup_service import MarkupService
+from apps.metering.pricing.models import TenantDefaultMarkup
+from apps.metering.pricing.services.markup_service import (
+    MARKUP_RUNG_TENANT_DEFAULT, MarkupService, ResolvedMarkup,
+)
 
 
-def _billed(basis_micros, tenant, customer):
+def _billed(basis_micros, tenant):
     """What the markup rung answers over a basis, or `None` if there is no rung.
 
     The resolver's two steps in one place, so a case below reads as the question
     it is asking. `None` is not a price: it is the absence of a rung, and what
     resolution makes of that is the resolver's to say.
     """
-    markup = MarkupService.resolve(tenant, customer)
+    markup = MarkupService.resolve(tenant)
     return markup.applied_to(basis_micros) if markup is not None else None
 
 
@@ -37,37 +56,12 @@ def _billed(basis_micros, tenant, customer):
 class TestMarkupService:
     def test_no_markup_leaves_the_rung_unresolved(self):
         t = Tenant.objects.create(name="T", products=["metering"])
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        assert MarkupService.resolve(t, c) is None
+        assert MarkupService.resolve(t) is None
 
     def test_tenant_default_markup_applied(self):
         t = Tenant.objects.create(name="T", products=["metering"])
-        c = Customer.objects.create(tenant=t, external_id="c1")
         TenantDefaultMarkup.objects.create(tenant=t, markup_micro_percent=20_000_000)  # 20%
-        assert _billed(100_000, t, c) == 120_000
-
-    def test_customer_override_beats_tenant_default(self):
-        t = Tenant.objects.create(name="T", products=["metering"])
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantDefaultMarkup.objects.create(tenant=t, markup_micro_percent=20_000_000)
-        TenantMarkup.objects.create(tenant=t, customer=c, markup_percentage_micros=50_000_000)
-        assert _billed(100_000, t, c) == 150_000
-        assert MarkupService.resolve(t, c).source == "customer"
-
-    def test_a_customer_overrides_fixed_uplift_is_added(self):
-        """⚠ THE UPLIFT IS A TERM OF THE TWO RUNGS BEING DELETED (#357).
-
-        A rule that takes a margin over cost does not also carry a flat addend
-        (#147 §2), so the tenant-default rung a tenant declares now has no
-        uplift column at all. The customer override and the plan's own column
-        still do until the commit that deletes both records, so the term is
-        exercised where it is actually reachable rather than through a rung
-        that cannot express it.
-        """
-        t = Tenant.objects.create(name="T", products=["metering"])
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        TenantMarkup.objects.create(tenant=t, customer=c, markup_percentage_micros=0, fixed_uplift_micros=500)
-        assert _billed(100_000, t, c) == 100_500
+        assert _billed(100_000, t) == 120_000
 
     def test_the_declared_rung_names_itself_and_the_record_it_came_from(self):
         """What the receipt's provenance is written out of (#357).
@@ -78,95 +72,121 @@ class TestMarkupService:
         and it cannot be recovered later because the row can be edited.
         """
         t = Tenant.objects.create(name="T", products=["metering"])
-        c = Customer.objects.create(tenant=t, external_id="c1")
         rung = TenantDefaultMarkup.objects.create(
             tenant=t, markup_micro_percent=20_000_000)
 
-        resolved = MarkupService.resolve(t, c)
+        resolved = MarkupService.resolve(t)
 
-        assert resolved.source == "tenant_default"
+        assert resolved.source == MARKUP_RUNG_TENANT_DEFAULT
         assert resolved.source_id == str(rung.id)
         assert resolved.markup_micro_percent == 20_000_000
-        assert resolved.fixed_uplift_micros == 0
+
+    def test_a_tenants_rung_is_their_own(self):
+        """The record is a one-to-one on the tenant, and resolve filters on it.
+
+        Cheap, and it is the case a resolve that dropped its filter would pass
+        every other test in this module with.
+        """
+        mine = Tenant.objects.create(name="Mine", products=["metering"])
+        theirs = Tenant.objects.create(name="Theirs", products=["metering"])
+        TenantDefaultMarkup.objects.create(tenant=theirs,
+                                           markup_micro_percent=20_000_000)
+        assert MarkupService.resolve(mine) is None
 
 
-from apps.platform.plans.models import CustomerPlanAssignment
+class TestTheArithmetic:
+    """The margin itself — half-up on the micro, over a basis and nothing else.
+
+    ⚠ **THIS MOVED OFF A MODEL AND ONTO THE RESOLVED VALUE (#369).** It used to
+    be a method on the deleted markup record, tested against rows in the
+    database; the same sum now belongs to :class:`ResolvedMarkup`, which is what
+    every rung answers, so the cases need no database at all.
+
+    ⚠ **AND THE SECOND TERM IS GONE.** A per-event flat addend used to be added
+    after the percentage, because two of the three rungs carried one. Rules
+    never compose (#147 §2), the rung that remains has no such column, and the
+    receipt's own required terms shed it in the same commit.
+    """
+
+    def _rung(self, micro_percent):
+        return ResolvedMarkup(markup_micro_percent=micro_percent,
+                              source=MARKUP_RUNG_TENANT_DEFAULT, source_id="x")
+
+    def test_a_percentage_is_taken_over_the_basis(self):
+        # (1_000_000 * 50_000_000 + 50_000_000) // 100_000_000 == 500_000
+        assert self._rung(50_000_000).calculate_markup_micros(1_000_000) == 500_000
+
+    def test_a_zero_percentage_takes_nothing(self):
+        """A declared zero is *charge exactly what the call cost*, and it is a
+        decision — which is why the ABSENCE of a rung is `None` rather than
+        this."""
+        assert self._rung(0).calculate_markup_micros(1_000_000) == 0
+        assert self._rung(0).applied_to(1_000_000) == 1_000_000
+
+    def test_the_half_micro_rounds_up(self):
+        """The `+ 50_000_000` in the numerator, asserted rather than assumed.
+
+        1% of 50 micros is 0.5 of a micro. Half-up answers 1; truncation would
+        answer 0, and changing which would silently re-price every event.
+        """
+        assert self._rung(1_000_000).calculate_markup_micros(50) == 1
+
+    def test_applied_to_is_the_basis_plus_the_margin(self):
+        assert self._rung(20_000_000).applied_to(100_000) == 120_000
 
 
 @pytest.mark.django_db
-class TestMarkupPrecedenceWithPlans:
-    def setup_method(self):
-        self.tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+class TestAPlanNoLongerSuppliesARung:
+    """The two plan-rung cases, inverted at their own addresses (#369).
 
-    def _assign(self, key, pct):
-        plan = a_plan(tenant=self.tenant, key=key, name=key,
-                      markup_percentage_micros=pct)
+    Each pinned something true of the deleted column, and each now pins the
+    opposite. Relaxing them — deleting the plan from the fixture, say — would
+    leave the module unable to tell "the plan rung was removed" from "the plan
+    rung was never reached in this test".
+    """
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="T",
+                                            products=["metering", "billing"])
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="c1")
+
+    def _assign(self, key):
+        plan = a_plan(tenant=self.tenant, key=key, name=key)
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
         return plan
 
-    def test_plan_markup_beats_tenant_default(self):
-        """THE REVENUE LEAK, PINNED. A Personal Lite customer (50%) must not
-        fall through to the tenant default (20%). If this test ever passes
-        with 600_000, the plan rung has been lost."""
-        TenantDefaultMarkup.objects.create(tenant=self.tenant,
-                                           markup_micro_percent=20_000_000)
-        self._assign("personal-lite", 50_000_000)
-        # $0.50 provider cost -> 50% -> $0.75, NOT the default's $0.60.
-        assert _billed(500_000, self.tenant, self.customer) == 750_000
+    def test_a_customer_on_a_plan_resolves_to_the_tenants_declared_rung(self):
+        """Was: *a fee-only plan's zero shadows the tenant default and pins the
+        customer at provider cost.*
 
-    def test_customer_override_beats_plan(self):
-        self._assign("personal-lite", 50_000_000)
-        TenantMarkup.objects.create(tenant=self.tenant, customer=self.customer,
-                                    markup_percentage_micros=10_000_000)
-        assert _billed(500_000, self.tenant, self.customer) == 550_000
-
-    def test_unassigned_customer_falls_through_to_tenant_default(self):
-        TenantDefaultMarkup.objects.create(tenant=self.tenant,
-                                           markup_micro_percent=20_000_000)
-        assert _billed(500_000, self.tenant, self.customer) == 600_000
-
-    def test_no_markup_anywhere_leaves_the_rung_unresolved(self):
-        """What used to be "bills at provider cost" (#356).
-
-        The old answer charged a customer exactly what the call cost and called
-        it settled, which is a price nobody stated. There is no rung here, and
-        the resolver's own module is where what that produces is asserted.
-        """
-        assert MarkupService.resolve(self.tenant, self.customer) is None
-
-    def test_resolve_reports_its_source(self):
-        self._assign("personal-lite", 50_000_000)
-        assert MarkupService.resolve(self.tenant, self.customer).source == "plan"
-
-    def test_plan_fixed_uplift_is_applied(self):
-        plan = a_plan(tenant=self.tenant, key="p", name="P",
-                      markup_percentage_micros=20_000_000,
-                      fixed_uplift_micros=7_000)
-        CustomerPlanAssignment.objects.create(
-            tenant=self.tenant, customer=self.customer, plan=plan)
-        assert _billed(500_000, self.tenant, self.customer) == 607_000
-
-    def test_enterprise_and_personal_both_rate_at_twenty_percent(self):
-        self._assign("enterprise", 20_000_000)
-        assert _billed(500_000, self.tenant, self.customer) == 600_000
-
-    def test_zero_markup_plan_shadows_tenant_default_and_pins_provider_cost(self):
-        """A fee-only plan (markup left blank -> 0%) is a deliberate zero, same
-        as a zero customer override: it pins the customer at provider cost and
-        must NOT fall through to a non-zero tenant default.
-
-        The distinction the rung has to keep is between a rung that resolved to
-        zero and no rung at all — one is the tenant saying "charge cost", the
-        other is nobody having said anything.
+        It did, because the column defaulted to zero and every plan therefore
+        supplied a rung. The plan supplies none now, so the tenant's own
+        declaration is what answers — and the customer is billed the default's
+        20% rather than pinned at cost.
         """
         TenantDefaultMarkup.objects.create(tenant=self.tenant,
                                            markup_micro_percent=20_000_000)
-        self._assign("fee-only", 0)
-        resolved = MarkupService.resolve(self.tenant, self.customer)
-        assert resolved.source == "plan"
-        assert _billed(500_000, self.tenant, self.customer) == 500_000
+        self._assign("fee-only")
+
+        resolved = MarkupService.resolve(self.tenant)
+
+        assert resolved.source == MARKUP_RUNG_TENANT_DEFAULT
+        assert _billed(500_000, self.tenant) == 600_000
+
+    def test_a_customer_on_a_plan_can_now_reach_no_rung_at_all(self):
+        """Was: *a customer on a plan always has a rung.*
+
+        They always did, and that was the defect: a column defaulting to zero
+        made "the tenant has said nothing about what to charge" indistinguishable
+        from "the tenant said charge cost", and the second settles a price. With
+        the column gone the honest answer is reachable, and resolution turns it
+        into `unknown` — no amount at all.
+        """
+        self._assign("personal-lite")
+
+        assert MarkupService.resolve(self.tenant) is None
 
 
 @pytest.mark.django_db
@@ -186,18 +206,21 @@ class TestAResolvedZeroIsStillABasis:
     belongs in — a margin over a cost UBB never learned is a `waived` charge —
     so what was an exception is a recorded status, asserted in
     `test_the_price_ladder_resolves_as_of_an_instant.py`.
+
+    ⚠ **THE ASSERTION IS WEAKER THAN IT WAS, AND SAYING SO IS THE POINT.** It
+    used to reach a NON-ZERO figure, because the rung it went through carried a
+    flat addend that survived a zero basis. No rung carries one now (#369), so
+    what separates a resolved zero from a missing basis here is `0` against
+    `None` — a real distinction, and the only one the arithmetic can still make.
     """
 
     def setup_method(self):
         self.tenant = Tenant.objects.create(name="T", products=["metering"])
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1")
 
-    def test_a_resolved_zero_is_marked_up_to_the_uplift(self):
-        # Through the customer override, which is the rung that still carries
-        # an uplift: the tenant-default rung has no such column, because a
-        # margin over cost never composes with a flat addend (#147 §2).
-        TenantMarkup.objects.create(tenant=self.tenant, customer=self.customer,
-                                    markup_percentage_micros=20_000_000,
-                                    fixed_uplift_micros=1_000)
-        assert _billed(0, self.tenant, self.customer) == 1_000
+    def test_a_resolved_zero_is_a_basis_and_not_an_absent_rung(self):
+        TenantDefaultMarkup.objects.create(tenant=self.tenant,
+                                           markup_micro_percent=20_000_000)
+        assert _billed(0, self.tenant) == 0
+
+    def test_no_rung_over_the_same_basis_is_not_a_zero(self):
+        assert _billed(0, self.tenant) is None

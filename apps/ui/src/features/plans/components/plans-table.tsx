@@ -7,7 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { formatMarkup, formatMicros, type Plan } from "../api/types";
+import { formatMicros, type Plan } from "../api/types";
 
 /**
  * An absent fee axis renders as an em dash, not "$0.00" — the plan does not
@@ -37,7 +37,6 @@ export function PlansTable({
           <TableHead>Plan</TableHead>
           <TableHead>Access</TableHead>
           <TableHead>Per seat</TableHead>
-          <TableHead>Markup</TableHead>
           <TableHead />
         </TableRow>
       </TableHeader>
@@ -54,7 +53,6 @@ export function PlansTable({
             <TableCell>
               <Fee micros={plan.per_seat_micros} suffix="/seat" />
             </TableCell>
-            <TableCell>{formatMarkup(plan.markup_percentage_micros)}</TableCell>
             <TableCell>
               <button
                 type="button"

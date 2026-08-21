@@ -1,11 +1,13 @@
 """Wave 3 capstone integration test: tenant self-service config + Stripe Connect.
 
-A REAL live-server test driving the ``ubb`` Python SDK over HTTP against a
-running Django server. It proves a tenant can fully self-configure its billing
-and margin levers AND connect its own Stripe account via OAuth -- with ZERO
-operator/DB action, using only the SDK and the (no-auth) browser callback:
+A REAL live-server test driving the published API over HTTP against a running
+Django server -- through the ``ubb`` Python SDK for every step that has an
+ergonomic method, and over the route itself for the one that deliberately does
+not. It proves a tenant can fully self-configure its billing and margin levers
+AND connect its own Stripe account via OAuth -- with ZERO operator/DB action,
+using only the tenant API key and the (no-auth) browser callback:
 
-  - set/read its margin markup lever (set_markup / get_markup),
+  - declare/read its margin markup lever (the tenant's default markup rung),
   - self-configure billing mode + enabled products (update/get_tenant_config),
   - start Stripe Connect OAuth onboarding -> the "Connect to Stripe" authorize
     URL (start_connect_onboarding), with a single-use ``state`` nonce,
@@ -24,6 +26,18 @@ The process-wide ``unittest.mock.patch`` of the Stripe SDK symbols reaches the
 live-server thread because live_server runs in THIS process; the Stripe calls in
 ``complete_oauth`` run synchronously in that server thread during the callback
 request, while the patch context is still open here.
+
+⚠ **THE MARGIN LEVER IS DRIVEN OVER THE ROUTE RATHER THAN THROUGH A CLIENT
+METHOD, AND THAT IS DELIBERATE (#357, #369).** The lever used to be four
+hand-written methods over a configuration record; that record is deleted, and
+what replaced it — the tenant's default markup rung — is reachable through the
+generated core and through none of the hand-written clients, signed for in
+`ubb-sdk/coverage-authorisations.yaml` under
+`slice-4-357-the-tenant-default-markup-rung-is-declarable`. Deciding what a
+customer is charged is a governance act rather than something an integrator's
+code does, which is the line that authorisation draws. So the step below hits
+the published route the way the console does, which is what the capstone's claim
+— ZERO operator or DB action — actually rests on.
 """
 import re
 
@@ -61,9 +75,15 @@ def test_wave3_selfserve_config_and_connect_via_sdk(live_server, _no_outbox_disp
 
     c = UBBClient(api_key=raw_key, base_url=live_server.url)
     try:
-        # 1. Margin lever: set + read back the tenant markup.
-        c.set_markup(markup_percentage_micros=20_000_000)
-        assert c.get_markup().markup_percentage_micros == 20_000_000
+        # 1. Margin lever: declare + read back the tenant's default markup
+        # rung, over the published route (see the module docstring).
+        rung = f"{live_server.url}/api/v1/metering/pricing/default-markup"
+        auth = {"Authorization": f"Bearer {raw_key}"}
+        declared = httpx.put(rung, headers=auth,
+                             json={"markup_micro_percent": 20_000_000})
+        assert declared.status_code == 200, declared.text
+        assert httpx.get(rung, headers=auth).json()[
+            "markup_micro_percent"] == 20_000_000
 
         # 2. Self-config billing mode + products (zero operator/DB action).
         c.update_tenant_config(billing_mode="prepaid", products=["metering", "billing"])

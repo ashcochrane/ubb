@@ -25,11 +25,9 @@ class PlanOut:
     """ 
         Attributes:
             access_fee_micros (int):
-            fixed_uplift_micros (int):
             id (str):
             interval (str):
             key (str):
-            markup_percentage_micros (int):
             name (str):
             per_seat_micros (int):
             pricing_version (int):
@@ -37,11 +35,9 @@ class PlanOut:
      """
 
     access_fee_micros: int
-    fixed_uplift_micros: int
     id: str
     interval: str
     key: str
-    markup_percentage_micros: int
     name: str
     per_seat_micros: int
     pricing_version: int
@@ -55,15 +51,11 @@ class PlanOut:
     def to_dict(self) -> dict[str, Any]:
         access_fee_micros = self.access_fee_micros
 
-        fixed_uplift_micros = self.fixed_uplift_micros
-
         id = self.id
 
         interval = self.interval
 
         key = self.key
-
-        markup_percentage_micros = self.markup_percentage_micros
 
         name = self.name
 
@@ -82,11 +74,9 @@ class PlanOut:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "access_fee_micros": access_fee_micros,
-            "fixed_uplift_micros": fixed_uplift_micros,
             "id": id,
             "interval": interval,
             "key": key,
-            "markup_percentage_micros": markup_percentage_micros,
             "name": name,
             "per_seat_micros": per_seat_micros,
             "pricing_version": pricing_version,
@@ -103,15 +93,11 @@ class PlanOut:
         d = dict(src_dict)
         access_fee_micros = d.pop("access_fee_micros")
 
-        fixed_uplift_micros = d.pop("fixed_uplift_micros")
-
         id = d.pop("id")
 
         interval = d.pop("interval")
 
         key = d.pop("key")
-
-        markup_percentage_micros = d.pop("markup_percentage_micros")
 
         name = d.pop("name")
 
@@ -131,11 +117,9 @@ class PlanOut:
 
         plan_out = cls(
             access_fee_micros=access_fee_micros,
-            fixed_uplift_micros=fixed_uplift_micros,
             id=id,
             interval=interval,
             key=key,
-            markup_percentage_micros=markup_percentage_micros,
             name=name,
             per_seat_micros=per_seat_micros,
             pricing_version=pricing_version,

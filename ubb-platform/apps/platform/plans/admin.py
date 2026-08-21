@@ -6,7 +6,7 @@ from apps.platform.plans.models import CustomerPlanAssignment, Plan
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
     list_display = ("key", "name", "tenant", "access_fee_micros",
-                    "per_seat_micros", "markup_percentage_micros", "archived_at")
+                    "per_seat_micros", "pricing_book", "archived_at")
     list_filter = ("tenant", "interval")
     search_fields = ("key", "name")
 

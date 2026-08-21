@@ -8,11 +8,13 @@ INTERVAL_CHOICES = [("month", "Month"), ("year", "Year")]
 class Plan(BaseModel):
     """A tenant's commercial offer, with three axes.
 
-    Two axes are realized by Stripe (licensed Prices on a Subscription);
-    the third — markup on metered compute — Stripe cannot represent, because
-    it has no knowledge of provider cost. That is why Plan is a kernel
-    concept: subscriptions and metering each realize one part of it, and
-    neither owns it (ADR-001 rule 1 — any product may import apps.platform.*).
+    Two axes are realized by Stripe (licensed Prices on a Subscription); the
+    third — what the plan's customers are charged for metered compute — Stripe
+    cannot represent, because it has no knowledge of provider cost. That axis
+    is the Pricing Book below, and until #369 it was also two columns on this
+    row. That is why Plan is a kernel concept: subscriptions and metering each
+    realize one part of it, and neither owns it (ADR-001 rule 1 — any product
+    may import apps.platform.*).
 
     The stripe_* fields are an OPAQUE external binding: the kernel stores
     them and never interprets them. Only apps/subscriptions reads or writes
@@ -40,15 +42,16 @@ class Plan(BaseModel):
     # null standing for both.
     #
     # ⚠ WHAT SUCH A PLAN'S CUSTOMERS RESOLVE TO IS THE MARKUP RUNG'S ANSWER AND
-    # NOT THIS COLUMN'S, AND TODAY THE RUNG IS THE PLAN'S OWN. Every event
-    # falls past an empty book to `markup_percentage_micros` below, which
-    # defaults to zero and is therefore always a rung — so *"the tenant said
-    # nothing"* is served as *"the tenant said zero"*. That is deliberate and
-    # documented (`apps/platform/CONTEXT.md`, Markup precedence: an explicit
-    # zero pins the customer at provider cost), and it is why an empty book
-    # does NOT reach `unknown` while these columns exist. Ticket 22 (#369)
-    # deletes them, and the rung then falls to the tenant's declared default or
-    # to `unknown`.
+    # NOT THIS COLUMN'S, AND SINCE #369 THE PLAN SUPPLIES NO RUNG. An event
+    # that falls past an empty book reaches the tenant's declared default
+    # markup rung, and where the tenant has declared none it reaches `unknown`
+    # — a price nobody has stated, with no amount at all. Until #369 this row
+    # carried a percentage column defaulting to zero, so it was ALWAYS a rung
+    # and *"the tenant said nothing"* was served as *"the tenant said zero"*.
+    # That was documented rather than accidental (`apps/platform/CONTEXT.md`,
+    # Markup precedence: an explicit zero pins the customer at provider cost) —
+    # but a default is not a declaration, and deleting the column is what makes
+    # `unknown` reachable for a customer on a plan.
     #
     # **REQUIRED MEANS CREATION IS ORDERED**, and that ordering is this
     # column's, not a convention: nothing can write a Plan row before the book
@@ -83,9 +86,14 @@ class Plan(BaseModel):
     per_seat_micros = models.BigIntegerField(default=0)
     interval = models.CharField(max_length=5, choices=INTERVAL_CHOICES, default="month")
 
-    # UBB-realized axis. Units match TenantMarkup exactly: 1_000_000 == 1%.
-    markup_percentage_micros = models.BigIntegerField(default=0)
-    fixed_uplift_micros = models.BigIntegerField(default=0)
+    # THE UBB-REALIZED AXIS IS THE BOOK ABOVE, AND IT USED TO BE TWO COLUMNS
+    # HERE (#369). A percentage and a per-event flat addend sat on this row and
+    # were read as a rung of the markup ladder. Both are gone: what a plan's
+    # customers are charged is the rules in the Pricing Book the plan names, and
+    # where that book prices nothing the answer is the tenant's declared default
+    # markup rung or `unknown`. Deleted rather than renamed — the percentage
+    # column hid millionths of a percent under the money suffix (G11), and a
+    # rename would have moved that spelling onto a column with no reader left.
 
     # Opaque Stripe binding — written only by apps/subscriptions.
     stripe_access_product_id = models.CharField(max_length=255, blank=True, default="")
@@ -95,8 +103,9 @@ class Plan(BaseModel):
     provisioned_at = models.DateTimeField(null=True, blank=True)
     # Bumped once per re-price of a provisioned axis. Stripe Prices are
     # immutable, so a fee edit mints a NEW Price and existing subscribers are
-    # grandfathered on the old one unless explicitly migrated. Markup has no
-    # Stripe object and is therefore always live — the asymmetry is deliberate.
+    # grandfathered on the old one unless explicitly migrated. The usage axis
+    # has no Stripe object and is therefore always live — the asymmetry is
+    # deliberate, and it is why only the two fee columns move this number.
     pricing_version = models.PositiveIntegerField(default=1)
 
     archived_at = models.DateTimeField(null=True, blank=True)
@@ -114,27 +123,18 @@ class Plan(BaseModel):
     def has_stripe_axes(self) -> bool:
         """True when this plan charges a fee Stripe must bill.
 
-        False for a markup-only plan (e.g. $0 access + 50% markup), which has
-        no Stripe Product, Price, or Subscription at all.
+        False for a usage-only plan ($0 access, $0 seat, priced entirely from
+        the Pricing Book it names), which has no Stripe Product, Price, or
+        Subscription at all.
         """
         return self.access_fee_micros > 0 or self.per_seat_micros > 0
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        _invalidate_markup_cache(self.tenant_id)
-
-    def delete(self, *args, **kwargs):
-        tenant_id = self.tenant_id
-        result = super().delete(*args, **kwargs)
-        _invalidate_markup_cache(tenant_id)
-        return result
 
 
 class CustomerPlanAssignment(BaseModel):
     """Which plan a customer is on.
 
     This row — not the Stripe subscription — is the source of truth for plan
-    membership, which is what lets a markup-only customer be on a real plan
+    membership, which is what lets a usage-only customer be on a real plan
     with zero presence in Stripe Billing.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -155,26 +155,12 @@ class CustomerPlanAssignment(BaseModel):
     def __str__(self):
         return f"CustomerPlanAssignment({self.customer_id} -> {self.plan_id})"
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        _invalidate_markup_cache(self.tenant_id)
 
-    def delete(self, *args, **kwargs):
-        tenant_id = self.tenant_id
-        result = super().delete(*args, **kwargs)
-        _invalidate_markup_cache(tenant_id)
-        return result
-
-
-def _invalidate_markup_cache(tenant_id):
-    """Bump the tenant's markup cache version.
-
-    Lazy import: the kernel may not import a product at module scope
-    (ADR-001), and metering is an optional consumer of plans. A missing
-    metering app must not break a plan write, so the import is best-effort.
-    """
-    try:
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-    except ImportError:  # pragma: no cover - metering always installed today
-        return
-    MarkupCache.invalidate(tenant_id)
+# THE MARKUP-CACHE INVALIDATION HOOKS LEFT WITH THE COLUMNS THEY GUARDED
+# (#369). Both models above bumped `MarkupCache`'s per-tenant version key from
+# `save()` and `delete()`, because a plan's percentage and a customer's plan
+# membership were each read by `MarkupService.resolve` and a cached rung had to
+# be dropped when either moved. That rung is deleted: resolve reads the tenant's
+# declared default and nothing else, and that record bumps the same key from its
+# own model layer. A bump left here would be a write no read depends on, and a
+# reader would take it for evidence that a plan still feeds the ladder.

@@ -3,9 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   billingProfileSchema,
   grantSchema,
-  markupSchema,
   moneyAmount,
-  percentToMicros,
 } from "./schemas";
 
 const baseGrant = {
@@ -111,15 +109,6 @@ describe("billingProfileSchema — floor wire semantics", () => {
   });
 });
 
-describe("markup", () => {
-  it("converts a human percentage to percentage-micros (1e6 = 1%)", () => {
-    expect(percentToMicros("25")).toBe(25_000_000);
-    expect(percentToMicros("2.5")).toBe(2_500_000);
-    expect(percentToMicros("0")).toBe(0);
-  });
-
-  it("allows a 0/0 override (which pins the customer at cost)", () => {
-    expect(markupSchema.safeParse({ percent: "0", uplift: "0" }).success).toBe(true);
-    expect(markupSchema.safeParse({ percent: "-1", uplift: "0" }).success).toBe(false);
-  });
-});
+// ⚠ THE MARKUP CASES WENT WITH THE FORM (#369). One pinned the human-percent
+// to micros conversion and one that a 0/0 override parsed — a shape that no
+// longer exists, on a dialog that no longer exists. Nothing else used either.

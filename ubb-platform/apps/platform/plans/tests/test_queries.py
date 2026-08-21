@@ -13,34 +13,35 @@ class TestPlanQueries:
         self.tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
-    def test_markup_for_unassigned_customer_is_none(self):
-        assert queries.get_plan_markup_for_customer(
+    # THE MARKUP READ'S THREE CASES LEFT WITH THE READ (#369). It answered a
+    # percentage and a flat addend off the Plan row; both columns are deleted
+    # and a plan prices its customers through the book below. What those cases
+    # pinned that is still true of the surviving reader — an unassigned customer
+    # answers None, an archived plan answers None — is pinned on the book read
+    # itself rather than restated here.
+
+    def test_the_book_for_an_unassigned_customer_is_none(self):
+        assert queries.get_pricing_book_for_customer(
             self.tenant.id, self.customer.id) is None
 
-    def test_markup_for_assigned_customer_is_plain_data(self):
-        plan = a_plan(tenant=self.tenant, key="lite", name="Lite",
-                      markup_percentage_micros=50_000_000,
-                      fixed_uplift_micros=1_000)
+    def test_the_book_for_an_assigned_customer_is_its_id_as_plain_data(self):
+        plan = a_plan(tenant=self.tenant, key="lite", name="Lite")
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
-        # The plan's ID rides with the terms (#357): a price resolved from this
-        # rung is recorded on a receipt that names the record the percentage
-        # came from, and a plan's markup can be edited. A cross-reference, not
-        # a term — the percentage itself is written into the receipt by value.
-        assert queries.get_plan_markup_for_customer(self.tenant.id, self.customer.id) == {
-            "plan_id": str(plan.id),
-            "markup_percentage_micros": 50_000_000,
-            "fixed_uplift_micros": 1_000,
-        }
+        # A read contract answers plain data, never an ORM object: the rating
+        # hot path depends on a stable shape rather than on a model (ADR-001).
+        answer = queries.get_pricing_book_for_customer(
+            self.tenant.id, self.customer.id)
+        assert answer == str(plan.pricing_book_id)
+        assert isinstance(answer, str)
 
-    def test_archived_plan_yields_no_markup(self):
+    def test_an_archived_plan_names_no_book(self):
         from django.utils import timezone
         plan = a_plan(tenant=self.tenant, key="old", name="Old",
-                      markup_percentage_micros=50_000_000,
                       archived_at=timezone.now())
         CustomerPlanAssignment.objects.create(
             tenant=self.tenant, customer=self.customer, plan=plan)
-        assert queries.get_plan_markup_for_customer(
+        assert queries.get_pricing_book_for_customer(
             self.tenant.id, self.customer.id) is None
 
     def test_list_plans_excludes_archived_by_default(self):

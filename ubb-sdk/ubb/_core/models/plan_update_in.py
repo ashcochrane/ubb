@@ -25,16 +25,12 @@ class PlanUpdateIn:
     """ 
         Attributes:
             access_fee_micros (int | None | Unset):
-            fixed_uplift_micros (int | None | Unset):
-            markup_percentage_micros (int | None | Unset):
             migrate_existing (bool | Unset):  Default: False.
             name (None | str | Unset):
             per_seat_micros (int | None | Unset):
      """
 
     access_fee_micros: int | None | Unset = UNSET
-    fixed_uplift_micros: int | None | Unset = UNSET
-    markup_percentage_micros: int | None | Unset = UNSET
     migrate_existing: bool | Unset = False
     name: None | str | Unset = UNSET
     per_seat_micros: int | None | Unset = UNSET
@@ -50,18 +46,6 @@ class PlanUpdateIn:
             access_fee_micros = UNSET
         else:
             access_fee_micros = self.access_fee_micros
-
-        fixed_uplift_micros: int | None | Unset
-        if isinstance(self.fixed_uplift_micros, Unset):
-            fixed_uplift_micros = UNSET
-        else:
-            fixed_uplift_micros = self.fixed_uplift_micros
-
-        markup_percentage_micros: int | None | Unset
-        if isinstance(self.markup_percentage_micros, Unset):
-            markup_percentage_micros = UNSET
-        else:
-            markup_percentage_micros = self.markup_percentage_micros
 
         migrate_existing = self.migrate_existing
 
@@ -84,10 +68,6 @@ class PlanUpdateIn:
         })
         if access_fee_micros is not UNSET:
             field_dict["access_fee_micros"] = access_fee_micros
-        if fixed_uplift_micros is not UNSET:
-            field_dict["fixed_uplift_micros"] = fixed_uplift_micros
-        if markup_percentage_micros is not UNSET:
-            field_dict["markup_percentage_micros"] = markup_percentage_micros
         if migrate_existing is not UNSET:
             field_dict["migrate_existing"] = migrate_existing
         if name is not UNSET:
@@ -110,26 +90,6 @@ class PlanUpdateIn:
             return cast(int | None | Unset, data)
 
         access_fee_micros = _parse_access_fee_micros(d.pop("access_fee_micros", UNSET))
-
-
-        def _parse_fixed_uplift_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        fixed_uplift_micros = _parse_fixed_uplift_micros(d.pop("fixed_uplift_micros", UNSET))
-
-
-        def _parse_markup_percentage_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        markup_percentage_micros = _parse_markup_percentage_micros(d.pop("markup_percentage_micros", UNSET))
 
 
         migrate_existing = d.pop("migrate_existing", UNSET)
@@ -156,8 +116,6 @@ class PlanUpdateIn:
 
         plan_update_in = cls(
             access_fee_micros=access_fee_micros,
-            fixed_uplift_micros=fixed_uplift_micros,
-            markup_percentage_micros=markup_percentage_micros,
             migrate_existing=migrate_existing,
             name=name,
             per_seat_micros=per_seat_micros,

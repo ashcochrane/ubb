@@ -2,16 +2,16 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const STEPS = [
   {
-    title: "Assigned price book",
-    body: "If a customer has a price book assigned (on their customer page), its rates set what they're billed.",
+    title: "The customer's own rules",
+    body: "If a customer has a pricing book of their own, its rules set what they're billed.",
   },
   {
-    title: "Provider default price book",
-    body: "Otherwise the default price book for the event's provider applies.",
+    title: "The book their plan prices from",
+    body: "Otherwise the book named by the customer's plan applies, and then your workspace default book.",
   },
   {
     title: "Markup over provider cost",
-    body: "If no price book matches, we take what the provider charged you and add your default markup. With no markup set, customers pay exactly the provider cost.",
+    body: "If no rule matches, we take what the provider charged you and add the default markup you have declared. With no markup declared, the price is unknown — nobody has said what to charge, and no amount is billed.",
   },
 ] as const;
 

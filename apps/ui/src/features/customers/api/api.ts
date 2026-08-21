@@ -48,8 +48,6 @@ import {
   type StripeSubscriptionOut,
   type SubscribeIn,
   type SubscriptionInvoiceOut,
-  type TenantMarkupIn,
-  type TenantMarkupOut,
   type TopUpCheckoutResponse,
   type UsageAnalyticsResponse,
   type UsageInvoiceOut,
@@ -362,41 +360,20 @@ export async function configureAutoTopUp(
 }
 
 // ---------------------------------------------------------------------------
-// Metering — pricing (markup override + price book assignment)
-
-/** Returns the RESOLVED markup — inherited vs overridden is indistinguishable. */
-export async function getCustomerMarkup(customerId: string): Promise<TenantMarkupOut> {
-  return unwrap(
-    await meteringApi.GET("/pricing/customers/{customer_id}/markup", {
-      params: { path: { customer_id: customerId } },
-    }),
-  );
-}
-
-export async function putCustomerMarkup(
-  customerId: string,
-  body: TenantMarkupIn,
-): Promise<TenantMarkupOut> {
-  return unwrap(
-    await meteringApi.PUT("/pricing/customers/{customer_id}/markup", {
-      params: { path: { customer_id: customerId } },
-      body,
-    }),
-  );
-}
-
-export async function deleteCustomerMarkup(customerId: string): Promise<StatusResponse> {
-  return unwrap(
-    await meteringApi.DELETE("/pricing/customers/{customer_id}/markup", {
-      params: { path: { customer_id: customerId } },
-    }),
-  );
-}
-
-// ⚠ NO BOOK-ASSIGNMENT READ OR WRITE (#368). The record that assigned a book
-// to a customer is deleted outright, with its route: a customer reaches a book
-// through their PLAN, which is where their pricing already resolved from, or
-// through a book that carries them. There is nothing left to pick from a list.
+// Metering — pricing
+//
+// ⚠ THERE IS NOTHING HERE, AND TWO SEPARATE DELETIONS EMPTIED IT.
+//
+// #368 took the book-assignment read and write: the record that assigned a
+// book to a customer is deleted outright, with its route. A customer reaches a
+// book through their PLAN, which is where their pricing already resolved from,
+// or through a book that carries them, so there is nothing to pick from a list.
+//
+// #369 took the markup override — a resolved read, a write and a delete over a
+// percentage and a per-event flat amount on a configuration row. That record is
+// deleted too. What one named customer is charged is now a RULE in their own
+// pricing book, which says which quantity it prices; the console reads books
+// and cannot yet declare a rule in one, and #372 is the ticket that builds it.
 
 // ---------------------------------------------------------------------------
 // Subscriptions (reads key on the UUID; lifecycle verbs key on external_id)

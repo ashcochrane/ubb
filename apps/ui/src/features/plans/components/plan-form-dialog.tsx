@@ -1,5 +1,11 @@
-// Create/edit dialog for a plan's three commercial axes: access fee,
-// per-seat fee, and markup. `plan === null` is create mode; otherwise edit.
+// Create/edit dialog for a plan's two fee axes: access fee and per-seat fee.
+// `plan === null` is create mode; otherwise edit.
+//
+// ⚠ THERE IS NO MARKUP FIELD (#369). A plan carried a markup percentage and a
+// per-event flat amount, and both columns are deleted. What a plan's customers
+// pay for usage is the rules in the pricing book the plan names, changed
+// through a publish on that book — which is what gives a tenant a diff to read
+// before a price moves, and which this console gains with #372.
 //
 // Schema and conversion helpers live inline (not in a sibling `lib/`
 // directory) because this repo's root .gitignore has a bare `lib/` pattern
@@ -39,11 +45,10 @@ const planFormSchema = z.object({
   name: z.string().trim().min(1, "Required"),
   accessFee: decimalString,
   perSeatFee: decimalString,
-  markup: decimalString,
 });
 type PlanFormValues = z.infer<typeof planFormSchema>;
 
-/** Blank or unparsable -> 0 micros. Money and markup share the same 1e6 scale. */
+/** Blank or unparsable -> 0 micros. */
 function toMicros(value: string): number {
   const parsed = Number(value);
   return value.trim() === "" || Number.isNaN(parsed) ? 0 : Math.round(parsed * 1_000_000);
@@ -56,14 +61,13 @@ function toFormString(micros: number): string {
 
 function defaultValues(plan: Plan | null): PlanFormValues {
   if (!plan) {
-    return { key: "", name: "", accessFee: "", perSeatFee: "", markup: "" };
+    return { key: "", name: "", accessFee: "", perSeatFee: "" };
   }
   return {
     key: plan.key,
     name: plan.name,
     accessFee: toFormString(plan.access_fee_micros),
     perSeatFee: toFormString(plan.per_seat_micros),
-    markup: toFormString(plan.markup_percentage_micros),
   };
 }
 
@@ -105,7 +109,6 @@ export function PlanFormDialog({
             name: values.name,
             access_fee_micros: toMicros(values.accessFee),
             per_seat_micros: toMicros(values.perSeatFee),
-            markup_percentage_micros: toMicros(values.markup),
             migrate_existing: false,
           },
         },
@@ -118,8 +121,6 @@ export function PlanFormDialog({
           name: values.name,
           access_fee_micros: toMicros(values.accessFee),
           per_seat_micros: toMicros(values.perSeatFee),
-          markup_percentage_micros: toMicros(values.markup),
-          fixed_uplift_micros: 0,
           interval: "month",
         },
         { onSuccess: () => onOpenChange(false) },
@@ -138,9 +139,10 @@ export function PlanFormDialog({
           <DialogDescription>
             {isEdit
               ? "Fee changes create a new Stripe price; existing subscribers keep their " +
-                "current one. Markup changes apply immediately."
-              : "An access fee, a per-seat fee, and a markup on metered compute — leave any " +
-                "axis blank to not charge it."}
+                "current one. What this plan's customers pay for usage lives in the " +
+                "pricing book it prices from, not here."
+              : "An access fee and a per-seat fee — leave either blank to not charge it. " +
+                "Usage is priced from the pricing book created with the plan."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -167,7 +169,7 @@ export function PlanFormDialog({
           <FormField label="Name" error={form.formState.errors.name?.message}>
             {(id) => <Input id={id} placeholder="Enterprise" {...form.register("name")} />}
           </FormField>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <FormField
               label="Access fee ($/mo)"
               error={form.formState.errors.accessFee?.message}
@@ -184,15 +186,6 @@ export function PlanFormDialog({
             >
               {(id) => (
                 <Input id={id} inputMode="decimal" placeholder="10" {...form.register("perSeatFee")} />
-              )}
-            </FormField>
-            <FormField
-              label="Markup (%)"
-              error={form.formState.errors.markup?.message}
-              hint="Blank = no markup."
-            >
-              {(id) => (
-                <Input id={id} inputMode="decimal" placeholder="20" {...form.register("markup")} />
               )}
             </FormField>
           </div>

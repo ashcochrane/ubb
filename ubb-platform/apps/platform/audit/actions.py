@@ -18,7 +18,7 @@ the registry cannot silently drift from what the ledger actually writes — and 
 # Order is not significant — grouped by namespace for readability. #81 landed the
 # ledger and one real site (api-key mint); #82 sweeps the rest of the mutating
 # surface in, appending here. Every name below is written by exactly one route (a
-# few — budget.set, markup.set, top_up.requested — by the tenant/customer or
+# few — budget.set, top_up.requested — by the tenant/customer or
 # tenant/widget twins of one operation). Usage ingestion (record_usage[/batch],
 # ingest, task close) and the spend pre-check are telemetry, not governance, and
 # deliberately have NO action here — see the exemption list in
@@ -117,8 +117,25 @@ AUDIT_ACTIONS = (
     "pricing_book.withdrawn",
     "cost_book.declared",
     "cost_book.withdrawn",
-    "markup.set",
-    "markup.deleted",
+    # ⚠ **THE LAST TWO RETIRED NAMES OF THE OLD BLOCK LEFT HERE, AND NEITHER
+    # WAS RENAMED (#369).** They recorded that a tenant had set a markup and
+    # that one had been removed — acts on a configuration record whose rows
+    # were a percentage for the whole tenant and a percentage for one named
+    # customer. **That record is deleted**, with its five routes and its two
+    # schemas, and neither act has a successor to carry forward: a customer's
+    # own price is a rule in their own Pricing Book, declared and withdrawn
+    # under the pair further down; the tenant default is declared and withdrawn
+    # under the pair below.
+    #
+    # **Deleting an action whose act no longer exists is not the rename ADR-004
+    # §2 governs**, and **no part of the one-time pre-production audit-registry
+    # reset is spent on it** — #154 §4.2 defines that exception and #154 §13 /
+    # #155 §14 allocate it to slice 8, for the actions that genuinely ARE
+    # renamed. The names are not spelled anywhere in this tree outside the
+    # registry's own retired-alias list and the migrations, and the refusal is
+    # held in `apps/metering/pricing/tests/test_the_markup_record_is_deleted
+    # .py`, which derives the noun from the deleting migration's own from-state
+    # rather than writing it.
     # THE TENANT'S DEFAULT MARKUP RUNG (#357). The last rung of the price
     # ladder — what a customer is charged where the tenant has written no rule
     # — so declaring it and withdrawing it are governance in exactly the sense
@@ -131,12 +148,11 @@ AUDIT_ACTIONS = (
     # different acts. Splitting them later is the rename ADR-004 §2 calls a
     # breaking change, so they are split now, when it is free.
     #
-    # ⚠ NOT A RENAME OF THE PAIR ABOVE, WHICH IS WHY BOTH SETS ARE HERE AT
-    # ONCE. Those two record acts on the record this rung replaces, and that
-    # record still exists and is still written; the commit that deletes it
-    # deletes them, and deleting an action whose act no longer exists is not
-    # the rename that rule governs. No part of the one-time pre-production
-    # audit-registry reset is spent on either pair.
+    # ⚠ NOT A RENAME OF THE PAIR THAT USED TO SIT ABOVE. Those two recorded
+    # acts on the record this rung replaces; #369 deleted that record and both
+    # names with it, and the two sets were live at once in between because the
+    # old record was still written. No part of the one-time pre-production
+    # audit-registry reset was spent on either pair.
     "tenant_default_markup.declared",
     "tenant_default_markup.withdrawn",
     # CHANGING A PRICING BOOK (#358). Every change to a book is a publish —
@@ -177,11 +193,11 @@ AUDIT_ACTIONS = (
     # splitting them later is the rename ADR-004 §2 calls a breaking change.
     #
     # ⚠ NOT `customer_pricing_override.set`, WHICH IS ALREADY IN THE REGISTRY
-    # AND IS A DIFFERENT ACT. That name is the end-state spelling of
-    # `markup.set` — a NUMBER written onto the per-customer row of the record
-    # this slice deletes. An override is not a number inside a rule; it is a
-    # whole rule, declared through a publish. Two acts on two records, so two
-    # names, and neither is a rename of the other.
+    # AND IS A DIFFERENT ACT. That name is the end-state spelling of the retired
+    # setting action deleted above — a NUMBER written onto the per-customer row
+    # of the record this slice deleted. An override is not a number inside a
+    # rule; it is a whole rule, declared through a publish. Two acts on two
+    # records, so two names, and neither is a rename of the other.
     #
     # ⚠ THE ACTS RECORD THE DRAFT, NOT THE RULE, WHICH IS WHY BOTH SIT BESIDE
     # THE THREE ABOVE. Declaring an override writes no rule: it declares a
@@ -230,9 +246,10 @@ AUDIT_ACTIONS = (
     # sense the two registries above are: it decides how usage is costed.
     #
     # ONE ACTION PER RECORD PER KIND OF ACT, which is the shape the pairs above
-    # already run (`markup.set`/`markup.deleted`, `webhook_config.created`/
-    # `.deleted`, `grant.created`/`.voided`). Declaring and re-declaring are
-    # one act — a correction to a declaration is still a declaration, which is
+    # already run (`webhook_config.created`/`.deleted`, `grant.created`/
+    # `.voided`, `pricing_book.declared`/`.withdrawn`). Declaring and
+    # re-declaring are one act — a correction to a declaration is still a
+    # declaration, which is
     # why `grouping_field.declared` covers a re-PUT — but WITHDRAWING is not, and
     # neither is publishing:
     #

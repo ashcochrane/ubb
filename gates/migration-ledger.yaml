@@ -93,35 +93,28 @@ entries:
 
   # --- G11: `_micros` means millionths of a currency unit ------------------
   #
-  # The suffix means money on 73 columns and millionths of a PERCENT on these
-  # two. #147 §9.2 records what the ambiguity has already cost: the
-  # `le=1_000_000_000` bound exists specifically because such a value "is far
-  # more likely a unit error (percent passed as micros) than a real commercial
-  # term". `expected` is ADR-0006 §1's honest spelling — same scale, right unit.
+  # The suffix means money on every column that carries it, and it once meant
+  # millionths of a PERCENT on two — one on the tenant-level markup record, one
+  # on the kernel's Plan. #147 §9.2 records what that ambiguity had already
+  # cost: the `le=1_000_000_000` bound existed specifically because such a value
+  # "is far more likely a unit error (percent passed as micros) than a real
+  # commercial term". `expected` was ADR-0006 §1's honest spelling — same scale,
+  # right unit — and it was taken on a NEW column rather than on either of
+  # these.
   #
-  # Both are owned by slice 4, which per #194's slice table deletes `TenantMarkup`
-  # and `Plan.markup_percentage_micros` outright. Deletion clears the debt as
-  # surely as a rename; what may not happen is the field surviving under this
-  # name past that slice.
-  - id: g11-tenant-markup-percentage-micros
-    gate: G11
-    site: ubb-platform/apps/metering/pricing/models.py::TenantMarkup.markup_percentage_micros
-    expected: markup_micro_percent
-    found: markup_percentage_micros
-    owner_slice: slice_4
-    reason: >-
-      Millionths of a percent under the money suffix. Slice 4 deletes
-      `TenantMarkup` when pricing rules replace it (#154 §3.5, #147 §9.2).
-
-  - id: g11-plan-markup-percentage-micros
-    gate: G11
-    site: ubb-platform/apps/platform/plans/models.py::Plan.markup_percentage_micros
-    expected: markup_micro_percent
-    found: markup_percentage_micros
-    owner_slice: slice_4
-    reason: >-
-      The same unit collision on the kernel's Plan. Slice 4 deletes it; the Plan
-      gains a required `pricing_book_id` instead (#154 §6, #151 §7).
+  # Both were owned by slice 4, which per #194's slice table deletes them
+  # outright. Deletion clears the debt as surely as a rename would, and #369 is
+  # the commit that did it.
+  # ⚠ G11 OWES NOTHING, AND BOTH ITS ENTRIES WERE PAID BY DELETION RATHER THAN
+  # BY THE RENAME THEIR `expected` COLUMN NAMED (#369). Two columns held
+  # millionths of a PERCENT under the money suffix — one on the tenant-level
+  # markup record, one on the kernel's Plan — and each entry's own reason said
+  # the payment was the column going. A ticket reading only the `expected` value
+  # would have renamed a column it was about to drop, and the honest spelling
+  # would then sit on a column with no reader left. It was taken instead on
+  # `TenantDefaultMarkup.markup_micro_percent`, a NEW column where it cost
+  # nothing (#357). Each entry was deleted here and from
+  # `test_model_naming.py`'s own copy in the commit that discharged it.
 
   # --- G12: method, mode and structure describe different things ------------
   #
@@ -535,26 +528,15 @@ entries:
       axis half: the request parameter, the `by_tag` block, and the discovery
       contract that replaces them.
 
-  - id: g7-backend-markup.deleted
-    gate: G7
-    site: backend::markup.deleted
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The other half of the markup audit pair, retired with its subject
-      when slice 4 deletes `TenantMarkup`.
-
-  - id: g7-backend-markup.set
-    gate: G7
-    site: backend::markup.set
-    expected: audit_action
-    found: 3 files
-    owner_slice: slice_4
-    reason: >-
-      The audit action for setting a markup. Slice 4 deletes
-      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
-      action's subject goes.
+  # ⚠ THE TWO MARKUP AUDIT ACTIONS REACHED ZERO ON EVERY SURFACE AND ALL FIVE
+  # OF THEIR ENTRIES ARE DELETED (#369) — backend (3 files and 2 files), console
+  # (2 files and 1 file) and sdk (1 file). The record whose acts they named is
+  # deleted with its five routes and its two component schemas, and the names
+  # left the registry in the same commit, which `record()`'s refusal of an
+  # unregistered name makes compulsory rather than merely tidy. The sdk file was
+  # a GENERATED module carrying a route docstring that named one of the actions
+  # in passing; editing that docstring cleared it, which is the shape #349
+  # recorded — a retired term can be paid by a commit whose subject is elsewhere.
 
   - id: g7-backend-meter_only
     gate: G7
@@ -595,7 +577,7 @@ entries:
     gate: G7
     site: backend::rate_card
     expected: pricing_book_name
-    found: 3 files
+    found: 2 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -614,6 +596,13 @@ entries:
       wrote a rule directly went with the acts they recorded, taking the
       word out of three more files. The container's column is still the
       pointer every rule carries, so the remainder is ticket 21's.
+
+      16 -> 3 in #368 with the split itself, and 3 -> 2 in #369, which did not
+      set out to pay any of it: the customer markup route's response comment
+      named the record the container's assignment row had become, and the
+      route is deleted. The extent is a ceiling as well as a floor, so a debt
+      partly paid by a commit whose subject is elsewhere comes down in that
+      commit.
 
   - id: g7-backend-request_id
     gate: G7
@@ -893,27 +882,6 @@ entries:
       mirror, the analytics query parameter and its picker, and the label
       module's own list.
 
-  - id: g7-console-markup.deleted
-    gate: G7
-    site: console::markup.deleted
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The other half of the markup audit pair, retired with its subject
-      when slice 4 deletes `TenantMarkup`.
-
-  - id: g7-console-markup.set
-    gate: G7
-    site: console::markup.set
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The audit action for setting a markup. Slice 4 deletes
-      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
-      action's subject goes.
-
   - id: g7-console-meter_only
     gate: G7
     site: console::meter_only
@@ -952,20 +920,22 @@ entries:
     gate: G7
     site: console::rate_card
     expected: pricing_book_name
-    found: 6 files
+    found: 5 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
       and slice 4 is where it stops existing.
 
-  - id: g7-console-rate_card.assigned
-    gate: G7
-    site: console::rate_card.assigned
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
+      6 -> 5 in #369, which did not set out to pay any of it: the customers
+      feature's book-assignment hook name survived in the comment recording why
+      that hook had gone, and the comment is rewritten with the markup hooks
+      beside it. The extent is a ceiling as well as a floor.
+
+  # ⚠ `rate_card.assigned` REACHED ZERO ON THE CONSOLE AND ITS ENTRY IS DELETED
+  # (#369). The record and the route were deleted in #368; the word survived in
+  # one comment listing which audit records the customers feature's three
+  # pricing mutations wrote. Those mutations are deleted here, and the comment
+  # with them — a retired term paid by a commit whose subject is elsewhere.
 
   - id: g7-console-rate_card.published
     gate: G7
@@ -1595,17 +1565,6 @@ entries:
       is every one of the thirteen below. A recorded extent that overstates is
       an excuse with no upper bound, so the number comes down in the commit
       that cleared them.
-
-  - id: g7-sdk-markup.set
-    gate: G7
-    site: sdk::markup.set
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The audit action for setting a markup. Slice 4 deletes
-      `TenantMarkup` and `Plan.markup_percentage_micros`, so the
-      action's subject goes.
 
   - id: g7-sdk-meter_only
     gate: G7

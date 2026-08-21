@@ -14,8 +14,6 @@ import type {
   PaginatedRates,
   PricingBook,
   PricingBookIn,
-  TenantMarkup,
-  TenantMarkupIn,
 } from "./types";
 
 export async function listPricingBooks(
@@ -102,10 +100,10 @@ export async function listRates(
 // rather than hidden, which is the same trade #367 made when the add-a-rule
 // dialog went.
 
-export async function getTenantMarkup(): Promise<TenantMarkup> {
-  return unwrap(await meteringApi.GET("/pricing/markup"));
-}
-
-export async function putTenantMarkup(body: TenantMarkupIn): Promise<TenantMarkup> {
-  return unwrap(await meteringApi.PUT("/pricing/markup", { body }));
-}
+// ⚠ NO TENANT-MARKUP READ OR WRITE (#369). The record those two routes read
+// and wrote is deleted, along with the routes, their two component schemas and
+// the two audit action names they carried. What replaced it is the tenant's
+// DECLARED default markup rung, on its own path — and this console does not
+// reach it yet: #372 rebuilds this feature around books, rules and publishes,
+// and the rung belongs on that page beside them. The gap is visible rather
+// than hidden, which is the same trade the note above makes.

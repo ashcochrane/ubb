@@ -35,13 +35,14 @@ class TenantDefaultMarkup(BaseModel):
     from the resolver — putting it back on the column would be the same defect
     one layer down.
 
-    **IT REPLACES THE TENANT-DEFAULT ROW OF `TenantMarkup`, HERE AND NOT
-    LATER.** That record's `customer IS NULL` row was the tenant default by
-    being the one with no customer on it, which is a rung read out of an
-    absence; this is the rung declared. Its own routes go with it (#369
-    deletes the record, its remaining customer-override rows and the routes
-    that write them); until then `PUT /pricing/markup` still writes that row
-    and that row no longer prices anything, which is stated on the route.
+    **IT REPLACED THE TENANT-DEFAULT ROW OF A RECORD THAT NO LONGER EXISTS.**
+    That record's tenant-default row was the tenant default by being the one
+    with no customer on it, which is a rung read out of an absence; this is the
+    rung declared. #357 built this one and #369 deleted the record, its
+    per-customer rows and the five routes that read and wrote them, so this is
+    now the only rung the ladder has: a customer's own price is a rule in their
+    own Pricing Book (#361), and a plan's is a rule in the book the plan names
+    (#362). Neither is a percentage on a configuration row any more.
 
     **NO UPLIFT COLUMN, AND THAT IS THE NON-COMPOSITION RULE (#147 §2).** A
     rule that takes a margin over cost does not also carry a fixed addend, a
@@ -69,10 +70,11 @@ class TenantDefaultMarkup(BaseModel):
     )
     #: Millionths of a percent: 1_000_000 is 1%. Named for what it holds rather
     #: than under the money suffix — `_micros` means millionths of a CURRENCY
-    #: unit on seventy-odd columns in this tree, and the two records this one
-    #: replaces are both ledgered against G11 for hiding a percentage under it.
-    #: This is that entry's own `expected` spelling, taken on a new column where
-    #: it costs nothing.
+    #: unit on seventy-odd columns in this tree, and the two columns this one
+    #: replaces were both ledgered against G11 for hiding a percentage under
+    #: it. This is that entry's own `expected` spelling, taken on a new column
+    #: where it cost nothing; both entries were paid by deleting their columns
+    #: in #369 rather than by renaming them, and G11 now owes nothing.
     markup_micro_percent = models.BigIntegerField()
 
     class Meta:
@@ -86,56 +88,6 @@ class TenantDefaultMarkup(BaseModel):
     # write path can bypass a hook here, and the record this rung replaces has
     # always carried the same pair. A rung declared or withdrawn through a
     # route and a rung written from a shell both reach the same bump.
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-        MarkupCache.invalidate(self.tenant_id)
-
-    def delete(self, *args, **kwargs):
-        tenant_id = self.tenant_id
-        result = super().delete(*args, **kwargs)
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-        MarkupCache.invalidate(tenant_id)
-        return result
-
-
-class TenantMarkup(BaseModel):
-    """The markup record slice 4 replaces — customer overrides, and a stranded
-    tenant-default row (#357, deleted by #369).
-
-    Its `customer IS NULL` row was the tenant-default rung until
-    :class:`TenantDefaultMarkup` took that job, and it prices nothing now. Its
-    per-customer rows are still a rung of the ladder and still resolve, until
-    the customer override becomes a rule in the customer's own Pricing Book.
-    """
-
-    tenant = models.ForeignKey(
-        "tenants.Tenant", on_delete=models.CASCADE, related_name="markups",
-    )
-    customer = models.ForeignKey(
-        "customers.Customer", on_delete=models.CASCADE, related_name="markups",
-        null=True, blank=True,
-    )
-    markup_percentage_micros = models.BigIntegerField(default=0)  # 1_000_000 == 1%
-    fixed_uplift_micros = models.BigIntegerField(default=0)
-
-    class Meta:
-        db_table = "ubb_tenant_markup"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["tenant"], condition=models.Q(customer__isnull=True),
-                name="uq_markup_tenant_default",
-            ),
-            models.UniqueConstraint(
-                fields=["tenant", "customer"], condition=models.Q(customer__isnull=False),
-                name="uq_markup_tenant_customer",
-            ),
-        ]
-
-    def calculate_markup_micros(self, provider_cost_micros: int) -> int:
-        percent = (provider_cost_micros * self.markup_percentage_micros + 50_000_000) // 100_000_000
-        return percent + self.fixed_uplift_micros
-
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         from apps.metering.pricing.services.markup_cache import MarkupCache

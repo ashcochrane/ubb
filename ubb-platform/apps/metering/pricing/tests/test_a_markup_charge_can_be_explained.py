@@ -196,13 +196,17 @@ class TheReceiptRecordsTheAppliedPercentageTest(_AMarkupPricedEventMixin,
         declared does not exist nulls that column while still being a genuine
         zero to take a margin over. So the terms carry the basis too, and this
         redoes the arithmetic from the record alone.
+
+        ⚠ **THERE WAS A THIRD TERM UNTIL #369** — a flat per-event addend, which
+        two now-deleted rungs could supply. The sum below no longer adds it, and
+        the exactness case beside this one is what refuses it coming back.
         """
         receipt = self._priced_by_the_markup_rung().receipt
         terms = receipt["pricing"]["detail"]["markup"]
 
         basis = terms["basis_micros"]
-        uplift = (basis * terms["micro_percent"] + 50_000_000) // 100_000_000
-        self.assertEqual(basis + uplift + terms["fixed_uplift_micros"],
+        margin = (basis * terms["micro_percent"] + 50_000_000) // 100_000_000
+        self.assertEqual(basis + margin,
                          receipt["totals"]["billed_cost_micros"])
 
     def test_the_terms_are_the_whole_of_what_the_record_promises(self):

@@ -1,9 +1,9 @@
 """The plans surface — /api/v1/plans.
 
 Plans are a KERNEL concept (design doc 2026-07-27): a plan's fee axes are
-realized by subscriptions via Stripe, its markup axis by metering at rating
-time, and neither product owns it. The router lives in the composition layer,
-which may import any product.
+realized by subscriptions via Stripe, its usage axis by metering at rating time
+— from the Pricing Book the plan names — and neither product owns it. The
+router lives in the composition layer, which may import any product.
 
 Gated on ProductAccess("billing"): a plan is a commercial offer, and charging
 for one is what the billing product is.
@@ -33,8 +33,6 @@ def _plan_out(plan):
         "name": plan.name,
         "access_fee_micros": plan.access_fee_micros,
         "per_seat_micros": plan.per_seat_micros,
-        "markup_percentage_micros": plan.markup_percentage_micros,
-        "fixed_uplift_micros": plan.fixed_uplift_micros,
         "interval": plan.interval,
         "pricing_version": plan.pricing_version,
         "archived_at": plan.archived_at.isoformat() if plan.archived_at else None,
@@ -110,8 +108,6 @@ def create_plan(request, payload: PlanIn):
                 key=payload.key, name=payload.name,
                 access_fee_micros=payload.access_fee_micros,
                 per_seat_micros=payload.per_seat_micros,
-                markup_percentage_micros=payload.markup_percentage_micros,
-                fixed_uplift_micros=payload.fixed_uplift_micros,
                 interval=payload.interval,
             )
             audit_record(
@@ -129,12 +125,13 @@ def create_plan(request, payload: PlanIn):
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit a plan.
 
-    The two axis families reprice differently, deliberately:
-      - FEE axes are grandfathered. Stripe Prices are immutable, so a fee edit
-        mints a new versioned Price and existing subscribers keep the old one
-        unless migrate_existing=true.
-      - MARKUP is live. It has no Stripe object, so an edit applies to the next
-        rated event for every customer on the plan.
+    FEE axes are grandfathered: Stripe Prices are immutable, so a fee edit
+    mints a new versioned Price and existing subscribers keep the old one unless
+    migrate_existing=true.
+
+    What the plan's customers pay for usage is not edited here. It is the rules
+    in the Pricing Book the plan names, changed through a publish on that book,
+    which is what gives a tenant a diff to read before a price moves.
 
     Trials and coupons are deliberate non-goals: Stripe owns those levers.
     """
@@ -149,27 +146,19 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
     if plan is None:
         raise Problem("not_found", f"plan with key '{key}' not found")
 
-    # Markup and name are UBB-side: a plain write, no Stripe involvement.
-    # Committed AND audited together, in their own transaction, before the
-    # fee branch runs. This axis's fate must never depend on what the fee
-    # branch's external Stripe call does next: a fee-branch failure below
-    # must not silently drop this already-durable change from the audit
-    # trail (Finding 1), and an empty payload must record nothing (Finding 2).
+    # The name is UBB-side: a plain write, no Stripe involvement. Committed AND
+    # audited in its own transaction, before the fee branch runs. Its fate must
+    # never depend on what the fee branch's external Stripe call does next: a
+    # fee-branch failure below must not silently drop this already-durable
+    # change from the audit trail (Finding 1), and an empty payload must record
+    # nothing (Finding 2). ⚠ It shared this branch with the plan's two markup
+    # columns until #369, which is why one field still gets a list.
     fields = []
     if payload.name is not None:
         plan.name = payload.name
         fields.append("name")
-    if payload.markup_percentage_micros is not None:
-        plan.markup_percentage_micros = payload.markup_percentage_micros
-        fields.append("markup_percentage_micros")
-    if payload.fixed_uplift_micros is not None:
-        plan.fixed_uplift_micros = payload.fixed_uplift_micros
-        fields.append("fixed_uplift_micros")
     if fields:
         with transaction.atomic():
-            # Full save(), not update_fields only — the save hook bumps the
-            # markup cache version, and a re-priced plan must take effect
-            # immediately.
             plan.save()
             audit_record(
                 action="plan.updated", tenant_id=tenant.id,
@@ -180,8 +169,8 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
     # Prices — an external call, so it stays outside any DB transaction: a
     # transaction can't be held open across a Stripe round-trip. Audited only
     # on success — a failure here commits nothing on this axis, so there is
-    # nothing to audit, and it must not retroactively touch the markup/name
-    # audit entry recorded above.
+    # nothing to audit, and it must not retroactively touch the name audit
+    # entry recorded above.
     fee_fields = []
     if payload.access_fee_micros is not None:
         fee_fields.append("access_fee_micros")
@@ -210,7 +199,8 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
 @records_audit("plan.archived")
 def archive_plan(request, key: str):
     """Archive a plan. Refused while customers are still assigned — archiving
-    an assigned plan would silently drop their markup to the tenant default."""
+    an assigned plan would silently move every one of them off the book it
+    prices them from."""
     _product_check(request)
     tenant = request.auth.tenant
     plan = queries.get_plan_by_key(tenant.id, key)
@@ -239,7 +229,7 @@ def assign_plan(request, external_id: str, payload: AssignPlanIn):
     This is the plan-membership write and it never touches Stripe. Starting the
     Stripe subscription for a plan's fee axes is a separate call
     (POST /subscriptions/customers/{external_id}/subscribe), because a
-    markup-only plan has no Stripe subscription to start.
+    usage-only plan has no Stripe subscription to start.
     """
     _product_check(request)
     tenant = request.auth.tenant

@@ -535,7 +535,7 @@ def declares_a_markup(tenant, *, percentage_micros=0):
         tenant=tenant, markup_micro_percent=percentage_micros)
 
 
-def markup_terms(basis_micros, *, micro_percent=0, fixed_uplift_micros=0):
+def markup_terms(basis_micros, *, micro_percent=0):
     """The terms a `margin_over_cost` price must carry on its receipt (#357).
 
     `build_receipt` refuses a margin that arrives without them, so every fixture
@@ -546,15 +546,17 @@ def markup_terms(basis_micros, *, micro_percent=0, fixed_uplift_micros=0):
     to edit the day `REQUIRED_MARKUP_KEYS` moves, and the day one of them is
     missed is the day a fixture asserts a shape the boundary no longer accepts.
 
-    **THE DEFAULTS MAKE THE ARITHMETIC TRUE, WHICH IS THE POINT OF A DEFAULT
+    **THE DEFAULT MAKES THE ARITHMETIC TRUE, WHICH IS THE POINT OF A DEFAULT
     HERE.** A rung of zero over a basis of `basis_micros` IS `basis_micros`, so
     a caller who names only the basis gets terms that reproduce their own
-    amount rather than three numbers that merely sit beside it. A caller taking
-    a real percentage says so and states the amount it produces itself.
+    amount rather than numbers that merely sit beside it. A caller taking a real
+    percentage says so and states the amount it produces itself.
+
+    ⚠ **THE FLAT ADDEND LEFT THE SET IN #369**, with the two records that could
+    supply one. That is the day `REQUIRED_MARKUP_KEYS` moved, and this helper is
+    why it was one edit.
     """
-    return {"micro_percent": micro_percent,
-            "fixed_uplift_micros": fixed_uplift_micros,
-            "basis_micros": basis_micros}
+    return {"micro_percent": micro_percent, "basis_micros": basis_micros}
 
 
 def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",

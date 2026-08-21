@@ -120,22 +120,26 @@ class TestMarkupOnlyPlanSubscribe:
             default_currency="usd")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="sam-hobby")
 
-    def test_markup_only_plan_creates_no_stripe_objects(self):
-        """Personal Lite: $0 access, $0 seat, 50% markup. There is nothing for
-        Stripe to bill, so no Product, Price, Subscription, or Customer is
-        created — and crucially Stripe is never called with items=[]."""
+    def test_usage_only_plan_creates_no_stripe_objects(self):
+        """Personal Lite: $0 access, $0 seat, priced entirely from the Pricing
+        Book it names. There is nothing for Stripe to bill, so no Product,
+        Price, Subscription, or Customer is created — and crucially Stripe is
+        never called with items=[].
+
+        ⚠ It used to be spelled as a markup PERCENTAGE on the plan row; #369
+        deleted that column, and what makes the plan Stripe-free is the absence
+        of the two fee axes either way."""
         plan = a_plan(tenant=self.tenant, key="personal-lite",
-                      name="Personal Lite",
-                      markup_percentage_micros=50_000_000)
+                      name="Personal Lite")
         with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
             result = SubscriptionOrchestrator.subscribe(self.customer, plan, seats=0)
         assert result is None
         stripe_call.assert_not_called()
         assert not StripeSubscription.objects.filter(customer=self.customer).exists()
 
-    def test_markup_only_plan_works_with_no_stripe_account_at_all(self):
+    def test_usage_only_plan_works_with_no_stripe_account_at_all(self):
         """The has_stripe_axes guard sits before _require_charge_ready on
-        purpose: a markup-only plan needs nothing from Stripe, so a tenant
+        purpose: a usage-only plan needs nothing from Stripe, so a tenant
         with no connected account (and charges_enabled=False) must still be
         able to subscribe a customer to it, returning None without raising
         OrchestrationError. If the guard is ever moved below the charge-ready
@@ -145,9 +149,7 @@ class TestMarkupOnlyPlanSubscribe:
             stripe_connected_account_id="", charges_enabled=False,
             default_currency="usd")
         customer = Customer.objects.create(tenant=tenant, external_id="no-stripe-cust")
-        plan = a_plan(tenant=tenant, key="markup-only",
-                      name="Markup Only",
-                      markup_percentage_micros=50_000_000)
+        plan = a_plan(tenant=tenant, key="usage-only", name="Usage Only")
         with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
             result = SubscriptionOrchestrator.subscribe(customer, plan, seats=0)
         assert result is None

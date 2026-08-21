@@ -1,12 +1,22 @@
 """Markup resolution — the last rung of the price ladder.
 
-Precedence (design doc §5):
+**ONE RUNG, DECLARED BY THE TENANT (#357, #369).** Where the books in play hold
+no rule for a quantity, the customer's price is a percentage over what UBB knows
+the call cost. The tenant declares that percentage once, on
+:class:`~apps.metering.pricing.models.TenantDefaultMarkup`, and this module
+resolves it.
+
+Precedence used to read
 
     customer override -> customer's Plan -> the tenant's declared default -> none
 
-The plan rung is why a Personal Lite customer (50%) cannot silently bill at
-the tenant default (20%). Plans live in the kernel, so reading them here is
-an apps.platform.* import, not a cross-product one (ADR-001 rule 1).
+and #369 deleted the first two rungs with the records they read. Neither
+disappeared as a capability: a customer's own price is a rule in the customer's
+own Pricing Book (#361), and a plan's is a rule in the book the plan names
+(#362). Both are resolved by the rate ladder ABOVE this module, on records that
+say which quantity they price. What was deleted is a *percentage on a
+configuration row* — a number that could not say what it applied to, and whose
+only account of itself on a receipt was its own value.
 
 **A RUNG ANSWERS A PERCENTAGE, ITS SOURCE AND THE RECORD IT CAME FROM, NEVER A
 FINISHED NUMBER (#356, #357).** This module used to expose an applier that took
@@ -26,40 +36,39 @@ the vocabulary the answer belongs in — a margin over a cost UBB never learned 
 a `waived` charge — so the case is decided before a percentage is even resolved,
 and the refusal has no caller left to protect.
 
-**THE TENANT-DEFAULT RUNG IS DECLARED, NOT INFERRED FROM AN ABSENCE (#357).**
-It used to be the `customer IS NULL` row of the customer-override table — the
-tenant default by being the one row with no customer on it. It is now its own
-declared record, with its own routes and its own two audit actions, and the row
-it replaces prices nothing. `TenantMarkup` survives this commit for its
-per-customer rows alone and is deleted, with the plan catalog's two markup
-columns, by the ticket that turns a customer override into a rule in the
-customer's own Pricing Book.
+**THE RUNG IS DECLARED, NOT INFERRED FROM AN ABSENCE (#357).** It used to be the
+`customer IS NULL` row of the per-customer table — the tenant default by being
+the one row with no customer on it. It is now its own declared record, with its
+own routes and its own two audit actions, and a tenant who has declared nothing
+has NO rung: resolution answers `unknown` rather than zero.
 """
 from dataclasses import dataclass
 
-from apps.metering.pricing.models import TenantDefaultMarkup, TenantMarkup
+from apps.metering.pricing.models import TenantDefaultMarkup
 
 #: WHICH RUNG SUPPLIED A PERCENTAGE — the value the receipt's provenance names.
 #:
-#: Named constants rather than three string literals because the receipt records
-#: one of them, so they are part of what a stored record means rather than an
-#: implementation detail of this module.
+#: A named constant rather than a string literal because the receipt records it,
+#: so it is part of what a stored record means rather than an implementation
+#: detail of this module.
 #:
-#: **NOT A REGISTRY CONCEPT, AND THAT IS A DECISION WITH A DATE ON IT.** Two of
-#: the three rungs below are being deleted: the customer override becomes a rule
-#: in the customer's own Pricing Book, and the plan catalog's markup columns go
-#: with the record above. Declaring a closed concept now would ratify a value
-#: set that loses two of its three members inside this slice. They also cross no
-#: typed surface — the receipt is published as an untyped record — so nothing
-#: advertises them to a consumer who could switch on them.
-MARKUP_RUNG_CUSTOMER = "customer"
-MARKUP_RUNG_PLAN = "plan"
+#: ⚠ **ONE VALUE, AND RECEIPTS WRITTEN BEFORE #369 CARRY TWO MORE.** The
+#: customer-override and plan rungs each named themselves here, and the records
+#: they read are deleted, so nothing writes those words again — but they are on
+#: postings already, in a `provenance` section whose whole job is to survive the
+#: configuration it points at. Nothing reads the value back by constant, which
+#: is why the two are deleted here rather than kept as unwritable spellings.
+#:
+#: **NOT A REGISTRY CONCEPT.** It crosses no typed surface — the receipt is
+#: published as an untyped record — so nothing advertises it to a consumer who
+#: could switch on it, and a single-member closed concept would be a value set
+#: with nothing to discriminate.
 MARKUP_RUNG_TENANT_DEFAULT = "tenant_default"
 
 
 @dataclass(frozen=True)
 class ResolvedMarkup:
-    """The markup that applies to one (tenant, customer), and where it came from.
+    """The markup that applies to one tenant, and where it came from.
 
     Frozen: instances are shared through the L1 cache and must never be mutated
     by a caller. ``source`` and ``source_id`` are carried for provenance — they
@@ -68,11 +77,11 @@ class ResolvedMarkup:
     """
     #: Millionths of a percent: 1_000_000 is 1%. Spelled the way the record it
     #: is read from spells it, and not under the money suffix — `_micros` means
-    #: millionths of a CURRENCY unit, and two of the three records below still
-    #: hide a percentage under it because they are about to be deleted.
+    #: millionths of a CURRENCY unit.
     markup_micro_percent: int
-    fixed_uplift_micros: int
-    #: Which rung answered — one of the three constants above.
+    #: Which rung answered. One rung exists, and the field is kept because the
+    #: receipt names it: a record that says only "a margin was taken" is the
+    #: record this programme exists to delete.
     source: str
     #: The id of the record the percentage was read from, as a string. A
     #: cross-reference and never a term: the record it names can be edited or
@@ -80,12 +89,20 @@ class ResolvedMarkup:
     source_id: str
 
     def calculate_markup_micros(self, provider_cost_micros: int) -> int:
-        # Rounding is half-up on the micro, matching TenantMarkup exactly —
-        # changing it would silently re-price every event.
-        percent = (
+        """The margin itself, over a basis this rung has been given.
+
+        Rounding is half-up on the micro, unchanged from the record this rung
+        replaced — changing it would silently re-price every event.
+
+        ⚠ **THERE IS NO SECOND TERM (#147 §2, #369).** A flat per-event addend
+        used to be added here, because the customer-override record and the plan
+        catalog both carried one. Both are deleted, and a rule that takes a
+        margin over cost does not also carry an addend, a floor or a cap: that
+        is what makes a resolved price explicable by naming one thing.
+        """
+        return (
             provider_cost_micros * self.markup_micro_percent + 50_000_000
         ) // 100_000_000
-        return percent + self.fixed_uplift_micros
 
     def applied_to(self, provider_cost_micros: int) -> int:
         """The customer price this rung answers over a basis it is given.
@@ -97,8 +114,8 @@ class ResolvedMarkup:
 
         The caller decides whether a basis may be marked up at all: an
         `unresolved` cost is `waived` and never arrives here, and a resolved
-        zero IS a basis — a call that genuinely cost nothing, marked up to the
-        uplift.
+        zero IS a basis — a call that genuinely cost nothing, marked up to
+        nothing.
         """
         return provider_cost_micros + self.calculate_markup_micros(
             provider_cost_micros)
@@ -114,54 +131,29 @@ class ResolvedMarkup:
         return {"rung": self.source, "record_id": self.source_id}
 
 
-def _from_the_customer_override(row):
-    """The customer's own markup — a row of the record #369 deletes."""
-    return ResolvedMarkup(
-        markup_micro_percent=row.markup_percentage_micros,
-        fixed_uplift_micros=row.fixed_uplift_micros,
-        source=MARKUP_RUNG_CUSTOMER,
-        source_id=str(row.id),
-    )
-
-
 class MarkupService:
     @staticmethod
-    def resolve(tenant, customer):
-        """Return the applicable ResolvedMarkup, or None if nothing applies.
+    def resolve(tenant):
+        """Return the tenant's declared markup rung, or None if they have none.
 
         `None` is not a price and never has been a zero: a tenant that has
         declared no rung has said nothing about what to charge, and what
         resolution makes of that is `unknown` (`pricing_service`).
+
+        ⚠ **THE CUSTOMER IS NOT AN ARGUMENT, AND THAT IS THE SHAPE OF THE
+        LADDER RATHER THAN AN OMISSION (#369).** Two rungs above this one read a
+        customer — their own override row and their plan's percentage — and both
+        records are deleted. What one named customer is charged is decided
+        further up the ladder, by a rule in their own Pricing Book, on a record
+        that says which quantity it prices. A customer argument here would be an
+        argument that cannot change the answer, and a caller would read it as
+        evidence that a per-customer markup still resolves.
         """
-        if customer is not None:
-            override = TenantMarkup.objects.filter(
-                tenant=tenant, customer=customer).first()
-            if override:
-                return _from_the_customer_override(override)
-
-            from apps.platform.plans.queries import get_plan_markup_for_customer
-            plan_markup = get_plan_markup_for_customer(tenant.id, customer.id)
-            if plan_markup is not None:
-                return ResolvedMarkup(
-                    markup_micro_percent=plan_markup[
-                        "markup_percentage_micros"],
-                    fixed_uplift_micros=plan_markup["fixed_uplift_micros"],
-                    source=MARKUP_RUNG_PLAN,
-                    source_id=str(plan_markup["plan_id"]),
-                )
-
         declared = TenantDefaultMarkup.objects.filter(tenant=tenant).first()
-        if declared:
-            # NO UPLIFT ON THIS RUNG, AND NOT BECAUSE THE COLUMN WAS FORGOTTEN.
-            # A rule that takes a margin over cost does not also carry a flat
-            # addend (#147 §2) — non-composition is what makes a resolved price
-            # explicable by naming one thing — so the replacement rung was built
-            # without one, and the zero here is the arithmetic saying so rather
-            # than a value read from anywhere.
-            return ResolvedMarkup(
-                markup_micro_percent=declared.markup_micro_percent,
-                fixed_uplift_micros=0,
-                source=MARKUP_RUNG_TENANT_DEFAULT,
-                source_id=str(declared.id),
-            )
-        return None
+        if declared is None:
+            return None
+        return ResolvedMarkup(
+            markup_micro_percent=declared.markup_micro_percent,
+            source=MARKUP_RUNG_TENANT_DEFAULT,
+            source_id=str(declared.id),
+        )

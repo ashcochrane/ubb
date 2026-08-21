@@ -175,9 +175,9 @@ describe("EventDetailPage", () => {
     ).toBeInTheDocument();
 
     // And no quantity was invented to fill the gap. Scoped to the section
-    // rather than the page, because the page legitimately carries zeroes
-    // elsewhere — a provenance receipt's `fixed_uplift_micros: 0` is a real
-    // zero and must stay readable.
+    // rather than the page, because the page legitimately carries numbers
+    // elsewhere — a provenance receipt's own terms are real values and must
+    // stay readable.
     const section = screen.getByText("Usage measurements").closest("section");
     expect(section).not.toBeNull();
     expect(section?.textContent ?? "").not.toMatch(/\d/);

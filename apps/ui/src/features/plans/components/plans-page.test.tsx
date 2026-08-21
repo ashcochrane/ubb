@@ -14,8 +14,6 @@ vi.mock("../api/queries", () => ({
           name: "Enterprise",
           access_fee_micros: 100_000_000,
           per_seat_micros: 10_000_000,
-          markup_percentage_micros: 20_000_000,
-          fixed_uplift_micros: 0,
           interval: "month",
           pricing_version: 1,
           archived_at: null,
@@ -26,8 +24,6 @@ vi.mock("../api/queries", () => ({
           name: "Personal Lite",
           access_fee_micros: 0,
           per_seat_micros: 0,
-          markup_percentage_micros: 50_000_000,
-          fixed_uplift_micros: 0,
           interval: "month",
           pricing_version: 1,
           archived_at: null,
@@ -69,18 +65,23 @@ function renderPage() {
 }
 
 describe("PlansPage", () => {
-  it("shows all three axes in one row", async () => {
+  // ⚠ THE TABLE SHOWS TWO AXES, NOT THREE (#369). The markup column is deleted
+  // with the plan columns behind it, and the two cases below were the ones that
+  // named it: the first asserted all three in one row, the second that a plan
+  // charging NO fee and only a markup rendered normally. The second claim is
+  // the one worth keeping and it survives without the word — a plan with both
+  // fees at zero is still a plan, and it is now a plan priced entirely from the
+  // book it names.
+  it("shows both fee axes in one row", async () => {
     renderPage();
     expect(await screen.findByText("Enterprise")).toBeInTheDocument();
     expect(screen.getByText("$100.00/mo")).toBeInTheDocument();
     expect(screen.getByText("$10.00/seat")).toBeInTheDocument();
-    expect(screen.getByText("20%")).toBeInTheDocument();
   });
 
-  it("renders a markup-only plan as a normal plan, not an error", async () => {
+  it("renders a usage-only plan as a normal plan, not an error", async () => {
     renderPage();
     expect(await screen.findByText("Personal Lite")).toBeInTheDocument();
-    expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.queryByText(/invalid|error|unsupported/i)).not.toBeInTheDocument();
   });
 
@@ -98,6 +99,6 @@ describe("PlansPage", () => {
     expect(screen.getByText("Edit Enterprise")).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("Enterprise");
     expect(screen.getByLabelText(/Access fee/)).toHaveValue("100");
-    expect(screen.getByLabelText(/Markup/)).toHaveValue("20");
+    expect(screen.getByLabelText(/Per-seat fee/)).toHaveValue("10");
   });
 });

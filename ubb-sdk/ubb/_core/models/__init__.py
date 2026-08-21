@@ -229,8 +229,6 @@ from .tenant_default_markup_in import TenantDefaultMarkupIn
 from .tenant_default_markup_out import TenantDefaultMarkupOut
 from .tenant_invoice_list_response import TenantInvoiceListResponse
 from .tenant_invoice_out import TenantInvoiceOut
-from .tenant_markup_in import TenantMarkupIn
-from .tenant_markup_out import TenantMarkupOut
 from .tenant_usage_invoice_list_response import TenantUsageInvoiceListResponse
 from .tenant_usage_invoice_out import TenantUsageInvoiceOut
 from .top_up_checkout_response import TopUpCheckoutResponse
@@ -520,8 +518,6 @@ __all__ = (
     "TenantDefaultMarkupOut",
     "TenantInvoiceListResponse",
     "TenantInvoiceOut",
-    "TenantMarkupIn",
-    "TenantMarkupOut",
     "TenantUsageInvoiceListResponse",
     "TenantUsageInvoiceOut",
     "TopUpCheckoutResponse",

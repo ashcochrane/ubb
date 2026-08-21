@@ -21,7 +21,6 @@ from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
-from ubb._core.models.tenant_markup_out import TenantMarkupOut
 from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.pricing_book_out import PricingBookOut
@@ -503,31 +502,23 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_USAGE_ANALYTICS, params=params)
         return r.json()
 
-    # ---- markup methods ----
-
-    def get_markup(self) -> TenantMarkupOut:
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_TENANT_MARKUP)
-        return self._to_markup(r.json())
-
-    def set_markup(self, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_UPSERT_TENANT_MARKUP, json={
-            "markup_percentage_micros": markup_percentage_micros, "fixed_uplift_micros": fixed_uplift_micros})
-        return self._to_markup(r.json())
-
-    def get_customer_markup(self, customer_id) -> TenantMarkupOut:
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP(customer_id))
-        return self._to_markup(r.json())
-
-    def set_customer_markup(self, customer_id, *, markup_percentage_micros=0, fixed_uplift_micros=0) -> TenantMarkupOut:
-        r = self._request(
-            *ops.API_V1_METERING_ENDPOINTS_UPSERT_CUSTOMER_MARKUP(customer_id),
-            json={"markup_percentage_micros": markup_percentage_micros,
-                  "fixed_uplift_micros": fixed_uplift_micros})
-        return self._to_markup(r.json())
-
-    @staticmethod
-    def _to_markup(d):
-        return from_wire(TenantMarkupOut, d)
+    # ---- NO MARKUP METHODS (#369) ----
+    #
+    # Four of them read and wrote a tenant-wide markup and one customer's
+    # override, over a record that is deleted with its five routes and its two
+    # component schemas. Deleting the methods is forced rather than chosen: the
+    # operations they named leave the published contract, so the generated
+    # constants they resolved through stop existing in the same regeneration.
+    #
+    # **NOTHING REPLACES THEM HERE, AND THAT IS SIGNED FOR.** The tenant's
+    # declared default markup rung has three published operations and no
+    # ergonomic wrapper, licensed in `coverage-authorisations.yaml` under
+    # `slice-4-357-the-tenant-default-markup-rung-is-declarable`: deciding what
+    # a customer is charged is a governance act performed once by a person
+    # entitled to, not something an integrator's code does, and that entry
+    # names this commit as the one where the surface these methods wrapped goes
+    # away. A customer's own price is a rule in their own pricing book, which
+    # is on the same side of that line.
 
     def close(self) -> None:
         self._http.close()

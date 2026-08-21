@@ -190,15 +190,18 @@ LEDGERED_VIOLATIONS = {
             ("g9-customer-subscription-item-table-abbreviated",
              "ubb_customer_sub_item"),
     },
-    "G11": {
-        "ubb-platform/apps/metering/pricing/models.py"
-        "::TenantMarkup.markup_percentage_micros":
-            ("g11-tenant-markup-percentage-micros",
-             "markup_percentage_micros"),
-        "ubb-platform/apps/platform/plans/models.py"
-        "::Plan.markup_percentage_micros":
-            ("g11-plan-markup-percentage-micros", "markup_percentage_micros"),
-    },
+    # G11 IS EMPTY, AND BOTH ENTRIES WERE PAID BY DELETION RATHER THAN BY THE
+    # RENAME THEIR `expected` COLUMN NAMED (#369). Two columns held millionths
+    # of a PERCENT under the money suffix — one on the tenant-level markup
+    # record, one on the kernel's Plan — and each entry's own `reason` said the
+    # payment was the column going. A ticket reading only the `expected` value
+    # would have renamed a column it was about to drop, and the honest spelling
+    # would then have landed on a column with no reader left. It was taken
+    # instead on `TenantDefaultMarkup.markup_micro_percent`, a NEW column where
+    # it cost nothing (#357). Each entry was deleted from the ledger and from
+    # here in the commit that discharged it, which is what keeps paying a debt
+    # and recording the payment one act.
+    "G11": {},
     # G12 IS EMPTY, AND EMPTY IS THE END STATE RATHER THAN AN OVERSIGHT (#366).
     # It held one entry: the rate's arithmetic-shape column, which sat one
     # character from `pricing_mode` and meant something unrelated — ADR-0006

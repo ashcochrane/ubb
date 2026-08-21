@@ -180,7 +180,7 @@ exclusions:
     # either: `RemoveField` names the kind column it deletes, and `RenameModel`
     # names the class it renames — the exclusion's worked example in both
     # directions at once.
-    files: 230
+    files: 232
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

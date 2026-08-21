@@ -178,17 +178,11 @@ export const revenueProfileSchema = z.object({
 });
 export type RevenueProfileForm = z.infer<typeof revenueProfileSchema>;
 
-export const markupSchema = z.object({
-  /** Percent as entered by a human, e.g. "25" = 25%. */
-  percent: z
-    .string()
-    .trim()
-    .min(1, "Enter a percentage")
-    .refine(isFiniteNumber, "Enter a number")
-    .refine((value) => Number(value) >= 0, "Must be zero or more"),
-  uplift: nonNegativeMoney,
-});
-export type MarkupForm = z.infer<typeof markupSchema>;
+// ⚠ NO MARKUP FORM (#369). It validated a percentage beside a flat per-event
+// amount for the customer override dialog, and both the dialog and the record
+// behind it are deleted. The rung that replaced the tenant half takes ONE term
+// — a margin over cost never composes with an addend — so the two-field shape
+// would be wrong for whatever surface #372 builds as well as unused today.
 
 export const subscribeSchema = z.object({
   plan_key: z.string().trim().min(1, "Plan key is required").max(64),
@@ -215,7 +209,7 @@ export const seatsSchema = z.object({
 });
 export type SeatsForm = z.infer<typeof seatsSchema>;
 
-/** Percent entered by a human ("25") → markup_percentage_micros (1e6 = 1%). */
-export function percentToMicros(percent: string): number {
-  return Math.round(Number(percent) * 1_000_000);
-}
+// ⚠ NO `percentToMicros` (#369). Its one caller was the markup override
+// dialog. A percentage held in micros is still how the surviving rung carries
+// one, and `formatPercentMicros` in `@/lib/format` renders it; the conversion
+// the other way belongs with whichever form next takes one.

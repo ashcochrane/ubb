@@ -28,7 +28,6 @@ import type {
   DebitRequest,
   RevenueProfileIn,
   SubscribeIn,
-  TenantMarkupIn,
   WithdrawRequest,
 } from "./types";
 
@@ -179,17 +178,12 @@ export function useCustomerUsageInvoices(customerId: string) {
 
 // ---------------------------------------------------------------------------
 // Pricing reads
-
-export function useCustomerMarkup(customerId: string) {
-  return useQuery({
-    queryKey: ["metering", "customer-markup", customerId],
-    queryFn: () => customersApi.getCustomerMarkup(customerId),
-  });
-}
-
-// ⚠ `usePriceBooks` and `useAssignRateCard` ARE DELETED (#368),
-// with the record and the route they wrapped. A customer reaches a
-// book through their PLAN or through a book that carries them.
+//
+// ⚠ THERE ARE NONE. `usePriceBooks` and `useAssignRateCard` went with the
+// assignment record and its route (#368); `useCustomerMarkup` went with the
+// markup record and its five routes (#369). A customer's price resolves from a
+// rule in a pricing book, and #372 is the ticket that gives this console a way
+// to read and write one.
 
 // ---------------------------------------------------------------------------
 // Subscription reads
@@ -323,33 +317,10 @@ export function useConfigureAutoTopUp(customerId: string) {
   );
 }
 
-// The three pricing mutations write audit records (markup.set /
-// markup.deleted / rate_card.assigned) — refresh the audit ledger too.
-
-export function useSaveMarkup(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: TenantMarkupIn) =>
-      customersApi.putCustomerMarkup(customerId, body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
-
-export function useRemoveMarkup(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => customersApi.deleteCustomerMarkup(customerId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
+// ⚠ NO PRICING MUTATIONS HERE EITHER (#368, #369). The three that were — save
+// a markup override, remove one, assign a book — all wrote audit records, which
+// is why they invalidated the "audit" namespace as well as "metering" and
+// "margin". Their records and routes are deleted.
 
 
 function useSubscriptionMutation<TArgs, TResult>(

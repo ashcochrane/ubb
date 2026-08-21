@@ -78,9 +78,9 @@ _WRITE_ROUTES = {
 # add/remove): 118 - 2 = 116.
 #
 # unified grouping model: +3 (task 3) PUT /metering/grouping-fields [Admin — the
-# plan owner's ruling: the grouping vocabulary feeds rate selection (D1), a
-# pricing-rule change like markup.set/rate_card.*, so it takes the Admin
-# default and needs no _WRITE_ROUTES entry], GET /metering/grouping-fields [Read],
+# plan owner's ruling: the grouping vocabulary feeds rate selection (D1), so it
+# is a pricing change like declaring a book or a markup rung and takes the Admin
+# default, needing no _WRITE_ROUTES entry], GET /metering/grouping-fields [Read],
 # GET /metering/grouping-fields/{key}/values [Read]. +2 (task 7) PUT
 # /metering/task-types [Admin — same ruling: a task type's ceiling prices
 # usage], GET /metering/task-types [Read]. +2 (task 14) GET /metering/tasks
@@ -167,7 +167,17 @@ _WRITE_ROUTES = {
 # they are different things — at the Read floor, the carve's default for a GET:
 # +1. Neither is carved and neither is exempt, so the exempt count below is
 # untouched. 153 + 2 = 155.
-_EXPECTED_FLOORED = 155
+#
+# ⚠ AND THEN FIVE LEFT AT ONCE (#369), WHICH IS THE LARGEST FALL THIS COUNT HAS
+# TAKEN. The tenant-level markup record is deleted, and with it a tenant-scope
+# read and write and a customer-scope read, write and delete. Two were Read
+# GETs and three were Admin writes — the carve's defaults for their methods, so
+# none was a carve entry and the carve table below is untouched, and none was
+# exempt, so the exempt count is untouched too. What replaced them: the
+# tenant's default markup rung's three routes, counted at #357 above, and a
+# customer's own price, which is a rule declared through a publish on their own
+# book and adds no route of its own. 155 - 5 = 150.
+_EXPECTED_FLOORED = 150
 _EXPECTED_EXEMPT = 10
 
 

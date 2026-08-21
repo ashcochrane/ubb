@@ -141,12 +141,18 @@ def _priced_by_rules(rules, total_micros, costing_status):
 def _markup_terms(markup, basis_micros):
     """WHAT THE MARGIN WAS, BY VALUE — the percentage and what it was taken over.
 
-    The three numbers a reader holding only the receipt needs to redo the sum,
+    The two numbers a reader holding only the receipt needs to redo the sum,
     which is the whole content obligation applied to the path that produces most
     of this system's prices (#357, #153 §12.4). The record the percentage came
     from can be edited or withdrawn, so re-reading it later is not an answer;
     `receipts.REQUIRED_MARKUP_KEYS` is what refuses a margin that arrives
     without them.
+
+    ⚠ **A THIRD TERM LEFT WITH THE RECORDS THAT COULD SUPPLY ONE (#369).** A
+    flat per-event addend was written here because the customer-override record
+    and the plan catalog each carried one; both are deleted, and the rung that
+    remains has no such column, so a receipt carrying the term would be
+    recording a zero nobody declared.
 
     **THE BASIS IS RECORDED RATHER THAN LEFT TO THE TOTALS.** They coincide for
     a cost UBB resolved and they do not for one an Event Type declares does not
@@ -156,7 +162,6 @@ def _markup_terms(markup, basis_micros):
     obvious.
     """
     return {"micro_percent": markup.markup_micro_percent,
-            "fixed_uplift_micros": markup.fixed_uplift_micros,
             "basis_micros": basis_micros}
 
 
@@ -1146,7 +1151,7 @@ def resolve_price(subject, as_of):
         throw that away at the one point it is still known (#357).
         """
         from apps.metering.pricing.services.markup_service import MarkupService
-        return MarkupService.resolve(tenant, customer)
+        return MarkupService.resolve(tenant)
 
     return PricingService._compute(
         subject=subject.receipt_subject, currency=currency,

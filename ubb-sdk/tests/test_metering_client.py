@@ -9,7 +9,6 @@ from ubb.exceptions import (
 from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
-from ubb._core.models.tenant_markup_out import TenantMarkupOut
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -656,58 +655,18 @@ class MeteringClientTest(unittest.TestCase):
         self.assertNotIn("group_by", params)
 
 
-    # ---- markup methods ----
-
-    @patch("ubb.metering.httpx.Client.put")
-    def test_set_markup(self, mock_put):
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
-            "markup_percentage_micros": 20_000_000, "fixed_uplift_micros": 0,
-        })
-        result = self.client.set_markup(markup_percentage_micros=20_000_000, fixed_uplift_micros=0)
-        self.assertIsInstance(result, TenantMarkupOut)
-        self.assertEqual(result.markup_percentage_micros, 20_000_000)
-        self.assertEqual(result.fixed_uplift_micros, 0)
-        call_args = mock_put.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
-        body = call_args.kwargs["json"]
-        self.assertEqual(body["markup_percentage_micros"], 20_000_000)
-        self.assertEqual(body["fixed_uplift_micros"], 0)
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_markup(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "markup_percentage_micros": 10_000_000, "fixed_uplift_micros": 500_000,
-        })
-        result = self.client.get_markup()
-        self.assertIsInstance(result, TenantMarkupOut)
-        self.assertEqual(result.markup_percentage_micros, 10_000_000)
-        self.assertEqual(result.fixed_uplift_micros, 500_000)
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/markup")
-
-    @patch("ubb.metering.httpx.Client.put")
-    def test_set_customer_markup(self, mock_put):
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
-            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
-        })
-        result = self.client.set_customer_markup("cust_1", markup_percentage_micros=5_000_000)
-        self.assertIsInstance(result, TenantMarkupOut)
-        self.assertEqual(result.markup_percentage_micros, 5_000_000)
-        call_args = mock_put.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
-        body = call_args.kwargs["json"]
-        self.assertEqual(body["markup_percentage_micros"], 5_000_000)
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_customer_markup(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "markup_percentage_micros": 5_000_000, "fixed_uplift_micros": 0,
-        })
-        result = self.client.get_customer_markup("cust_1")
-        self.assertIsInstance(result, TenantMarkupOut)
-        self.assertEqual(result.markup_percentage_micros, 5_000_000)
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/pricing/customers/cust_1/markup")
+    # ---- NO MARKUP METHODS (#369) ----
+    #
+    # Four cases covered a tenant-wide markup read and write and one customer's
+    # override, over a record that is deleted with its five routes and its two
+    # component schemas. They are not replaced: the rung that took the tenant
+    # half over has three published operations and no ergonomic wrapper, signed
+    # for in `coverage-authorisations.yaml`, and a customer's own price is a
+    # rule in their own pricing book. What their deletion could have lost — that
+    # a hand-written method resolves to an operation the contract really
+    # publishes — is a general property held over EVERY method by the git-root
+    # contract suite's `test_sdk_operations.py`, not one this file asserted four
+    # times.
 
 
 if __name__ == "__main__":

@@ -15,11 +15,11 @@ const nonNegativeNumberString = (message: string) =>
       message,
     });
 
-export const markupFormSchema = z.object({
-  percent: nonNegativeNumberString("Enter a percentage of 0 or more"),
-  fixed: nonNegativeNumberString("Enter an amount of 0 or more"),
-});
-export type MarkupFormValues = z.infer<typeof markupFormSchema>;
+// ⚠ NO MARKUP FORM (#369). It validated a percentage beside a flat per-event
+// amount, for a dialog that has not existed on this page for some time. The
+// record behind it is deleted and the rung that replaced it takes ONE term —
+// a margin over cost never composes with an addend — so the two-field shape
+// would be wrong for the surface #372 builds as well as unused today.
 
 // ⚠ NO `card_type` (#368). Which kind of book is being declared is which
 // ROUTE the dialog calls, not a field on one body: a Pricing Book names

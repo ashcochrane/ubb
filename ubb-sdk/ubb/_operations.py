@@ -218,10 +218,6 @@ API_V1_METERING_ENDPOINTS_DECLARE_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_declare_tenant_default_markup',
     'put',
     '/api/v1/metering/pricing/default-markup')
-API_V1_METERING_ENDPOINTS_DELETE_CUSTOMER_MARKUP = Operation(
-    'api_v1_metering_endpoints_delete_customer_markup',
-    'delete',
-    '/api/v1/metering/pricing/customers/{customer_id}/markup')
 API_V1_METERING_ENDPOINTS_DISCARD_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_discard_book_publish',
     'delete',
@@ -234,10 +230,6 @@ API_V1_METERING_ENDPOINTS_GET_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_get_book_publish',
     'get',
     '/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}')
-API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP = Operation(
-    'api_v1_metering_endpoints_get_customer_markup',
-    'get',
-    '/api/v1/metering/pricing/customers/{customer_id}/markup')
 API_V1_METERING_ENDPOINTS_GET_INHERITED_RULE = Operation(
     'api_v1_metering_endpoints_get_inherited_rule',
     'get',
@@ -252,10 +244,6 @@ API_V1_METERING_ENDPOINTS_GET_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_get_tenant_default_markup',
     'get',
     '/api/v1/metering/pricing/default-markup')
-API_V1_METERING_ENDPOINTS_GET_TENANT_MARKUP = Operation(
-    'api_v1_metering_endpoints_get_tenant_markup',
-    'get',
-    '/api/v1/metering/pricing/markup')
 API_V1_METERING_ENDPOINTS_GET_UNRESOLVED_QUEUE = Operation(
     'api_v1_metering_endpoints_get_unresolved_queue',
     'get',
@@ -314,14 +302,6 @@ API_V1_METERING_ENDPOINTS_TASK_ANALYTICS = Operation(
     'api_v1_metering_endpoints_task_analytics',
     'get',
     '/api/v1/metering/analytics/tasks')
-API_V1_METERING_ENDPOINTS_UPSERT_CUSTOMER_MARKUP = Operation(
-    'api_v1_metering_endpoints_upsert_customer_markup',
-    'put',
-    '/api/v1/metering/pricing/customers/{customer_id}/markup')
-API_V1_METERING_ENDPOINTS_UPSERT_TENANT_MARKUP = Operation(
-    'api_v1_metering_endpoints_upsert_tenant_markup',
-    'put',
-    '/api/v1/metering/pricing/markup')
 API_V1_METERING_ENDPOINTS_USAGE_ANALYTICS = Operation(
     'api_v1_metering_endpoints_usage_analytics',
     'get',
