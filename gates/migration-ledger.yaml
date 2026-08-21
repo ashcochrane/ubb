@@ -563,15 +563,18 @@ entries:
       It named when the question was asked rather than what was asked.
       Slice 6's admission control gives the answer its own vocabulary.
 
-  - id: g7-backend-pricing_provenance
-    gate: G7
-    site: backend::pricing_provenance
-    expected: pricing_receipt_subject_type
-    found: 9 files
-    owner_slice: slice_4
-    reason: >-
-      What a price receipt is about. Slice 4 introduces Pricing Receipts
-      with `receipt_schema_version` and the subject type takes its name.
+  # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
+  # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and
+  # sdk (3). It is recorded here rather than in one surface's entry because the
+  # four went together and the reason is one reason: the word was the retired
+  # spelling of a RECORD, held in exactly two places that everything else read
+  # through — a stored column and the wire key that publishes it. The column
+  # moved by `RenameField` in `usage/migrations/0042`; the wire key moved on the
+  # two schemas that publish the record; and the console snapshot, the console's
+  # three readers and the SDK's generated models followed in the same commit
+  # because the contract check regenerates the first and `tsc` finds the rest.
+  # The ticket expected a remainder on the console and the SDK for #372 and
+  # #373; the sweep says there is none, and the sweep is what the entries record.
 
   - id: g7-backend-rate_card
     gate: G7
@@ -906,15 +909,13 @@ entries:
     reason: >-
       The other half. Replaced by the Pricing Book slice 4 introduces.
 
-  - id: g7-console-pricing_provenance
-    gate: G7
-    site: console::pricing_provenance
-    expected: pricing_receipt_subject_type
-    found: 4 files
-    owner_slice: slice_4
-    reason: >-
-      What a price receipt is about. Slice 4 introduces Pricing Receipts
-      with `receipt_schema_version` and the subject type takes its name.
+  # ⚠ `pricing_provenance` REACHED ZERO ON THE CONSOLE IN #370 and its entry is
+  # deleted — see the note on the backend side. Four files: the generated
+  # snapshot, which the contract check regenerates in the same commit or CI
+  # fails; the events mock and the developers mock, which build the record; and
+  # the event detail page, which renders it. The last three are not optional
+  # extras — `tsc -b` finds every one of them the moment the snapshot moves,
+  # which is why a wire-key rename cannot be split away from its console half.
 
   - id: g7-console-rate_card
     gate: G7
@@ -1330,15 +1331,9 @@ entries:
       Slice 7's one economic query replaces it with `field:`/`rollup:`
       grouping and its discovery contract.
 
-  - id: g7-openapi-pricing_provenance
-    gate: G7
-    site: openapi::pricing_provenance
-    expected: pricing_receipt_subject_type
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      What a price receipt is about. Slice 4 introduces Pricing Receipts
-      with `receipt_schema_version` and the subject type takes its name.
+  # ⚠ `pricing_provenance` REACHED ZERO ON THE CONTRACT IN #370 and its entry is
+  # deleted — see the note on the backend side. One file, and it was the wire
+  # key on the two schemas that publish the record.
 
   - id: g7-openapi-request_id
     gate: G7
@@ -1611,21 +1606,16 @@ entries:
       console, openapi and docs entries for this term were DELETED in
       that commit rather than decremented; this one alone survives it.
 
-  - id: g7-sdk-pricing_provenance
-    gate: G7
-    site: sdk::pricing_provenance
-    expected: pricing_receipt_subject_type
-    found: 3 files
-    owner_slice: slice_4
-    reason: >-
-      What a price receipt is about. Slice 4 introduces Pricing Receipts
-      with `receipt_schema_version` and the subject type takes its name.
-
-      4 -> 3 in #349, and not by anybody editing the SDK: the fourth file is
-      GENERATED from the detail route's docstring, which stopped describing the
-      record by its retired column name and started describing what the record
-      IS. The word survives in the three generated model modules, which take it
-      from the property name — and that is #370's, with the wire key.
+  # ⚠ `pricing_provenance` REACHED ZERO IN THE SDK IN #370 and its entry is
+  # deleted — see the note on the backend side. 4 -> 3 in #349 without anybody
+  # editing the SDK, because the fourth file was generated from a route
+  # docstring that stopped describing the record by its retired column name.
+  # The remaining three went the same way but for two different reasons: two are
+  # GENERATED models that take their names from the wire key, so they moved when
+  # the contract did, and the third is a hand-written test whose fixture is a
+  # server body — a fixture still carrying the old key would have been asserting
+  # against a response the server has stopped sending. #373's SDK work is
+  # unaffected: it deletes three dead methods, none of which touched this word.
 
   - id: g7-sdk-request_id
     gate: G7
@@ -1897,17 +1887,16 @@ entries:
       `Task.pricing_mode` at creation, so the column is the Task's. Slice 5
       rebuilds the Task.
 
-  - id: g2-backend-pricing_receipt_subject_type
-    gate: G2
-    site: ubb-platform/apps/metering/usage/models.py::pricing_receipt_subject_type
-    expected: pricing_receipt_subject_type
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. The receipt is authoritative
-      under #148, and slice 4 is where it becomes a validated,
-      schema-versioned record rather than a provenance dict.
+  # ⚠ `pricing_receipt_subject_type` REACHED 2 OF 2 ON THE BACKEND IN #370 and
+  # its entry is deleted. The entry named `usage/models.py` as the consumer,
+  # which was true when the receipt was an untyped bag on a posting and the
+  # column was all there was. What holds the two values now is
+  # `pricing/receipts.py`, which validates a receipt's subject against the
+  # registry's whole-set name at the one construction boundary — so #370
+  # re-pointed the registry's declaration at the module that actually holds
+  # them rather than adding an import to a model with no opinion about what is
+  # inside its `jsonb`. `measurements_status` is the precedent: its consumer is
+  # the serialiser that computes it, for the same reason.
 
   - id: g2-backend-spend_pool_enforce_mode
     gate: G2
@@ -2524,18 +2513,15 @@ entries:
       that. Slice 5 rebuilds Work, and #147 snapshots this on the Task at
       creation. The metadata appears in that slice.
 
-  - id: g4-openapi-pricing_receipt_subject_type
-    gate: G4
-    site: openapi/v1.json::pricing_receipt_subject_type
-    expected: pricing_receipt_subject_type
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 4 rebuilds Price, which is where #148's authoritative receipt
-      lands. The metadata appears in that slice.
+  # ⚠ `pricing_receipt_subject_type` IS ADVERTISED SINCE #370 and its entry is
+  # deleted. This entry excused the contract for carrying no metadata while the
+  # backend consumer held 0 of 2 of the values; the same commit that made the
+  # backend hold both (see the G2 note above) made this excuse false, because
+  # `advertised` is derived from the backend census alone. It ships on the two
+  # schemas that publish the receipt — the recording ack and the audit lookup —
+  # the same placement rule `pricing_method` follows, and the marker sits in the
+  # string member of a nullable union because a receipt written before the
+  # subject was typed answers null.
 
   - id: g4-openapi-reason_code
     gate: G4

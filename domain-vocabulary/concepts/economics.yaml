@@ -593,9 +593,19 @@ pricing_receipt_subject_type:
     # which keeps the name "audit log" (#154 §3.3).
     - pricing_provenance
     - audit_trail
+  # ⚠ THE BACKEND CONSUMER IS THE RECEIPT MODULE, NOT THE MODEL THAT STORES THE
+  # RECEIPT (#370). It was declared as `usage/models.py` when the receipt was an
+  # untyped bag on a posting and the column was the only thing that existed;
+  # what holds these two values now is `receipts.py`, which validates a receipt's
+  # subject against the registry's whole-set name at the one construction
+  # boundary and refuses anything outside it. The model stores a `jsonb` record
+  # and has no opinion about what is in it, so an import there would be a
+  # reference added for a census to find — the vacuous form of holding a value.
+  # `measurements_status` is the precedent and the same shape: its consumer is
+  # the serialiser that computes it, because no column holds it either.
   consumers:
     - surface: backend
-      path: ubb-platform/apps/metering/usage/models.py
+      path: ubb-platform/apps/metering/pricing/receipts.py
     - surface: openapi
       path: openapi/v1.json
 

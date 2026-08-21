@@ -84,8 +84,9 @@ from core.vocabulary import (  # noqa: E402
 )
 
 #: The receipt's column, taken from the model rather than spelled — the statement
-#: below is living code, so the vocabulary rule applies to it in full and the
-#: ticket that re-spells the column carries this statement with it.
+#: below is living code, so the vocabulary rule applies to it in full. #370
+#: re-spelled the column and this statement came with it, which is what taking
+#: the name from the model rather than typing it bought.
 RECEIPT_COLUMN = Posting.RECEIPT_COLUMN
 
 #: The rules on this table, each as (migration module, trigger name). ONE ENTRY

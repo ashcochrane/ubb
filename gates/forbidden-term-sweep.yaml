@@ -180,7 +180,17 @@ exclusions:
     # either: `RemoveField` names the kind column it deletes, and `RenameModel`
     # names the class it renames — the exclusion's worked example in both
     # directions at once.
-    files: 232
+    # 230 → 232 in #369: two migrations, deleting the two markup records.
+    # ⚠ NEITHER OF THEM NAMED A RETIRED TERM, which is the point that entry
+    # made: this exclusion covers every migration directory WHOLESALE, so any
+    # new migration moves the number whatever it spells.
+    # 232 → 233 in #370: one migration, renaming the receipt's column to the
+    # ratified name of what it holds and re-creating the sealing rule over it.
+    # This one DOES name a retired term and cannot avoid it — `RenameField`'s
+    # `old_name` is the retired spelling, and a rename that could not name what
+    # it retires would not be reviewable. It is the same worked example `0026`
+    # and `0027` are, and it is the last file this word appears in anywhere.
+    files: 233
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

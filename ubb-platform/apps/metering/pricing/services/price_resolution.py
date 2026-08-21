@@ -96,9 +96,10 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
             "A price resolution carries an amount. NULL is what unknown means "
             "in this column, so it cannot also be what resolves it.")
 
-    # Addressed through the column's constant and never spelled: the column
-    # still carries the retired name of the concept, and this follows the
-    # rename rather than going quietly wrong on the day it lands.
+    # Addressed through the column's constant and never spelled. It was the
+    # retired name of the concept when this was written; #370 took the ratified
+    # one and this line followed, rather than going quietly wrong on the day
+    # the rename landed.
     completes_the_record = ({Posting.RECEIPT_COLUMN: pricing_receipt}
                             if pricing_receipt is not None else {})
 

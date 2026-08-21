@@ -155,7 +155,7 @@ class MeteringProductGatingTest(TestCase):
 
 
 class UsageEventDetailEndpointTest(TestCase):
-    """GET /usage/{event_id} returns the full pricing receipt (provenance)."""
+    """GET /usage/{event_id} returns the full Pricing Receipt."""
 
     def setUp(self):
         self.http = Client()
@@ -192,27 +192,65 @@ class UsageEventDetailEndpointTest(TestCase):
             request_id=f"req-{c.external_id}", idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
             event_type="chat", provider="openai", currency="usd",
-            # The quantity in the RECEIPT survives #272 — it is what a rate card
-            # was fed, per named quantity, and slice 4 renames it. Only the
-            # posting's own nameless inline total died. The name key here is
-            # the one #275 moved: a receipt written by today's engine. Receipts
-            # written before it keep the retired spelling and are not rewritten.
-            pricing_provenance={
+            # A RECEIPT IN THE OLDER SHAPE, WRITTEN ON PURPOSE. Every key here
+            # is one this system has stopped writing: the unversioned record
+            # itself, the container word `metrics`, the rule's retired name and
+            # the quantity key. Rows on disk are in this shape and #148 §4.6
+            # governs them — old receipts are READ, never rewritten — so what
+            # this fixture buys is a live read over the shape a reader is most
+            # likely to break.
+            #
+            # ⚠ THE QUANTITY KEY IS THE ONE WORD HERE THAT IS NOT SLICE 4's,
+            # and an earlier version of this comment said it was. It is a
+            # retired SENSE rather than a retired term: not sweep input, no
+            # ledger seat, and no slice-4 entry counts it. #366 ruled it stays
+            # and wrote the argument at `pricing_service._component`.
+            **{Posting.RECEIPT_COLUMN: {
                 "engine_version": "2.1.0",
                 "metrics": [{"measurement_key": "input_tokens",
                              "price_card_id": "abc",
-                             "units": 35_000, "micros": 450_000}]})
+                             "units": 35_000, "micros": 450_000}]}})
 
-    def test_get_event_returns_full_receipt(self):
+    def test_a_receipt_in_the_older_shape_is_served_whole_and_not_rewritten(
+            self):
+        """AC (#370): a receipt written in the older shape reads back through
+        the endpoint, unchanged, and the read writes nothing.
+
+        THE COLUMN RENAME IS NOT A CONVERSION, AND THIS IS WHERE THAT IS
+        PROVED. #370 moved the column and the wire key to the receipt's
+        ratified name with a `RenameField`, which carries every row across as
+        it stands — so the record on disk after the rename is still in whatever
+        shape its writer used, and there is no data migration in this slice
+        that touches one. #148 §4.6 is the governing rule: a receipt records
+        what the engine did on a day, and back-dating one into a shape that did
+        not exist then makes it a worse record. #155 §11's cutover squash is
+        what eventually removes these.
+
+        ⚠ **ASSERTED AS AN EQUALITY, NOT KEY BY KEY.** A per-key check passes
+        while the serialiser quietly drops or adds a key the older shape did
+        not have — which is exactly what a conversion would look like from
+        outside. The whole record is compared against the row, and the row is
+        re-read afterwards to show the response path wrote nothing.
+        """
+        from apps.metering.usage.models import Posting
+
         ev = self._event()
+        stored = getattr(ev, Posting.RECEIPT_COLUMN)
+
         resp = self.http.get(f"/api/v1/metering/usage/{ev.id}", **self._auth())
+
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["id"], str(ev.id))
         self.assertEqual(body["billed_cost_micros"], 450_000)
-        self.assertEqual(body["pricing_provenance"]["engine_version"], "2.1.0")
-        self.assertEqual(
-            body["pricing_provenance"]["metrics"][0]["price_card_id"], "abc")
+        self.assertEqual(body["pricing_receipt"], stored)
+        # The typed reads over the record answer "this record does not say"
+        # rather than inventing a value the older shape never carried.
+        self.assertIsNone(body["pricing_method"])
+        self.assertIsNone(body["pricing_receipt_subject_type"])
+
+        ev.refresh_from_db()
+        self.assertEqual(getattr(ev, Posting.RECEIPT_COLUMN), stored)
 
     def test_get_unknown_event_returns_404(self):
         resp = self.http.get(
@@ -326,7 +364,7 @@ class UsageEventDetailEndpointTest(TestCase):
         # could answer differently the day the rules behind it are edited —
         # which is the whole of what the receipt is for.
         self.assertEqual(body["pricing_method"],
-                         body["pricing_provenance"]["pricing"]["method"])
+                         body["pricing_receipt"]["pricing"]["method"])
 
     def test_the_recording_ack_names_the_method_too(self):
         """AC: the method reaches the contract on BOTH responses carrying the
@@ -356,7 +394,7 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertEqual(body["pricing_method"], PRICING_METHOD_MARGIN_OVER_COST)
         self.assertEqual(body["pricing_status"], PRICING_STATUS_KNOWN)
         self.assertEqual(body["pricing_method"],
-                         body["pricing_provenance"]["pricing"]["method"])
+                         body["pricing_receipt"]["pricing"]["method"])
 
     def test_a_price_that_was_not_derived_answers_null_beside_the_status(self):
         """AC: null means the price was NOT DERIVED, read beside the status.
@@ -408,7 +446,7 @@ class UsageEventDetailEndpointTest(TestCase):
             provider_cost_micros=300_000, billed_cost_micros=None,
             pricing_status=PRICING_STATUS_NOT_APPLICABLE,
             not_applicable_reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
-            pricing_provenance=receipt)
+            pricing_receipt=receipt)
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()

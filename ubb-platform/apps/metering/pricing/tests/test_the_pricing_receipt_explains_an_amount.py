@@ -22,12 +22,14 @@ from apps.metering.pricing.receipts import (
     REQUIRED_COMPONENT_KEYS,
     REQUIRED_MARKUP_KEYS,
     SECTIONED_SCHEMA_VERSION,
+    TOP_LEVEL_KEYS,
     ReceiptShapeError,
     ReceiptSubject,
     Resolution,
     build_receipt,
     pricing_method_of,
     schema_version_of,
+    subject_type_of,
     uncosted_quantity_keys,
 )
 from apps.metering.pricing.tests._helpers import markup_terms
@@ -195,6 +197,38 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
                                    receipt_schema_version=
                                    SECTIONED_SCHEMA_VERSION + 1))
 
+    def test_the_subject_reader_dispatches_the_same_three_ways(self):
+        """WHAT THIS RECEIPT EXPLAINS, read out of the record (#370).
+
+        The third reader over this record, and deliberately the same three-way
+        dispatch as the two above rather than a shortcut: the subject is what
+        makes the receipt addressable, so a reader that guessed a shape would
+        answer a plausible wrong thing about which entity a disputed amount
+        belongs to.
+
+        ⚠ **AN OLDER RECEIPT ANSWERS `None`, AND THAT IS THE HONEST ANSWER
+        RATHER THAN A GAP.** That shape predates the typed subject entirely, so
+        the record does not say — and the alternative is inferring the subject
+        from whichever column happens to be populated, which is a SECOND
+        authority able to disagree with the recorded one. #148 §3.2 refuses
+        exactly that, and the receipt exists because configuration read at
+        answer-time is not evidence.
+        """
+        current = a_receipt()
+
+        assert (subject_type_of(current)
+                == PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
+        assert (subject_type_of(a_receipt(subject=ReceiptSubject(
+            subject_type=PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
+            subject_id="c1"))) == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE)
+        assert subject_type_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
+        assert "subject_type" not in A_RECEIPT_IN_THE_OLDER_SHAPE
+
+        with pytest.raises(ReceiptShapeError, match="schema version"):
+            subject_type_of(dict(current,
+                                 receipt_schema_version=
+                                 SECTIONED_SCHEMA_VERSION + 1))
+
     def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
         """AC: null means the price was NOT DERIVED, and the status says why.
 
@@ -347,6 +381,60 @@ class TestProvenanceCarriesIdsAndNothingElse:
 
         assert receipt["provenance"]["cost_rate_ids"] == {
             "input_tokens": "rate-1"}
+
+    def test_the_word_survives_here_and_nowhere_else_in_the_record(self):
+        """AC (#370): a SECTION NAME is the whole of what the word still means.
+
+        The record had three names — a column spelling, an endpoint docstring
+        calling it the receipt, and a context document calling it the audit
+        trail, which already named the governance ledger. The registry ratified
+        one, retired the other two as aliases, and left this word alive in
+        exactly one place: the section holding cross-reference ids.
+
+        ⚠ **WHY THIS IS ASSERTED AT ALL, WHEN NO GATE COULD MISS THE OTHER
+        HALF.** The sweep is what keeps the two retired ALIASES out of the tree,
+        and it does that mechanically. It says nothing whatever about the bare
+        word, because a term that is alive in one sense is not sweep input —
+        which means the claim *"it survives only as a section name"* has no
+        automatic enforcement at all. A second key spelled with it would be a
+        second meaning arriving with a green board, and this is the only thing
+        that would notice.
+
+        Both directions, over the record a writer actually gets: the section is
+        there, and no key AT ANY DEPTH of the record carries the word.
+
+        ⚠ **AT ANY DEPTH IS MEANT LITERALLY, AND A FIRST DRAFT DID NOT DO IT.**
+        That draft walked the top level and the top level of the two sections,
+        which leaves out `totals`, the contents of `provenance` itself, and
+        every per-quantity component under a section's `detail` — the open parts
+        of the record, which is exactly where a second key would be added,
+        because they are the parts a writer may extend without reshaping
+        anything. A docstring saying "at any level" over a walk that stops at
+        two is the shape this module exists to refuse.
+        """
+        receipt = a_receipt()
+
+        assert "provenance" in receipt
+        assert "provenance" in TOP_LEVEL_KEYS
+
+        spelled = sorted(self._keys_spelled_with_the_word(receipt))
+        assert spelled == ["provenance"], (
+            f"the word survives somewhere other than the receipt's one section "
+            f"name: {spelled}")
+
+    @classmethod
+    def _keys_spelled_with_the_word(cls, node, seen=None):
+        """Every key at any depth whose name contains the surviving word."""
+        found = set() if seen is None else seen
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if "provenance" in key:
+                    found.add(key)
+                cls._keys_spelled_with_the_word(value, found)
+        elif isinstance(node, list):
+            for item in node:
+                cls._keys_spelled_with_the_word(item, found)
+        return found
 
 
 #: A component carrying every term the record requires, BUILT FROM THE

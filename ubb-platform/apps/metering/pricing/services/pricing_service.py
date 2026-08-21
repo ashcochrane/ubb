@@ -282,9 +282,10 @@ class Costing(NamedTuple):
     #: The Pricing Receipt — the authoritative record of why these amounts are
     #: what they are (#349), built and validated by
     #: `apps.metering.pricing.receipts.build_receipt` and by nothing else. Named
-    #: for the record it is (ADR-0006) — the column and the wire key it is
-    #: eventually stored under still carry the retired word, and re-spelling
-    #: either belongs to the ticket that owns them.
+    #: for the record it is (ADR-0006) — and since #370 the column and the wire
+    #: key it is stored and published under carry that same name, which is what
+    #: ADR-0006 §2 asks for: one public name per concept. This field was named
+    #: first and the column came to it.
     pricing_receipt: dict
     #: `known` · `unresolved` · `not_applicable`, held by reference from
     #: `core.vocabulary`.

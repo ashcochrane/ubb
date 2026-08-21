@@ -12,6 +12,7 @@ from ninja import Query, Router
 
 from apps.metering.pricing.receipts import (
     pricing_method_of,
+    subject_type_of,
     uncosted_quantity_keys,
 )
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
@@ -217,12 +218,17 @@ def with_receipt_reads(result):
     beside it says whether that price is settled. Null means no derivation
     happened, and the status says why (#355).
 
-    **BOTH ARE ALREADY IN THE BODY, UNTYPED, AND THAT IS THE POINT OF LIFTING
-    THEM.** These surfaces publish the whole record in `pricing_provenance`,
-    which is `additionalProperties: true` — so a value inside it reaches a
-    consumer with no schema saying what it may be, and a closed value set
-    published that way is advertised nowhere. Lifting each into a typed field
-    is what lets the contract carry the agreed vocabulary for it.
+    The subject type says WHAT the receipt explains — one usage row, or one
+    canonical Charge (#370). It is read out of the record rather than inferred
+    from the row the record hangs on, because an inference is a second answer
+    able to disagree with the recorded one.
+
+    **ALL THREE ARE ALREADY IN THE BODY, UNTYPED, AND THAT IS THE POINT OF
+    LIFTING THEM.** These surfaces publish the whole record, which is
+    `additionalProperties: true` — so a value inside it reaches a consumer with
+    no schema saying what it may be, and a closed value set published that way
+    is advertised nowhere. Lifting each into a typed field is what lets the
+    contract carry the agreed vocabulary for it.
 
     **THE RECEIPT'S SHAPE IS ASKED FOR, NOT ASSUMED (#349).** An idempotent
     replay answers with the receipt the posting was recorded with, so this is a
@@ -230,9 +236,17 @@ def with_receipt_reads(result):
     a read-path obligation rather than a migration, since old receipts are read
     and never rewritten. The tolerance is expressed once, in the receipts
     module, because a second copy of it here is a second thing to repair."""
-    receipt = result.get("pricing_provenance")
+    # THE WIRE KEY, NOT THE COLUMN — spelled rather than taken from
+    # `Posting.RECEIPT_COLUMN`. The two are the same word since #370 and that is
+    # deliberate (ADR-0006 §2: one public name per concept), but they are two
+    # facts: this reads the recording service's plain-data result, whose key is
+    # what `RecordUsageResponse` publishes. Addressing it through the column's
+    # constant would make a future column rename silently answer `None` here on
+    # every receipt, with no test able to see it.
+    receipt = result.get("pricing_receipt")
     result["uncosted_measurement_keys"] = uncosted_quantity_keys(receipt)
     result["pricing_method"] = pricing_method_of(receipt)
+    result["pricing_receipt_subject_type"] = subject_type_of(receipt)
     return result
 
 
@@ -479,12 +493,15 @@ def get_usage_event(request, event_id: UUID):
         # failure the receipt exists to prevent. The shape is ASKED FOR, not
         # assumed — the tolerance lives once in the receipts module, like the
         # uncosted list on the recording surfaces.
-        "pricing_method": pricing_method_of(e.pricing_provenance),
+        "pricing_method": pricing_method_of(e.pricing_receipt),
+        # WHAT THE RECEIPT EXPLAINS, on the same two arguments (#370): read out
+        # of the record, never inferred from the row it hangs on.
+        "pricing_receipt_subject_type": subject_type_of(e.pricing_receipt),
         "measurements": e.measurements or {},
         # Derived, never stored (ADR-0006 §4) — computed here, at the
         # serialiser, which is the only place §E5 permits it to exist.
         "measurements_status": measurements_status_for(e),
-        "pricing_provenance": e.pricing_provenance or {},
+        "pricing_receipt": e.pricing_receipt or {},
         "metadata": e.metadata,
         "task_id": str(e.task_id) if e.task_id else None,
         "effective_at": e.effective_at.isoformat(),

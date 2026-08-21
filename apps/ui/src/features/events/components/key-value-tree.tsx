@@ -1,7 +1,7 @@
 // Recursive key-value renderer for free-form objects (event metadata and the
-// pricing-provenance receipt). Deliberately NOT a raw JSON dump: primitives
-// render as label/value rows, nested objects and lists indent. Defensive —
-// any shape renders without throwing.
+// Pricing Receipt). Deliberately NOT a raw JSON dump: primitives render as
+// label/value rows, nested objects and lists indent. Defensive — any shape
+// renders without throwing.
 
 import { cn } from "@/lib/utils";
 

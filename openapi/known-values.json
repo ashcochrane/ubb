@@ -203,10 +203,14 @@
       "representation": "enum"
     },
     "pricing_receipt_subject_type": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "usage_event",
+        "charge"
+      ]
     },
     "pricing_status": {
       "advertised": true,

@@ -1,5 +1,5 @@
 // The full receipt for one usage event: identity, timing, money, measurements,
-// stop context, the open metadata bag, and the pricing-provenance "why this
+// stop context, the open metadata bag, and the Pricing Receipt's "why this
 // amount".
 //
 // The detail response does NOT carry the customer's id — the ledger link
@@ -174,7 +174,7 @@ export function EventDetailPage({
   const margin =
     providerCost === null || billed === null ? null : billed - providerCost;
   const hasMetadata = Object.keys(detail.metadata).length > 0;
-  const hasProvenance = Object.keys(detail.pricing_provenance).length > 0;
+  const hasReceipt = Object.keys(detail.pricing_receipt).length > 0;
   const backfilled =
     detail.created_at.slice(0, 10) !== detail.effective_at.slice(0, 10);
 
@@ -289,16 +289,22 @@ export function EventDetailPage({
           </Section>
         )}
 
+        {/* The record took its ratified name on the wire in #370 and the
+            heading came with it: a screen calling it something the API does
+            not is the second public name for one concept ADR-0006 §2 refuses.
+            The sentence saying a receipt is the record of an ECONOMIC
+            RESOLUTION rather than evidence a customer was charged is #372's,
+            with the rest of this feature's wording. */}
         <Section
-          title="Pricing provenance"
+          title="Pricing receipt"
           description="Why this amount — the pricing engine's recorded receipt."
           className="lg:col-span-2"
         >
-          {hasProvenance ? (
-            <KeyValueTree value={detail.pricing_provenance} mono />
+          {hasReceipt ? (
+            <KeyValueTree value={detail.pricing_receipt} mono />
           ) : (
             <p className="text-[12px] text-text-muted">
-              No provenance was recorded for this event.
+              No receipt was recorded for this event.
             </p>
           )}
         </Section>

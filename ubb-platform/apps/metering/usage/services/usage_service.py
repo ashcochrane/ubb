@@ -225,7 +225,7 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         # row, so idempotent replays return the ORIGINAL context unchanged.
         "stop_context": event.stop_context,
         "measurements": event.measurements,
-        "pricing_provenance": event.pricing_provenance,
+        "pricing_receipt": event.pricing_receipt,
         # The grouping values under the tenant's OWN keys (#277). #276 left a
         # published-name/column mismatch here and ticket 20 resolved it by the
         # per-slot properties going away rather than by either side being
@@ -478,7 +478,7 @@ class UsageService:
                     pricing_status=costing.pricing_status,
                     not_applicable_reason=costing.not_applicable_reason,
                     currency=inp.currency,
-                    pricing_provenance=receipt,
+                    pricing_receipt=receipt,
                     task_id=inp.task_id,
                     billing_owner_id=inp.billing_owner_id,
                     task_type=inp.task_type, subtask_type=inp.subtask_type,

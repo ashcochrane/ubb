@@ -38,9 +38,10 @@ is EDITED after the fact and the stored record is asked again. Nothing may move
 — not the totals, not the components — and the ids the record does carry are
 cross-references that no read path follows for a figure.
 
-The column still carries the retired spelling of the concept and this module
-never spells it: `Posting.RECEIPT_COLUMN` is what addresses it, so the day the
-rename lands the module follows it instead of going quietly vacuous.
+This module never spells the column: `Posting.RECEIPT_COLUMN` is what addresses
+it. That was written while the column carried the retired spelling of the
+concept, and #370 is the day it paid — the rename landed and the walk came with
+it, instead of going quietly vacuous over a column nothing was called any more.
 """
 import ast
 from pathlib import Path
@@ -123,6 +124,62 @@ def _keyed_on_the_column(node):
         for key in node.keys)
 
 
+#: THE VERBS THAT PUT A ROW ON DISK, which a keyword argument named after the
+#: column has to be one of before it is a write (#370).
+#:
+#: ⚠ **THIS QUALIFIER WAS NOT NEEDED WHILE THE COLUMN CARRIED ITS RETIRED
+#: SPELLING, AND THAT IS WHY IT IS HERE NOW.** The walk used to count ANY call
+#: keyword spelled like the column, on the tacit premise that nothing else in
+#: the tree was called that. #370 made the column's name the ratified name of
+#: the record it holds — which is the right name for that value everywhere it
+#: travels, so the tree now has three honest non-writes spelled exactly like a
+#: write: `Costing(pricing_receipt=…)` on the compute spine's own record, and
+#: the two settlement doors' `pricing_receipt=` parameter, which those doors
+#: take a receipt through and decide for themselves whether to persist.
+#:
+#: The premise is RE-ESTABLISHED rather than the assertion weakened: a keyword
+#: still counts wherever the call is an ORM write, and the positive control
+#: below still fires on the spelling this walk exists for. The other two arms —
+#: an attribute assignment and a mapping keyed on the constant — are not
+#: qualified at all, because neither has a non-writing form.
+#:
+#: STATED RESIDUAL: a writer using a verb that is not in this set is not seen by
+#: THIS arm. It is a whitelist and it is meant to be read as one; the two
+#: unqualified arms are what stop that being the whole of the walk.
+ORM_WRITES = frozenset({
+    "create", "update", "bulk_create", "bulk_update",
+    "get_or_create", "update_or_create", "save",
+})
+
+
+def _writes_a_row(call):
+    """Whether this call puts a row on disk, or builds the row that will be.
+
+    Two shapes, and the second is not an afterthought. `Posting.objects.create(…)`
+    and `Posting.objects.filter(…).update(…)` end in one of the verbs above.
+    `Posting(…)` ends in no verb at all — the model constructor, followed by a
+    `.save()` that names no column — and it is the commonest Django write idiom
+    there is. A first draft of this qualifier required an attribute call and lost
+    that shape, which the unqualified arms do not cover either: it was counted
+    before #370 and would have stopped being counted, in the commit whose whole
+    subject is that the walk still finds every writer.
+
+    Constructing a `Posting` is counted whether or not the object is saved.
+    That over-reports by exactly the unsaved case, which is the safe direction:
+    an over-report is a red gate a reader resolves, and no production path builds
+    a posting carrying a receipt and then throws it away.
+
+    `settle_provider_cost(…)` and `Costing(…)` are neither shape. The second is
+    why the model is named rather than any constructor accepted — the compute
+    spine's own result record takes the receipt under the same keyword, and it
+    persists nothing.
+    """
+    func = call.func
+    if isinstance(func, ast.Attribute):
+        return func.attr in ORM_WRITES
+    return isinstance(func, ast.Name) and func.id == Posting.__name__
+
+
 def _sites(source):
     """Where one module builds a receipt, and where it writes one."""
     built, written = [], []
@@ -134,7 +191,7 @@ def _sites(source):
             if name == CONSTRUCTOR:
                 built.append(node.lineno)
             for keyword in node.keywords:
-                if keyword.arg == Posting.RECEIPT_COLUMN:
+                if keyword.arg == Posting.RECEIPT_COLUMN and _writes_a_row(node):
                     written.append(node.lineno)
         elif isinstance(node, ast.Assign):
             for target in node.targets:
@@ -167,6 +224,34 @@ def test_the_walk_sees_every_spelling_a_writer_uses():
     # And a READ through the same constant is not a write.
     read = "stored = getattr(posting, Posting.RECEIPT_COLUMN)\n"
     assert _sites(read)[1] == []
+
+    # ⚠ NOR IS HANDING THE SAME VALUE TO A FUNCTION (#370). The column's name is
+    # now the record's name, so an ordinary call may legitimately take a
+    # parameter spelled exactly like the column — the two settlement doors do,
+    # and so does the compute spine's own result record. Each of these WOULD
+    # have been counted before the qualifier, and each is a caller rather than a
+    # writer: what persists the receipt is the door's own `update()`, which the
+    # mapping arm above sees. This is the arm that makes `ORM_WRITES`
+    # load-bearing rather than decorative.
+    for not_a_write in (
+            f"settle_provider_cost(posting_id=p, {Posting.RECEIPT_COLUMN}=r)\n",
+            f"Costing({Posting.RECEIPT_COLUMN}=r)\n"):
+        assert _sites(not_a_write)[1] == [], not_a_write
+
+    # And the qualifier does not cost the walk a queryset write whose model is
+    # not spelled at the call — the verb is what is checked, not the receiver.
+    through_a_queryset = f"rows.update({Posting.RECEIPT_COLUMN}=record)\n"
+    assert _sites(through_a_queryset)[1] == [1]
+
+    # ⚠ NOR THE MODEL CONSTRUCTOR, WHICH ENDS IN NO VERB AT ALL and is the
+    # commonest Django write idiom. This arm is here because the first draft of
+    # the qualifier above required an attribute call and silently dropped it —
+    # a shape the walk caught before #370, going uncaught in the commit whose
+    # subject is that the walk still finds every writer. It is the pair with
+    # `Costing(...)` two lines up that makes the discrimination real: both are
+    # bare-name calls taking the same keyword, and only one of them is a row.
+    built_then_saved = f"{Posting.__name__}({Posting.RECEIPT_COLUMN}=record)\n"
+    assert _sites(built_then_saved)[1] == [1]
 
 
 def _walk():

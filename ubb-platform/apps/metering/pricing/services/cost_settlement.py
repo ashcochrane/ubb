@@ -89,10 +89,10 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
             "this column, so it cannot also be what resolves it.")
 
     # THE RECEIPT, ADDRESSED THROUGH THE COLUMN'S CONSTANT AND NEVER SPELLED.
-    # The column still carries the retired name of the concept and the ratchet
-    # caps how many files may say it, so this is how everything that arrived
-    # after the rename addresses it — and it follows the rename rather than
-    # going quietly wrong on the day it lands.
+    # Written when the column still carried the retired name of the concept and
+    # a ratchet capped how many files might say it. #370 took that name and this
+    # line came with it, which is what the indirection was for — a spelled
+    # column would have gone quietly wrong on the day the rename landed.
     completes_the_record = ({Posting.RECEIPT_COLUMN: pricing_receipt}
                             if pricing_receipt is not None else {})
 
