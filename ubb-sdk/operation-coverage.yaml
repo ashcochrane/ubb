@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 163
-  unwrapped: 86
-  wrapped: 77
-  generated_only: 86
+  operations: 165
+  unwrapped: 84
+  wrapped: 81
+  generated_only: 84
   not_yet_wrapped: 0
 
 operations:
@@ -307,26 +307,22 @@ operations:
     method: GET
     path: /api/v1/me/usage-invoices
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_assign_book
-    method: POST
-    path: /api/v1/metering/pricing/customers/{customer_id}/rate-card
-    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_close_task
     method: POST
     path: /api/v1/metering/tasks/{task_id}/close
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.close_task
-  - operation_id: api_v1_metering_endpoints_create_book
-    method: POST
-    path: /api/v1/metering/pricing/rate-cards
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.create_rate_card
   - operation_id: api_v1_metering_endpoints_declare_book_publish
     method: POST
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes
+    path: /api/v1/metering/pricing/books/{book_id}/publishes
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_declare_cost_book
+    method: POST
+    path: /api/v1/metering/pricing/cost-books
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.declare_cost_book
   - operation_id: api_v1_metering_endpoints_declare_customer_override
     method: POST
     path: /api/v1/metering/pricing/customers/{customer_id}/overrides
@@ -335,6 +331,12 @@ operations:
     method: PUT
     path: /api/v1/metering/grouping-fields
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_declare_pricing_book
+    method: POST
+    path: /api/v1/metering/pricing/pricing-books
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.declare_pricing_book
   - operation_id: api_v1_metering_endpoints_declare_task_types
     method: PUT
     path: /api/v1/metering/task-types
@@ -349,7 +351,7 @@ operations:
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_discard_book_publish
     method: DELETE
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}
+    path: /api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_execute_resolution_run
     method: POST
@@ -357,7 +359,7 @@ operations:
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_book_publish
     method: GET
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}
+    path: /api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_customer_markup
     method: GET
@@ -407,18 +409,18 @@ operations:
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_book_publishes
     method: GET
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes
+    path: /api/v1/metering/pricing/books/{book_id}/publishes
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_list_book_rates
     method: GET
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/rates
+    path: /api/v1/metering/pricing/books/{book_id}/rates
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_list_books
+  - operation_id: api_v1_metering_endpoints_list_cost_books
     method: GET
-    path: /api/v1/metering/pricing/rate-cards
+    path: /api/v1/metering/pricing/cost-books
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.list_rate_cards
+      - ubb-sdk/ubb/metering.py::MeteringClient.list_cost_books
   - operation_id: api_v1_metering_endpoints_list_grouping_field_values
     method: GET
     path: /api/v1/metering/grouping-fields/{key}/values
@@ -427,6 +429,12 @@ operations:
     method: GET
     path: /api/v1/metering/grouping-fields
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_list_pricing_books
+    method: GET
+    path: /api/v1/metering/pricing/pricing-books
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.list_pricing_books
   - operation_id: api_v1_metering_endpoints_list_task_types
     method: GET
     path: /api/v1/metering/task-types
@@ -435,13 +443,9 @@ operations:
     method: GET
     path: /api/v1/metering/tasks
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_publish_book
-    method: POST
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publish
-    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_publish_book_publish
     method: POST
-    path: /api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish
+    path: /api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}/publish
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_record_usage
     method: POST
@@ -483,10 +487,22 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.usage_timeseries
+  - operation_id: api_v1_metering_endpoints_withdraw_cost_book
+    method: DELETE
+    path: /api/v1/metering/pricing/cost-books/{book_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.withdraw_cost_book
   - operation_id: api_v1_metering_endpoints_withdraw_customer_override
     method: DELETE
     path: /api/v1/metering/pricing/customers/{customer_id}/overrides/{override_id}
     disposition: generated_only
+  - operation_id: api_v1_metering_endpoints_withdraw_pricing_book
+    method: DELETE
+    path: /api/v1/metering/pricing/pricing-books/{book_id}
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.withdraw_pricing_book
   - operation_id: api_v1_metering_endpoints_withdraw_tenant_default_markup
     method: DELETE
     path: /api/v1/metering/pricing/default-markup

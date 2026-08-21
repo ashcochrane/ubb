@@ -4,15 +4,38 @@
 
 import type { MeteringSchemas } from "@/api/types";
 
-export type Book = MeteringSchemas["BookOut"];
-export type BookIn = MeteringSchemas["BookIn"];
-export type PaginatedBooks = MeteringSchemas["PaginatedBooks"];
+// ⚠ THE CONTAINER IS TWO ENTITIES (#368). A Pricing Book is a catalogue of
+// what this tenant charges and names neither a supplier nor a currency; a cost
+// book records what one supplier charges and names both. They are separate
+// component schemas because they are separate things, and one FLATTENED `Book`
+// type carrying every field of both — a supplier that is sometimes there, a
+// currency that is sometimes meaningful — would put back exactly the
+// conflation the split removed. `AnyBook` below is not that: it is a union a
+// caller must narrow before it can read anything only one side has, which is
+// the difference the compiler enforces.
+export type PricingBook = MeteringSchemas["PricingBookOut"];
+export type PricingBookIn = MeteringSchemas["PricingBookIn"];
+export type PaginatedPricingBooks = MeteringSchemas["PaginatedPricingBooks"];
+
+export type CostBook = MeteringSchemas["CostBookOut"];
+export type CostBookIn = MeteringSchemas["CostBookIn"];
+export type PaginatedCostBooks = MeteringSchemas["PaginatedCostBooks"];
+
+/** Either kind, for the screens whose subject is a book's CONTENTS. */
+export type AnyBook = PricingBook | CostBook;
+
+/** Whether a book of either kind records supplier costs. */
+export function isCostBook(book: AnyBook): book is CostBook {
+  return "provider_key" in book;
+}
 
 export type Rate = MeteringSchemas["RateOut"];
-// ⚠ NO `RateIn` (#367). Opening a rule is a declared change on a publish, so
-// the body that added one immediately is deleted from the contract along with
-// its route. `RateChangeIn` below is the immediate reprice; the declaring body
-// is `BookChangeIn`, and the feature that speaks it arrives with #372.
+// ⚠ NO `RateIn` (#367) AND NO `RateChangeIn` (#368). Both bodies that wrote a
+// rule immediately are deleted from the contract with their routes: adding,
+// repricing and retiring a rule are declared changes on a publish now. The
+// declaring body is `BookChangeIn`, and the feature that speaks it arrives
+// with #372 — until then this console reads books and rules and declares
+// books, and cannot change what is in one.
 export type PaginatedRates = MeteringSchemas["PaginatedRates"];
 
 /**
@@ -29,18 +52,13 @@ export type PaginatedRates = MeteringSchemas["PaginatedRates"];
  */
 export type { RateStructure } from "@/lib/vocabulary";
 
-export type PublishIn = MeteringSchemas["PublishIn"];
-export type RateChangeIn = MeteringSchemas["RateChangeIn"];
-
 export type TenantMarkup = MeteringSchemas["TenantMarkupOut"];
 export type TenantMarkupIn = MeteringSchemas["TenantMarkupIn"];
 
 export type StatusResponse = MeteringSchemas["StatusResponse"];
 
-/** Query options for the books list. */
+/** Query options for either books list. */
 export interface ListBooksParams {
-  /** "cost" | "price" (open enum) — omit for all books. */
-  card_type?: string;
   cursor?: string;
   limit?: number;
 }

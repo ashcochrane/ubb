@@ -33,7 +33,7 @@ import uuid
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
-from apps.metering.pricing.models import RateCard
+from apps.metering.pricing.models import PricingBook
 from apps.metering.pricing.services.book_service import BookService
 from apps.platform.plans.models import Plan
 from apps.platform.plans.queries import get_pricing_book_for_customer
@@ -65,7 +65,7 @@ class TheReferenceIsRequiredTest(TestCase):
         # And the field is a reference rather than a copied key: what a plan
         # names has to be a book that exists, which is the half a plain UUID
         # column would not carry.
-        self.assertIs(field.related_model, RateCard)
+        self.assertIs(field.related_model, PricingBook)
 
     def test_the_database_refuses_a_plan_with_no_book(self):
         with self.assertRaisesRegex(IntegrityError, "pricing_book_id"):
@@ -189,7 +189,7 @@ class TheBookAPlanPricesFromCannotBeDeletedTest(TestCase):
 
         spare.delete()
 
-        self.assertFalse(RateCard.objects.filter(pk=spare.pk).exists())
+        self.assertFalse(PricingBook.objects.filter(pk=spare.pk).exists())
 
 
 class TheReadContractIsHowMeteringReachesItTest(TestCase):

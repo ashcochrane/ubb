@@ -109,7 +109,23 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # immediate act left on a book. Their two action names went out of the registry
 # in the same commit, which `record()`'s refusal of an unregistered name makes
 # compulsory rather than merely tidy. 82 - 2 = 80.
-_EXPECTED_MUTATING = 80
+#
+# 80 -> 81 with #368's container split, which is a bigger change than the net
+# figure looks. SIX book routes became SEVEN. Two more left: the atomic reprice,
+# which versioned a book the instant it was called with no diff a tenant could
+# read first, and the route that assigned a book to a customer, whose record is
+# deleted outright. FOUR arrived, because a Pricing Book and a cost book are
+# separately shaped entities and are therefore DECLARED separately — each with
+# its own withdrawal, under the registry's rule that a governance reader asking
+# when a book stopped existing must not read metadata to find out.
+#
+# ⚠ **NONE OF THE FOUR TAKES THE EXEMPTION LIST**, which is the half a net count
+# cannot show. Declaring a book decides what a tenant may be charged from and
+# withdrawing one takes a catalogue away; both are governance in exactly the
+# sense every pair on this list is, so they register names. The exempt count
+# below is untouched. 80 - 2 + 4 - 1 = 81, where the last term is the single
+# create route the two declares replace.
+_EXPECTED_MUTATING = 81
 _EXPECTED_EXEMPT = 5
 
 

@@ -7,7 +7,6 @@ from .api_key_list_response import ApiKeyListResponse
 from .api_key_out import ApiKeyOut
 from .api_v1_connect_endpoints_connect_start_response import ApiV1ConnectEndpointsConnectStartResponse
 from .api_v1_connect_endpoints_connect_status_response import ApiV1ConnectEndpointsConnectStatusResponse
-from .api_v1_metering_endpoints_assign_book_response import ApiV1MeteringEndpointsAssignBookResponse
 from .api_v1_plan_endpoints_assign_plan_response import ApiV1PlanEndpointsAssignPlanResponse
 from .api_v1_platform_endpoints_get_business_response import ApiV1PlatformEndpointsGetBusinessResponse
 from .api_v1_sandbox_endpoints_reset_sandbox_response import ApiV1SandboxEndpointsResetSandboxResponse
@@ -23,7 +22,6 @@ from .apps_subscriptions_api_endpoints_pause_subscription_response import AppsSu
 from .apps_subscriptions_api_endpoints_resume_subscription_response import AppsSubscriptionsApiEndpointsResumeSubscriptionResponse
 from .apps_subscriptions_api_endpoints_set_customer_seats_response import AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse
 from .apps_subscriptions_api_endpoints_subscribe_customer_response import AppsSubscriptionsApiEndpointsSubscribeCustomerResponse
-from .assign_in import AssignIn
 from .assign_plan_in import AssignPlanIn
 from .attribute_request import AttributeRequest
 from .attribute_response import AttributeResponse
@@ -37,8 +35,6 @@ from .book_change_in import BookChangeIn
 from .book_change_in_grouping_fields import BookChangeInGroupingFields
 from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
 from .book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
-from .book_in import BookIn
-from .book_out import BookOut
 from .book_publish_in import BookPublishIn
 from .book_publish_out import BookPublishOut
 from .budget_config_in import BudgetConfigIn
@@ -50,6 +46,8 @@ from .business_margin_totals import BusinessMarginTotals
 from .close_task_response import CloseTaskResponse
 from .configure_auto_top_up_request import ConfigureAutoTopUpRequest
 from .connect_start_in import ConnectStartIn
+from .cost_book_in import CostBookIn
+from .cost_book_out import CostBookOut
 from .create_customer_request import CreateCustomerRequest
 from .create_customer_request_metadata import CreateCustomerRequestMetadata
 from .create_grant_request import CreateGrantRequest
@@ -112,7 +110,7 @@ from .member_list_response import MemberListResponse
 from .member_out import MemberOut
 from .member_role_update_in import MemberRoleUpdateIn
 from .paginated_book_publishes import PaginatedBookPublishes
-from .paginated_books import PaginatedBooks
+from .paginated_cost_books import PaginatedCostBooks
 from .paginated_event_categories import PaginatedEventCategories
 from .paginated_event_types import PaginatedEventTypes
 from .paginated_grants import PaginatedGrants
@@ -120,6 +118,7 @@ from .paginated_invoices import PaginatedInvoices
 from .paginated_invoices_response import PaginatedInvoicesResponse
 from .paginated_ledger_entries import PaginatedLedgerEntries
 from .paginated_measurements import PaginatedMeasurements
+from .paginated_pricing_books import PaginatedPricingBooks
 from .paginated_providers import PaginatedProviders
 from .paginated_rates import PaginatedRates
 from .paginated_referrals import PaginatedReferrals
@@ -148,6 +147,8 @@ from .pre_check_request import PreCheckRequest
 from .pre_check_request_dimensions import PreCheckRequestDimensions
 from .pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
 from .pre_check_response import PreCheckResponse
+from .pricing_book_in import PricingBookIn
+from .pricing_book_out import PricingBookOut
 from .problem_out import ProblemOut
 from .program_create_request import ProgramCreateRequest
 from .program_create_request_reward_type import ProgramCreateRequestRewardType
@@ -158,9 +159,6 @@ from .projected_adjustment_row import ProjectedAdjustmentRow
 from .provider_in import ProviderIn
 from .provider_out import ProviderOut
 from .provider_update_in import ProviderUpdateIn
-from .publish_in import PublishIn
-from .rate_change_in import RateChangeIn
-from .rate_change_in_rate_structure_type_0 import RateChangeInRateStructureType0
 from .rate_out import RateOut
 from .rate_out_rate_structure import RateOutRateStructure
 from .ready_response import ReadyResponse
@@ -300,7 +298,6 @@ __all__ = (
     "ApiKeyOut",
     "ApiV1ConnectEndpointsConnectStartResponse",
     "ApiV1ConnectEndpointsConnectStatusResponse",
-    "ApiV1MeteringEndpointsAssignBookResponse",
     "ApiV1PlanEndpointsAssignPlanResponse",
     "ApiV1PlatformEndpointsGetBusinessResponse",
     "ApiV1SandboxEndpointsResetSandboxResponse",
@@ -316,7 +313,6 @@ __all__ = (
     "AppsSubscriptionsApiEndpointsResumeSubscriptionResponse",
     "AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse",
     "AppsSubscriptionsApiEndpointsSubscribeCustomerResponse",
-    "AssignIn",
     "AssignPlanIn",
     "AttributeRequest",
     "AttributeResponse",
@@ -330,8 +326,6 @@ __all__ = (
     "BookChangeInGroupingFields",
     "BookChangeInPricingMethodType0",
     "BookChangeInRateStructureType0",
-    "BookIn",
-    "BookOut",
     "BookPublishIn",
     "BookPublishOut",
     "BudgetConfigIn",
@@ -343,6 +337,8 @@ __all__ = (
     "CloseTaskResponse",
     "ConfigureAutoTopUpRequest",
     "ConnectStartIn",
+    "CostBookIn",
+    "CostBookOut",
     "CreateCustomerRequest",
     "CreateCustomerRequestMetadata",
     "CreateGrantRequest",
@@ -405,7 +401,7 @@ __all__ = (
     "MeSubscriptionInvoiceOut",
     "MeUsageInvoiceOut",
     "PaginatedBookPublishes",
-    "PaginatedBooks",
+    "PaginatedCostBooks",
     "PaginatedEventCategories",
     "PaginatedEventTypes",
     "PaginatedGrants",
@@ -413,6 +409,7 @@ __all__ = (
     "PaginatedInvoicesResponse",
     "PaginatedLedgerEntries",
     "PaginatedMeasurements",
+    "PaginatedPricingBooks",
     "PaginatedProviders",
     "PaginatedRates",
     "PaginatedReferrals",
@@ -441,6 +438,8 @@ __all__ = (
     "PreCheckRequestDimensions",
     "PreCheckRequestTaskMetadataType0",
     "PreCheckResponse",
+    "PricingBookIn",
+    "PricingBookOut",
     "ProblemOut",
     "ProgramCreateRequest",
     "ProgramCreateRequestRewardType",
@@ -451,9 +450,6 @@ __all__ = (
     "ProviderIn",
     "ProviderOut",
     "ProviderUpdateIn",
-    "PublishIn",
-    "RateChangeIn",
-    "RateChangeInRateStructureType0",
     "RateOut",
     "RateOutRateStructure",
     "ReadyResponse",

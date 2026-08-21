@@ -1,12 +1,13 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
+from django.apps import apps as django_apps
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, Rate, RateCard,
+    CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook, Rate,
     TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.pricing.services.book_service import BookService
@@ -37,13 +38,9 @@ from core.vocabulary import (
 UNMEASURED_QUANTITY = "a_quantity_no_event_measures"
 
 
-def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="",
-                         task_type="", subtask_type="",
-                         customer=None, **fields):
-    """Create a Rate attached to the tenant's is_default book for its
-    (card_type, provider, currency). If customer is given, attach to a
-    customer book + assignment instead. Mirrors the backfill's grouping so
-    tests exercise the real resolution path.
+def _rule_in(book, *, provider, event_type, task_type, subtask_type,
+             customer, fields):
+    """The row itself, once the book has been chosen.
 
     **A CALLER STILL SAYS `measurement_key=` AND STILL NEVER SEES A COLUMN
     (#326).** The rate holds the declared record now, so the name is resolved to
@@ -52,38 +49,55 @@ def rate_in_default_book(tenant, *, card_type="price", provider="", event_type="
     than transcribing a two-record setup, and it is why the reference conversion
     did not have to touch them: what they ask for has not changed, only what it
     takes to be true. A test that wants a rate NOT backed by a declaration wants
-    the refusal, and asks for it explicitly."""
-    from apps.metering.pricing.models import RateCardAssignment
-    currency = fields.get("currency", tenant.default_currency or "usd")
-    if customer is None:
-        book, _ = RateCard.objects.get_or_create(
-            tenant=tenant, card_type=card_type, provider_key=provider, currency=currency,
-            is_default=True, defaults={"key": (provider or "default")[:64]})
-    else:
-        book, _ = RateCard.objects.get_or_create(
-            tenant=tenant, card_type=card_type, key=f"cust-{customer.id}-{currency}"[:64],
-            defaults={"provider_key": provider, "currency": currency})
-        if card_type == "price":
-            RateCardAssignment.objects.get_or_create(
-                tenant=tenant, customer=customer, currency=currency,
-                defaults={"rate_card": book})
+    the refusal, and asks for it explicitly.
+
+    The slots ride in `fields` rather than being named one by one. Ten of them
+    spelled out as keyword defaults was already the longest line in this file
+    at six, and every one of them would have been ``slot=slot`` — the model's
+    own "" default says the same thing without the transcription.
+
+    WHICH COLUMN POINTS AT THE BOOK IS THE BOOK'S OWN ANSWER (#368). There is
+    no kind word anywhere on this path any more: the two doors below pick a
+    table, and the entity says which reference belongs to it.
+    """
     if "measurement" not in fields:
         fields["measurement"] = declares_a_quantity(
-            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
-    # The slots ride in **fields rather than being named one by one. Ten of them
-    # spelled out as keyword defaults was already the longest line in this file
-    # at six, and every one of them would have been ``slot=slot`` — the model's
-    # own "" default says the same thing without the transcription.
-    #
-    # THE KIND WORD REACHES THE BOOK ABOVE AND STOPS THERE (#367). A rule used
-    # to carry a copy of it; the column is deleted, so a rule's kind is a fact
-    # about its book and about nothing else. A caller still says which half it
-    # wants — that is what selects the book.
-    return Rate.objects.create(tenant=tenant, provider=provider,
-                               event_type=event_type, task_type=task_type,
-                               subtask_type=subtask_type,
-                               customer=customer, rate_card=book,
-                               book_version_from=book.version, **fields)
+            book.tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    return Rate.objects.create(
+        tenant=book.tenant, provider=provider, event_type=event_type,
+        task_type=task_type, subtask_type=subtask_type, customer=customer,
+        book_version_from=book.version,
+        **{book.REFERENCE_COLUMN: book}, **fields)
+
+
+def rate_in_default_book(tenant, *, provider="", event_type="",
+                         task_type="", subtask_type="",
+                         customer=None, **fields):
+    """A PRICE rule, in the tenant's default Pricing Book.
+
+    If `customer` is given it goes in that customer's own override book
+    instead, which is the only way a rule is written for one customer — the
+    record that used to ASSIGN a book to a customer is deleted (#368), and
+    what replaces it for the shared case is the customer's Plan
+    (`rate_in_a_plans_book`).
+
+    ⚠ **THERE IS ONE DEFAULT PRICING BOOK PER TENANT, NOT ONE PER PROVIDER.**
+    A Pricing Book is pinned to no supplier, so two calls naming different
+    providers land in the SAME book and are told apart by the rule's own
+    `provider` selector — which is where that distinction belongs. On the cost
+    side the per-provider default is real, and `cost_rate_in_default_book`
+    keeps it.
+    """
+    if customer is None:
+        book, _ = PricingBook.objects.get_or_create(
+            tenant=tenant, is_default=True, defaults={"key": "default"})
+    else:
+        book, _ = PricingBook.objects.get_or_create(
+            tenant=tenant, customer=customer,
+            defaults={"key": f"cust-{customer.id}"[:64]})
+    return _rule_in(book, provider=provider, event_type=event_type,
+                    task_type=task_type, subtask_type=subtask_type,
+                    customer=customer, fields=fields)
 
 
 def an_override_rule(tenant, customer, **fields):
@@ -103,7 +117,7 @@ def an_override_rule(tenant, customer, **fields):
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, customer=customer, rate_card=book,
+        tenant=tenant, customer=customer, pricing_book=book,
         book_version_from=book.version, **fields)
 
 
@@ -111,15 +125,16 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     """A price rule in the book the customer's PLAN prices them from (#362).
 
     **THE CUSTOMER'S ONLY ROUTE TO THIS BOOK IS THE PLAN**, which is the state
-    the required reference makes ordinary: no override book, no assignment, and
-    nothing the tenant declared as a default. Both halves come from production
-    doors — `a_plan` creates the book and then the plan, `PlanService.assign`
-    puts the customer on it — so what a test exercises is the route a tenant
-    actually has (#354).
+    the required reference makes ordinary: no override book and nothing the
+    tenant declared as a default. Both halves come from production doors —
+    `a_plan` creates the book and then the plan, `PlanService.assign` puts the
+    customer on it — so what a test exercises is the route a tenant actually
+    has (#354).
 
-    The word that separates a price book from a cost one and the column that
-    points a rule at its container are both retired, and this file is one of
-    the counted ones; callers say what they mean.
+    ⚠ **AND IT IS THE ONLY WAY A BOOK IS SELECTED FOR A CUSTOMER AT ALL NOW
+    (#368).** This docstring used to say "no assignment" as one absence among
+    three; the record that assigned a book to a customer is deleted, so there
+    is no such thing to be absent.
     """
     plan = a_plan(tenant=tenant, key=plan_key)
     PlanService.assign(tenant, customer, plan)
@@ -128,47 +143,51 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, rate_card=book,
+        tenant=tenant, pricing_book=book,
         book_version_from=book.version, **fields)
 
 
 def cost_book(tenant, *, key="default", provider="", currency="usd"):
-    """A COST book with no rates in it, for a test that adds its own.
+    """A cost book with no rules in it, for a test that adds its own.
 
-    Here for the same reason `cost_rate_in_default_book` below is: the word that
-    separates a cost book from a price one is retired, slice 4 owns re-spelling
-    it, and the ledger caps how many files may still contain it. A test that
-    wanted an empty book to post rates into had to spell it — this file already
-    carries the word, so it spells it once and callers say what they mean.
+    It is `is_default=True` because that is what resolution selects: a cost
+    book nothing selects prices nothing, so a fixture handing back one would
+    be handing back a book whose rules can never be reached.
     """
-    return RateCard.objects.create(
-        tenant=tenant, card_type="cost", key=key, provider_key=provider,
+    return CostBook.objects.create(
+        tenant=tenant, key=key, provider_key=provider,
         currency=currency, is_default=True)
 
 
 def the_book_holding(rule):
-    """The book a rule lives in.
+    """The book a rule lives in, whichever kind it is.
 
-    A one-line reader, and it earns its place for the reason `cost_book` above
-    does: the column that points a rule at its container is retired, its ledger
-    entry is a ceiling on how many files may still spell it, and a test whose
-    subject is the book — publishing it, diffing it — needs the object rather
-    than the column name. This file already carries the word.
+    A one-line reader over `Rate.book`, kept because it reads as the question a
+    test is asking — *the book holding this rule* — where the property reads as
+    a column access. It answers `None` for a rule in no book, which is a state
+    this table has always had.
     """
-    return rule.rate_card
+    return rule.book
 
 
-def cost_rate_in_default_book(tenant, **fields):
-    """A COST Rate, without the caller having to name the discriminator.
+def cost_rate_in_default_book(tenant, *, provider="", event_type="",
+                              task_type="", subtask_type="", **fields):
+    """A COST rule, in the tenant's default cost book for its supplier.
 
-    The word that separates a cost rate from a price rate is retired and slice 4
-    owns re-spelling it (`pricing/models.py:50`), so the migration ledger caps
-    how many files may still contain it. That cap is a ceiling on SPREAD, not
-    only on what is left to fix — a new test module that names it puts the count
-    over its entry and the sweep fails. This file is already one of the counted
-    ones, so the word stays here and callers say what they mean.
+    ⚠ **THE PER-PROVIDER DEFAULT IS REAL ON THIS SIDE AND ONLY ON THIS SIDE**
+    (#368). A cost book is pinned to a supplier, so two calls naming different
+    providers get two books; `""` is the provider-agnostic bucket, which
+    resolution reads alongside the provider's own. There is no customer
+    parameter, because a supplier's price does not change because of who UBB's
+    tenant sells to and a cost book has no column to say otherwise.
     """
-    return rate_in_default_book(tenant, card_type="cost", **fields)
+    currency = fields.get("currency", tenant.default_currency or "usd")
+    book, _ = CostBook.objects.get_or_create(
+        tenant=tenant, provider_key=provider, currency=currency,
+        is_default=True, defaults={"key": f"cost-{provider or 'default'}"[:64]})
+    return _rule_in(book, provider=provider, event_type=event_type,
+                    task_type=task_type, subtask_type=subtask_type,
+                    customer=None, fields=fields)
 
 
 #: THE DOOR FOR A FIXTURE THAT NEEDS AN EVENT TO BILL A PARTICULAR AMOUNT
@@ -445,44 +464,47 @@ def the_cost_rate_is_repriced(tenant, *, to_micros, **fields):
     rather than the route that reaches it.
 
     It lives beside `cost_rate_in_default_book` for that helper's own reason:
-    selecting the rules to close names the discriminator that separates a cost
-    rule from a price one, and that word is retired with a ledger entry which is
-    a ceiling as well as a floor. This file is already one of the counted ones,
-    so the word stays here and callers say what they mean.
+    selecting the rules to close asks which books hold them.
 
-    ⚠ **THE SELECTION GOES THROUGH THE BOOK NOW (#367).** A rule carries no
-    kind of its own any more, so "the cost rules" is a statement about which
-    books hold them — which is what it always meant and what resolution has
-    always done.
+    ⚠ **AND THAT IS NOW A COLUMN RATHER THAN A JOIN THROUGH A WORD (#368).**
+    "The cost rules" used to mean *the rules in books whose kind column says
+    cost*; it means *the rules pointing at a cost book*, which is the same set
+    said by the schema instead of by a value. There is no word left to be
+    wrong about.
     """
-    Rate.objects.filter(tenant=tenant, rate_card__card_type="cost",
+    Rate.objects.filter(tenant=tenant, cost_book__isnull=False,
                         valid_to__isnull=True).update(valid_to=timezone.now())
     return cost_rate_in_default_book(tenant, rate_per_unit_micros=to_micros,
                                      **fields)
 
 
-def rate_in_the_providers_default_book(tenant, provider, **fields):
-    """A rule in the tenant's default book FOR ONE PROVIDER, pinning nothing.
+def cost_rule_in_the_providers_book(tenant, provider, **fields):
+    """A COST rule in the default book FOR ONE SUPPLIER, pinning nothing.
 
-    `rate_in_default_book` takes one `provider` and uses it twice — it selects
-    the book AND pins the rule's own selector — which is what almost every
-    fixture here wants. This separates the two, and there is exactly one
+    `cost_rate_in_default_book` takes one `provider` and uses it twice — it
+    selects the book AND pins the rule's own selector — which is what almost
+    every fixture here wants. This separates the two, and there is exactly one
     question that needs them separated: whether two rules in two DIFFERENT
     default books can be made equally specific. They can only be if neither
-    pins the provider, which `rate_in_default_book` cannot express.
+    pins the provider, which the other door cannot express.
 
-    The book discriminator is spelled here like every other book construction
-    in this file, so a caller asking about ranking never has to.
+    ⚠ **IT IS A COST FIXTURE BECAUSE TWO DEFAULT BOOKS IS NOW A COST-SIDE
+    FACT (#368).** It used to build two default PRICE books, one per provider.
+    A Pricing Book is pinned to no supplier and a tenant has exactly one
+    default, so that shape is unbuildable on the price side — not relaxed,
+    unstatable. The claim it exists for (an unbreakable tie falls to the
+    narrower book) is alive on the cost side, where a supplier's own default
+    book and the provider-agnostic one are both selected, in that order.
     """
-    book, _ = RateCard.objects.get_or_create(
-        tenant=tenant, card_type="price", provider_key=provider,
+    book, _ = CostBook.objects.get_or_create(
+        tenant=tenant, provider_key=provider,
         currency=fields.get("currency", tenant.default_currency or "usd"),
-        is_default=True, defaults={"key": provider[:64]})
+        is_default=True, defaults={"key": f"cost-{provider}"[:64]})
     if "measurement" not in fields:
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
-        tenant=tenant, rate_card=book,
+        tenant=tenant, cost_book=book,
         book_version_from=book.version, **fields)
 
 
@@ -539,29 +561,25 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
                                    currency="usd", **fields):
     """A price rule in a book resolution never reads (#356).
 
-    A book becomes readable in exactly four ways — it holds the customer's own
-    rules, their PLAN prices from it (#362), it is the tenant's default for the
-    event's provider, or a customer is assigned to it — and this is none of
-    them. It exists so that "there is no fallthrough between books" can be
-    asserted by
-    a rule that WOULD match the event on every selector and is still not the
-    answer, rather than by the absence of a rule, which proves nothing about
-    reachability.
+    A book becomes readable in exactly three ways — it holds the customer's
+    own rules, their PLAN prices from it (#362), or it is the tenant's default
+    — and this is none of them. It exists so that "there is no fallthrough
+    between books" can be asserted by a rule that WOULD match the event on
+    every selector and is still not the answer, rather than by the absence of a
+    rule, which proves nothing about reachability.
 
-    The discriminator that separates a price book from a cost one is retired and
-    its ledger entry is a ceiling on how many files may still spell it, so it is
-    spelled here — beside every other book construction in this file — and
-    callers say what they mean.
+    ⚠ **THERE WERE FOUR WAYS AND NOW THERE ARE THREE (#368).** A customer used
+    to reach a book by being ASSIGNED to it; that record is deleted, and the
+    Plan is what replaces it.
     """
-    book = RateCard.objects.create(
-        tenant=tenant, card_type="price", key=key, provider_key=provider,
-        currency=currency, is_default=False)
+    book = PricingBook.objects.create(
+        tenant=tenant, key=key, is_default=False)
     if "measurement" not in fields:
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     return Rate.objects.create(
         tenant=tenant, provider=provider, currency=currency,
-        rate_card=book, book_version_from=book.version, **fields)
+        pricing_book=book, book_version_from=book.version, **fields)
 
 
 def a_usage_event_subject(subject_id=None):
@@ -793,9 +811,25 @@ def the_state_before(migration):
         [tuple(node) for node in migration.dependencies])
 
 
+#: EVERY PRICING TABLE THAT HAS BEEN RENAMED, as (historical model key, live
+#: model). A replay reconstructs each one whose name has moved since the
+#: migration it is replaying.
+#:
+#: The container appears TWICE because the model was renamed as well as its
+#: table (#368): a migration whose from-state predates the split knows it under
+#: its old key, and one after knows it under the new one. Both resolve to the
+#: same live model, so the mapping is what a replay needs rather than a history
+#: it has to reason about.
+RENAMED_PRICING_TABLES = (
+    ("rate", "Rate"),
+    ("ratecard", "PricingBook"),
+    ("pricingbook", "PricingBook"),
+)
+
+
 @contextmanager
-def the_rate_table_as_this_migration_saw_it(migration):
-    """The rule's table, temporarily back under the name this migration knew.
+def the_pricing_tables_as_this_migration_saw_them(migration):
+    """The pricing tables, temporarily back under the names this migration knew.
 
     ⚠ **A TABLE RENAME BREAKS EVERY MIGRATION-REPLAY FIXTURE, AND IT LOOKS
     NOTHING LIKE A BREAKAGE (#367).** Replaying a migration means reconstructing
@@ -805,39 +839,56 @@ def the_rate_table_as_this_migration_saw_it(migration):
     louder rather than subtler: the historical model, and any DDL the migration
     itself spelled, address a relation that does not exist.
 
-    So the fixtures reconstruct the name for as long as they need it, exactly as
-    they already drop the checks and triggers that arrived later. PostgreSQL
-    runs DDL inside the transaction a test rolls back, and this puts the name
+    So the fixtures reconstruct the names for as long as they need them, exactly
+    as they already drop the checks and triggers that arrived later. PostgreSQL
+    runs DDL inside the transaction a test rolls back, and this puts the names
     back on the way out regardless, so nothing here outlives the test and no
-    other test sees the table under the old name.
+    other test sees a table under an old name.
 
-    **THE NAME COMES OFF THE MIGRATION'S OWN FROM-STATE**, never off a literal:
-    no replay site should have to know which commit renamed the table, and a
-    fixture that carried the name would need an edit per rename. A no-op where
-    that name is already the live one, so a caller does not have to know which
+    **THE NAMES COME OFF THE MIGRATION'S OWN FROM-STATE**, never off a literal:
+    no replay site should have to know which commit renamed which table, and a
+    fixture that carried a name would need an edit per rename. A no-op for any
+    table already under its live name, so a caller does not have to know which
     side of a rename its migration sits on either.
+
+    ⚠ **IT COVERS MORE THAN ONE TABLE SINCE #368**, which renamed the container
+    as well. The singular form it replaces was correct for exactly one rename
+    and would have gone quietly wrong at the second: the rule's table came back
+    under its old name, the container's did not, and the replay failed on a
+    relation nobody had thought about.
     """
     before = the_state_before(migration)
-    name = before.models[migration.app_label, "rate"].options["db_table"]
-    live = Rate._meta.db_table
-    if live == name:
+    renames = []
+    for key, model_name in RENAMED_PRICING_TABLES:
+        state = before.models.get((migration.app_label, key))
+        if state is None:
+            continue
+        was = state.options.get("db_table")
+        live = django_apps.get_model(migration.app_label,
+                                     model_name)._meta.db_table
+        if was and was != live and (live, was) not in renames:
+            renames.append((live, was))
+    if not renames:
         yield
         return
     quote = connection.ops.quote_name
     with connection.cursor() as cursor:
-        cursor.execute(f"ALTER TABLE {quote(live)} RENAME TO {quote(name)}")
+        for live, was in renames:
+            cursor.execute(f"ALTER TABLE {quote(live)} RENAME TO {quote(was)}")
     try:
         yield
     finally:
         with connection.cursor() as cursor:
-            cursor.execute(f"ALTER TABLE {quote(name)} RENAME TO {quote(live)}")
+            for live, was in renames:
+                cursor.execute(
+                    f"ALTER TABLE {quote(was)} RENAME TO {quote(live)}")
 
 
 def reconcile_the_rate_table_with(model):
     """Make the live table accept a historical model's writes.
 
-    The mirror image of `the_rate_table_under`: that one restores a NAME, this
-    one restores a SHAPE. Three separate reconstructions, and each is a rule
+    The mirror image of `the_pricing_tables_as_this_migration_saw_them`: that
+    one restores NAMES, this one restores a SHAPE. Three separate reconstructions, and each is a rule
     about what the table being replayed actually looked like rather than a
     convenience.
 
@@ -851,6 +902,14 @@ def reconcile_the_rate_table_with(model):
       failure the moment one is not. ⚠ A later RENAME is what makes this bite
       and it looks nothing like one (#366): the loop above helpfully re-adds
       the OLD spelling while the new column is left out of the INSERT.
+    * **⚠ The INDEX a re-added column collides with (#368).** Postgres keeps an
+      index's name across `ALTER TABLE ... RENAME COLUMN`, so a column renamed
+      after the migration being replayed leaves its index under the OLD
+      column's generated name — and re-adding that column then asks Django to
+      create an index under a name the table already has. The failure reads as
+      `relation "..." already exists` about an index nobody in the test
+      mentioned, which looks like anything except a rename. The stale name is
+      dropped first; this all runs inside the transaction a test rolls back.
     * **The rules that arrived afterwards.** The check that makes a rule name
       its quantity exactly once, and the trigger that refuses a rule
       referencing no declaration, both describe the world AFTER the conversions
@@ -864,25 +923,88 @@ def reconcile_the_rate_table_with(model):
     Call it INSIDE `the_rate_table_under`, because it addresses the table by the
     historical model's own `db_table`.
     """
+    table = restore_the_shape_of(model)
+    quote = connection.ops.quote_name
+    with connection.cursor() as cursor:
+        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
+                       f"{NAMES_ONE_QUANTITY_CHECK}")
+        cursor.execute(f"DROP TRIGGER IF EXISTS trg_rate_names_a_declaration "
+                       f"ON {quote(table)}")
+
+
+def restore_the_shape_of(model):
+    """Make the live database accept a historical model's writes, columns only.
+
+    The generic half of `reconcile_the_rate_table_with`, split out because a
+    replay now has more than one table to reconstruct (#368): the container
+    split into two entities, so a migration that ran before the split addresses
+    a table whose columns have since gone, and one that ran before the
+    assignment record was deleted addresses a table that has since gone
+    entirely.
+
+    Three reconstructions, each a rule about what the table being replayed
+    actually looked like:
+
+    * **A table the historical model has and the database has lost.** Created
+      outright — there is nothing to rename it from, which is the difference
+      between a deleted table and a renamed one.
+    * **Columns the historical model has and the table has lost**, with the
+      stale index a renamed column leaves behind dropped first (see the
+      caller's docstring).
+    * **`NOT NULL` on columns the historical model has never heard of**, which
+      are simply absent from its INSERTs.
+
+    Returns the table it worked on. PostgreSQL runs DDL inside the transaction
+    a test rolls back, so nothing here outlives the test.
+    """
     table = model._meta.db_table
     quote = connection.ops.quote_name
     with connection.cursor() as cursor:
+        if table not in connection.introspection.table_names(cursor):
+            with connection.schema_editor() as editor:
+                editor.create_model(model)
+            return table
         live = {column.name: column for column in
                 connection.introspection.get_table_description(cursor, table)}
     with connection.schema_editor() as editor:
         for field in model._meta.local_fields:
-            if field.column not in live:
-                editor.add_field(model, field)
+            if field.column in live:
+                continue
+            stale = editor._create_index_name(table, [field.column], suffix="")
+            with connection.cursor() as cursor:
+                cursor.execute(f"DROP INDEX IF EXISTS {quote(stale)}")
+            editor.add_field(model, field)
     known = {field.column for field in model._meta.local_fields}
+    declared = {c.name for c in model._meta.constraints}
     with connection.cursor() as cursor:
         for name, column in live.items():
             if name not in known and not column.null_ok:
                 cursor.execute(f"ALTER TABLE {quote(table)} "
                                f"ALTER COLUMN {quote(name)} DROP NOT NULL")
-        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
-                       f"{NAMES_ONE_QUANTITY_CHECK}")
-        cursor.execute(f"DROP TRIGGER IF EXISTS trg_rate_names_a_declaration "
-                       f"ON {quote(table)}")
+        # UNIQUENESS RULES THAT ARRIVED AFTER THIS MIGRATION (#368). A key is
+        # part of the world AFTER the commit that declared it, and the rows a
+        # replay writes are from before: 0012 groups a tenant into one default
+        # book per provider and currency, which the single-default key the
+        # split introduced refuses. Dropped by asking the HISTORICAL model what
+        # it declares rather than by naming the newcomers, so no future key
+        # needs an edit here.
+        # ⚠ Read from `pg_index`, not `pg_constraint`: Django implements a
+        # `UniqueConstraint` carrying a `condition` as a partial unique INDEX,
+        # which has no `pg_constraint` row at all — so a query for constraints
+        # alone silently misses every conditional key, which is most of them
+        # here.
+        cursor.execute(
+            "SELECT c.relname FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "WHERE i.indrelid = %s::regclass AND i.indisunique "
+            "AND NOT i.indisprimary", [table])
+        for (name,) in cursor.fetchall():
+            if name in declared:
+                continue
+            cursor.execute(f"ALTER TABLE {quote(table)} "
+                           f"DROP CONSTRAINT IF EXISTS {quote(name)}")
+            cursor.execute(f"DROP INDEX IF EXISTS {quote(name)}")
+    return table
 
 
 def database_rules_guarding(table):

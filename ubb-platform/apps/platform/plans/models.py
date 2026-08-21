@@ -66,10 +66,15 @@ class Plan(BaseModel):
     # ⚠ THE KERNEL VALIDATES NOTHING BEYOND THIS FOREIGN KEY. ADR-001 forbids
     # `apps/platform/**` importing a product, so the reference is declared by
     # app label and the database is what refuses a book that does not exist.
-    # It names the container under its CURRENT internal name and travels with
-    # ticket 21's `RenameModel`, which rewrites the reference in migration
-    # state; this line is one string edit there and no import anywhere breaks.
-    pricing_book = models.ForeignKey("pricing.RateCard", on_delete=models.PROTECT,
+    # It names the entity under the name that entity now has (#368). The
+    # container split into a Pricing Book and a cost book, and a plan prices
+    # its customers, so this reference follows the PRICE half by construction
+    # — there is no longer a kind word for it to be wrong about. The rename
+    # travelled in the product's own `RenameModel`, which rewrote the
+    # reference in migration state, so this was one string edit and no import
+    # anywhere broke.
+    pricing_book = models.ForeignKey("pricing.PricingBook",
+                                     on_delete=models.PROTECT,
                                      related_name="plans")
 
     # Stripe-realized axes. 0 means "this axis is absent", not "free" — an

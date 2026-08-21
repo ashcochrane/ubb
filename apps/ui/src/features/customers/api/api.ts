@@ -20,11 +20,8 @@ import { unwrap } from "@/api/problem";
 import type { DateRange } from "@/lib/date-range";
 
 import {
-  narrowAssignResult,
   narrowPastLimitReport,
-  type AssignRateCardResult,
   type BalanceResponse,
-  type BookOut,
   type BudgetConfigIn,
   type BudgetConfigOut,
   type BudgetStatusOut,
@@ -396,27 +393,10 @@ export async function deleteCustomerMarkup(customerId: string): Promise<StatusRe
   );
 }
 
-/** First page of PRICE books (limit 100) — enough for an assignment select. */
-export async function listPriceBooks(): Promise<CursorPage<BookOut>> {
-  return unwrap(
-    await meteringApi.GET("/pricing/rate-cards", {
-      params: { query: { card_type: "price", limit: 100 } },
-    }),
-  );
-}
-
-export async function assignRateCard(
-  customerId: string,
-  rateCardId: string,
-): Promise<AssignRateCardResult> {
-  const raw = unwrap(
-    await meteringApi.POST("/pricing/customers/{customer_id}/rate-card", {
-      params: { path: { customer_id: customerId } },
-      body: { rate_card_id: rateCardId },
-    }),
-  );
-  return narrowAssignResult(raw);
-}
+// ⚠ NO BOOK-ASSIGNMENT READ OR WRITE (#368). The record that assigned a book
+// to a customer is deleted outright, with its route: a customer reaches a book
+// through their PLAN, which is where their pricing already resolved from, or
+// through a book that carries them. There is nothing left to pick from a list.
 
 // ---------------------------------------------------------------------------
 // Subscriptions (reads key on the UUID; lifecycle verbs key on external_id)

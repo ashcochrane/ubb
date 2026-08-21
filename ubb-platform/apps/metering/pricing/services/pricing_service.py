@@ -4,7 +4,7 @@ from typing import Any, NamedTuple, Optional
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
+from apps.metering.pricing.models import CostBook, PricingBook, Rate
 from apps.metering.pricing.receipts import (
     MARKUP_TERMS_KEY, ReceiptSubject, Resolution, build_receipt,
 )
@@ -307,7 +307,8 @@ class Costing(NamedTuple):
 
 class PricingService:
     @staticmethod
-    def _matching_rules_across(books, selectors, measurement_key, currency, as_of):
+    def _matching_rules_across(books, book_column, selectors, measurement_key,
+                               currency, as_of):
         """Every rule in the books in play that matches this event, unranked.
 
         One matching semantic for all ten selectors (design D3): a rate's ""
@@ -327,16 +328,26 @@ class PricingService:
         **ONE QUERY FOR ALL OF THEM, WHICH IS FEWER THAN THE WALK IT REPLACES.**
         Ranking across books needs every candidate, so a query per book would
         have made the hottest write path in the system pay two or three where it
-        used to short-circuit at one. `rate_card__in` asks once instead, and the
+        used to short-circuit at one. One `__in` asks once instead, and the
         source each rule carries is read back off the book it belongs to.
+
+        ⚠ **`book_column` IS WHICH POINTER TO FOLLOW, NOT WHICH KIND TO ASK
+        FOR (#368).** A rule points at a Pricing Book or at a cost book, two
+        separate tables, so a caller resolving prices hands `"pricing_book"`
+        and a caller resolving costs hands `"cost_book"` — and every book in
+        `books` is already of that kind, because selection is what chose them.
+        This is not the discriminator coming back: the old code asked ONE table
+        twice with a different value each time, and there was a value on a row
+        that could be wrong. There is no value here to be wrong about; there
+        are two columns, and a caller reads the one it means.
 
         ⚠ **AND THE RESULT IS RETURNED IN BOOK-SELECTION ORDER, NOT IN ROW
         ORDER.** One query means the database decides what order the rules come
         back in, and the ranking above is a STABLE sort — so a tie it cannot
         break would silently be decided by the query plan, differently on
         different days. Ordering the candidates by the book they came from
-        restores the one answer a tenant can predict: `_selected_books` puts
-        the narrowest book first.
+        restores the one answer a tenant can predict: the selection functions
+        put the narrowest book first.
 
         **THE MATCH IS STILL ON THE NAME, THROUGH THE REFERENCE (#326).** The
         rate holds the declared record rather than a spelling of it, and this
@@ -354,24 +365,28 @@ class PricingService:
         and prices nothing."""
         source_of = {book.id: source for source, book in books}
         position_of = {book.id: index for index, (_, book) in enumerate(books)}
+        book_id_attribute = f"{book_column}_id"
         qs = Rate.objects.filter(
-            rate_card__in=list(source_of), measurement__code=measurement_key,
+            measurement__code=measurement_key,
             currency=currency, valid_from__lte=as_of,
+            **{f"{book_column}__in": list(source_of)},
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of))
         for name in Rate.SELECTORS:
             qs = qs.filter(Q(**{name: selectors.get(name) or ""}) | Q(**{name: ""}))
-        return sorted(((rule, source_of[rule.rate_card_id]) for rule in qs),
-                      key=lambda pair: position_of[pair[0].rate_card_id])
+        return sorted(((rule, source_of[getattr(rule, book_id_attribute)])
+                       for rule in qs),
+                      key=lambda pair: position_of[
+                          getattr(pair[0], book_id_attribute)])
 
     @staticmethod
-    def _override_book(tenant, customer, card_type, currency):
+    def _override_book(tenant, customer):
         """THE BOOK HOLDING THIS CUSTOMER'S OWN RULES, IF THEY HAVE ONE (#361).
 
         A tenant honouring a negotiated deal gives one customer their own
         pricing rules, and this is where they live: a Pricing Book carrying
         that customer, whose every rule is one of that customer's own. There is
-        at most one per currency, held by the constraint named on the model
-        (`RateCard.Meta.constraints`).
+        at most one, held by the constraint named on the model
+        (`PricingBook.Meta.constraints`).
 
         **NOT A SUBSTITUTE FOR A BOOK, AND #362 IS WHERE THAT BITES.** An
         override is a rule at a rung *inside* resolution; it is not a way for a
@@ -380,35 +395,32 @@ class PricingService:
         nothing else — a partial catalogue, not a complete one — and #362's
         required `Plan.pricing_book` is what makes that state unreachable.
 
-        The cost side has no such thing and asks anyway rather than being
-        special-cased at the call site: a supplier's price does not change
-        because of who UBB's tenant sells to, so the discriminator answers
-        `None` here for the same reason the assignment below does.
+        ⚠ **THE COST SIDE DOES NOT ASK THIS QUESTION AT ALL ANY MORE (#368).**
+        It used to, and answered `None` from a discriminator check on the first
+        line — a branch inside a shared function. A cost book has no customer
+        column, so a supplier's prices cannot acquire a customer and there is
+        nothing for the cost path to ask: `_selected_cost_books` simply does
+        not call this. The special case is gone rather than moved.
         """
-        if customer is None or card_type != "price":
+        if customer is None:
             return None
-        return RateCard.objects.filter(
-            customer=customer, tenant=tenant, currency=currency,
-            card_type="price").first()
+        return PricingBook.objects.filter(
+            customer=customer, tenant=tenant).first()
 
     @staticmethod
-    def _assigned_book(tenant, customer, card_type, currency):
-        if customer is None or card_type != "price":
-            return None
-        a = RateCardAssignment.objects.filter(
-            tenant=tenant, customer=customer, currency=currency,
-            rate_card__card_type="price").select_related("rate_card").first()
-        return a.rate_card if a else None
-
-    @staticmethod
-    def _the_plans_book(tenant, customer, card_type, currency):
+    def _the_plans_book(tenant, customer):
         """THE BOOK THIS CUSTOMER'S PLAN PRICES THEM FROM (#362, #151 §7.2).
 
         Assigning a plan is all it takes to price a customer: the plan names a
         Pricing Book, the reference is `NOT NULL`, and this is where that
-        becomes a price. It is what lets ticket 21 delete the record that
-        assigns a book to a customer outright, because by then every customer
-        on a plan already reaches a book through it.
+        becomes a price.
+
+        ⚠ **AND IT IS NOW THE ONLY WAY A BOOK IS SELECTED *FOR* A CUSTOMER
+        (#368).** The record that assigned a book to a customer directly is
+        deleted in the same commit as this sentence. #362 said this rung is
+        what made that deletion possible; this is that deletion, and the rung
+        below it in the old code — `_assigned_book` — is gone rather than
+        deprecated.
 
         **THE READ CROSSES ADR-001's `queries.py` CHANNEL, AND METERING NEVER
         IMPORTS THE PLAN.** The plan catalog is the kernel's; the contract
@@ -418,53 +430,64 @@ class PricingService:
 
         **`FROM_THE_SELECTED_BOOK`, NOT THE CUSTOMER'S OWN RUNG, AND THE
         DIFFERENCE IS LOAD-BEARING.** A plan's book is a catalogue shared by
-        every customer on the plan — the two books above hold rules written for
-        ONE customer. Ranking it at the customer's-own rung would put it level
-        with an override, where `ladder_rank`'s last key is `valid_from`: a
-        tenant repricing the plan's catalogue would then out-rank a negotiated
-        deal agreed before it, silently deleting the override #361 exists to
-        honour. At this rung an override beats it on SOURCE at every
-        specificity, whenever it was written.
+        every customer on the plan — the override book above holds rules
+        written for ONE customer. Ranking it at the customer's-own rung would
+        put it level with an override, where `ladder_rank`'s last key is
+        `valid_from`: a tenant repricing the plan's catalogue would then
+        out-rank a negotiated deal agreed before it, silently deleting the
+        override #361 exists to honour. At this rung an override beats it on
+        SOURCE at every specificity, whenever it was written.
 
-        It is appended ahead of the tenant's default books, which is the
+        It is appended ahead of the tenant's default book, which is the
         narrowest-first order the list has: a plan's book is a statement about
         the customers on that plan, a default is the tenant's answer for
         everybody.
         """
-        if customer is None or card_type != "price":
+        if customer is None:
             return None
         book_id = get_pricing_book_for_customer(tenant.id, customer.id)
         if book_id is None:
             return None
-        return RateCard.objects.filter(
-            id=book_id, tenant=tenant, currency=currency,
-            card_type="price").first()
+        return PricingBook.objects.filter(id=book_id, tenant=tenant).first()
 
     @staticmethod
-    def _default_book(tenant, card_type, provider, currency):
-        return RateCard.objects.filter(
-            tenant=tenant, card_type=card_type, provider_key=provider or "",
+    def _default_pricing_book(tenant):
+        """THE TENANT'S ANSWER FOR EVERYBODY — one book, not one per provider.
+
+        ⚠ **THE PROVIDER LEFT THIS LOOKUP WITH THE COLUMN (#368).** A Pricing
+        Book is pinned to no provider, because a tenant's price for a unit of
+        work does not change because they switched supplier — so the
+        provider's-own-default / provider-agnostic-default pair that
+        `_selected_cost_books` still has is not a pair here. There is one
+        default Pricing Book per tenant and `uq_pricing_book_one_default` is
+        what says so. A rule that wants to price one provider's work
+        differently still pins `provider` as a SELECTOR, which is where that
+        distinction belongs: it is a property of the rule, not of the book.
+        """
+        return PricingBook.objects.filter(tenant=tenant, is_default=True).first()
+
+    @staticmethod
+    def _default_cost_book(tenant, provider, currency):
+        return CostBook.objects.filter(
+            tenant=tenant, provider_key=provider or "",
             currency=currency, is_default=True).first()
 
     @staticmethod
-    def _selected_books(tenant, customer, card_type, provider, currency,
-                        the_customers_own=True):
-        """WHICH BOOKS THIS SUBJECT'S PRICE MAY BE RESOLVED FROM, chosen once.
+    def _selected_pricing_books(tenant, customer, the_customers_own=True):
+        """WHICH PRICING BOOKS A CUSTOMER'S PRICE MAY BE RESOLVED FROM.
 
         Selection and resolution are two steps and this is the first (#147
-        §5.3). A book becomes readable for one event in exactly four ways: it
-        holds the customer's own rules, the customer's PLAN prices from it
-        (#362), it is the tenant's default for the event's provider, or the
-        customer is assigned to it. Anything else — a book nobody is assigned
-        to, another customer's book, the default book of a provider this event
-        is not from — is unreachable, and no rule inside it can be the answer
-        however well it matches.
+        §5.3). A Pricing Book becomes readable for one event in exactly three
+        ways: it holds the customer's own rules, the customer's PLAN prices
+        from it (#362), or it is the tenant's default. Anything else — a book
+        nobody is on, another customer's book — is unreachable, and no rule
+        inside it can be the answer however well it matches.
 
-        ⚠ **THE ASSIGNMENT RECORD IS ON ITS WAY OUT AND THE PLAN'S BOOK IS WHAT
-        REPLACES IT.** Ticket 21 deletes the assignment, and it can only do so
-        because every customer on a plan already reaches a book here without
-        it. The two are NOT at the same source, and that is a judgement rather
-        than an oversight: the reasoning is on `_the_plans_book`.
+        ⚠ **THERE WERE FOUR WAYS AND NOW THERE ARE THREE (#368).** The fourth
+        was a record assigning a book to a customer, and it is deleted: every
+        customer on a plan already reaches a book through `_the_plans_book`,
+        and #362's required reference is what makes "on a plan" the ordinary
+        state rather than a lucky one.
 
         ⚠ **`the_customers_own=False` ANSWERS A DIFFERENT QUESTION AND ONLY ONE
         CALLER ASKS IT (#361):** *what would this customer be charged if they
@@ -474,76 +497,73 @@ class PricingService:
         default, so an override cannot be skipped by a caller who forgot an
         argument.
 
+        Returns `(source, book)` pairs. `ladder_rank` is what orders the rules
+        they hold — but the ORDER of this list is load-bearing all the same,
+        and it is the narrowest book first: two rules a tenant made equally
+        specific from the same source are separated by nothing else, and the
+        stable sort over that tie keeps whichever book came back first here.
+
+        ⚠ **EACH BOOK APPEARS EXACTLY ONCE, AND THE FIRST WAY IT WAS REACHED IS
+        THE ONE THAT COUNTS.** A plan can name the very book that is also the
+        tenant's default, so the same rows are reachable twice; a second entry
+        for it would let the ranking read one source's rules as another's.
+        """
+        books, seen = [], set()
+        the_customers = (PricingService._override_book(tenant, customer)
+                         if the_customers_own else None)
+        if the_customers is not None:
+            books.append((FROM_THE_CUSTOMERS_OWN_RULES, the_customers))
+            seen.add(the_customers.id)
+        # THE PLAN'S BOOK, AHEAD OF THE TENANT'S DEFAULT AND AT ITS SOURCE
+        # (#362). A plan's book is a catalogue the tenant chose for the
+        # customers on that plan, so it is the selected book rather than one of
+        # the customer's own — see `_the_plans_book` for why that rung matters
+        # rather than being a label — and it goes first because it is the
+        # narrower statement: a default is the tenant's answer for everybody.
+        the_plans = PricingService._the_plans_book(tenant, customer)
+        if the_plans is not None and the_plans.id not in seen:
+            books.append((FROM_THE_SELECTED_BOOK, the_plans))
+            seen.add(the_plans.id)
+        default = PricingService._default_pricing_book(tenant)
+        if default is not None and default.id not in seen:
+            books.append((FROM_THE_SELECTED_BOOK, default))
+        return books
+
+    @staticmethod
+    def _selected_cost_books(tenant, provider, currency):
+        """WHICH COST BOOKS THIS EVENT'S SUPPLIER COST MAY BE RESOLVED FROM.
+
+        A cost book is the tenant's record of what one supplier charges, so
+        selection here asks about the supplier and the currency and about
+        nothing else — no customer, no plan, no override. A supplier's price
+        does not change because of who UBB's tenant sells to.
+
         **THE PROVIDER-AGNOSTIC DEFAULT IS SELECTION, NOT A THIRD TIER.** A ""
-        `provider_key` book is the tenant's provider-agnostic default (D3's
+        `provider_key` book is the tenant's provider-agnostic cost book (D3's
         headline fix applied at the book layer), so it is in play alongside the
         provider's own default rather than after it. It used to be reached by
-        falling through when the provider's book held no matching rule, which is
-        the cross-book walk #147 §5.3 deletes; ranking both books' rules
+        falling through when the provider's book held no matching rule, which
+        is the cross-book walk #147 §5.3 deletes; ranking both books' rules
         together answers the same events the same way for a better reason,
         because a rule pinning the provider outranks one that does not on
         SPECIFICITY.
 
-        Returns `(source, book)` pairs. `ladder_rank` is what orders the rules
-        they hold — but the ORDER of this list is load-bearing all the same, and
-        it is the narrowest book first: two rules a tenant made equally specific
-        from the same source are separated by nothing else, and the stable sort
-        over that tie keeps whichever book came back first here. The provider's
-        own default book is therefore ahead of the provider-agnostic one, which
-        is the answer the tiered walk used to give and the only one a tenant
-        could predict.
-
-        ⚠ **EACH BOOK APPEARS EXACTLY ONCE, AND THE FIRST WAY IT WAS REACHED IS
-        THE ONE THAT COUNTS.** A customer can be assigned to the very book that
-        is also the tenant's default, so the same rows are reachable twice; a
-        second entry for it would let the ranking read the customer's own rules
-        as the tenant's, silently demoting every override such a tenant wrote.
-        The customer's own books are appended first, so keeping the first entry
-        keeps the higher source.
+        A LIST AND NOT A SET, because the order is load-bearing: a set's
+        iteration order would decide ties between the provider's own book and
+        the provider-agnostic one, differently between processes.
         """
         books, seen = [], set()
-        # THE OVERRIDE BOOK IS APPENDED AHEAD OF THE ASSIGNMENT, AND BOTH CARRY
-        # THE SAME SOURCE (#361). They are one rung — *the customer's own
-        # rules* — reached two ways while the assignment record still exists,
-        # and the ORDER between them decides only a tie that specificity and
-        # `valid_from` both failed to break. The override book goes first
-        # because it is the narrower statement of the two: it holds rules
-        # written FOR this customer, where an assignment merely points them at
-        # a book.
-        for the_customers in (PricingService._override_book(
-                                  tenant, customer, card_type, currency)
-                              if the_customers_own else None,
-                              PricingService._assigned_book(
-                                  tenant, customer, card_type, currency)):
-            if the_customers is not None and the_customers.id not in seen:
-                books.append((FROM_THE_CUSTOMERS_OWN_RULES, the_customers))
-                seen.add(the_customers.id)
-        # THE PLAN'S BOOK, AHEAD OF THE TENANT'S DEFAULTS AND AT THEIR SOURCE
-        # (#362). A plan's book is a catalogue the tenant chose for the
-        # customers on that plan, so it is the selected book rather than one of
-        # the customer's own — see `_the_plans_book` for why that rung matters
-        # rather than being a label — and it goes first among them because it
-        # is the narrower statement: a default is the tenant's answer for
-        # everybody.
-        the_plans = PricingService._the_plans_book(
-            tenant, customer, card_type, currency)
-        if the_plans is not None and the_plans.id not in seen:
-            books.append((FROM_THE_SELECTED_BOOK, the_plans))
-            seen.add(the_plans.id)
-        # A LIST AND NOT A SET, because the order above is load-bearing: a set's
-        # iteration order would decide ties between the provider's own default
-        # book and the provider-agnostic one, differently between processes.
         for provider_key in ([provider, ""] if provider else [""]):
-            default = PricingService._default_book(
-                tenant, card_type, provider_key, currency)
+            default = PricingService._default_cost_book(
+                tenant, provider_key, currency)
             if default is not None and default.id not in seen:
                 books.append((FROM_THE_SELECTED_BOOK, default))
                 seen.add(default.id)
         return books
 
     @staticmethod
-    def _resolve_card(tenant, customer, card_type, selectors, measurement_key,
-                      currency, as_of, books=None):
+    def _rank_and_take_one(books, book_column, selectors, measurement_key,
+                           currency, as_of):
         """THE LADDER: one ranking over every rule in every book in play.
 
         There is no fallthrough between books. The books are selected first,
@@ -557,6 +577,26 @@ class PricingService:
         in; two rules a tenant made identically specific, from one source, on
         one instant are not a distinction the ladder claims to draw.
 
+        ⚠ **ONE LADDER, TWO CALLERS, AND NO `card_type` ANYWHERE IN IT (#368).**
+        The ranking is genuinely shared — specificity before source, no
+        fallthrough, the as-of instant — and it always was. What used to be
+        shared and should not have been is the SELECTION: one function asked
+        one table twice with a different discriminator value each time. Its two
+        halves are now `_selected_pricing_books` and `_selected_cost_books`,
+        which read different tables, and this takes whichever they chose.
+        """
+        candidates = PricingService._matching_rules_across(
+            books, book_column, selectors, measurement_key, currency, as_of)
+        if not candidates:
+            return None
+        candidates.sort(key=lambda pair: ladder_rank(*pair), reverse=True)
+        return candidates[0][0]
+
+    @staticmethod
+    def resolve_the_price_rule(tenant, customer, selectors, measurement_key,
+                               currency, as_of, books=None):
+        """The rule that says what this quantity SELLS FOR, or `None`.
+
         ``books`` lets a caller resolving MANY quantities for one event select
         them once instead of once per quantity — which is what
         :func:`resolve_price` does, and the reason selection and ranking are two
@@ -565,15 +605,27 @@ class PricingService:
         an override.
         """
         if books is None:
-            books = PricingService._selected_books(
-                tenant, customer, card_type,
-                selectors.get("provider") or "", currency)
-        candidates = PricingService._matching_rules_across(
-            books, selectors, measurement_key, currency, as_of)
-        if not candidates:
-            return None
-        candidates.sort(key=lambda pair: ladder_rank(*pair), reverse=True)
-        return candidates[0][0]
+            books = PricingService._selected_pricing_books(tenant, customer)
+        return PricingService._rank_and_take_one(
+            books, PricingBook.REFERENCE_COLUMN, selectors, measurement_key,
+            currency, as_of)
+
+    @staticmethod
+    def resolve_the_cost_rule(tenant, selectors, measurement_key, currency,
+                              as_of, books=None):
+        """The rule that says what this quantity COST, or `None`.
+
+        No customer parameter, and its absence is the statement: a cost book is
+        selected by supplier and currency, so who the tenant sells to cannot
+        reach this answer. The old shared resolver took a customer and threw it
+        away on the cost side, one `if` at a time.
+        """
+        if books is None:
+            books = PricingService._selected_cost_books(
+                tenant, selectors.get("provider") or "", currency)
+        return PricingService._rank_and_take_one(
+            books, CostBook.REFERENCE_COLUMN, selectors, measurement_key,
+            currency, as_of)
 
     @staticmethod
     def the_rule_a_customer_inherits(*, tenant, customer, selectors,
@@ -585,9 +637,9 @@ class PricingService:
         taken out of the selection, so a console can show the method and the
         current value it is about to replace.
 
-        **THE SAME LADDER, ONE RUNG SHORTER.** It is `_resolve_card` over the
-        books `_selected_books` returns without the customer's own, rather than
-        a second resolution written beside the first — so specificity before
+        **THE SAME LADDER, ONE RUNG SHORTER.** It is `resolve_the_price_rule`
+        over the books `_selected_pricing_books` returns without the customer's
+        own, rather than a second resolution written beside the first — so specificity before
         source, the absence of fallthrough between books and the as-of instant
         are all the ones that decide the real price, and the answer a tenant is
         shown cannot drift from the answer they are overriding.
@@ -597,25 +649,32 @@ class PricingService:
         rung, and a client creating an override there is starting from nothing
         rather than from a rule.
         """
-        return PricingService._resolve_card(
-            tenant, customer, "price", selectors, measurement_key, currency,
-            as_of,
-            books=PricingService._selected_books(
-                tenant, customer, "price", selectors.get("provider") or "",
-                currency, the_customers_own=False))
+        return PricingService.resolve_the_price_rule(
+            tenant, customer, selectors, measurement_key, currency, as_of,
+            books=PricingService._selected_pricing_books(
+                tenant, customer, the_customers_own=False))
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
                  caller_provider_cost,
-                 resolve_declaration, resolve_card, resolve_markup):
+                 resolve_declaration, resolve_the_cost_rule,
+                 resolve_the_price_rule, resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
-        returning the receipt. ``resolve_price`` is this spine under one card
-        resolver — ``resolve_card(card_type, measurement_key)``,
-        ``resolve_declaration()`` and ``resolve_markup()`` are the parameters —
-        and it is the only rider left since #239 deleted the accept-time
-        estimate that was the second. The parameterisation stays: it is what
-        kept the two in agreement by construction, and what a future second
-        rider would use rather than forking a pricing body.
+        returning the receipt. ``resolve_price`` is this spine under its four
+        parameters — ``resolve_the_cost_rule(measurement_key)``,
+        ``resolve_the_price_rule(measurement_key)``, ``resolve_declaration()``
+        and ``resolve_markup()`` — and it is the only rider left since #239
+        deleted the accept-time estimate that was the second. The
+        parameterisation stays: it is what kept the two in agreement by
+        construction, and what a future second rider would use rather than
+        forking a pricing body.
+
+        ⚠ **ONE RULE RESOLVER BECAME TWO, AND THAT IS THE SPLIT ARRIVING HERE
+        (#368).** The single ``resolve_card(card_type, measurement_key)``
+        parameter carried the kind word into the spine's own signature, so the
+        two branches below — which are *cost* and *price*, not two values of
+        one thing — read as one call made twice. They are two calls now, to
+        two resolvers over two tables, and the string is gone.
 
         **THIS IS WHERE A COSTING STATUS IS DECIDED, AND THE ONLY PLACE (#320).**
         Nothing raises here any more. An event UBB cannot cost is *recorded*
@@ -652,7 +711,7 @@ class PricingService:
 
         `effective_at` is a PARAMETER and no clock is read below it: this method
         resolves as of an instant the caller names, and everything
-        configuration-dependent arrives through `resolve_card` /
+        configuration-dependent arrives through the two rule resolvers and
         `resolve_declaration`.
 
         Always returns a Pricing Receipt — the whole record, validated at the
@@ -769,7 +828,7 @@ class PricingService:
             # where a gate goes red rather than quiet. The rename belongs to the
             # ticket that owns the word.
             for measurement_key, units_val in measurements.items():
-                card = resolve_card("cost", measurement_key)
+                card = resolve_the_cost_rule(measurement_key)
                 if card is None:
                     uncosted[measurement_key] = units_val
                     continue
@@ -805,7 +864,7 @@ class PricingService:
         resolved_markup, markup_basis = None, None
         price_total, matched = 0, []
         for measurement_key, units_val in sorted(measurements.items()):
-            card = resolve_card("price", measurement_key)
+            card = resolve_the_price_rule(measurement_key)
             if card is None:
                 continue
             matched.append(card)
@@ -1041,16 +1100,31 @@ def resolve_price(subject, as_of):
     # in the system. Nothing about the answer changes: which
     # books are in play is decided by the tenant, the customer, the event's
     # provider and the currency, and a single resolution holds all four fixed.
-    books_in_play = {}
+    # Two cells rather than one keyed store, because a key is a kind word and
+    # a kind word in this module is what the slice spent itself deleting. They
+    # start as `None` and not as `[]`: a selection that legitimately finds no
+    # book is a result worth keeping, and a falsy test would re-run it once per
+    # quantity — which is the whole cost this memo exists to avoid.
+    selected_cost_books = None
+    selected_pricing_books = None
 
-    def resolve_card(card_type, measurement_key):
-        if card_type not in books_in_play:
-            books_in_play[card_type] = PricingService._selected_books(
-                tenant, customer, card_type,
-                selectors.get("provider") or "", currency)
-        return PricingService._resolve_card(
-            tenant, customer, card_type, selectors, measurement_key,
-            currency, as_of, books=books_in_play[card_type])
+    def resolve_the_cost_rule(measurement_key):
+        nonlocal selected_cost_books
+        if selected_cost_books is None:
+            selected_cost_books = PricingService._selected_cost_books(
+                tenant, selectors.get("provider") or "", currency)
+        return PricingService.resolve_the_cost_rule(
+            tenant, selectors, measurement_key, currency, as_of,
+            books=selected_cost_books)
+
+    def resolve_the_price_rule(measurement_key):
+        nonlocal selected_pricing_books
+        if selected_pricing_books is None:
+            selected_pricing_books = PricingService._selected_pricing_books(
+                tenant, customer)
+        return PricingService.resolve_the_price_rule(
+            tenant, customer, selectors, measurement_key, currency, as_of,
+            books=selected_pricing_books)
 
     def resolve_declaration():
         """What this event's Event Type declares about cost, or None.
@@ -1080,7 +1154,9 @@ def resolve_price(subject, as_of):
         measurements=subject.measurements,
         caller_provider_cost=subject.caller_provider_cost,
         resolve_declaration=resolve_declaration,
-        resolve_card=resolve_card, resolve_markup=resolve_markup)
+        resolve_the_cost_rule=resolve_the_cost_rule,
+        resolve_the_price_rule=resolve_the_price_rule,
+        resolve_markup=resolve_markup)
 
 
 def costing_of(receipt):

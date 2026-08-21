@@ -175,7 +175,12 @@ exclusions:
     # name asks for and DELETING the kind word from it. The same worked example
     # in the other direction — a `RemoveField` names the column it removes, and
     # a deletion that cannot name its subject is not reviewable.
-    files: 229
+    # 229 → 230 in #368: one migration, splitting the container into a Pricing
+    # Book and a cost book. It names both retired words and cannot avoid
+    # either: `RemoveField` names the kind column it deletes, and `RenameModel`
+    # names the class it renames — the exclusion's worked example in both
+    # directions at once.
+    files: 230
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

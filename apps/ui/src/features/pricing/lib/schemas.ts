@@ -21,8 +21,13 @@ export const markupFormSchema = z.object({
 });
 export type MarkupFormValues = z.infer<typeof markupFormSchema>;
 
+// ⚠ NO `card_type` (#368). Which kind of book is being declared is which
+// ROUTE the dialog calls, not a field on one body: a Pricing Book names
+// neither a supplier nor a currency and a cost book names both, so one schema
+// covering both would describe a shape the API does not have. The dialog holds
+// the choice in its own state and hands each half the fields its own body
+// takes.
 export const bookFormSchema = z.object({
-  card_type: z.enum(["cost", "price"]),
   key: z
     .string()
     .trim()

@@ -31,7 +31,7 @@ class AuditRecord(BaseModel):
     tenant_id = models.UUIDField(db_index=True)
 
     # The registered action name (apps.platform.audit.actions). Indexed for
-    # "show me every rate_card.published"-style filters.
+    # "show me every pricing_book_publish.published"-style filters.
     action = models.CharField(max_length=100, db_index=True)
 
     # The actor snapshot, denormalised so history survives the principal being

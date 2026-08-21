@@ -8,37 +8,34 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from typing import cast
 
 
 
 
 
 
-T = TypeVar("T", bound="BookOut")
+T = TypeVar("T", bound="PricingBookOut")
 
 
 
 @_attrs_define
-class BookOut:
+class PricingBookOut:
     """ 
         Attributes:
-            card_type (str):
-            currency (str):
+            customer_id (None | str):
             id (str):
             is_default (bool):
             key (str):
             name (str):
-            provider_key (str):
             version (int):
      """
 
-    card_type: str
-    currency: str
+    customer_id: None | str
     id: str
     is_default: bool
     key: str
     name: str
-    provider_key: str
     version: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -47,9 +44,8 @@ class BookOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        card_type = self.card_type
-
-        currency = self.currency
+        customer_id: None | str
+        customer_id = self.customer_id
 
         id = self.id
 
@@ -59,21 +55,17 @@ class BookOut:
 
         name = self.name
 
-        provider_key = self.provider_key
-
         version = self.version
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "card_type": card_type,
-            "currency": currency,
+            "customer_id": customer_id,
             "id": id,
             "is_default": is_default,
             "key": key,
             "name": name,
-            "provider_key": provider_key,
             "version": version,
         })
 
@@ -84,9 +76,13 @@ class BookOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        card_type = d.pop("card_type")
+        def _parse_customer_id(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
 
-        currency = d.pop("currency")
+        customer_id = _parse_customer_id(d.pop("customer_id"))
+
 
         id = d.pop("id")
 
@@ -96,24 +92,20 @@ class BookOut:
 
         name = d.pop("name")
 
-        provider_key = d.pop("provider_key")
-
         version = d.pop("version")
 
-        book_out = cls(
-            card_type=card_type,
-            currency=currency,
+        pricing_book_out = cls(
+            customer_id=customer_id,
             id=id,
             is_default=is_default,
             key=key,
             name=name,
-            provider_key=provider_key,
             version=version,
         )
 
 
-        book_out.additional_properties = d
-        return book_out
+        pricing_book_out.additional_properties = d
+        return pricing_book_out
 
     @property
     def additional_keys(self) -> list[str]:

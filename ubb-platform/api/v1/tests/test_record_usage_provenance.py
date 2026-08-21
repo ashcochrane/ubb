@@ -6,7 +6,7 @@ from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
-from apps.metering.pricing.tests._helpers import rate_in_default_book
+from apps.metering.pricing.tests._helpers import cost_rate_in_default_book, rate_in_default_book
 from core.vocabulary import COSTING_METHOD_CALCULATED
 
 
@@ -22,10 +22,7 @@ class RecordUsageProvenanceTest(TestCase):
         )
         # cost Rate: 5_000 micros per 1_000_000 input_tokens
         # => 1000 tokens => 1000 * 5_000 / 1_000_000 = 5 micros
-        rate_in_default_book(
-            self.tenant,
-            card_type="cost",
-            provider="openai",
+        cost_rate_in_default_book(self.tenant, provider="openai",
             event_type="chat",
             measurement_key="input_tokens",
             rate_per_unit_micros=5_000,

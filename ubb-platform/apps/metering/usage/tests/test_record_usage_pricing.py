@@ -8,7 +8,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import (
-    declares_a_markup, rate_in_default_book)
+    cost_rate_in_default_book, declares_a_markup, rate_in_default_book)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
@@ -29,7 +29,7 @@ class TestRecordUsagePricing:
 
     def test_priced_from_cost_card_when_no_caller_cost(self):
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+        cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         declares_a_markup(t)
         r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
@@ -54,7 +54,7 @@ class TestRecordUsagePricing:
         consequence and only one of them is this one.
         """
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+        cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         http = Client()
         _, raw_key = TenantApiKey.create_key(t, label="test")

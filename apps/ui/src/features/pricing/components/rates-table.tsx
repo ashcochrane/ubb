@@ -23,7 +23,7 @@ import { formatDate, formatMicros, formatPrice, formatShortDate } from "@/lib/fo
 import { pricingModelLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { useRates } from "../api/queries";
-import type { Book, Rate } from "../api/types";
+import type { AnyBook, Rate } from "../api/types";
 
 /**
  * A book's rules: active by default, optional full history, optional
@@ -35,7 +35,7 @@ import type { Book, Rate } from "../api/types";
  * feature around books, rules and publishes, and until then the way to change
  * a book is the publish dialog beside this table.
  */
-export function RatesTable({ book }: { book: Book }) {
+export function RatesTable({ book }: { book: AnyBook }) {
   const [includeHistory, setIncludeHistory] = React.useState(false);
   const [asOfLocal, setAsOfLocal] = React.useState("");
   const asOfIso = React.useMemo(() => {
@@ -133,7 +133,7 @@ export function RatesTable({ book }: { book: Book }) {
               </TableHeader>
               <TableBody>
                 {rates.rows.map((rate) => (
-                  <RateRow key={rate.id} rate={rate} currency={book.currency} />
+                  <RateRow key={rate.id} rate={rate} currency={rate.currency} />
                 ))}
               </TableBody>
             </Table>

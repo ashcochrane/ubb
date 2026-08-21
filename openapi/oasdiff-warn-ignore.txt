@@ -24,10 +24,15 @@
 # to the ten named selector columns — the publish request body too, not just the
 # response shapes covered in oasdiff-err-ignore.txt:
 #
-# ⚠ THE CREATE BODY'S TWO LINES ARE DELETED (#367). That route is gone and its
+# ⚠ THE CREATE BODY'S TWO LINES WERE DELETED (#367). That route is gone and its
 # removal subsumes every property-level break on it; an entry that suppresses
 # nothing fails this gate exactly as an unreviewed finding does.
-POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/dimensions`
+#
+# ⚠⚠ AND THE IMMEDIATE REPRICE BODY'S LINE GOES THE SAME WAY (#368). That route
+# is deleted too, with the last of the retired audit action names it wrote, so
+# this block records the rework and suppresses none of it: every change to a
+# book is a declared publish now, and the path removals are recorded once in
+# `oasdiff-err-ignore.txt`.
 # service_id/agent_id (magic-tag-lifted, never sendable) are retired in favor of
 # the declared dim1/dim2/dim3 selectors sent directly on the write contract:
 POST /api/v1/metering/usage removed the optional property `agent_id` from the response with the `200` status
@@ -254,8 +259,9 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/usa
 # breaks the stale caller is the required property that replaced it. The pair is
 # the break; neither line is.
 #
-# ⚠ The create body's line is deleted here (#367) — the route is gone.
-POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/metric_name`
+# ⚠ The create body's line was deleted here (#367) — the route is gone — and
+# the reprice body's goes in #368, when that route goes too. What is left of
+# this pair is the ERR-level half beside it.
 
 # 2026-08-12 A POSTING'S GROUPING VALUES ARE KEYED BY THE TENANT'S OWN KEY
 # (#277, slice 2) — RAN THE TOOL, AND IT ADDS NO ENTRY. Recorded here because
@@ -418,10 +424,14 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/bil
 # additive, so it emits nothing; what it ends is a real hole, because until
 # then the ONLY way to move a rule's shape was the immediate reprice route.
 #
-# ⚠ THIS BLOCK HAD TWO LINES UNDER IT AND NOW HAS ONE (#367). The immediate
-# add-a-rule route is deleted, so the entry for its body went with it — a
-# removed route subsumes every property-level break on it, and the gate refuses
-# an entry that suppresses nothing. What is left is the publish body's. The
-# immediate REPRICE survives until #369; the two acts `BookChangeIn` has
-# actually replaced are the ones #367 deleted.
-POST /api/v1/metering/pricing/rate-cards/{book_id}/publish removed the request property `changes/items/pricing_model`
+# ⚠ THIS BLOCK HAD TWO LINES UNDER IT, THEN ONE (#367), AND NOW HAS NONE
+# (#368). The immediate add-a-rule route went first and the immediate reprice
+# followed, so both entries went with them — a removed route subsumes every
+# property-level break on it, and the gate refuses an entry that suppresses
+# nothing.
+#
+# ⚠ AND THE SENTENCE THIS BLOCK MADE ABOUT #369 WAS WRONG ABOUT WHICH COMMIT.
+# It said "the immediate REPRICE survives until #369"; it survived until #368,
+# because that is the commit where the third and last of the retired audit
+# action names ceased and `record()` refuses an unregistered name. `BookChangeIn`
+# has now replaced all three acts rather than two.

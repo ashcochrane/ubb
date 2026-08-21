@@ -28,7 +28,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "delete",
-        "url": "/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}".format(book_id=quote(str(book_id), safe=""),publish_id=quote(str(publish_id), safe=""),),
+        "url": "/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}".format(book_id=quote(str(book_id), safe=""),publish_id=quote(str(publish_id), safe=""),),
     }
 
 

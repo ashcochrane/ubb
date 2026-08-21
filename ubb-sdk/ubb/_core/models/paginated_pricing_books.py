@@ -12,26 +12,26 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.book_out import BookOut
+  from ..models.pricing_book_out import PricingBookOut
 
 
 
 
 
-T = TypeVar("T", bound="PaginatedBooks")
+T = TypeVar("T", bound="PaginatedPricingBooks")
 
 
 
 @_attrs_define
-class PaginatedBooks:
+class PaginatedPricingBooks:
     """ 
         Attributes:
-            data (list[BookOut]):
+            data (list[PricingBookOut]):
             has_more (bool):
             next_cursor (None | str | Unset):
      """
 
-    data: list[BookOut]
+    data: list[PricingBookOut]
     has_more: bool
     next_cursor: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -41,7 +41,7 @@ class PaginatedBooks:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_out import BookOut
+        from ..models.pricing_book_out import PricingBookOut
         data = []
         for data_item_data in self.data:
             data_item = data_item_data.to_dict()
@@ -73,12 +73,12 @@ class PaginatedBooks:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_out import BookOut
+        from ..models.pricing_book_out import PricingBookOut
         d = dict(src_dict)
         data = []
         _data = d.pop("data")
         for data_item_data in (_data):
-            data_item = BookOut.from_dict(data_item_data)
+            data_item = PricingBookOut.from_dict(data_item_data)
 
 
 
@@ -97,15 +97,15 @@ class PaginatedBooks:
         next_cursor = _parse_next_cursor(d.pop("next_cursor", UNSET))
 
 
-        paginated_books = cls(
+        paginated_pricing_books = cls(
             data=data,
             has_more=has_more,
             next_cursor=next_cursor,
         )
 
 
-        paginated_books.additional_properties = d
-        return paginated_books
+        paginated_pricing_books.additional_properties = d
+        return paginated_pricing_books
 
     @property
     def additional_keys(self) -> list[str]:

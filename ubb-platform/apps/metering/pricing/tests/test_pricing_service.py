@@ -22,7 +22,8 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    a_usage_event_subject, declares_a_markup, rate_in_default_book)
+    a_usage_event_subject, cost_rate_in_default_book, declares_a_markup,
+    rate_in_default_book)
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from core.vocabulary import (
     COSTING_METHOD_REPORTED,
@@ -62,7 +63,7 @@ class TestPricing:
         has not moved.
         """
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+        cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="input_tokens", grouping_field_1="gpt-4",
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         costing = PricingService.price(
@@ -78,16 +79,16 @@ class TestPricing:
 
     def test_price_card_charges_on_different_metric(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+        cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         # Seats needs a COST declaration of its own now, and a rate of zero is
         # one: a quantity that matched no Cost Rate makes the whole posting
         # unresolved (#320), which would have turned this into a test of that
         # instead of of price resolution. "This supplier charges nothing for
         # seats" is a thing a tenant can now say, and saying it is the point.
-        rate_in_default_book(t, card_type="cost", provider="openai", event_type="chat",
+        cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="seats", rate_structure=RATE_STRUCTURE_FIXED_COMPONENT, fixed_micros=0)
-        rate_in_default_book(t, card_type="price", provider="openai", event_type="chat",
+        rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="seats", rate_structure=RATE_STRUCTURE_FIXED_COMPONENT, fixed_micros=9_000_000)
         costing = PricingService.price(
             subject=a_usage_event_subject(),
@@ -101,9 +102,9 @@ class TestPricing:
 
     def test_most_specific_dimension_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
-        rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
+        cost_rate_in_default_book(t, provider="o", event_type="e",
             measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
-        rate_in_default_book(t, card_type="cost", provider="o", event_type="e",
+        cost_rate_in_default_book(t, provider="o", event_type="e",
             measurement_key="tok", grouping_field_1="gpt-4", rate_per_unit_micros=9_000, unit_quantity=1_000_000)
         costing = PricingService.price(
             subject=a_usage_event_subject(),
@@ -175,62 +176,71 @@ class TestPricing:
                 == COSTING_METHOD_REPORTED)
 
 
-def test_unassigned_customer_uses_provider_default_book(db):
-    from apps.metering.pricing.models import Rate, RateCard
+def test_a_customer_with_no_book_of_their_own_uses_the_tenants_default(db):
+    from apps.metering.pricing.models import PricingBook, Rate
     from apps.metering.pricing.services.pricing_service import PricingService
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from django.utils import timezone
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
-    book = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
-                                   currency="usd", key="gemini", is_default=True)
+    book = PricingBook.objects.create(tenant=t, key="gemini", is_default=True)
     r = Rate.objects.create(tenant=t, provider="gemini",
                             measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                            rate_per_unit_micros=10, rate_card=book)
-    got = PricingService._resolve_card(t, c, "price", {"provider": "gemini"},
-                                       "input_tokens", "usd", timezone.now())
+                            rate_per_unit_micros=10, pricing_book=book)
+    got = PricingService.resolve_the_price_rule(
+        t, c, {"provider": "gemini"}, "input_tokens", "usd", timezone.now())
     assert got is not None and got.id == r.id
 
 
-def test_assigned_book_wins_then_falls_back_to_default(db):
-    from apps.metering.pricing.models import Rate, RateCard, RateCardAssignment
+def test_a_customers_own_book_shadows_the_default_then_falls_back_to_it(db):
+    """The claim the deleted assignment record used to carry, at the rung that
+    replaced it (#368).
+
+    This case was `test_assigned_book_wins_then_falls_back_to_default` and it
+    drove the record that assigned a book to a customer. That record is gone;
+    what a customer has of their own is an OVERRIDE BOOK, a Pricing Book
+    carrying them, and the property under test is unchanged — a rule of their
+    own shadows the tenant's catalogue for the quantity it prices, and every
+    quantity it does not price still resolves from the catalogue.
+
+    The conflicting default-book rule for the same quantity is what makes the
+    first half a statement about SHADOWING rather than about resolving by
+    elimination.
+    """
+    from apps.metering.pricing.models import PricingBook, Rate
     from apps.metering.pricing.services.pricing_service import PricingService
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from django.utils import timezone
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
-    default = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
-                                      currency="usd", key="gemini", is_default=True)
-    ent = RateCard.objects.create(tenant=t, card_type="price", provider_key="gemini",
-                                  currency="usd", key="ent")
-    RateCardAssignment.objects.create(tenant=t, customer=c, rate_card=ent, currency="usd")
-    # Enterprise overrides input_tokens; output_tokens only exists in default.
-    ent_in = Rate.objects.create(tenant=t, provider="gemini",
-                                 measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                                 rate_per_unit_micros=5, rate_card=ent)
+    default = PricingBook.objects.create(tenant=t, key="gemini", is_default=True)
+    theirs = PricingBook.objects.create(tenant=t, key="ent", customer=c)
+    theirs_in = Rate.objects.create(tenant=t, provider="gemini",
+                                    measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
+                                    rate_per_unit_micros=5, pricing_book=theirs)
     def_out = Rate.objects.create(tenant=t, provider="gemini",
                                   measurement=declares_a_quantity(t, "output_tokens"), currency="usd",
-                                  rate_per_unit_micros=30, rate_card=default)
-    # Conflicting default-book rate for the SAME quantity as ent_in — proves the
-    # assigned book shadows the default book rather than resolving by
-    # elimination (only possible because Rate uniqueness is now per-book).
-    def_in = Rate.objects.create(tenant=t, provider="gemini",
-                                 measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                                 rate_per_unit_micros=99, rate_card=default)
+                                  rate_per_unit_micros=30, pricing_book=default)
+    Rate.objects.create(tenant=t, provider="gemini",
+                        measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
+                        rate_per_unit_micros=99, pricing_book=default)
     now = timezone.now()
     selectors = {"provider": "gemini"}
-    assert PricingService._resolve_card(t, c, "price", selectors, "input_tokens", "usd", now).id == ent_in.id
-    assert PricingService._resolve_card(t, c, "price", selectors, "output_tokens", "usd", now).id == def_out.id
+    assert PricingService.resolve_the_price_rule(
+        t, c, selectors, "input_tokens", "usd", now).id == theirs_in.id
+    assert PricingService.resolve_the_price_rule(
+        t, c, selectors, "output_tokens", "usd", now).id == def_out.id
 
 
-def test_no_default_book_for_provider_returns_none(db):
+def test_no_book_at_all_returns_none(db):
     from apps.metering.pricing.services.pricing_service import PricingService
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from django.utils import timezone
     t = Tenant.objects.create(name="T", default_currency="usd")
     c = Customer.objects.create(tenant=t, external_id="c1")
-    assert PricingService._resolve_card(
-        t, c, "price", {"provider": "openai"}, "input_tokens", "usd", timezone.now()) is None
+    assert PricingService.resolve_the_price_rule(
+        t, c, {"provider": "openai"}, "input_tokens", "usd",
+        timezone.now()) is None

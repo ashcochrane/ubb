@@ -1,24 +1,28 @@
-import * as React from "react";
-
 import { isNotFound } from "@/api/problem";
 import { CopyButton } from "@/components/shared/copy-button";
-import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useHasRole } from "@/hooks/use-current-role";
-import { cardTypeLabel } from "@/lib/labels";
 import { useBook } from "../api/queries";
-import { PublishDialog } from "./publish-dialog";
+import { isCostBook } from "../api/types";
 import { RatesTable } from "./rates-table";
 
 /**
- * /pricing/$bookId — one rate-card book: identity header, its rates (active /
- * history / point-in-time), add rate, retire rate, and the publish (atomic
- * reprice) flow. Cross-page navigation arrives via injected callbacks so the
- * page renders without router context in tests.
+ * /pricing/$bookId — one book: identity header and its rules (active /
+ * history / point-in-time). Cross-page navigation arrives via injected
+ * callbacks so the page renders without router context in tests.
+ *
+ * ⚠ **IT READS AND DOES NOT WRITE (#367, #368).** The three immediate
+ * mutation surfaces this page used to offer — add a rule, retire one, reprice
+ * a set of them — are deleted with the acts they recorded: every change to a
+ * book is a declared publish now, read as a diff before it is committed to.
+ * The feature that speaks that body arrives with #372, and until then the gap
+ * is visible rather than hidden.
+ *
+ * The header shows what the book IS, and the two kinds show different things
+ * because they ARE different things: a cost book names the supplier it records
+ * and the currency that supplier bills in, a Pricing Book names neither.
  */
 export function BookDetailPage({
   bookId,
@@ -32,8 +36,6 @@ export function BookDetailPage({
   onShowAuditTrail?: () => void;
 }) {
   const book = useBook(bookId);
-  const isAdmin = useHasRole("admin");
-  const [publishOpen, setPublishOpen] = React.useState(false);
 
   if (book.isLoading) {
     return (
@@ -49,7 +51,7 @@ export function BookDetailPage({
       return (
         <EmptyState
           title="Book not found"
-          description="This rate-card book doesn't exist (or was created in another workspace)."
+          description="This book doesn't exist (or was created in another workspace)."
           action={{
             label: "Back to pricing",
             onClick: onBackToPricing ?? (() => undefined),
@@ -85,35 +87,36 @@ export function BookDetailPage({
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className="font-mono text-[12px] text-text-secondary">{data.key}</span>
             <CopyButton value={data.key} label="Copy book key" />
-            <Badge variant="outline">{cardTypeLabel(data.card_type)}</Badge>
-            {data.is_default && (
-              <Badge variant="secondary">
-                Default{data.provider_key ? ` for ${data.provider_key}` : ""}
-              </Badge>
+            <Badge variant="outline">
+              {isCostBook(data) ? "Cost book" : "Pricing book"}
+            </Badge>
+            {isCostBook(data) ? (
+              <>
+                {data.is_default && (
+                  <Badge variant="secondary">
+                    Default{data.provider_key ? ` for ${data.provider_key}` : ""}
+                  </Badge>
+                )}
+                {!data.is_default && data.provider_key && (
+                  <span className="text-[12px] text-text-secondary">
+                    Provider: <span className="font-mono">{data.provider_key}</span>
+                  </span>
+                )}
+                <span className="text-[12px] uppercase text-text-secondary">
+                  {data.currency}
+                </span>
+              </>
+            ) : (
+              data.is_default && <Badge variant="secondary">Default</Badge>
             )}
-            {!data.is_default && data.provider_key && (
-              <span className="text-[12px] text-text-secondary">
-                Provider: <span className="font-mono">{data.provider_key}</span>
-              </span>
-            )}
-            <span className="text-[12px] uppercase text-text-secondary">
-              {data.currency}
-            </span>
             <Badge variant="outline">v{data.version}</Badge>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
-            <Button size="sm" onClick={() => setPublishOpen(true)} disabled={!isAdmin}>
-              Publish new prices
-            </Button>
-          </DisabledHint>
-        </div>
       </div>
       <p className="text-[12px] text-text-muted">
-        {data.card_type === "price"
-          ? "A price card: these rates set what customers are billed."
-          : "A cost card: these rates derive what providers charge you (your COGS)."}{" "}
+        {isCostBook(data)
+          ? "A cost book: these rules derive what one supplier charges you (your COGS)."
+          : "A pricing book: these rules set what your customers are billed."}{" "}
         {onShowAuditTrail && (
           <button
             type="button"
@@ -126,8 +129,6 @@ export function BookDetailPage({
       </p>
 
       <RatesTable book={data} />
-
-      <PublishDialog book={data} open={publishOpen} onOpenChange={setPublishOpen} />
     </div>
   );
 }

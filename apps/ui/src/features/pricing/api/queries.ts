@@ -9,20 +9,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
 import { pricingApi } from "./provider";
-import type { BookIn, PublishIn, TenantMarkupIn } from "./types";
+import type { CostBookIn, PricingBookIn, TenantMarkupIn } from "./types";
 
-const booksKey = (cardType: string | undefined) =>
-  ["metering", "pricing", "rate-cards", { card_type: cardType ?? null }] as const;
+// ⚠ TWO KEYS, NOT ONE KEYED ON A KIND (#368). A Pricing Book and a cost book
+// are separate entities on separate paths; one key carrying which kind it
+// wanted would be the deleted column living on in the cache.
+const pricingBooksKey = ["metering", "pricing", "pricing-books"] as const;
+const costBooksKey = ["metering", "pricing", "cost-books"] as const;
 const bookKey = (bookId: string) => ["metering", "pricing", "book", bookId] as const;
 const ratesKey = (
   bookId: string,
   view: { include_history: boolean; as_of: string | null },
-) => ["metering", "pricing", "rate-cards", bookId, "rates", view] as const;
+) => ["metering", "pricing", "books", bookId, "rates", view] as const;
 const markupKey = ["metering", "pricing", "markup"] as const;
 
-export function useBooks(cardType?: string) {
-  return useCursorList(booksKey(cardType), (cursor) =>
-    pricingApi.listBooks({ card_type: cardType, cursor }),
+export function usePricingBooks() {
+  return useCursorList(pricingBooksKey, (cursor) =>
+    pricingApi.listPricingBooks({ cursor }),
+  );
+}
+
+export function useCostBooks() {
+  return useCursorList(costBooksKey, (cursor) =>
+    pricingApi.listCostBooks({ cursor }),
   );
 }
 
@@ -66,10 +75,10 @@ export function useTenantMarkup() {
  * just ["metering","pricing"]: other features cache off-prefix metering keys
  * that pricing mutations affect (the customers feature's resolved
  * ["metering","customer-markup",id] — GET returns the customer override OR the
- * tenant default — and its ["metering","price-books"] assignment picker).
- * "margin" derives from pricing; every one of these mutations also writes an
- * audit record (rate_card.*, rate.*, markup.set), so the settings audit ledger
- * ("audit" namespace) must refetch too. Over-invalidate rather than miss.
+ * tenant default). "margin" derives from pricing; every one of these mutations
+ * also writes an audit record (`pricing_book.declared`, `cost_book.declared`,
+ * `markup.set`), so the settings audit ledger ("audit" namespace) must refetch
+ * too. Over-invalidate rather than miss.
  */
 function usePricingInvalidation() {
   const queryClient = useQueryClient();
@@ -80,21 +89,26 @@ function usePricingInvalidation() {
   };
 }
 
-export function useCreateBook() {
+export function useDeclarePricingBook() {
   const invalidate = usePricingInvalidation();
   return useMutation({
-    mutationFn: (body: BookIn) => pricingApi.createBook(body),
+    mutationFn: (body: PricingBookIn) => pricingApi.declarePricingBook(body),
     onSuccess: invalidate,
   });
 }
 
-export function usePublishBook(bookId: string) {
+export function useDeclareCostBook() {
   const invalidate = usePricingInvalidation();
   return useMutation({
-    mutationFn: (body: PublishIn) => pricingApi.publishBook(bookId, body),
+    mutationFn: (body: CostBookIn) => pricingApi.declareCostBook(body),
     onSuccess: invalidate,
   });
 }
+
+// ⚠ NO `usePublishBook` (#368). The immediate reprice route it wrapped is
+// deleted with the last of the retired audit action names it wrote. A book
+// changes by a declared publish now — read as a diff first — and the feature
+// that speaks that body arrives with #372.
 
 export function useUpdateTenantMarkup() {
   const invalidate = usePricingInvalidation();
