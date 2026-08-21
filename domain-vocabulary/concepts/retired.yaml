@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,658 of 2,055 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,659 of 2,056 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1223,24 +1223,26 @@ measurement_key:
     # re-homed, because the surface they belonged to is gone rather than moved,
     # and #372 rebuilds this feature around the acts that replace it.
     #
-    # #368 MOVED BOTH NUMBERS DOWNWARD AGAIN (1,662 -> 1,658 swept,
-    # 2,058 -> 2,055 tracked, 51/127 -> 50/125), WITH THE EXCLUSION UP BY ONE
+    # #368 MOVED BOTH NUMBERS DOWNWARD AGAIN (1,662 -> 1,659 swept,
+    # 2,058 -> 2,056 tracked, 51/127 -> 50/125), WITH THE EXCLUSION UP BY ONE
     # (`historical-migrations` 229 -> 230). The same signature as #367 and for
     # the same reason: the container split into a Pricing Book and a cost book,
     # which deleted published surface — the immediate reprice body and route,
     # the record that assigned a book to a customer — while adding a migration.
-    # Four swept files left net: six test and console modules deleted, two
-    # renamed, TWO new test modules arriving, and one new migration excluded
+    # Three swept files left net: six test and console modules deleted, two
+    # renamed, THREE new test modules arriving, and one new migration excluded
     # rather than swept.
     #
-    # ⚠ **THE NUMBERS WERE TAKEN FOUR TIMES AND THE FIRST THREE WERE STALE
-    # BEFORE THEY WERE WRITTEN.** A re-take expires the moment another file
-    # lands: this commit landed two test modules after the first reading, one
-    # more after the second, and a registry change after the third. The figures
-    # above are the last reading, taken after the final edit and re-run to
-    # confirm. ⚠ The paragraph originally said THREE and TWO, which was itself
-    # a stale count of the re-takes — the failure it exists to warn about,
-    # committed inside the warning. Found by review.
+    # ⚠ **THE DENOMINATOR IS COUNTED OVER GIT-TRACKED FILES, SO A NEW FILE
+    # CHANGES IT ONLY ONCE IT IS `git add`ed — WHICH IS HOW A LOCAL GREEN
+    # PRECEDES A RED CI.** This commit's review pass added one contract module,
+    # ran the whole contract suite twice while it was still untracked, saw 654
+    # pass, committed, and watched CI fail on exactly this assertion. **Re-take
+    # these figures AFTER staging, never before.** That is the mechanism; a
+    # tally of how many times the numbers were re-taken is not, and the two
+    # earlier revisions of this paragraph each carried a stale count of their
+    # own re-takes — the failure it exists to warn about, committed inside the
+    # warning, twice. The sentence above replaces the tally.
     #
     # ⚠ **THE NUMERATOR FELL BY A WHOLE FILE AGAIN, AND DOWNWARD STILL NEEDS NO
     # INVESTIGATION** — the three-case rule above asks for an account of a
