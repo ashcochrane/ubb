@@ -60,7 +60,7 @@ So the currency column rides along with its `usd` default and its `varchar(3)`
 width and nothing else, which is what `TheCurrencyColumnRodeAlongTest` pins.
 **Adding the constraint is not deferred here — it is unbuildable until the
 USD-only rule reaches the door**, and that is nobody's ticket today. It joins
-the other seven as an unowned gap rather than being smuggled in under a rename.
+the others as an unowned gap rather than being smuggled in under a rename.
 """
 from django.db import connection
 from django.db import migrations as operations
@@ -103,42 +103,58 @@ CARRIED_INDEXES = (
 )
 DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
 
-#: The other seven currency columns, by table. **This ticket does not claim
-#: them.** One decision hands their constraints to the cutover decision and that
+#: The other currency columns, by table. **This ticket does not claim them.**
+#: One decision hands their constraints to the cutover decision and that
 #: document assigns them to no slice, so the gap is recorded by name here rather
 #: than silently inherited — see the module docstring for why the posting's own
 #: is in the same position.
 #:
-#: Seven is the spec's own denominator, taken from the measurement vocabulary
-#: decision's §7.3 table, and it is the seven columns that default to `usd` the
-#: way the posting's does. **The tree actually holds eleven**, and the extra
-#: three are deliberately not listed: `ReportedCostMapping.currency` is a
-#: DECLARED pin rather than a stamped copy (it defaults to `''`, and #266 landed
-#: it in this same slice), and `StripeSubscription` and `SubscriptionInvoice`
-#: mirror the payment rail's own field. None of the three is a copy of the
-#: tenant's frozen choice, which is what §7.3's list is about.
+#: Seven was the spec's own denominator, taken from the measurement vocabulary
+#: decision's §7.3 table, and it was the seven columns that default to `usd` the
+#: way the posting's does. **FIVE ARE LEFT (#368)** — the two paid below. **The
+#: tree holds others that were deliberately never listed**:
+#: `ReportedCostMapping.currency` is a DECLARED pin rather than a stamped copy
+#: (it defaults to `''`, and #266 landed it in this same slice), and
+#: `StripeSubscription` and `SubscriptionInvoice` mirror the payment rail's own
+#: field. None is a copy of the tenant's frozen choice, which is what §7.3's
+#: list is about.
+#:
+#: ⚠ **AND `ubb_cost_book.currency` DOES NOT JOIN THIS LIST, WHICH IS THE TEST
+#: THE LIST'S OWN RULE HAD TO PASS (#368).** A cost book declares the currency
+#: its supplier bills in: the column has **no default**, and
+#: `ck_cost_book_names_its_currency` refuses the empty string. It is the
+#: `ReportedCostMapping` shape exactly — a declaration, not a stamped copy of a
+#: choice made elsewhere — so admitting it here would be recording a debt that
+#: is not owed, which is the mirror of the failure this list exists to prevent.
 UNOWNED_CURRENCY_COLUMNS = (
     # ⚠ **THE RULE TABLE'S ENTRY FOLLOWED ITS RENAME RATHER THAN BEING DELETED
     # (#367).** Slice 4 moved this table to the name a rule's own name asks for.
     # A rename moves a table; it does not touch the column — the rule's currency
-    # is still an unconstrained copy of the tenant's frozen choice, and this
-    # list exists to say so. Deleting the line would have retired a live gap by
-    # spelling, which is the opposite of what the list is for.
+    # is still an unconstrained `usd`-defaulted copy of the tenant's frozen
+    # choice, and this list exists to say so. Deleting the line would have
+    # retired a live gap by spelling, which is the opposite of what the list is
+    # for.
     #
-    # ⚠⚠ **A HAND-FORWARD TO TICKET 21, BECAUSE ITS OWN TEXT SAYS OTHERWISE.**
-    # That ticket reads *"All three of this slice's lines are deleted — two
-    # renamed tables and one deleted table."* Under the rule above only the
-    # DELETED table's line goes; the two renamed ones follow their renames,
-    # because a rename does not discharge the debt this list records. One of
-    # those two is handled here. The other is the container's, and ticket 21
-    # should RENAME it to whatever the Pricing Book's table becomes rather than
-    # delete it — unless it also constrains the column, in which case the line
-    # is genuinely payable and the deletion is right. Whoever lands that ticket
-    # decides; what this note refuses is deleting it by default and calling the
-    # gap paid.
+    # ⚠⚠ **#367 HANDED THAT DISAGREEMENT FORWARD AND #368 RESOLVED IT, WITH
+    # TWO LINES DELETED AND THIS ONE KEPT.** Ticket 21 read *"All three of this
+    # slice's lines are deleted — two renamed tables and one deleted table"*;
+    # #367's note answered that a rename discharges nothing, and asked whoever
+    # landed the split to decide rather than delete by default. Measured on the
+    # commit: the tripwire fired on exactly TWO of the three, and this line was
+    # not one of them.
+    #
+    #   * `ubb_rate_card_assignment` — the table is DELETED, so the line goes.
+    #   * `ubb_rate_card_container` — the container split, and the Pricing Book
+    #     it became **has no currency column at all**. That is #367's own
+    #     escape clause reached the strong way: the gap is not constrained, it
+    #     is gone, because a tenant has exactly one currency (CUR-1) and a
+    #     column repeating it was the copy this list is about. The line goes.
+    #   * `ubb_rate` — **stays.** A rule still carries a `usd`-defaulted
+    #     currency nobody owns. Nothing in #368 touches it, and deleting it
+    #     because a ticket's arithmetic expected three would be exactly the
+    #     retire-a-gap-by-spelling the note above refuses. It is handed
+    #     forward, unpaid and named.
     "ubb_rate",                      # Rate
-    "ubb_rate_card_container",       # RateCard
-    "ubb_rate_card_assignment",      # RateCardAssignment — slice 4 deletes it
     "ubb_wallet",                    # Wallet
     "ubb_credit_grant",              # CreditGrant
     "ubb_customer_usage_invoice",    # CustomerUsageInvoice
@@ -485,9 +501,9 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
         This is what makes the module docstring's first claim checkable rather
         than a note. The day somebody builds the USD-only rule — at the door
         first, then in the database — this goes red and names the tables that
-        moved, which is the right moment to revisit who owns the other seven.
+        moved, which is the right moment to revisit who owns the others.
 
-        Scoped to the eight columns §7.3's table is about, and the exclusion is
+        Scoped to the columns §7.3's table is about, and the exclusion is
         the interesting part. `ubb_reported_cost_mapping` DOES carry a CHECK
         touching `currency` — `ck_reported_cost_currency_pinned_once`, landed by
         #266 in this same slice — and it is not a counter-example: it is an XOR
@@ -513,7 +529,7 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
         self.assertEqual(found, [], "a currency CHECK constraint now exists — "
                                     "see this module's docstring")
 
-    def test_the_seven_unowned_columns_are_not_touched_by_this_ticket(self):
+    def test_the_unowned_columns_are_not_touched_by_this_ticket(self):
         """Recorded as a gap, not claimed.
 
         The vacuity risk is the point: if one of these tables were renamed or
@@ -524,11 +540,17 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
         is the same shape as `test_every_seeded_entry_is_still_a_real_violation`
         in `apps/platform/tests/test_model_naming.py`: a record of a debt that
         must be edited when the debt is paid, so paying it and recording the
-        payment are one act rather than two. Slice 4 deletes
-        `ubb_rate_card_assignment` outright and rebuilds the rate entity, so it
-        will trip this — and the failure message says what to do about it,
-        because a tripwire whose message reads as "restore the table" would be
-        worse than no tripwire at all.
+        payment are one act rather than two.
+
+        **IT HAS NOW FIRED ONCE AND THE COUNT IN ITS NAME WENT WITH IT (#368).**
+        Two of the seven were paid in the commit that split the container: the
+        assignment table was deleted outright, and the container's own line
+        went because the Pricing Book it became has no currency column at all.
+        Five are left. The failure message says what to do about it, because a
+        tripwire whose message reads as "restore the table" would be worse than
+        no tripwire at all — and the list's own comment records why the rule
+        table's line was NOT one of the two, which is the half a ticket's
+        arithmetic got wrong.
         """
         stale = (
             "this list records the unowned currency-constraint gap as it stood "

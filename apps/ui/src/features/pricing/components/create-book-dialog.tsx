@@ -19,19 +19,32 @@ import { Switch } from "@/components/ui/switch";
 import { useHasProduct } from "@/hooks/use-tenant-config";
 import { cn } from "@/lib/utils";
 import { toastSuccess } from "@/lib/mutations";
-import { useCreateBook } from "../api/queries";
-import type { Book } from "../api/types";
+import { useDeclareCostBook, useDeclarePricingBook } from "../api/queries";
+import type { AnyBook } from "../api/types";
 import { bookFormSchema, type BookFormValues } from "../lib/schemas";
 
 const DEFAULTS: BookFormValues = {
-  card_type: "cost",
   key: "",
   name: "",
   provider_key: "",
   is_default: false,
 };
 
-/** Create a rate-card book (cost or price). Price books need the Billing product. */
+type Kind = "cost" | "pricing";
+
+/**
+ * Declare a book — a cost book or a Pricing Book.
+ *
+ * ⚠ **THE CHOICE IS WHICH ROUTE TO CALL, NOT A FIELD ON ONE BODY (#368).**
+ * The two entities take different bodies because they have different columns:
+ * a cost book names the supplier it records and the currency that supplier
+ * bills in, a Pricing Book names neither. So the kind lives in this dialog's
+ * own state and picks a mutation, and the supplier field is shown only for the
+ * half that has one. A single body carrying a kind word is what the split
+ * deleted.
+ *
+ * A Pricing Book needs the Billing product; a cost book is always available.
+ */
 export function CreateBookDialog({
   open,
   onOpenChange,
@@ -39,46 +52,59 @@ export function CreateBookDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated?: (book: Book) => void;
+  onCreated?: (book: AnyBook) => void;
 }) {
   const hasBilling = useHasProduct("billing");
-  const create = useCreateBook();
+  const [kind, setKind] = React.useState<Kind>("cost");
+  const declareCost = useDeclareCostBook();
+  const declarePricing = useDeclarePricingBook();
+  const create = kind === "cost" ? declareCost : declarePricing;
   const form = useForm<BookFormValues>({
     resolver: zodResolver(bookFormSchema),
     defaultValues: DEFAULTS,
   });
-  const cardType = form.watch("card_type");
 
   React.useEffect(() => {
     if (open) {
       form.reset(DEFAULTS);
-      create.reset();
+      setKind("cost");
+      declareCost.reset();
+      declarePricing.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const onSubmit = (values: BookFormValues) => {
-    create.mutate(
-      {
-        card_type: values.card_type,
-        key: values.key,
-        name: values.name,
-        provider_key: values.provider_key,
-        is_default: values.is_default,
-      },
-      {
-        onSuccess: (book) => {
-          toastSuccess("Book created", `${book.name || book.key} is ready for rates.`);
-          onOpenChange(false);
-          onCreated?.(book);
+    const onSuccess = (book: AnyBook) => {
+      toastSuccess("Book declared", `${book.name || book.key} is ready for rules.`);
+      onOpenChange(false);
+      onCreated?.(book);
+    };
+    // Each half is handed the fields ITS OWN body takes. The supplier is a
+    // cost book's and the Pricing Book route publishes no such property, so
+    // sending it would be a key django-ninja silently drops.
+    if (kind === "cost") {
+      declareCost.mutate(
+        {
+          key: values.key,
+          name: values.name,
+          provider_key: values.provider_key,
+          is_default: values.is_default,
         },
-      },
-    );
+        { onSuccess },
+      );
+    } else {
+      declarePricing.mutate(
+        { key: values.key, name: values.name, is_default: values.is_default },
+        { onSuccess },
+      );
+    }
   };
 
   const errorMessage = create.isError
     ? create.error instanceof ApiProblem && create.error.code === "conflict"
-      ? `A ${cardType} book with this key already exists — pick a different key.`
+      ? `A ${kind === "cost" ? "cost" : "pricing"} book with this key already ` +
+        `exists — pick a different key.`
       : problemMessage(create.error)
     : null;
 
@@ -86,10 +112,11 @@ export function CreateBookDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New rate-card book</DialogTitle>
+          <DialogTitle>Declare a book</DialogTitle>
           <DialogDescription>
-            A book holds the rates for one provider and one currency. Rates you
-            add to it are live immediately.
+            A book arrives empty and gains rules by a published change. A cost
+            book records what one supplier charges you; a pricing book sets
+            what your customers are billed.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -99,23 +126,23 @@ export function CreateBookDialog({
           <div className="space-y-1.5">
             <Label>Book type</Label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <CardTypeOption
-                selected={cardType === "cost"}
-                title="Cost card"
-                description="What providers charge you (your COGS)."
-                onSelect={() => form.setValue("card_type", "cost")}
+              <BookKindOption
+                selected={kind === "cost"}
+                title="Cost book"
+                description="What one supplier charges you (your COGS)."
+                onSelect={() => setKind("cost")}
               />
-              <CardTypeOption
-                selected={cardType === "price"}
-                title="Price card"
+              <BookKindOption
+                selected={kind === "pricing"}
+                title="Pricing book"
                 description="What you bill your customers."
                 disabled={!hasBilling}
-                onSelect={() => form.setValue("card_type", "price")}
+                onSelect={() => setKind("pricing")}
               />
             </div>
             {!hasBilling && (
               <p className="text-xs text-muted-foreground">
-                Price books need the Billing product, which isn't enabled for
+                Pricing books need the Billing product, which isn't enabled for
                 this workspace. Cost books are always available.
               </p>
             )}
@@ -137,28 +164,33 @@ export function CreateBookDialog({
               <Input id={id} placeholder="OpenAI provider costs" {...form.register("name")} />
             )}
           </FormField>
-          <FormField
-            label="Provider (optional)"
-            error={form.formState.errors.provider_key?.message}
-            hint="The provider whose events this book prices, e.g. openai."
-          >
-            {(id) => (
-              <Input id={id} className="font-mono" placeholder="openai" {...form.register("provider_key")} />
-            )}
-          </FormField>
+          {kind === "cost" && (
+            <FormField
+              label="Supplier (optional)"
+              error={form.formState.errors.provider_key?.message}
+              hint="The supplier whose events this book costs, e.g. openai. Leave it empty for a book that applies whatever the supplier."
+            >
+              {(id) => (
+                <Input id={id} className="font-mono" placeholder="openai" {...form.register("provider_key")} />
+              )}
+            </FormField>
+          )}
           <div className="flex items-start gap-2.5">
             <Switch
               checked={form.watch("is_default")}
               onCheckedChange={(checked) => form.setValue("is_default", checked)}
-              aria-label="Default book for its provider"
+              aria-label="Default book"
             />
             <div>
               <p className="text-[13px] font-medium text-text-primary">
-                Default book for this provider
+                {kind === "cost"
+                  ? "Default book for this supplier"
+                  : "Default pricing book"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Used automatically for the provider's events when no book is
-                assigned to the customer.
+                {kind === "cost"
+                  ? "Used automatically for that supplier's events."
+                  : "Used for any customer whose plan names no book of its own."}
               </p>
             </div>
           </div>
@@ -173,7 +205,7 @@ export function CreateBookDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Working…" : "Create book"}
+              {create.isPending ? "Working…" : "Declare book"}
             </Button>
           </DialogFooter>
         </form>
@@ -182,7 +214,7 @@ export function CreateBookDialog({
   );
 }
 
-function CardTypeOption({
+function BookKindOption({
   selected,
   title,
   description,

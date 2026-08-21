@@ -8,7 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.paginated_books import PaginatedBooks
+from ...models.paginated_pricing_books import PaginatedPricingBooks
 from ...types import UNSET, Unset
 from typing import cast
 
@@ -16,7 +16,6 @@ from typing import cast
 
 def _get_kwargs(
     *,
-    card_type: None | str | Unset = UNSET,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
@@ -26,13 +25,6 @@ def _get_kwargs(
     
 
     params: dict[str, Any] = {}
-
-    json_card_type: None | str | Unset
-    if isinstance(card_type, Unset):
-        json_card_type = UNSET
-    else:
-        json_card_type = card_type
-    params["card_type"] = json_card_type
 
     json_cursor: None | str | Unset
     if isinstance(cursor, Unset):
@@ -49,7 +41,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/pricing/rate-cards",
+        "url": "/api/v1/metering/pricing/pricing-books",
         "params": params,
     }
 
@@ -58,9 +50,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PaginatedBooks | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PaginatedPricingBooks | None:
     if response.status_code == 200:
-        response_200 = PaginatedBooks.from_dict(response.json())
+        response_200 = PaginatedPricingBooks.from_dict(response.json())
 
 
 
@@ -72,7 +64,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PaginatedBooks]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PaginatedPricingBooks]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -84,18 +76,17 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    card_type: None | str | Unset = UNSET,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[PaginatedBooks]:
-    """ List Books
+) -> Response[PaginatedPricingBooks]:
+    """ List Pricing Books
 
-     List the tenant's rate-card BOOKS (containers), newest first. Rates
-    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates.
+     List the tenant's Pricing Books — the catalogues of what this tenant
+    charges — newest first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates.
 
     Args:
-        card_type (None | str | Unset):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
@@ -104,13 +95,12 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PaginatedBooks]
+        Response[PaginatedPricingBooks]
      """
 
 
     kwargs = _get_kwargs(
-        card_type=card_type,
-cursor=cursor,
+        cursor=cursor,
 limit=limit,
 
     )
@@ -124,18 +114,17 @@ limit=limit,
 def sync(
     *,
     client: AuthenticatedClient,
-    card_type: None | str | Unset = UNSET,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> PaginatedBooks | None:
-    """ List Books
+) -> PaginatedPricingBooks | None:
+    """ List Pricing Books
 
-     List the tenant's rate-card BOOKS (containers), newest first. Rates
-    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates.
+     List the tenant's Pricing Books — the catalogues of what this tenant
+    charges — newest first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates.
 
     Args:
-        card_type (None | str | Unset):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
@@ -144,13 +133,12 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PaginatedBooks
+        PaginatedPricingBooks
      """
 
 
     return sync_detailed(
         client=client,
-card_type=card_type,
 cursor=cursor,
 limit=limit,
 
@@ -159,18 +147,17 @@ limit=limit,
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    card_type: None | str | Unset = UNSET,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> Response[PaginatedBooks]:
-    """ List Books
+) -> Response[PaginatedPricingBooks]:
+    """ List Pricing Books
 
-     List the tenant's rate-card BOOKS (containers), newest first. Rates
-    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates.
+     List the tenant's Pricing Books — the catalogues of what this tenant
+    charges — newest first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates.
 
     Args:
-        card_type (None | str | Unset):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
@@ -179,13 +166,12 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PaginatedBooks]
+        Response[PaginatedPricingBooks]
      """
 
 
     kwargs = _get_kwargs(
-        card_type=card_type,
-cursor=cursor,
+        cursor=cursor,
 limit=limit,
 
     )
@@ -199,18 +185,17 @@ limit=limit,
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    card_type: None | str | Unset = UNSET,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
 
-) -> PaginatedBooks | None:
-    """ List Books
+) -> PaginatedPricingBooks | None:
+    """ List Pricing Books
 
-     List the tenant's rate-card BOOKS (containers), newest first. Rates
-    live under a book and are read via GET /pricing/rate-cards/{book_id}/rates.
+     List the tenant's Pricing Books — the catalogues of what this tenant
+    charges — newest first. Rules live under a book and are read via
+    GET /pricing/books/{book_id}/rates.
 
     Args:
-        card_type (None | str | Unset):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
 
@@ -219,13 +204,12 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PaginatedBooks
+        PaginatedPricingBooks
      """
 
 
     return (await asyncio_detailed(
         client=client,
-card_type=card_type,
 cursor=cursor,
 limit=limit,
 

@@ -37,7 +37,7 @@ from urllib.parse import urlencode
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate, RateCard
+from apps.metering.pricing.models import PricingBook, Rate
 from apps.metering.pricing.tests._helpers import (
     rate_in_default_book, the_book_holding)
 from apps.platform.audit.actions import is_registered_action
@@ -99,11 +99,10 @@ class _ATenantWithACustomerMixin:
         """A book by the id a route answered with.
 
         Its rules are reached through the reverse relation rather than by
-        filtering on the column that points at it: that column's name is
-        retired and its ledger entry is a ceiling on how many files may still
-        spell it, and this module is not one of them.
+        filtering on the column that points at it, which reads as the question
+        being asked: the rules IN this book.
         """
-        return RateCard.objects.get(id=book_id)
+        return PricingBook.objects.get(id=book_id)
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -131,7 +130,7 @@ class _ATenantWithACustomerMixin:
         """Publish a declared change through the book's OWN route, which is the
         whole of what "the same one path" means here."""
         return self._post(
-            f"/api/v1/metering/pricing/rate-cards/{draft['book_id']}"
+            f"/api/v1/metering/pricing/books/{draft['book_id']}"
             f"/publishes/{draft['id']}/publish")
 
     def declare_and_publish(self, **stated):
@@ -217,65 +216,86 @@ class NoImmediateMutationPathReachesAnOverrideTest(_ATenantWithACustomerMixin,
                                                    TestCase):
     """AC 6, the half that is about the REST of the surface.
 
-    Two routes declaring a draft prove nothing on their own: a book has an
-    immediate mutation surface beside the publish record, taking a bare book id
-    filtered by the tenant alone, and a customer's own book is one of that
-    tenant's books. Without a refusal a negotiated deal could be repriced with
-    no record of who decided it or when it took effect.
+    Two routes declaring a draft prove nothing on their own: a book used to
+    have an immediate mutation surface beside the publish record, taking a bare
+    book id filtered by the tenant alone, and a customer's own book is one of
+    that tenant's books. Without a refusal a negotiated deal could be repriced
+    with no record of who decided it or when it took effect.
 
-    ⚠ **IT GUARDED THREE ROUTES WHEN #361 WROTE IT AND GUARDS ONE NOW (#367).**
-    The immediate add-a-rule and retire-a-rule routes are deleted — both are
-    declared changes on a publish — so the two cases that drove them are gone
-    with them rather than relaxed, and what is left is the atomic reprice. The
-    claim has not weakened: it is the same claim over a surface with two fewer
-    ways to reach a customer's book. The refusal leaves with the last route
-    (#369), and this class leaves with it.
+    ⚠ **IT GUARDED THREE ROUTES WHEN #361 WROTE IT, ONE AFTER #367, AND NONE
+    NOW (#368).** The immediate add-a-rule and retire-a-rule routes went first;
+    the atomic reprice went with the last of the retired audit action names it
+    wrote. **The refusal went with it**, because there is nothing left for it
+    to refuse — a route's guards are part of what it does, and a guard with no
+    route is dead code that reads as protection.
 
-    ⚠ **THE ACT IS ONE THAT WOULD OTHERWISE SUCCEED.** Mutating the refusal
-    away is what showed why that matters: a case whose request some OTHER rule
-    refuses passes while proving nothing.
-
-    The case reads the book's rules back afterwards, because a 422 is not
-    evidence on its own — this route has refusals of its own.
+    ⚠ **SO THE CLAIM MOVED FROM A REFUSAL TO A PROPERTY OF THE ROUTER, WHICH IS
+    THE STRONGER FORM AND THE ONE #361 SHOULD HAVE HAD.** That commit measured
+    the cost of the weaker one: the three immediate routes each took a bare
+    book id, and a customer's own book was reachable through every one of them
+    with no publish record — *"before claiming a path does not exist, enumerate
+    every route that takes the container's id."* That is what this class does
+    now. It is not a relaxation: a refusal can only guard the routes somebody
+    remembered to put it on, where this fails on a route nobody remembered.
     """
 
-    def setUp(self):
-        super().setUp()
+    def _routes_taking_a_bare_book_id(self):
+        from api.v1.tests.test_audit_sweep import mutating_operations
+
+        return [(method, path) for method, path, _ in mutating_operations()
+                if "{book_id}" in path]
+
+    def test_there_are_such_routes_to_talk_about(self):
+        """The vacuity guard. A walker that found nothing would make every
+        assertion below true by naming no route at all."""
+        self.assertTrue(self._routes_taking_a_bare_book_id())
+
+    def test_every_one_of_them_goes_through_the_publish_record(self):
+        """...or withdraws the book itself, which writes no rule.
+
+        ⚠ **THE EXCEPTION IS NAMED RATHER THAN FILTERED OUT BY SPELLING.**
+        Withdrawing a book is a mutating route taking a book id, and it is not
+        a change to what a customer is charged: it is refused outright while
+        any rule points at the book (`PROTECT`, answered as a 409), so it
+        cannot reach a negotiated deal even by accident. Excluding it by path
+        prefix would have made this test about a naming convention.
+        """
+        stray = [(method, path)
+                 for method, path in self._routes_taking_a_bare_book_id()
+                 if "/publishes" not in path
+                 and not (method == "DELETE" and path.endswith("{book_id}"))]
+
+        self.assertEqual(stray, [], "a mutating route takes a book id without "
+                                    "going through a publish record, so a "
+                                    "customer's own book can be changed with "
+                                    "no record of who decided it")
+
+    def test_withdrawing_a_book_cannot_reach_a_deal(self):
+        """The control for the exception above, driven rather than argued."""
         published = self.declare_and_publish()
-        self.book_id = published["book_id"]
-        self.book = f"/api/v1/metering/pricing/rate-cards/{self.book_id}"
+        theirs = self._book(published["book_id"])
 
-    def _rules(self):
-        return sorted(self._book(self.book_id).rates
-                      .values_list("id", "rate_per_unit_micros", "valid_to"))
+        response = self.http.delete(
+            f"/api/v1/metering/pricing/pricing-books/{theirs.id}",
+            **self._auth())
 
-    def _assert_refused_and_nothing_written(self, response, before):
-        self.assertEqual(response.status_code, 422, response.content)
-        self.assertIn("one customer's own pricing rules",
-                      response.json()["detail"])
-        self.assertEqual(self._rules(), before)
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertTrue(theirs.rates.exists())
 
-    def test_a_rule_in_a_customers_own_book_cannot_be_repriced_immediately(self):
-        before = self._rules()
+    def test_a_customers_own_book_is_changed_by_a_publish_like_any_other(self):
+        """The positive control, and the reason the assertion above is not
+        merely about spelling.
 
-        response = self._post(f"{self.book}/publish", {
-            "changes": [{"measurement_key": QUANTITY, "provider": PROVIDER,
-                         "event_type": EVENT_TYPE,
-                         "rate_per_unit_micros": 1}]})
+        A deal is declared and published through the same act every other
+        change to every other book takes — which is what makes "there is no
+        immediate path" a statement about the surface rather than about a
+        customer's book being special.
+        """
+        published = self.declare_and_publish()
 
-        self._assert_refused_and_nothing_written(response, before)
-
-    def test_it_still_reaches_an_ordinary_book(self):
-        """The control: the refusal is about WHOSE book it is, not about the
-        route, which is untouched and still works everywhere else."""
-        book = f"/api/v1/metering/pricing/rate-cards/{self.catalogue.id}"
-
-        response = self._post(f"{book}/publish", {
-            "changes": [{"measurement_key": QUANTITY, "provider": PROVIDER,
-                         "event_type": EVENT_TYPE,
-                         "rate_per_unit_micros": 1}]})
-
-        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            self._book(published["book_id"]).customer_id, self.customer.id)
+        self.assertTrue(published["published_at"])
 
 
 class AnOverrideStatesAWholeRuleTest(_ATenantWithACustomerMixin, TestCase):
@@ -373,14 +393,14 @@ class AnOverrideIsDatedForwardAndReversedTest(_ATenantWithACustomerMixin,
         """A refusal spends nothing — including the customer's book, which
         this route creates on first use and which a refused request must not
         leave behind."""
-        from apps.metering.pricing.models import PricingBookPublish, RateCard
+        from apps.metering.pricing.models import PricingBookPublish
 
         self.declare(
             effective_at=(timezone.now() + timedelta(days=400)).isoformat())
 
         self.assertEqual(PricingBookPublish.objects.count(), 0)
         self.assertEqual(
-            RateCard.objects.filter(customer=self.customer).count(), 0)
+            PricingBook.objects.filter(customer=self.customer).count(), 0)
 
     def test_a_scheduled_override_is_reversed_by_a_further_publish(self):
         """Withdrawing at the same instant leaves an empty window rather than
@@ -411,7 +431,7 @@ class AnOverrideIsDatedForwardAndReversedTest(_ATenantWithACustomerMixin,
             f"{self.overrides}/{published['opened_rule_ids'][0]}").json()
 
         discarded = self._delete(
-            f"/api/v1/metering/pricing/rate-cards/{withdrawal['book_id']}"
+            f"/api/v1/metering/pricing/books/{withdrawal['book_id']}"
             f"/publishes/{withdrawal['id']}")
 
         self.assertEqual(discarded.status_code, 200, discarded.content)

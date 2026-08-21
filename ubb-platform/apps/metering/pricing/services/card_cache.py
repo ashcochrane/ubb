@@ -2,8 +2,8 @@
 
 L1 caches the single RESOLVED ``Rate`` instance (or ``None``, a negative
 cache) per resolution key for TTL_SECONDS — one entry per (tenant, customer,
-card_type, measurement_key, currency, **the as-of instant**, full
-fourteen-selector tuple from ``Rate.SELECTORS``:
+which side is being resolved, measurement_key, currency, **the as-of instant**,
+full fourteen-selector tuple from ``Rate.SELECTORS``:
 provider, event_type, task_type, subtask_type and the ten slots) — not a set of
 candidate rows to re-match. Dimensions are declared and cardinality-capped
 (design D4), so the SELECTOR half of the key is bounded: unlike the old
@@ -22,7 +22,8 @@ had, and it is the price of the key being TRUE — a key that answers for an
 instant it was not built for is not a cache, it is a wrong number.
 
 **⚠ THE KEY CARRIES THE AS-OF INSTANT, AND A PUBLISH THEREFORE INVALIDATES
-NOTHING (#356).** Both halves were live defects. `resolve` read the clock
+NOTHING (#356).** Both halves were live defects. The resolve path read the
+clock
 rather than taking the event's own instant, so a cached answer was an answer
 for *now* whatever moment it was asked about; and `book_service.publish` bumped
 the version at publish time, which is the wrong moment when the boundary is in
@@ -49,12 +50,12 @@ nothing reads.
 The version discipline itself is unchanged and is what that reader inherits:
 begin_request reads the version at most once per request into a
 contextvars.ContextVar — request/context-scoped, so a stale concurrent request
-can never clobber the version a fresher request observed — and resolve compares
-cached entries against it, so a bump would propagate within one request
+can never clobber the version a fresher request observed — and the L1 read
+compares cached entries against it, so a bump would propagate within one request
 boundary + TTL.
 
 **Nothing in production reads this cache**, and since #356 nothing writes to it
-either: ``resolve`` and ``begin_request`` had one caller — the accept-time
+either: the resolve path and ``begin_request`` had one caller — the accept-time
 estimate deleted in #239 — and the recording path resolves cards against live
 ORM through ``PricingService``. Disposing of the module belongs to a later
 slice-1 ticket, with ``markup_cache.py``.
@@ -104,9 +105,37 @@ class CardCache:
             pass  # TTL bounds staleness
 
     @staticmethod
-    def resolve(tenant, customer, card_type, selectors, measurement_key,
-                currency, as_of):
-        """Resolve with PricingService._resolve_card semantics, always via L1.
+    def resolve_price(tenant, customer, selectors, measurement_key, currency,
+                      as_of):
+        """A customer price, with `PricingService`'s own semantics, via L1."""
+        from apps.metering.pricing.services.pricing_service import PricingService
+        return CardCache._through_l1(
+            "price", tenant, customer, selectors, measurement_key, currency,
+            as_of,
+            lambda: PricingService.resolve_the_price_rule(
+                tenant, customer, selectors, measurement_key, currency, as_of))
+
+    @staticmethod
+    def resolve_cost(tenant, selectors, measurement_key, currency, as_of):
+        """A supplier cost, likewise — and with no customer, because a cost
+        book is selected by supplier and currency alone (#368)."""
+        from apps.metering.pricing.services.pricing_service import PricingService
+        return CardCache._through_l1(
+            "cost", tenant, None, selectors, measurement_key, currency, as_of,
+            lambda: PricingService.resolve_the_cost_rule(
+                tenant, selectors, measurement_key, currency, as_of))
+
+    @staticmethod
+    def _through_l1(side, tenant, customer, selectors, measurement_key,
+                    currency, as_of, resolve):
+        """The caching itself, shared by the two above.
+
+        ⚠ **`side` IS PART OF THE KEY AND IS NOT A DISCRIMINATOR (#368).**
+        A cost resolution and a price resolution for one quantity are two
+        different answers, so they need two entries; what changed is that they
+        are now two different QUERIES against two different tables, chosen by
+        the caller above rather than by a value passed down. Nothing below
+        branches on it — it is a key component, exactly like the currency.
 
         ``as_of`` is REQUIRED and has no default (#356). It used to be a
         ``timezone.now()`` read inside this method, which made every cached
@@ -129,17 +158,14 @@ class CardCache:
         Returned Rate instances are shared cache objects — callers must NOT
         mutate them."""
         from apps.metering.pricing.models import Rate
-        from apps.metering.pricing.services.pricing_service import PricingService
         sel_tuple = tuple(selectors.get(name) or "" for name in Rate.SELECTORS)
         ver = _ctx_versions.get({}).get(str(tenant.id), 0)
         key = (str(tenant.id), str(customer.id) if customer else "",
-               card_type, measurement_key, currency, as_of, sel_tuple)
+               side, measurement_key, currency, as_of, sel_tuple)
         hit = _l1.get(key)
         if hit and hit[0] == ver and hit[1] > time.monotonic():
             return hit[2]
-        rate = PricingService._resolve_card(
-            tenant, customer, card_type, selectors, measurement_key,
-            currency, as_of)
+        rate = resolve()
         if len(_l1) >= _L1_MAX:
             _l1.clear()  # crude bound; entries repopulate within one TTL
         _l1[key] = (ver, time.monotonic() + TTL_SECONDS, rate)

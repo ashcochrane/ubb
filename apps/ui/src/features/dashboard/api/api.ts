@@ -17,7 +17,7 @@ import {
   type ConnectStatus,
   type MarginCustomerList,
   type MarginSummary,
-  type RateCardBookList,
+  type PricingBookList,
   type RevenueAnalytics,
   type Unprofitable,
   type UsageAnalytics,
@@ -97,10 +97,15 @@ export async function getApiKeysFirstPage(): Promise<ApiKeyList> {
   );
 }
 
-/** First page of rate-card books — existence check for the getting-started card. */
-export async function getRateCardBooksFirstPage(): Promise<RateCardBookList> {
+/** First page of pricing books — existence check for the getting-started card.
+ *
+ * ⚠ THE PRICING HALF, DELIBERATELY (#368). The card asks whether this
+ * workspace has begun configuring what it CHARGES; a cost book records what a
+ * supplier charges and answers a different question. Before the split one list
+ * held both and this read could not tell them apart. */
+export async function getPricingBooksFirstPage(): Promise<PricingBookList> {
   return unwrap(
-    await meteringApi.GET("/pricing/rate-cards", {
+    await meteringApi.GET("/pricing/pricing-books", {
       params: { query: { limit: 1 } },
     }),
   );

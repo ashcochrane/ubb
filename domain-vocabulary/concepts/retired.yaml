@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,662 of 2,058 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,659 of 2,056 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    51 files, 127 occurrences
+    #     units    50 files, 125 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1222,6 +1222,43 @@ measurement_key:
     # wording of a quantity field a tenant filled in. Neither occurrence was
     # re-homed, because the surface they belonged to is gone rather than moved,
     # and #372 rebuilds this feature around the acts that replace it.
+    #
+    # #368 MOVED BOTH NUMBERS DOWNWARD AGAIN (1,662 -> 1,659 swept,
+    # 2,058 -> 2,056 tracked, 51/127 -> 50/125), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 229 -> 230). The same signature as #367 and for
+    # the same reason: the container split into a Pricing Book and a cost book,
+    # which deleted published surface — the immediate reprice body and route,
+    # the record that assigned a book to a customer — while adding a migration.
+    # Three swept files left net: six test and console modules deleted, two
+    # renamed, THREE new test modules arriving, and one new migration excluded
+    # rather than swept.
+    #
+    # ⚠ **THE DENOMINATOR IS COUNTED OVER GIT-TRACKED FILES, SO A NEW FILE
+    # CHANGES IT ONLY ONCE IT IS `git add`ed — WHICH IS HOW A LOCAL GREEN
+    # PRECEDES A RED CI.** This commit's review pass added one contract module,
+    # ran the whole contract suite twice while it was still untracked, saw 654
+    # pass, committed, and watched CI fail on exactly this assertion. **Re-take
+    # these figures AFTER staging, never before.** That is the mechanism; a
+    # tally of how many times the numbers were re-taken is not, and the two
+    # earlier revisions of this paragraph each carried a stale count of their
+    # own re-takes — the failure it exists to warn about, committed inside the
+    # warning, twice. The sentence above replaces the tally.
+    #
+    # ⚠ **THE NUMERATOR FELL BY A WHOLE FILE AGAIN, AND DOWNWARD STILL NEEDS NO
+    # INVESTIGATION** — the three-case rule above asks for an account of a
+    # RISE. The file is the console's rate-preview helper, which built the live
+    # example line under the add-a-rule dialog ("1,000 units -> $X") and
+    # spelled the retired plural twice in doing it. It is deleted with the
+    # reprice dialog that was its last caller. Neither occurrence was re-homed:
+    # the surface they belonged to is gone rather than moved.
+    #
+    # ⚠ **AND ONE THAT DID NOT COUNT, SAID OUT LOUD BECAUSE IT LOOKS LIKE IT
+    # SHOULD HAVE.** The deleted `publish-row.tsx` carried `placeholder="Units"`
+    # — the same word, capitalised. The sweep matches CASE-SENSITIVELY, so it
+    # was never in this count and its departure moves nothing. A re-take that
+    # had reasoned from "how many files mentioned the word" rather than from
+    # the matcher's own output would have recorded a fall of two files here and
+    # been wrong by one.
     #
     # ⚠ IT IS ALSO WHY THIS BLOCK WAS WRITTEN TWICE. The first taking of these
     # counts was made before the console half of the commit landed and recorded

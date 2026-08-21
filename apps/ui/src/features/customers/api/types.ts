@@ -64,7 +64,6 @@ export type UsageAnalyticsResponse = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseriesResponse = MeteringSchemas["UsageTimeseriesResponse"];
 export type TenantMarkupIn = MeteringSchemas["TenantMarkupIn"];
 export type TenantMarkupOut = MeteringSchemas["TenantMarkupOut"];
-export type BookOut = MeteringSchemas["BookOut"];
 export type PastLimitReportResponse = MeteringSchemas["PastLimitReportResponse"];
 
 // ---------------------------------------------------------------------------
@@ -179,9 +178,6 @@ export interface PastLimitReport {
 }
 
 /** POST /metering/pricing/customers/{id}/rate-card answers `{assigned}`. */
-export interface AssignRateCardResult {
-  assigned: string;
-}
 
 // ---------------------------------------------------------------------------
 // Narrowing — field-by-field coercion of the untyped bodies above. This is
@@ -277,8 +273,7 @@ export function narrowPastLimitReport(
   };
 }
 
-export function narrowAssignResult(
-  raw: Record<string, unknown>,
-): AssignRateCardResult {
-  return { assigned: str(raw.assigned) };
-}
+// ⚠ `narrowAssignResult` AND `AssignRateCardResult` ARE DELETED (#368).
+// They narrowed the untyped body of the route that assigned a book to a
+// customer; that record and its route are gone, and a customer's book
+// comes from their plan.

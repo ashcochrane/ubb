@@ -40,12 +40,12 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from apps.metering.pricing.models import Rate
+from apps.metering.pricing.models import CostBook, PricingBook, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     THE_RULES_KIND_COLUMN, cost_rate_in_default_book, database_rules_guarding,
-    rate_in_default_book, reconcile_the_rate_table_with,
-    the_rate_table_as_this_migration_saw_it, the_state_before)
+    rate_in_default_book, reconcile_the_rate_table_with, restore_the_shape_of,
+    the_pricing_tables_as_this_migration_saw_them, the_state_before)
 from apps.platform.audit.actions import AUDIT_ACTIONS
 from apps.platform.audit.ledger import record
 from apps.platform.customers.models import Customer
@@ -243,10 +243,14 @@ class TheReverseIsExercisedTest(TestCase):
         self.migration = _rename()
         self.historical = the_state_before(self.migration).apps
         self.enterContext(
-            the_rate_table_as_this_migration_saw_it(self.migration))
+            the_pricing_tables_as_this_migration_saw_them(self.migration))
         self.Rate = self.historical.get_model(APP_LABEL, "Rate")
         self.RateCard = self.historical.get_model(APP_LABEL, "RateCard")
         reconcile_the_rate_table_with(self.Rate)
+        # THE CONTAINER TOO, SINCE #368 SPLIT IT. This reverse re-derives each
+        # rule kind from the book that held it, so the replay needs the book
+        # table as 0027 saw it — three columns the split has since taken off.
+        restore_the_shape_of(self.RateCard)
         (self.run_python,) = [op for op in self.migration.operations
                               if isinstance(op, migrations.RunPython)]
 
@@ -452,11 +456,16 @@ class NoResolutionPathSelectsARuleByKindTest(TestCase):
                                   rate_per_unit_micros=3)
 
     def _statements_against_the_rule_table(self, kind):
+        selectors = {name: "" for name in Rate.SELECTORS}
+        now = timezone.now()
         with CaptureQueriesContext(connection) as captured:
-            PricingService._resolve_card(
-                self.tenant, self.customer, kind,
-                {name: "" for name in Rate.SELECTORS}, "input_tokens",
-                "usd", timezone.now())
+            if kind == "cost":
+                PricingService.resolve_the_cost_rule(
+                    self.tenant, selectors, "input_tokens", "usd", now)
+            else:
+                PricingService.resolve_the_price_rule(
+                    self.tenant, self.customer, selectors, "input_tokens",
+                    "usd", now)
         table = connection.ops.quote_name(Rate._meta.db_table)
         return [query["sql"] for query in captured.captured_queries
                 if f"FROM {table}" in query["sql"]]
@@ -476,38 +485,83 @@ class NoResolutionPathSelectsARuleByKindTest(TestCase):
                     self.assertNotIn(THE_DELETED_COLUMN, sql)
 
     def test_the_two_paths_ask_the_rules_the_same_question(self):
-        """One shape, differing only in WHICH books were selected.
+        """One shape, differing only in WHICH BOOK COLUMN carries the `IN`.
 
-        The `IN` list of book ids is what separates them and it is the only
-        thing that does — so the discriminator has moved entirely into
-        selection, where the container still holds it. The list is collapsed to
-        a single placeholder before comparing, because the two paths select
-        different NUMBERS of books as well as different ones and neither fact
-        is about the rules.
+        ⚠ **THIS ASSERTED ONE SHAPE UNTIL #368 AND NOW ASSERTS TWO, WHICH IS
+        THE CLAIM STRENGTHENING RATHER THAN RELAXING.** While both paths read
+        one container table, the whole of what separated them was the list of
+        book ids — so a single shape was the strong statement, and the residual
+        (the container still carrying the kind word) was recorded in the case
+        below. The container is two tables now, so the two statements name two
+        different columns, and that difference IS the split: the shapes differ
+        in exactly one token, and it is a column name rather than a value.
+
+        The `IN` list is collapsed to a single placeholder before comparing,
+        because the two paths select different NUMBERS of books as well as
+        different ones and neither fact is about the rules.
         """
-        shapes = set()
+        shapes = {}
         for kind in ("cost", "price"):
             for sql in self._statements_against_the_rule_table(kind):
-                shapes.add(_without_its_values(sql))
-        self.assertEqual(len(shapes), 1, shapes)
+                # ⚠ THE WHERE CLAUSE, NOT THE WHOLE STATEMENT. Django names
+                # every column of the row in its SELECT list, so both
+                # statements mention both book columns there whatever they
+                # filter on — comparing whole statements would make the
+                # assertions below true of a query that filtered on neither.
+                shapes[kind] = _without_its_values(sql).split(" WHERE ", 1)[1]
 
-    def test_the_container_is_still_what_tells_the_two_apart(self):
-        """The residual, named rather than left silent.
+        self.assertEqual(len(shapes), 2, shapes)
+        self.assertNotEqual(shapes["cost"], shapes["price"])
+        # The one token that differs, named in both directions so a statement
+        # that stopped filtering on a book at all could not pass this.
+        self.assertIn(CostBook.REFERENCE_COLUMN, shapes["cost"])
+        self.assertNotIn(PricingBook.REFERENCE_COLUMN, shapes["cost"])
+        self.assertIn(PricingBook.REFERENCE_COLUMN, shapes["price"])
+        self.assertNotIn(CostBook.REFERENCE_COLUMN, shapes["price"])
+        # ⚠ COMPARED AS A SET OF CONDITIONS, NOT AS A STRING. Django sorts a
+        # `Q`'s keyword arguments by lookup name, so the two book columns sort
+        # to different positions and the same conditions come out in a
+        # different order — a string comparison would report a difference that
+        # is Django's alphabet rather than this query's shape.
+        def conditions(where):
+            # The outer parentheses Django wraps the whole clause in are
+            # stripped first: they attach to whichever condition happens to
+            # sort first, which would make two identical sets of conditions
+            # compare unequal for a reason that is punctuation.
+            body = where.strip()
+            if body.startswith("(") and body.endswith(")"):
+                body = body[1:-1]
+            return sorted(part.strip() for part in body.split(" AND "))
 
-        `_selected_books` answers different books for the two kinds, and it can
-        only do that because the container still carries the word. Ticket 21 is
-        where this stops being true, and this test is what will go red when it
-        does — which is the intended repair, not a regression.
+        self.assertEqual(
+            conditions(shapes["cost"].replace(CostBook.REFERENCE_COLUMN,
+                                              PricingBook.REFERENCE_COLUMN)),
+            conditions(shapes["price"]))
+
+    def test_the_two_paths_read_different_tables(self):
+        """#367's residual, PAID — and this case is its repair rather than its
+        deletion.
+
+        It stood here as `test_the_container_is_still_what_tells_the_two_apart`
+        and said so in its own docstring: *"ticket 21 is where this stops being
+        true, and this test is what will go red when it does — which is the
+        intended repair, not a regression."* It went red. What used to be true
+        was that one container table answered differently for two values of a
+        word; what is true now is that there is no word and there are two
+        tables, so the books the two paths select cannot overlap for a reason
+        stronger than a filter.
         """
-        for_cost = PricingService._selected_books(
-            self.tenant, self.customer, "cost", "", "usd")
-        for_price = PricingService._selected_books(
-            self.tenant, self.customer, "price", "", "usd")
+        for_cost = PricingService._selected_cost_books(self.tenant, "", "usd")
+        for_price = PricingService._selected_pricing_books(
+            self.tenant, self.customer)
 
         self.assertTrue(for_cost and for_price)
-        self.assertEqual(
-            {book.id for _, book in for_cost}
-            & {book.id for _, book in for_price}, set())
+        for _, book in for_cost:
+            self.assertIsInstance(book, CostBook)
+        for _, book in for_price:
+            self.assertIsInstance(book, PricingBook)
+        self.assertNotEqual(CostBook._meta.db_table,
+                            PricingBook._meta.db_table)
 
 
 class TheTwoDeletedActionsCannotBeWrittenTest(TestCase):

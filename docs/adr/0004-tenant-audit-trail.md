@@ -35,8 +35,9 @@ feed ships.)
 
 ### 2. Mechanism: named audit actions into a durable kernel ledger, gated by a CI pin
 
-A new append-only ledger records explicit, **named audit actions** (`rate_card.published`,
-`budget.updated`, `webhook_config.deleted`, …) written at each mutation site — the `write_event`
+A new append-only ledger records explicit, **named audit actions**
+(`pricing_book_publish.published`, `budget.updated`, `webhook_config.deleted`, …) written at each
+mutation site — the `write_event`
 calling pattern. The actor is captured **once**, at the auth seam, into a request-scoped
 contextvar and read at record time; mutation sites never pass "who" by hand.
 

@@ -92,12 +92,13 @@ RETIRED_VALUE = _MODULE.THE_RETIRED_SENSE
 #:
 #: ⚠ **THREE UNTIL #367, AND THE ONE THAT WENT WAS THE IMMEDIATE WRITE.** Adding
 #: a rule is a declared change on a publish now, so the body that opened one
-#: directly is deleted from the contract with its route. Its share of the claim
-#: did not vanish with it: `BookChangeIn` carries the shape too, which #366 put
-#: there and `tests/contracts/test_openapi_known_values.py` asserts by name over
-#: every schema that carries a rule. These two are the ones this module's own
-#: subject — the rate's SCHEMAS — still covers.
-PUBLISHED_SCHEMAS = ("RateChangeIn", "RateOut")
+#: directly is deleted from the contract with its route, and #368 deleted the
+#: immediate reprice body the same way. Their share of the claim did not vanish
+#: with them: `BookChangeIn` carries the shape too, which #366 put there and
+#: `tests/contracts/test_openapi_known_values.py` asserts by name over every
+#: schema that carries a rule. This is the one this module's own subject — the
+#: rate's SCHEMAS — still covers.
+PUBLISHED_SCHEMAS = ("RateOut",)
 
 
 @cache
@@ -338,7 +339,8 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
             measurements={"api_calls": 9},
             caller_provider_cost=None,
             resolve_declaration=lambda: None,
-            resolve_card=lambda kind, key: rate,
+            resolve_the_cost_rule=lambda key: rate,
+            resolve_the_price_rule=lambda key: None,
             resolve_markup=lambda: None)
 
         component, = receipt["costing"]["detail"]["components"]

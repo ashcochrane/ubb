@@ -8,7 +8,7 @@ import {
   MOCK_CONNECT_STATUS,
   MOCK_LIFETIME_ANALYTICS,
   MOCK_MARGIN_CUSTOMERS,
-  MOCK_RATE_CARD_BOOKS,
+  MOCK_PRICING_BOOKS,
   MOCK_UNPROFITABLE,
   mockDailySeries,
   mockMarginSummary,
@@ -20,7 +20,7 @@ import type {
   ConnectStatus,
   MarginCustomerList,
   MarginSummary,
-  RateCardBookList,
+  PricingBookList,
   RevenueAnalytics,
   Unprofitable,
   UsageAnalytics,
@@ -106,9 +106,9 @@ export async function getApiKeysFirstPage(): Promise<ApiKeyList> {
   return MOCK_API_KEYS;
 }
 
-export async function getRateCardBooksFirstPage(): Promise<RateCardBookList> {
+export async function getPricingBooksFirstPage(): Promise<PricingBookList> {
   await mockDelay();
-  return MOCK_RATE_CARD_BOOKS;
+  return MOCK_PRICING_BOOKS;
 }
 
 export async function getConnectStatus(): Promise<ConnectStatus> {

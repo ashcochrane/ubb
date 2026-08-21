@@ -43,7 +43,8 @@ CONFIG_MODEL_LABELS = frozenset({
     # A tenant would then have no markup rung and every event after the reset
     # would price to `unknown`, silently.
     "pricing.TenantDefaultMarkup",
-    # ⚠ THE BOOK A RULE LIVES IN, AND THE RECORD OF EVERY CHANGE TO IT (#358).
+    # ⚠ THE BOOKS A RULE LIVES IN, AND THE RECORD OF EVERY CHANGE TO THEM
+    # (#358, split in two by #368).
     #
     # The book was missing and that was a live break rather than a tidiness
     # point: a rule holds its book with `PROTECT`, so a reset told to keep the
@@ -65,7 +66,17 @@ CONFIG_MODEL_LABELS = frozenset({
     # a reset keeping the rules and wiping the records that say who set them,
     # when, and what they superseded leaves precisely the untraceable price
     # that record exists to remove.
-    "pricing.RateCard",
+    #
+    # ⚠ **TWO LABELS NOW, AND LEAVING THE SECOND OUT WOULD HAVE BEEN THE SAME
+    # BREAK A THIRD TIME (#368).** The container split into a Pricing Book and
+    # a cost book, and a cost rule holds its cost book with `PROTECT` exactly
+    # as a price rule holds its Pricing Book — so a set naming only the price
+    # half would keep every rule and wipe half the books they point at, and the
+    # database would refuse the whole reset. The test over this set asks only
+    # whether each label RESOLVES, never whether the right models are in it, so
+    # the seeded keep-config case is what actually holds this.
+    "pricing.PricingBook",
+    "pricing.CostBook",
     "pricing.PricingBookPublish",
     # THE EVENT TYPE CATALOGUE — configuration, and the four arrive together
     # rather than one at a time (#326). A rate is already kept here, and a rate

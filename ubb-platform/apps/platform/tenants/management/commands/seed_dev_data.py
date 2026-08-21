@@ -174,28 +174,31 @@ class Command(BaseCommand):
         self.stdout.write(f'# Get wallet balance')
         self.stdout.write(f'curl -H "Authorization: Bearer {raw_key}" '
                           f'http://localhost:8001/api/v1/billing/customers/{customer.id}/balance\n')
-        self.stdout.write(f'# Create a cost rate-card BOOK, then open a rule in it '
+        self.stdout.write(f'# Declare a COST BOOK, then open a rule in it '
                           f'(2 micros per input_token). Opening a rule is a '
                           f'declared change published in the same breath (#367) '
-                          f'— the immediate route these commands used is gone.')
+                          f'— the immediate route these commands used is gone. '
+                          f'A cost book names its supplier and its currency; a '
+                          f'Pricing Book (/pricing/pricing-books) names '
+                          f'neither (#368).')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
-            f'-d \'{{"card_type": "cost", "key": "default", "provider_key": "", '
-            f'"is_default": true}}\' '
-            f'http://localhost:8001/api/v1/metering/pricing/rate-cards\n')
+            f'-d \'{{"key": "default", "provider_key": "", '
+            f'"currency": "usd", "is_default": true}}\' '
+            f'http://localhost:8001/api/v1/metering/pricing/cost-books\n')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
             f'-d \'{{"changes": [{{"kind": "add", "measurement_key": "input_tokens", '
             f'"rate_structure": "per_unit", "rate_per_unit_micros": 2, '
             f'"unit_quantity": 1}}]}}\' '
-            f'http://localhost:8001/api/v1/metering/pricing/rate-cards/$BOOK_ID/publishes\n')
+            f'http://localhost:8001/api/v1/metering/pricing/books/$BOOK_ID/publishes\n')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
-            f'http://localhost:8001/api/v1/metering/pricing/rate-cards/'
+            f'http://localhost:8001/api/v1/metering/pricing/books/'
             f'$BOOK_ID/publishes/$PUBLISH_ID/publish\n')
-        self.stdout.write(f'# Record a usage event (engine computes COGS from rate card)')
+        self.stdout.write(f'# Record a usage event (engine computes COGS from the cost book)')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '

@@ -16,15 +16,25 @@ from typing import cast
 
 
 
-T = TypeVar("T", bound="BookIn")
+T = TypeVar("T", bound="CostBookIn")
 
 
 
 @_attrs_define
-class BookIn:
-    """ 
+class CostBookIn:
+    """ Declare a cost book: a record of what one supplier charges this tenant.
+
+    It names the supplier and the currency that supplier bills in, and both
+    are required in the sense that matters: `currency` may not be empty, and
+    `provider_key` must be stated — the empty string is a stated value and
+    means the book applies whatever the supplier, which is a real choice
+    rather than an omission.
+
+    `is_default` marks the book a cost is resolved from for that supplier and
+    currency. A tenant has at most one per pair; declaring a second answers
+    409.
+
         Attributes:
-            card_type (str):
             key (str):
             currency (None | str | Unset):
             is_default (bool | Unset):  Default: False.
@@ -32,7 +42,6 @@ class BookIn:
             provider_key (str | Unset):  Default: ''.
      """
 
-    card_type: str
     key: str
     currency: None | str | Unset = UNSET
     is_default: bool | Unset = False
@@ -45,8 +54,6 @@ class BookIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        card_type = self.card_type
-
         key = self.key
 
         currency: None | str | Unset
@@ -65,7 +72,6 @@ class BookIn:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "card_type": card_type,
             "key": key,
         })
         if currency is not UNSET:
@@ -84,8 +90,6 @@ class BookIn:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        card_type = d.pop("card_type")
-
         key = d.pop("key")
 
         def _parse_currency(data: object) -> None | str | Unset:
@@ -104,8 +108,7 @@ class BookIn:
 
         provider_key = d.pop("provider_key", UNSET)
 
-        book_in = cls(
-            card_type=card_type,
+        cost_book_in = cls(
             key=key,
             currency=currency,
             is_default=is_default,
@@ -114,8 +117,8 @@ class BookIn:
         )
 
 
-        book_in.additional_properties = d
-        return book_in
+        cost_book_in.additional_properties = d
+        return cost_book_in
 
     @property
     def additional_keys(self) -> list[str]:

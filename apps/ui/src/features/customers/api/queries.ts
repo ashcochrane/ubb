@@ -187,13 +187,9 @@ export function useCustomerMarkup(customerId: string) {
   });
 }
 
-export function usePriceBooks(enabled = true) {
-  return useQuery({
-    queryKey: ["metering", "price-books"],
-    queryFn: () => customersApi.listPriceBooks(),
-    enabled,
-  });
-}
+// ⚠ `usePriceBooks` and `useAssignRateCard` ARE DELETED (#368),
+// with the record and the route they wrapped. A customer reaches a
+// book through their PLAN or through a book that carries them.
 
 // ---------------------------------------------------------------------------
 // Subscription reads
@@ -355,18 +351,6 @@ export function useRemoveMarkup(customerId: string) {
   });
 }
 
-export function useAssignRateCard(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (rateCardId: string) =>
-      customersApi.assignRateCard(customerId, rateCardId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit"] });
-    },
-  });
-}
 
 function useSubscriptionMutation<TArgs, TResult>(
   mutationFn: (args: TArgs) => Promise<TResult>,

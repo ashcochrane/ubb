@@ -291,7 +291,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
     platform piggyback, plain-429 record_usage)."""
 
     @patch("ubb.retry.time.sleep")
-    def test_create_rate_card_retries_on_503(self, mock_sleep):
+    def test_declare_cost_book_retries_on_503(self, mock_sleep):
         from ubb.metering import MeteringClient
         client = MeteringClient("ubb_live_test", max_retries=2)
         with patch.object(client._http, "post") as mock_post:
@@ -300,16 +300,16 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {
-                "id": "rc_1", "lineage_id": "lin_1", "card_type": "cost",
-                "measurement_key": "tokens", "pricing_model": "per_unit",
-                "rate_per_unit_micros": 10, "unit_quantity": 1_000_000,
+                "id": "cb_1", "key": "openai", "provider_key": "openai",
+                "currency": "usd", "name": "", "version": 1,
+                "is_default": True,
             }
             mock_post.side_effect = [resp_fail, resp_ok]
-            card = client.create_rate_card(card_type="cost", measurement_key="tokens",
-                                           rate_per_unit_micros=10)
+            book = client.declare_cost_book(key="openai",
+                                            provider_key="openai")
             self.assertEqual(mock_post.call_count, 2)
-            self.assertEqual(card.id, "rc_1")
-            self.assertEqual(card.measurement_key, "tokens")
+            self.assertEqual(book.id, "cb_1")
+            self.assertEqual(book.provider_key, "openai")
         client.close()
 
     @patch("ubb.retry.time.sleep")

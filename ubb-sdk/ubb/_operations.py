@@ -186,22 +186,18 @@ API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_REPORTED_COST_MAPPING = Operation(
     'api_v1_event_type_endpoints_withdraw_reported_cost_mapping',
     'delete',
     '/api/v1/event-types/{key}/reported-cost-mapping')
-API_V1_METERING_ENDPOINTS_ASSIGN_BOOK = Operation(
-    'api_v1_metering_endpoints_assign_book',
-    'post',
-    '/api/v1/metering/pricing/customers/{customer_id}/rate-card')
 API_V1_METERING_ENDPOINTS_CLOSE_TASK = Operation(
     'api_v1_metering_endpoints_close_task',
     'post',
     '/api/v1/metering/tasks/{task_id}/close')
-API_V1_METERING_ENDPOINTS_CREATE_BOOK = Operation(
-    'api_v1_metering_endpoints_create_book',
-    'post',
-    '/api/v1/metering/pricing/rate-cards')
 API_V1_METERING_ENDPOINTS_DECLARE_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_declare_book_publish',
     'post',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes')
+    '/api/v1/metering/pricing/books/{book_id}/publishes')
+API_V1_METERING_ENDPOINTS_DECLARE_COST_BOOK = Operation(
+    'api_v1_metering_endpoints_declare_cost_book',
+    'post',
+    '/api/v1/metering/pricing/cost-books')
 API_V1_METERING_ENDPOINTS_DECLARE_CUSTOMER_OVERRIDE = Operation(
     'api_v1_metering_endpoints_declare_customer_override',
     'post',
@@ -210,6 +206,10 @@ API_V1_METERING_ENDPOINTS_DECLARE_GROUPING_FIELDS = Operation(
     'api_v1_metering_endpoints_declare_grouping_fields',
     'put',
     '/api/v1/metering/grouping-fields')
+API_V1_METERING_ENDPOINTS_DECLARE_PRICING_BOOK = Operation(
+    'api_v1_metering_endpoints_declare_pricing_book',
+    'post',
+    '/api/v1/metering/pricing/pricing-books')
 API_V1_METERING_ENDPOINTS_DECLARE_TASK_TYPES = Operation(
     'api_v1_metering_endpoints_declare_task_types',
     'put',
@@ -225,7 +225,7 @@ API_V1_METERING_ENDPOINTS_DELETE_CUSTOMER_MARKUP = Operation(
 API_V1_METERING_ENDPOINTS_DISCARD_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_discard_book_publish',
     'delete',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}')
+    '/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}')
 API_V1_METERING_ENDPOINTS_EXECUTE_RESOLUTION_RUN = Operation(
     'api_v1_metering_endpoints_execute_resolution_run',
     'post',
@@ -233,7 +233,7 @@ API_V1_METERING_ENDPOINTS_EXECUTE_RESOLUTION_RUN = Operation(
 API_V1_METERING_ENDPOINTS_GET_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_get_book_publish',
     'get',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}')
+    '/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}')
 API_V1_METERING_ENDPOINTS_GET_CUSTOMER_MARKUP = Operation(
     'api_v1_metering_endpoints_get_customer_markup',
     'get',
@@ -272,18 +272,18 @@ API_V1_METERING_ENDPOINTS_GET_WAIVED_LOSS = Operation(
     'api_v1_metering_endpoints_get_waived_loss',
     'get',
     '/api/v1/metering/pricing/waived-loss')
-API_V1_METERING_ENDPOINTS_LIST_BOOKS = Operation(
-    'api_v1_metering_endpoints_list_books',
-    'get',
-    '/api/v1/metering/pricing/rate-cards')
 API_V1_METERING_ENDPOINTS_LIST_BOOK_PUBLISHES = Operation(
     'api_v1_metering_endpoints_list_book_publishes',
     'get',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes')
+    '/api/v1/metering/pricing/books/{book_id}/publishes')
 API_V1_METERING_ENDPOINTS_LIST_BOOK_RATES = Operation(
     'api_v1_metering_endpoints_list_book_rates',
     'get',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/rates')
+    '/api/v1/metering/pricing/books/{book_id}/rates')
+API_V1_METERING_ENDPOINTS_LIST_COST_BOOKS = Operation(
+    'api_v1_metering_endpoints_list_cost_books',
+    'get',
+    '/api/v1/metering/pricing/cost-books')
 API_V1_METERING_ENDPOINTS_LIST_GROUPING_FIELDS = Operation(
     'api_v1_metering_endpoints_list_grouping_fields',
     'get',
@@ -292,18 +292,18 @@ API_V1_METERING_ENDPOINTS_LIST_GROUPING_FIELD_VALUES = Operation(
     'api_v1_metering_endpoints_list_grouping_field_values',
     'get',
     '/api/v1/metering/grouping-fields/{key}/values')
+API_V1_METERING_ENDPOINTS_LIST_PRICING_BOOKS = Operation(
+    'api_v1_metering_endpoints_list_pricing_books',
+    'get',
+    '/api/v1/metering/pricing/pricing-books')
 API_V1_METERING_ENDPOINTS_LIST_TASKS = Operation(
     'api_v1_metering_endpoints_list_tasks', 'get', '/api/v1/metering/tasks')
 API_V1_METERING_ENDPOINTS_LIST_TASK_TYPES = Operation(
     'api_v1_metering_endpoints_list_task_types', 'get', '/api/v1/metering/task-types')
-API_V1_METERING_ENDPOINTS_PUBLISH_BOOK = Operation(
-    'api_v1_metering_endpoints_publish_book',
-    'post',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publish')
 API_V1_METERING_ENDPOINTS_PUBLISH_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_publish_book_publish',
     'post',
-    '/api/v1/metering/pricing/rate-cards/{book_id}/publishes/{publish_id}/publish')
+    '/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}/publish')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE = Operation(
     'api_v1_metering_endpoints_record_usage', 'post', '/api/v1/metering/usage')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH = Operation(
@@ -330,10 +330,18 @@ API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES = Operation(
     'api_v1_metering_endpoints_usage_timeseries',
     'get',
     '/api/v1/metering/analytics/usage/timeseries')
+API_V1_METERING_ENDPOINTS_WITHDRAW_COST_BOOK = Operation(
+    'api_v1_metering_endpoints_withdraw_cost_book',
+    'delete',
+    '/api/v1/metering/pricing/cost-books/{book_id}')
 API_V1_METERING_ENDPOINTS_WITHDRAW_CUSTOMER_OVERRIDE = Operation(
     'api_v1_metering_endpoints_withdraw_customer_override',
     'delete',
     '/api/v1/metering/pricing/customers/{customer_id}/overrides/{override_id}')
+API_V1_METERING_ENDPOINTS_WITHDRAW_PRICING_BOOK = Operation(
+    'api_v1_metering_endpoints_withdraw_pricing_book',
+    'delete',
+    '/api/v1/metering/pricing/pricing-books/{book_id}')
 API_V1_METERING_ENDPOINTS_WITHDRAW_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_withdraw_tenant_default_markup',
     'delete',

@@ -85,12 +85,18 @@ GET /api/v1/metering/analytics/usage removed the required property `by_product` 
 # the ten named selector columns (dim1..dim6, task_type, subtask_type) — the
 # book's rate LIST route carries this:
 #
-# ⚠ THE SINGLE-RATE CREATE ROUTE CARRIED IT TOO AND ITS TWO LINES ARE DELETED
+# ⚠ THE SINGLE-RATE CREATE ROUTE CARRIED IT TOO AND ITS TWO LINES WERE DELETED
 # (#367). That route is gone — adding a rule is a declared change on a publish —
 # and its removal subsumes every property-level break on it, so the entries stop
 # suppressing anything and the gate refuses an inert entry.
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/dimensions` from the response with the `200` status
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/product_id` from the response with the `200` status
+#
+# ⚠⚠ AND THE RULE LIST ROUTE'S OWN TWO LINES GO THE SAME WAY (#368), which is
+# why this block now records the property rework and suppresses none of it.
+# `GET .../rate-cards/{book_id}/rates` is itself removed: the container split
+# into a Pricing Book and a cost book, and the acts performed ON a book moved
+# to `/pricing/books/{book_id}/…`. Its removal subsumes every property-level
+# break on it, exactly as the create route's did, and the block below records
+# the path removal instead.
 
 # 2026-07-28 billing-surface correctness (#132). PRE-LIVE LANE, not a deprecation.
 #
@@ -302,11 +308,11 @@ GET /api/v1/me/usage-summary removed the required property `total_units` from th
 # that slice's to pay. Renaming this column at slice 2 anyway is not an
 # oversight: the ledger owns it here, and an owner may move earlier, never later.
 #
-# ⚠ THE CREATE ROUTE'S TWO LINES ARE DELETED HERE (#367), for the reason the
-# first block in this file now records: the route is gone and its removal
-# subsumes them.
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/metric_name` from the response with the `200` status
-POST /api/v1/metering/pricing/rate-cards/{book_id}/publish added the new required request property `changes/items/measurement_key`
+# ⚠ THE CREATE ROUTE'S TWO LINES WERE DELETED HERE (#367), for the reason the
+# first block in this file records: the route is gone and its removal subsumes
+# them. ⚠⚠ THE REMAINING TWO GO IN #368, the same way — the rule LIST route and
+# the immediate reprice are both removed, so a break about what their bodies
+# used to carry is no longer reported at all.
 
 # ---------------------------------------------------------------------------
 # #278 (slice 2, ticket 21) — THE WHOLE GROUPING FIELD ROUTE FAMILY MOVES AT
@@ -520,8 +526,9 @@ GET /api/v1/metering/usage/{event_id} the response property `billed_cost_micros`
 # property through generated code regenerated here — the SDK core and the
 # console's `src/api/generated/`.
 #
-# ⚠ THE CREATE ROUTE'S LINE IS DELETED HERE (#367) — same reason, third block.
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/pricing_model` from the response with the `200` status
+# ⚠ THE CREATE ROUTE'S LINE WAS DELETED HERE (#367) — same reason, third
+# block — and the rule LIST route's goes in #368, when that route is removed
+# too and its removal subsumes what its body used to carry.
 # ---------------------------------------------------------------------------
 # #367 (slice 4, ticket 20) — THE RULE'S OWN TABLE, AND THE END OF THE
 # UNVERSIONED IMMEDIATE ACT. Two routes and one response property.
@@ -559,5 +566,58 @@ GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required pro
 # regenerated here, plus the console's own add-a-rule dialog and retire action,
 # which are deleted rather than pointed somewhere else.
 DELETE /api/v1/metering/pricing/rate-cards/{book_id}/rates/{rate_id} api path removed without deprecation
-GET /api/v1/metering/pricing/rate-cards/{book_id}/rates removed the required property `data/items/card_type` from the response with the `200` status
-POST /api/v1/metering/pricing/rate-cards/{book_id}/rates api removed without deprecation
+#
+# ⚠ TWO OF THIS BLOCK'S THREE LINES GO IN #368, AND ONE OF THEM IS A RE-WORDING
+# RATHER THAN A REMOVAL. The response-property line is subsumed by that route's
+# own removal, like every other property-level entry in this file. The
+# `POST .../rates` line is reported by oasdiff under a different message now
+# ("api path removed" where it said "api removed"), because its parent path is
+# removed as well rather than only the operation — so the entry moves to the
+# #368 block below under the wording the tool actually emits. An entry that no
+# longer matches is inert, and the gate refuses an inert entry exactly as it
+# refuses an unreviewed finding.
+
+# ---------------------------------------------------------------------------
+# #368 (slice 4, ticket 21) — THE CONTAINER BECOMES A PRICING BOOK AND A COST
+# BOOK, AND THE RECORD THAT ASSIGNED A BOOK TO A CUSTOMER IS DELETED. Six paths.
+#
+# WHAT CHANGED, AND WHY EACH IS A REMOVAL RATHER THAN A RENAME AT THE WIRE.
+# The container was one table told apart by a `cost`/`price` word; it is two
+# entities with different columns now — a cost book names the supplier it
+# records and the currency that supplier bills in, a Pricing Book names
+# neither. So the collection that listed "books" answers a question that no
+# longer has one answer: it is two collections, at `/pricing/pricing-books` and
+# `/pricing/cost-books`, with two response schemas. The acts performed ON a
+# book — list its rules, declare a change, publish it, discard it — are one act
+# each whichever kind of book they are performed on, so they keep one family
+# and move to `/pricing/books/{book_id}/…`.
+#
+#   * the two collection operations, replaced by four (list and declare, per
+#     kind);
+#   * the rule LIST route, moved to the neutral per-book family;
+#   * `POST .../rates`, whose operation was already deleted in #367 — its
+#     PARENT path goes here, which is why the message re-words;
+#   * the immediate reprice, deleted outright with the last of the retired
+#     audit action names it wrote. Every change to a book is a declared publish
+#     now, read as a diff before it is committed to;
+#   * the route that assigned a book to a customer, deleted outright with the
+#     record behind it. A customer reaches a book through their Plan.
+#
+# ⚠ THE PUBLISH FAMILY'S RENAME EMITS NOTHING, AND THAT IS THE CUMULATIVE
+# COMPARISON WORKING. `/pricing/rate-cards/{book_id}/publishes…` arrived after
+# the `api-v1-launch` tag (#358) and leaves before the next baseline, so a diff
+# against the tag sees neither its arrival nor its departure. Pasting lines for
+# it would have failed this gate as suppressions that suppress nothing.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and every known consumer moves in
+# this same commit — the SDK core and the console's `src/api/generated/`, each
+# regenerated here, plus the console's own book screens and the customer
+# book-assignment picker, which are rebuilt or deleted rather than left
+# pointing at a route that answers 405.
+GET /api/v1/metering/pricing/rate-cards api path removed without deprecation
+GET /api/v1/metering/pricing/rate-cards/{book_id}/rates api path removed without deprecation
+POST /api/v1/metering/pricing/customers/{customer_id}/rate-card api path removed without deprecation
+POST /api/v1/metering/pricing/rate-cards api path removed without deprecation
+POST /api/v1/metering/pricing/rate-cards/{book_id}/publish api path removed without deprecation
+POST /api/v1/metering/pricing/rate-cards/{book_id}/rates api path removed without deprecation
