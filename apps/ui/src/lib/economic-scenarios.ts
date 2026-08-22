@@ -27,14 +27,20 @@
 // alternative looks tidier. A scenario returns the ambiguous fact and the fact
 // that DISAMBIGUATES IT as one object, so a fixture cannot take half.
 //
-// §9.4 names six scenarios and this module now holds two of them by those
+// §9.4 names six scenarios and this module now holds five of them by those
 // names. `known_economics` is the ordinary case every existing fixture already
-// is; of the other five, slice 3 owns `unknown_cost` and `incomplete_total` and
-// both arrive below. `waived_revenue`, `pricing_not_applicable` and
-// `indeterminate_ceiling` are slices 4, 6 and 7's under §9.3, each arriving
-// with the slice that introduces its state. The measurement trio below is a
-// seventh the list does not name, which is the whole reason slice 2 owed a
-// fixture at all.
+// is; slice 3 owns `unknown_cost` and `incomplete_total` and both arrive below;
+// slice 4 owns `waived_revenue` and `pricing_not_applicable` and both are here
+// too. `indeterminate_ceiling` is slice 7's under §9.3, arriving with the slice
+// that introduces its state. The measurement trio below is a seventh the list
+// does not name, which is the whole reason slice 2 owed a fixture at all.
+//
+// `pricing_not_applicable` IS TWO STATES RATHER THAN ONE, and it is the only
+// entry on that list that is. The registry reads a `not_applicable_reason`
+// under it and declares two mutually exclusive causes, so the scenario takes
+// the reason as an argument and both of them are composable — see
+// `priceNotApplicable` below for why fixing one would leave the other with no
+// fixture for anything to render.
 //
 // This module is fixture material, and it sits in `lib/` because the SET spans
 // features even where a single scenario does not: §9.3 puts unresolved cost on
@@ -52,6 +58,7 @@
 import type {
   CostingStatus,
   MeasurementsStatus,
+  NotApplicableReason,
   PricingStatus,
   UnresolvedReason,
 } from "@/lib/vocabulary";
@@ -188,15 +195,29 @@ export function costNotApplicable(): SupplierCostScenario {
  * `not_applicable` is a subject that generates no customer revenue at this
  * level. A reader that guesses tells a tenant they charged nothing — and only
  * the first of the three makes a total a floor.
+ *
+ * ⚠ AND THE THIRD FIELD IS WHY THE COUNT IS FOUR STATES AND FIVE ANSWERS.
+ * `not_applicable` does not say WHY a subject generates no revenue, and the two
+ * declared causes are not the same answer: one sends the reader to the Task's
+ * own charge, the other says no Charge was ever created. The registry reads the
+ * reason under that status and never on its own, so it travels here for the
+ * same reason `unresolved_reason` travels with a supplier cost — a status
+ * saying a price does not apply without saying why sends a reader looking for a
+ * number nobody wrote.
  */
 export interface CustomerPriceScenario {
   readonly billed_cost_micros: number | null;
   readonly pricing_status: PricingStatus;
+  readonly not_applicable_reason: NotApplicableReason | null;
 }
 
 /** A posting whose customer price is settled. The ordinary case. */
 export function knownPrice(micros: number): CustomerPriceScenario {
-  return { billed_cost_micros: micros, pricing_status: "known" };
+  return {
+    billed_cost_micros: micros,
+    pricing_status: "known",
+    not_applicable_reason: null,
+  };
 }
 
 /**
@@ -208,7 +229,11 @@ export function knownPrice(micros: number): CustomerPriceScenario {
  * means, and the reason `not_applicable` is the state that carries a cause.
  */
 export function unknownPrice(): CustomerPriceScenario {
-  return { billed_cost_micros: null, pricing_status: "unknown" };
+  return {
+    billed_cost_micros: null,
+    pricing_status: "unknown",
+    not_applicable_reason: null,
+  };
 }
 
 /**
@@ -221,7 +246,11 @@ export function unknownPrice(): CustomerPriceScenario {
  * the amount.
  */
 export function waivedPrice(): CustomerPriceScenario {
-  return { billed_cost_micros: null, pricing_status: "waived" };
+  return {
+    billed_cost_micros: null,
+    pricing_status: "waived",
+    not_applicable_reason: null,
+  };
 }
 
 /**
@@ -230,9 +259,30 @@ export function waivedPrice(): CustomerPriceScenario {
  * The price-side twin of `costNotApplicable()`: absent for a reason no Pricing
  * Rule was ever going to supply, so it is not counted as missing from any
  * total — nothing about it is.
+ *
+ * IT TAKES THE REASON, and that is a difference from its cost-side twin rather
+ * than an inconsistency with it. A supplier cost that was never going to exist
+ * has ONE cause — the Event Type declares none — so there is nothing to choose.
+ * A customer price has TWO, and they are not the same answer: `fixed_task_pricing`
+ * says the revenue is real and sits on the Task's own charge, so LOOK AT THE
+ * TASK; `tenant_not_billing` says no Charge was created anywhere for this
+ * tenant, so THERE IS NOTHING TO LOOK AT. A scenario that fixed one of them
+ * would leave the other with no fixture for anything to render, which is
+ * precisely the gap #155 §9.2 exists to close.
+ *
+ * The registry reads the reason ONLY under this status, which is why it is a
+ * parameter here and `null` on the other three: a cause recorded beside an
+ * absence that already has one of its own is the status said twice, and the day
+ * the two disagree there is no way to tell which is right.
  */
-export function priceNotApplicable(): CustomerPriceScenario {
-  return { billed_cost_micros: null, pricing_status: "not_applicable" };
+export function priceNotApplicable(
+  reason: NotApplicableReason,
+): CustomerPriceScenario {
+  return {
+    billed_cost_micros: null,
+    pricing_status: "not_applicable",
+    not_applicable_reason: reason,
+  };
 }
 
 // ---------------------------------------------------------------------------

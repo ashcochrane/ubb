@@ -834,16 +834,12 @@ entries:
       An affordability verdict for a control slice 6 DELETES outright —
       `max_concurrent_requests` goes with admission control's rebuild.
 
-  - id: g7-console-cost_card
-    gate: G7
-    site: console::cost_card
-    expected: pricing_book_name
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      One half of the conflated entity, named after the discriminator
-      value rather than after anything real. Slice 3 and slice 4 split
-      it; the name goes when the price half does.
+  # ⚠ `cost_card` REACHED ZERO ON THE CONSOLE IN #371 and its entry is deleted,
+  # alongside the price half it said it would go with. Both lived in exactly one
+  # file — the events feature's showcase Pricing Receipt fixture — as the keys
+  # naming which book supplied an amount, and both take the ratified names #368
+  # gave those entities. The receipt's SHAPE is still the pre-#349 one and stays
+  # #372's; a word is not a record.
 
   - id: g7-console-customer_wide_stop
     gate: G7
@@ -900,14 +896,8 @@ entries:
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
 
-  - id: g7-console-price_card
-    gate: G7
-    site: console::price_card
-    expected: pricing_book_name
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      The other half. Replaced by the Pricing Book slice 4 introduces.
+  # ⚠ `price_card` REACHED ZERO ON THE CONSOLE IN #371 and its entry is deleted
+  # — see the cost half's note above, which it shared a file and a fate with.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON THE CONSOLE IN #370 and its entry is
   # deleted — see the note on the backend side. Four files: the generated
@@ -921,7 +911,7 @@ entries:
     gate: G7
     site: console::rate_card
     expected: pricing_book_name
-    found: 5 files
+    found: 4 files
     owner_slice: slice_4
     reason: >-
       The container entity. #148 §5.4 replaces it with the Pricing Book,
@@ -931,6 +921,13 @@ entries:
       feature's book-assignment hook name survived in the comment recording why
       that hook had gone, and the comment is rewritten with the markup hooks
       beside it. The extent is a ceiling as well as a floor.
+
+      5 -> 4 in #371, on the same terms: the developers feature's sandbox mock
+      is one of the four this commit rewires to compose its economic states, and
+      the word was in the Pricing Receipt it returns, naming where a price came
+      from. The remaining four are the pricing route, the settings mock and the
+      audit log's two files — all #372's, which takes every console entry that
+      is left to zero.
 
   # ⚠ `rate_card.assigned` REACHED ZERO ON THE CONSOLE AND ITS ENTRY IS DELETED
   # (#369). The record and the route were deleted in #368; the word survived in
@@ -2050,18 +2047,27 @@ entries:
       grain must never render as zero (#141, #147). Slice 7 rebuilds the
       analytics surface that has to say so.
 
-  - id: g2-console-pricing_method
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::pricing_method
-    expected: pricing_method
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. `margin_over_cost` and `direct_event_price` are the
-      two methods one pricing rule may declare (#147). Slice 4 replaces the
-      rate card with the Pricing Book that carries them.
+  # ⚠ `pricing_method`, `pricing_status` AND `rate_structure` ARE ALL HELD BY
+  # REFERENCE IN #371, and their three entries are deleted together. Each is
+  # `labels.ts` importing the generated value list and exporting it — the shape
+  # `tenant_product` (#241) and `costing_status` (#316) already took, and the
+  # whole of what a migrated concept leaves behind in the legacy adapter.
+  #
+  # The WORDS moved in the same commit, which is the half that makes this an
+  # honest payment rather than an import added beside a hand-written map: the
+  # rate's shape is `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in
+  # `features/pricing/lib/rates.ts`, and the price's STATUS is
+  # `@/lib/customer-price`'s. `g6-map-pricing-model-label` — the last map any of
+  # the three had here — is deleted below in the same act, and its own reason
+  # said why they could not move apart.
+  #
+  # ⚠ `pricing_method` HAS NO BINDING ANYWHERE, and that is deliberate rather
+  # than a gap in this payment. G2 asks whether a consumer holds the VALUES by
+  # reference, which `labels.ts` now does; the words are a separate question and
+  # `costing_method` answers it the same way — no surface renders a method until
+  # #372 rebuilds the pricing feature, and a label bound with no call site is a
+  # dead export. The catalogue carries both words and `customer-price.test.ts`
+  # holds it to them meanwhile.
 
   - id: g2-console-pricing_mode
     gate: G2
@@ -2074,31 +2080,6 @@ entries:
       `as const` arrays and label maps rather than importing `vocabulary.ts`.
       #210 splits the two. #147 snapshots `Task.pricing_mode` at creation, so
       the column is the Task's. Slice 5 rebuilds the Task.
-
-  - id: g2-console-pricing_status
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::pricing_status
-    expected: pricing_status
-    found: 0 of 4 values
-    owner_slice: slice_4
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. Revenue's four states (#147's three plus #148's
-      `not_applicable`) arrive with the pricing rules that produce them, in
-      slice 4.
-
-  - id: g2-console-rate_structure
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::rate_structure
-    expected: rate_structure
-    found: 0 of 2 values
-    owner_slice: slice_4
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #145 replaced the matching engine with declared
-      measurements, and slice 4 rebuilds the rates that carry the structure.
 
   - id: g2-console-spend_pool_enforce_mode
     gate: G2
@@ -2854,26 +2835,17 @@ entries:
       names, because a value list and the words for it cannot honestly move
       apart.
 
-  - id: g6-map-pricing-model-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::pricingModelLabel
-    expected: rate_structure
-    owner_slice: slice_4
-    reason: >-
-      `pricingModelLabel` hand-writes the wording for how a rate is structured,
-      and falls back to `humanize` for anything it does not recognise. It
-      becomes `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in the slice that rebuilds
-      that vocabulary — the same slice the concept's own value-list entry
-      names, because a value list and the words for it cannot honestly move
-      apart.
-      ⚠ ITS VALUES MOVED IN #366 AND ITS EXPORT NAME DID NOT, WHICH IS THIS
-      ENTRY'S OWN DOING. The keys are `per_unit` / `fixed_component` now,
-      because the console SENDS them and one still saying `flat` would post a
-      value the API refuses. The symbol keeps its spelling because this entry
-      addresses the map BY EXPORT NAME and the ledger's ratchet keys on that
-      address, so a rename reads as an entry ADDED and would cost a seeding
-      authorisation for a symbol this entry's own payment deletes. The debt is
-      unchanged either way: the wording is still hand-written here.
+  # ⚠ `pricingModelLabel` IS DELETED IN #371 and this entry with it. It became
+  # `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in `features/pricing/lib/rates.ts` —
+  # bound where the rates table renders it — and the catalogue already carried
+  # both words, so nothing was written in English to pay this off. Its
+  # value-list sibling `g2-console-rate_structure` is deleted in the same
+  # commit, which is what this entry's reason said had to happen.
+  #
+  # It is also the last of the three maps whose export name outlived its own
+  # values: #366 moved the keys to the rate's ratified arithmetic shapes and
+  # left the symbol alone precisely because this entry addressed it by that
+  # spelling. Nothing is preserving it now.
 
   - id: g6-map-referral-program-status-label
     gate: G6

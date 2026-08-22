@@ -89,6 +89,23 @@ obligation with teeth: a slice that introduces or changes an economic state owes
 **and** a rendering assertion that the state renders as itself. A slice that renames a table owes
 nothing.
 
+**A fixture is not complete until a mock or a component test consumes it**, and
+`economic-scenarios.reachability.test.ts` is what says so rather than a reviewer (#371). A scenario
+reaching only `economic-scenarios.test.ts` proves the scenario is well-formed and nothing about the
+console — the `?? 0` defect lives in a RENDERER — so a new scenario with no consumer fails on the
+commit that adds it. Slice 3 left three orphaned that way and nobody noticed for two slices.
+
+**Where a change NARROWS a type, the rendering assertion has to be on a fixture the mock does not
+author.** A mock returns its own fixture object, so it narrows along with the module and the page
+goes on receiving exactly what it always received: the mutation stays green across every component
+test. `features/events/components/event-receipt-price.test.tsx` is the shape — provider stubbed,
+detail assembled in the test, one composed scenario inside it — and it carries the mutation that
+proves it.
+
+**Two concepts can share a word.** `costing_status.known` and `pricing_status.known` are both
+"Known", so a page-wide `getByText` finds two nodes and cannot say which side it found. Scope the
+query to its section.
+
 This does **not** yet reach the fixtures that were already correct. `events/api/mock-data.ts` still
 hand-builds most of its measurement bags and lets `?? "available"` complete them — true for every
 one of those seeds, and the reason #281 could seed the module without rewriting them. Composing

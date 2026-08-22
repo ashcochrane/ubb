@@ -7,7 +7,7 @@
 import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
-import { knownCost, unknownCost } from "@/lib/economic-scenarios";
+import { knownCost, knownPrice, unknownCost } from "@/lib/economic-scenarios";
 
 import {
   MOCK_API_KEYS,
@@ -195,6 +195,13 @@ export async function sendTestEvent(
   const cost = resolved
     ? knownCost(body.provider_cost_micros ?? Math.round(billed * 0.62))
     : unknownCost("cost_rate_missing");
+  // The PRICE half, composed on the same rule (#371). The sandbox recorder is
+  // always handed a resolvable price, so this mock always answers `known` — and
+  // it says so through the canonical scenario rather than by writing the status
+  // beside the amount, because the three fields are one fact and the day this
+  // mock grows a branch that cannot price an event, a hand-written `"known"`
+  // beside a null amount is the row the posting's own constraint refuses.
+  const price = knownPrice(billed);
 
   balanceMicros -= billed;
   const stopped = balanceMicros < 0;
@@ -207,12 +214,12 @@ export async function sendTestEvent(
     // sends none — which is what the real response answers in that case too,
     // rather than the two arbitrary slot properties this replaces.
     grouping_fields: {},
-    billed_cost_micros: billed,
-    // The price half of the same rule (#351). This mock always resolves a
-    // price — the sandbox recorder is handed one — so it says `known` out loud
-    // rather than leaving the field to a default that would be wrong the day it
-    // does not.
-    pricing_status: "known",
+    // All three from the one PRICE scenario object above (#351, #371): the
+    // amount, the status that says what it means, and — null here, because the
+    // status is not `not_applicable` — the cause of an absence there is not.
+    billed_cost_micros: price.billed_cost_micros,
+    pricing_status: price.pricing_status,
+    not_applicable_reason: price.not_applicable_reason,
     // The status and the amount are ONE fact and travel together: an absent
     // amount reads `unresolved` and never `known` at zero (#317, #320), and it
     // names the input that would settle it (#330).
@@ -230,8 +237,12 @@ export async function sendTestEvent(
     pricing_receipt: {
       engine_version: "mock-1",
       // ONE SOURCE, because there is only one: a caller cannot state a price,
-      // so "explicit" is a branch nothing can reach any more (#365).
-      price_source: "rate_card",
+      // so "explicit" is a branch nothing can reach any more (#365). And it
+      // names the container by its ratified name (#368, #371) — the retired
+      // spelling was the last of that word in this file, and its console ledger
+      // entry drops by one for it. The receipt's SHAPE is still the old one and
+      // is #372's to rebuild; this is the word, not the record.
+      price_source: "pricing_book",
       sequence: eventCounter,
     },
     stop: stopped,
