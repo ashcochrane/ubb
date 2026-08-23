@@ -37,6 +37,7 @@ from apps.metering.pricing.models import (
     NAMES_ITS_CURRENCY_CHECK, SITS_IN_AT_MOST_ONE_BOOK_CHECK,
     CostBook, PricingBook, Rate)
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.tests._helpers import RETIRED_KIND_COLUMN
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 
@@ -74,8 +75,11 @@ def test_a_pricing_book_accepts_neither():
     assert "provider_key" not in columns
     assert "currency" not in columns
     # And the word that used to stand in for both is on neither entity.
-    assert "card_type" not in columns
-    assert "card_type" not in _columns(CostBook)
+    # DERIVED FROM THE MIGRATION THAT DELETED IT, never spelled (#374): this
+    # module is a living surface, and naming the token here would put its
+    # ledger count over an entry that reaches zero in that same commit.
+    assert RETIRED_KIND_COLUMN not in columns
+    assert RETIRED_KIND_COLUMN not in _columns(CostBook)
 
 
 def test_a_cost_book_that_names_no_currency_is_refused_at_the_database():

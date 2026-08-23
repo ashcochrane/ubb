@@ -8,16 +8,16 @@
 Nothing today answers "who did that, and when" for a tenant's account. Actor attribution exists in
 exactly two ad-hoc places — `Refund.refunded_by_api_key` (a real FK) and
 `WalletTransaction.actor` (a caller-supplied free-text string on the manual debit/credit escape
-hatch, unexposed by any API). Rate cards version temporally (`valid_from`/`valid_to` — *when* and
+hatch, unexposed by any API). Pricing rules version temporally (`valid_from`/`valid_to` — *when* and
 *what* are reconstructable) but record no *who*, anywhere.
 
 The obvious raw material fails on inspection. The outbox is an **ephemeral processing queue, not a
 record**: processed rows are hard-deleted after 30 days (skipped after 90), a sandbox reset
 deletes a tenant's rows outright, and — decisively — its coverage is wrong for auditing. Events
 fire for money/usage flow and API-key lifecycle, but essentially **all config governance mutates
-silently**: rate cards, markup, budgets, billing profile, auto-top-up, credit grants, webhook
-configs, tenant config including `enforcement_mode`, customers/plans/seats. Exposing the outbox as
-the feed would miss exactly the who-changed-what-when material an audit trail is for.
+silently**: the books of pricing rules, markup, budgets, billing profile, auto-top-up, credit grants,
+webhook configs, tenant config including `enforcement_mode`, customers/plans/seats. Exposing the
+outbox as the feed would miss exactly the who-changed-what-when material an audit trail is for.
 
 Meanwhile [#62](https://github.com/ashcochrane/ubb/issues/62) means real principals exist from
 launch day — members and API keys with Admin/Write/Read roles — so "who" has meaning, and the
@@ -96,7 +96,7 @@ leaves no phantom row.
 No pruning job in v1 — volume is governance-scale, not telemetry-scale. The published contract
 promises retention of **at least 1 year**: a floor, raisable never lowerable (ADR-003 §3's rule),
 leaving room to introduce pruning someday without breaking a commitment. Log-style 90/180-day
-retention was rejected — "who changed this rate card" gets asked at renewal and dispute time, a
+retention was rejected — "who changed this price" gets asked at renewal and dispute time, a
 year later.
 
 Sandbox: sandbox actions are audited like live ones; a **sandbox reset clears sandbox-scoped

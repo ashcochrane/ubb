@@ -355,7 +355,30 @@ registry: additive-only, a rename is breaking (ADR-003 algebra). Deliberately de
 routes (a route rename must never rewrite history's vocabulary) AND from the webhook catalog (an
 audit action and a webhook event are independent names in independent contracts). `record()`
 refuses an unregistered name. (`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
-_Avoid_: reusing a webhook `event_type` as the action name; renaming a shipped action.
+**⚠ Additive-only governs RENAMES, and deleting an action whose ACT has ceased to exist is not one.**
+Slice 4 removed seven names on that distinction, and it is worth stating because "additive-only"
+reads as forbidding it: a rename carries an act forward under a new spelling and breaks a reader
+watching for the old one, whereas these seven had no successor because the thing they recorded stopped
+happening — a book kind that no longer exists, an assignment record that was deleted, an immediate
+reprice that became a publish. **None of it drew on the one-time pre-production registry reset**,
+which #154 §4.2 defines and #155 §14 allocates to slice 8 for the actions that genuinely are renamed.
+What makes the deletion safe is a mechanism rather than care: `record()` refuses an unregistered name,
+so a route still writing a deleted action fails loudly, which forces the route and the registry into
+one commit and leaves no window in which a dead action is written.
+_Avoid_: reusing a webhook `event_type` as the action name; renaming a shipped action; **and reading
+the paragraph above as a licence to delete an action whose act continues under another name** — that
+is the rename, and it is breaking.
+
+**One action per record per kind of act**:
+The rule that decides how many names an act needs, and it is applied at the moment splitting is free.
+A correction to a declared thing is still a declaration, and a governance reader asking *when did this
+stop existing* must not have to read an entry's metadata to find out — so declaring and withdrawing
+are always two names, never one with a discriminator inside it. **Per RECORD as well as per act**: two
+records with different columns, different products gating them and different readers take different
+nouns, even where the acts are the same pair, because a shared noun sends a reader back to
+`resource_type` to tell them apart. Splitting later is the rename ADR-004 §2 calls breaking, so the
+split happens on the commit that creates the record.
+(#358, #368; `apps/platform/audit/actions.py`, the rule stated above the registry)
 
 **record()**:
 The one surface for writing an audit entry — the `write_event` calling pattern: call it at the

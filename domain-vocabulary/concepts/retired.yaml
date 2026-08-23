@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,674 of 2,074 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,677 of 2,077 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1442,6 +1442,25 @@ measurement_key:
     # look identical from a distance and are answered differently: a retired
     # SENSE has no ledger seat and is measured by this block, a retired TERM has
     # one and is measured by the sweep.
+    #
+    # #374 MOVED BOTH DENOMINATORS UP BY THREE AND LEFT `52 files, 133
+    # occurrences` EXACTLY WHERE #372 PUT THEM (1,674 -> 1,677 swept, 2,074 ->
+    # 2,077 tracked), WITH THE EXCLUSION UNCHANGED AT 400. Three files arrive
+    # and none leaves: two ADRs and the check that holds their proof tables
+    # honest. Denominator-only and upward is the direction the four re-takes
+    # above already established as needing no investigation — the ratchet
+    # commit adds documents and a test, and a document about a retired word is
+    # not a reader of one.
+    #
+    # ⚠ WORTH RECORDING BECAUSE IT NEARLY WENT THE OTHER WAY. This commit's own
+    # prose describes the rate's arithmetic shape and the per-unit rung
+    # repeatedly, which is the sense `survives_as` names — so an ADR arguing
+    # about pricing was the obvious place for the numerator to creep. It says
+    # "an amount for each unit of quantity" nowhere: ADR-0009 is about WHEN a
+    # price takes effect and ADR-0010 about what a recovery is worth, and
+    # neither had to reach for the arithmetic. That is the count behaving as a
+    # ceiling on SPREAD rather than only on what is left to fix, which is the
+    # rule now written into `docs/conventions/coding-standards.md`.
 
     - term: units
       retired_as: >-

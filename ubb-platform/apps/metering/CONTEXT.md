@@ -123,7 +123,7 @@ A record linked one-to-one to a posting, created only when billing emits `refund
 ## Cost & margin
 
 **Provider cost (COGS)**:
-The upstream cost of the usage, in micros — caller-supplied or summed from `cost` rate cards.
+The upstream cost of the usage, in micros — caller-supplied or summed from the rules in a cost book.
 _Avoid_: "our cost" — this is what the upstream provider charged.
 
 **Billed cost**:
@@ -135,7 +135,39 @@ _Avoid_: treating this as the symmetric twin of provider cost. **Cost is observe
 decided** — a caller may report what their supplier charged them, because that is an external fact
 they saw, but what the tenant charges their own customer is a commercial decision UBB resolves and
 holds. Do not reintroduce a per-event price field for convenience, under any name; #151 §9.2 records
-that it will be re-proposed precisely because it is small and looks helpful.
+that it will be re-proposed precisely because it is small and looks helpful. **The refusal is a set
+assertion, not a deleted field** — `test_a_customer_price_comes_only_from_configuration.py`'s
+`TheRequestCarriesNoAmountTheCallerDecidesTest` asserts that every amount the request carries is a
+cost, so a price arriving under *any* new name turns it red with the argument in the docstring above
+it. That is why this rule needs no ADR: the proposal cannot land quietly.
+
+**pricing_status**:
+Whether the customer price for a subject is settled, and if not, why not — the four ratified values
+sitting beside the amount, so a `NULL` is never read as a zero. `known` is resolved. **`waived` is a
+decision somebody made** — a margin rule with no supplier cost to take a margin over. **`unknown` is
+information UBB does not have** — nothing matched and there is no markup rung. `not_applicable` is a
+subject that generates no customer revenue at this level at all. The distinction between the middle
+two is what a Resolution Run is built on: it repairs what UBB is missing and never touches what
+somebody decided.
+(`apps/metering/usage/models.py:Posting.pricing_status`; the cost half is `costing_status`, whose
+`unresolved` value is the pair's equivalent)
+_Avoid_: rendering any of the three non-`known` values as an amount — `unknown` must never render as
+`£0.00`; and reading `waived` as a kind of missing — the whole point of the pair is that it is not.
+
+**not_applicable_reason**:
+Why a subject generates no customer revenue at this level, read **only** where `pricing_status` is
+`not_applicable` and never on its own — a status saying a price does not apply without saying why
+sends a reader looking for a number nobody wrote. Two mutually exclusive causes:
+`fixed_task_pricing`, where the event belongs to a Task sold for one agreed price so the revenue is
+the Task's; and `tenant_not_billing`, where the tenant meters and does not bill through UBB at all.
+**Where both are true, POSTURE WINS** — a metering-only tenant is `tenant_not_billing` whatever the
+job's regime, because no Charge exists anywhere for that tenant and naming the job's regime would
+imply revenue sitting on a Charge that does not exist.
+Coined and declared by slice 4 (#151 §17 owed it and nothing had ratified it). Its console consumer
+is `apps/ui/src/lib/customer-price.ts`, not the legacy label adapter its four neighbours live in.
+(`apps/metering/usage/models.py`; `apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`)
+_Avoid_: adding a third value without deciding its tie-break against these two — the pair is closed
+and the posture rule only works because there are exactly two.
 
 **Margin**:
 Realized `billed_cost − provider_cost`, computed on read and never stored.
@@ -212,6 +244,22 @@ _Avoid_: "cost card"; treating it as the same entity as a Pricing Book under a d
 they are separate tables with different columns, which is the whole of what the split bought, and
 nothing selects between them at runtime.
 
+**pricing_method**:
+How a resolved pricing rule DERIVES a customer price — `margin_over_cost`, a margin applied over what
+the call cost, or `direct_event_price`, a price attached to the event and answerable to no supplier
+figure. **One method per rule, and a rule never composes**: a rule that wanted both would be two
+rules, and a margin rule may not also carry a per-unit rate or a fixed addend. That is a property of
+the ROW rather than a sentence in a comment — `ck_rate_pricing_method` closes the value set and a
+second check refuses the composed shape (#355), because both are true of a row at every instant,
+which is exactly what a check evaluates.
+Two values and not the four #148 §4.4 sketched: the registry is the oracle, and neither dropped value
+lost a distinction anything makes.
+(`apps/metering/pricing/models.py:Rate.pricing_method`;
+`apps/metering/pricing/tests/test_a_rule_declares_one_method_and_never_composes.py`)
+_Avoid_: confusing it with `rate_structure` below, which says which ARITHMETIC produced the amount,
+not where the amount's authority came from; and reading a customer override as changing a number
+inside an inherited method — an override replaces the whole rule, method included.
+
 **rate_structure**:
 The arithmetic shape of a rate — `per_unit`, an amount for each unit of quantity, or
 `fixed_component`, an amount that applies once regardless of quantity. `Rate.compute` branches on
@@ -251,14 +299,27 @@ computation, not two that agree today.
 _Avoid_: asking for the diff of a published record — it is a statement about a change that has not
 happened, and what a published record did is the rule versions it names.
 
-**The two ways a book changes**:
-There are currently **two**, and only one of them leaves a record: the publish record above, and the
-three immediate routes it replaces (`POST .../rates`, `DELETE .../rates/{rate_id}`,
-`POST .../publish`), which still write rules directly. The immediate three and the three retired
-audit action names they write are deleted by the ticket that retires the rest of this slice's
-vocabulary; until then, a rule can appear in a book with no publish record behind it — and a draft
-can be left stating a change one of those routes has since made impossible, which is why reading one
-answers a reason rather than a diff.
+**The one way a book changes**:
+A publish, and there is no longer a second. The three routes that wrote rules directly — one to add,
+one to retire and the immediate reprice — are deleted, and the audit actions they recorded went with
+them in the same commits, because `record()` refuses an unregistered name and a route still writing a
+deleted action fails loudly (#367, #368). **So a rule cannot appear in a book with no publish record
+behind it**, which is what makes a price in force at any past moment traceable to a decision somebody
+made rather than nearly always traceable.
+_Avoid_: reading a draft as an alternative route into the book — declaring and publishing are two
+steps of one act, not two ways in.
+
+**Reversing a publish**:
+A further publish, effective at the same instant. Nothing is deleted and no row is reopened, so the
+reversed rule ends up with an empty window `[T, T)` that resolves for no instant at all, and both
+decisions stay on the record with their actors. The mechanism the pricing-versions decision wrote —
+delete the pending rows and reopen their predecessors — is refused by the database, because
+`Rate.valid_to` is `SET_ONCE` and reopening is a value-to-`NULL` write. **ADR-0009 carries the
+argument**, including the two alternatives that look strictly better until you read what they cost:
+re-deciding the column's mutability class, and deriving the boundary instead of storing it.
+(#360; `apps/metering/pricing/tests/test_a_scheduled_publish_is_reversed_by_a_further_publish.py`)
+_Avoid_: calling it a cancellation — nothing is cancelled, a second decision is recorded; and
+expecting an empty-window rule to be a defect — it is a rule that never took effect, said in rows.
 
 **Customer override**:
 One customer's own pricing rule, honouring a negotiated deal. It **replaces the whole rule it
@@ -299,6 +360,44 @@ used** until #370 and which already names the governance ledger the platform kee
 `provenance` survives — but only as the section name above.
 (`apps/metering/pricing/receipts.py`; the column is `Posting.RECEIPT_COLUMN`, which is how
 everything addresses it and why the rename reached its callers without touching one.)
+_Avoid_: reading "pricing receipt" as "UBB charged my customer" — the qualification above is the
+whole difference between a record a metering-only tenant trusts and one they raise a support ticket
+about, and it belongs on the concept, on the schema description and in the console's own words;
+rewriting a historical receipt written under the older spelling — old receipts are read, never
+rewritten, and the cutover squash is what eventually removes the two spellings, not this work.
+
+## Putting a resolution right
+
+**Resolution Run**:
+The one mechanism for completing what UBB could never resolve at the time — a supplier cost that
+never arrived, a customer price no rule was written for. **Membership is the status itself**, built
+from the pairs that name *not learned*, so a run cannot touch a number that already exists; take
+every axis of its selector away and that is still true. It re-resolves each posting **at that
+posting's own instant**, so only configuration carrying no effective moment of its own can change the
+answer — the markup rung, a Plan, an Event Type's declarations — and nothing anywhere backdates a
+rule. `waived` is outside it by that same construction. A run declares a selector on three axes (a
+date range, a customer, an Event Type) and never an arbitrary predicate; **an ADMIN floor**, because
+the completion is irreversible under the receipt's sealing rule and money-adjacent; and it is
+idempotent, so running it twice answers an outcome rather than a refusal.
+(#363, **ADR-0010**; `apps/metering/pricing/models.py:ResolutionRun`,
+`apps/metering/pricing/services/resolution_run.py`)
+_Avoid_: adding a guard above it for "nothing to do" — that turns the second call into an error
+forever while every acceptance criterion still reads as satisfied; and building a fourth recovery
+mechanism — four documents each described one and none owned building it, which is what ADR-0010
+exists to stop happening a fifth time.
+
+**Projected adjustment**:
+What recovering a filter would be worth, per customer, with the receipts behind it — the run's own
+arithmetic with the writing taken out. **It is a projection and not an instruction.** No invoice,
+credit note, charge or refund follows from reading it, and UBB will not bill anybody for it: Stripe
+owns the billing engine and a UBB-owned adjustment surface would be reimplementing it. The response
+carries that sentence itself (`queries.PROJECTED_ADJUSTMENT_BASIS`) rather than leaving it to a
+comment, because a projection read as a receivable is the failure mode. The figure is a floor and
+says so — what it could not value, and what one pass did not reach, are counted beside it.
+(#364, **ADR-0010**; `apps/metering/queries.py:get_projected_adjustment`)
+_Avoid_: adding the supplier-cost half into the figure — learning what a call cost is not money a
+tenant can go back to a customer for; and reporting waived charges here — what waiving has cost is
+`get_waived_loss`, taken over supplier cost, because a waived charge never carried a price to forgo.
 
 ## Read contract & events
 

@@ -1,0 +1,293 @@
+"""An ADR that names its proof names one that exists (#374).
+
+The ratchet asks for a rule in an ADR to be **backed by a test**, on the
+product-boundaries ADR's precedent, because *a rule in prose that nothing
+type-checks is a rule that drifts*. Slice 4's two ADRs answer that with a
+``## What proves it`` section naming the module and the case behind each rule.
+
+**Which creates the defect it was meant to cure, one level up.** A table of
+twenty test names in a Markdown file is exactly the cross-reference this
+repository already warns about at ``apps/metering/queries.py`` — *a path quoted
+in prose is a cross-reference nothing type-checks* — and a renamed class leaves
+the ADR quietly claiming a proof that no longer exists. Nothing else in the tree
+would notice: the suites stay green, because the test is still there under its
+new name, and only a reader following the citation finds out.
+
+So this is the walker over that section. Two claims, and the second is the one
+worth having:
+
+1. **Every module an ADR names exists**, at the path it names, relative to the
+   git root.
+2. **Every case an ADR names is defined in a module the SAME ADR names.** Not
+   "exists somewhere in the tree": an ADR that cites a class without saying
+   which module holds it has not given a reader anything to follow, and an ADR
+   whose class moved to another module has a stale table even though the class
+   is alive.
+
+**THE SECTION HEADING IS THE OPT-IN, WHICH IS WHY THIS DOES NOT SWEEP EVERY
+ADR.** The older ADRs cite their evidence in prose of several shapes, and a
+walker that tried to parse all of them would either be a pile of special cases
+or would quietly match nothing in most files. An ADR adopting the heading is
+adopting the check; :func:`test_the_adrs_that_opted_in_are_the_ones_expected`
+is what stops that opt-in being silently lost.
+
+**Read by AST, never imported.** This suite runs without Django
+(``test_contract_suite_is_enforced.py`` makes that a rule), and the modules
+named here are platform tests that import models and settings. Reading their
+definitions is a parse, not an import — and it is also the honest question,
+because what the ADR cites is a *name in a file*.
+
+⚠ **THE READER IS SHARED WITH THE CONTROLS BY CONSTRUCTION.** Every negative
+control below drives :func:`findings` over a synthetic ADR, so a bug in the
+parser reddens the controls rather than hiding behind a second copy of the
+search. That is the shape #373 paid for: a positive control that re-implemented
+the walk it was checking found nothing wrong with a walk that was wrong.
+"""
+
+import ast
+import re
+from pathlib import Path
+
+import pytest
+
+from _helpers import REPO_ROOT
+
+ADR_DIRECTORY = REPO_ROOT / "docs" / "adr"
+
+#: The heading that opts an ADR into this check.
+PROOF_HEADING = "## What proves it"
+
+#: Backticked spans, which is how this repository writes every symbol and path.
+BACKTICKED = re.compile(r"`([^`\n]+)`")
+
+#: A module the ADR names: a git-root-relative path to a Python file.
+MODULE = re.compile(r"^[\w./-]+\.py$")
+
+#: A case the ADR names — `unittest`'s class suffix, or a pytest function.
+CASE = re.compile(r"^(?:[A-Z][A-Za-z0-9]*Test|test_[a-z0-9_]+)$")
+
+#: The ADRs carrying the section today. A LIST RATHER THAN A COUNT, because the
+#: failure this guards against is the heading being renamed or dropped — and a
+#: count would go on passing if one ADR lost it while another gained one.
+OPTED_IN = (
+    "0009-a-correction-is-a-further-publish.md",
+    "0010-recovery-projects-stripe-moves-the-money.md",
+)
+
+
+def proof_section(text):
+    """The ``## What proves it`` section, or ``None`` if the ADR has none.
+
+    Ends at the next second-level heading, so the Consequences below it are not
+    scanned — a consequence may name a symbol it is not claiming as proof.
+    """
+    start = text.find(PROOF_HEADING)
+    if start == -1:
+        return None
+    rest = text[start + len(PROOF_HEADING):]
+    end = rest.find("\n## ")
+    return rest if end == -1 else rest[:end]
+
+
+def cited(section):
+    """``(modules, cases)`` — the paths and the case names the section names."""
+    modules, cases = [], []
+    for span in BACKTICKED.findall(section):
+        if MODULE.match(span):
+            modules.append(span)
+        elif CASE.match(span):
+            cases.append(span)
+    return tuple(dict.fromkeys(modules)), tuple(dict.fromkeys(cases))
+
+
+def defined_in(path):
+    """Every class and function name defined anywhere in one module.
+
+    Methods included: a `unittest` case is a method on its class, and the ADR
+    cites it by its own name because that is how it is run and reported.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {node.name for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef))}
+
+
+def findings(adr_name, text, repo_root=REPO_ROOT):
+    """Everything wrong with one ADR's proof section, as readable lines.
+
+    Returns ``[]`` for an ADR with no such section — having one is opt-in, and
+    :func:`test_the_adrs_that_opted_in_are_the_ones_expected` is what holds the
+    opt-in list honest rather than this function.
+    """
+    section = proof_section(text)
+    if section is None:
+        return []
+    modules, cases = cited(section)
+    problems = []
+
+    if cases and not modules:
+        problems.append(
+            f"{adr_name}: names {len(cases)} case(s) and no module. A case "
+            f"without the module holding it is not something a reader can "
+            f"follow, and nothing can check it.")
+
+    present = {}
+    for module in modules:
+        path = repo_root / module
+        if not path.is_file():
+            problems.append(
+                f"{adr_name}: names `{module}`, which is not a file. A proof "
+                f"table citing a path that does not resolve is the drift this "
+                f"check exists for.")
+            continue
+        present[module] = defined_in(path)
+
+    everywhere = set().union(*present.values()) if present else set()
+    for case in cases:
+        if case not in everywhere:
+            problems.append(
+                f"{adr_name}: names `{case}`, which none of the "
+                f"{len(present)} module(s) it cites defines. Either the case "
+                f"was renamed and the ADR was not, or it lives in a module "
+                f"this ADR does not name.")
+    return problems
+
+
+def adrs():
+    """``{filename: text}`` for every ADR in the directory."""
+    return {path.name: path.read_text(encoding="utf-8")
+            for path in sorted(ADR_DIRECTORY.glob("*.md"))}
+
+
+# ---------------------------------------------------------------------------
+# The shipped ADRs
+# ---------------------------------------------------------------------------
+
+def test_every_proof_an_adr_names_resolves():
+    """The rule itself, over every ADR that opted in."""
+    problems = [line
+                for name, text in adrs().items()
+                for line in findings(name, text)]
+
+    assert problems == [], "\n".join(problems)
+
+
+def test_the_adrs_that_opted_in_are_the_ones_expected():
+    """The vacuity guard, and it is the load-bearing half.
+
+    A heading renamed in both ADRs, or a `find` that stopped matching, would
+    leave the rule above passing over nothing at all — the failure shape this
+    repository has shipped more than once. Naming the files means losing the
+    section is a red test rather than a silent green one.
+    """
+    opted_in = tuple(name for name, text in adrs().items()
+                     if proof_section(text) is not None)
+
+    assert opted_in == OPTED_IN
+
+
+def test_the_opted_in_adrs_actually_cite_something():
+    """And that each one's section is not an empty table.
+
+    A section present but citing nothing would satisfy the guard above while
+    proving no rule at all.
+    """
+    thin = []
+    for name in OPTED_IN:
+        modules, cases = cited(proof_section(adrs()[name]))
+        if not modules or not cases:
+            thin.append(f"{name}: {len(modules)} module(s), {len(cases)} case(s)")
+
+    assert thin == [], "\n".join(thin)
+
+
+# ---------------------------------------------------------------------------
+# The negative controls — the same reader, over a synthetic ADR
+# ---------------------------------------------------------------------------
+
+REAL_MODULE = ("ubb-platform/apps/metering/pricing/tests/"
+               "test_what_a_recovery_would_be_worth.py")
+REAL_CASE = "NoneOfTheThreeMovesMoneyTest"
+
+
+def an_adr(body):
+    return f"# ADR-9999: synthetic\n\n{PROOF_HEADING}\n\n{body}\n"
+
+
+def test_the_reader_accepts_a_citation_that_does_resolve():
+    """The positive control. Without it every refusal below could be a parser
+    that finds nothing and calls it clean."""
+    text = an_adr(f"| a rule | `{REAL_MODULE}` — `{REAL_CASE}` |")
+
+    assert findings("synthetic.md", text) == []
+
+
+def test_a_module_that_does_not_exist_is_a_finding():
+    text = an_adr("| a rule | `ubb-platform/apps/nowhere/test_nothing.py` |")
+
+    (problem,) = findings("synthetic.md", text)
+    assert "not a file" in problem
+
+
+def test_a_case_no_cited_module_defines_is_a_finding():
+    text = an_adr(f"| a rule | `{REAL_MODULE}` — `TheCaseThatNeverWasTest` |")
+
+    (problem,) = findings("synthetic.md", text)
+    assert "TheCaseThatNeverWasTest" in problem
+
+
+def test_a_case_that_exists_in_another_module_is_still_a_finding():
+    """The claim that makes rule 2 worth more than "it exists somewhere".
+
+    `ACancellationIsAFurtherPublishTest` is a real class in a real module — just
+    not in the one this synthetic ADR names.
+    """
+    text = an_adr(f"| a rule | `{REAL_MODULE}` — `ACancellationIsAFurtherPublishTest` |")
+
+    (problem,) = findings("synthetic.md", text)
+    assert "does not name" in problem
+
+
+def test_a_section_naming_cases_and_no_module_is_a_finding():
+    text = an_adr(f"| a rule | `{REAL_CASE}` |")
+
+    problems = findings("synthetic.md", text)
+    assert any("no module" in problem for problem in problems)
+
+
+def test_an_adr_with_no_such_section_is_not_examined():
+    """Opt-in, stated as behaviour rather than as an omission."""
+    assert findings("synthetic.md", "# ADR-9999\n\n## Decision\n\n`Nope`\n") == []
+
+
+def test_the_consequences_below_the_section_are_not_scanned():
+    """The section ends at the next heading, and that boundary is real.
+
+    A consequence may name a symbol without claiming it as proof, and scanning
+    it would make the check refuse honest prose.
+    """
+    text = (an_adr(f"| a rule | `{REAL_MODULE}` — `{REAL_CASE}` |")
+            + "\n## Consequences\n\n- `SomeClassThatIsNotATest`, "
+              "and `test_a_case_that_does_not_exist_anywhere`\n")
+
+    assert findings("synthetic.md", text) == []
+
+
+@pytest.mark.parametrize("span,is_module", [
+    ("ubb-platform/core/tests/test_scheduling.py", True),
+    ("valid_to", False),
+    ("PROJECTED_ADJUSTMENT_BASIS", False),
+    ("uq_rate_active_in_pricing_book", False),
+])
+def test_only_a_python_path_is_read_as_a_module(span, is_module):
+    """A section carries backticked prose too, and it must pass through.
+
+    ⚠ `uq_rate_active_in_pricing_book` is the case worth pinning: it starts with
+    no `test_` and ends with no `Test`, so it is neither — but a looser rule
+    would have read it as a case and demanded a definition for a database
+    constraint.
+    """
+    modules, cases = cited(f"`{span}`")
+
+    assert bool(modules) is is_module
+    assert cases == ()

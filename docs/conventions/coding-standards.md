@@ -97,3 +97,47 @@ python -m tools.vocabulary --write
 Where a value's canonical name is not yet the string in flight, **leave the literal alone**: renaming
 a value a tenant can see belongs to the slice that owns it, with a migration-ledger entry (#201), not
 to whoever happens to be editing the file.
+
+### Writing a new module while a word is being retired
+
+A migration-ledger entry records how many files still carry a retired word (`found: N files`). **That
+number is a ceiling on SPREAD, not just a measure of what is left to fix** — a new module that names
+the word puts the count over its entry and the forbidden-term sweep fails. Combined with the rule
+that allowlists only ever shrink, this bites hardest on exactly the slice retiring the word, because
+that slice is writing most of the new tests about it.
+
+Three techniques, with precedent on `main`, **in order of preference**:
+
+1. **Derive the retired name from the operation that retired it.** A `RenameField` carries
+   `old_name` and `new_name`; a `RemoveField` carries the `name` it deletes. Read the name off the
+   migration instead of typing it. Costs one import, takes no seeding authorisation, and has the
+   second benefit of going red rather than stale if the operation ever changes.
+   *Worked example:* `apps/metering/pricing/tests/test_the_rates_quantity_name_takes_the_canonical_name.py`,
+   which unpacks its rename from a one-element tuple so that a migration growing a second
+   `RenameField` fails loudly rather than silently picking one.
+2. **Put the word once in a helper the sweep already counts, and have callers say what they mean.**
+   A fixture helper that takes `measurement_key=` and resolves the plumbing behind it leaves every
+   caller naming the domain rather than transcribing a column.
+   *Worked example:* `apps/metering/pricing/tests/_helpers.py`, whose two doors pick a book so no
+   caller anywhere names the kind word.
+3. **Admit the file** to the sweep's `checks-whose-subject-is-a-retired-word` rule in
+   `gates/forbidden-term-sweep.yaml`. The admission test is strict, and it is not about convenience:
+   *not "this file is inconvenient" but "no slice will ever remove this word from this file, because
+   naming it is what the file is for."* It costs a declared path and a count a reviewer sees in the
+   diff.
+
+**⚠ Explicitly rejected, so do not propose it:** moving a word into the registry's `retired_senses`
+to escape the sweep. That disarms the gate across **every** surface at once, on the very slice
+retiring the word.
+
+**⚠ And the sweep is blind to three shapes, so grep them by hand on any commit that rewrites a
+surface's vocabulary.** The matcher requires a non-identifier character on each side of the token as
+the registry spells it, so it cannot see:
+
+- **the spaced or hyphenated English form** — "rate card", "cost-card". This has now been paid for
+  four times: in a console screen, in the SDK README, in a per-product glossary and in a published
+  guarantees document, each time under a quickstart or a definition that had already been rewritten
+  around it;
+- **a Pascal-cased spelling**, because the match is case-sensitive;
+- **a retired *sense*** — a word still live in another meaning, which is deliberately not input to
+  the sweep at all. A ticket that greps for a token will not find one.
