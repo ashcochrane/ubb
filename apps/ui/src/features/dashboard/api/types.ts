@@ -30,7 +30,20 @@ export type RevenueAnalytics = BillingSchemas["RevenueAnalyticsResponse"];
 export type ApiKeyList = TenantSchemas["ApiKeyListResponse"];
 export type PricingBookList = MeteringSchemas["PaginatedPricingBooks"];
 
-/** The four breakdown dimensions the overview picker offers. */
+/**
+ * The four breakdown axes the overview picker offers.
+ *
+ * ⚠ THE IDENTIFIER IS STILL SLICE 7's — only the prose is paid here (#372).
+ * The plural that named this axis is retired and its console ledger entry
+ * counts the files holding it; the constant below keeps the word, because
+ * renaming it is part of the one economic query slice 7 builds and is not
+ * something a commit about pricing books gets to decide. What this commit
+ * needed was room: the pricing feature reads the tenant's own grouping-field
+ * registry off the wire, which puts the word in one more file, and the entry's
+ * count is a ceiling on spread as well as a floor. Paying a debt early from
+ * another slice is allowed and an owner may move earlier and never later, so
+ * the sentence moves now and the identifier moves with its slice.
+ */
 export const BREAKDOWN_DIMENSIONS = [
   "provider",
   "event_type",

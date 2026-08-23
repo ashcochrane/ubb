@@ -19,6 +19,7 @@ import {
   customerPriceAmount,
   customerPriceExplanation,
   notApplicableReasonLabel,
+  pricingMethodLabel,
   pricingStatusLabel,
   settledPriceMicros,
 } from "@/lib/customer-price";
@@ -239,6 +240,27 @@ export function EventDetailPage({
       ),
     },
     { label: "Price status", value: pricingStatusLabel(detail.pricing_status) },
+    // ⚠ HOW THE PRICE WAS DERIVED, PER EVENT, AND IT IS NOT A PROPERTY OF THE
+    // EVENT TYPE (#372, spec §21). Two events of the SAME Event Type may
+    // legitimately read differently here — one cost-plus for a customer on a
+    // margin deal, one flat for a customer on a negotiated price — because the
+    // receipt records the method and the applied value per event, BY VALUE,
+    // precisely so it can be shown. That is not a bug for the UI to smooth
+    // over: a screen that derived the method from the Event Type instead would
+    // have to pick one of the two and be wrong for the other customer, on the
+    // one screen a tenant opens to check a single charge.
+    //
+    // Read only where there is one. It is nullable on the wire and null is an
+    // ordinary state — no method derived a price that was never resolved — so a
+    // row here would be a label with nothing to say.
+    ...(detail.pricing_method != null
+      ? [
+          {
+            label: "Priced by",
+            value: pricingMethodLabel(detail.pricing_method),
+          },
+        ]
+      : []),
     // Read only where the status is `not_applicable`, and never on its own —
     // the registry's rule, and the same one the missing input follows below. A
     // status saying a price does not apply without saying WHY sends a reader
@@ -349,12 +371,23 @@ export function EventDetailPage({
         {/* The record took its ratified name on the wire in #370 and the
             heading came with it: a screen calling it something the API does
             not is the second public name for one concept ADR-0006 §2 refuses.
-            The sentence saying a receipt is the record of an ECONOMIC
-            RESOLUTION rather than evidence a customer was charged is #372's,
-            with the rest of this feature's wording. */}
+            #370 handed the QUALIFICATION forward to this commit, and here it
+            is, in the console's own words rather than the schema's.
+
+            ⚠ WHY IT HAS TO BE SAID AT ALL. A receipt is the record of an
+            ECONOMIC RESOLUTION — what UBB resolved, how, and as of when — and
+            every event gets one, including on a workspace that meters and does
+            not bill anybody. So a heading reading "Pricing receipt" over a
+            block of numbers is, on its own, an invitation to read the presence
+            of a receipt as proof that a customer was charged. It is not: the
+            Customer price section above is where that question is answered, and
+            on a metering-only workspace it answers "no charge exists anywhere".
+            The sentence is console copy rather than the schema's `description`
+            for the ordinary reason — the wire's prose is written for whoever is
+            integrating, and this is written for whoever is reading a receipt. */}
         <Section
           title="Pricing receipt"
-          description="Why this amount — the pricing engine's recorded receipt."
+          description="How UBB worked this event out — what it resolved, by which method, and as of when. Every event has one, including on a workspace that only meters: a receipt explains the amounts above, and is not evidence that a customer was charged."
           className="lg:col-span-2"
         >
           {hasReceipt ? (

@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, UserRoundX } from "lucide-react";
 
@@ -18,17 +19,23 @@ import { OverviewTab } from "./overview-tab";
 import { SubscriptionTab } from "./subscription-tab";
 import { UsageTab } from "./usage-tab";
 
-// ⚠ THERE IS NO PRICING TAB (#368, #369). It held two cards and both are gone
-// with the records behind them: a book picker, whose assignment record was
-// deleted outright, and a markup override, whose record and five routes were
-// deleted next. What one named customer is charged is a RULE in their own
-// pricing book now — a record that says which quantity it prices — and this
-// console has no way to read or write one until #372 rebuilds the pricing
-// feature around books, rules and publishes. An empty tab would say the
-// console had lost the answer; no tab says the surface moved.
+// ⚠ THE PRICING TAB IS BACK, AND ITS CONTENT IS INJECTED (#372). It was
+// removed in #368/#369 when both its cards went with the records behind them —
+// a book picker whose assignment record was deleted, and a markup override
+// whose record and five routes went next. What one named customer is charged
+// is a RULE in their own pricing book now, and the surface that reads and
+// writes one belongs to the PRICING feature.
+//
+// So this page names the tab and renders whatever it is handed. The console's
+// dependency rule is that imports flow down and one feature never imports
+// another's components (`apps/ui/docs/architecture.md` §Dependency Rules); the
+// route file is the layer that may see both, and it is where the two are
+// composed. A page missing its injection renders an honest absence rather than
+// a blank panel.
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "usage", label: "Usage" },
+  { value: "pricing", label: "Pricing" },
   { value: "billing", label: "Billing" },
   { value: "subscription", label: "Subscription" },
 ] as const;
@@ -43,10 +50,13 @@ export function CustomerDetailPage({
   customerId,
   search,
   onSearchChange,
+  pricingTab,
 }: {
   customerId: string;
   search: CustomerDetailSearch;
   onSearchChange: (next: CustomerDetailSearch) => void;
+  /** The pricing feature's own surface for this customer, injected by the route. */
+  pricingTab?: React.ReactNode;
 }) {
   const range = resolveRange(search);
   const margin = useCustomerMargin(customerId, range);
@@ -139,6 +149,16 @@ export function CustomerDetailPage({
         </TabsContent>
         <TabsContent value="usage" className="pt-3">
           <UsageTab customerId={customerId} range={range} />
+        </TabsContent>
+        <TabsContent value="pricing" className="pt-3">
+          <ProductGate product="billing">
+            {pricingTab ?? (
+              <EmptyState
+                title="Pricing isn't wired up here"
+                description="This customer's own pricing rules live in the pricing feature, and this page renders whatever it is handed."
+              />
+            )}
+          </ProductGate>
         </TabsContent>
         <TabsContent value="billing" className="pt-3">
           <ProductGate product="billing">

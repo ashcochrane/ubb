@@ -203,11 +203,17 @@ export async function sendTestEvent(
   // beside a null amount is the row the posting's own constraint refuses.
   const price = knownPrice(billed);
 
+  // The posting's own identity, named once: the response carries it and so
+  // does the receipt's subject, and a receipt explaining a different id from
+  // the one it was returned with would be a record nothing could be joined to.
+  const eventId = crypto.randomUUID();
+  const recordedAt = new Date().toISOString();
+
   balanceMicros -= billed;
   const stopped = balanceMicros < 0;
 
   return {
-    event_id: crypto.randomUUID(),
+    event_id: eventId,
     suspended: false,
     // The posting's grouping values under the tenant's own declared keys
     // (#277). Empty here because this mock declares no grouping fields and
@@ -229,21 +235,62 @@ export async function sendTestEvent(
     new_balance_micros: balanceMicros,
     measurements: body.measurements ?? null,
     // EMPTY WHENEVER THE COST RESOLVED, because that is what the real response
-    // does: the backend writes this list on the rate-card branch only, and a
+    // does: the backend writes this list on the rule-matching branch only, and a
     // caller who states the cost outright never reaches it. Listing the keys
     // anyway would make this panel warn about a declaration the API never
     // complained about.
     uncosted_measurement_keys: resolved ? [] : uncosted,
+    // THE RECORD, NOT A SKETCH OF ONE (#372). #371 took the ratified word for
+    // the container and left the SHAPE — `engine_version`, a `price_source`, a
+    // sequence number — recorded as this commit's to rebuild. What a receipt
+    // actually is: two versions, a typed subject, a costing and a pricing
+    // section each holding their method, status and detail BY VALUE, the
+    // totals, and a provenance section of cross-reference ids
+    // (`pricing/receipts.py`).
+    //
+    // ⚠ IT IS BUILT FROM THE TWO SCENARIOS ABOVE RATHER THAN BESIDE THEM, for
+    // the reason every other pairing in this file follows: the record's own
+    // rule is that a section's method is present exactly when its status is
+    // settled, and its amount on the same condition. A hand-written literal can
+    // break all three silently — the console has no validator — so it is
+    // derived from the pair this mock already composed.
     pricing_receipt: {
-      engine_version: "mock-1",
-      // ONE SOURCE, because there is only one: a caller cannot state a price,
-      // so "explicit" is a branch nothing can reach any more (#365). And it
-      // names the container by its ratified name (#368, #371) — the retired
-      // spelling was the last of that word in this file, and its console ledger
-      // entry drops by one for it. The receipt's SHAPE is still the old one and
-      // is #372's to rebuild; this is the word, not the record.
-      price_source: "pricing_book",
-      sequence: eventCounter,
+      receipt_schema_version: 1,
+      pricing_engine_version: "2.1.0",
+      subject_type: "usage_event",
+      subject_id: eventId,
+      effective_at: recordedAt,
+      currency: "usd",
+      costing: {
+        // A caller who states the cost outright was REPORTED it; one this mock
+        // priced from its own rates CALCULATED it. Null where nothing settled.
+        method: resolved
+          ? body.provider_cost_micros != null
+            ? "reported"
+            : "calculated"
+          : null,
+        status: cost.costing_status,
+        detail: {
+          uncosted_measurement_keys: resolved ? [] : uncosted,
+          unresolved_reason: cost.unresolved_reason,
+        },
+      },
+      pricing: {
+        // ONE METHOD, because there is only one path left: a caller cannot
+        // state a price, so this mock always prices the event's own quantities
+        // by its own terms — which is what `direct_event_price` means (#365).
+        method: "direct_event_price",
+        status: price.pricing_status,
+        detail: { pricing_mode: "event_priced" },
+      },
+      totals: {
+        provider_cost_micros: cost.provider_cost_micros,
+        billed_cost_micros: price.billed_cost_micros,
+      },
+      // Ids and nothing a reader could take a figure from. The sequence is this
+      // sandbox's own, and it is the one thing here that is not a real
+      // cross-reference — it names which call in the session this was.
+      provenance: { sandbox_sequence: eventCounter },
     },
     stop: stopped,
     stop_reason: stopped ? "customer_floor" : null,

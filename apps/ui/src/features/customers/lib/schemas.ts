@@ -182,7 +182,10 @@ export type RevenueProfileForm = z.infer<typeof revenueProfileSchema>;
 // amount for the customer override dialog, and both the dialog and the record
 // behind it are deleted. The rung that replaced the tenant half takes ONE term
 // — a margin over cost never composes with an addend — so the two-field shape
-// would be wrong for whatever surface #372 builds as well as unused today.
+// was wrong for the surface that replaced it as well as unused here. That
+// surface arrived in #372 and it is a RULE editor rather than a number field:
+// what one customer is charged is a whole rule, method included, and it is
+// stated in `features/pricing/lib/schemas.ts`.
 
 export const subscribeSchema = z.object({
   plan_key: z.string().trim().min(1, "Plan key is required").max(64),

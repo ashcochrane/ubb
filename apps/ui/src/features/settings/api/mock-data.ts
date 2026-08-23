@@ -199,15 +199,21 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "key-live-2",
     actor_kind: "api_key",
     actor_display: "ubb_live_k9x2…",
-    action: "rate_card.published",
-    resource_type: "rate_card",
-    resource_id: "rc-openai-price-v4",
+    // ⚠ THE ACT, THE RECORD AND THE ID ARE THE ONES THE BACKEND ACTUALLY
+    // WRITES (#372). The container this used to name is retired: declaring a
+    // Pricing Book and declaring a cost book are two actions on two records,
+    // and the ledger's `resource_type` is what says which moved. The id is the
+    // standard price book's own, because the book page deep-links here with
+    // exactly this pair — a fixture naming a record no page ever filters for
+    // would leave that link demonstrating nothing.
+    action: "pricing_book.declared",
+    resource_type: "pricing_book",
+    resource_id: "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03",
     correlation_id: "corr-8ac0",
     metadata: {
-      version: 4,
-      changes: 3,
-      provider: "openai",
-      card_type: "price",
+      key: "standard-price",
+      name: "Standard price list",
+      is_default: true,
     },
   },
   {

@@ -175,8 +175,6 @@ export interface PastLimitReport {
   totals_per_limit: Record<string, PastLimitLimitTotals>;
 }
 
-/** POST /metering/pricing/customers/{id}/rate-card answers `{assigned}`. */
-
 // ---------------------------------------------------------------------------
 // Narrowing — field-by-field coercion of the untyped bodies above. This is
 // the ONLY place a cast-like assertion may live for these shapes; everything

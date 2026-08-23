@@ -35,7 +35,7 @@ describe("GettingStartedCard", () => {
   it("derives checklist state from real workspace state", async () => {
     renderWithClient(<GettingStartedCard needsStripe={true} />);
 
-    // Mock story: a key, a rate-card book, and Stripe all exist; no events yet.
+    // Mock story: a key, a pricing book, and Stripe all exist; no events yet.
     expect(await screen.findByText("3 of 4 complete.")).toBeInTheDocument();
 
     expect(

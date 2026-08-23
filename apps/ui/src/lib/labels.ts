@@ -256,14 +256,16 @@ export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 //
 // The WORDS are in the catalogue under `rate_structure.*`, `pricing_method.*`
 // and `pricing_status.*`, bound where they are rendered:
-// `features/pricing/lib/rates.ts` for the rate's arithmetic shape, and
-// `@/lib/customer-price` — the module that decides what a price UBB does not
-// have may render as — for the status. `pricing_method` has no binding
-// anywhere yet, exactly as `costing_method` above has none: nothing renders a
-// method until #372 rebuilds the pricing feature, and the rule two lines up
-// says a surface binds the words when it comes to show them. Nothing here, and
-// no map: this file is the legacy adapter, and a concept that has been migrated
-// leaves behind its value list and nothing else.
+// `features/pricing/lib/rules.ts` for the rate's arithmetic shape, and
+// `@/lib/customer-price` for the status AND — since #372 — for the method. The
+// method's binding sits in `lib/` rather than in the pricing feature because
+// TWO features render one: the pricing feature on its rules and in a publish's
+// diff, and the events feature on the receipt, where two events of one Event
+// Type read differently because their deals differ. `costing_method` above
+// still has no binding anywhere, on the same rule: a surface binds the words
+// when it comes to show them. Nothing here, and no map: this file is the legacy
+// adapter, and a concept that has been migrated leaves behind its value list
+// and nothing else.
 export const RATE_STRUCTURES = RATE_STRUCTURE_VALUES;
 export const PRICING_METHODS = PRICING_METHOD_VALUES;
 export const PRICING_STATUSES = PRICING_STATUS_VALUES;

@@ -89,8 +89,27 @@ describe("EventDetailPage", () => {
     expect(screen.getAllByText("input_tokens").length).toBeGreaterThan(0);
     expect(screen.getByText("4,200")).toBeInTheDocument();
     // The receipt renders structured, not as raw JSON.
+    //
+    // ⚠ THE RECORD IS THE ENGINE'S OWN SHAPE NOW (#372). The fixture this
+    // asserted against was invented by the console before the record existed —
+    // a `billed_source`, a book key and a `per_measurement` bag — and #370
+    // recorded the rebuild as this slice's. What a receipt actually carries is
+    // two versions, a typed subject, a costing and a pricing section holding
+    // their method, status and detail by value, the totals, and a provenance
+    // section of cross-reference ids. The assertion follows the record rather
+    // than the other way round.
     expect(screen.getByText("Pricing receipt")).toBeInTheDocument();
-    expect(screen.getByText("llm-prices-2026")).toBeInTheDocument();
+    const receipt = sectionText("Pricing receipt");
+    expect(receipt).toContain("receipt_schema_version");
+    expect(receipt).toContain("costing");
+    expect(receipt).toContain("pricing");
+    expect(receipt).toContain("totals");
+    // The per-quantity components, by value: the receipt has to outlive the
+    // measurement rows it explains, so a reader with only this record can redo
+    // the sum.
+    expect(receipt).toContain("rate_per_unit_micros");
+    // And the ids it read, in provenance — where nothing is a figure.
+    expect(receipt).toContain("price_rate_ids");
   });
 
   it("labels each grouping value with the key the tenant declared", async () => {

@@ -45,7 +45,7 @@ function checkState<T>(
 
 /**
  * Shown only when the workspace has never recorded an event. Every checkmark
- * is driven by real state (keys, rate cards, events, Stripe) — no fake
+ * is driven by real state (keys, pricing books, events, Stripe) — no fake
  * progress. `needsStripe` is true for tenants with the billing product.
  */
 export function GettingStartedCard({ needsStripe }: { needsStripe: boolean }) {
@@ -65,9 +65,9 @@ export function GettingStartedCard({ needsStripe }: { needsStripe: boolean }) {
       retry: () => void keys.refetch(),
     },
     {
-      key: "rate-card",
+      key: "pricing-book",
       title: "Set up pricing",
-      description: "Create a rate-card book so every event gets priced.",
+      description: "Create a pricing book so every event gets priced.",
       to: "/pricing",
       linkLabel: "Open pricing",
       state: checkState(books, (page) => page.data.length > 0),

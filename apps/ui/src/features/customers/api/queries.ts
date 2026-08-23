@@ -179,11 +179,13 @@ export function useCustomerUsageInvoices(customerId: string) {
 // ---------------------------------------------------------------------------
 // Pricing reads
 //
-// ⚠ THERE ARE NONE. `usePriceBooks` and `useAssignRateCard` went with the
-// assignment record and its route (#368); `useCustomerMarkup` went with the
-// markup record and its five routes (#369). A customer's price resolves from a
-// rule in a pricing book, and #372 is the ticket that gives this console a way
-// to read and write one.
+// ⚠ THERE ARE NONE, AND THAT IS NOW A BOUNDARY RATHER THAN A GAP. The two
+// hooks that were here went with the records and routes behind them (#368,
+// #369). A customer's price resolves from a rule in a pricing book, and the
+// hooks that read and write one live in `features/pricing/api/queries.ts`
+// (#372) — where the rest of that entity's cache keys and invalidation already
+// are. Two features holding query keys for one entity is how a mutation comes
+// to invalidate half of what it moved.
 
 // ---------------------------------------------------------------------------
 // Subscription reads

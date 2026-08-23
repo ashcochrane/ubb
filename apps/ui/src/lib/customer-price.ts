@@ -53,6 +53,7 @@
 import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
 import {
   NOT_APPLICABLE_REASON_LABEL_KEYS,
+  PRICING_METHOD_LABEL_KEYS,
   PRICING_STATUS_LABEL_KEYS,
   type NotApplicableReason,
   type PricingStatus,
@@ -64,18 +65,30 @@ export const pricingStatusLabel = labelMap(PRICING_STATUS_LABEL_KEYS);
 /** The catalogue's name for WHY a subject generates no customer revenue. */
 export const notApplicableReasonLabel = labelMap(NOT_APPLICABLE_REASON_LABEL_KEYS);
 
-// ⚠ NO `pricingMethodLabel` HERE YET, DELIBERATELY. `pricing_method` is the
-// third concept whose value list this commit brings into `@/lib/labels` by
-// reference, and the catalogue already carries both of its words under
-// `pricing_method.*` — but nothing in the console renders a method today, and
-// binding a label with no call site is a dead export a later reader has to
-// classify. `costing_method` set that precedent and the adapter states it: *"a
-// surface that comes to render one binds `labelMap(COSTING_METHOD_LABEL_KEYS)`
-// in its own module."* #372 rebuilds the pricing feature and is where a method
-// first reaches a screen — spec §21 gives it the case outright, two events of
-// one Event Type reading differently because their receipts record different
-// methods. `customer-price.test.ts` holds the catalogue to both words meanwhile,
-// so the wording cannot rot while it waits.
+/**
+ * The catalogue's name for HOW a customer price was derived.
+ *
+ * ⚠ **THIS IS THE BINDING #371 DELIBERATELY DID NOT MAKE, AND IT LANDS HERE
+ * RATHER THAN IN THE PRICING FEATURE.** That commit brought `pricing_method`'s
+ * value list into `@/lib/labels` by reference and stopped, on the
+ * `costing_method` precedent: *"a surface that comes to render one binds
+ * `labelMap(...)` in its own module"*, because a label with no call site is a
+ * dead export a later reader has to classify. #372 is that surface — and it
+ * turns out to be TWO surfaces, which is what decides the home. The pricing
+ * feature renders a method on its rules and in a publish's diff; the events
+ * feature renders it on the receipt, because spec §21 asks outright for two
+ * events of one Event Type to read differently when their receipts record
+ * different methods. The console's imports only flow down and one feature never
+ * reaches into another, so a concept two features render binds in `lib/` — the
+ * rule this module's own header states about itself.
+ *
+ * ⚠ **AND IT IS A DIFFERENT FACT FROM `rate_structure`**, which stays inside
+ * the pricing feature because the rules table is its only reader. One says
+ * where a number came from; the other says how a quantity multiplies out. They
+ * are a near miss in a reader's head rather than in the code, and a rule may
+ * move either without the other.
+ */
+export const pricingMethodLabel = labelMap(PRICING_METHOD_LABEL_KEYS);
 
 /**
  * A posting's customer price, as any wire row or fixture carries it.

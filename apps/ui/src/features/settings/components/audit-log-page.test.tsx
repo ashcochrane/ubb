@@ -63,11 +63,17 @@ describe("AuditLogPage", () => {
   it("filters by resource id from the URL (deep link from other pages)", async () => {
     renderWithQuery(
       <AuditLogPage
-        search={{ resource_type: "rate_card", resource_id: "rc-openai-price-v4" }}
+        search={{
+          // The pair the pricing book page sends. It names WHICH KIND of book,
+          // because a Pricing Book and a cost book are two records with two
+          // sets of audit actions (#368, #372).
+          resource_type: "pricing_book",
+          resource_id: "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03",
+        }}
       />,
     );
 
-    expect(await screen.findByText("Rate card published")).toBeInTheDocument();
+    expect(await screen.findByText("Pricing book declared")).toBeInTheDocument();
     expect(screen.queryByText("Config updated")).not.toBeInTheDocument();
   });
 });

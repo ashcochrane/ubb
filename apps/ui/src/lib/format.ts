@@ -97,7 +97,7 @@ export function formatRelativeDate(isoString: string): string {
 }
 
 /**
- * Format a rate card price for display, in the given currency (accepts the
+ * Format a pricing rule's price for display, in the given currency (accepts the
  * API's lowercase codes; defaults to USD for legacy call sites).
  * e.g. costPerUnitMicros=100, unitQuantity=1_000_000 → "$0.0001 / 1M"
  * e.g. costPerUnitMicros=35_000, unitQuantity=1 → "$0.035"

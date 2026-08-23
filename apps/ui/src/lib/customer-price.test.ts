@@ -6,6 +6,7 @@ import {
   customerPriceAmount,
   customerPriceExplanation,
   notApplicableReasonLabel,
+  pricingMethodLabel,
   pricingStatusLabel,
   settledPriceMicros,
 } from "./customer-price";
@@ -15,7 +16,7 @@ import {
   waivedPrice,
   knownPrice,
 } from "./economic-scenarios";
-import { labelMap, missingLabel } from "./localisation";
+import { missingLabel } from "./localisation";
 import {
   NOT_APPLICABLE_REASON_LABEL_KEYS,
   NOT_APPLICABLE_REASON_VALUES,
@@ -28,17 +29,13 @@ import {
 /** Anything that reads as an amount of money, in any of the console's shapes. */
 const CURRENCY = /[$£€]\s*-?[\d,]/;
 
-/**
- * The method's words, bound HERE rather than in the module under test.
- *
- * `pricing_method` is one of the three value sets this commit brings into
- * `@/lib/labels` by reference, and AC 1 owes its two words a check — but no
- * console surface renders a method yet, so `customer-price.ts` deliberately
- * exports no binding for it (its comment says why, and names #372). Binding it
- * inside the test is what holds the catalogue to those two words without
- * shipping a dead export to satisfy an assertion.
- */
-const pricingMethodLabel = labelMap(PRICING_METHOD_LABEL_KEYS);
+// ⚠ THE METHOD'S BINDING MOVED INTO THE MODULE UNDER TEST (#372), AND THIS
+// TEST NOW IMPORTS IT RATHER THAN REBUILDING IT. It was bound here in #371
+// because nothing rendered a method yet and a label with no call site is a dead
+// export a later reader has to classify. #372 is the surface — two of them, in
+// fact, which is what put the binding in `lib/` — so a second `labelMap` here
+// would be a copy of the thing under test, and a test that built its own copy
+// could not fail if the real one were bound to the wrong concept.
 
 describe("the price side's words come from the catalogue", () => {
   // ⚠ THE ASSERTION THE LABEL HALF OF THIS TICKET EXISTS FOR. A word that is

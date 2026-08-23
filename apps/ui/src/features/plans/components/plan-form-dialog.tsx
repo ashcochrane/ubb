@@ -5,7 +5,8 @@
 // per-event flat amount, and both columns are deleted. What a plan's customers
 // pay for usage is the rules in the pricing book the plan names, changed
 // through a publish on that book — which is what gives a tenant a diff to read
-// before a price moves, and which this console gains with #372.
+// before a price moves. The console gained that surface in #372: the book's own
+// page declares a change, shows its diff, and publishes or discards it.
 //
 // Schema and conversion helpers live inline (not in a sibling `lib/`
 // directory) because this repo's root .gitignore has a bare `lib/` pattern

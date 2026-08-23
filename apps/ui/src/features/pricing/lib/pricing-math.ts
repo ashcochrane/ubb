@@ -37,7 +37,24 @@ export function microsToUnitString(micros: number): string {
   return (micros / 1_000_000).toString();
 }
 
-export interface RateShape {
+/**
+ * The arithmetic half of a rule's terms — the four fields that decide what a
+ * quantity costs.
+ *
+ * Structural rather than the contract's `RuleTerms`, and deliberately so: a
+ * diff row's `before`/`after`, a rule row from the book, and the editor's own
+ * unsaved form state are three different shapes that all carry these four, and
+ * this function has no business knowing which one it was handed. `RuleTerms`
+ * satisfies it, which is what makes the diff's preview free.
+ *
+ * ⚠ THE METHOD IS NOT ONE OF THEM. `pricing_method` says where a number came
+ * from, not how a quantity multiplies out — a margin over cost and a direct
+ * price both spend these same four terms once the amount is known. Including
+ * it here would invite a call site to believe this function could price a
+ * margin, which it cannot: the basis is the supplier's cost and is not on this
+ * record at all.
+ */
+export interface RuleArithmetic {
   rate_structure: RateStructure;
   rate_per_unit_micros: number;
   unit_quantity: number;
@@ -45,24 +62,24 @@ export interface RateShape {
 }
 
 /**
- * What a given number of units would cost under a rate, in integer micros.
+ * What a given number of units would cost under a rule, in integer micros.
  * Integer math only: floor(units * rate / unit_quantity) + fixed.
- * A flat rate charges the fixed component per event, regardless of units.
+ * A fixed component charges once per event, regardless of units.
  */
-export function exampleChargeMicros(rate: RateShape, units: number): number {
-  if (rate.rate_structure === "fixed_component") return rate.fixed_micros;
+export function exampleChargeMicros(rule: RuleArithmetic, units: number): number {
+  if (rule.rate_structure === "fixed_component") return rule.fixed_micros;
   return (
-    Math.floor((units * rate.rate_per_unit_micros) / rate.unit_quantity) +
-    rate.fixed_micros
+    Math.floor((units * rule.rate_per_unit_micros) / rule.unit_quantity) +
+    rule.fixed_micros
   );
 }
 
-/** True when two rate value-shapes price identically (publish diffing). */
-export function sameRateValues(a: RateShape, b: RateShape): boolean {
-  return (
-    a.rate_structure === b.rate_structure &&
-    a.rate_per_unit_micros === b.rate_per_unit_micros &&
-    a.unit_quantity === b.unit_quantity &&
-    a.fixed_micros === b.fixed_micros
-  );
-}
+// ⚠ NO `sameRateValues` (#372). It answered *"do these two rules price
+// identically"* for a console that computed its own publish preview, and there
+// is no such preview any more: a draft is declared server-side and the RESPONSE
+// carries the diff, so what a tenant reads before committing is what the
+// service will actually do rather than the console's second opinion about it.
+// Keeping a local comparison would be a second implementation of a question
+// only one answer to which can be authoritative — and it is the one that runs
+// against the book as it will stand at the effective instant, which the console
+// cannot see.
