@@ -48,13 +48,14 @@ only for genuinely synchronous needs; everything tolerant of latency goes on the
 
 ## Caching & invalidation
 
-Hot-path resolves (pricing rules, markups) use an in-process L1 cache fronted by a per-tenant Redis
-**version key** (`ubb:cardver:{tenant}`, `ubb:markupver:{tenant}`). The default rule: writes bump the
-version key **at the model layer** (in the model's `save`/`delete`), so a stale cache can't survive a
-write. If you add a cached resolve, invalidate the same way — bump a version key on write, never
-trust a TTL alone for correctness. The markup cache is the worked example, bumped from
-`TenantDefaultMarkup.save`/`delete`. Always keep a live-ORM fallback so caching never under-holds
-money.
+Hot-path resolves use an in-process L1 cache fronted by a per-tenant Redis **version key**. The
+default rule: writes bump the version key **at the model layer** (in the model's `save`/`delete`), so
+a stale cache can't survive a write. If you add a cached resolve, invalidate the same way — bump a
+version key on write, never trust a TTL alone for correctness. Always keep a live-ORM fallback so
+caching never under-holds money.
+
+**The markup cache is the worked example** — `ubb:markupver:{tenant}`, bumped from
+`TenantDefaultMarkup.save`/`delete`, so no write path can bypass invalidation.
 
 **⚠ There is one exception and it is a better answer, not a lapse: a key that carries the instant it
 answers for needs no invalidation at all** (#356). A pricing rule takes effect from a moment that may
@@ -63,9 +64,11 @@ moment, and invalidating at the boundary would need a job running at the effecti
 thing forward-dated publishing exists to avoid. The rate cache's key therefore includes the as-of
 instant: **a cached resolution answers for the instant it was computed for and for no other**, so
 entries for instants before a new boundary stay correct forever and entries for instants after it
-were never created. `ubb:cardver:{tenant}` consequently has **no writer**, deliberately and on the
-record in `apps/metering/pricing/services/card_cache.py`. Reach for this shape when what you are
-caching is a function of time; reach for the version key when it is not.
+were never created. Its version key `ubb:cardver:{tenant}` still exists and is still read, but it
+**has no writer at all** — deliberately, and on the record in
+`apps/metering/pricing/services/card_cache.py`, which refuses to add one because a model-layer bump
+would put publish-time invalidation straight back. Reach for this shape when what you are caching is
+a function of time; reach for the version key when it is not.
 
 ## Celery
 

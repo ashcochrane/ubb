@@ -27,8 +27,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.metering.pricing.models import CostBook, PricingBook, Rate
 # The kind word neither body publishes, read off the migration that deleted it
-# rather than spelled (#374) — see the constant's own note for why.
-from apps.metering.pricing.tests._helpers import RETIRED_KIND_COLUMN
+# rather than spelled (#374) — see the function's own docstring for why.
+from apps.metering.pricing.tests._helpers import retired_kind_column
 
 
 class _ABookApiMixin:
@@ -108,7 +108,7 @@ class TheTwoBooksAreDeclaredSeparatelyTest(_ABookApiMixin, TestCase):
         self.assertIsNone(book["customer_id"])
         self.assertNotIn("provider_key", book)
         self.assertNotIn("currency", book)
-        self.assertNotIn(RETIRED_KIND_COLUMN, book)
+        self.assertNotIn(retired_kind_column(), book)
 
     def test_a_cost_book_names_both(self):
         r = self._a_cost_book(name="OpenAI", is_default=True)
@@ -117,7 +117,7 @@ class TheTwoBooksAreDeclaredSeparatelyTest(_ABookApiMixin, TestCase):
         book = r.json()
         self.assertEqual(book["provider_key"], "openai")
         self.assertEqual(book["currency"], "usd")  # the tenant's
-        self.assertNotIn(RETIRED_KIND_COLUMN, book)
+        self.assertNotIn(retired_kind_column(), book)
 
     def test_the_two_are_listed_apart(self):
         self._a_pricing_book()

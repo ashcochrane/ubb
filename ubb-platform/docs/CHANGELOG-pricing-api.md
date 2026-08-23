@@ -232,7 +232,16 @@ book assignment, which a flat per-rate model could not express safely.
   rows for the same measurement key in different books.
 
 **Prod backfill parity probe (from the design doc's Task 3 ops note, §10.1) —
-SPENT, and the two shell snippets are removed rather than rewritten.** Before
+SPENT, and the two shell snippets are removed rather than rewritten.**
+
+> ⚠ **This is the one place this file's own header rule is overridden, and it is
+> said plainly rather than left for a reader to notice.** The header rules that
+> an entry's *facts* — what changed, when, and why — are never rewritten. What
+> is removed here is not a fact about 2026-07-03; it is an **instruction to a
+> future operator**, and it is an instruction that can no longer be followed.
+> The facts it carried are preserved in prose immediately below.
+
+Before
 applying `0012`, the probe counted two figures off `Rate`: how many cost rules
 were scoped to a named customer (a nonzero count meant the cost-side branch of
 `_book_backfill` needed a second look before rollout — the design's open item,

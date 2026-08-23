@@ -24,6 +24,17 @@ worth having:
    whose class moved to another module has a stale table even though the class
    is alive.
 
+⚠ **WHAT RULE 2 DOES NOT CHECK, STATED RATHER THAN DISCOVERED.** It binds a case
+to a MODULE, not to the class cited beside it. A row reading *``SomeTest`` —
+``test_a_thing``* stays green if `test_a_thing` moves to a sibling class in the
+same file, so the pairing a reader sees is not enforced. That is deliberate
+rather than missed: **the rows legitimately cross classes.** ADR-0009's §1 row
+names `test_no_row_is_reopened_and_the_database_is_what_refuses_it` — a method of
+`ACancellationIsAFurtherPublishTest` — alongside
+`TheDatabaseRefusesTheEarlierCaseRegardlessTest`, because one rule is proved from
+two places. A per-row class binding would report that honest row as a defect, so
+the tighter rule is the wrong rule here, and the looser one is written down.
+
 **THE SECTION HEADING IS THE OPT-IN, WHICH IS WHY THIS DOES NOT SWEEP EVERY
 ADR.** The older ADRs cite their evidence in prose of several shapes, and a
 walker that tried to parse all of them would either be a pile of special cases
@@ -52,7 +63,14 @@ import pytest
 
 from _helpers import REPO_ROOT
 
-ADR_DIRECTORY = REPO_ROOT / "docs" / "adr"
+#: BOTH ADR HOMES, BECAUSE `CLAUDE.md` NAMES TWO. New, sequential ADRs live in
+#: `docs/adr/`; the pre-existing ones — including the product-boundaries ADR
+#: whose precedent this check's own rationale rests on — live in
+#: `docs/architecture/`. Globbing only the first would leave a
+#: `## What proves it` added to the second silently unchecked, and the opt-in
+#: guard would not notice either, because it reads the same listing.
+ADR_DIRECTORIES = (REPO_ROOT / "docs" / "adr",
+                   REPO_ROOT / "docs" / "architecture")
 
 #: The heading that opts an ADR into this check.
 PROOF_HEADING = "## What proves it"
@@ -112,7 +130,7 @@ def defined_in(path):
                                  ast.AsyncFunctionDef))}
 
 
-def findings(adr_name, text, repo_root=REPO_ROOT):
+def findings(adr_name, text):
     """Everything wrong with one ADR's proof section, as readable lines.
 
     Returns ``[]`` for an ADR with no such section — having one is opt-in, and
@@ -133,7 +151,7 @@ def findings(adr_name, text, repo_root=REPO_ROOT):
 
     present = {}
     for module in modules:
-        path = repo_root / module
+        path = REPO_ROOT / module
         if not path.is_file():
             problems.append(
                 f"{adr_name}: names `{module}`, which is not a file. A proof "
@@ -154,9 +172,10 @@ def findings(adr_name, text, repo_root=REPO_ROOT):
 
 
 def adrs():
-    """``{filename: text}`` for every ADR in the directory."""
+    """``{filename: text}`` for every ADR in either home."""
     return {path.name: path.read_text(encoding="utf-8")
-            for path in sorted(ADR_DIRECTORY.glob("*.md"))}
+            for directory in ADR_DIRECTORIES
+            for path in sorted(directory.glob("*.md"))}
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +264,7 @@ def test_a_case_that_exists_in_another_module_is_still_a_finding():
     text = an_adr(f"| a rule | `{REAL_MODULE}` — `ACancellationIsAFurtherPublishTest` |")
 
     (problem,) = findings("synthetic.md", text)
+    assert "ACancellationIsAFurtherPublishTest" in problem
     assert "does not name" in problem
 
 
