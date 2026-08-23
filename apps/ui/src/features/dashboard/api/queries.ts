@@ -139,7 +139,7 @@ export function useApiKeysCheck(): UseQueryResult<ApiKeyList> {
 
 export function usePricingBooksCheck(): UseQueryResult<PricingBookList> {
   return useQuery({
-    queryKey: ["metering", "pricing", "rate-cards", "first-page"] as const,
+    queryKey: ["metering", "pricing", "pricing-books", "first-page"] as const,
     queryFn: () => dashboardApi.getPricingBooksFirstPage(),
   });
 }

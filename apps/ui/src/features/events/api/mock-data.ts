@@ -20,6 +20,12 @@ import {
   type CustomerPriceScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
+import type { CostingMethod, PricingMethod } from "@/lib/vocabulary";
+
+// The receipt's per-quantity component. Its shape lives one module over
+// because the record's key for a measured quantity is a word this file may
+// not spell — see `../lib/receipt` for the whole argument.
+import { receiptComponent, type ReceiptComponent } from "../lib/receipt";
 
 import type {
   CustomerMargin,
@@ -83,6 +89,17 @@ export const EVENT_COST_NOT_APPLICABLE_ID =
 /** The killed task's other event, costed by CALCULATION where the kill event
  * beside it was REPORTED (#330). Two derivations, one complete task. */
 export const EVENT_TASK_RATED_ID = "4f9a2d68-7c05-4b31-8e72-1b6d9a3f5c04";
+/**
+ * The margin-priced half of spec §21's pair (#372): an `embedding.create`
+ * charged as a margin over what the call cost.
+ */
+export const EVENT_MARGIN_PRICED_ID = "0a3e7c62-4b19-4d85-9f30-6e2b8d1c5a47";
+/**
+ * The directly-priced half of the SAME Event Type, for a different customer.
+ * Same work, same provider, same quantities — a different deal, and the
+ * receipts say so.
+ */
+export const EVENT_DIRECTLY_PRICED_ID = "8d5f1b04-2c76-4e93-a018-3b7e9c4d6e2a";
 
 export interface MockEvent {
   customer_id: string;
@@ -125,7 +142,35 @@ interface DetailSeed {
   metadata?: Record<string, unknown>;
   task_id?: string | null;
   stop_context?: Array<Record<string, unknown>> | null;
-  pricing_receipt?: Record<string, unknown>;
+  /**
+   * How the price was derived, where one was.
+   *
+   * ⚠ **REQUIRED EXACTLY WHERE THE PRICE SETTLED, AND THE BUILDER ENFORCES IT
+   * RATHER THAN TRUSTING IT.** A receipt's method is how an amount was arrived
+   * at, so it is present exactly when the status is `known` — the record's own
+   * rule, asked of both sections (`pricing/receipts.py::_validate_section`). A
+   * seed that stated a method beside a waived charge would be describing a
+   * record the boundary refuses, and the console would then be tested against a
+   * receipt it will never be sent.
+   */
+  pricing_method?: PricingMethod;
+  /**
+   * The basis a margin was taken over, where the method is one.
+   *
+   * Stating it turns the method into `margin_over_cost` and writes the terms,
+   * because the two are the same fact: the record carries `markup` in the price
+   * section's detail exactly when the method is a margin, and a seed that could
+   * set one without the other would be able to write a receipt that says a
+   * margin was taken and does not say over what.
+   */
+  markup_micro_percent?: number;
+  /** How UBB came by the supplier's figure, where it has one. */
+  costing_method?: CostingMethod;
+  /** The per-quantity lines that explain each amount, by value. */
+  price_components?: ReceiptComponent[];
+  cost_components?: ReceiptComponent[];
+  /** Cross-reference ids — and never anything a reader could take a figure from. */
+  provenance?: Record<string, unknown>;
   request_id?: string;
   idempotency_key?: string;
   /**
@@ -220,26 +265,115 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     grouping_fields: groupingFields,
     measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
-    pricing_receipt: seed.pricing_receipt ?? {},
+    pricing_receipt: pricingReceipt(seed),
+    // DERIVED FROM THE RECEIPT AND NEVER STATED BESIDE IT. The column is what
+    // the engine wrote off the record's own price section, so a seed that could
+    // set the two apart would be describing a posting whose receipt and whose
+    // column disagree about how its price was worked out — and the console
+    // would then be tested against a payload the backend cannot produce.
+    pricing_method: methodOf(seed),
     metadata: seed.metadata ?? {},
     task_id: seed.task_id ?? null,
     stop_context: seed.stop_context ?? null,
   };
 }
 
-function markupReceipt(providerCostMicros: number): Record<string, unknown> {
+/** The shape a receipt written today declares (`receipts.RECEIPT_SCHEMA_VERSION`). */
+const RECEIPT_SCHEMA_VERSION = 1;
+
+/** The engine that computed it (`pricing_service.PRICING_ENGINE_VERSION`). */
+const PRICING_ENGINE_VERSION = "2.1.0";
+
+/**
+ * How this seed's price was derived, or that none was.
+ *
+ * ⚠ **A METHOD IS PRESENT EXACTLY WHERE THE STATUS IS SETTLED**, which is the
+ * receipt's own rule rather than a convenience: a method is how an amount was
+ * arrived at, so a waived charge or a price UBB never resolved has none. Stating
+ * it in one function means the receipt's section and the posting's column read
+ * the same answer and cannot drift.
+ */
+function methodOf(seed: DetailSeed): PricingMethod | null {
+  if (seed.price.pricing_status !== "known") return null;
+  if (seed.markup_micro_percent != null) return "margin_over_cost";
+  return seed.pricing_method ?? "direct_event_price";
+}
+
+/**
+ * The Pricing Receipt, in the shape the engine actually writes.
+ *
+ * ⚠ **THIS IS THE RECORD, NOT A SKETCH OF ONE (#349, #370 forward).** The
+ * fixture this replaces was the pre-sectioned shape — `engine_version`,
+ * `billed_source`, a `per_measurement` bag — invented by the console before the
+ * record existed, and #370 recorded the rebuild as this commit's. The real
+ * record is two versions, a typed subject, a costing and a pricing section each
+ * holding their method, status and detail BY VALUE, the totals, and a
+ * provenance section of cross-reference ids that nothing reads to reconstruct
+ * an amount (`pricing/receipts.py`).
+ *
+ * ⚠ **AND IT IS ASSEMBLED FROM THE SEED'S OWN SCENARIOS RATHER THAN WRITTEN
+ * BESIDE THEM.** Every invariant `validate_receipt` enforces is a pairing:
+ * a section's method is present exactly when its status is settled, its amount
+ * is present on the same condition, and a margin's terms are present exactly
+ * when the method is a margin. A hand-written literal can violate all three
+ * silently — the console has no validator — so it is derived from the pair the
+ * seed already states, which is the same rule `@/lib/economic-scenarios`
+ * applies one layer down.
+ */
+function pricingReceipt(seed: DetailSeed): Record<string, unknown> {
+  const method = methodOf(seed);
+  const costSettled = seed.cost.costing_status === "known";
   return {
-    engine_version: "pricing-engine/4.2.1",
-    billed_source: "markup",
-    cost_source: "caller_reported",
-    // ⚠ NO FLAT ADDEND (#369). A per-event uplift used to sit beside the
-    // percentage here, because two markup rungs could supply one; both records
-    // are deleted and the rung that remains takes ONE term, so a receipt
-    // carrying a second would be recording a zero nobody declared.
-    markup: {
-      markup_percentage_micros: 28_000_000,
-      base_provider_cost_micros: providerCostMicros,
+    receipt_schema_version: RECEIPT_SCHEMA_VERSION,
+    pricing_engine_version: PRICING_ENGINE_VERSION,
+    subject_type: "usage_event",
+    subject_id: seed.id,
+    effective_at: seed.effective_at,
+    currency: "usd",
+    costing: {
+      method: costSettled ? (seed.costing_method ?? "calculated") : null,
+      status: seed.cost.costing_status,
+      detail: {
+        ...(seed.cost_components ? { components: seed.cost_components } : {}),
+        // WHICH INPUT DID NOT ARRIVE, on the record rather than only on the
+        // column: the status says a cost is unresolved and this says why.
+        unresolved_reason: seed.cost.unresolved_reason,
+      },
     },
+    pricing: {
+      method,
+      status: seed.price.pricing_status,
+      detail: {
+        ...(seed.price_components ? { components: seed.price_components } : {}),
+        // THE SUBJECT'S WHOLE-JOB PRICING REGIME, BY VALUE. Every unit of work
+        // in this system is event-priced today; the receipt says so out loud
+        // rather than leaving the axis out, so a record written now is still
+        // explicit about it years from now.
+        pricing_mode: "event_priced",
+        // ⚠ ONE TERM BESIDE THE PERCENTAGE AND NO ADDEND (#369). A flat
+        // per-event uplift used to sit here because two markup records could
+        // supply one; both are deleted and the rung that remains takes a
+        // percentage and a basis, so a receipt carrying a third term would be
+        // recording a zero nobody declared.
+        ...(method === "margin_over_cost"
+          ? {
+              markup: {
+                micro_percent: seed.markup_micro_percent,
+                // The basis is recorded rather than left to the totals: they
+                // coincide for a cost UBB resolved and they do not for one an
+                // Event Type declares does not exist, which is still a genuine
+                // zero to take a margin over.
+                basis_micros: seed.cost.provider_cost_micros ?? 0,
+              },
+            }
+          : {}),
+      },
+    },
+    totals: {
+      provider_cost_micros: seed.cost.provider_cost_micros,
+      billed_cost_micros: seed.price.billed_cost_micros,
+    },
+    provenance: seed.provenance ?? {},
   };
 }
 
@@ -277,35 +411,57 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_OPEN_ID,
       request_id: "req_search_reindex_0042",
       idempotency_key: "idem_search_reindex_0042",
-      // ⚠ THE CONTAINERS TAKE THEIR RATIFIED NAMES (#368, #371). A Pricing Book
-      // and a cost book are separate entities on separate screens now, and both
-      // retired spellings lived only here on the console — their two ledger
-      // entries reach zero and are deleted in this commit. The receipt's SHAPE
-      // is still the pre-#349 one and is #372's to rebuild against
-      // `pricing/receipts.py`'s costing/pricing/totals/provenance record; this
-      // commit changes the words, not the record.
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "pricing_book",
-        pricing_book: {
-          book_key: "llm-prices-2026",
-          book_id: "b7e2d914-3a5c-4f80-9b16-2c7d8e0a1f43",
-          version: 7,
-        },
-        cost_source: "cost_book",
-        cost_book: { book_key: "openai-cogs", version: 3 },
-        per_measurement: {
-          input_tokens: {
-            rate_per_unit_micros: 30_000,
-            unit_quantity: 1000,
-            amount_micros: 126_000,
-          },
-          output_tokens: {
-            rate_per_unit_micros: 35_500,
-            unit_quantity: 1000,
-            amount_micros: 61_500,
-          },
-        },
+      // ⚠ AND THE SHAPE IS THE RECORD'S NOW (#372). #371 took the ratified
+      // names for the two containers and said in this very comment that the
+      // receipt's SHAPE was still the pre-#349 one and was this commit's to
+      // rebuild against `pricing/receipts.py`. It is: the whole record is
+      // assembled by `pricingReceipt` below, from each seed's own scenarios.
+      // What used to be here — a `billed_source`, a book key, a
+      // `per_measurement` bag — was a shape the console invented before the
+      // record existed, and none of it survives.
+      //
+      // THE SHOWCASE RECEIPT, and the one that carries components on both
+      // sides. Every term the arithmetic used is written down by value — the
+      // quantity, the per-unit rate, the denominator it is divided by and the
+      // flat addend — because the receipt has to outlive the measurement rows
+      // it explains: those have a retention horizon and this is kept for six
+      // years, so a component holding only a quantity and a total would explain
+      // nothing the day the detail expires.
+      price_components: [
+        receiptComponent({
+          measurement_key: "input_tokens",
+          quantity: 4200,
+          rate_per_unit_micros: 30_000,
+          unit_quantity: 1000,
+          micros: 126_000,
+        }),
+        receiptComponent({
+          measurement_key: "output_tokens",
+          quantity: 1730,
+          rate_per_unit_micros: 35_500,
+          unit_quantity: 1000,
+          micros: 61_500,
+        }),
+      ],
+      cost_components: [
+        receiptComponent({
+          measurement_key: "input_tokens",
+          quantity: 4200,
+          rate_per_unit_micros: 22_000,
+          unit_quantity: 1000,
+          micros: 92_400,
+        }),
+        receiptComponent({
+          measurement_key: "output_tokens",
+          quantity: 1730,
+          rate_per_unit_micros: 28_800,
+          unit_quantity: 1000,
+          micros: 49_900,
+        }),
+      ],
+      provenance: {
+        price_rate_ids: { input_tokens: "ra1e0003-0000-4000-8000-000000000001" },
+        cost_rate_ids: { input_tokens: "ra1e0001-0000-4000-8000-000000000001" },
       },
     }),
   },
@@ -319,7 +475,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(75_000),
       measurements: { input_tokens: 2100, output_tokens: 940 },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
-      pricing_receipt: markupReceipt(75_000),
+      markup_micro_percent: 28_000_000,
       stop_context: [
         {
           limit: "customer_floor",
@@ -343,7 +499,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(42_000),
       measurements: { input_tokens: 1200, output_tokens: 480 },
       metadata: { env: "prod", team: "assist" },
-      pricing_receipt: markupReceipt(42_000),
+      markup_micro_percent: 28_000_000,
       stop_context: [
         {
           limit: "customer_floor",
@@ -369,7 +525,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(24_000),
       measurements: { input_tokens: 800, output_tokens: 260 },
       metadata: { env: "prod", team: "assist" },
-      pricing_receipt: markupReceipt(24_000),
+      markup_micro_percent: 28_000_000,
       stop_context: [
         {
           limit: "customer_floor",
@@ -396,7 +552,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { input_tokens: 1500, output_tokens: 620 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
-      pricing_receipt: markupReceipt(50_000),
+      markup_micro_percent: 28_000_000,
       stop_context: [
         {
           limit: "task_limit",
@@ -432,12 +588,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { embedding_tokens: 7400 },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "markup",
-        cost_source: "cost_rate",
-        cost_rate: { book: "llm-prices-2026", quantity: "embedding_tokens" },
-      },
+      markup_micro_percent: 28_000_000,
     }),
   },
   {
@@ -456,7 +607,7 @@ const FEATURE_EVENTS: MockEvent[] = [
         team: "search",
         backfill_batch: "2026-07-20-recovery",
       },
-      pricing_receipt: markupReceipt(17_500),
+      markup_micro_percent: 28_000_000,
     }),
   },
   {
@@ -492,11 +643,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_OPEN_ID,
       // A billed amount with no supplier cost under it: the engine priced this
       // event directly rather than as a markup over a cost it does not have.
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "price_rule",
-        cost_source: "unresolved",
-      },
     }),
   },
   {
@@ -527,11 +673,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(19_000),
       measurements: { rerank_documents: 240 },
       metadata: { env: "prod", team: "search" },
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "unresolved",
-        cost_source: "cost_rate",
-      },
     }),
   },
   {
@@ -554,11 +695,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(12_500),
       measurements: { input_tokens: 900, output_tokens: 140 },
       metadata: { env: "prod", team: "support" },
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "waived",
-        cost_source: "cost_rate",
-      },
     }),
   },
   {
@@ -586,11 +722,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       measurements: { input_tokens: 610, output_tokens: 95 },
       metadata: { env: "prod", team: "onboarding" },
       task_id: TASK_FIXED_PRICE_ID,
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "not_applicable",
-        cost_source: "cost_rate",
-      },
     }),
   },
   {
@@ -623,11 +754,6 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: costNotApplicable(),
       measurements: { documents_scanned: 1840 },
       metadata: { env: "prod", team: "search" },
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "price_rule",
-        cost_source: "not_applicable",
-      },
     }),
   },
   // The two events whose measurement record is NOT simply present — #155 §9.2's
@@ -647,7 +773,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       price: knownPrice(94_000),
       cost: knownCost(73_000),
       metadata: { env: "prod", team: "search" },
-      pricing_receipt: markupReceipt(73_000),
+      markup_micro_percent: 28_000_000,
       ...prunedMeasurements(),
     }),
   },
@@ -666,12 +792,70 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost: knownCost(1_840_000),
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_FIXED_PRICE_ID,
-      pricing_receipt: {
-        engine_version: "pricing-engine/4.2.1",
-        billed_source: "fixed_price",
-        cost_source: "caller_reported",
-      },
+      costing_method: "reported",
       ...measurementsNotApplicable(),
+    }),
+  },
+  // -------------------------------------------------------------------------
+  // TWO EVENTS OF ONE EVENT TYPE THAT READ DIFFERENTLY (spec §21).
+  //
+  // ⚠ **THIS IS NOT A BUG FOR THE UI TO SMOOTH OVER, AND THE PAIR IS HERE SO
+  // THAT IT CANNOT BE.** One customer is on a margin over what their calls
+  // cost; another has negotiated a flat price for the same work. Both record
+  // `embedding.create`, and their receipts say different things about how the
+  // amount was arrived at — because the receipt records the method and the
+  // applied value per event, BY VALUE, precisely so it can be shown. A console
+  // that took the method from the Event Type would have to pick one of the two
+  // and be wrong for the other customer.
+  //
+  // They are on TWO CUSTOMERS deliberately. The same customer with two methods
+  // for one Event Type would need two rules that both matched, which the
+  // ladder resolves to one — so it would be a fixture describing something the
+  // resolver does not produce.
+  {
+    customer_id: CUSTOMER_A_ID,
+    detail: makeDetail({
+      id: EVENT_MARGIN_PRICED_ID,
+      effective_at: "2026-07-24T10:05:31Z",
+      created_at: "2026-07-24T10:05:32Z",
+      event_type: "embedding.create",
+      provider: "openai",
+      dim1: "copilot",
+      price: knownPrice(38_400),
+      cost: knownCost(30_000),
+      measurements: { embedding_tokens: 7400 },
+      metadata: { env: "prod", team: "search" },
+      markup_micro_percent: 28_000_000,
+    }),
+  },
+  {
+    customer_id: CUSTOMER_B_ID,
+    detail: makeDetail({
+      id: EVENT_DIRECTLY_PRICED_ID,
+      effective_at: "2026-07-24T10:06:44Z",
+      created_at: "2026-07-24T10:06:45Z",
+      event_type: "embedding.create",
+      provider: "openai",
+      dim1: "copilot",
+      price: knownPrice(74_000),
+      cost: knownCost(30_000),
+      measurements: { embedding_tokens: 7400 },
+      metadata: { env: "prod", team: "search" },
+      pricing_method: "direct_event_price",
+      price_components: [
+        receiptComponent({
+          measurement_key: "embedding_tokens",
+          quantity: 7400,
+          rate_per_unit_micros: 10_000,
+          unit_quantity: 1000,
+          micros: 74_000,
+        }),
+      ],
+      provenance: {
+        price_rate_ids: {
+          embedding_tokens: "ra1e0005-0000-4000-8000-000000000001",
+        },
+      },
     }),
   },
 ];
@@ -719,7 +903,7 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
               ? "claude-5"
               : "mistral-large",
       },
-      pricing_receipt: markupReceipt(providerCost),
+      markup_micro_percent: 28_000_000,
       task_id: index % 6 === 0 ? TASK_OPEN_ID : null,
     }),
   };

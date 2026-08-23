@@ -88,7 +88,7 @@ export function AuditLogPage({ search = {}, onSearchChange }: AuditLogPageProps)
           onChange={(event) =>
             setDraft((d) => ({ ...d, resource_type: event.target.value }))
           }
-          placeholder="Resource type (e.g. rate_card)"
+          placeholder="Resource type (e.g. pricing_book)"
           aria-label="Filter by resource type"
           className="w-[220px]"
         />

@@ -150,8 +150,8 @@ export function SandboxSection() {
               <ul className="list-disc space-y-1 pl-4 text-[12px] text-text-secondary">
                 <li>
                   <span className="font-mono">"keep_config": true</span> preserves
-                  your pricing, webhook, and billing configuration (rate cards,
-                  markups, plans, budgets); set it to{" "}
+                  your pricing, webhook, and billing configuration (pricing
+                  books, cost books, markups, plans, budgets); set it to{" "}
                   <span className="font-mono">false</span> to wipe those too. The
                   workspace and its API keys always survive.
                 </li>

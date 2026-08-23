@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,659 of 2,059 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,674 of 2,074 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    50 files, 125 occurrences
+    #     units    52 files, 133 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1401,6 +1401,47 @@ measurement_key:
     # test calls instead of spelling the key. Deriving it from a rename
     # operation was not available here: nothing in this commit renames it, and
     # it is slice 5's word rather than this slice's.
+    #
+    # #372 MOVED BOTH DENOMINATORS UP BY FIFTEEN AND THE NUMERATOR UP BY TWO
+    # FILES AND EIGHT OCCURRENCES (1,659 -> 1,674 swept, 2,059 -> 2,074
+    # tracked, 50/125 -> 52/133 counted), WITH THE EXCLUSION UNCHANGED AT 400.
+    # Sixteen files arrive and one leaves, all console: the pricing feature is
+    # rebuilt around books, rules, publishes, drafts and diffs.
+    #
+    # ⚠ THE NUMERATOR MOVED FOR THE FIRST TIME IN FIVE RE-TAKES, AND UPWARD, SO
+    # IT IS ACCOUNTED FOR FILE BY FILE RATHER THAN ASSERTED TO BE FINE. Exactly
+    # two files gained the word and both are new:
+    #
+    #     features/pricing/components/rule-editor.tsx    6
+    #     features/events/lib/receipt.ts                 2
+    #
+    # BOTH ARE THE RATE-ARITHMETIC SENSE `survives_as` ALREADY NAMES, and
+    # neither is a reader of the retired column. The editor's six are the
+    # console's "per 1K units" wording one screen over from where
+    # `pricing-math.ts` already carries ten of them — a denominator picker, a
+    # worked example and a validation message. The receipt module's two are the
+    # per-quantity component key, which #366 ruled stays.
+    #
+    # ⚠ AND THE SECOND FILE EXISTS BECAUSE OF A GATE, WHICH IS WORTH RECORDING
+    # RATHER THAN LEAVING TO BE REDISCOVERED. `features/events/api/mock-data.ts`
+    # is a NAMED READER in `test_the_inline_unit_total_is_gone.py`, which
+    # forbids the word there outright — comments included — and says in its own
+    # docstring that every other file is free to say it. This commit rebuilds
+    # that fixture's Pricing Receipt into the record's real sectioned shape,
+    # components and all, so the component's key had to land SOMEWHERE. It
+    # landed in a module of its own, once, with the fixture calling a builder
+    # that takes `quantity` — the name the engine's own `_component` takes. That
+    # is Phase B's second technique, and the same trade `correlationIds` in that
+    # file already makes for `request_id`.
+    #
+    # ⚠ ONE MORE COUNT MOVED IN THIS COMMIT AND IT IS NOT THIS ONE. `dimensions`
+    # is a retired TERM with a console ledger entry, and reading the tenant's
+    # grouping-field registry off the wire would have put it in four more files.
+    # It is unwrapped once in `features/pricing/api/api.ts` and the entry stays
+    # at four files, one of them moved. Recorded here because the two questions
+    # look identical from a distance and are answered differently: a retired
+    # SENSE has no ledger seat and is measured by this block, a retired TERM has
+    # one and is measured by the sweep.
 
     - term: units
       retired_as: >-

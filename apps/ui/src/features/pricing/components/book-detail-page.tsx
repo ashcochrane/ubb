@@ -1,3 +1,5 @@
+import * as React from "react";
+
 import { isNotFound } from "@/api/problem";
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -5,20 +7,36 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBook } from "../api/queries";
-import { isCostBook } from "../api/types";
-import { RatesTable } from "./rates-table";
+import { isCostBook, type AnyBook } from "../api/types";
+import { BookChangesPanel } from "./book-changes-panel";
+import { DeclareChangeDialog } from "./declare-change-dialog";
+import { RulesTable } from "./rules-table";
 
 /**
- * /pricing/$bookId — one book: identity header and its rules (active /
- * history / point-in-time). Cross-page navigation arrives via injected
- * callbacks so the page renders without router context in tests.
+ * Which record the governance ledger files this book's changes under.
  *
- * ⚠ **IT READS AND DOES NOT WRITE (#367, #368).** The three immediate
- * mutation surfaces this page used to offer — add a rule, retire one, reprice
- * a set of them — are deleted with the acts they recorded: every change to a
- * book is a declared publish now, read as a diff before it is committed to.
- * The feature that speaks that body arrives with #372, and until then the gap
- * is visible rather than hidden.
+ * The two kinds are two records with two sets of audit actions —
+ * `pricing_book.declared` / `.withdrawn` and `cost_book.declared` / `.withdrawn`
+ * — and the ledger's `resource_type` says which one moved. One shared word here
+ * would put a reader asking *"when did we withdraw this PRICING book"* back to
+ * reading metadata, which is the thing the split of those four action names
+ * exists to prevent.
+ */
+function auditResourceType(book: AnyBook): string {
+  return isCostBook(book) ? "cost_book" : "pricing_book";
+}
+
+/**
+ * /pricing/$bookId — one book: what it is, what is about to change in it, and
+ * the rules it holds (active / history / point-in-time). Cross-page navigation
+ * arrives via injected callbacks so the page renders without router context in
+ * tests.
+ *
+ * ⚠ **THE CHANGES PANEL SITS ABOVE THE RULES, AND THE ORDER IS THE ARGUMENT.**
+ * A book's rules are what it does today; its pending changes are what it will
+ * do, and the whole reason a change is declared before it is published is that
+ * somebody reads it first. Putting the drafts below the table would bury the
+ * one thing on this page that is still a decision.
  *
  * The header shows what the book IS, and the two kinds show different things
  * because they ARE different things: a cost book names the supplier it records
@@ -32,10 +50,23 @@ export function BookDetailPage({
   bookId: string;
   /** SPA navigation back to /pricing, injected by the route file. */
   onBackToPricing?: () => void;
-  /** Opens the audit trail filtered to this book, injected by the route file. */
-  onShowAuditTrail?: () => void;
+  /**
+   * Opens the audit trail filtered to this book, injected by the route file.
+   *
+   * ⚠ **THE PAGE DECIDES WHICH RECORD THE FILTER NAMES, NOT THE ROUTE (#368).**
+   * The ledger records a Pricing Book and a cost book under their own resource
+   * types, because they are two records — so a route file that hard-coded one
+   * word would send half the books on this screen to an empty trail. It is
+   * derived from the book in hand and handed over, which also means the day a
+   * third kind of book exists there is one place to change.
+   */
+  onShowAuditTrail?: (filter: {
+    resource_type: string;
+    resource_id: string;
+  }) => void;
 }) {
   const book = useBook(bookId);
+  const [declareOpen, setDeclareOpen] = React.useState(false);
 
   if (book.isLoading) {
     return (
@@ -107,7 +138,12 @@ export function BookDetailPage({
                 </span>
               </>
             ) : (
-              data.is_default && <Badge variant="secondary">Default</Badge>
+              <>
+                {data.is_default && <Badge variant="secondary">Default</Badge>}
+                {data.customer_id && (
+                  <Badge variant="secondary">One customer’s own rules</Badge>
+                )}
+              </>
             )}
             <Badge variant="outline">v{data.version}</Badge>
           </div>
@@ -120,7 +156,12 @@ export function BookDetailPage({
         {onShowAuditTrail && (
           <button
             type="button"
-            onClick={onShowAuditTrail}
+            onClick={() =>
+              onShowAuditTrail({
+                resource_type: auditResourceType(data),
+                resource_id: data.id,
+              })
+            }
             className="underline underline-offset-2 hover:text-text-primary"
           >
             Who changed this book?
@@ -128,7 +169,15 @@ export function BookDetailPage({
         )}
       </p>
 
-      <RatesTable book={data} />
+      <BookChangesPanel book={data} onDeclareChange={() => setDeclareOpen(true)} />
+
+      <RulesTable book={data} />
+
+      <DeclareChangeDialog
+        book={data}
+        open={declareOpen}
+        onOpenChange={setDeclareOpen}
+      />
     </div>
   );
 }

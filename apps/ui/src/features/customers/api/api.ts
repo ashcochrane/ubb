@@ -372,8 +372,10 @@ export async function configureAutoTopUp(
 // #369 took the markup override — a resolved read, a write and a delete over a
 // percentage and a per-event flat amount on a configuration row. That record is
 // deleted too. What one named customer is charged is now a RULE in their own
-// pricing book, which says which quantity it prices; the console reads books
-// and cannot yet declare a rule in one, and #372 is the ticket that builds it.
+// pricing book, which says which quantity it prices — and the surface that
+// reads and writes one is the PRICING feature's, not this one's (#372). It is
+// composed onto the customer page at the route, because the console's imports
+// flow down and one feature never reaches into another's components.
 
 // ---------------------------------------------------------------------------
 // Subscriptions (reads key on the UUID; lifecycle verbs key on external_id)

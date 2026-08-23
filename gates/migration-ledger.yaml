@@ -807,22 +807,15 @@ entries:
     reason: >-
       The same, for the case where the family's state could not be read.
 
-  - id: g7-console-card_type
-    gate: G7
-    site: console::card_type
-    expected: pricing_book_name
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The discriminator that carried supplier cost and customer price in
-      one table — the conflation the cost/price split exists to end
-      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
-      sits on.
-
-      15 -> 14 in #367. The dialog that added a rule immediately is
-      deleted with the route it drove, and the rule fixtures beside it
-      stopped carrying the word because the ROW stopped carrying it. The
-      rest is the book's, which ticket 21 splits into two entities.
+  # ⚠ `card_type` REACHED ZERO ON THE CONSOLE IN #372 and its entry is deleted.
+  # Two files: the pricing feature's form schemas, whose note said which field
+  # the dialog does NOT have, and the settings audit fixture, where the word was
+  # a metadata key on a record naming a container that no longer exists. Neither
+  # is a rename — the discriminator has no successor on this surface, because a
+  # Pricing Book and a cost book are two entities on two screens and nothing
+  # needs a word for which of two a book is. #367 left the remainder as "the
+  # book's, which ticket 21 splits into two entities"; that split landed, and
+  # this is the console catching up with it.
 
   - id: g7-console-concurrency_limit
     gate: G7
@@ -881,6 +874,18 @@ entries:
       mirror, the analytics query parameter and its picker, and the label
       module's own list.
 
+      STILL 4 AFTER #372, AND ONE OF THEM MOVED. That commit reads this
+      tenant's declared grouping-field registry off the wire, whose envelope
+      names the list with this word — so the word arrives in the pricing
+      feature whatever the console does about it. It is unwrapped ONCE, in the
+      one function whose job is to turn a wire envelope into what the console
+      wants, and the three components that consume it never spell it. The file
+      that made room is the picker's own types module, where the word was PROSE
+      describing an identifier slice 7 renames: the sentence is paid early and
+      the identifier stays, on the terms #280 and #367 already set on this
+      entry — a debt may be paid early from another slice, and an owner may
+      move earlier and never later.
+
   - id: g7-console-meter_only
     gate: G7
     site: console::meter_only
@@ -907,27 +912,18 @@ entries:
   # extras — `tsc -b` finds every one of them the moment the snapshot moves,
   # which is why a wire-key rename cannot be split away from its console half.
 
-  - id: g7-console-rate_card
-    gate: G7
-    site: console::rate_card
-    expected: pricing_book_name
-    found: 4 files
-    owner_slice: slice_4
-    reason: >-
-      The container entity. #148 §5.4 replaces it with the Pricing Book,
-      and slice 4 is where it stops existing.
-
-      6 -> 5 in #369, which did not set out to pay any of it: the customers
-      feature's book-assignment hook name survived in the comment recording why
-      that hook had gone, and the comment is rewritten with the markup hooks
-      beside it. The extent is a ceiling as well as a floor.
-
-      5 -> 4 in #371, on the same terms: the developers feature's sandbox mock
-      is one of the four this commit rewires to compose its economic states, and
-      the word was in the Pricing Receipt it returns, naming where a price came
-      from. The remaining four are the pricing route, the settings mock and the
-      audit log's two files — all #372's, which takes every console entry that
-      is left to zero.
+  # ⚠ `rate_card` REACHED ZERO ON THE CONSOLE IN #372 and its entry is deleted,
+  # which is what #371's note said this commit would do. The four were the
+  # pricing route's audit deep link, the settings audit fixture, and the audit
+  # log page and its test.
+  #
+  # ⚠ THE ROUTE'S HALF IS NOT A RENAME AND IT IS WORTH SAYING WHY. The link sent
+  # ONE word for every book on the screen; the ledger files a Pricing Book and a
+  # cost book under their own resource types, because they are two records with
+  # two sets of audit actions (#368). So the page derives which one it is holding
+  # and hands it to the route — a filter that guessed would walk half a tenant's
+  # books to an empty trail, which is a defect the rename alone would have left
+  # standing.
 
   # ⚠ `rate_card.assigned` REACHED ZERO ON THE CONSOLE AND ITS ENTRY IS DELETED
   # (#369). The record and the route were deleted in #368; the word survived in
@@ -935,15 +931,20 @@ entries:
   # pricing mutations wrote. Those mutations are deleted here, and the comment
   # with them — a retired term paid by a commit whose subject is elsewhere.
 
-  - id: g7-console-rate_card.published
-    gate: G7
-    site: console::rate_card.published
-    expected: audit_action
-    found: 1 files
-    owner_slice: slice_4
-    reason: >-
-      An audit action naming the container the Pricing Book replaces.
-      Slice 4's immutable Publish records are what it becomes.
+  # ⚠ `rate_card.published` REACHED ZERO ON THE CONSOLE IN #372 and its entry is
+  # deleted. One file: the settings audit fixture, which invented an act on a
+  # container that no longer exists. What replaced it is an act the backend
+  # actually records — `pricing_book.declared`, on the Pricing Book's own id —
+  # so the fixture is now something the console's own deep link can find rather
+  # than a row nothing filters for.
+  #
+  # ⚠ IT IS NOT RENAMED TO `pricing_book_publish.published`, which is the other
+  # live action it might look like a successor of. That one exists and is
+  # declared; what this fixture illustrates is a book being brought into
+  # existence, and the console renders an audit action through the LEGACY
+  # humaniser, whose migration is `g6-humanises-settings` and slice 8's. Picking
+  # an action whose humanised form is already correct keeps this commit out of a
+  # debt it does not own.
 
   - id: g7-console-request_id
     gate: G7

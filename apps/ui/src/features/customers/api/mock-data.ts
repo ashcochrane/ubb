@@ -889,10 +889,12 @@ export function emptyPastLimitReport(customerId: string): PastLimitReport {
 // ---------------------------------------------------------------------------
 // Pricing
 //
-// ⚠ NO FIXTURE (#369). The per-customer markup overrides that were here
-// described a record that is deleted, with its five routes. A customer's price
-// comes from a rule in a pricing book now, and this feature has no read for one
-// until #372.
+// ⚠ NO FIXTURE (#369), AND NONE IS COMING HERE. The per-customer markup
+// overrides that were here described a record that is deleted, with its five
+// routes. A customer's price comes from a rule in a pricing book now, and both
+// the read and its fixture belong to the pricing feature (#372) — the
+// customer's own book is a Pricing Book like any other, so its rules are seeded
+// where every other book's are.
 
 
 // ---------------------------------------------------------------------------

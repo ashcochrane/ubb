@@ -12,11 +12,12 @@ function RouteComponent() {
     <BookDetailPage
       bookId={bookId}
       onBackToPricing={() => void navigate({ to: "/pricing" })}
-      onShowAuditTrail={() =>
-        void navigate({
-          to: "/settings/audit",
-          search: { resource_type: "rate_card", resource_id: bookId },
-        })
+      // The page hands over which record the ledger files this book under: a
+      // Pricing Book and a cost book are two records with two sets of audit
+      // actions, so the filter is derived from the book rather than spelled
+      // here (#368, #372).
+      onShowAuditTrail={(search) =>
+        void navigate({ to: "/settings/audit", search })
       }
     />
   );
