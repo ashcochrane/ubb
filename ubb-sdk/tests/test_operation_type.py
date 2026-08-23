@@ -112,24 +112,33 @@ class ParameterisedTest(unittest.TestCase):
 
 
 class AnonymousParameterTest(unittest.TestCase):
-    """The migration ledger's routes, whose parameter names are not recorded.
+    """A route whose parameter names are not recorded — positions, no names.
 
-    The ledger stores the path with each parameter collapsed to ``{}`` — that
-    is the identity the gate matches on. The three dead calls are generated
-    from those entries, so their parameters have positions and no names.
+    The migration ledger stores an excused path with each parameter collapsed
+    to ``{}``, which is the identity the gate matches on, so a constant
+    generated from an entry has anonymous positions where a published one has
+    named parameters. This is a property of the TYPE and holds whether or not
+    any entry exists.
+
+    ⚠ It said "the three dead calls are generated from those entries" until
+    #373, and its fixture was one of those three routes. All three are deleted,
+    the ledger's G17 family is empty, and no `UNPUBLISHED_` constant is
+    rendered today — so the sentence was a present-tense claim about something
+    that had gone, in a file the deletion never touched. The route below is
+    deliberately synthetic now: a fixture that is nobody's real path cannot go
+    stale the same way twice, and the type does not care which path it is.
     """
 
     def setUp(self):
-        self.operation = Operation(
-            None, "put", "/api/v1/metering/pricing/rate-cards/{}")
+        self.operation = Operation(None, "put", "/api/v1/nothing/publishes/{}")
 
     def test_an_anonymous_position_is_still_a_parameter(self):
         self.assertEqual(len(self.operation.parameters), 1)
 
     def test_it_fills_the_same_way(self):
         self.assertEqual(
-            self.operation("card_9"),
-            ("put", "/api/v1/metering/pricing/rate-cards/card_9"))
+            self.operation("pub_9"),
+            ("put", "/api/v1/nothing/publishes/pub_9"))
 
     def test_arity_is_still_checked(self):
         with self.assertRaises(TypeError):

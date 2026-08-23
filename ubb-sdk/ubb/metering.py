@@ -12,7 +12,6 @@ from ubb.retry import request_with_retry
 from ubb.types import (
     PaginatedResponse,
     BatchItemResult, BatchResult,
-    RateCard,
 )
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
@@ -354,11 +353,6 @@ class MeteringClient:
             *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE_MODE(customer_id))
         return r.json()
 
-    @staticmethod
-    def _rate_card(row):
-        return RateCard(**{k: v for k, v in row.items()
-                           if k in RateCard.__dataclass_fields__})
-
     def declare_pricing_book(self, *, key, name="", is_default=False):
         """Declare a Pricing Book: a catalogue of what this tenant charges.
 
@@ -409,18 +403,6 @@ class MeteringClient:
             *ops.API_V1_METERING_ENDPOINTS_WITHDRAW_COST_BOOK(book_id))
         return r.json()
 
-    def update_rate_card(self, card_id, **fields):
-        """Soft-version a rate card via PUT. Only the provided ``fields`` change;
-        unspecified fields are copied from the active version. Returns the new
-        version (same ``lineage_id``, new ``id``)."""
-        r = self._request(*ops.UNPUBLISHED_PUT_METERING_PRICING_RATE_CARDS(card_id), json=fields)
-        return self._rate_card(r.json())
-
-    def get_rate_card_history(self, lineage_id):
-        """Return every version sharing ``lineage_id``, newest first."""
-        r = self._request(*ops.UNPUBLISHED_GET_METERING_PRICING_RATE_CARDS_HISTORY(lineage_id))
-        return [self._rate_card(row) for row in r.json()]
-
     def list_pricing_books(self, cursor=None, limit=None):
         """The tenant's Pricing Books, newest first.
 
@@ -443,17 +425,6 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_LIST_COST_BOOKS,
                           params=params or None)
         return list_from_wire(CostBookOut, r.json()["data"])
-
-    def bulk_create_rate_cards(self, cards: list[dict]) -> dict:
-        """Atomically create multiple rate cards via POST /api/v1/metering/pricing/rate-cards/batch.
-
-        All cards are validated before any are created; if any card is invalid the
-        entire batch is rejected (no partial writes).  Returns a dict with ``created``
-        (list of new card IDs) and ``count``.
-        """
-        r = self._request(*ops.UNPUBLISHED_POST_METERING_PRICING_RATE_CARDS_BATCH,
-                          json={"cards": cards})
-        return r.json()
 
     def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,
                          customer_id=None, group_by=None) -> dict:

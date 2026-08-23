@@ -82,7 +82,12 @@ disagree with the shipped bytes.
 ### Known gaps
 
 - A few billing/margin endpoints remain untyped in the committed spec and still
-  return raw `dict`s (#98). `MeteringClient.update_rate_card` /
-  `get_rate_card_history` / `bulk_create_rate_cards` call routes the big-bang
-  removed and are dead against a v3.0 server — removal tracked in the launch
-  sweep (#86).
+  return raw `dict`s (#98).
+
+  `MeteringClient.update_rate_card` / `get_rate_card_history` /
+  `bulk_create_rate_cards` were listed here as dead against a v3.0 server. They
+  are **no longer a gap**: all three are deleted, with the `RateCard` type they
+  returned, so this release ships no method that cannot resolve. Books and
+  publishes are what a caller reaches for instead — see MIGRATION.md §7.
+  (v3.0 has not shipped, so this is part of the one coordinated cut rather than
+  a second release.)

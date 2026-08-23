@@ -16,12 +16,6 @@ Two call shapes, decided by the path rather than by preference::
 A route with no parameters unpacks; a route with parameters is called with one
 value per position, in the order the path spells them. Getting that wrong is a
 `TypeError` from :class:`ubb._operation.Operation` and a red gate before that.
-
-Constants prefixed `UNPUBLISHED_` name routes the contract does NOT publish.
-They exist because three methods call them and the migration ledger excuses
-those calls until slice 4 removes the methods. They are generated from the
-ledger, so a debt cannot be quietly paid: delete the entry and the constant
-goes with it.
 """
 
 from ubb._operation import Operation
@@ -572,17 +566,3 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_THRESHOLD = Operation(
     'apps_subscriptions_api_margin_endpoints_put_threshold',
     'put',
     '/api/v1/margin/threshold')
-
-# --- routes the contract does not publish ------------------------------------
-#
-# The debts gates/migration-ledger.yaml carries against G17:
-# routes that exist in no spec and no router, called by methods slice 4 removes.
-# Each name is derived from the `found` the ledger excuses, so the constant and
-# the excuse cannot drift apart.
-
-UNPUBLISHED_GET_METERING_PRICING_RATE_CARDS_HISTORY = Operation(
-    None, 'get', '/api/v1/metering/pricing/rate-cards/{}/history')
-UNPUBLISHED_POST_METERING_PRICING_RATE_CARDS_BATCH = Operation(
-    None, 'post', '/api/v1/metering/pricing/rate-cards/batch')
-UNPUBLISHED_PUT_METERING_PRICING_RATE_CARDS = Operation(
-    None, 'put', '/api/v1/metering/pricing/rate-cards/{}')

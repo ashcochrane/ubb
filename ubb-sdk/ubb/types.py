@@ -50,21 +50,19 @@ class PaginatedResponse(Generic[T]):
     next_cursor: str | None
     has_more: bool
 
-@dataclass(frozen=True)
-class RateCard:
-    id: str | None = None
-    lineage_id: str | None = None
-    card_type: str | None = None
-    measurement_key: str | None = None
-    provider: str | None = None
-    event_type: str | None = None
-    dimensions: dict | None = None
-    pricing_model: str | None = None
-    rate_per_unit_micros: int | None = None
-    unit_quantity: int | None = None
-    fixed_micros: int | None = None
-    currency: str | None = None
-    product_id: str | None = None
-    customer_id: str | None = None
-    valid_from: str | None = None
-    valid_to: str | None = None
+# `RateCard` is GONE (#373), and it went with its only producers rather than on
+# its own account. Three methods parsed a wire row into it; all three called
+# routes that exist in no spec and no router, so no response has ever filled
+# one and no caller can hold one this SDK returned. It was never in
+# `ubb.__all__` either, and the `_rate_card` helper that filled it was private
+# to the metering client — so what actually leaves the advertised surface is
+# the three methods, which #155 §8.1 puts in the one coordinated break after
+# slice 8. A caller importing the class from `ubb.types` directly loses it too;
+# that import is the only way it was reachable and there is nothing it could
+# have been used for.
+#
+# The deletion also empties two vocabulary debts that a rename could not have
+# paid: the class declared a supplier/customer discriminator and an arithmetic
+# shape under their retired spellings, and the entities that replace it — a
+# Pricing Book and a cost book, on separate paths with different columns —
+# carry neither. Renaming the fields would have kept a shape nothing produces.

@@ -155,7 +155,12 @@ Two qualifications that must survive in the glossary, because both names are oth
   solely to interpret pre-launch history. **After cutover, ADR-004's additive-only rule and retention
   floor apply unchanged**, and later terminology changes use additive retirement.
 - **The v1 contract breaks deliberately, once.** OpenAPI is regenerated and the oasdiff breaking gate
-  is run knowingly rather than suppressed. The SDK regenerates; two dead methods go with it.
+  is run knowingly rather than suppressed. The SDK regenerates; **three** dead methods went with it
+  (#373). ⚠ This bullet said *two* until then, inheriting the count from the decision record's §9.2 —
+  the migration ledger carried three, and the third was found by a gate rather than by a decision
+  document, which is exactly why no decision document named it. Corrected here rather than in the
+  frozen record, per the last bullet of this section: this ADR is what a proposal is assessed
+  against, so a stale count in it is a live defect and not evidence of one pass.
 - **ADR-0005 is superseded on its central noun.** Its `Rate.SELECTORS` ↔ `UsageEvent` invariant had
   already lost its subject under #145.
 - **This freedom is spent.** The clean break is available exactly once; every rule here must hold on

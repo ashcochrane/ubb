@@ -202,7 +202,9 @@ so they don't vanish silently. Each was re-checked against the tree when this AD
   was not moved with it; it is stated here rather than changed, because the field's name is slice
   7's to retire and the two edits belong together.
 - ~~The SDK's hand-written create-a-rule method still posts the pre-reshape rate shape.~~
-  **Resolved (#368).** That method is gone: the container split into a Pricing Book and a cost book,
-  which are declared separately, so the SDK declares each of them and the body that posted a flat
-  rate has no route to post to. What remains of this debt is the three methods calling routes that
-  exist in no spec and no router, which the ledger's own G17 entries own.
+  **Resolved (#368, and fully discharged in #373).** That method is gone: the container split into
+  a Pricing Book and a cost book, which are declared separately, so the SDK declares each of them
+  and the body that posted a flat rate has no route to post to. The remainder — three further
+  methods calling routes that exist in no spec and no router — went in #373, together with the
+  ledger's G17 entries that owned them, which is the only way they could go: each method named a
+  constant generated from its own entry. **The G17 family is empty and this debt owes nothing.**

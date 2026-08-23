@@ -82,9 +82,12 @@ type the constants are instances of; it holds no data and imports nothing.
 deliberately, as public documentation. A route named in one must be published,
 be a family of something published (`/api/v1/metering/`), or be ledger-excused
 — because §8.3's claim is that a rename cannot leave a stale string behind, and
-a docstring is a string. It found nothing when it landed (48 of 53 resolve
-exactly, 4 name a family, 1 is ledger-excused); it is there for the rename that
-fixes a call and forgets the prose.
+a docstring is a string. It found nothing when it landed (of 53 documented
+routes, 48 resolved exactly, 4 named a family and 1 was ledger-excused), and
+nothing since: measured after #373, **59 documented routes, 55 exact, 4 naming
+a family and none excused** — the excused one went with the method that
+documented it. It is there for the rename that fixes a call and forgets the
+prose.
 
 ## Open-world tolerance
 

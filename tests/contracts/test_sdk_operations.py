@@ -43,8 +43,11 @@ import yaml
 from _gate_helpers import git
 from _helpers import REPO_ROOT
 from _sdk_helpers import (
-    ROOT, THING_LIST, THING_READ, THING_WRITE, call, client_module, constant,
-    excusing, interpolated, literal, registry_source, spec, write_repository,
+    A_DEBT_FOUND, A_DEBT_ROUTE, A_DEBT_SITE, ROOT, THING_LIST, THING_READ,
+    THING_WRITE, a_debt_constant, a_repository_with_one_debt, call,
+    client_module, constant, excusing, interpolated, literal,
+    modules_spelling_the_unpublished_prefix, registry_source, spec,
+    write_repository,
 )
 from tools.sdk_operations import SurfaceInvalid, assess, load_coverage
 from tools.sdk_operations import errors as codes
@@ -65,6 +68,25 @@ from tools.sdk_operations.spec import HTTP_METHODS, SPEC_PATH, load_operations
 #: a walker that silently found nothing passes every assertion below.
 HAND_WRITTEN_MODULES = ("billing.py", "client.py", "metering.py",
                         "referrals.py", "subscriptions.py")
+
+#: The book surface the metering client keeps, after #373 removed the three
+#: methods that reached routes nothing publishes.
+#:
+#: A SET, deliberately, and not a count. #155 §8.6 says the hand shell survives
+#: this slice; what a test has to catch is one of these methods leaving ahead of
+#: the coordinated break, and a set names which one while a floor only says the
+#: total fell. It is also the honest answer to a number that moved: the spec
+#: counted seven surviving call sites against `d940e7f`, then #368 split the
+#: container in two — three of them became six — and #369 deleted the four
+#: markup methods that made up the rest.
+SURVIVING_BOOK_CALLS = frozenset({
+    "MeteringClient.declare_pricing_book",
+    "MeteringClient.withdraw_pricing_book",
+    "MeteringClient.list_pricing_books",
+    "MeteringClient.declare_cost_book",
+    "MeteringClient.withdraw_cost_book",
+    "MeteringClient.list_cost_books",
+})
 
 #: The faults that mean a call did not resolve. Named as a set so the forward
 #: test asserts on the property rather than on "no errors at all", which would
@@ -144,12 +166,19 @@ def test_every_hand_written_call_targets_a_published_operation(shipped):
 
     # What the excused calls ARE is the ledger's business, held to the gate by
     # `test_the_ledger_records_exactly_what_the_gate_excuses` below and to the
-    # base branch by the ratchet. Naming the three here as well would be a
-    # third copy that goes stale the day slice 4 pays one of them.
-    assert len(coverage.excused) <= 3, (
-        f"{len(coverage.excused)} invalid calls are excused and #155 §1.3 "
-        f"found three. The list only shrinks and reaches zero before the "
-        f"cutover.")
+    # base branch by the ratchet. Naming them here as well would be a third
+    # copy of a list that is now empty anyway.
+    #
+    # ⚠ THIS WAS A CEILING OF THREE UNTIL #373 AND IS NOW AN EQUALITY. The
+    # ceiling was the honest form while the count was coming down — it let a
+    # partial payment land without a test edit. That is exactly why it may not
+    # survive reaching zero: `<= 0` and `== 0` are the same assertion, but the
+    # first says the number may still fall, and it cannot. An excused call now
+    # requires a seeding authorisation, which the ratchet refuses on its own.
+    assert len(coverage.excused) == 0, (
+        f"{len(coverage.excused)} invalid calls are excused. #155 §1.3 found "
+        f"three and slice 4 paid all three at once; the count is zero and a "
+        f"new one is a seeding authorisation, not a debt this gate absorbs.")
 
 
 def test_no_route_literal_survives_in_the_hand_written_layer(shipped):
@@ -292,28 +321,51 @@ def test_the_ledger_records_exactly_what_the_gate_excuses(shipped):
     recorded = {(entry["site"], entry["found"])
                 for entry in document["entries"] if entry["gate"] == "G17"}
     assert set(coverage.excused) == recorded
-    assert len(recorded) <= 3, (
-        f"{len(recorded)} G17 debts, and #155 §1.3 found three. Adding one is "
-        f"refused by the ledger ratchet without a seeding authorisation; this "
-        f"catches the case where the authorisation was written anyway.")
+    assert len(recorded) == 0, (
+        f"{len(recorded)} G17 debts, and the family reached zero in #373. "
+        f"Adding one is refused by the ledger ratchet without a seeding "
+        f"authorisation; this catches the case where the authorisation was "
+        f"written anyway.")
 
 
-def test_each_excused_route_is_reachable_only_through_the_ledger(shipped):
-    """#209's grip on the three dead calls, which is the point of generating
-    their constants from the ledger rather than writing them down.
+def test_each_excused_route_is_reachable_only_through_the_ledger(shipped, tmp_path):
+    """#209's grip on a dead call: its constant exists because its entry does.
 
     Each debt has exactly one `UNPUBLISHED_` constant, and that constant exists
     because the entry does. Delete the entry — which is what paying the debt
     looks like — and the constant goes with it, so the method that owed it
-    stops resolving in the same commit rather than three slices later.
+    stops resolving in the same commit rather than three slices later. That is
+    what made #373 possible as ONE commit and impossible as three.
+
+    ⚠ **THE SHIPPED-TREE ARM IS TWO EMPTY SETS NOW, AND TWO EMPTY SETS AGREE
+    WITH EACH OTHER WHATEVER THE READER IS DOING.** Left as it was, this test
+    would have gone from checking a correspondence to checking nothing, without
+    a line changing and without going red — the exact shape `gates/README.md`
+    records as a check that cannot fail. So the correspondence is asserted
+    where it still has content, over a synthetic repository with a debt in it,
+    and the shipped-tree arm is kept for the one thing it can still say: that
+    the two sides are empty TOGETHER. A constant hand-written into the
+    generated registry with no entry behind it fails that, which is the
+    direction the byte-comparison gate reports as a diff rather than as a
+    meaning.
     """
     coverage, _ = shipped
     unpublished = {name for name, entry in coverage.entries.items()
                    if not entry.is_published}
-    assert unpublished == {registry_module.unpublished_name(found)
-                           for _, found in coverage.excused}
+    assert unpublished == set() == {registry_module.unpublished_name(found)
+                                    for _, found in coverage.excused}
+
+    a_repository_with_one_debt(tmp_path)
+    with_a_debt = load_coverage(tmp_path)
+
+    named = {name for name, entry in with_a_debt.entries.items()
+             if not entry.is_published}
+    assert named == {registry_module.unpublished_name(found)
+                     for _, found in with_a_debt.excused}, (
+        "the constant a debt renders and the debt the gate excuses have come "
+        "apart, so paying one would no longer take the other with it")
     assert all(name.startswith(registry_module.UNPUBLISHED_PREFIX)
-               for name in unpublished), (
+               for name in named), (
         "a route the contract does not publish must be visibly named as one at "
         "the call site — that is the whole reason these constants are ugly")
 
@@ -341,24 +393,133 @@ def test_the_walker_visited_the_whole_hand_written_surface(shipped):
     assert len(coverage.rows) > 100, "suspect the contract read"
 
 
-def test_the_dead_calls_are_owed_by_the_slice_that_replaces_them():
-    """The debts name slice 4 — where the Pricing Book lands.
+def test_the_gate_owes_nothing_and_the_family_is_declared_empty():
+    """G17 OWES NOTHING, and the emptiness is declared rather than implied.
 
-    `tools.gates` already enforces the general rule that an entry names a real,
-    unlanded slice, and its ratchet already refuses an owner moving later. What
-    this adds is the *specific* owner: these three are the ergonomics for the
-    rate-card surface, and slice 4 is what replaces it. An entry drifting onto
-    some other slice would satisfy every general rule and still be owed by
-    somebody who is not doing the work — #155 §17's failure with a nicer label.
+    ⚠ **THIS TEST REPLACES THE OWNERSHIP CHECK AT ITS OWN ADDRESS, INVERTED.**
+    Until #373 it read the `owner_slice` of every G17 entry and required it to
+    be `slice_4` — the slice where the surface those calls reach stops
+    existing. The three entries are paid and gone, and the *same* assertion
+    would now pass over an empty set while proving nothing: `set() <=
+    {"slice_4"}` is true of a ledger with no G17 entries and true of a ledger
+    that lost the gate entirely. Relaxing into that is how a control goes
+    vacuous without announcing it, so the claim is replaced by the one that is
+    now load-bearing — the family is EMPTY — rather than kept and weakened.
+
+    The `expected` these entries carried was never a name to rename onto: there
+    is no correct route to point at, because the operations those methods
+    wanted were never published. The debt is discharged by the call going away,
+    which is what #373 did, in one commit, because the constants are generated
+    from the entries.
+
+    `test_model_naming.py`'s `LEDGERED_VIOLATIONS` holds the same shape for G11
+    and G12 next door: a paid family stays visible as an empty one, so its
+    absence is a declaration rather than a silence.
     """
     ledger = yaml.safe_load((REPO_ROOT / LEDGER_PATH).read_text("utf-8"))
-    owners = {entry["owner_slice"] for entry in ledger["entries"]
-              if entry["gate"] == "G17"}
-    assert owners <= {"slice_4"}, (
-        f"a G17 debt is owed by {sorted(owners - {'slice_4'})}. It may move "
-        f"EARLIER — any slice rewriting the SDK's pricing methods may take it "
-        f"— but slice 4 is the last slice that can pay it, because that is "
-        f"where the surface it calls stops existing.")
+    owed = [entry["site"] for entry in ledger["entries"]
+            if entry["gate"] == "G17"]
+    assert owed == [], (
+        f"G17 carries {len(owed)} entries again: {sorted(owed)}. The family "
+        f"was emptied in #373 and a call to a route nothing publishes now "
+        f"needs a seeding authorisation, which is a decision somebody signs "
+        f"rather than a debt this ledger quietly absorbs.")
+
+    # Vacuity guard: the assertion above is satisfied by a ledger with no G17
+    # entries AND by a ledger this reader failed to parse at all. Reading a
+    # sibling family that is NOT empty separates the two — it fails on an
+    # unparsed document and passes only where entries really were read.
+    assert any(entry["gate"] == "G7" for entry in ledger["entries"]), (
+        "no G7 entry was read either, so the emptiness above is a statement "
+        "about this reader rather than about the ledger")
+
+
+def test_no_hand_written_call_resolves_to_a_route_the_contract_omits(shipped):
+    """The general property: nothing in the shell reaches an unpublished route.
+
+    ⚠ **THE CLAIM IS THE PROPERTY, NOT THREE NAMED ABSENCES.** Asserting that
+    the three methods #373 deleted are gone would be satisfied by a fourth
+    arriving under a different name, and would go stale the day somebody read
+    it as the whole rule. The three conjuncts below are about the SHAPE of the
+    surface, so a call that has not been written yet is already covered:
+
+    - **no call is excused** — the join reports nothing the ledger had to cover;
+    - **no constant names an unpublished route** — the registry is rendered from
+      the contract alone, because the only other source it reads is the G17
+      family and that family is empty;
+    - **the graceless prefix does not appear in the hand shell at all** — not in
+      a call, not in a docstring, not in a comment. A stray one that failed to
+      resolve would be caught by the forward test as a missing constant; this
+      catches the vocabulary coming back before it reaches a call.
+
+    Its non-vacuity is not argued: the control below builds a repository where
+    the same three conjuncts are FALSE, through the same entry point.
+    """
+    coverage, _ = shipped
+
+    assert coverage.excused == (), (
+        "\n".join(f"{site} -> {found}" for site, found in coverage.excused)
+        + "\n\na hand-written call is reaching a route the contract does not "
+          "publish. Since #373 that is a defect rather than a recorded debt.")
+
+    named = sorted(name for name, entry in coverage.entries.items()
+                   if not entry.is_published)
+    assert named == [], (
+        f"the registry declares {named}, so it was rendered from something "
+        f"other than the contract. The only other source it reads is the "
+        f"ledger's G17 family, which is empty.")
+
+    spelled = modules_spelling_the_unpublished_prefix(REPO_ROOT)
+    assert spelled == [], (
+        f"{spelled} spell `{registry_module.UNPUBLISHED_PREFIX}` and the hand "
+        f"shell has no unpublished route left to name. The constants are "
+        f"deliberately graceless so that one reappearing is read by a person; "
+        f"this is that reader.")
+
+
+def test_the_book_surface_survives_and_resolves(shipped):
+    """#155 §8.6: the shell is not deleted — only its dead calls are.
+
+    **What this adds, and it is one thing.** That the metering client STILL
+    DECLARES its book methods. Every other test here would pass over a shell
+    with nothing left in it: "every call resolves" is vacuously true of no
+    calls, and `test_the_walker_visited_the_whole_hand_written_surface` guards
+    only a floor across all five modules, which six deletions in one file would
+    not breach. A named SET is what makes one method leaving red, and says
+    which one.
+
+    That each of them resolves to a PUBLISHED operation comes with the set for
+    free rather than needing its own line: `coverage.rows` holds one row per
+    published operation, so a site reachable through `wrapped_by` has already
+    matched one. The whole-shell version of that claim belongs to
+    `test_every_hand_written_call_targets_a_published_operation`, which reports
+    the faults; asserting it again here would be a second encoding of one gate.
+
+    ⚠ **THE ACCEPTANCE CRITERION'S COUNT IS STALE AND IS NOT COPIED.** It says
+    "seven surviving call sites", taken from the spec against `d940e7f`: three
+    on the book surface and four markup methods. Both halves moved inside this
+    same slice — #368 split the container into a Pricing Book and a cost book,
+    taking the three to six, and #369 deleted the four. Seven was true when it
+    was written and is not a fact about this tree, so the subject here is the
+    six that exist, named.
+    """
+    coverage, _ = shipped
+
+    # `coverage.rows` is one row per PUBLISHED operation, so a site appearing
+    # in any row's `wrapped_by` has, by construction, resolved to an operation
+    # the contract carries. The set below therefore makes both halves of the
+    # claim at once, and the "resolves to something published" half needs no
+    # separate assertion — restating it here would be a second encoding of
+    # what the forward test already reports faults for.
+    reached = {site.split("::", 1)[1]
+               for row in coverage.rows for site in row.wrapped_by
+               if site.startswith(f"{SHELL_ROOT}/metering.py::")}
+
+    assert SURVIVING_BOOK_CALLS <= reached, (
+        f"{sorted(SURVIVING_BOOK_CALLS - reached)} no longer resolves to a "
+        f"published operation. #155 §8.1 puts the SDK's breaking release after "
+        f"slice 8 as one coordinated event; a method leaving before then is a "
+        f"surface break nobody signed.")
 
 
 # ---------------------------------------------------------------------------
@@ -647,9 +808,11 @@ def test_a_stale_route_in_a_docstring_is_refused(tmp_path):
 
     The SDK's methods document the routes they call, deliberately, as public
     documentation — so the answer is not to delete them but to hold them to the
-    contract. The rule caught nothing when it landed: of the 53 documented
-    routes, 48 resolve exactly, 4 name a family and 1 is ledger-excused. It is
-    here for the rename that fixes a call and forgets the prose.
+    contract. The rule caught nothing when it landed (of 53 documented routes,
+    48 resolved exactly, 4 named a family and 1 was ledger-excused) and nothing
+    since: re-measured after #373, 59 documented routes, 55 exact, 4 naming a
+    family and none excused. It is here for the rename that fixes a call and
+    forgets the prose.
     """
     invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
         "things.py": client_module(
@@ -692,20 +855,100 @@ def test_a_docstring_naming_a_family_of_routes_is_allowed(tmp_path):
 
 
 def test_a_docstring_naming_an_excused_route_is_allowed(tmp_path):
-    """The three dead methods document what they call, until slice 4 deletes
-    both at once. A gate that refused the prose but excused the call would
-    force the documentation to lie about a method that still exists."""
-    site = f"{SHELL_ROOT}/things.py::ThingsClient.call_0"
-    gone = f"{ROOT}/gone"
-    coverage = accepted(
-        tmp_path, operations=(THING_LIST,),
-        ledger=excusing((site, f"GET {gone}")),
-        modules={"things.py": client_module(
-            f"*ops.{registry_module.unpublished_name(f'GET {gone}')}",
-            extra=f'\n\ndef documented():\n'
-                  f'    """Wraps GET {gone}, which nothing publishes."""\n'
-                  f'    return None\n')})
-    assert coverage.excused == ((site, f"GET {gone}"),)
+    """A dead call documents what it calls, until its slice deletes both at
+    once. A gate that refused the prose but excused the call would force the
+    documentation to lie about a method that still exists.
+
+    ⚠ No real method is in this shape any more — #373 deleted the three that
+    were, with their entries and their docstrings in the same commit, which is
+    what "both at once" meant. This control keeps the arm honest for the next
+    seeding rather than describing a live case."""
+    site, found = a_repository_with_one_debt(
+        tmp_path,
+        extra=f'\n\ndef documented():\n'
+              f'    """Wraps GET {A_DEBT_ROUTE}, which nothing publishes."""\n'
+              f'    return None\n')
+    assert load_coverage(tmp_path).excused == ((site, found),)
+
+
+def test_the_generated_docstring_describes_only_the_sections_the_file_has():
+    """#373's repair, asserted rather than asserted-about.
+
+    The generated registry's docstring used to carry a paragraph saying, in the
+    present tense, that three methods call its `UNPUBLISHED_` constants. That
+    went false when the methods were deleted — in a file nobody may edit by
+    hand, so there was no way to correct it in place. The paragraph is now
+    rendered only when there are unpublished entries to describe.
+
+    Selling that as "the class of defect is removed" is worth nothing without a
+    control that names it, because the failing direction is a paragraph that
+    should be absent and is not — an absence again. Both directions are driven
+    here through the real renderer, off the same helper the synthetic
+    repositories are built with.
+
+    The docstring is isolated from the constants before asserting: the prefix
+    appears in both, so a search over the whole file would pass on a module
+    whose docstring said nothing at all.
+    """
+    def module_docstring(source):
+        head, marker, _ = source.partition("from ubb._operation import")
+        assert marker, "the rendered registry no longer imports its own type"
+        return head
+
+    prefix = registry_module.UNPUBLISHED_PREFIX
+
+    with_a_debt = registry_source(ledger=excusing((A_DEBT_SITE, A_DEBT_FOUND)))
+    assert prefix in module_docstring(with_a_debt), (
+        "the registry rendered an unpublished section and said nothing about "
+        "it, so a reader meets the ugly constants with no explanation")
+    assert prefix in with_a_debt.split("from ubb._operation import", 1)[1], (
+        "the docstring promised a section the file does not carry")
+
+    without = registry_source()
+    assert prefix not in module_docstring(without), (
+        "the registry has no unpublished entries and its docstring describes "
+        "them anyway — the exact sentence #373 could not correct in place, "
+        "because this file is generated")
+    assert prefix not in without, (
+        "a registry with no debts rendered an unpublished constant")
+
+
+def test_the_shipped_trees_three_absences_are_each_reachable(tmp_path):
+    """The positive control for the property #373 left behind.
+
+    `test_no_hand_written_call_resolves_to_a_route_the_contract_omits` asserts
+    three things about the shipped tree, and every one of them is an ABSENCE.
+    An absence passes on a tree whose gate stopped working exactly as it passes
+    on a tree that is clean, so the shipped assertion is only worth what a
+    demonstration that each conjunct CAN be false is worth. This is that
+    demonstration, over a repository built to make all three false at once.
+
+    Each conjunct is driven the way the shipped one is driven, which is not the
+    same mechanism for all three: the first two come out of `load_coverage`,
+    the entry point CI calls, and the third is a property of the shell's SOURCE
+    and so runs `modules_spelling_the_unpublished_prefix` — the identical
+    function the shipped assertion calls, shared for that reason. A control
+    that re-implemented the search would only prove two copies agree.
+
+    It is deliberately not three tests. The claim is that the three conjuncts
+    are jointly satisfiable in the failing direction, which is what a fourth
+    dead method arriving would look like; splitting it would let two survive a
+    refactor of the third and still read as coverage.
+    """
+    site, found = a_repository_with_one_debt(tmp_path)
+    coverage = load_coverage(tmp_path)
+
+    assert coverage.excused == ((site, found),), (
+        "conjunct 1 is unfalsifiable: a call to a route nothing publishes was "
+        "not reported as excused even with the ledger carrying it")
+    assert [one for one, entry in coverage.entries.items()
+            if not entry.is_published] == [a_debt_constant()], (
+        "conjunct 2 is unfalsifiable: the ledger's entry rendered no "
+        "unpublished constant into the registry")
+    assert modules_spelling_the_unpublished_prefix(tmp_path) == [
+        f"{SHELL_ROOT}/things.py"], (
+        "conjunct 3 is unfalsifiable: the shared reader found no module "
+        "spelling the prefix in a shell that reaches an unpublished route")
 
 
 def test_a_new_sub_package_is_refused_rather_than_unwalked(tmp_path):

@@ -16,17 +16,26 @@ renamed with it, so every wrapper still referring to the old name stops
 resolving. That is the whole mechanism: a stale reference cannot be a *string*
 any more, so it cannot go unnoticed.
 
-**`gates/migration-ledger.yaml`** carries the three calls to routes that exist
-in no spec and no router (#204). They must keep working until slice 4 deletes
-the methods, and they cannot come from the contract, because the contract is
-exactly what does not have them. They come from the ledger instead — which
-means the day a debt is paid and its entry deleted, the constant disappears and
-the method that owed it stops resolving. Paying a debt and deleting its entry
-were already one act; now they are also one edit.
+**`gates/migration-ledger.yaml`** supplies any call to a route the contract
+does not publish (#204). Such a call cannot come from the contract, because the
+contract is exactly what does not have it; it comes from the ledger's G17
+family instead — which means the day a debt is paid and its entry deleted, the
+constant disappears and the method that owed it stops resolving. Paying a debt
+and deleting its entry were already one act; now they are also one edit.
 
-Their names are deliberately unlovely::
+⚠ **G17 IS EMPTY AS OF #373, SO THIS SECOND SOURCE CURRENTLY CONTRIBUTES
+NOTHING** — the three calls #155 §1.3 found were paid together, which is the
+only way they could be paid: each method named a constant this module rendered
+from that method's own entry, so a partial payment is a red board rather than
+half a fix. The mechanism stays because the gate does: a future call to an
+unpublished route is refused outright unless somebody signs a seeding
+authorisation, and if one is ever signed this is what keeps its constant honest.
+Its controls run against synthetic repositories (`tests/contracts/
+test_sdk_operations.py`), so they neither need nor invent a real debt.
 
-    UNPUBLISHED_PUT_METERING_PRICING_RATE_CARDS
+Such names are deliberately unlovely — method, then every literal path segment::
+
+    UNPUBLISHED_PUT_SOMETHING_NOBODY_PUBLISHES
 
 Nobody reads that at a call site and thinks the line is fine. The name is
 derived from the ledger's `found` — the method and the collapsed path, which is
@@ -129,7 +138,7 @@ _BANNER = (
     "# Regenerate with `python -m tools.sdk_operations --write`.\n"
 )
 
-_DOCSTRING = '''"""Every operation this SDK can reach, named by the contract that publishes it.
+_DOCSTRING_HEAD = '''"""Every operation this SDK can reach, named by the contract that publishes it.
 
 The single place in `ubb-sdk/ubb/` where a versioned path is spelled (#209,
 #155 §8.3). A hand-written method references a constant here rather than
@@ -145,13 +154,39 @@ Two call shapes, decided by the path rather than by preference::
 A route with no parameters unpacks; a route with parameters is called with one
 value per position, in the order the path spells them. Getting that wrong is a
 `TypeError` from :class:`ubb._operation.Operation` and a red gate before that.
+'''
 
+#: The paragraph the generated module carries ONLY while the ledger excuses
+#: something. Until #373 it was part of the docstring above and said, in the
+#: present tense, that three methods called these constants — a sentence that
+#: went false the moment those methods were deleted, in a file nobody may edit
+#: by hand to correct. Deriving it from the entries removes the class of defect
+#: rather than this instance: the generated module cannot describe a section it
+#: does not have, and if a seeding authorisation ever puts an entry back, the
+#: paragraph returns with it in the same regeneration.
+_DOCSTRING_UNPUBLISHED = '''
 Constants prefixed `UNPUBLISHED_` name routes the contract does NOT publish.
-They exist because three methods call them and the migration ledger excuses
-those calls until slice 4 removes the methods. They are generated from the
-ledger, so a debt cannot be quietly paid: delete the entry and the constant
-goes with it.
-"""'''
+They are generated from the migration ledger's G17 debts, so a debt cannot be
+quietly paid: delete the entry and the constant goes with it, and the method
+that named it stops resolving in the same commit.
+'''
+
+_DOCSTRING_END = '"""'
+
+
+def docstring(unpublished):
+    """The generated module's docstring, given the unpublished entries it has.
+
+    ``unpublished`` is the very list :func:`render` goes on to render, so the
+    paragraph and the section it describes are decided by one value. Passing a
+    separate boolean would let the two disagree — a docstring promising a
+    section the file does not have — which is the defect this split exists to
+    remove rather than a hypothetical.
+    """
+    return (_DOCSTRING_HEAD
+            + (_DOCSTRING_UNPUBLISHED if unpublished else "")
+            + _DOCSTRING_END)
+
 
 _PUBLISHED_HEADING = f"""
 # --- published operations ----------------------------------------------------
@@ -164,10 +199,10 @@ _PUBLISHED_HEADING = f"""
 _UNPUBLISHED_HEADING = f"""
 # --- routes the contract does not publish ------------------------------------
 #
-# The debts {LEDGER_PATH} carries against G17:
-# routes that exist in no spec and no router, called by methods slice 4 removes.
-# Each name is derived from the `found` the ledger excuses, so the constant and
-# the excuse cannot drift apart.
+# The debts {LEDGER_PATH} carries against G17: routes that
+# exist in no spec and no router, called by hand-written methods the owning
+# slice removes. Each name is derived from the `found` the ledger excuses, so
+# the constant and the excuse cannot drift apart.
 """
 
 
@@ -307,7 +342,7 @@ def render(entries):
     published = [entry for entry in entries.values() if entry.is_published]
     unpublished = [entry for entry in entries.values() if not entry.is_published]
 
-    lines = [_BANNER + _DOCSTRING, "",
+    lines = [_BANNER + docstring(unpublished), "",
              f"from {OPERATION_TYPE_IMPORT} import {CONSTRUCTOR}", ""]
     lines.append(_PUBLISHED_HEADING.strip("\n"))
     lines.append("")

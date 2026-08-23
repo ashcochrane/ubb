@@ -118,12 +118,12 @@ class CallSite:
     """
 
     module: str          # `ubb-sdk/ubb/metering.py`
-    qualname: str        # `MeteringClient.update_rate_card`
+    qualname: str        # `MeteringClient.withdraw_pricing_book`
     line: int
-    constant: str        # `API_V1_METERING_ENDPOINTS_RECORD_USAGE`
-    method: str          # `PUT`
-    route: str           # `/api/v1/metering/pricing/rate-cards/{card_id}`
-    template: str        # `/api/v1/metering/pricing/rate-cards/{}`
+    constant: str        # `API_V1_METERING_ENDPOINTS_WITHDRAW_PRICING_BOOK`
+    method: str          # `DELETE`
+    route: str           # `/api/v1/metering/pricing/pricing-books/{book_id}`
+    template: str        # `/api/v1/metering/pricing/pricing-books/{}`
 
     @property
     def site(self):
@@ -254,7 +254,9 @@ def _walk_module(tree, module, entries, errors):
             f"#209 the only file under {SHELL_ROOT}/ that may spell a path is "
             f"the generated registry, `{REGISTRY_PATH}` — a method names an "
             f"operation in it instead. A route reachable any other way is "
-            f"exactly the blind spot the three dead rate-card calls lived in."))
+            f"exactly the blind spot #204's three dead calls lived in — the "
+            f"ones green for months because their tests patched the transport "
+            f"and the mock answered where no server would."))
     return sites, documented
 
 

@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
-from ubb.types import RateCard
 
 #: The two entities the container split into (#368). They carry different
 #: columns, which is what the split is, so a fixture for one cannot stand in
@@ -15,13 +14,15 @@ COST_BOOK_FIXTURE = {
     "name": "OpenAI", "version": 1, "is_default": True,
 }
 
-RATE_CARD_FIXTURE = {
-    "id": "rc1", "lineage_id": "lin1", "card_type": "cost", "measurement_key": "input_tokens",
-    "provider": "openai", "event_type": "chat", "dimensions": {}, "pricing_model": "per_unit",
-    "rate_per_unit_micros": 5000, "unit_quantity": 1000000, "fixed_micros": 0,
-    "currency": "usd", "product_id": "", "customer_id": None,
-    "valid_from": "2026-06-08T00:00:00", "valid_to": None,
-}
+# ⚠ THE THIRD FIXTURE AND ITS THREE CASES ARE GONE (#373). They covered the
+# client's soft-version, lineage-history and atomic-batch methods, which called
+# routes that exist in no spec and no router — and they were green for months
+# BECAUSE they patched the HTTP client, so the mock answered the shape the
+# method expected and the server's silence never reached the assertion.
+# `gates/README.md` counts that among the checks this repository has shipped
+# that could not fail. Nothing replaces them: the methods are deleted, and what
+# proves no call reaches an unpublished route now reads the real tree instead
+# of a mock (`tests/contracts/test_sdk_operations.py`).
 
 
 class BookClientTest(unittest.TestCase):
@@ -128,32 +129,6 @@ class BookClientTest(unittest.TestCase):
         self.assertEqual(mock_delete.call_args.args[0],
                          "/api/v1/metering/pricing/cost-books/cb1")
 
-    @patch("ubb.metering.httpx.Client.put")
-    def test_update_rate_card(self, mock_put):
-        updated = {**RATE_CARD_FIXTURE, "id": "rc2", "rate_per_unit_micros": 9000}
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: updated)
-        card = self.client.update_rate_card("rc1", rate_per_unit_micros=9000)
-        self.assertIsInstance(card, RateCard)
-        self.assertEqual(card.id, "rc2")
-        self.assertEqual(card.lineage_id, "lin1")
-        self.assertEqual(card.rate_per_unit_micros, 9000)
-        self.assertEqual(mock_put.call_args.args[0], "/api/v1/metering/pricing/rate-cards/rc1")
-        self.assertEqual(mock_put.call_args.kwargs["json"], {"rate_per_unit_micros": 9000})
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_rate_card_history(self, mock_get):
-        v2 = {**RATE_CARD_FIXTURE, "id": "rc2", "rate_per_unit_micros": 9000}
-        v1 = {**RATE_CARD_FIXTURE, "valid_to": "2026-06-09T00:00:00"}
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: [v2, v1])
-        history = self.client.get_rate_card_history("lin1")
-        self.assertEqual(len(history), 2)
-        self.assertTrue(all(isinstance(c, RateCard) for c in history))
-        self.assertEqual(history[0].rate_per_unit_micros, 9000)
-        self.assertEqual(history[1].valid_to, "2026-06-09T00:00:00")
-        self.assertEqual(mock_get.call_args.args[0],
-                         "/api/v1/metering/pricing/rate-cards/lin1/history")
-
-
     @patch("ubb.metering.httpx.Client.get")
     def test_a_tenant_with_no_books_gets_an_empty_list(self, mock_get):
         """⚠ THE CASE BESIDE THIS ONE WAS `..._with_card_type` AND IS GONE
@@ -167,28 +142,29 @@ class BookClientTest(unittest.TestCase):
         self.assertEqual(self.client.list_pricing_books(), [])
         self.assertEqual(self.client.list_cost_books(), [])
 
+    def test_the_three_dead_methods_are_gone_rather_than_merely_unused(self):
+        """#373, asserted here because this is where their tests were.
 
-    @patch("ubb.metering.httpx.Client.post")
-    def test_bulk_create_rate_cards(self, mock_post):
-        batch_response = {"created": ["rc-a", "rc-b"], "count": 2}
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: batch_response)
-        cards = [
-            {"card_type": "cost", "measurement_key": "tokens", "pricing_model": "per_unit",
-             "rate_per_unit_micros": 2, "unit_quantity": 1},
-            {"card_type": "cost", "measurement_key": "images", "pricing_model": "flat",
-             "fixed_micros": 500},
-        ]
-        result = self.client.bulk_create_rate_cards(cards)
-        self.assertEqual(result["count"], 2)
-        self.assertEqual(result["created"], ["rc-a", "rc-b"])
-        # assert correct path
-        self.assertEqual(mock_post.call_args.args[0],
-                         "/api/v1/metering/pricing/rate-cards/batch")
-        # assert body structure
-        body = mock_post.call_args.kwargs["json"]
-        self.assertIn("cards", body)
-        self.assertEqual(len(body["cards"]), 2)
-        self.assertEqual(body["cards"][0]["measurement_key"], "tokens")
+        A deletion leaves nothing behind to assert on, which is how one gets
+        half-done: the method goes and a delegate, an alias or a re-export
+        keeps the name resolving. `hasattr` over the client is the reader's own
+        question — *can I still call this?* — and it is answered against the
+        real class, not a mock.
+
+        The routes themselves are not named here. What makes these three wrong
+        is not their spelling but that nothing publishes them, and
+        `tests/contracts/test_sdk_operations.py` asserts that property over the
+        whole shell. This case guards the narrower thing that suite cannot see:
+        a name surviving with no call in it at all.
+        """
+        for gone in ("update_rate_card", "get_rate_card_history",
+                     "bulk_create_rate_cards", "_rate_card"):
+            with self.subTest(method=gone):
+                self.assertFalse(
+                    hasattr(self.client, gone),
+                    f"MeteringClient still answers to `{gone}`; #373 deletes "
+                    f"the three dead methods and the private helper that "
+                    f"parsed their rows")
 
 
 if __name__ == "__main__":

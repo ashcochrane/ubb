@@ -316,6 +316,8 @@ def _check_documented_routes(documented, operations, excuses, errors):
     is not to delete them but to hold them to the contract like everything
     else. When this ticket was written 48 of the 53 documented routes resolved
     exactly, 4 named a family, and one named a route deleted long ago.
+    Re-measured after #373: 59 documented routes, 55 exact, 4 naming a family
+    and none excused — the excused one went with the method that documented it.
 
     Three ways to be legitimate:
 
@@ -323,8 +325,11 @@ def _check_documented_routes(documented, operations, excuses, errors):
     - **A family** — `/api/v1/metering/` in a class docstring saying what the
       client is for. Accepted as a prefix of something published, so it still
       goes stale if the whole family moves.
-    - **A route the ledger excuses**, because the three dead calls are
-      documented by the methods that make them until slice 4 deletes both.
+    - **A route the ledger excuses**, because a dead call is documented by the
+      method that makes it until the owning slice deletes both. ⚠ No route is
+      excused today: the three that were went with their methods in #373, so
+      this arm is the machinery for a future seeding rather than a live case,
+      and only a synthetic control exercises it.
 
     The method a docstring writes beside a route is deliberately not checked.
     Prose says `via POST /api/v1/metering/usage`, but it also says things like
