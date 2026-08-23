@@ -134,68 +134,40 @@ entries:
   # --- G17: every hand-written SDK call targets a real operation -------------
   #
   # THE SECOND SEEDING (#204). The three calls #155 §1.3 found: routes that
-  # exist in no spec and in no router, green in CI for months because the tests
-  # that cover them patch the HTTP client, so the mock reproduced the mistake
-  # instead of contradicting it. `gates/README.md` lists that as one of the
-  # three times this repository has shipped a check that could not fail.
+  # existed in no spec and in no router, green in CI for months because the
+  # tests that covered them patched the HTTP client, so the mock reproduced the
+  # mistake instead of contradicting it. `gates/README.md` lists that as one of
+  # the three times this repository has shipped a check that could not fail.
   #
-  # Two conventions differ from the model-naming entries above, and both follow
-  # from the subject rather than from preference:
+  # ⚠ G17 OWES NOTHING. ALL THREE ENTRIES WERE PAID IN ONE COMMIT (#373), AND
+  # ONE COMMIT IS THE ONLY WAY THEY COULD BE PAID. `tools/sdk_operations`
+  # generates each dead route's `UNPUBLISHED_` constant FROM the entry that
+  # excuses it, so deleting an entry deletes the constant and the method that
+  # named it stops resolving in the same second. Paying one of three would have
+  # left the other two calling constants nothing rendered — a red board, not a
+  # partial payment. The seeding authorisation below is untouched: it records
+  # that three entries were once added, which stays true.
   #
-  # - `found` is `METHOD` plus the path with each parameter collapsed to `{}`,
-  #   which is the identity the gate matches on (ADR-0007 §4: method AND path,
-  #   because `GET /x/{id}` is not `POST /x/{id}`). Collapsed rather than as
-  #   written, so renaming a local variable in a dead method does not turn the
-  #   board red for no reason.
-  # - `expected` is the END STATE, not a canonical name. There is no correct
-  #   route to point at: the operations these methods want were never published,
-  #   and the debt is discharged by the call going away. A name here would be an
-  #   invention, which is what ADR-0007 §3 refuses.
+  # `expected` was the END STATE rather than a canonical name, and that was the
+  # load-bearing part. There was no correct route to point at — the operations
+  # these methods wanted were never published — so the debt could only be
+  # discharged by the call going away, and a ticket reading the column for a
+  # name to rename onto would have found none. `found` was `METHOD` plus the
+  # path with each parameter collapsed to `{}`, the identity the gate matches on
+  # (ADR-0007 §4: method AND path, because `GET /x/{id}` is not
+  # `POST /x/{id}`).
   #
-  # All three are owned by slice 4, the same slice that owns the `Rate` /
-  # `RateCard` table inversion above and for the same reason: #194's slice table
-  # gives slice 4 the Pricing Book, which is what replaces the rate-card surface
-  # these three methods are the ergonomics for. An owner slice may move earlier
-  # but never later, so any slice that rewrites the SDK's pricing methods before
-  # then may take them.
+  # What went with them: three methods on the metering client, the private
+  # helper that parsed their rows, the hand-written result type that helper
+  # filled, their three test cases, and the documentation that named the dead
+  # routes. #155 §8.1 puts the SDK's next breaking release after slice 8 as one
+  # coordinated event and that is where this break is taken; nothing has ever
+  # answered these calls, so no caller loses a working one.
   #
-  # They are NOT deleted here. #155 §8.1 puts the SDK's next breaking release
-  # after slice 8 as one coordinated event, and removing three public methods is
-  # a surface break; #204 asks for the invariant behind the review, which is
-  # what this gate is.
-  - id: g17-sdk-updates-a-rate-card-on-a-retired-flat-path
-    gate: G17
-    site: ubb-sdk/ubb/metering.py::MeteringClient.update_rate_card
-    expected: no call — the method goes with the rate-card surface
-    found: PUT /api/v1/metering/pricing/rate-cards/{}
-    owner_slice: slice_4
-    reason: >-
-      The bare `/pricing/rate-cards/{card_id}` addressing the #86 sweep re-nested
-      under the book — `api/v1/metering_endpoints.py` records the move on the
-      DELETE that survived it. Nothing publishes a PUT there under any method.
-      Slice 4's Pricing Book replaces versioning a card in place.
-
-  - id: g17-sdk-reads-a-rate-card-history-that-is-not-published
-    gate: G17
-    site: ubb-sdk/ubb/metering.py::MeteringClient.get_rate_card_history
-    expected: no call — the method goes with the rate-card surface
-    found: GET /api/v1/metering/pricing/rate-cards/{}/history
-    owner_slice: slice_4
-    reason: >-
-      A lineage history endpoint that exists in no spec and no router. Slice 4's
-      immutable Pricing Book Publish records are what a caller reads instead
-      (#148, #155 §3).
-
-  - id: g17-sdk-batch-creates-rate-cards-with-no-such-route
-    gate: G17
-    site: ubb-sdk/ubb/metering.py::MeteringClient.bulk_create_rate_cards
-    expected: no call — the method goes with the rate-card surface
-    found: POST /api/v1/metering/pricing/rate-cards/batch
-    owner_slice: slice_4
-    reason: >-
-      An atomic batch create that exists in no spec and no router. Rates are
-      added to a book one at a time and the book is published as a unit, which
-      is the atomicity this method was reaching for.
+  # `tests/contracts/test_sdk_operations.py` holds the emptiness as a
+  # declaration rather than a silence — `test_the_gate_owes_nothing_and_the_
+  # family_is_declared_empty`, which replaced the ownership check at its own
+  # address rather than being relaxed into passing over an empty set.
 
   # --- G8: a webhook event is named for the state entered -------------------
   #
@@ -1508,23 +1480,20 @@ entries:
       replace one word that named all of them at once, and slice 6
       builds them.
 
-  - id: g7-sdk-card_type
-    gate: G7
-    site: sdk::card_type
-    expected: pricing_book_name
-    found: 3 files
-    owner_slice: slice_4
-    reason: >-
-      The discriminator that carried supplier cost and customer price in
-      one table — the conflation the cost/price split exists to end
-      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
-      sits on.
-
-      12 -> 9 in #367, and not by a rename: the rule stopped carrying the
-      word, so the generated core lost the request model for the deleted
-      immediate route, its enum module and one endpoint module, and the
-      hand-written wrapper for the other went with its route. The
-      remaining nine are the CONTAINER's, which ticket 21 splits.
+  # ⚠ `card_type` REACHED ZERO ON THE SDK IN #373 and its entry is deleted —
+  # the LAST surface holding it apart from the backend's four files, so the
+  # term now has one entry left in the whole ledger. Three files: the
+  # hand-written result type, the test module whose fixture built one, and the
+  # README's parameter list. All three went with the same deletion, because a
+  # supplier/customer discriminator only ever reached this SDK as a field on
+  # that result type, and the only methods that produced one addressed routes
+  # nothing publishes (the G17 family above, paid in the same commit).
+  #
+  # Not a rename, and the `expected` column could not have been taken. A
+  # Pricing Book and a cost book are separate entities on separate paths with
+  # different columns, so nothing here needs a word for which of two a book
+  # is — the path already said it. Renaming the field would have kept a shape
+  # no server produces.
 
   - id: g7-sdk-customer_wide_stop
     gate: G7
@@ -1540,7 +1509,7 @@ entries:
     gate: G7
     site: sdk::dimensions
     expected: analytics_grouping_kind
-    found: 13 files
+    found: 11 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -1554,10 +1523,20 @@ entries:
       manifest — all of which carried the plural only because a published path
       spelled it, and all of which regenerated when #278 renamed the family.
       Slice 2 may clear the plural where it names the registry route family
-      (#193 §G5); it leaves the plural where it names a grouping axis, which
-      is every one of the thirteen below. A recorded extent that overstates is
+      (#193 §G5); it leaves the plural where it names a grouping axis, which is
+      every one of the remaining files. A recorded extent that overstates is
       an excuse with no upper bound, so the number comes down in the commit
       that cleared them.
+
+      13 -> 11 in #373, by a slice-4 commit and not by slice 7 doing any work.
+      The two files are the SDK's hand-written result type and the test fixture
+      that built one; the plural was a field on that type, naming the grouping
+      bag a rule pinned. The type went with the three methods that produced it
+      (the G17 family, paid in the same commit), so the plural left with it.
+      The ratchet permits an entry to fall from anywhere and the sweep REQUIRES
+      it — an entry may not overstate — so the decrement belongs here even
+      though the owner does not move. Slice 7 still owes the eleven, all of
+      them grouping axes.
 
   - id: g7-sdk-meter_only
     gate: G7
@@ -1584,25 +1563,34 @@ entries:
       It named when the question was asked rather than what was asked.
       Slice 6's admission control gives the answer its own vocabulary.
 
-  - id: g7-sdk-pricing_model
-    gate: G7
-    site: sdk::pricing_model
-    expected: rate_structure
-    found: 3 files
-    owner_slice: slice_4
-    reason: >-
-      It sat one character from `pricing_mode` and meant something
-      unrelated, which ADR-0006 §3 calls a defect rather than a
-      coincidence. Slice 4 rebuilds the pricing rules that carry it.
-      PART PAID BY #366, which renamed the column, its values and the
-      three schemas publishing it: 9 files to 6. The three that went are
-      GENERATED — `ubb/_core/models/{rate_in,rate_out,rate_change_in}.py`
-      — and they moved because the contract did, in the same commit,
-      since a core regenerated from a moved spec is not a separate
-      change. What is left is hand-written and is #373's: the wrapper,
-      its type aliases, the README and three test modules. The backend,
-      console, openapi and docs entries for this term were DELETED in
-      that commit rather than decremented; this one alone survives it.
+  # ⚠ `pricing_model` REACHED ZERO IN #373 AND THE TERM HAS NO ENTRY LEFT
+  # ANYWHERE. #366 deleted the backend, console, openapi and docs entries when
+  # it renamed the column, its values and the three schemas publishing it, and
+  # left this one alive on the SDK alone. Measured with `git log -S` over
+  # `ubb-sdk/`, the descent was in three steps and only the first was #366's:
+  #
+  #   9 at #365 · 9 -> 6 in #366 · 6 at #367 · 6 -> 3 in #368 · 3 -> 0 here
+  #
+  # #366 took the three GENERATED core models
+  # (`ubb/_core/models/{rate_in,rate_out,rate_change_in}.py`), which moved
+  # because the contract did, in the same commit, since a core regenerated from
+  # a moved spec is not a separate change. ⚠ #368 took THREE MORE — the
+  # container split deleted the create-a-rule wrapper, so the word left
+  # `ubb/metering.py` and two test modules with it — which the entry's own
+  # `reason` never recorded, because that commit decremented the count without
+  # rewriting the account of who had paid what.
+  #
+  # The three that reach zero here are the hand-written result type, the test
+  # fixture that built one and the README — the same three files that held the
+  # discriminator above, for the same reason, and paid the same way: the type
+  # went with the three methods that produced it. #366's forward estimate of
+  # the remainder ("the wrapper, its type aliases, the README and three test
+  # modules") was written before #368 and describes a tree that has not existed
+  # since; the measured extent when this commit reached it was three files.
+  #
+  # The `expected` was a real rename and it landed — on the column, in #366.
+  # Nothing renamed here, because an arithmetic shape reaches this SDK only on
+  # a published change body, which the generated core already spells correctly.
 
   # ⚠ `pricing_provenance` REACHED ZERO IN THE SDK IN #370 and its entry is
   # deleted — see the note on the backend side. 4 -> 3 in #349 without anybody
@@ -1612,8 +1600,9 @@ entries:
   # GENERATED models that take their names from the wire key, so they moved when
   # the contract did, and the third is a hand-written test whose fixture is a
   # server body — a fixture still carrying the old key would have been asserting
-  # against a response the server has stopped sending. #373's SDK work is
-  # unaffected: it deletes three dead methods, none of which touched this word.
+  # against a response the server has stopped sending. #373's SDK work left it
+  # alone, as that ticket predicted: the three dead methods it deleted, and the
+  # result type that went with them, spelled this word nowhere.
 
   - id: g7-sdk-request_id
     gate: G7

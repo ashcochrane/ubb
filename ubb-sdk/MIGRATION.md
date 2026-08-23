@@ -123,7 +123,7 @@ The big-bang tightened HTTP semantics (400 = malformed only; 422 = semantic;
 |---|---|---|
 | Withdraw with insufficient balance | `400` | `409` `InsufficientBalanceError` |
 | Would overdraw the floor | `400` | `409` `WouldOverdrawError` |
-| Duplicate create (plan / rate-card book / rate) | `422` | `409` `ConflictError` |
+| Duplicate create (plan / book / rule) | `422` | `409` `ConflictError` |
 | Grant expiry validation | `400` | `422` |
 | Webhook URL / event-type validation | `400` | `422` |
 | Rate-limit (429) | 429 | `429` — now **always** carries a `Retry-After` header |
@@ -268,7 +268,13 @@ client constructor to disable retries.
 
 ---
 
-## 7. Retained aliases — deliberately kept, **not** compatibility shims
+## 7. Names kept on purpose, and names deleted outright
+
+⚠ **This section was titled "Retained aliases" and now carries both halves.**
+The number is unchanged, because a section number is a cross-reference and
+`CHANGELOG.md` cites this one — but a deletion is not a retained alias, and
+filing one under that title made the heading say the opposite of the
+subsection beneath it (#373).
 
 v3.0 has **no shim** that dual-runs the old and new contracts. Three names are
 retained on purpose; none lets old-dialect calls survive:
@@ -283,12 +289,29 @@ retained on purpose; none lets old-dialect calls survive:
 - **`credit()`** — adds plain non-expiring base money to a wallet. A distinct
   money primitive from grant lots, unchanged by v3.
 
-### Do **not** use — dead methods slated for removal (#86)
+### Deleted — three methods that never worked
 
-`MeteringClient.update_rate_card`, `.get_rate_card_history`, and
-`.bulk_create_rate_cards` call routes the big-bang removed. They are known-dead
-against a v3.0 server and will be deleted in the launch sweep (#86). Use
-`create_rate_card` (versioned rate cards supersede in place).
+`MeteringClient.update_rate_card`, `.get_rate_card_history` and
+`.bulk_create_rate_cards` are **gone**, along with the `RateCard` result type
+the first two parsed into. They addressed flat paths that exist in no
+specification and in no router, so no server has ever answered one — which is
+why this is not a migration step. There is no v2 behaviour to move off and no
+window in which both spellings worked: a call to any of the three failed at
+runtime on the day it was written, and every test that appeared to cover them
+patched the HTTP client, so the mock answered where the server never would.
+
+What to use instead is not a renamed method, because the model changed. A rule
+lives in a **book** — a cost book records what one supplier charges you, a
+Pricing Book what you charge a customer — and every change to a book is a
+**publish**: declare a draft at `POST
+/api/v1/metering/pricing/books/{book_id}/publishes`, read its diff, publish it,
+optionally dated forward. That replaces all three at once: versioning in place
+becomes a publish, the lineage history becomes the book's publish records, and
+the atomic batch becomes the publish itself, which is already all-or-nothing.
+
+`declare_pricing_book`, `declare_cost_book`, the two `withdraw_*` and the two
+`list_*` are the hand-written wrappers for the books; the publish surface is
+reachable through the generated core.
 
 ---
 

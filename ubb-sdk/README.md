@@ -29,25 +29,36 @@ from ubb.metering import MeteringClient
 client = MeteringClient(api_key="ubb_live_...", base_url="http://localhost:8001")
 ```
 
-### 1. Create a cost rate card
+### 1. Declare a cost book
 
-Tell the engine what each measurement costs you (COGS). `rate_per_unit_micros=2, unit_quantity=1`
-means 2 micros per token ($0.000002/token).
+Tell the engine what your supplier charges you (COGS). A **cost book** names one supplier and the
+currency it bills you in; the rules inside it are what price your measurements.
 
 ```python
-card = client.create_rate_card(
-    card_type="cost",
-    measurement_key="input_tokens",
-    pricing_model="per_unit",
-    rate_per_unit_micros=2,
-    unit_quantity=1,
-)
-print(card.id)
+book = client.declare_cost_book(key="openai", provider_key="openai", currency="usd")
+print(book.id)
 ```
+
+The book arrives **empty** — UBB ships no catalogue, so it prices nothing until rules are published
+into it. Rules are added by **publishing**, never by editing in place: you declare a draft of the
+changes you want at `POST /api/v1/metering/pricing/books/{book_id}/publishes`, read its diff, and
+publish it. The instant it takes effect can be stated, including a future one, so a rise agreed for
+the first of next month is recorded once rather than remembered.
+
+That surface is reachable through the generated core (`ubb._core`); the hand-written client wraps
+the books themselves — `declare_cost_book`, `declare_pricing_book`, the two `withdraw_*` and the two
+`list_*` — and does not yet wrap the publish surface.
+
+> **⚠️ `update_rate_card`, `get_rate_card_history` and `bulk_create_rate_cards` are gone.** All
+> three addressed flat paths this API has never published — they exist in no specification and in
+> no router — so a call written against an older copy of this guide failed at runtime rather than
+> returning the wrong answer. There is nothing to migrate off: there was never a working call to
+> migrate. Declare a book and publish rules into it, as above.
 
 ### 2. Record a usage event
 
-Supply `measurements` — the engine looks up matching cost cards and computes COGS automatically.
+Supply `measurements` — the engine looks up the matching rules in your cost books and computes COGS
+automatically.
 Do **not** pass `provider_cost_micros` when you want the engine to price it.
 
 ```python
@@ -61,7 +72,7 @@ res = client.record_usage(
 
 print(res.provider_cost_micros)          # COGS in micros, or None if UBB does not know it
 print(res.costing_status)                # known | unresolved | not_applicable
-print(res.uncosted_measurement_keys)     # measurement keys with no matching cost card
+print(res.uncosted_measurement_keys)     # measurement keys with no matching cost rule
 ```
 
 > **⚠️ A cost UBB cannot work out is `None`, never `0`.** If `record_usage(...)` answers
@@ -72,11 +83,12 @@ print(res.uncosted_measurement_keys)     # measurement keys with no matching cos
 > the cost resolves. `costing_status == "not_applicable"` is different again: that Event Type
 > declares no cost at all, which is a design decision and not something to fix.
 > An event that measures nothing at all is a marker event and is accepted — there is nothing to
-> resolve a rate card against, and nothing was claimed to have been consumed. Pass
+> resolve a rule against, and nothing was claimed to have been consumed. Pass
 > `provider_cost_micros` directly whenever the cost is known but the measurements are not.
 
-`res.uncosted_measurement_keys` is your signal that a measurement was recorded with no cost card —
-add a card for any measurement key you want costed. **This is not a refusal:** earlier versions
+`res.uncosted_measurement_keys` is your signal that a measurement was recorded with no cost rule —
+publish one into a cost book for any measurement key you want costed. **This is not a refusal:**
+earlier versions
 could reject such a call with `422 pricing_error` under a tenant setting, and both the setting and
 that error code are gone.
 
@@ -261,10 +273,13 @@ rounding in billing math.
 
 ## Key parameters
 
-- `card_type`: `"cost"` (COGS you pay the provider) or `"price"` (what you charge customers).
-- `pricing_model`: `"per_unit"` (rate × quantity / unit_quantity) or `"flat"` (fixed charge per
-  event).
 - `unit_quantity`: the denominator — `1` means per-token; `1_000_000` means per-million-tokens.
+
+The two that used to head this list — the one saying whether a rule held a supplier's cost or a
+customer's price, and the one naming its arithmetic — are not parameters of this SDK any more. The
+first is answered by *which book* a rule lives in: a cost book records what a supplier charges you,
+a Pricing Book what you charge a customer, and they are separate entities on separate paths. The
+second is `rate_structure` on a published change, `per_unit` or `fixed_component`.
 
 ## Canonical value names
 
@@ -373,15 +388,21 @@ inside the payload.
 MeteringClient(api_key: str, base_url: str = "http://localhost:8001", timeout: float = 10.0,
     max_retries: int = 3)
 
-# create_rate_card  → RateCard
-client.create_rate_card(*, card_type, measurement_key, provider="", event_type="",
-    dimensions=None, pricing_model="per_unit", rate_per_unit_micros=0,
-    unit_quantity=1_000_000, fixed_micros=0, currency="usd",
-    product_id="", customer_id=None)
+# declare_pricing_book  → PricingBookOut     (what this tenant charges)
+client.declare_pricing_book(*, key, name="", is_default=False)
+
+# declare_cost_book  → CostBookOut           (what one supplier charges this tenant)
+client.declare_cost_book(*, key, provider_key="", name="", currency=None, is_default=False)
+
+# withdraw_pricing_book / withdraw_cost_book  → dict
+client.withdraw_pricing_book(book_id)
+
+# list_pricing_books / list_cost_books  → list[PricingBookOut] / list[CostBookOut]
+client.list_pricing_books(cursor=None, limit=None)
 
 # record_usage  → RecordUsageResponse
 client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
-    provider_cost_micros=None, billed_cost_micros=None,
+    provider_cost_micros=None, claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
     dimensions=None, metadata=None, task_id=None, measurements=None,
     recorded_at=None, raise_on_stop=False)
@@ -391,7 +412,7 @@ client.record_batch(events: list[dict])
 
 # usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
 client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None,
-    dimensions=None)
+    dimensions=None, past_limit=None, stop_scope=None, episode_seq=None)
 
 # usage_timeseries  → dict
 client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
@@ -403,9 +424,9 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
 | Field | Meaning |
 |---|---|
 | `event_id` | Unique ID for this event |
-| `provider_cost_micros` | COGS computed from rate cards — `None` when UBB does not know it |
+| `provider_cost_micros` | COGS computed from your cost rules — `None` when UBB does not know it |
 | `costing_status` | Whether that COGS is settled: `known` / `unresolved` / `not_applicable` |
-| `uncosted_measurement_keys` | Measurements with no matching cost card |
+| `uncosted_measurement_keys` | Measurements with no matching cost rule |
 | `billed_cost_micros` | Amount charged to the customer wallet |
 | `new_balance_micros` | Customer wallet balance after this event |
 | `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response) |

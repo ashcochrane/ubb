@@ -663,8 +663,11 @@ gates:
       `ast` and never imports the client. That is what lets it live in a suite
       with no `httpx`, and it is the correction to the failure itself — the
       three dead calls were green because their tests patched the transport, and
-      source cannot be mocked. The three known invalid calls are in the ledger,
-      owed by slice 4.
+      source cannot be mocked. ⚠ THE LEDGER'S G17 FAMILY IS NOW EMPTY: the
+      three known invalid calls were paid together in #373, which is the only
+      way they could be paid, because each method named a constant generated
+      from its own entry. `openapi/v1.json` alone is the oracle until a seeding
+      authorisation says otherwise.
       #209 changed what there is to check. A call no longer spells a route at
       all: it names a constant in `ubb-sdk/ubb/_operations.py`, generated from
       the contract and the ledger and gated for zero diff, so a renamed
@@ -680,10 +683,13 @@ gates:
       ledger excuses — because #155 §8.3's claim is that a rename cannot leave a
       stale string behind, and a docstring is a string.
       That third conjunct found nothing on the day it landed, and that is worth
-      stating rather than dressing up: of the 53 documented routes, 48 resolve
-      exactly, 4 name a family, and 1 is the `rate-cards/batch` route the ledger
-      already excuses. It is installed for the rename that has not happened yet
-      — the one that would otherwise fix a call and leave the prose behind.
+      stating rather than dressing up: of the 53 documented routes it read
+      then, 48 resolved exactly, 4 named a family, and 1 was the batch route
+      the ledger excused. Measured again after #373: **59 documented routes, 55
+      resolving exactly, 4 naming a family and NONE excused** — the excused one
+      went with the method that documented it, and the shell has gained prose
+      since. It is installed for the rename that has not happened yet — the one
+      that would otherwise fix a call and leave the prose behind.
       ADR-0007 §4's method-AND-path identity did not weaken; it moved to the one
       place the mistake can still be made. A call site cannot spell a method, so
       a valid path under the wrong verb is now only reachable as a registry

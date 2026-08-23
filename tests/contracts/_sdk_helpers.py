@@ -29,10 +29,12 @@ contract", and three of the gate's rules exist for exactly that case.
 """
 
 import json
+from pathlib import Path
 
 import yaml
 
 from tools.sdk_operations import registry as registry_module
+from tools.sdk_operations.calls import REGISTRY_MODULE, SHELL_ROOT
 
 #: The prefix every synthetic route shares with the real ones, so a control
 #: exercises the same `ROUTE_MARKER` rule the shipped contract does.
@@ -203,3 +205,79 @@ def excusing(*entries):
             for index, (site, found) in enumerate(entries)
         ],
     }
+
+
+#: One synthetic debt, spelled once. `docs/conventions/testing.md` puts shared
+#: setup in a helper module, and this shape had reached three copies across
+#: `test_sdk_operations.py` before #373 extracted it: a site, a route nothing
+#: publishes, and the constant name the ledger renders for it.
+#:
+#: It matters more than ordinary setup duplication. The G17 family is EMPTY on
+#: the shipped tree, so every control that still has content about an excused
+#: call is a synthetic one — this is the only place a debt exists at all, and
+#: three hand-copies of it could drift into three different debts while each
+#: read as "the" case.
+A_DEBT_SITE = f"{SHELL_ROOT}/things.py::ThingsClient.call_0"
+A_DEBT_ROUTE = f"{ROOT}/gone"
+A_DEBT_FOUND = f"GET {A_DEBT_ROUTE}"
+
+
+def a_debt_constant():
+    """The constant name the registry renders for :data:`A_DEBT_FOUND`.
+
+    Derived through the real `unpublished_name` rather than written out, so a
+    control cannot disagree with the renderer about what the call site should
+    say — which is the same reason the production registry derives it from the
+    ledger's `found` instead of from the entry's id.
+    """
+    return registry_module.unpublished_name(A_DEBT_FOUND)
+
+
+def a_repository_with_one_debt(tmp_path, *, extra="", operations=None):
+    """A synthetic repository whose shell makes one call nothing publishes.
+
+    Returns the ``(site, found)`` pair the gate must report as excused, so a
+    caller asserts against what this built rather than against a literal it
+    repeated. ``extra`` appends source to the module, which is how the
+    docstring arm adds prose naming the same dead route.
+    """
+    write_repository(
+        tmp_path,
+        operations=(THING_LIST,) if operations is None else operations,
+        ledger=excusing((A_DEBT_SITE, A_DEBT_FOUND)),
+        modules={"things.py": client_module(f"*ops.{a_debt_constant()}",
+                                            extra=extra)})
+    return A_DEBT_SITE, A_DEBT_FOUND
+
+
+def modules_spelling_the_unpublished_prefix(repo_root):
+    """HAND-WRITTEN shell modules whose source spells ``UNPUBLISHED_``.
+
+    The one part of "no call reaches an unpublished route" that is a property
+    of the text rather than of the join: a constant that failed to resolve is
+    already a fault code, but the graceless prefix appearing in a docstring or
+    a comment is not, and it is how the vocabulary comes back before it reaches
+    a call. Shared so the shipped-tree assertion and the control that makes it
+    fail run the SAME read — a control with its own copy of the search would
+    prove only that two copies agree.
+
+    ⚠ **THE GENERATED REGISTRY IS EXCLUDED, AND LEAVING IT IN WAS A REAL BUG
+    THAT ONLY AN EMPTY LEDGER HID.** `ubb/_operations.py` is where an
+    `UNPUBLISHED_` constant is SUPPOSED to be spelled — it is generated from
+    the ledger and is the only file allowed to name a route at all. With G17
+    empty the file spells nothing, so a reader that included it passed anyway;
+    the day a seeding authorisation legitimately re-added a debt, the shipped
+    assertion would have gone red blaming the generated file for doing its job.
+    The control that drives this function against a repository WITH a debt is
+    what found that, which is the whole reason the control exists.
+
+    Excluded by `REGISTRY_MODULE`, the same constant `load_call_sites` skips
+    when it walks the shell, so the two cannot disagree about which file is
+    generated.
+    """
+    prefix = registry_module.UNPUBLISHED_PREFIX
+    root = Path(repo_root) / SHELL_ROOT
+    return sorted(path.relative_to(repo_root).as_posix()
+                  for path in root.glob("*.py")
+                  if path.name != REGISTRY_MODULE
+                  and prefix in path.read_text(encoding="utf-8"))
