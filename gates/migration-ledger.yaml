@@ -409,25 +409,30 @@ entries:
     reason: >-
       The same, for the case where the family's state could not be read.
 
-  - id: g7-backend-card_type
-    gate: G7
-    site: backend::card_type
-    expected: pricing_book_name
-    found: 4 files
-    owner_slice: slice_4
-    reason: >-
-      The discriminator that carried supplier cost and customer price in
-      one table — the conflation the cost/price split exists to end
-      (#138, #148 §5.4). Slice 4's Pricing Book replaces the table it
-      sits on.
-
-      31 -> 28 in #367, which deleted the column from the RULE. Nothing
-      resolution does ever asked a rule what kind it was — the ladder
-      selects BOOKS by kind and then reads the rules inside them — so the
-      copy on the rule decided nothing while being free to disagree with
-      the book it was copied from. The word survives on the CONTAINER,
-      which ticket 21 splits into two separately shaped entities rather
-      than renaming; that is where the remainder is owed.
+  # ⚠ `backend::card_type` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED. The
+  # descent was 31 -> 28 (#367, the column off the RULE) -> 4 (#368, the split
+  # itself) -> 0. ⚠ **#368's own reason line was never written and the entry
+  # stood at "the remainder is owed on the container" while the container had
+  # already gone** — the same defect #373 found on `sdk::pricing_model`, which
+  # is why the standing instruction is to measure the descent with `git log -S`
+  # rather than read the prose.
+  #
+  # NONE OF THE LAST FOUR FILES WAS CODE, WHICH IS WHY A DOCUMENTATION TICKET
+  # PAID THEM.
+  #
+  #   * `pricing/services/pricing_service.py` — two sentences in its own
+  #     docstrings, describing the parameter the split deleted. They say "the
+  #     kind word" now, the phrase the rest of the tree already used.
+  #   * `api/v1/tests/test_book_api.py` and
+  #     `pricing/tests/test_a_book_of_costs_and_a_book_of_prices_are_two_shapes
+  #     .py` — `not in` assertions whose whole subject is the column's absence.
+  #     Both DERIVE the name from the `RemoveField` that deleted it, through
+  #     `pricing/tests/_helpers.py:RETIRED_KIND_COLUMN`. That is technique 1 of
+  #     the three now written into `docs/conventions/coding-standards.md`, and
+  #     technique 2 was NOT available: putting the word once in that helper
+  #     would have left a count of one where the entry needs none.
+  #   * `ubb-platform/docs/CHANGELOG-pricing-api.md` — the 2026-07-03 entry,
+  #     carried forward under that file's own header rule.
 
   - id: g7-backend-concurrency_limit
     gate: G7
@@ -548,36 +553,23 @@ entries:
   # The ticket expected a remainder on the console and the SDK for #372 and
   # #373; the sweep says there is none, and the sweep is what the entries record.
 
-  - id: g7-backend-rate_card
-    gate: G7
-    site: backend::rate_card
-    expected: pricing_book_name
-    found: 2 files
-    owner_slice: slice_4
-    reason: >-
-      The container entity. #148 §5.4 replaces it with the Pricing Book,
-      and slice 4 is where it stops existing.
-
-      23 -> 19 in #349, and NOT as a rename: the receipt used to name the
-      source of an amount as `rate_card` and now names the METHOD that derived
-      it, from the registry's own two values, so four test modules that
-      asserted on that source stopped spelling the word. The debt is partly
-      paid rather than moved, and the gate refuses an entry that may overstate
-      because an excuse with no upper bound is not a migration plan. The
-      container itself is untouched and the rename is still #366's.
-
-      19 -> 16 in #367. The rule's own table stopped being named for the
-      container — it is `ubb_rate` now — and the two immediate routes that
-      wrote a rule directly went with the acts they recorded, taking the
-      word out of three more files. The container's column is still the
-      pointer every rule carries, so the remainder is ticket 21's.
-
-      16 -> 3 in #368 with the split itself, and 3 -> 2 in #369, which did not
-      set out to pay any of it: the customer markup route's response comment
-      named the record the container's assignment row had become, and the
-      route is deleted. The extent is a ceiling as well as a floor, so a debt
-      partly paid by a commit whose subject is elsewhere comes down in that
-      commit.
+  # ⚠ `backend::rate_card` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED, WHICH
+  # EMPTIES `pricing_book_name`'s LAST SURFACE — the concept that four retired
+  # aliases pointed at now has no live spelling anywhere in the tree.
+  # The descent, measured: 23 -> 19 (#349, the receipt naming the METHOD that
+  # derived an amount rather than its source) -> 16 (#367, the rule's own table
+  # becoming `ubb_rate`, and the two immediate routes going with the acts they
+  # recorded) -> 3 (#368, the split) -> 2 (#369, which set out to pay none of it
+  # and did: the deleted markup route's response comment named the record the
+  # assignment row had become) -> 0.
+  #
+  # THE LAST TWO. One was the audit feed's resource-filter fixture, which named
+  # the retired container as a `resource_type` no route has written since the
+  # split — corrected to `pricing_book_publish`, the pair the route actually
+  # writes, so the fixture is an example of the question the feed answers rather
+  # than only an exercise of the filter. The other was the pricing changelog,
+  # where the rule's pointer at its container is `pricing_book` now under that
+  # file's own header rule for a name retired AND REPLACED.
 
   - id: g7-backend-request_id
     gate: G7

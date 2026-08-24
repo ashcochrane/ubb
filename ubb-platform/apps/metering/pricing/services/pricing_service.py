@@ -583,7 +583,7 @@ class PricingService:
         in; two rules a tenant made identically specific, from one source, on
         one instant are not a distinction the ladder claims to draw.
 
-        ⚠ **ONE LADDER, TWO CALLERS, AND NO `card_type` ANYWHERE IN IT (#368).**
+        ⚠ **ONE LADDER, TWO CALLERS, AND NO KIND WORD ANYWHERE IN IT (#368).**
         The ranking is genuinely shared — specificity before source, no
         fallthrough, the as-of instant — and it always was. What used to be
         shared and should not have been is the SELECTION: one function asked
@@ -676,11 +676,11 @@ class PricingService:
         forking a pricing body.
 
         ⚠ **ONE RULE RESOLVER BECAME TWO, AND THAT IS THE SPLIT ARRIVING HERE
-        (#368).** The single ``resolve_card(card_type, measurement_key)``
-        parameter carried the kind word into the spine's own signature, so the
-        two branches below — which are *cost* and *price*, not two values of
-        one thing — read as one call made twice. They are two calls now, to
-        two resolvers over two tables, and the string is gone.
+        (#368).** The single ``resolve_card`` took the kind word as its first
+        parameter and carried it into the spine's own signature, so the two
+        branches below — which are *cost* and *price*, not two values of one
+        thing — read as one call made twice. They are two calls now, to two
+        resolvers over two tables, and the string is gone.
 
         **THIS IS WHERE A COSTING STATUS IS DECIDED, AND THE ONLY PLACE (#320).**
         Nothing raises here any more. An event UBB cannot cost is *recorded*

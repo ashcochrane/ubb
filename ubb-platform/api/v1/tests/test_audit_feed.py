@@ -108,15 +108,21 @@ class AuditFeedTest(TestCase):
         self.assertTrue(all(r["action"] == "wallet.credited" for r in body["data"]))
 
     def test_resource_filter_answers_who_changed_this(self):
+        # The pair the route itself writes (#374). The resource type used to be
+        # the retired container's, which no route has passed since the split —
+        # a filter fixture that names a type nothing records still exercises the
+        # filter, but it stops being an example of the question the feed answers.
         record(action="pricing_book_publish.published", tenant_id=self.tenant.id,
-               resource_type="rate_card", resource_id="card-42", metadata={})
+               resource_type="pricing_book_publish", resource_id="publish-42",
+               metadata={})
         record(action="pricing_book_publish.published", tenant_id=self.tenant.id,
-               resource_type="rate_card", resource_id="card-99", metadata={})
+               resource_type="pricing_book_publish", resource_id="publish-99",
+               metadata={})
         body = self._get(
             self.key,
-            "?resource_type=rate_card&resource_id=card-42").json()
+            "?resource_type=pricing_book_publish&resource_id=publish-42").json()
         self.assertEqual(len(body["data"]), 1)
-        self.assertEqual(body["data"][0]["resource_id"], "card-42")
+        self.assertEqual(body["data"][0]["resource_id"], "publish-42")
 
     def test_operator_action_renders_as_ubb_operator(self):
         record(action="wallet.credited", tenant_id=self.tenant.id,

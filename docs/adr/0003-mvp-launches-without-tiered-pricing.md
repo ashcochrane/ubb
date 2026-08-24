@@ -17,8 +17,8 @@ from git history, not a flag flip.
 the settled price by *design* (the deliberately-high three-anchor guess), the only stateful,
 lock-contended part of pricing, and the only caveat in the overspend-guarantee story. With them
 gone, **the hold equals the exact price by construction**, settle's estimate−exact correction
-shrinks to a net for rate-card config drift (a card edited between an event's arrival and its
-settle, or a backdated event pricing on an older card version), and the guarantee-legibility
+shrinks to a net for pricing-rule config drift (a rule edited between an event's arrival and its
+settle, or a late-arriving event pricing on an older rule version), and the guarantee-legibility
 artifact can say "we reserve the exact price at arrival" without a footnote.
 
 **Considered options.** (a) Config-only — just don't sell tiers to the first tenant: rejected

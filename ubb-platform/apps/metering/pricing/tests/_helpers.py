@@ -1,8 +1,11 @@
 from contextlib import contextmanager
+from functools import cache
+from importlib import import_module
 from uuid import uuid4
 
 from django.apps import apps as django_apps
 from django.db import IntegrityError, connection, transaction
+from django.db import migrations as operations
 from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
@@ -24,6 +27,53 @@ from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
+
+#: The migration that split the container, and therefore the one operation that
+#: still names the word this slice retired.
+_SPLIT_MIGRATION = "0028_the_container_becomes_a_pricing_book_and_a_cost_book"
+
+
+@cache
+def retired_kind_column():
+    """The kind word the split deleted — DERIVED, never spelled (#374).
+
+    Two modules assert that this column reaches neither entity and neither the
+    wire, and a `not in` assertion has to name its subject somehow. Writing the
+    token would put its ledger count over an entry that reaches ZERO in the
+    commit adding this line, so it is read off the operation that deleted it —
+    technique 1 of `docs/conventions/coding-standards.md`'s three. Technique 2
+    was not available: putting the word once in this file would leave a count
+    of one where the entry needs none.
+
+    **HOW IT IS PICKED OUT, AND WHY BY MEANING RATHER THAN BY POSITION.** Three
+    columns left the container in that migration. Two of them are a cost book's
+    — the supplier it records and the currency that supplier bills in — and they
+    went to the new entity rather than away. The third went nowhere, because
+    the split is what replaced it. So it is the removal whose column no cost
+    book has, and the one-element unpack is what fails loudly if that ever
+    stops picking out exactly one.
+
+    ⚠ **A FUNCTION AND NOT A MODULE CONSTANT, WHICH IS THE WHOLE POINT OF THE
+    LINE ABOVE.** Every pricing test imports this file, so computing the answer
+    at import time would put a migration import and a `CostBook._meta` read on
+    the collection path of the entire app's suite — and both are things a later
+    slice removes. #155 §11.1's cutover squash deletes `0028` outright, which
+    would turn a rename nobody was thinking about into a collection-time
+    `ModuleNotFoundError` across every pricing module at once. Deferred and
+    cached, the blast radius is the two assertions that actually ask, which is
+    where the precedent in
+    `test_the_rates_quantity_name_takes_the_canonical_name.py` keeps its own.
+    """
+    module = import_module(
+        f"apps.metering.pricing.migrations.{_SPLIT_MIGRATION}")
+    survives = {field.name for field in CostBook._meta.concrete_fields}
+    (removal,) = [
+        op for op in module.Migration.operations
+        if isinstance(op, operations.RemoveField)
+        and op.model_name == "pricingbook"
+        and op.name not in survives
+    ]
+    return removal.name
 
 #: WHICH QUANTITY A RATE PRICES WHEN THE FIXTURE NEVER SAID (#326).
 #:

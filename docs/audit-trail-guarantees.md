@@ -21,9 +21,12 @@ Every **principal-initiated mutation** of your account records one append-only e
 database transaction as the change — so a rolled-back change leaves no phantom entry, and a
 committed change always leaves one. Coverage spans:
 
-- **Governance / config** — tenant config (including `enforcement_mode`), rate cards, rates,
-  markups, budgets, billing profiles, auto-top-up, postpaid config, margin thresholds, revenue
-  profiles, webhook configs, plans, referral programs, Stripe Connect start, sandbox provisioning.
+- **Governance / config** — tenant config (including `enforcement_mode`), Pricing Books and cost
+  books, every change to a book (a publish is declared, published or discarded — three answers to
+  three different questions, never one entry you read metadata to interpret), customer overrides,
+  the tenant's default markup rung, resolution runs, budgets, billing profiles, auto-top-up,
+  postpaid config, margin thresholds, revenue profiles, webhook configs, plans, referral programs,
+  Stripe Connect start, sandbox provisioning.
 - **Membership & key lifecycle** — invitations created/revoked, member roles changed, members
   removed, API keys created/rotated/revoked.
 - **Hand-moved money** — manual credits, debits, withdrawals, refunds, credit grants and voids, and
@@ -62,7 +65,7 @@ history.
 
 One cursor-paginated endpoint — `GET /api/v1/audit/records`, in the committed OpenAPI spec — with
 the standard `{data, next_cursor, has_more}` envelope. Optional `action` and
-`resource_type`+`resource_id` filters answer "who changed *this* rate card?".
+`resource_type`+`resource_id` filters answer "who changed *this* Pricing Book?".
 
 **Any tenant principal, at any role, may read the feed** — a **Read** floor. Audit visibility is
 transparency, not power; the dangerous verbs already require Admin. **End-customer widget tokens
@@ -75,7 +78,7 @@ are not tenant principals and cannot read it** (they authenticate only the `/me`
 This is a **floor: raisable, never lowerable** (ADR-003 §3's rule for published promises). There is
 no pruning job today — audit volume is governance-scale, not telemetry-scale — and the one-year
 floor leaves room to introduce pruning someday without breaking this commitment. Log-style
-90/180-day retention was rejected on purpose: "who changed this rate card?" gets asked at renewal
+90/180-day retention was rejected on purpose: "who changed this price?" gets asked at renewal
 and dispute time, a year later.
 
 ## 5. Sandbox

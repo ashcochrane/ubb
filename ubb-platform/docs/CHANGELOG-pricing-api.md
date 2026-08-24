@@ -133,17 +133,25 @@ book assignment, which a flat per-rate model could not express safely.
 
 ### What changed
 
+> **Two names in this entry no longer resolve, and the header's rule applies to
+> both.** The container this entry introduces carried **a kind field** telling a
+> book of supplier costs from a book of customer prices; the split into a
+> `PricingBook` and a `CostBook` replaced it with two entities rather than
+> renaming it, so it is written as *the kind field* below. The rule's pointer at
+> its container is `pricing_book` now. What this entry records — what changed on
+> 2026-07-03, and why — is untouched.
+
 - **`POST/GET /pricing/rate-cards`** now creates/lists **books**, not rates.
-  - Request body is `BookIn` (`card_type`, `provider_key`, `key`, `name`,
+  - Request body is `BookIn` (the kind field, `provider_key`, `key`, `name`,
     `currency`, `is_default`) instead of the old flat rate payload.
-  - Response shape is `BookOut` (`id`, `card_type`, `provider_key`, `key`,
+  - Response shape is `BookOut` (`id`, the kind field, `provider_key`, `key`,
     `name`, `currency`, `version`, `is_default`) — **`RateCardOut` is gone**,
     replaced by `BookOut` for books and a repurposed `RateOut` for rates.
 - **Rates now live under a book**, created via:
   - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`measurement_key`,
     `provider`, `event_type`, `dimensions`, `rate_structure`,
     `rate_per_unit_micros`, `unit_quantity`, `fixed_micros`, `tiers`,
-    `product_id`). `card_type` and `currency` are no longer accepted here —
+    `product_id`). The kind field and `currency` are no longer accepted here —
     they are inherited from the parent book (single source of truth).
   - `GET /pricing/rate-cards/{book_id}/rates` — lists rates in the book.
     Active-only by default. `?include_history=true` returns every version
@@ -164,7 +172,7 @@ book assignment, which a flat per-rate model could not express safely.
   publish, including the version bump. Returns `BookOut`.
 - **New: `POST /pricing/customers/{customer_id}/rate-card`** — assign a price
   book to a customer. Body `AssignIn` (`rate_card_id`). One assignment per
-  `(customer, currency)`; `card_type` is implicitly `"price"` (only price
+  `(customer, currency)`; the kind field is implicitly `"price"` (only price
   books are assignable — cost books are not customer-scoped). Resolution
   (`PricingService._resolve_card`) now consults the customer's assigned book
   first, falling back to the tenant's per-provider default book
@@ -198,50 +206,55 @@ book assignment, which a flat per-rate model could not express safely.
   → `Rate`. Table `ubb_rate_card` is unchanged (no destructive DB rename);
   this only frees the `RateCard` name for the new container.
 - `0011_ratecard_container.py` — adds the new `RateCard` container model
-  (table `ubb_rate_card_container`; fields `tenant`, `card_type`,
-  `provider_key`, `currency`, `key`, `name`, `version`, `is_default`) and
+  (table `ubb_rate_card_container`; fields `tenant`, the kind field,
+  `provider_key`, `currency`, `key`, `name`, `version` and `is_default`) and
   `RateCardAssignment` (table `ubb_rate_card_assignment`; one row per
-  `(tenant, customer, currency)`), plus new columns on `Rate`: `rate_card`
+  `(tenant, customer, currency)`), plus new columns on `Rate`: `pricing_book`
   (FK, nullable), `book_version_from` (default 1), `book_version_to`
   (nullable).
 - `0012_backfill_books.py` — data migration
   (`apps/metering/pricing/migrations/_book_backfill.py`) that groups every
   existing active `Rate` into a book: default (customer-less) rates go into
-  one `is_default` book per `(tenant, card_type, provider, currency)`;
+  one `is_default` book per `(tenant, kind, provider, currency)`;
   customer-scoped price rates go into a per-`(customer, currency)` book
   (spanning providers) plus a `RateCardAssignment`. A second pass attaches
   historical (superseded) rate versions to the same book as their active
   lineage sibling, or a fresh book if the whole lineage is superseded.
-  Reversible (`backwards` clears `rate_card` FKs and deletes the created
+  Reversible (`backwards` clears `pricing_book` FKs and deletes the created
   books/assignments).
 - `0013_rate_book_unique_constraint.py` — replaces `Rate`'s old
   tenant/customer-scoped active-rate uniqueness constraints with a single
   book-scoped constraint, `uq_rate_active_in_book` on
-  `(rate_card, provider, event_type, measurement_key, dimensions_hash,
+  `(pricing_book, provider, event_type, measurement_key, dimensions_hash,
   currency)` where `valid_to IS NULL`. This is what makes the "assigned book
   shadows the default book for the same measurement key" behavior legal at the
   DB level — the old constraints would have collided on two `customer=NULL`
   rows for the same measurement key in different books.
 
-**Prod backfill parity probe (from the design doc's Task 3 ops note, §10.1):**
-before applying `0012` to staging/prod, run:
-```bash
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py shell -c "
-from apps.metering.pricing.models import Rate
-print('cost customer-scoped:', Rate.objects.filter(card_type='cost', customer__isnull=False).count())
-print('active rates:', Rate.objects.filter(valid_to__isnull=True).count())
-"
-```
-A nonzero "cost customer-scoped" count means the cost-side branch of
-`_book_backfill` needs a second look before rollout (the design's open
-item: whether customer-scoped cost rates exist was unresolved at spec
-review). After `migrate`, confirm zero orphans:
-```bash
-DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python manage.py shell -c "
-from apps.metering.pricing.models import Rate
-print('orphaned active rates:', Rate.objects.filter(valid_to__isnull=True, rate_card__isnull=True).count())
-"
-```
+**Prod backfill parity probe (from the design doc's Task 3 ops note, §10.1) —
+SPENT, and the two shell snippets are removed rather than rewritten.**
+
+> ⚠ **This is the one place this file's own header rule is overridden, and it is
+> said plainly rather than left for a reader to notice.** The header rules that
+> an entry's *facts* — what changed, when, and why — are never rewritten. What
+> is removed here is not a fact about 2026-07-03; it is an **instruction to a
+> future operator**, and it is an instruction that can no longer be followed.
+> The facts it carried are preserved in prose immediately below.
+
+Before
+applying `0012`, the probe counted two figures off `Rate`: how many cost rules
+were scoped to a named customer (a nonzero count meant the cost-side branch of
+`_book_backfill` needed a second look before rollout — the design's open item,
+unresolved at spec review), and how many rules were active; after `migrate`, it
+counted rules left active with no book, expecting zero.
+
+Both snippets read columns that no longer exist — the kind field was deleted with
+the split and the book pointer is `pricing_book` now — so neither runs, and
+rewriting them to today's column names would produce instructions that execute
+and answer a different question. **What they checked is recorded above; the
+commands are not, because a runnable block that cannot run is worse than prose.**
+Nothing is owed here: `0012` is a historical migration, and no environment is
+waiting to have it applied.
 
 ### KNOWN FOLLOW-UP — must land before SDK consumers upgrade
 
