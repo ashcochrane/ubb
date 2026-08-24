@@ -126,6 +126,30 @@ went red at all:
   red. A vacuous control needs its subject derived; this one needed its premise
   established first, in the test.
 
+And one more, from slice 4's flip (#375). Its subject was twenty-three controls,
+not twenty-two: the twenty-two in `tests/contracts/test_migration_ledger.py` plus
+`test_gate_manifest.py`'s twin, `test_a_landed_slice_may_not_still_owe_a_gate`,
+which asserts the same rule over the manifest and so belongs to the same sweep.
+All twenty-three went red — and three of them went red for the wrong reason first:
+
+- **A control can fail because of the REMOVAL rather than because of the missing
+  fault, and that is as false a claim as a green one.** All three faults were in
+  the real-git section, where the removal can change the repository as well as the
+  ledger. Restoring the base ledger in
+  `test_a_branch_that_adds_an_entry_fails_against_its_base` and in
+  `test_an_uncommitted_addition_is_caught_before_it_is_committed` left the working
+  tree CLEAN — so the ratchet judged the proposal committed, compared against
+  `HEAD^` of a one-commit repository, and reported `BASE_UNREADABLE` instead of the
+  no-fault the removal was supposed to produce. In
+  `test_on_the_base_branch_itself_the_comparison_is_against_the_parent` the same
+  removal left nothing to commit and `git commit` failed outright. All three were
+  red, and all three would have been recorded as proof. **A removal must take out
+  the fault and change nothing else about the premise** — here, RELABELLING an
+  entry rather than reverting it, which keeps the tree dirty and the commit real
+  while adding nothing, after which each fails on an empty fault set. So: read
+  every failure, do not count them. The exit status alone cannot tell the three
+  cases apart.
+
 ## The ledger, and its three rules
 
 Every current violation of an installed gate, as an **individually identified
