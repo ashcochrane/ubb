@@ -60,6 +60,20 @@
 # exactly like a vacuous control until you look, and the two are repaired
 # differently. That method now lives in `gates/README.md`, under *Flipping a
 # row*, because it belongs to every flip rather than to this one.
+#
+# Slice 4's flip (#375) is the third a slice makes in its own last ticket, and it
+# is free for the same reason slice 3's was: all 56 of its ledger entries had
+# already died in the commits that made them false, and no manifest row ever
+# named it. `unlanded[0]` moved from slice 4 to slice 5 with no control
+# re-pointed. So the twenty-two controls in `tests/contracts/test_migration_ledger.py`
+# and `test_gate_manifest.py`'s twin were mutation-checked again — the repaired
+# unreadable-baseline control among them, red in a single edit as its repair
+# promised — and ALL TWENTY-THREE failed without their cause.
+#
+# What this flip added to the method is in `gates/README.md` beside the rest: a
+# control can go red for a reason THE REMOVAL ITSELF INTRODUCED, and three of
+# these did before the removals were corrected. That is as false a claim as a
+# green one, and only reading the failure tells them apart.
 
 version: 1
 
@@ -92,7 +106,7 @@ slices:
     issue: 186
     title: Price
     order: 4
-    landed: false
+    landed: true
 
   slice_5:
     issue: 187
