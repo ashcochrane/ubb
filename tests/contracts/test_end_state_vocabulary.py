@@ -968,6 +968,14 @@ def test_the_close_reason_names_the_ticket_that_will_consume_it(registry):
     criterion asks for the backend, console and contract consumers to be named,
     and with the list itself empty the commentary is the only place that can
     honestly carry them.
+
+    ⚠ **THIS TEST IS SCAFFOLDING, AND #409 DELETES IT.** The moment that ticket
+    declares the backend consumer, `outcome_reason` leaves
+    `concepts_without_consumers` and the first assertion below goes red — so
+    deleting this test is part of paying the debt, in the same commit that
+    drops the concept from the closing equality above. Left standing it would
+    be a test asserting a state the tree no longer has, which is the shape a
+    later reader "fixes" by re-emptying the consumer list.
     """
     assert "outcome_reason" in registry.concepts_without_consumers
 
