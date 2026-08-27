@@ -789,7 +789,204 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     going missing here, and the two states are told apart by whether anybody can
     say which ticket. That is the whole reason this is an equality: a concept
     that quietly LOST its consumer would otherwise join the list unremarked.
+
+    **`outcome_reason` joins on the same terms (#406).** Slice 5's one coinage
+    is declared before anything reads it, for #316's reason exactly: a public
+    closed value set that reaches code before it reaches the registry is an
+    undeclared public value set, and ADR-0007 §3 leaves no way to park one under
+    a provisional name. Declaring its three eventual consumers now would produce
+    three unexcused findings — two G2 and one G4 — and the slice may add no
+    ledger entry to excuse them. **#409 adds the close field that holds the
+    values by reference, and declares the backend consumer in that same commit.**
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment",
+        "payment_rail", "payment_rail_environment", "outcome_reason",
     }
+
+
+# ---------------------------------------------------------------------------
+# 8. Slice 5's one coinage: the reason a unit of work did not deliver
+#    (#406, spec §6)
+#
+# One concept, and the three arguments that have to survive with it. Spec §6 is
+# a RULING rather than a preference — #140 §3.3 asked for a close reason and
+# called it `reason_code`, the registry's `reason_code` is a different concept
+# wearing the same word, and ADR-0006 R2 forbids two public concepts sharing
+# one public term. So the values are asserted against §6's table, and each of
+# the three arguments is asserted against the entry's own prose rather than
+# left to a reader's memory of an issue comment.
+#
+# The subject is the same as the rest of this file's — what the registry SAYS.
+# Whether the close request validates against it is #409's, and belongs to the
+# ticket that builds the field.
+# ---------------------------------------------------------------------------
+
+#: #187 §6's table, in its order — the slice-5 specification, which is where
+#: #140 §3.3's explicitly "illustrative" list was fixed. Named here rather than
+#: read out of the registry, because a test that took its expectation from its
+#: subject would pass on any nine values at all.
+CLOSE_REASONS = ("upstream_provider_error", "timeout", "invalid_input",
+                 "internal_error", "execution_failed", "customer_cancelled",
+                 "superseded", "parent_closed", "unspecified")
+
+
+def _close_reason_commentary():
+    """The comment block standing immediately above `outcome_reason:`.
+
+    A YAML comment is where a registry records how a judgement was reached and
+    the compiler discards it, so it has to be read from the file — the same
+    reason `_recorded_units_evidence` above reads its own.
+
+    SCOPED TO THE ENTRY, not to the file. `tasks.yaml` is 240 lines and any
+    `#409` anywhere in it would satisfy a whole-file search, including one
+    somebody adds to an unrelated concept next year. The claim below is about
+    THIS entry's own commentary, so that is what is returned — and returning it
+    empty is what makes the caller's vacuity guard able to fail.
+    """
+    source = (REAL_REGISTRY / "concepts" / "tasks.yaml").read_text(
+        encoding="utf-8")
+    above, declaration, _ = source.partition("\noutcome_reason:\n")
+    assert declaration, "`outcome_reason` is not declared in concepts/tasks.yaml"
+
+    block = []
+    for line in reversed(above.splitlines()):
+        if not line.startswith("#"):
+            break
+        block.append(line)
+    return "\n".join(reversed(block))
+
+
+def test_the_close_reason_is_a_closed_set_of_exactly_the_decided_values(
+        registry):
+    """AC: `closed`, exactly §6's nine, with a label prefix.
+
+    `unspecified` is what makes the field cheap to REQUIRE — the caller always
+    has a valid answer — and `execution_failed` settles #179 §10 residue 2 by
+    being a member at all. Both would be quietly droppable if the set were
+    asserted as a subset, so this is an equality on the tuple.
+    """
+    concept = registry.concepts["outcome_reason"]
+
+    assert concept.kind == "closed"
+    assert concept.values == CLOSE_REASONS
+    assert concept.label_key_prefix == "outcome_reason"
+
+
+def test_the_close_reason_is_not_the_stop_reason_wearing_the_same_word(
+        registry):
+    """§6's ruling, as the structural fact underneath it.
+
+    Two concepts, and every axis that distinguishes them: one is caller-supplied
+    and closed, the other is UBB-produced and open; one explains an `outcome`,
+    the other explains a stop. If a later change ever made these two agree, the
+    argument for coining a second concept would have evaporated and this fails
+    rather than letting the registry carry a distinction it stopped making.
+    """
+    close = registry.concepts["outcome_reason"]
+    stop = registry.concepts["reason_code"]
+
+    assert close.kind == "closed" and stop.kind == "open"
+    assert not set(close.values) & set(stop.known_values), (
+        "the two reason sets have started to overlap — §6's whole argument is "
+        "that they answer different questions"
+    )
+
+
+def test_the_entry_says_why_it_is_not_the_existing_stop_reason(registry):
+    """Obligation (a), in the entry's own prose.
+
+    The generated modules render their commentary from concept summaries, so a
+    reader meeting `OUTCOME_REASON_*` and `REASON_CODE_*` in one file is told
+    there why there are two of them. Left to an issue comment, this is the
+    argument somebody re-opens.
+    """
+    summary = registry.concepts["outcome_reason"].summary
+
+    assert "reason_code" in summary, (
+        "the entry does not name the concept it is deliberately not"
+    )
+
+
+def test_the_two_parent_words_are_kept_apart_by_the_entry_itself(registry):
+    """Obligation (b) — the sentence a later reader will otherwise delete.
+
+    `parent_closed` is what the TENANT declares for a Subtask it withdrew
+    because it closed the parent Task; `parent_killed` is what UBB RECORDS when
+    it cascaded a spend stop. Different actor, different set, different kind —
+    and two words sharing a stem, one prefix apart, in one generated file is
+    exactly the shape somebody tidies together. The membership is asserted both
+    ways so a "fix" that moved either word fails here.
+    """
+    close = registry.concepts["outcome_reason"]
+    stop = registry.concepts["reason_code"]
+
+    assert "parent_closed" in close.values
+    assert "parent_closed" not in stop.known_values
+    assert "parent_killed" in stop.known_values
+    assert "parent_killed" not in close.values
+
+    summary = close.summary
+    assert "parent_killed" in summary, (
+        "the entry names `parent_closed` without saying why it is not the "
+        "`parent_killed` sitting beside it"
+    )
+
+
+def test_the_entry_says_the_value_is_caller_supplied_and_refused_when_unseen(
+        registry):
+    """Obligation (c) — the rule that does NOT transfer.
+
+    `apps/platform/work/reasons.py` reconciles its own closed module with an
+    open concept by ruling that closed binds UBB's PRODUCERS and open binds
+    consumers, and that neither set may refuse a value arriving from outside.
+    That holds because a stop reason is UBB-produced. This value is
+    caller-supplied and an unrecognised one is refused, so importing that rule
+    here would turn a validation into a pass-through.
+
+    Asserted on the two words that carry the rule rather than on a sentence,
+    so a rewording that keeps the meaning still passes.
+    """
+    summary = registry.concepts["outcome_reason"].summary.lower()
+
+    assert "caller-supplied" in summary or "caller supplied" in summary
+    assert "refus" in summary, (
+        "the entry does not say what happens to a value UBB has never seen"
+    )
+
+
+def test_the_close_reason_names_the_ticket_that_will_consume_it(registry):
+    """`consumers: []` is the honest declaration, and it has to be legible.
+
+    Declaring a consumer that does not yet hold the values is an UNEXCUSED G2
+    or G4 failure — proved, not assumed: the three surfaces §6 will eventually
+    reach produce exactly three findings, and this slice is forbidden from
+    adding a ledger entry to excuse one. So the concept waits, exactly as
+    `unresolved_reason` waited between #316 and #317.
+
+    What tells "waiting" apart from "quietly forgotten" is whether anybody can
+    say which ticket — for EVERY surface, not just the first. #406's acceptance
+    criterion asks for the backend, console and contract consumers to be named,
+    and with the list itself empty the commentary is the only place that can
+    honestly carry them.
+
+    ⚠ **THIS TEST IS SCAFFOLDING, AND #409 DELETES IT.** The moment that ticket
+    declares the backend consumer, `outcome_reason` leaves
+    `concepts_without_consumers` and the first assertion below goes red — so
+    deleting this test is part of paying the debt, in the same commit that
+    drops the concept from the closing equality above. Left standing it would
+    be a test asserting a state the tree no longer has, which is the shape a
+    later reader "fixes" by re-emptying the consumer list.
+    """
+    assert "outcome_reason" in registry.concepts_without_consumers
+
+    commentary = _close_reason_commentary()
+    assert commentary, (
+        "the close reason carries no commentary at all — the block this reads "
+        "is empty, so the assertions below would be about nothing"
+    )
+    for ticket, surfaces in (("#409", "the backend and the contract"),
+                             ("#424", "the console")):
+        assert ticket in commentary, (
+            f"the close reason's own commentary does not name {ticket}, the "
+            f"ticket that brings it to {surfaces}"
+        )

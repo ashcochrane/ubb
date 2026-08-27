@@ -766,6 +766,54 @@ NOT_APPLICABLE_REASON_VALUES = frozenset({
 })
 
 
+# --- outcome_reason ----------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Why a Task or Subtask did not deliver, declared by the caller at the moment
+# it closes one. It explains the declared `outcome` and pairs with the
+# free-text `reason_detail` beside it, which is the cardinality guard that lets
+# this stay a small closed set. `unspecified` is what makes the field cheap to
+# REQUIRE: the caller always has a valid answer and a dashboard always has a
+# bucket. It is NOT the `reason_code` in spend-controls.yaml — that is a
+# different concept wearing the same word, answering why work was STOPPED
+# rather than why it did not deliver, open rather than closed, and consumed by
+# the stop-reason module #140 §3.3 required this to be kept strictly separate
+# from. `parent_closed` here and `parent_killed` there are TWO CONCEPTS, not a
+# near-miss to tidy together: `parent_closed` is what the tenant declares for a
+# Subtask it withdrew because it closed the parent Task, `parent_killed` is
+# what UBB records when it cascaded a spend stop — different actor, different
+# set, different kind. And the producer/consumer reconciliation that lets a
+# closed stop-reason module sit under an open concept DOES NOT TRANSFER: that
+# holds because a stop reason is UBB-produced, whereas this value is
+# caller-supplied, so an unrecognised one is refused at the boundary rather
+# than carried through it.
+#
+# Declared in concepts/tasks.yaml.
+
+OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR = 'upstream_provider_error'
+OUTCOME_REASON_TIMEOUT = 'timeout'
+OUTCOME_REASON_INVALID_INPUT = 'invalid_input'
+OUTCOME_REASON_INTERNAL_ERROR = 'internal_error'
+OUTCOME_REASON_EXECUTION_FAILED = 'execution_failed'
+OUTCOME_REASON_CUSTOMER_CANCELLED = 'customer_cancelled'
+OUTCOME_REASON_SUPERSEDED = 'superseded'
+OUTCOME_REASON_PARENT_CLOSED = 'parent_closed'
+OUTCOME_REASON_UNSPECIFIED = 'unspecified'
+
+OUTCOME_REASON_VALUES = frozenset({
+    OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+    OUTCOME_REASON_TIMEOUT,
+    OUTCOME_REASON_INVALID_INPUT,
+    OUTCOME_REASON_INTERNAL_ERROR,
+    OUTCOME_REASON_EXECUTION_FAILED,
+    OUTCOME_REASON_CUSTOMER_CANCELLED,
+    OUTCOME_REASON_SUPERSEDED,
+    OUTCOME_REASON_PARENT_CLOSED,
+    OUTCOME_REASON_UNSPECIFIED,
+})
+
+
 # --- payment_rail ------------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

@@ -278,13 +278,23 @@ half-importing it would invite a caller to consult two rows and infer the third.
 
 Three things a reader may go looking for, and why they are not here.
 
-- **A value set the decision records left open.** #140 §3.3's list of reasons a
-  Task did not deliver is recorded there as *"illustrative, to be fixed in
-  implementation"*, so it is not a decided set and ADR-0007 §3 forbids parking
-  one under a provisional name. `admission_control.rate_limit_reached` and
-  `indeterminate_reason` are conditional in the same way — #154 §14 records that
-  the first may never be registered, and #158 §12.4 introduces the second with
-  *"where useful"*. The slice that builds each one decides it.
+- **A value set the decision records left open.** `admission_control.rate_limit_reached`
+  and `indeterminate_reason` are conditional — #154 §14 records that the first
+  may never be registered, and #158 §12.4 introduces the second with *"where
+  useful"*. An undecided set is not a set, and ADR-0007 §3 forbids parking one
+  under a provisional name until somebody decides it. The slice that builds each
+  one decides it.
+
+  **#140 §3.3's list of reasons a Task did not deliver has left this bullet
+  (#406).** It stood here as the third example, recorded in its own source as
+  *"illustrative, to be fixed in implementation"*. Slice 5 §6 is the
+  implementation that fixed it: the set is now declared in
+  `concepts/tasks.yaml` as **`outcome_reason`**, nine values, `closed`. It is a
+  distinct concept rather than an extension of the `reason_code` in
+  `concepts/spend-controls.yaml` — that one answers why work was *stopped*, it
+  is open where this is closed, and ADR-0006 R2 forbids two public concepts
+  sharing one public term. This is what "the slice that builds it decides it"
+  looks like when it happens; the entry itself carries the argument.
 - **A migration-ledger entry per disagreeing consumer.** #202 asks for one, and
   this is a conflict between two tickets of the same slice rather than an
   oversight — it is recorded here so the owner can reverse it rather than

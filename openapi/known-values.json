@@ -162,6 +162,12 @@
         "tenant_not_billing"
       ]
     },
+    "outcome_reason": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "closed",
+      "representation": "none"
+    },
     "payment_rail": {
       "advertised": false,
       "backend_serves": null,

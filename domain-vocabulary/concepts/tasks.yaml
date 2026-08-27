@@ -152,6 +152,92 @@ external_task_id:
     - surface: openapi
       path: openapi/v1.json
 
+# THE ONE COINAGE THIS SLICE MAKES (#406, slice 5 spec §6).
+#
+# #140 §3.3 required a reason code on close and called it `reason_code`. The
+# registry's `reason_code` (concepts/spend-controls.yaml) is a DIFFERENT
+# CONCEPT WEARING THE SAME WORD, and ADR-0006 R2 — one canonical public term
+# per concept — forbids two public concepts both being it. Three dispositions
+# were available and §6 rules the first: coin a distinct concept; extend the
+# slice-6-owned `reason_code`, which would mean editing four entries this slice
+# does not own and merging a caller-supplied closed set into a UBB-produced
+# open one; or rule the close reason free text, which contradicts #140 §3.3's
+# own cardinality argument for having a code beside `reason_detail` at all.
+#
+# The name follows the house pattern rather than inventing one: the registry
+# already carries three siblings in exactly this shape — `unresolved_reason`
+# explains an unresolved costing status, `not_applicable_reason` explains a
+# not-applicable pricing status, `affordability_reason` explains an
+# affordability answer. This one explains the declared `outcome`.
+#
+# NO CONSUMERS YET, AND THAT IS THE HONEST DECLARATION. Naming the three
+# surfaces this will eventually reach produces three unexcused gate findings
+# today — G2 on the backend and the console, G4 on the contract — and a slice
+# may not add a ledger entry to excuse a debt it created. So it waits, exactly
+# as `unresolved_reason` waited between #316 and #317.
+#
+# WHICH TICKET BRINGS EACH SURFACE, so that "waiting" can be told apart from
+# "quietly forgotten":
+#
+#   backend   #409 adds the close field that holds these values by reference,
+#             and declares the consumer in that same commit.
+#   openapi   #409 again. G4 lets the contract advertise a value set only once
+#             the backend serves it, so the two cannot be separated — the same
+#             ticket already kills `g4-openapi-task_outcome` beside its backend
+#             twin.
+#   console   #424, the runs surface, which is where a unit of work's terminal
+#             state is rendered and therefore where a reader asks why it did
+#             not deliver. §25 does not pin the reason's home more precisely
+#             than that, so a ticket that moves it should correct this line
+#             rather than assume it was ruled.
+outcome_reason:
+  kind: closed
+  summary: >-
+    Why a Task or Subtask did not deliver, declared by the caller at the moment
+    it closes one. It explains the declared `outcome` and pairs with the
+    free-text `reason_detail` beside it, which is the cardinality guard that
+    lets this stay a small closed set. `unspecified` is what makes the field
+    cheap to REQUIRE: the caller always has a valid answer and a dashboard
+    always has a bucket. It is NOT the `reason_code` in spend-controls.yaml —
+    that is a different concept wearing the same word, answering why work was
+    STOPPED rather than why it did not deliver, open rather than closed, and
+    consumed by the stop-reason module #140 §3.3 required this to be kept
+    strictly separate from. `parent_closed` here and `parent_killed` there are
+    TWO CONCEPTS, not a near-miss to tidy together: `parent_closed` is what the
+    tenant declares for a Subtask it withdrew because it closed the parent
+    Task, `parent_killed` is what UBB records when it cascaded a spend stop —
+    different actor, different set, different kind. And the producer/consumer
+    reconciliation that lets a closed stop-reason module sit under an open
+    concept DOES NOT TRANSFER: that holds because a stop reason is UBB-produced,
+    whereas this value is caller-supplied, so an unrecognised one is refused at
+    the boundary rather than carried through it.
+  values:
+    # A provider the tenant called failed.
+    - upstream_provider_error
+    # The work ran for longer than the tenant itself allows.
+    - timeout
+    # The request could not be worked on.
+    - invalid_input
+    # The tenant's own system failed.
+    - internal_error
+    # The generated wrapper's work block raised (#179 §2). The ONE value the
+    # wrapper may declare on its own, because an exception escaping the block
+    # is evidence for it — #157's rule that generated code may infer the
+    # outcome that costs nothing and never the one that charges. Settles #179
+    # §10 residue 2, which left its membership here open.
+    - execution_failed
+    # The tenant's end customer withdrew the work.
+    - customer_cancelled
+    # Replaced by another unit of work.
+    - superseded
+    # The containing Task was closed by the tenant. See the summary: this is
+    # not `reason_code`'s `parent_killed`.
+    - parent_closed
+    # Declared with no stated cause.
+    - unspecified
+  label_key_prefix: outcome_reason
+  consumers: []
+
 reason_detail:
   kind: free_text
   summary: >-
