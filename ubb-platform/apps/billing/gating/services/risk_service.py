@@ -38,6 +38,16 @@ class RiskService:
             if policy["retired"]:
                 raise ValueError(f"{kind} type {key!r} is retired")
 
+        # ⚠ NOT THE SAME VOCABULARY AS `kind` ABOVE, though two of its words are
+        # spelled the same and the condition is the same one. `kind` is the
+        # registry's `task_type_kind` — two values, saying which altitude a
+        # DECLARED KIND OF WORK is meant for. This is `GroupingField.scope` —
+        # three values including `event`, saying where a grouping field's value
+        # is SET and therefore how far down it is inherited (ADR-0005). Held as
+        # literals because that concept has no registry seat to import from, and
+        # left as its own line rather than aliased to `kind`: folding them
+        # together would make one word of two facts, which is the collision
+        # ADR-0006 §3 uses as its worked example.
         scope = "subtask" if is_subtask else "task"
         try:
             slot_values = DimensionService.admit(tenant, dimensions or {}, scope=scope)

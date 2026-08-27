@@ -3,14 +3,14 @@
 **Status:** accepted — superseded in part
 **Date:** 2026-07-27
 **Superseded in part by:** ADR-0006 on its central noun · ADR-0008 on invariant 7 · ADR-0007 on its
-Migration note
+Migration note · slice 5 (#407) on what a `Task` carries
 **Rewritten:** 2026-08-12, under the canonical noun (#283, slice 2 of #155)
 **Design:** the 2026-07-27 unified-model design and its plan, under `docs/plans/` — frozen history,
 and they still spell the noun this ADR has since renamed
 
-## What the three supersessions mean
+## What the four supersessions mean
 
-Stated here because two of them are easy to read as deletions, and neither is.
+Stated here because three of them are easy to read as deletions, and none is.
 
 - **The central noun** was renamed, not dropped. The registry, its two records and its columns are
   all spelled *grouping field* now, on every surface. The word it replaced is recorded in the
@@ -21,6 +21,11 @@ Stated here because two of them are easy to read as deletions, and neither is.
   which rebuilds the rate entity, the rate book and the selector list together.
 - **The Migration note became a rule with a check behind it**, which is the whole reason the note
   existed — a note is what a future engineer reads after copying the pattern.
+- **A `Task`'s second `*_type` column was collapsed, not removed from the model.** The declaration
+  survives whole; it is carried in ONE column at either altitude, with `Task.parent` saying which.
+  Nothing left the vocabulary: both keys are still reserved, still columns on `Posting` and `Rate`,
+  and still selectors a rule may pin on. This is the one supersession that changes an arity rather
+  than a name, which is why the Decision now spells out what it does not touch.
 
 ## Context
 
@@ -34,9 +39,20 @@ returned fields it could not accept.
 One per-tenant `GroupingField` registry is the sole vocabulary for analytics grouping and rate
 selection. Four reserved keys (`provider`, `event_type`, `task_type`, `subtask_type`) plus ten
 tenant slots (`grouping_field_1`..`grouping_field_10`) exist as columns on `Posting` and `Rate` —
-the fourteen selectors. `Task` carries the ten slots and the two `*_type` keys, and no more: it is
+the fourteen selectors. ~~`Task` carries the ten slots and the two `*_type` keys, and no more~~
+**SUPERSEDED by slice 5 (#407): a `Task` carries the ten slots and ONE `*_type` key.** It is still
 where a task- or subtask-scoped value is set once and inherited downward, not a thing a rate matches
 against. In a `Rate`, `""` is a wildcard and the most-pinned match wins.
+
+**What that supersession does and does not touch.** The FOURTEEN SELECTORS ARE UNCHANGED — both
+`*_type` keys are still columns on `Posting` and on `Rate`, both are still reserved keys, and a rule
+still pins on either. What changed is one level up: a unit of work used to declare its kind in two
+columns set exclusively, one for a whole unit and one for a contained one, and they are the same
+declaration at two altitudes (#154 §3.1). One column carries it now and `Task.parent` says which
+altitude the row is at, so the posting's two axes are filled from that one column read at two
+heights — the root's kind on `task_type`, the leaf's on `subtask_type`. A reader coming here from a
+`Rate` sees no difference; a reader coming here from a `Task` finds one column where this clause
+promised two.
 
 **Ten slots, not six** (#276). The widening is not about migration cost: adding a nullable column to
 a modern Postgres table is a catalog write. It is about demand having nowhere else to go — #273

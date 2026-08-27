@@ -106,6 +106,16 @@ class TestTaskTyping:
         of work carries one in, so *"it has a declared kind"* no longer tells
         the two altitudes apart. Only ``parent`` does — which is exactly what
         the refusal reads.
+
+        ⚠ WHICH DOORS THIS COVERS, stated because "a third level cannot be
+        created" is a claim about a tree and this drives one door. Both doors
+        anything reaches this through are guarded: the start gate refuses first
+        (``affordability_reason.subtask_depth_exceeded``, pinned in
+        ``api/v1/tests/test_subtask_pins.py``) and the creation service refuses
+        again beneath it, which is the one asserted here. ``Task.objects``
+        straight through the ORM is NOT guarded — no database rule expresses
+        this, because the condition lives on another row — and that is
+        unchanged by the collapse rather than introduced by it.
         """
         t, c = self._tc()
         parent = TaskService.create_task(
@@ -124,12 +134,15 @@ class TestTaskTyping:
 
     def test_the_discriminator_offers_exactly_the_registrys_two_values(self):
         """The model's own choices against the generated registry — a claim
-        across two modules, so a third value written locally goes red.
+        across two modules, so a third value DECLARED locally goes red.
 
-        That the values are held by IMPORT rather than restated is a separate
-        claim with a separate owner: the consumer census walks the references
-        themselves, and a second copy of that walk here would only agree with
-        it.
+        ⚠ What it cannot see is the two surviving values being re-spelled as
+        literals: `"task"` compares equal to `TASK_TYPE_KIND_TASK`, so this
+        assertion is about the SET and says nothing about where the members
+        came from. That second claim has its own owner — the consumer census
+        walks the references themselves, which is what pays G2 — and a copy of
+        that walk here would only agree with it. Said out loud because a
+        set-equality test reads like it covers both and covers one.
         """
         assert {value for value, _ in TASK_TYPE_KIND_CHOICES} \
             == TASK_TYPE_KIND_VALUES

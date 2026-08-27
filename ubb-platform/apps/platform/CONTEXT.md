@@ -219,7 +219,8 @@ A tenant's declared kind of work, carrying server-side policy (a COGS ceiling,
 `required_dimensions`) rather than being a bare label; immutable on a `Task` once created. **One
 column carries it at either altitude** — a `Task` and a `Subtask` declare their kind in the same
 place and `Task.parent` is the only thing that says which altitude a row is at.
-(ADR-0005; `apps/platform/work/models.py:TaskType`)
+(ADR-0005, whose Decision clause on what a `Task` carries is superseded on exactly this point;
+`apps/platform/work/models.py:TaskType`)
 _Avoid_: a second name for the contained case. The column that carried one was collapsed into this
 one; a Subtask is the same record with a parent, never a second pricing entity.
 

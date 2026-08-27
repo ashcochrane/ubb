@@ -57,7 +57,13 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
 
     Aggregates ubb_task rows, never ubb_posting: per-unit costs are already
     materialized by the accumulate primitive, with subtask spend rolled into its
-    parent. Top-level units only, so run_count counts JOBS not steps.
+    parent.
+
+    ⚠ ONE ALTITUDE PER ANSWER, AND WHICH ONE IS ALL THE ARGUMENT DECIDES. The
+    default asks about work with no parent, so `run_count` counts each whole
+    unit of work and never what is contained in one — a contained unit's spend
+    is already inside its parent's totals, and counting both would count it
+    twice. The other altitude answers about contained work alone, same terms.
 
     Each row carries its OWN ``unresolved_event_count`` (#328): the number of
     events this KIND of work could not cost, summed over every unit in the

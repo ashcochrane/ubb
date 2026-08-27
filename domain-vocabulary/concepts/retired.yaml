@@ -82,7 +82,7 @@ measurement_key:
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    52 files, 133 occurrences
+    #     units    51 files, 132 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1462,9 +1462,10 @@ measurement_key:
     # ceiling on SPREAD rather than only on what is left to fix, which is the
     # rule now written into `docs/conventions/coding-standards.md`.
     #
-    # #407 MOVED BOTH DENOMINATORS UP AND LEFT `52 files, 133 occurrences`
-    # WHERE #372 PUT THEM (1,677 -> 1,679 swept, 2,077 -> 2,080 tracked), WITH
-    # THE EXCLUSION UP BY ONE (`historical-migrations` 233 -> 234). Three files
+    # #407 MOVED BOTH DENOMINATORS UP AND THE NUMERATOR DOWN BY A WHOLE FILE
+    # (1,677 -> 1,679 swept, 2,077 -> 2,080 tracked, `units` 52 -> 51 files and
+    # 133 -> 132 occurrences), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 233 -> 234). Three files
     # arrive and none leaves: the migration that collapses a unit of work's two
     # type columns into one, which is EXCLUDED and so lifts tracked without
     # lifting swept, and the two generated SDK enum modules minted by the kind
@@ -1484,6 +1485,23 @@ measurement_key:
     # first. The migration's occurrence would not have counted in any case —
     # migrations are excluded — and it was rewritten anyway, because a rule
     # kept only where a gate can see it is not a rule.
+    #
+    # ⚠ AND THEN THE REVIEW PASS TOOK ONE OUT, WHICH IS THE SECOND CASE OF THE
+    # THREE AND OWES AN ACCOUNT OF WHICH SENSE LEFT. The file is
+    # `apps/platform/work/queries.py` and the occurrence was its rollup
+    # docstring's *"Top-level units only, so run_count counts JOBS not steps"*.
+    # ⚠ THAT WAS NOT ONE OF THE THREE SURVIVING SENSES — not currency minor
+    # units, not rate arithmetic, not generated registry text. It was the same
+    # ordinary-English-about-work use this commit had just had to repair in its
+    # own new prose, sitting one paragraph above it in a docstring the commit
+    # was editing anyway; review found the sentence because the commit
+    # falsified its other half (it describes one altitude and the function
+    # answers about two). So the word left as a side effect of correcting a
+    # claim, not as a payment of the sense — the sense is exactly as alive as
+    # it was, and a later reader should not read this fall as progress toward
+    # zero. #372's console fall is the precedent for a whole file leaving; this
+    # one is smaller and needs the distinction stated, because a numerator that
+    # falls for two unrelated reasons looks from the number alone like one.
 
     - term: units
       retired_as: >-

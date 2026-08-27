@@ -1801,10 +1801,13 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     the G4 debt and the backend G2 debt were the same debt read from two sides,
     only the G4 entry is in this seeding, and so only one comes out of it.
 
-    ⚠ #370 IS THE FIRST OF THE FIVE THAT PAID ITS G2 HALF WITHOUT WRITING ANY
-    CODE THAT HOLDS A VALUE, and it is worth saying so rather than letting a
-    reader infer the usual shape. The four before it made a declared consumer
-    import the generated constants. This one found that the module which
+    ⚠ #370 IS STILL THE ONLY ONE OF THE SIX THAT PAID ITS G2 HALF WITHOUT
+    WRITING ANY CODE THAT HOLDS A VALUE, and it is worth saying so rather than
+    letting a reader infer the usual shape. The four before it, and #407 after
+    it, each made a declared consumer import the generated constants — #407 is
+    the shortest version of that, replacing two literals with the two
+    constants, but it is still an import a census can find. This one found that
+    the module which
     already held both values by reference — the receipt's construction
     boundary, which validates a subject against the registry's whole-set name —
     was not the module the registry named, and re-pointed the declaration at it.
