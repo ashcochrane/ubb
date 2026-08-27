@@ -1901,18 +1901,6 @@ entries:
       a required argument of close and the only thing that decides whether a
       Charge fires. Slice 5 rebuilds the lifecycle.
 
-  - id: g2-backend-task_status
-    gate: G2
-    site: ubb-platform/apps/platform/work/models.py::task_status
-    expected: task_status
-    found: 0 of 6 values
-    owner_slice: slice_5
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #140's six states —
-      `cancelled` and `expired` are new and `killed` narrows to genuine spend
-      signals. Slice 5 rebuilds the Task.
-
   - id: g2-backend-tenant_posture
     gate: G2
     site: ubb-platform/apps/platform/tenants/models.py::tenant_posture
@@ -2515,19 +2503,6 @@ entries:
       that. Slice 5 rebuilds Work, and #140 makes the close carry a required
       outcome because the charge keys on how a job ended. The metadata appears
       in that slice.
-
-  - id: g4-openapi-task_status
-    gate: G4
-    site: openapi/v1.json::task_status
-    expected: task_status
-    found: 0 of 6 values
-    owner_slice: slice_5
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 6 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 5 rebuilds Work, and #140's six states replace the ones the
-      model serves today. The metadata appears in that slice.
 
   - id: g4-openapi-tenant_posture
     gate: G4

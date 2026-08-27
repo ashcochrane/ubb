@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.close_task_response_status import CloseTaskResponseStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -25,7 +26,7 @@ class CloseTaskResponse:
     """ 
         Attributes:
             event_count (int):
-            status (str):
+            status (CloseTaskResponseStatus):
             task_id (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
@@ -35,7 +36,7 @@ class CloseTaskResponse:
      """
 
     event_count: int
-    status: str
+    status: CloseTaskResponseStatus
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
@@ -51,7 +52,7 @@ class CloseTaskResponse:
     def to_dict(self) -> dict[str, Any]:
         event_count = self.event_count
 
-        status = self.status
+        status = self.status.value
 
         task_id = self.task_id
 
@@ -93,7 +94,10 @@ class CloseTaskResponse:
         d = dict(src_dict)
         event_count = d.pop("event_count")
 
-        status = d.pop("status")
+        status = CloseTaskResponseStatus(d.pop("status"))
+
+
+
 
         task_id = d.pop("task_id")
 

@@ -238,7 +238,12 @@ The registered unit of agent work — a tenant+customer-scoped grouping of many 
 one logical workflow execution, registered at the start-gate; lives in the kernel so metering and
 billing can both reference it without crossing a product boundary. Carries both running totals
 (billed + provider, denominationally explicit) and its signal points. Status
-`active | completed | failed | killed`. (`apps/platform/work/models.py:Task`)
+`active | completed | failed | cancelled | killed | expired` — six states, held by import from the
+generated registry, of which `active` is the only non-terminal one and **terminal to anything is
+never permitted**. Each of the five is told apart by WHO WROTE IT, which is what lets a money
+decision key on one: `completed` means the tenant declared delivery and nothing else may write it,
+`killed` means UBB stopped the work on a spend signal and nothing tenant-declared may land there.
+(`apps/platform/work/models.py:Task`; registry concept `task_status`)
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
 the open bag is labelling only and never attaches a limit.
 
@@ -247,8 +252,11 @@ A parent-linked child unit of work — **the same record with a parent**, not a 
 a separate pricing entity: a task registered under an active top-level task, declaring its kind in
 the same column its parent uses, with its own COGS limit and lifecycle. Its spend rolls up into the
 parent's totals (the parent's cap covers everything underneath it); crossing its own limit kills it
-alone (`subtask.limit_exceeded`) while the parent keeps running; a parent kill/close cascades
-downward to its active subtasks — never upward. Two altitudes and no third: deeper structure is a
+alone (`subtask.limit_exceeded`) while the parent keeps running; a parent's stop cascades downward
+to its active subtasks — never upward — and **what the cascade writes is not always what the parent
+got**: a kill cascades `killed` and an expiry cascades `expired`, but a CLOSE cascades `cancelled`,
+because the tenant declared the delivery of the parent and declared nothing about each contained
+piece. Two altitudes and no third: deeper structure is a
 task-scoped Grouping Field value, which is already inherited down the tree and already
 cardinality-capped. (`apps/platform/work/models.py:Task.parent`)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
@@ -261,24 +269,52 @@ races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a 
 _Avoid_: "hard stop" — that vocabulary retired with the 429.
 
 **Killed (task)**:
-The stop signal fired for this unit — its own limit was crossed, or the reaper terminated it. Late
-events still land, bill, and count into the killed unit's totals (and its parent's, for a
-subtask); the flip is the durable record that the signal fired, not a wall. Killing a parent
-cascades the flip to its active subtasks; killing a subtask kills it alone.
+**UBB stopped this unit on a spend signal, and that is all it ever means** — a ceiling crossing, the
+patrol, or a parent's kill cascade. Nothing tenant-declared may land here, which is what keeps the
+past-limit report, the stop context and the announcement bookkeeping honest and makes *how often do
+we blow ceilings* answerable without filtering on a reason string first. Late events still land,
+bill, and count into the killed unit's totals (and its parent's, for a subtask); the flip is the
+durable record that the signal fired, not a wall. Killing a parent cascades the flip to its active
+subtasks; killing a subtask kills it alone.
 (`apps/platform/work/services.py:TaskService.kill_task`)
+_Avoid_: reading it as "terminated" in general — the reaper's stop is an **Expired (task)**.
+
+**Expired (task)**:
+**Nobody ever told UBB how this ended.** Both sweepers write it: the >1h safety net for work the SDK
+never closed, and the stale reaper for work that went silent or ran past the absolute age ceiling.
+It replaces a state the model could not honestly give — the safety net used to write `completed`
+with a marker in metadata and the reaper used to write `killed`, so one silence was recorded two
+ways and neither state meant one thing. An expiry can strike a live unit doing long atomic work, and
+that is **not** a failure and must not be counted as one.
+(`apps/platform/work/services.py:TaskService.expire_task`)
+
+**Cancelled (task)**:
+Deliberately stopped or withdrawn. Today its only writer is a parent's CLOSE cascade over still-
+active contained work; an explicit close declaring cancellation joins it when the close carries an
+outcome. It deliberately does **not** map onto `killed`: the kill path announces on the winning
+transition and stamps an announcement id, so a withdrawal landing there would either fire a spurious
+spend event at the customer's workers or become the only `killed` row with no announcement — which
+already means *silently cascaded by a parent*.
+(written by the close cascade in `apps/platform/work/services.py:TaskService.complete_task`)
 
 **Heartbeat**:
-A task's most-recent-event timestamp; its absence past the stale window is what the reaper kills
+A task's most-recent-event timestamp; its absence past the stale window is what the reaper expires
 on. (`apps/platform/work/models.py:Task.last_event_at`)
 
 **Stop reason**:
 The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
 `task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`, plus the kill-metadata-only
-`parent_killed` (a cascade flip, never on an ack or event) and the stop-context-only `suspended`
-(an owner suspended with no open floor episode — taggable, but never an episode reason, so it is
-NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer and
-consumer; rides the ack's `stop_reason`, never an HTTP error.
+`parent_killed` (the KILL cascade's flip, never on an ack or event) and the stop-context-only
+`suspended` (an owner suspended with no open floor episode — taggable, but never an episode reason,
+so it is NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer
+and consumer; rides the ack's `stop_reason`, never an HTTP error.
 (`apps/platform/work/reasons.py`)
+_Note_: the metadata key is still spelled `kill_reason` and now carries an **Expired (task)**'s
+reason too — `stale` / `stale_max_age` on a row that says `expired`. The rename is `outcome_reason`'s,
+in the ticket that wires that concept's consumers; every consumer of the key gates on
+`status == killed` first, so nothing mis-reads it meanwhile. The close and expiry cascades record no
+reason at all yet: the registry names `outcome_reason: parent_closed` and `reason_code:
+silence_window` for them, each owed by the same later tickets.
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though
 immutable pre-removal `Posting.stop_context` rows may still carry it forever.

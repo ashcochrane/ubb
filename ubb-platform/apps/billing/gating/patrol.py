@@ -18,7 +18,10 @@ down. The jobs here join the existing hourly reconcile pass
    that was superseded is never replayed.
 3. ``sweep_over_limit_tasks`` + ``remint_unannounced_kills`` (§C.4) — active
    tasks sitting at-or-past their provider-cost limit are swept into the
-   idempotent kill flow; killed-but-unannounced tasks are re-minted.
+   idempotent kill flow; a stopped-but-unannounced unit is re-minted. The
+   SWEEP is the spend lane and stops only on a crossing, so it writes `killed`
+   alone; the RE-MINT follows the announcement stamp instead, so it covers
+   `expired` as well — the reaper's stop is announced too (#408).
 4. Upward live-balance repair (§D, #45) — ``apps.billing.gating.repair``:
    the grace-gated honesty repair of the prepaid live counter (candidate on
    one pass, min-of-two-measurements relative increment on the next), with
@@ -37,6 +40,9 @@ import logging
 from django.db import transaction
 from django.db.models import Exists, F, OuterRef
 from django.utils import timezone
+
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -200,7 +206,7 @@ def sweep_over_limit_tasks(tenant):
 
     swept = 0
     over = Task.objects.filter(
-        tenant=tenant, status="active",
+        tenant=tenant, status=TASK_STATUS_ACTIVE,
         provider_cost_limit_micros__isnull=False,
         total_provider_cost_micros__gte=F("provider_cost_limit_micros"))
     for task in over.iterator():
@@ -214,14 +220,22 @@ def sweep_over_limit_tasks(tenant):
 
 
 def remint_unannounced_kills(tenant):
-    """§C.4 — re-mint killed tasks whose kill announcement dead-lettered.
+    """§C.4 — re-mint a stopped unit whose announcement dead-lettered.
 
-    Only STAMPED kills qualify: a killed task with a null stamp is silent by
-    design (a cascaded child, whose parent's event was the one signal) — the
-    null-stamp-unannounced case cannot arise for tasks because the winning
-    flip, the event, and the stamp commit in one transaction. The SQL
-    prefilter (stamp points at a terminally failed outbox row) is an
-    optimization; the shared classifier re-checks under the row lock.
+    Only STAMPED stops qualify: a stopped unit with a null stamp is silent by
+    design (cascaded contained work, whose parent's event was the one signal) —
+    the null-stamp-unannounced case cannot arise because the winning flip, the
+    event, and the stamp commit in one transaction. The SQL prefilter (stamp
+    points at a terminally failed outbox row) is an optimization; the shared
+    classifier re-checks under the row lock.
+
+    ⚠ THE STATE FILTER NAMES BOTH ANNOUNCED STOPS (#408). The stamp is what
+    makes a row a candidate — it means UBB announced this and the delivery
+    failed — and the reaper's stop now lands in `expired` rather than `killed`.
+    Leaving the filter on the one state would have quietly stopped re-minting
+    every silence-driven announcement, which is a signal lost with no gate to
+    notice: the row would still carry a stamp pointing at a dead letter and
+    nothing would ever look at it again.
     """
     from apps.platform.events.announcements import UNANNOUNCED, announcement_status
     from apps.platform.events.models import OutboxEvent
@@ -230,7 +244,8 @@ def remint_unannounced_kills(tenant):
     dead_stamp = OutboxEvent.objects.filter(
         id=OuterRef("announce_outbox_id"), status="failed")
     candidates = (Task.objects
-                  .filter(tenant=tenant, status="killed",
+                  .filter(tenant=tenant,
+                          status__in=(TASK_STATUS_KILLED, TASK_STATUS_EXPIRED),
                           announce_outbox_id__isnull=False)
                   .filter(Exists(dead_stamp))
                   .values_list("id", flat=True))
@@ -250,9 +265,13 @@ def remint_unannounced_kills(tenant):
 
 
 def _remint_kill(task, tenant):
-    """Mint the killed unit's current state — same catalog type as the
-    original kill event, current totals, ``re_announcement: true`` — and
-    move the stamp, inside the caller's transaction."""
+    """Mint the stopped unit's current state — same catalog type as the
+    original announcement, current totals, ``re_announcement: true`` — and
+    move the stamp, inside the caller's transaction.
+
+    The unit is `killed` or `expired`, and this reads its state off the row
+    rather than assuming either: re-minting is repairing a delivery, so the
+    event it sends must say what is true now (#408)."""
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import (
         SubtaskLimitExceeded, TaskLimitExceeded)

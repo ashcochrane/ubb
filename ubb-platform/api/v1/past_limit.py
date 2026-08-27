@@ -35,6 +35,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
+from core.vocabulary import TASK_STATUS_KILLED
 from core.cost_totals import (
     UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, cost_total,
     counts_as_unresolved)
@@ -260,8 +261,15 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
 
     # Task/subtask trips: a killed unit whose kill_reason names a limit is
     # an episode; the kill is terminal, so there is never a resume.
+    #
+    # ⚠ THE STATE FILTER IS NOW LOAD-BEARING ON ITS OWN (#408). `killed` means
+    # UBB stopped the work on a spend signal and nothing else — the sweepers
+    # write `expired` — so this report can no longer be handed a silence to
+    # itemize. The reason filter beside it was already carrying that weight
+    # (no sweeper ever wrote a `_UNIT_LIMITS` reason), and the two now agree
+    # rather than one covering for the other.
     unit_qs = Task.objects.filter(
-        customer=customer, status="killed",
+        customer=customer, status=TASK_STATUS_KILLED,
         metadata__kill_reason__in=_UNIT_LIMITS)
     if since is not None:
         unit_qs = unit_qs.filter(completed_at__gte=since)

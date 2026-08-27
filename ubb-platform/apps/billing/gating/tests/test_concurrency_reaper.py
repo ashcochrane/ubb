@@ -1,10 +1,15 @@
 """P5: per-owner concurrency cap (COUNT active tasks) + stale-task reaper.
 
 The concurrency cap is enforcing-only and counts ACTIVE tasks for the billing
-owner (pooled business shares one cap). The reaper KILLS stale active tasks of
+owner (pooled business shares one cap). The reaper EXPIRES stale active work of
 enforcing tenants (heartbeat past the tenant window or age >6h) and emits
-task.limit_exceeded; close_abandoned_tasks stays the baseline >1h completer
-but skips alive (recent heartbeat) tasks.
+task.limit_exceeded; close_abandoned_tasks stays the baseline >1h sweeper but
+skips alive (recent heartbeat) tasks.
+
+⚠ BOTH SWEEPERS WRITE `expired` (#408) — nobody ever told UBB how the work
+ended, which is the one thing a silence CAN say. `killed` is reserved for a
+spend signal, so the assertions below name the state each sweeper is entitled
+to write and never the other.
 """
 from datetime import timedelta
 
@@ -15,11 +20,14 @@ from django.utils import timezone
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.events.models import OutboxEvent
+from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED)
 
 
 def _tenant(mode="prepaid", enf="enforcing", stale=900):
@@ -80,24 +88,25 @@ class TestReaper:
         return OutboxEvent.objects.filter(
             event_type="task.limit_exceeded", payload__task_id=str(task_id)).exists()
 
-    def test_kills_stale_heartbeat_task_and_emits(self):
+    def test_expires_stale_heartbeat_task_and_emits(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         task = _task(t, c, c.id)
         Task.objects.filter(id=task.id).update(last_event_at=timezone.now() - timedelta(minutes=20))
         assert reap_stale_tasks() == 1
         task.refresh_from_db()
-        assert task.status == "killed" and task.metadata.get("kill_reason") == "stale"
+        assert task.status == TASK_STATUS_EXPIRED
+        assert task.metadata.get("kill_reason") == reasons.STALE
         assert self._emitted(task.id)
         payload = OutboxEvent.objects.get(
             event_type="task.limit_exceeded", payload__task_id=str(task.id)).payload
-        assert payload["reason"] == "stale"
+        assert payload["reason"] == reasons.STALE
         assert payload["total_billed_cost_micros"] == 0
         assert payload["total_provider_cost_micros"] == 0
         assert "scope" not in payload
         assert "limit_micros" not in payload
 
-    def test_kills_max_age_task_even_with_recent_heartbeat(self):
+    def test_expires_max_age_task_even_with_recent_heartbeat(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         task = _task(t, c, c.id)
@@ -106,7 +115,8 @@ class TestReaper:
             last_event_at=timezone.now() - timedelta(minutes=1))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "killed" and task.metadata.get("kill_reason") == "stale_max_age"
+        assert task.status == TASK_STATUS_EXPIRED
+        assert task.metadata.get("kill_reason") == reasons.STALE_MAX_AGE
 
     def test_skips_never_emitted_task_before_max_age(self):
         t = _tenant()
@@ -115,7 +125,7 @@ class TestReaper:
         Task.objects.filter(id=task.id).update(created_at=timezone.now() - timedelta(minutes=30))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "active"  # never-emitted task is NOT 15-min reaped
+        assert task.status == TASK_STATUS_ACTIVE  # never-emitted task is NOT 15-min reaped
 
     def test_no_op_for_off_tenant(self):
         t = _tenant(enf="off")
@@ -124,7 +134,7 @@ class TestReaper:
         Task.objects.filter(id=task.id).update(last_event_at=timezone.now() - timedelta(minutes=20))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "active"
+        assert task.status == TASK_STATUS_ACTIVE
 
 
 @pytest.mark.django_db
@@ -132,7 +142,7 @@ class TestCloseAbandonedHeartbeatSkip:
     def setup_method(self):
         cache.clear()
 
-    def test_skips_alive_task_completes_silent_task(self):
+    def test_skips_alive_task_expires_silent_task(self):
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")
         alive = _task(t, c, c.id)
@@ -144,11 +154,11 @@ class TestCloseAbandonedHeartbeatSkip:
         close_abandoned_tasks()
         alive.refresh_from_db()
         silent.refresh_from_db()
-        assert alive.status == "active"      # recent heartbeat -> skipped
-        assert silent.status == "completed"  # no recent activity -> safety-net closed
+        assert alive.status == TASK_STATUS_ACTIVE   # recent heartbeat -> skipped
+        assert silent.status == TASK_STATUS_EXPIRED  # no recent activity -> swept
 
-    def test_completes_alive_task_past_absolute_6h_ceiling(self):
-        # Even a still-emitting task is completed once past the 6h ceiling, so no
+    def test_expires_alive_task_past_absolute_6h_ceiling(self):
+        # Even a still-emitting task is expired once past the 6h ceiling, so no
         # off tenant (no reaper) gets an immortal task.
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="c1")
@@ -158,11 +168,13 @@ class TestCloseAbandonedHeartbeatSkip:
             last_event_at=timezone.now() - timedelta(minutes=1))
         close_abandoned_tasks()
         task.refresh_from_db()
-        assert task.status == "completed"
+        assert task.status == TASK_STATUS_EXPIRED
 
     def test_cedes_enforcing_emitted_stale_task_to_reaper(self):
-        # An enforcing tenant's emitted+stale+>1h task must NOT be 'completed' by
-        # close_abandoned (deterministic terminal state -> the reaper kills it).
+        # An enforcing tenant's emitted+stale+>1h task is left to the reaper.
+        # Both sweepers write the same state now (#408), so the cede buys the
+        # ANNOUNCEMENT rather than a deterministic terminal state: the reaper
+        # tells the tenant's idle workers, and this beat does not.
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         task = _task(t, c, c.id)
@@ -171,7 +183,7 @@ class TestCloseAbandonedHeartbeatSkip:
             last_event_at=timezone.now() - timedelta(minutes=20))
         close_abandoned_tasks()
         task.refresh_from_db()
-        assert task.status == "active"  # ceded to the reaper, not completed
+        assert task.status == TASK_STATUS_ACTIVE  # ceded to the reaper, not completed
 
 
 @pytest.mark.django_db
@@ -201,11 +213,11 @@ class TestP5ReviewFixes:
         Task.objects.filter(id=task.id).update(last_event_at=timezone.now() - timedelta(minutes=20))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "active"  # 20min < 30min window -> not stale yet
+        assert task.status == TASK_STATUS_ACTIVE  # 20min < 30min window -> not stale yet
         Task.objects.filter(id=task.id).update(last_event_at=timezone.now() - timedelta(minutes=40))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "killed"
+        assert task.status == TASK_STATUS_EXPIRED
 
     def test_reaper_zero_stale_disables_heartbeat_keeps_max_age(self):
         t = _tenant(stale=0)
@@ -214,8 +226,8 @@ class TestP5ReviewFixes:
         Task.objects.filter(id=task.id).update(last_event_at=timezone.now() - timedelta(hours=1))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "active"  # heartbeat reaper disabled (stale=0)
+        assert task.status == TASK_STATUS_ACTIVE  # heartbeat reaper disabled (stale=0)
         Task.objects.filter(id=task.id).update(created_at=timezone.now() - timedelta(hours=7))
         reap_stale_tasks()
         task.refresh_from_db()
-        assert task.status == "killed"  # 6h max-age still applies
+        assert task.status == TASK_STATUS_EXPIRED  # 6h max-age still applies

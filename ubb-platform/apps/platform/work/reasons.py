@@ -1,9 +1,17 @@
 """Closed vocabulary of task-stop / limit reasons.
 
 The single source of truth for the `reason` field on TaskLimitExceeded /
-SubtaskLimitExceeded, on the ack stop-verdict fields (`stop_reason`), and on
-Task kill metadata. Every producer and consumer imports these constants; no
-stop path may invent a reason string.
+SubtaskLimitExceeded, on the ack stop-verdict fields (`stop_reason`), and on the
+stop metadata a unit carries. Every producer and consumer imports these
+constants; no stop path may invent a reason string.
+
+⚠ THE METADATA KEY IS STILL SPELLED `kill_reason` AND NOW CARRIES EXPIRIES TOO
+(#408). Both sweepers write `expired` rather than `killed`, and the reason they
+pass — `stale` or `stale_max_age` — is stamped under the key it always used. The
+key is `outcome_reason`'s to rename, in the ticket that wires that concept's
+consumers; renaming it here would be a second spelling of a value set another
+ticket owns. Nothing mis-reads it in the meantime: every consumer of the key
+gates on `status == killed` first.
 
 One-rule model (docs/plans/2026-07-15-one-rule-enforcement-spec.md): these are
 signal reasons, not refusal codes — every usage report answers HTTP 200; the
@@ -37,7 +45,7 @@ from core.vocabulary import REASON_CODE_PARENT_KILLED
 TASK_LIMIT = "task_limit"
 # The subtask's OWN provider-cost limit was crossed; it is killed alone (#38).
 SUBTASK_LIMIT = "subtask_limit"
-# An event landed on a non-active (killed/completed/failed) unit. It was
+# An event landed on a unit already in one of the five terminal states. It was
 # still priced, recorded, and billed — this is a verdict, not a refusal.
 TASK_NOT_ACTIVE = "task_not_active"
 # Customer-wide spend stop: the owner crossed the wallet floor / budget cap.
@@ -46,9 +54,16 @@ CUSTOMER_WIDE_STOP = "customer_wide_stop"
 STALE = "stale"
 # Reaped: task exceeded the maximum wall-clock age.
 STALE_MAX_AGE = "stale_max_age"
-# Kill-metadata only (#38): a subtask flipped by its parent's downward
+# Kill-metadata only (#38): a subtask flipped by its parent's downward KILL
 # cascade — it crossed nothing of its own, so this never rides an ack's
 # stop_reason or a limit event; late events on it say TASK_NOT_ACTIVE.
+#
+# ⚠ IT IS THE KILL CASCADE'S REASON AND NOT THE OTHER TWO'S (#408). A parent's
+# close cascades `cancelled` and a parent's expiry cascades `expired`, and
+# neither records a reason yet: the registry declares `outcome_reason:
+# parent_closed` for the first and `reason_code: silence_window` for the second,
+# and each arrives with the ticket that wires its concept's consumers. Stamping
+# either here would be this module holding a value set it does not own.
 PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
 # customer scope) — an owner suspended with no open floor episode

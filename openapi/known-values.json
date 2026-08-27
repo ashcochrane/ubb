@@ -301,10 +301,18 @@
       "representation": "enum"
     },
     "task_status": {
-      "advertised": false,
-      "backend_serves": "0 of 6 values",
+      "advertised": true,
+      "backend_serves": "6 of 6 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "active",
+        "completed",
+        "failed",
+        "cancelled",
+        "killed",
+        "expired"
+      ]
     },
     "task_type_key": {
       "advertised": false,

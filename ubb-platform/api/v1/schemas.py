@@ -1101,12 +1101,37 @@ class TenantDefaultMarkupOut(Schema):
     markup_micro_percent: Optional[int] = None
 
 
+#: THE DURABLE STATE A UNIT OF WORK IS IN. `closed` — UBB owns every value —
+#: so the export writes a real `enum` here and this file spells none of them.
+#:
+#: EACH VALUE IS TOLD APART BY WHO WROTE IT (#408), which is what makes the set
+#: worth publishing rather than a list of adjectives: `completed` means the
+#: tenant declared delivery and nothing else can write it, `killed` means UBB
+#: stopped the work on a spend signal and nothing tenant-declared can land
+#: there, and `expired` means nobody ever told UBB how it ended. A subscriber
+#: can therefore answer *how often do we blow ceilings* by reading one field,
+#: with nothing to filter out first.
+#:
+#: Non-null everywhere it appears: every unit has a state from the moment it is
+#: registered, so the marker sits on a plain string node and never inside a
+#: union.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+TaskStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "task_status"})]
+
+
 class CloseTaskResponse(Schema):
     task_id: str
-    # Set when the closed unit is a subtask (#38). Closing a PARENT
-    # auto-completes its active subtasks; closing a subtask closes it alone.
+    # Set when the closed unit is contained work (#38). Closing a PARENT
+    # withdraws its still-active contained work — `cancelled`, not `completed`,
+    # because the tenant declared the delivery of the whole unit and declared
+    # nothing about each contained piece (#408). Closing contained work closes
+    # it alone.
     parent_task_id: Optional[str] = None
-    status: str
+    status: TaskStatus
     total_billed_cost_micros: int
     total_provider_cost_micros: int
     #: See `TaskOut.unresolved_event_count` — a closed unit's total is a floor
@@ -1126,7 +1151,7 @@ class TaskOut(Schema):
     #: because a contained unit is the same record with a parent rather than a
     #: second thing (#407). `parent_task_id` above says which altitude.
     task_type: str = ""
-    status: str
+    status: TaskStatus
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
     #:
