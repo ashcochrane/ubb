@@ -1,3 +1,12 @@
+"""What an event inherits from the unit of work it was recorded against.
+
+⚠ THE TWO RESERVED ATTRIBUTION AXES ARE TWO ALTITUDES OF ONE DECLARATION
+(#407). A unit of work declares its kind in a single column and its parent link
+says which altitude it sits at, so an event's `task_type` is the ROOT's declared
+kind and its `subtask_type` is the LEAF's — read from the same column at two
+heights. Before this the leaf carried a second column of its own, and every
+read had to ask which of the two was populated first.
+"""
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
@@ -14,7 +23,7 @@ class TestGroupingFieldInheritance:
         parent = Task.objects.create(tenant=t, customer=c, balance_snapshot_micros=0,
                                     task_type="invoice_batch", grouping_field_1="eu-west-1")
         sub = Task.objects.create(tenant=t, customer=c, parent=parent,
-                                  balance_snapshot_micros=0, subtask_type="ocr")
+                                  balance_snapshot_micros=0, task_type="ocr")
         return t, c, parent, sub
 
     def _record(self, t, c, task, **kw):
@@ -36,6 +45,19 @@ class TestGroupingFieldInheritance:
     def test_event_inherits_subtask_type_from_the_leaf(self):
         t, c, parent, sub = self._fixture()
         assert self._record(t, c, sub).subtask_type == "ocr"
+
+    def test_both_axes_come_from_the_same_column_at_two_altitudes(self):
+        """The pair stated in one act, because the pair is the claim.
+
+        Each unit in the chain declares its kind in the SAME column; which
+        axis a unit's declaration lands on is decided by whether it has a
+        parent, and by nothing on the row itself. Asserting the two separately
+        above leaves open that they came from two columns.
+        """
+        t, c, parent, sub = self._fixture()
+        assert (parent.task_type, sub.task_type) == ("invoice_batch", "ocr")
+        e = self._record(t, c, sub)
+        assert (e.task_type, e.subtask_type) == ("invoice_batch", "ocr")
 
     def test_event_inherits_task_scoped_slot_through_the_parent(self):
         t, c, parent, sub = self._fixture()

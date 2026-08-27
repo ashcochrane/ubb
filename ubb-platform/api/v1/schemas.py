@@ -11,7 +11,7 @@ from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
-from core.vocabulary import RATE_STRUCTURE_PER_UNIT
+from core.vocabulary import RATE_STRUCTURE_PER_UNIT, TASK_TYPE_KIND_TASK
 
 #: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
 #:
@@ -81,12 +81,12 @@ class PreCheckRequest(Schema):
     # default_subtask_provider_cost_limit_micros when parent_task_id is set);
     # absent both, the unit is uncapped and no signal ever fires.
     provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
-    # The declared KIND of work (design D7). Resolves the server-side COGS
-    # ceiling; a caller may request lower via provider_cost_limit_micros but
-    # never higher.
+    # The declared KIND of work (design D7), at EITHER altitude: a unit of
+    # work declares its kind once and `parent_task_id` above is what says
+    # whether that kind is being used for a whole unit or a contained one
+    # (#407). Resolves the server-side COGS ceiling; a caller may request lower
+    # via provider_cost_limit_micros but never higher.
     task_type: Optional[str] = Field(default=None, max_length=64)
-    # Set instead of task_type when parent_task_id is present.
-    subtask_type: Optional[str] = Field(default=None, max_length=64)
     # Declared grouping field values at task/subtask scope, inherited by every
     # event in the tree (design D6). Keys must be declared; values are
     # cardinality-capped on write.
@@ -113,8 +113,10 @@ class PreCheckResponse(Schema):
     # Set when the started unit is a subtask — the parent it registered under.
     parent_task_id: Optional[str] = None
     provider_cost_limit_micros: Optional[int] = None
+    #: The declared kind of work the started unit was registered under, at
+    #: whichever altitude it sits at — `parent_task_id` above is what says
+    #: which (#407).
     task_type: Optional[str] = None
-    subtask_type: Optional[str] = None
 
 
 #: What the caller's own cost figure MEANS, published on the wire rather than
@@ -1120,8 +1122,10 @@ class CloseTaskResponse(Schema):
 class TaskOut(Schema):
     task_id: str
     parent_task_id: Optional[str] = None
+    #: The declared kind of work this unit is, at either altitude — one field,
+    #: because a contained unit is the same record with a parent rather than a
+    #: second thing (#407). `parent_task_id` above says which altitude.
     task_type: str = ""
-    subtask_type: str = ""
     status: str
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
@@ -1159,7 +1163,7 @@ def task_out(t):
     return {
         "task_id": str(t.id),
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
-        "task_type": t.task_type, "subtask_type": t.subtask_type,
+        "task_type": t.task_type,
         "status": t.status,
         "total_provider_cost_micros": t.total_provider_cost_micros,
         "unresolved_event_count": t.unresolved_event_count,
@@ -2385,9 +2389,31 @@ class GroupingFieldValuesOut(Schema):
     values: list[str]
 
 
+#: WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR. `closed` — UBB owns
+#: both values — so the export writes a real `enum` here and this file spells
+#: neither of them; the default below is the registry's own constant for the
+#: same reason.
+#:
+#: IT IS THE ONE THING A UNIT'S SINGLE TYPE COLUMN CANNOT CARRY (#407). A unit
+#: of work declares WHAT kind of work it is in one column, and its parent link
+#: says which altitude it is at; the declaration says which altitude its kind
+#: was MEANT for, which is what lets a bad declaration be refused when it is
+#: made rather than when it is used.
+#:
+#: Non-null on both schemas: every declaration is for one altitude or the
+#: other, so the marker sits on a plain string node and never inside a union —
+#: the trap `UnresolvedReason` argues in full.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+TaskTypeKind = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "task_type_kind"})]
+
+
 class TaskTypeIn(Schema):
     key: str = Field(max_length=64)
-    kind: str = "task"
+    kind: TaskTypeKind = TASK_TYPE_KIND_TASK
     default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
     required_dimensions: list[str] = Field(default_factory=list, max_length=6)
 
@@ -2398,7 +2424,7 @@ class TaskTypeRegistryIn(Schema):
 
 class TaskTypeOut(Schema):
     key: str
-    kind: str
+    kind: TaskTypeKind
     default_provider_cost_limit_micros: Optional[int] = None
     required_dimensions: list[str]
     retired: bool

@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.task_type_in_kind import TaskTypeInKind
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -26,13 +27,13 @@ class TaskTypeIn:
         Attributes:
             key (str):
             default_provider_cost_limit_micros (int | None | Unset):
-            kind (str | Unset):  Default: 'task'.
+            kind (TaskTypeInKind | Unset):  Default: TaskTypeInKind.TASK.
             required_dimensions (list[str] | Unset):
      """
 
     key: str
     default_provider_cost_limit_micros: int | None | Unset = UNSET
-    kind: str | Unset = 'task'
+    kind: TaskTypeInKind | Unset = TaskTypeInKind.TASK
     required_dimensions: list[str] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -49,7 +50,10 @@ class TaskTypeIn:
         else:
             default_provider_cost_limit_micros = self.default_provider_cost_limit_micros
 
-        kind = self.kind
+        kind: str | Unset = UNSET
+        if not isinstance(self.kind, Unset):
+            kind = self.kind.value
+
 
         required_dimensions: list[str] | Unset = UNSET
         if not isinstance(self.required_dimensions, Unset):
@@ -89,7 +93,15 @@ class TaskTypeIn:
         default_provider_cost_limit_micros = _parse_default_provider_cost_limit_micros(d.pop("default_provider_cost_limit_micros", UNSET))
 
 
-        kind = d.pop("kind", UNSET)
+        _kind = d.pop("kind", UNSET)
+        kind: TaskTypeInKind | Unset
+        if isinstance(_kind,  Unset):
+            kind = UNSET
+        else:
+            kind = TaskTypeInKind(_kind)
+
+
+
 
         required_dimensions = cast(list[str], d.pop("required_dimensions", UNSET))
 

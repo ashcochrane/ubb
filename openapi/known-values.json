@@ -313,10 +313,14 @@
       "representation": "none"
     },
     "task_type_kind": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "task",
+        "subtask"
+      ]
     },
     "tenant_posture": {
       "advertised": false,

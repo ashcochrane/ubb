@@ -1,6 +1,7 @@
 from django.db import models
 
 from core.models import BaseModel
+from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
 
 
 TASK_STATUS_CHOICES = [
@@ -10,7 +11,14 @@ TASK_STATUS_CHOICES = [
     ("killed", "Killed"),
 ]
 
-TASK_TYPE_KIND_CHOICES = [("task", "Task"), ("subtask", "Subtask")]
+# The identities come from the generated registry and only the WORDING is
+# written here (ADR-0008 §4): a value set the registry owns is held by
+# reference so the backend cannot keep a second copy of it that drifts, while
+# the English beside each value is display text this model is free to spell.
+TASK_TYPE_KIND_CHOICES = [
+    (TASK_TYPE_KIND_TASK, "Task"),
+    (TASK_TYPE_KIND_SUBTASK, "Subtask"),
+]
 
 
 def _empty_list():
@@ -31,8 +39,16 @@ class TaskType(BaseModel):
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="task_types")
     key = models.SlugField(max_length=64)
+    # WHICH ALTITUDE THIS DECLARATION IS FOR, and it survives the collapse of
+    # the unit's two type columns into one (#154 §3.1). A unit says WHAT kind
+    # of work it is in one column and its parent link says which altitude it
+    # is at; the declaration says which altitude its kind was MEANT for — so a
+    # kind meant for contained work can be refused when it is declared rather
+    # than when it is used. The uniqueness key below carries it, so one word
+    # may name a kind of work at either altitude and the two are different
+    # declarations with different policy.
     kind = models.CharField(max_length=8, choices=TASK_TYPE_KIND_CHOICES,
-                            default="task")
+                            default=TASK_TYPE_KIND_TASK)
     # COGS-denominated, matching Task.provider_cost_limit_micros. NULL = fall
     # back to the RiskConfig tenant default, then to uncapped.
     default_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
@@ -83,15 +99,19 @@ class Task(BaseModel):
         "self", on_delete=models.CASCADE, null=True, blank=True,
         related_name="subtasks",
     )
-    # The KIND of work this instance is (design D7). Immutable after creation
-    # for the same reason `parent` is: accumulate_cost reads it without a
-    # lock, and a re-typed task would retroactively change what every
-    # already-settled event on it means. "" = untyped (a tenant who never
-    # declared a vocabulary).
+    # THE KIND OF WORK THIS UNIT IS (design D7), at either altitude — ONE
+    # column, and `parent` above is the only thing that says which altitude it
+    # is at (#154 §3.1). There used to be a second column for a contained
+    # unit, set exclusively with this one, so every read had to ask which of
+    # the two was populated before it could ask anything useful; the two were
+    # the same declaration twice over, and a contained unit is the same record
+    # with a parent rather than a second thing.
+    #
+    # Immutable after creation for the same reason `parent` is: accumulate_cost
+    # reads it without a lock, and a re-typed unit would retroactively change
+    # what every already-settled event on it means. "" = untyped (a tenant who
+    # never declared a vocabulary).
     task_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
-    # Set instead of task_type when `parent` is set. Same immutability.
-    subtask_type = models.CharField(max_length=64, blank=True, default="",
-                                    db_index=True)
     # Task-scoped declared values (design D6), bound to slots by the tenant's
     # GroupingField registry and named for it since #276. Inherited by EVERY
     # event in this task's tree, including events on its subtasks, so a caller
@@ -230,32 +250,29 @@ class Task(BaseModel):
                 f"provider={self.total_provider_cost_micros})")
 
     def save(self, *args, **kwargs):
-        """Guard the two immutable type fields (D7/D8).
+        """Guard the immutable declared kind (D7/D8) — ONE guard, because
+        there is one column, at whichever altitude the row sits.
 
-        `_loaded_types` is stamped either by `from_db` (a row read back from
-        the database) or, right below, immediately after this instance's own
-        first INSERT — so the very object returned by `.create()` also arms
-        the guard for its next in-memory `.save()`, with no refetch required.
-        A freshly constructed, never-yet-saved instance has no
-        `_loaded_types` and skips the check on that first save.
+        `_loaded_task_type` is stamped either by `from_db` (a row read back
+        from the database) or, right below, immediately after this instance's
+        own first INSERT — so the very object returned by `.create()` also
+        arms the guard for its next in-memory `.save()`, with no refetch
+        required. A freshly constructed, never-yet-saved instance has no
+        `_loaded_task_type` and skips the check on that first save.
         """
         was_adding = self._state.adding
-        if not was_adding and hasattr(self, "_loaded_types"):
-            was_task, was_subtask = self._loaded_types
-            if self.task_type != was_task:
+        if not was_adding and hasattr(self, "_loaded_task_type"):
+            was = self._loaded_task_type
+            if self.task_type != was:
                 raise ValueError(
-                    f"task_type is immutable: {was_task!r} -> {self.task_type!r}")
-            if self.subtask_type != was_subtask:
-                raise ValueError(
-                    f"subtask_type is immutable: {was_subtask!r} -> "
-                    f"{self.subtask_type!r}")
+                    f"task_type is immutable: {was!r} -> {self.task_type!r}")
         super().save(*args, **kwargs)
         if was_adding:
-            self._loaded_types = (self.task_type, self.subtask_type)
+            self._loaded_task_type = self.task_type
 
     @classmethod
     def from_db(cls, db, field_names, values):
         instance = super().from_db(db, field_names, values)
-        if "task_type" in field_names and "subtask_type" in field_names:
-            instance._loaded_types = (instance.task_type, instance.subtask_type)
+        if "task_type" in field_names:
+            instance._loaded_task_type = instance.task_type
         return instance

@@ -1,33 +1,53 @@
 from django.core.cache import cache
 
+from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
+
 from apps.billing.gating.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
 
 
 class RiskService:
     @staticmethod
-    def resolve_type_policy(tenant, *, task_type, subtask_type, dimensions,
+    def resolve_type_policy(tenant, *, task_type, dimensions,
                             requested_limit_micros, is_subtask):
-        """Validate the declared type + dimensions and resolve the ceiling.
+        """Validate the declared kind of work + dimensions and resolve the
+        ceiling.
 
-        Precedence (design D7): caller request (only if <= the type default) ->
-        type default -> RiskConfig tenant default -> uncapped. Returns
-        (key, slot_values, limit_micros); a None limit means "no type-level
-        opinion" — the caller applies the existing RiskConfig fallback.
+        ``task_type`` is the caller's declared kind of work at EITHER altitude
+        (#407): a unit of work declares its kind once, and whether it has a
+        parent is what says which altitude it is at. ``is_subtask`` is that
+        parent link, which is why the declaration this looks up is chosen by it
+        and not by which of two fields the caller filled in.
+
+        Precedence (design D7): caller request (only if <= the declared
+        default) -> the declared default -> RiskConfig tenant default ->
+        uncapped. Returns (key, slot_values, limit_micros); a None limit means
+        "no type-level opinion" — the caller applies the existing RiskConfig
+        fallback.
         """
         from apps.platform.grouping_fields.services import DimensionError, DimensionService
         from apps.platform.work.queries import task_type_policy
 
-        kind = "subtask" if is_subtask else "task"
-        key = (subtask_type if is_subtask else task_type) or ""
+        kind = TASK_TYPE_KIND_SUBTASK if is_subtask else TASK_TYPE_KIND_TASK
+        key = task_type or ""
         policy = None
         if key:
             policy = task_type_policy(tenant.id, key, kind)
             if policy is None:
-                raise ValueError(f"{kind}_type {key!r} is not declared")
+                raise ValueError(f"{kind} type {key!r} is not declared")
             if policy["retired"]:
-                raise ValueError(f"{kind}_type {key!r} is retired")
+                raise ValueError(f"{kind} type {key!r} is retired")
 
+        # ⚠ NOT THE SAME VOCABULARY AS `kind` ABOVE, though two of its words are
+        # spelled the same and the condition is the same one. `kind` is the
+        # registry's `task_type_kind` — two values, saying which altitude a
+        # DECLARED KIND OF WORK is meant for. This is `GroupingField.scope` —
+        # three values including `event`, saying where a grouping field's value
+        # is SET and therefore how far down it is inherited (ADR-0005). Held as
+        # literals because that concept has no registry seat to import from, and
+        # left as its own line rather than aliased to `kind`: folding them
+        # together would make one word of two facts, which is the collision
+        # ADR-0006 §3 uses as its worked example.
         scope = "subtask" if is_subtask else "task"
         try:
             slot_values = DimensionService.admit(tenant, dimensions or {}, scope=scope)
@@ -39,7 +59,7 @@ class RiskService:
             missing = [d for d in policy["required_dimensions"] if d not in supplied]
             if missing:
                 raise ValueError(
-                    f"{kind}_type {key!r} missing required grouping field(s): "
+                    f"{kind} type {key!r} missing required grouping field(s): "
                     f"{missing}")
 
         type_default = policy["default_provider_cost_limit_micros"] if policy else None
@@ -47,7 +67,7 @@ class RiskService:
             if type_default is not None and requested_limit_micros > type_default:
                 raise ValueError(
                     f"provider_cost_limit_micros {requested_limit_micros} exceeds "
-                    f"the {kind}_type ceiling {type_default}")
+                    f"the {kind} type ceiling {type_default}")
             limit = requested_limit_micros
         elif type_default is not None:
             limit = type_default
@@ -58,7 +78,7 @@ class RiskService:
     @staticmethod
     def check(customer, create_task=False, task_metadata=None, external_task_id="",
               provider_cost_limit_micros=None, parent_task_id=None,
-              task_type=None, subtask_type=None, dimensions=None):
+              task_type=None, dimensions=None):
         from apps.billing.accounts import resolve_billing_owner
         owner = resolve_billing_owner(customer)
         # Status: gate if the seat OR its billing-owner (business) is suspended/closed
@@ -188,7 +208,7 @@ class RiskService:
                 resolved_key, slot_values, provider_cost_limit_micros = (
                     RiskService.resolve_type_policy(
                         customer.tenant, task_type=task_type,
-                        subtask_type=subtask_type, dimensions=dimensions,
+                        dimensions=dimensions,
                         requested_limit_micros=provider_cost_limit_micros,
                         is_subtask=parent is not None))
                 # One-rule (#37): the limit is COGS-denominated — passed at
@@ -231,17 +251,16 @@ class RiskService:
                     external_task_id=external_task_id,
                     # Tier-2 (D4/I6): pin the resolved billing owner on the task.
                     billing_owner_id=owner.id,
-                    # Design D7/D6: the root's type is what events inherit
-                    # (Task 10), so only ONE of task_type/subtask_type is
-                    # ever non-empty on a given row.
-                    task_type=resolved_key if parent is None else "",
-                    subtask_type=resolved_key if parent is not None else "",
+                    # Design D7/D6: ONE column carries the declared kind of
+                    # work at either altitude (#407), so the resolved key is
+                    # written the same way whether or not there is a parent —
+                    # and `parent` above is what says which altitude it is at.
+                    task_type=resolved_key,
                     dimension_slots=slot_values,
                 )
             result["task_id"] = str(task.id)
             result["parent_task_id"] = str(parent.id) if parent else None
             result["provider_cost_limit_micros"] = task.provider_cost_limit_micros
             result["task_type"] = task.task_type or None
-            result["subtask_type"] = task.subtask_type or None
 
         return result

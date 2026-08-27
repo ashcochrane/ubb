@@ -4396,18 +4396,6 @@
             "title": "Start Task",
             "type": "boolean"
           },
-          "subtask_type": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtask Type"
-          },
           "task_metadata": {
             "anyOf": [
               {
@@ -4488,17 +4476,6 @@
               }
             ],
             "title": "Reason"
-          },
-          "subtask_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtask Type"
           },
           "task_id": {
             "anyOf": [
@@ -6759,11 +6736,6 @@
             "title": "Status",
             "type": "string"
           },
-          "subtask_type": {
-            "default": "",
-            "title": "Subtask Type",
-            "type": "string"
-          },
           "subtasks": {
             "items": {
               "$ref": "#/components/schemas/TaskOut"
@@ -6862,11 +6834,6 @@
             "title": "Status",
             "type": "string"
           },
-          "subtask_type": {
-            "default": "",
-            "title": "Subtask Type",
-            "type": "string"
-          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -6927,8 +6894,13 @@
           },
           "kind": {
             "default": "task",
+            "enum": [
+              "task",
+              "subtask"
+            ],
             "title": "Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "task_type_kind"
           },
           "required_dimensions": {
             "items": {
@@ -6963,8 +6935,13 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "task",
+              "subtask"
+            ],
             "title": "Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "task_type_kind"
           },
           "required_dimensions": {
             "items": {

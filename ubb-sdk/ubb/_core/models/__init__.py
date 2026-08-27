@@ -217,7 +217,9 @@ from .task_detail_out_dimensions import TaskDetailOutDimensions
 from .task_out import TaskOut
 from .task_out_dimensions import TaskOutDimensions
 from .task_type_in import TaskTypeIn
+from .task_type_in_kind import TaskTypeInKind
 from .task_type_out import TaskTypeOut
+from .task_type_out_kind import TaskTypeOutKind
 from .task_type_registry_in import TaskTypeRegistryIn
 from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
@@ -508,7 +510,9 @@ __all__ = (
     "TaskOut",
     "TaskOutDimensions",
     "TaskTypeIn",
+    "TaskTypeInKind",
     "TaskTypeOut",
+    "TaskTypeOutKind",
     "TaskTypeRegistryIn",
     "TaskTypeRegistryOut",
     "TenantBillingPeriodListResponse",

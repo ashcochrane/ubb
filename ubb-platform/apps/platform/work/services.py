@@ -18,8 +18,7 @@ class TaskService:
     def create_task(tenant, customer, balance_snapshot_micros,
                     provider_cost_limit_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
-                    parent=None, task_type="", subtask_type="",
-                    dimension_slots=None):
+                    parent=None, task_type="", dimension_slots=None):
         """Create a Task, snapshotting limit config and wallet balance.
         Passing ``parent`` registers a SUBTASK under it (#38) — a Task row
         with the self-FK set, one containment level at launch.
@@ -32,10 +31,11 @@ class TaskService:
         reapers never re-resolve a re-parented owner. Must be called inside
         @transaction.atomic.
 
-        ``task_type``/``subtask_type`` and ``dimension_slots`` (design D7/D6)
-        are pure pass-through: the caller (billing's start-gate) already
-        resolved the declared type and admitted the grouping field values —
-        TaskService only writes what it is given.
+        ``task_type`` and ``dimension_slots`` (design D7/D6) are pure
+        pass-through: the caller (billing's start-gate) already resolved the
+        declared kind of work and admitted the grouping field values —
+        TaskService only writes what it is given. ``task_type`` is the whole
+        declaration at EITHER altitude; ``parent`` is what says which.
         """
         if parent is not None and parent.parent_id is not None:
             raise ValueError(
@@ -51,7 +51,6 @@ class TaskService:
             external_task_id=external_task_id,
             billing_owner_id=billing_owner_id,
             task_type=task_type,
-            subtask_type=subtask_type,
             **(dimension_slots or {}),
         )
 

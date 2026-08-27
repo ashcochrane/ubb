@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.task_type_out_kind import TaskTypeOutKind
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -25,14 +26,14 @@ class TaskTypeOut:
     """ 
         Attributes:
             key (str):
-            kind (str):
+            kind (TaskTypeOutKind):
             required_dimensions (list[str]):
             retired (bool):
             default_provider_cost_limit_micros (int | None | Unset):
      """
 
     key: str
-    kind: str
+    kind: TaskTypeOutKind
     required_dimensions: list[str]
     retired: bool
     default_provider_cost_limit_micros: int | None | Unset = UNSET
@@ -45,7 +46,7 @@ class TaskTypeOut:
     def to_dict(self) -> dict[str, Any]:
         key = self.key
 
-        kind = self.kind
+        kind = self.kind.value
 
         required_dimensions = self.required_dimensions
 
@@ -80,7 +81,10 @@ class TaskTypeOut:
         d = dict(src_dict)
         key = d.pop("key")
 
-        kind = d.pop("kind")
+        kind = TaskTypeOutKind(d.pop("kind"))
+
+
+
 
         required_dimensions = cast(list[str], d.pop("required_dimensions"))
 

@@ -247,7 +247,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # `RenameField`'s `old_name` is the retired spelling — and it is the
         # last file in the tree where that word appears at all — a rename that
         # could not name what it retires would not be reviewable.
-        "historical-migrations": (UNTIL_SLICE_8, 233, 19),
+        # 233 -> 234 in #407: a unit of work's two type columns collapse into
+        # one, and the migration carries every contained unit's declared kind
+        # onto the surviving column before dropping the second.
+        # ⚠ It names NO retired term — `subtask_type` is a live column name,
+        # not a retirement — and moves this number only because the rule covers
+        # every migration directory wholesale. Read the run of entries above
+        # and the opposite is the easy inference.
+        "historical-migrations": (UNTIL_SLICE_8, 234, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

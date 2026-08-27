@@ -38,7 +38,6 @@ class TaskOut:
             dimensions (TaskOutDimensions | Unset):
             parent_task_id (None | str | Unset):
             provider_cost_limit_micros (int | None | Unset):
-            subtask_type (str | Unset):  Default: ''.
             task_type (str | Unset):  Default: ''.
      """
 
@@ -54,7 +53,6 @@ class TaskOut:
     dimensions: TaskOutDimensions | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
-    subtask_type: str | Unset = ''
     task_type: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -102,8 +100,6 @@ class TaskOut:
         else:
             provider_cost_limit_micros = self.provider_cost_limit_micros
 
-        subtask_type = self.subtask_type
-
         task_type = self.task_type
 
 
@@ -127,8 +123,6 @@ class TaskOut:
             field_dict["parent_task_id"] = parent_task_id
         if provider_cost_limit_micros is not UNSET:
             field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
-        if subtask_type is not UNSET:
-            field_dict["subtask_type"] = subtask_type
         if task_type is not UNSET:
             field_dict["task_type"] = task_type
 
@@ -196,8 +190,6 @@ class TaskOut:
         provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
 
 
-        subtask_type = d.pop("subtask_type", UNSET)
-
         task_type = d.pop("task_type", UNSET)
 
         task_out = cls(
@@ -213,7 +205,6 @@ class TaskOut:
             dimensions=dimensions,
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
-            subtask_type=subtask_type,
             task_type=task_type,
         )
 

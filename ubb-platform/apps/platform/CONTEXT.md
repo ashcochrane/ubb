@@ -215,13 +215,21 @@ inheritance down the task tree; immutable once declared, since re-scoping would 
 rows disagree about where a value came from. (ADR-0005)
 
 **Task type**:
-A tenant's declared kind of top-level work, carrying server-side policy (a COGS ceiling,
-`required_dimensions`) rather than being a bare label; immutable on a `Task` once created.
-(ADR-0005; `apps/platform/work/models.py:TaskType`)
+A tenant's declared kind of work, carrying server-side policy (a COGS ceiling,
+`required_dimensions`) rather than being a bare label; immutable on a `Task` once created. **One
+column carries it at either altitude** — a `Task` and a `Subtask` declare their kind in the same
+place and `Task.parent` is the only thing that says which altitude a row is at.
+(ADR-0005, whose Decision clause on what a `Task` carries is superseded on exactly this point;
+`apps/platform/work/models.py:TaskType`)
+_Avoid_: a second name for the contained case. The column that carried one was collapsed into this
+one; a Subtask is the same record with a parent, never a second pricing entity.
 
-**Subtask type**:
-The `Subtask`-kind counterpart to task type — a declared kind of step work, with its own policy.
-(ADR-0005; `apps/platform/work/models.py:TaskType`)
+**Task type kind**:
+`task | subtask` on the declaration, saying which altitude a declared kind of work is MEANT for —
+the one thing a `Task`'s single type column cannot carry, and what lets a declaration be refused
+when it is made rather than when it is used. It is part of the declaration's uniqueness key, so one
+word may name a kind of work at either altitude and the two are different declarations with
+different policy. (`apps/platform/work/models.py:TaskType.kind`; registry concept `task_type_kind`)
 
 ## Tasks
 
@@ -235,11 +243,14 @@ _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a 
 the open bag is labelling only and never attaches a limit.
 
 **Subtask**:
-A parent-linked child unit of work — a task registered under an active top-level task, with its
-own COGS limit and lifecycle. Its spend rolls up into the parent's totals (the parent's cap covers
-everything underneath it); crossing its own limit kills it alone (`subtask.limit_exceeded`) while
-the parent keeps running; a parent kill/close cascades downward to its active subtasks — never
-upward. One containment level at launch. (`apps/platform/work/models.py:Task.parent`)
+A parent-linked child unit of work — **the same record with a parent**, not a second model and not
+a separate pricing entity: a task registered under an active top-level task, declaring its kind in
+the same column its parent uses, with its own COGS limit and lifecycle. Its spend rolls up into the
+parent's totals (the parent's cap covers everything underneath it); crossing its own limit kills it
+alone (`subtask.limit_exceeded`) while the parent keeps running; a parent kill/close cascades
+downward to its active subtasks — never upward. Two altitudes and no third: deeper structure is a
+task-scoped Grouping Field value, which is already inherited down the tree and already
+cardinality-capped. (`apps/platform/work/models.py:Task.parent`)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 
 **Task limit (provider-cost limit)**:

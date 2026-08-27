@@ -124,12 +124,17 @@ def _inherit_dimensions(task_id, dimension_slots):
     resolved here. The other two reserved axes are, and so are the ten slots.
 
     Precedence per slot: the event's own value, then the leaf unit's, then its
-    parent's, then "". `task_type` always comes from the ROOT of the chain and
-    `subtask_type` from the leaf when it has a parent — so a subtask's events
-    carry both without the caller repeating either.
+    parent's, then "".
+
+    THE TWO RESERVED AXES ARE TWO ALTITUDES OF ONE DECLARATION. A unit of work
+    declares its kind in a single column (#407) and its parent link says which
+    altitude it is at, so the event's `task_type` is the ROOT's declared kind
+    and its `subtask_type` is the LEAF's when the leaf has a parent — read from
+    the same column at two heights, never from two columns on one row. A
+    subtask's events carry both without the caller repeating either.
 
     One query for the leaf and one for its parent; containment is a single
-    level (tasks/models.py:34-38), so this never recurses.
+    level (`work/models.py:Task.parent`), so this never recurses.
     """
     out = {"task_type": "", "subtask_type": ""}
     out.update({s: (dimension_slots or {}).get(s, "") for s in SLOTS})
@@ -137,7 +142,7 @@ def _inherit_dimensions(task_id, dimension_slots):
         return out
 
     from apps.platform.work.models import Task
-    cols = ("id", "parent_id", "task_type", "subtask_type") + SLOTS
+    cols = ("id", "parent_id", "task_type") + SLOTS
     leaf = Task.objects.filter(id=task_id).values(*cols).first()
     if leaf is None:
         return out
@@ -146,7 +151,7 @@ def _inherit_dimensions(task_id, dimension_slots):
         out["task_type"] = leaf["task_type"]
         chain = (leaf,)
     else:
-        out["subtask_type"] = leaf["subtask_type"]
+        out["subtask_type"] = leaf["task_type"]
         root = Task.objects.filter(id=leaf["parent_id"]).values(*cols).first()
         out["task_type"] = (root or {}).get("task_type", "")
         chain = (leaf, root) if root else (leaf,)

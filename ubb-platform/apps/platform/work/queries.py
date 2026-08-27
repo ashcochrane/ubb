@@ -57,7 +57,13 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
 
     Aggregates ubb_task rows, never ubb_posting: per-unit costs are already
     materialized by the accumulate primitive, with subtask spend rolled into its
-    parent. Top-level units only, so run_count counts JOBS not steps.
+    parent.
+
+    ⚠ ONE ALTITUDE PER ANSWER, AND WHICH ONE IS ALL THE ARGUMENT DECIDES. The
+    default asks about work with no parent, so `run_count` counts each whole
+    unit of work and never what is contained in one — a contained unit's spend
+    is already inside its parent's totals, and counting both would count it
+    twice. The other altitude answers about contained work alone, same terms.
 
     Each row carries its OWN ``unresolved_event_count`` (#328): the number of
     events this KIND of work could not cost, summed over every unit in the
@@ -72,6 +78,14 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
     decorate this block have gone rather than been left reading as though they
     guarded something. The nullable column is the POSTING's, one layer down, and
     the accumulate primitive is where its absence is turned into the count.
+
+    ⚠ ``group_by`` NAMES AN ALTITUDE, NOT A COLUMN (#407). A unit of work
+    declares its kind in ONE column at either altitude, so both answers group
+    on that column and the parent link — the only thing that says which
+    altitude a row is at — is what the argument selects on. The two accepted
+    values stay the reserved attribution axes a posting carries, which is what
+    a caller is asking about and what the analytics surface beside this one
+    groups by.
     """
     if group_by not in ("task_type", "subtask_type"):
         raise ValueError("group_by must be task_type or subtask_type")
@@ -90,8 +104,8 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
     # by name (e.g. Avg("total_provider_cost_micros")) — Django resolves the
     # string against the just-added Sum annotation instead of the raw column,
     # which is an aggregate-of-aggregate and Postgres rejects it.
-    rows = (qs.exclude(**{group_by: ""})
-            .values(group_by)
+    rows = (qs.exclude(task_type="")
+            .values("task_type")
             .annotate(
                 run_count=Count("id"),
                 sum_provider_cost_micros=Sum("total_provider_cost_micros"),
@@ -106,7 +120,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
             )
             .order_by("-sum_provider_cost_micros"))
 
-    return [{"task_type": r[group_by],
+    return [{"task_type": r["task_type"],
              "run_count": r["run_count"],
              "total_provider_cost_micros": r["sum_provider_cost_micros"],
              UNRESOLVED_EVENT_COUNT_KEY: r["sum_unresolved"],
