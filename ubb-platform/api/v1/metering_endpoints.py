@@ -73,7 +73,7 @@ from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    SOURCE_KIND_CALLER_SUPPLIED)
+    SOURCE_KIND_CALLER_SUPPLIED, TASK_TYPE_KIND_VALUES)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -2122,7 +2122,11 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     declared = set(slot_map(tenant.id))
     with transaction.atomic():
         for tt in payload.task_types:
-            if tt.kind not in ("task", "subtask"):
+            # THE REFUSAL AT DECLARATION TIME (#407), against the registry's
+            # own value set rather than a list restated here: a kind of work
+            # says which altitude it is meant for, and that is the one thing a
+            # unit's single type column cannot carry.
+            if tt.kind not in TASK_TYPE_KIND_VALUES:
                 raise Problem("validation_error", f"invalid kind {tt.kind!r}")
             missing = [d for d in tt.required_dimensions if d not in declared]
             if missing:

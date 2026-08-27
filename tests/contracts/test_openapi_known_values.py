@@ -859,6 +859,23 @@ CONCEPTS_IN_THE_CONTRACT = {
     # and the second later would make that slice a breaking change to a client
     # that had switched exhaustively over a single-member enum.
     "pricing_receipt_subject_type": Published(2, ENUM),
+    # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407) — two nodes,
+    # the declaration going in and the declaration coming back, which is the
+    # whole surface the concept has. It is on the DECLARATION and on nothing
+    # else on purpose: a unit of work carries what kind of work it is in one
+    # column, at either altitude, and its parent link is what says which — so
+    # there is no unit-shaped field for this marker to sit on and none was
+    # invented for it.
+    #
+    # ⚠ ITS BACKEND HALF WAS RE-SOURCING AND NOTHING ELSE, which is worth
+    # saying because the ledger entry read `0 of 2 values` and both values were
+    # already correct. `advertised` is derived from the backend census alone,
+    # and the census counts REFERENCES: the model's `choices=` list held the
+    # two right strings as literals, so it served none of them. Replacing the
+    # literals with the generated constants moved it 0 of 2 to 2 of 2 without
+    # adding a value, changing a value or touching what any caller may send —
+    # the #317 mechanism with nothing to write.
+    "task_type_kind": Published(2, ENUM),
 }
 
 
@@ -1119,6 +1136,19 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
+    # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407), on the
+    # declaration going in and the declaration coming back — the whole of the
+    # surface this concept has.
+    #
+    # ⚠ AND NOT ON ANY SCHEMA DESCRIBING A UNIT OF WORK, which is the ruling
+    # rather than an omission and is exactly the shape the two lines above make
+    # a habit of stating. A unit declares WHAT kind of work it is in one field
+    # at either altitude, and `parent_task_id` beside it is what says which —
+    # so `TaskOut` has no field this marker could sit on, and inventing one
+    # would put the discriminator back on the row the collapse just took it
+    # off. The declaration is where the altitude is a decision somebody makes;
+    # on a unit it is a consequence of the parent link.
+    placed("task_type_kind", {"TaskTypeIn", "TaskTypeOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1752,14 +1782,24 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     advertised `pricing_status` — the same concept one slice later on the other
     side of the margin, and the same single-entry step — 23 → 22 in #355, which
     advertised `pricing_method`, the second concept of that pair's own slice and
-    again one entry, 22 → 21 in #366, which advertised `rate_structure`, and
-    21 → 20 in #370, which advertised `pricing_receipt_subject_type`.
+    again one entry, 22 → 21 in #366, which advertised `rate_structure`,
+    21 → 20 in #370, which advertised `pricing_receipt_subject_type`, and
+    20 → 19 in #407, which advertised `task_type_kind`.
 
     ⚠ #366 AND #370 EACH PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
     right rather than an accounting slip: the G4 debt and the backend G2 debt
     were the SAME debt read from two sides, and the contract could not advertise
     the values until the backend consumer held them. Only the G4 entry is in
     this seeding, so only one comes out of it.
+
+    ⚠ #407 IS THE FIRST WHOSE G2 HALF WAS **RE-SOURCING ONLY**: the backend
+    consumer's `choices=` list already held both of the concept's values, and
+    both were already the right ones, so paying it moved no value and added no
+    value — it replaced two literals with the registry's own constants. Adding
+    values would have moved nothing, which is why an entry reading `0 of 2` is
+    not by itself an instruction to write any. The pairing is the usual one:
+    the G4 debt and the backend G2 debt were the same debt read from two sides,
+    only the G4 entry is in this seeding, and so only one comes out of it.
 
     ⚠ #370 IS THE FIRST OF THE FIVE THAT PAID ITS G2 HALF WITHOUT WRITING ANY
     CODE THAT HOLDS A VALUE, and it is worth saying so rather than letting a
@@ -1787,6 +1827,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 20, (
+    assert len(_entries(programme)) >= 19, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

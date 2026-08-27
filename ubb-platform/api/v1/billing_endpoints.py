@@ -282,7 +282,6 @@ def pre_check(request, payload: PreCheckRequest):
             provider_cost_limit_micros=payload.provider_cost_limit_micros,
             parent_task_id=payload.parent_task_id,
             task_type=payload.task_type,
-            subtask_type=payload.subtask_type,
             dimensions=payload.dimensions,
         )
     except ValueError as exc:

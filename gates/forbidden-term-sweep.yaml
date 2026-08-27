@@ -190,7 +190,14 @@ exclusions:
     # `old_name` is the retired spelling, and a rename that could not name what
     # it retires would not be reviewable. It is the same worked example `0026`
     # and `0027` are, and it is the last file this word appears in anywhere.
-    files: 233
+    # 233 → 234 in #407: one migration, collapsing a unit of work's two type
+    # columns into one — it carries every contained unit's declared kind onto
+    # the surviving column and then drops the second. ⚠ IT NAMES NO RETIRED
+    # TERM: `subtask_type` is a live column name, not a retirement. It moves
+    # the number because this rule covers every migration directory wholesale,
+    # which is the point #369's pair made and the thing a reader is most likely
+    # to infer wrongly from the run of entries above.
+    files: 234
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

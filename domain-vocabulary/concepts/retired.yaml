@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,677 of 2,077 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,679 of 2,080 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1461,6 +1461,29 @@ measurement_key:
     # neither had to reach for the arithmetic. That is the count behaving as a
     # ceiling on SPREAD rather than only on what is left to fix, which is the
     # rule now written into `docs/conventions/coding-standards.md`.
+    #
+    # #407 MOVED BOTH DENOMINATORS UP AND LEFT `52 files, 133 occurrences`
+    # WHERE #372 PUT THEM (1,677 -> 1,679 swept, 2,077 -> 2,080 tracked), WITH
+    # THE EXCLUSION UP BY ONE (`historical-migrations` 233 -> 234). Three files
+    # arrive and none leaves: the migration that collapses a unit of work's two
+    # type columns into one, which is EXCLUDED and so lifts tracked without
+    # lifting swept, and the two generated SDK enum modules minted by the kind
+    # discriminator becoming an advertised closed concept — one per schema
+    # carrying it, which is the per-node arithmetic #355 recorded.
+    #
+    # ⚠ THE NUMERATOR ROSE TO 54 FILES / 135 OCCURRENCES AND WAS PUT BACK, AND
+    # THE RISE WAS THIS COMMIT'S OWN PROSE. The three-case rule above asks for
+    # an account of a rise, and the honest account is that the writer wrote the
+    # word: two test docstrings and a migration docstring reached for "units of
+    # work" and "contained units" while describing exactly the subject this
+    # slice is about. That is #328's lesson verbatim — ordinary English about
+    # work, nowhere near money or rate arithmetic, so no amount of care about
+    # the three surviving senses would have caught it. The repair was to say
+    # "each whole unit of work" and "contained work" and re-measure; the number
+    # recorded here is the one the tree gave AFTER that, not the one it gave
+    # first. The migration's occurrence would not have counted in any case —
+    # migrations are excluded — and it was rewritten anyway, because a rule
+    # kept only where a gate can see it is not a rule.
 
     - term: units
       retired_as: >-

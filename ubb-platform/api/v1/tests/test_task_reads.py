@@ -35,7 +35,7 @@ class TestTaskReads:
             total_billed_cost_micros=2_480_000, event_count=412)
         Task.objects.create(
             tenant=self.tenant, customer=self.customer, parent=parent,
-            balance_snapshot_micros=0, subtask_type="ocr",
+            balance_snapshot_micros=0, task_type="ocr",
             total_provider_cost_micros=1_740_000, event_count=340)
         return parent
 
@@ -48,7 +48,12 @@ class TestTaskReads:
         assert body["total_provider_cost_micros"] == 2_010_000
         assert body["dimensions"] == {"grouping_field_1": "eu-west-1"}
         assert len(body["subtasks"]) == 1
-        assert body["subtasks"][0]["subtask_type"] == "ocr"
+        # ONE FIELD, at either altitude (#407): the contained unit's declared
+        # kind is read off the same property as its parent's, and it is
+        # `parent_task_id` that says which altitude the row sits at.
+        assert body["subtasks"][0]["task_type"] == "ocr"
+        assert body["subtasks"][0]["parent_task_id"] == str(parent.id)
+        assert "subtask_type" not in body["subtasks"][0]
 
     def test_list_returns_top_level_tasks_only(self):
         self._tree()

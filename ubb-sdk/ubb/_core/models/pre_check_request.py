@@ -34,7 +34,6 @@ class PreCheckRequest:
             parent_task_id (None | Unset | UUID):
             provider_cost_limit_micros (int | None | Unset):
             start_task (bool | Unset):  Default: False.
-            subtask_type (None | str | Unset):
             task_metadata (None | PreCheckRequestTaskMetadataType0 | Unset):
             task_type (None | str | Unset):
      """
@@ -45,7 +44,6 @@ class PreCheckRequest:
     parent_task_id: None | Unset | UUID = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
     start_task: bool | Unset = False
-    subtask_type: None | str | Unset = UNSET
     task_metadata: None | PreCheckRequestTaskMetadataType0 | Unset = UNSET
     task_type: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -81,12 +79,6 @@ class PreCheckRequest:
 
         start_task = self.start_task
 
-        subtask_type: None | str | Unset
-        if isinstance(self.subtask_type, Unset):
-            subtask_type = UNSET
-        else:
-            subtask_type = self.subtask_type
-
         task_metadata: dict[str, Any] | None | Unset
         if isinstance(self.task_metadata, Unset):
             task_metadata = UNSET
@@ -117,8 +109,6 @@ class PreCheckRequest:
             field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
         if start_task is not UNSET:
             field_dict["start_task"] = start_task
-        if subtask_type is not UNSET:
-            field_dict["subtask_type"] = subtask_type
         if task_metadata is not UNSET:
             field_dict["task_metadata"] = task_metadata
         if task_type is not UNSET:
@@ -182,16 +172,6 @@ class PreCheckRequest:
 
         start_task = d.pop("start_task", UNSET)
 
-        def _parse_subtask_type(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        subtask_type = _parse_subtask_type(d.pop("subtask_type", UNSET))
-
-
         def _parse_task_metadata(data: object) -> None | PreCheckRequestTaskMetadataType0 | Unset:
             if data is None:
                 return data
@@ -229,7 +209,6 @@ class PreCheckRequest:
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
             start_task=start_task,
-            subtask_type=subtask_type,
             task_metadata=task_metadata,
             task_type=task_type,
         )

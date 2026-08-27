@@ -59,14 +59,43 @@ class TestTaskAnalytics:
         assert rows["invoice_batch"]["limit_hit_count"] == 1
 
     def test_subtasks_are_excluded_from_run_counts(self):
+        """A listing counts each whole unit of work, never what it contains.
+
+        ⚠ THE CONTAINED UNIT DELIBERATELY DECLARES THE PARENT'S OWN KIND
+        (#407). One column now carries the declared kind at either altitude,
+        so a contained unit that declared something else would be excluded
+        from this row by its VALUE and the altitude filter would prove
+        nothing. Declaring the same kind leaves `parent__isnull=True` as the
+        only thing that can keep it out.
+        """
         self._seed()
         parent = Task.objects.filter(tenant=self.tenant, task_type="invoice_batch").first()
         Task.objects.create(tenant=self.tenant, customer=self.customer, parent=parent,
-                            balance_snapshot_micros=0, subtask_type="ocr",
+                            balance_snapshot_micros=0, task_type="invoice_batch",
                             total_provider_cost_micros=999)
         r = self._get("/api/v1/metering/analytics/tasks?group_by=task_type")
         rows = {x["task_type"]: x for x in r.json()["rows"]}
         assert rows["invoice_batch"]["run_count"] == 4
+
+    def test_the_contained_altitude_rolls_up_from_the_same_column(self):
+        """The other altitude, read off the one column (#407).
+
+        `group_by` names an ALTITUDE rather than a column: both answers group
+        on the unit's single declared kind, and the parent link is what
+        selects which set of rows is being asked about.
+        """
+        self._seed()
+        parent = Task.objects.filter(tenant=self.tenant,
+                                     task_type="invoice_batch").first()
+        Task.objects.create(tenant=self.tenant, customer=self.customer,
+                            parent=parent, balance_snapshot_micros=0,
+                            task_type="ocr", status="completed",
+                            total_provider_cost_micros=999, event_count=1)
+        r = self._get("/api/v1/metering/analytics/tasks?group_by=subtask_type")
+        rows = {x["task_type"]: x for x in r.json()["rows"]}
+        assert list(rows) == ["ocr"]
+        assert rows["ocr"]["run_count"] == 1
+        assert rows["ocr"]["total_provider_cost_micros"] == 999
 
     def test_invalid_group_by_is_422(self):
         r = self._get("/api/v1/metering/analytics/tasks?group_by=nope")

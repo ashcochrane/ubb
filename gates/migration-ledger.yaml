@@ -1913,18 +1913,6 @@ entries:
       `cancelled` and `expired` are new and `killed` narrows to genuine spend
       signals. Slice 5 rebuilds the Task.
 
-  - id: g2-backend-task_type_kind
-    gate: G2
-    site: ubb-platform/apps/platform/work/models.py::task_type_kind
-    expected: task_type_kind
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. Which level a declared kind
-      of work may be used at (#140, #138). It survives the collapse of the two
-      type columns, which is slice 5's work.
-
   - id: g2-backend-tenant_posture
     gate: G2
     site: ubb-platform/apps/platform/tenants/models.py::tenant_posture
@@ -2540,20 +2528,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 5 rebuilds Work, and #140's six states replace the ones the
       model serves today. The metadata appears in that slice.
-
-  - id: g4-openapi-task_type_kind
-    gate: G4
-    site: openapi/v1.json::task_type_kind
-    expected: task_type_kind
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 5 rebuilds Work, where the declared kind of work carries its
-      own deadlines and pricing (#139, #140). The metadata appears in that
-      slice.
 
   - id: g4-openapi-tenant_posture
     gate: G4

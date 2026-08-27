@@ -39,7 +39,6 @@ class TaskDetailOut:
             dimensions (TaskDetailOutDimensions | Unset):
             parent_task_id (None | str | Unset):
             provider_cost_limit_micros (int | None | Unset):
-            subtask_type (str | Unset):  Default: ''.
             subtasks (list[TaskOut] | Unset):
             task_type (str | Unset):  Default: ''.
      """
@@ -56,7 +55,6 @@ class TaskDetailOut:
     dimensions: TaskDetailOutDimensions | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
-    subtask_type: str | Unset = ''
     subtasks: list[TaskOut] | Unset = UNSET
     task_type: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -106,8 +104,6 @@ class TaskDetailOut:
         else:
             provider_cost_limit_micros = self.provider_cost_limit_micros
 
-        subtask_type = self.subtask_type
-
         subtasks: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.subtasks, Unset):
             subtasks = []
@@ -140,8 +136,6 @@ class TaskDetailOut:
             field_dict["parent_task_id"] = parent_task_id
         if provider_cost_limit_micros is not UNSET:
             field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
-        if subtask_type is not UNSET:
-            field_dict["subtask_type"] = subtask_type
         if subtasks is not UNSET:
             field_dict["subtasks"] = subtasks
         if task_type is not UNSET:
@@ -212,8 +206,6 @@ class TaskDetailOut:
         provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
 
 
-        subtask_type = d.pop("subtask_type", UNSET)
-
         _subtasks = d.pop("subtasks", UNSET)
         subtasks: list[TaskOut] | Unset = UNSET
         if _subtasks is not UNSET:
@@ -241,7 +233,6 @@ class TaskDetailOut:
             dimensions=dimensions,
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
-            subtask_type=subtask_type,
             subtasks=subtasks,
             task_type=task_type,
         )

@@ -48,7 +48,7 @@ class TestAnalyticsDimensions:
                                      task_type="invoice_batch")
         sub = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                   parent=parent,
-                                  balance_snapshot_micros=0, subtask_type="ocr")
+                                  balance_snapshot_micros=0, task_type="ocr")
         for i, (task, dim1, cost) in enumerate([
                 (parent, "eu-west-1", 1_000), (sub, "eu-west-1", 2_000),
                 (sub, "us-east-1", 4_000)]):
@@ -57,7 +57,12 @@ class TestAnalyticsDimensions:
                 idempotency_key=f"k{i}", provider="aws_textract",
                 event_type="ocr_page", task_id=task.id,
                 task_type="invoice_batch",
-                subtask_type=task.subtask_type, grouping_field_1=dim1,
+                # The posting's two reserved axes are two ALTITUDES of the
+                # unit's one declared kind (#407): the root's lands on
+                # `task_type`, the leaf's on `subtask_type`, and a unit with
+                # no parent contributes to neither.
+                subtask_type=task.task_type if task.parent_id else "",
+                grouping_field_1=dim1,
                 provider_cost_micros=cost, billed_cost_micros=cost * 2)
         return parent, sub
 
