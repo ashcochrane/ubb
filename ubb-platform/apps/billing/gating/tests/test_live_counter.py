@@ -140,7 +140,7 @@ class TestLiveCounterPostpaid:
         # Durable events for both seats pin the business as billing owner.
         for i, seat in enumerate((s1, s2)):
             Posting.objects.create(
-                tenant=t, customer=seat, request_id=f"r{i}", idempotency_key=f"i{i}",
+                tenant=t, customer=seat, idempotency_key=f"i{i}",
                 provider_cost_micros=5_000_000, billed_cost_micros=5_000_000,
                 billing_owner_id=biz.id)
         now = timezone.now()
@@ -245,14 +245,14 @@ class TestStopFlag:
         # tenant's own rule charges now, not one the call states (#365).
         a_rule_that_prices_what_it_measures(t)
         res = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))
         # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
         assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
         assert Posting.objects.filter(id=res["event_id"]).exists()
         # I4: the idempotent replay return ALSO carries the stop verdict
         replay = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))
         assert replay["event_id"] == res["event_id"]
         assert replay["stop"] is True
@@ -292,7 +292,7 @@ class TestStopFlag:
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         a_rule_that_prices_what_it_measures(t)
         res = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))  # crosses the floor -> _set_stop fires
         # The one rule: record_usage returned normally; the tipping event
         # landed and billed.

@@ -18,9 +18,9 @@ class TestBudgetReconciliation:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
-        Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
                                   provider_cost_micros=400_000, billed_cost_micros=400_000)
-        Posting.objects.create(tenant=t, customer=c, request_id="r2", idempotency_key="i2",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i2",
                                   provider_cost_micros=350_000, billed_cost_micros=350_000)
         Door.set_budget(c.id, 0)  # corrupt/drifted counter
         reconcile_budget_counters()

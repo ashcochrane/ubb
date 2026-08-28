@@ -12,8 +12,10 @@
 //
 // `features/events/api/mock-data.ts` is on that list. So the word lives here,
 // once, and the fixtures beside it say what they mean — which is Phase B's
-// second technique and the same trade `correlationIds` in that file already
-// makes for a different retired word.
+// second technique. `correlationIds` in that file was written for exactly this
+// trade over a different retired word; #411 deleted that word's field, so the
+// helper survives as `correlationId` on a weaker argument and this module is
+// now the only place in the feature making the trade for a live debt.
 //
 // ⚠ **AND THE CALLER'S WORD FOR THE QUANTITY IS `quantity`**, which is the name
 // the engine's own builder takes (`pricing_service._component(measurement_key,

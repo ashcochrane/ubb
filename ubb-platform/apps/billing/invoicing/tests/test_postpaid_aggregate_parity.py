@@ -71,7 +71,7 @@ def _old_grouped_lines(tenant, customer, period_start, period_end, group_by):
 def _ev(t, c, key, billed, **kw):
     kw.setdefault("effective_at", MID)
     return Posting.objects.create(
-        tenant=t, customer=c, request_id=f"r-{key}", idempotency_key=key,
+        tenant=t, customer=c, idempotency_key=key,
         provider_cost_micros=1, billed_cost_micros=billed, **kw)
 
 

@@ -31,7 +31,7 @@ def _draw(t, c, billed, n, effective_at=None):
     """Mirror production: the Posting is durably committed (with its
     effective_at) before the outbox handler runs."""
     e = Posting.objects.create(
-        tenant=t, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+        tenant=t, customer=c, idempotency_key=f"i{n}",
         provider_cost_micros=billed, billed_cost_micros=billed)
     if effective_at is not None:
         Posting.objects.filter(id=e.id).update(effective_at=effective_at)
@@ -68,7 +68,7 @@ class TestBudgetEffectiveMonthBasis:
     def test_legacy_payload_without_effective_at_increments(self):
         t, c = _setup()
         e = Posting.objects.create(
-            tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+            tenant=t, customer=c, idempotency_key="i1",
             billed_cost_micros=70_000)
         # Deliberate literal dict (#114 testing.md exception): the point is a
         # LEGACY queued payload with no effective_at key at all — asdict()

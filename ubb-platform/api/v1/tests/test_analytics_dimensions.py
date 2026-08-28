@@ -53,7 +53,7 @@ class TestAnalyticsDimensions:
                 (parent, "eu-west-1", 1_000), (sub, "eu-west-1", 2_000),
                 (sub, "us-east-1", 4_000)]):
             Posting.objects.create(
-                tenant=self.tenant, customer=self.customer, request_id=f"r{i}",
+                tenant=self.tenant, customer=self.customer,
                 idempotency_key=f"k{i}", provider="aws_textract",
                 event_type="ocr_page", task_id=task.id,
                 task_type="invoice_batch",
@@ -181,7 +181,7 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
         GroupingField.objects.create(tenant=self.tenant, key="region",
                                      slot="grouping_field_1", scope="task")
         Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, request_id="r0",
+            tenant=self.tenant, customer=self.customer,
             idempotency_key="k0", provider="aws_textract", event_type="ocr_page",
             grouping_field_1="eu-west-1",
             effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
@@ -260,14 +260,14 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
         partial and the region beside it is not.
         """
         Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, request_id="r1",
+            tenant=self.tenant, customer=self.customer,
             idempotency_key="k1", provider="aws_textract", event_type="ocr_page",
             grouping_field_1="eu-west-1",
             effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
             provider_cost_micros=None, billed_cost_micros=5_000,
             costing_status="unresolved", unresolved_reason="cost_rate_missing")
         Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, request_id="r2",
+            tenant=self.tenant, customer=self.customer,
             idempotency_key="k2", provider="aws_textract", event_type="ocr_page",
             grouping_field_1="us-east-1",
             effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
@@ -304,14 +304,14 @@ class TestTheOpenAnalyticsRowsNameTheirGroupedValue:
         would still pass.
         """
         Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, request_id="r1",
+            tenant=self.tenant, customer=self.customer,
             idempotency_key="k1", provider="aws_textract", event_type="ocr_page",
             grouping_field_1="eu-west-1",
             effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),
             provider_cost_micros=None, billed_cost_micros=5_000,
             costing_status="unresolved", unresolved_reason="cost_rate_missing")
         Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, request_id="r2",
+            tenant=self.tenant, customer=self.customer,
             idempotency_key="k2", provider="aws_textract", event_type="ocr_page",
             grouping_field_1="us-east-1",
             effective_at=datetime(2026, 5, 4, 12, 0, tzinfo=timezone.utc),

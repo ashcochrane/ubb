@@ -291,7 +291,7 @@ class TestFrozenLineSnapshot:
         from apps.metering.usage.models import Posting
         for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
             ev = Posting.objects.create(
-                tenant=t, customer=c, request_id=f"r{i}", idempotency_key=f"i{i}",
+                tenant=t, customer=c, idempotency_key=f"i{i}",
                 provider_cost_micros=1, billed_cost_micros=micros, grouping_field_1=pid)
             Posting.objects.filter(id=ev.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
@@ -356,7 +356,7 @@ class TestSnapshotDivergenceTripwire:
     def _event(self, t, c, n, micros):
         from apps.metering.usage.models import Posting
         ev = Posting.objects.create(
-            tenant=t, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+            tenant=t, customer=c, idempotency_key=f"i{n}",
             provider_cost_micros=1, billed_cost_micros=micros)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
@@ -473,7 +473,7 @@ class TestOwnerFirstKeying:
         t = _charge_ready_tenant()
         biz, seat = _pooled_business(t)
         start, end = _prior_month()
-        ev = Posting.objects.create(tenant=t, customer=seat, request_id="r1",
+        ev = Posting.objects.create(tenant=t, customer=seat,
             idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=1_000_000)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))

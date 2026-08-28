@@ -91,7 +91,7 @@ class TestMeteringDelegationRequiresMetering:
 
     def test_record_usage_requires_metering(self):
         with pytest.raises(UBBError, match="metering"):
-            self.client.record_usage("cust1", "r1", "i1", provider_cost_micros=1000)
+            self.client.record_usage("cust1", "i1", provider_cost_micros=1000)
 
     def test_pre_check_without_metering_delegates_to_billing(self):
         """pre_check no longer requires metering — delegates to billing if available."""
@@ -179,7 +179,7 @@ class TestMeteringDelegation:
         sentinel = object()
         self.client.metering.record_usage = MagicMock(return_value=sentinel)
         result = self.client.record_usage(
-            "cust1", "r1", "i1",
+            "cust1", "i1",
             measurements={"tokens": 1000},
             recorded_at="2026-06-01T00:00:00Z",
             task_id="task_1",

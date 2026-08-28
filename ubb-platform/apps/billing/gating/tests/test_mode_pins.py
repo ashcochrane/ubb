@@ -92,7 +92,7 @@ class TestOffIsByteForBytePreEnforcement:
         # 8,000,000 is what the tenant's rule charges for this event now (#365).
         a_rule_that_prices_what_it_measures(t)
         r = client.post("/api/v1/metering/usage", data=json.dumps({
-            "customer_id": str(c.id), "request_id": "k1", "idempotency_key": "k1",
+            "customer_id": str(c.id), "idempotency_key": "k1",
             "measurements": priced_at(8_000_000)}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw}")

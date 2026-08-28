@@ -364,7 +364,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
                                          "costing_status": "known", "pricing_status": "known",
                                          "new_balance_micros": 100}
             mock_post.side_effect = [resp_fail, resp_ok]
-            result = client.record_usage(customer_id="c1", request_id="r1",
+            result = client.record_usage(customer_id="c1",
                                          idempotency_key="i1",
                                          provider_cost_micros=10)
             self.assertEqual(mock_post.call_count, 2)
@@ -385,7 +385,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp.headers = {}
             mock_post.return_value = resp
             with self.assertRaises(UBBAPIError) as ctx:
-                client.record_usage(customer_id="c1", request_id="r1",
+                client.record_usage(customer_id="c1",
                                     idempotency_key="i1",
                                     provider_cost_micros=10, task_id="task_1")
             self.assertEqual(ctx.exception.status_code, 429)

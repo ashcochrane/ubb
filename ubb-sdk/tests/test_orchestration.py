@@ -113,7 +113,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         )
 
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r1", idempotency_key="i1",
+            customer_id="cust_1", idempotency_key="i1",
             provider_cost_micros=1_500_000,
         )
         self.assertEqual(result.event_id, "evt_1")
@@ -140,7 +140,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             }
         )
         result = client.record_usage(
-            customer_id="cust_1", request_id="r2", idempotency_key="i2",
+            customer_id="cust_1", idempotency_key="i2",
             provider_cost_micros=1_500_000,
         )
         self.assertEqual(result.event_id, "evt_2")
@@ -160,7 +160,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             }
         )
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r3", idempotency_key="i3",
+            customer_id="cust_1", idempotency_key="i3",
             provider_cost_micros=0,
         )
         self.assertEqual(result.event_id, "evt_3")
@@ -178,7 +178,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             }
         )
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r4", idempotency_key="i4",
+            customer_id="cust_1", idempotency_key="i4",
             provider_cost_micros=500_000,
         )
         self.assertEqual(result.event_id, "evt_4")
@@ -189,7 +189,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         from ubb.exceptions import UBBError
         client = UBBClient(api_key="ubb_test_key", metering=False, billing=True)
         with self.assertRaises(UBBError):
-            client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1", provider_cost_micros=1000)
+            client.record_usage(customer_id="c1", idempotency_key="i1", provider_cost_micros=1000)
         client.close()
 
 

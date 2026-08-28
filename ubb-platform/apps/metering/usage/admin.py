@@ -11,7 +11,7 @@ class PostingAdmin(admin.ModelAdmin):
     # cell cannot tell those apart — which is the whole distinction this slice
     # put in the database.
     list_display = (
-        "request_id",
+        "idempotency_key",
         "tenant",
         "customer",
         "provider_cost_micros",
@@ -20,4 +20,4 @@ class PostingAdmin(admin.ModelAdmin):
         "effective_at",
     )
     list_filter = ("tenant", "costing_status")
-    search_fields = ("request_id", "idempotency_key")
+    search_fields = ("idempotency_key",)

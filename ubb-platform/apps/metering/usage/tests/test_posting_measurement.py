@@ -121,7 +121,7 @@ class TheChildRecordTest(TestCase):
     def test_a_second_child_for_one_posting_is_refused(self):
         tenant, customer = _tenant_and_customer()
         posting = Posting.objects.create(
-            tenant=tenant, customer=customer, request_id="r", idempotency_key="i")
+            tenant=tenant, customer=customer, idempotency_key="i")
         PostingMeasurement.objects.create(
             posting=posting, measurements={"input_tokens": 12},
             recorded_at=posting.created_at)
@@ -140,7 +140,7 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", measurements={"input_tokens": 900})
+            tenant, customer, "i1", measurements={"input_tokens": 900})
         measurement = PostingMeasurement.objects.get(
             posting_id=result["event_id"])
         posting = Posting.objects.get(id=result["event_id"])
@@ -157,7 +157,7 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", measurements={"input_tokens": 1200})
+            tenant, customer, "i1", measurements={"input_tokens": 1200})
         posting = Posting.objects.get(id=result["event_id"])
 
         self.assertEqual(posting.measurements, {"input_tokens": 1200})
@@ -183,7 +183,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         # against a table nothing ever writes to.
         self.measured = Posting.objects.get(
             id=UsageService.record_usage(
-                self.tenant, self.customer, "r1", "i1",
+                self.tenant, self.customer, "i1",
                 measurements={"input_tokens": 1200})["event_id"])
         # The subject: a posting standing in for the synthetic charge — a Task
         # sold at one agreed price, projected as a posting with revenue and no
@@ -193,7 +193,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         # what this pins.
         self.charge = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="", idempotency_key="chg_1",
+            idempotency_key="chg_1",
             billed_cost_micros=250_000)
 
     def test_the_control_has_a_child(self):
@@ -247,7 +247,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.tenant, self.customer = _tenant_and_customer()
         self.posting = Posting.objects.get(
             id=UsageService.record_usage(
-                self.tenant, self.customer, "r1", "i1",
+                self.tenant, self.customer, "i1",
                 measurements={"input_tokens": 1200})["event_id"])
 
     def _fresh(self):
@@ -298,7 +298,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         """
         charge = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="", idempotency_key="chg_1",
+            idempotency_key="chg_1",
             billed_cost_micros=250_000)
         measured = PostingMeasurement.objects.filter(posting=charge).exists()
         self.assertFalse(measured, "§E4: absent by construction")
@@ -360,7 +360,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.assertEqual(
             posting_kind(Posting.objects.create(
                 tenant=self.tenant, customer=self.customer,
-                request_id="", idempotency_key="chg_2",
+                idempotency_key="chg_2",
                 billed_cost_micros=250_000)),
             USAGE_EVENT_KIND_METERED_USAGE)
 
@@ -400,7 +400,7 @@ class EachAmountWentNullableInTheSliceThatOwnedItsMeaningTest(TestCase):
     def test_the_measurements_are_optional(self):
         tenant, customer = _tenant_and_customer()
         posting = Posting.objects.create(
-            tenant=tenant, customer=customer, request_id="r",
+            tenant=tenant, customer=customer,
             idempotency_key="i")
         # 0..1, and the zero is reachable: the row commits and reads back with
         # no child, which is what "optional" means for a record whose
@@ -467,7 +467,7 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
     def test_the_recording_path_leaves_it_null(self):
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "r1", "i1", measurements={"input_tokens": 5})
+            tenant, customer, "i1", measurements={"input_tokens": 5})
         self.assertIsNone(
             PostingMeasurement.objects.get(
                 posting_id=result["event_id"]).prunable_at)
@@ -632,7 +632,7 @@ class TheReverseIsExercisedTest(TestCase):
         tenant, customer = _tenant_and_customer()
         posting = self.Posting.objects.create(
             tenant_id=tenant.id, customer_id=customer.id,
-            request_id="r", idempotency_key="i",
+            idempotency_key="i",
             **{HISTORICAL_BAG: {"input_tokens": 1200, "searches": 2}})
 
         self._run(self.run_python.code)
@@ -664,7 +664,7 @@ class TheReverseIsExercisedTest(TestCase):
         tenant, customer = _tenant_and_customer()
         posting = self.Posting.objects.create(
             tenant_id=tenant.id, customer_id=customer.id,
-            request_id="r", idempotency_key="i", **{HISTORICAL_BAG: {}})
+            idempotency_key="i", **{HISTORICAL_BAG: {}})
 
         self._run(self.run_python.code)
 

@@ -13,7 +13,7 @@ def test_the_open_bag_no_longer_lifts_into_dim_columns():
     declared grouping field (``dimension_slots``), never from the bag."""
     t = Tenant.objects.create(name="T")
     c = Customer.objects.create(tenant=t, external_id="c1")
-    r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=1000,
+    r = UsageService.record_usage(t, c, "i1", provider_cost_micros=1000,
                                   metadata={"service": "search", "agent": "planner", "product": "p1"})
     e = Posting.objects.get(id=r["event_id"])
     assert e.grouping_field_2 == ""
@@ -24,7 +24,7 @@ def test_the_open_bag_no_longer_lifts_into_dim_columns():
 def test_declared_dim1_fills_dim1_a_label_does_not():
     t = Tenant.objects.create(name="T")
     c = Customer.objects.create(tenant=t, external_id="c1")
-    r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=1000,
+    r = UsageService.record_usage(t, c, "i1", provider_cost_micros=1000,
                                   dimension_slots={"grouping_field_1": "explicit"},
                                   metadata={"product": "fromlabel", "service": "s"})
     e = Posting.objects.get(id=r["event_id"])

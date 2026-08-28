@@ -127,7 +127,7 @@ class TheSelectorIsThreeAxesAndNeverAPredicateTest(
         self.mine = self.a_posting("mine")
         self.elsewhere = self.a_posting("elsewhere", event_type="other.call")
         result = UsageService.record_usage(
-            self.tenant, self.other, "corr-theirs", "theirs",
+            self.tenant, self.other, "theirs",
             event_type="chat", measurements={QUANTITY: ONE_CALL})
         self.theirs = Posting.objects.get(id=result["event_id"])
         declares_a_markup(self.tenant, percentage_micros=0)

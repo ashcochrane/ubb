@@ -38,7 +38,6 @@ class TheBagIsStoredAsAuthoredTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_gk1",
             idempotency_key="idem_gk1",
             provider_cost_micros=1_000_000,
             metadata={"department": "sales", "workflow_run": "wf_123"},
@@ -59,7 +58,6 @@ class TheBagIsStoredAsAuthoredTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_gk2",
             idempotency_key="idem_gk2",
             provider_cost_micros=1_000_000,
         )
@@ -82,7 +80,6 @@ class TheBagIsStoredAsAuthoredTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_gk7",
             idempotency_key="idem_gk7",
             provider_cost_micros=1_000_000,
             metadata=authored,
@@ -105,7 +102,6 @@ class TheBagIsStoredAsAuthoredTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_gk8",
             idempotency_key="idem_gk8",
             provider_cost_micros=1_000_000,
             metadata={f"key_{i}": f"val_{i}" for i in range(51)}
@@ -135,7 +131,6 @@ class TheBagIsFilterableTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_gk_ep1",
                 "idempotency_key": "idem_gk_ep1",
                 "provider_cost_micros": 1_000_000,
                 "event_type": DECLARED,
@@ -162,7 +157,6 @@ class TheBagIsFilterableTest(TestCase):
                 "/api/v1/metering/usage",
                 data=json.dumps({
                     "customer_id": str(self.customer.id),
-                    "request_id": f"req_filter_{i}",
                     "idempotency_key": f"idem_filter_{i}",
                     "provider_cost_micros": 1_000_000,
                     "event_type": DECLARED,
@@ -201,7 +195,6 @@ class TheBagIsFilterableTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_stale",
                 "idempotency_key": "idem_stale",
                 "provider_cost_micros": 1_000_000,
                 "event_type": DECLARED,
@@ -222,7 +215,6 @@ class TheBagIsFilterableTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_gk_ep2",
                 "idempotency_key": "idem_gk_ep2",
                 "provider_cost_micros": 1_000_000,
                 "event_type": DECLARED,

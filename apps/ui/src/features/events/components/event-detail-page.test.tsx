@@ -81,7 +81,7 @@ describe("EventDetailPage", () => {
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
     // Identity in mono with copy affordances.
-    expect(screen.getByText("req_search_reindex_0042")).toBeInTheDocument();
+    expect(screen.getByText("idem_search_reindex_0042")).toBeInTheDocument();
     // Money from the fixture: billed 187,500 micros — sub-unit amounts keep
     // 4-decimal precision so micro-priced events never round to $0.00.
     expect(screen.getByText("$0.1875")).toBeInTheDocument();
@@ -110,6 +110,47 @@ describe("EventDetailPage", () => {
     expect(receipt).toContain("rate_per_unit_micros");
     // And the ids it read, in provenance — where nothing is a figure.
     expect(receipt).toContain("price_rate_ids");
+  });
+
+  it("lists the identity rows the posting has, and the deleted one is simply not there", async () => {
+    // #411 deleted the second caller-supplied correlation value, and spec §25
+    // rules that this page DROPS its row rather than repointing it at a
+    // tenant-chosen metadata key.
+    //
+    // ⚠ ASSERTED AS THE WHOLE SET, NOT AS ONE ABSENCE, and that is the point.
+    // `queryByText(...)` returning null is satisfied by a page that failed to
+    // render at all — the row is missing either way — so an absence on its own
+    // is not evidence that the rest survived. Reading every label out of the
+    // section says both things at once: these nine rows are here, in this
+    // order, and there is no tenth — the deleted row sat SECOND, so restoring
+    // it shows up as an extra label in position two rather than at the end. It
+    // is the same technique `THE_WHOLE_RECORDING_REQUEST` uses on the backend's
+    // request body, for the same reason.
+    renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    const details = screen.getByText("Details").closest("section");
+    expect(details).not.toBeNull();
+    const labels = Array.from(details?.querySelectorAll("dt") ?? []).map(
+      (term) => term.textContent,
+    );
+
+    expect(labels).toEqual([
+      "Event ID",
+      "Idempotency key",
+      "Happened at",
+      "Recorded at",
+      "Event type",
+      "Provider",
+      // The mock tenant's declared keys are still spelled for the slots,
+      // because the group-by picker's axis list is slice 7's debt and has to
+      // keep matching them — `mock-data.ts` says so at the map that builds
+      // these. What matters here is that they are the tenant's keys and each
+      // is its own row, not what this tenant happened to call them.
+      "dim1",
+      "dim2",
+      "dim3",
+    ]);
   });
 
   it("labels each grouping value with the key the tenant declared", async () => {

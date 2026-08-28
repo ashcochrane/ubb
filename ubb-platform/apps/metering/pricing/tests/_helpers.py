@@ -405,7 +405,7 @@ def an_unresolved_posting(tenant, customer, key, *, event_type="chat",
     from apps.metering.usage.services.usage_service import UsageService
 
     result = UsageService.record_usage(
-        tenant, customer, f"corr-{key}", key, event_type=event_type,
+        tenant, customer, key, event_type=event_type,
         measurements={measures: ONE_CALL}, **fields)
     return Posting.objects.get(id=result["event_id"])
 

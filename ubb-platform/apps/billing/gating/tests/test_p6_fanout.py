@@ -63,7 +63,7 @@ class TestTaskLimitFanout:
         def record(key, provider):
             return Client().post(
                 "/api/v1/metering/usage",
-                data=json.dumps({"customer_id": str(c.id), "request_id": key,
+                data=json.dumps({"customer_id": str(c.id),
                                  "idempotency_key": key,
                                  "provider_cost_micros": provider,
                                  "event_type": DECLARED,

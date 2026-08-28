@@ -25,7 +25,6 @@ class TestDecoupledUsageService:
             UsageService.record_usage(
                 tenant=tenant,
                 customer=customer,
-                request_id="req1",
                 idempotency_key="idem1",
                 provider_cost_micros=5_000_000,
             )
@@ -50,7 +49,6 @@ class TestDecoupledUsageService:
             result = UsageService.record_usage(
                 tenant=tenant,
                 customer=customer,
-                request_id="req1",
                 idempotency_key="idem1",
                 provider_cost_micros=100_000_000,  # Way over threshold
             )

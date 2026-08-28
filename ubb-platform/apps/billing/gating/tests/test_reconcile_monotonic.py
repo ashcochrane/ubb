@@ -32,7 +32,7 @@ def _durable_event(t, c, billed, n):
     reconcile reads via get_customer_cost_totals (effective_at = now = in
     current month)."""
     Posting.objects.create(
-        tenant=t, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+        tenant=t, customer=c, idempotency_key=f"i{n}",
         provider_cost_micros=billed, billed_cost_micros=billed)
 
 

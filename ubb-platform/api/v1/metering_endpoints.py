@@ -169,7 +169,6 @@ def usage_kwargs(item):
     field map from a request item (RecordUsageRequest — the single and batch
     items share the schema) onto record_usage's keyword surface."""
     return dict(
-        request_id=item.request_id,
         idempotency_key=item.idempotency_key,
         provider_cost_micros=item.provider_cost_micros,
         claimed_provider_cost_micros=item.claimed_provider_cost_micros,
@@ -455,7 +454,6 @@ def get_usage_event(request, event_id: UUID):
         id=event_id, tenant=request.auth.tenant)
     return 200, {
         "id": e.id,
-        "request_id": e.request_id,
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,

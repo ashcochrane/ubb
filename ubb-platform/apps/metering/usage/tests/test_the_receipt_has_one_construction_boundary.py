@@ -296,7 +296,7 @@ class TestWhatReachesTheColumn:
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
 
         result = UsageService.record_usage(
-            tenant, customer, "r1", "k1",
+            tenant, customer, "k1",
             measurements={"input_tokens": 1_000})
         stored = getattr(Posting.objects.get(id=result["event_id"]),
                          Posting.RECEIPT_COLUMN)
@@ -314,8 +314,8 @@ class TestWhatReachesTheColumn:
         not whichever id happened to be in scope."""
         tenant, customer = _tenant_and_customer()
 
-        first = UsageService.record_usage(tenant, customer, "r1", "k1")
-        second = UsageService.record_usage(tenant, customer, "r2", "k2")
+        first = UsageService.record_usage(tenant, customer, "k1")
+        second = UsageService.record_usage(tenant, customer, "k2")
         receipts = [getattr(Posting.objects.get(id=r["event_id"]),
                             Posting.RECEIPT_COLUMN) for r in (first, second)]
 
@@ -368,7 +368,7 @@ class TestTheValuesAreTheAuthority:
             tenant, measurement_key="input_tokens",
             rate_per_unit_micros=10_000, unit_quantity=1_000_000)
         result = UsageService.record_usage(
-            tenant, customer, "r1", "k1",
+            tenant, customer, "k1",
             measurements={"input_tokens": 1_000_000})
         return result, rate
 

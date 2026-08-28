@@ -83,7 +83,6 @@ class TestSubscriptionsProductIsolation(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(customer.id),
-                "request_id": "req-isolation-1",
                 "idempotency_key": "idem-isolation-1",
                 "event_type": DECLARED,
                 "provider_cost_micros": 500_000,

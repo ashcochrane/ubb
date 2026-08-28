@@ -32,7 +32,6 @@ class TestUsageServiceOutbox:
             result = UsageService.record_usage(
                 tenant=tenant,
                 customer=customer,
-                request_id="req1",
                 idempotency_key="idem1",
                 provider_cost_micros=5_000_000,
             )

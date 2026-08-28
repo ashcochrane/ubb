@@ -40,7 +40,6 @@ class TestMeteringOnlyTenant(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_iso_1",
                 "idempotency_key": "idem_iso_1",
                 "provider_cost_micros": 1_000_000,
                 "event_type": DECLARED,
@@ -202,7 +201,6 @@ class TestBothProductsTenant(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_both_1",
                 "idempotency_key": "idem_both_1",
                 "provider_cost_micros": 1_000_000,
                 "event_type": DECLARED,
@@ -256,7 +254,6 @@ class TestBothProductsTenant(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_cross_1",
                 "idempotency_key": "idem_cross_1",
                 "provider_cost_micros": 2_000_000,
                 "event_type": DECLARED,

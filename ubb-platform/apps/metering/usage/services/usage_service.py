@@ -281,7 +281,6 @@ class RecordingInput:
     # loosely to keep this module's import surface flat.
     tenant: object
     customer: object
-    request_id: str
     idempotency_key: str
     metadata: dict
     event_type: str
@@ -315,7 +314,7 @@ class RecordingInput:
     now: datetime
 
     @classmethod
-    def gather(cls, *, tenant, customer, request_id, idempotency_key,
+    def gather(cls, *, tenant, customer, idempotency_key,
                metadata, event_type, provider, measurements,
                task_id, caller_provider_cost, claimed_provider_cost,
                effective_at, billing_owner_id, owner_row,
@@ -342,7 +341,7 @@ class RecordingInput:
         dims = _inherit_dimensions(task_id, slots)
         return cls(
             tenant=tenant, customer=customer,
-            request_id=request_id or "", idempotency_key=idempotency_key,
+            idempotency_key=idempotency_key,
             metadata=metadata or {},
             event_type=event_type or "", provider=provider or "",
             # CUR-1: every event is denominated in the tenant's single
@@ -463,7 +462,7 @@ class UsageService:
                     create_kwargs["effective_at"] = inp.effective_at
                 event = Posting.objects.create(
                     id=posting_id,
-                    tenant=tenant, customer=customer, request_id=inp.request_id,
+                    tenant=tenant, customer=customer,
                     idempotency_key=inp.idempotency_key, metadata=inp.metadata,
                     event_type=inp.event_type, provider=inp.provider,
                     provider_cost_micros=provider_cost_micros,
@@ -593,7 +592,7 @@ class UsageService:
 
     @staticmethod
     @transaction.atomic
-    def record_usage(tenant, customer, request_id, idempotency_key, *,
+    def record_usage(tenant, customer, idempotency_key, *,
                      provider_cost_micros=None,
                      claimed_provider_cost_micros=None,
                      provider="", event_type="", currency=None,
@@ -606,6 +605,15 @@ class UsageService:
         #273, gained the caller's own claimed cost in #324, and lost the
         customer price in #365 — a price is resolved and held by UBB, so there
         is no keyword here for one and no wire field above it either.
+
+        It lost the SECOND caller-supplied correlation value in #411, which is
+        why ``idempotency_key`` is now the third positional parameter rather
+        than the fourth. That value had no uniqueness constraint, no lookup and
+        no read that changed any behaviour, while paying for an index write on
+        the hottest path in the system (#179 §4). The key beside it was already
+        the correlation identity — it decides a replay — so the deletion
+        removes a second name for a job one name was doing, and it waited for
+        #410 to make that key caller-supplied with a permanent claim.
 
         ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
         — the caller (endpoint / record_sync_item) runs DimensionService.admit
@@ -651,7 +659,7 @@ class UsageService:
                     f"match tenant currency {tenant_currency!r} (per-tenant "
                     "single currency; multi-currency/FX is not supported)")
         inp = RecordingInput.gather(
-            tenant=tenant, customer=customer, request_id=request_id,
+            tenant=tenant, customer=customer,
             idempotency_key=idempotency_key, metadata=metadata,
             event_type=event_type, provider=provider,
             measurements=measurements,

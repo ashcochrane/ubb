@@ -5329,12 +5329,6 @@
             ],
             "title": "Provider Cost Micros"
           },
-          "request_id": {
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Request Id",
-            "type": "string"
-          },
           "task_id": {
             "anyOf": [
               {
@@ -5350,7 +5344,6 @@
         },
         "required": [
           "customer_id",
-          "request_id",
           "idempotency_key"
         ],
         "title": "RecordUsageRequest",
@@ -8298,10 +8291,6 @@
             ],
             "title": "Provider Cost Micros"
           },
-          "request_id": {
-            "title": "Request Id",
-            "type": "string"
-          },
           "stop_context": {
             "anyOf": [
               {
@@ -8345,7 +8334,6 @@
         },
         "required": [
           "id",
-          "request_id",
           "idempotency_key",
           "costing_status",
           "pricing_status",
@@ -8453,10 +8441,6 @@
             ],
             "title": "Provider Cost Micros"
           },
-          "request_id": {
-            "title": "Request Id",
-            "type": "string"
-          },
           "stop_context": {
             "anyOf": [
               {
@@ -8489,7 +8473,6 @@
         },
         "required": [
           "id",
-          "request_id",
           "costing_status",
           "pricing_status",
           "metadata",

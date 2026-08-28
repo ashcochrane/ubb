@@ -97,7 +97,7 @@ def _record(client, auth, c, billed=1_000_000, key=None):
     # caller's number becomes a quantity the tenant's own rule prices at exactly
     # it. Callers of this helper still say one figure and still never learn how.
     return client.post("/api/v1/metering/usage", data=json.dumps({
-        "customer_id": str(c.id), "request_id": key, "idempotency_key": key,
+        "customer_id": str(c.id), "idempotency_key": key,
         "measurements": priced_at(billed)}),
         content_type="application/json", **auth)
 

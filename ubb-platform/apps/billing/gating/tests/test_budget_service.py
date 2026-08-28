@@ -24,7 +24,7 @@ class TestBudgetService:
         # so a counter rebuild-on-miss reconstructs to the total that already includes it.
         from apps.metering.usage.models import Posting
         Posting.objects.create(
-            tenant=c.tenant, customer=c, request_id=f"r{n}", idempotency_key=f"i{n}",
+            tenant=c.tenant, customer=c, idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
 
     def test_record_and_current_spend(self):

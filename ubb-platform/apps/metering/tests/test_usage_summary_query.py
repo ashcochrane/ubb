@@ -37,7 +37,7 @@ class GetCustomerUsageSummaryTest(TestCase):
                pricing_status=PRICING_STATUS_KNOWN):
         return Posting.objects.create(
             tenant=self.tenant, customer=customer,
-            request_id=f"r-{key}", idempotency_key=f"i-{key}",
+            idempotency_key=f"i-{key}",
             event_type=event_type, billed_cost_micros=billed,
             pricing_status=pricing_status,
         )

@@ -30,9 +30,13 @@ cost UBB has **not learned yet**, never the cost that does not exist.
 ⚠ **TWO SURFACES ARE ASSERTED ELSEWHERE, AND THE SWEEP IS WHY.** Every retired
 word this module might have spelled is one a new file cannot afford:
 
-* the recording request's correlation key (slice 5's entry, 65 files) — which is
-  why the postings below are written through the ORM rather than through the
-  recording route;
+* the recording request's second correlation key (slice 5's entry, 65 files) —
+  which is why the postings below are written through the ORM rather than
+  through the recording route. ⚠ THAT ONE IS PAID: #411 deleted the field and
+  its five entries, so the reason has expired while the fixture has not. The ORM
+  writes stay because they are also the cheaper setup for a module whose subject
+  is what a total EXCLUDES, and rewriting them through the route now would be a
+  change with nothing behind it;
 * the request parameter naming a declared grouping key (slice 7's, and its
   completeness pin lives in `api/v1/tests/test_analytics_dimensions.py`);
 * the request parameter naming a key out of the open bag (slice 7's, at eight

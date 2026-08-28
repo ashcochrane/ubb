@@ -74,9 +74,13 @@ every refusal at every slot rather than at a representative one):
 3. `max_cardinality` may be raised, never lowered.
 4. Retirement blocks new values; it never removes a record from the slot map, and never sweeps the
    values already admitted under it, so historical rows stay groupable *and* still resolve.
-5. Correlation identifiers (`task_id`, `subtask_id`, `request_id`, `idempotency_key`,
-   `customer_id`, `event_id`) can never be declared as grouping fields. They are filter parameters;
-   grouping by one builds a bucket per occurrence.
+5. Correlation identifiers (`task_id`, `subtask_id`, `idempotency_key`, `customer_id`, `event_id`)
+   can never be declared as grouping fields. They are filter parameters; grouping by one builds a
+   bucket per occurrence. Narrowed by slice 5 (#411), not weakened: the list held a sixth member, a
+   second caller-supplied correlation value, and that FIELD was deleted from the recording request.
+   The name is no longer one of UBB's, so a tenant binding that word to a slot collides with
+   nothing, and the invariant now covers exactly the identifiers UBB still owns. `FORBIDDEN_KEYS`
+   in `apps/platform/grouping_fields/models.py` is the enforcing copy and says the same.
 6. Reserved keys can never be bound to a tenant slot.
 7. Every `Rate.SELECTORS` name exists as a `Posting` column — one vocabulary, both sides. Superseded
    in the sense above: re-pointed at `Posting` by #269 and dissolving in slice 4, not deleted.

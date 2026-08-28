@@ -219,7 +219,18 @@ exclusions:
     # migration per ticket moves this number once per ticket whatever those
     # migrations contain. **Quote the RULE count, never this one, when arguing
     # that no allowlist grew.**
-    files: 237
+    # 237 → 238 in #411: one migration, dropping the second caller-supplied
+    # correlation value and its index. ⚠ IT NAMES A RETIRED TERM AND HAS TO —
+    # a `RemoveField` names the column it removes, which is #367's worked
+    # example again — but that is not why the number moved. It moved because
+    # the file exists, the same wholesale reason as the four entries above.
+    # ⚠ AND THE COMMIT THAT ADDS THIS MIGRATION IS THE ONE THAT PAYS THE WORD
+    # OFF EVERYWHERE ELSE: five G7 entries (backend 65 · sdk 12 · console 6 ·
+    # docs 1 · openapi 1) were deleted in the same commit, so the ledger fell
+    # 188 → 183 while this count rose by one. The two numbers move in opposite
+    # directions for unrelated reasons, and reading the rise as spread is
+    # exactly the misreading the paragraph above warns about.
+    files: 238
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -36,7 +36,6 @@ class UsageEventOut:
             id (UUID):
             metadata (UsageEventOutMetadata):
             pricing_status (UsageEventOutPricingStatus):
-            request_id (str):
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
@@ -55,7 +54,6 @@ class UsageEventOut:
     id: UUID
     metadata: UsageEventOutMetadata
     pricing_status: UsageEventOutPricingStatus
-    request_id: str
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     event_type: str | Unset = ''
@@ -81,8 +79,6 @@ class UsageEventOut:
         metadata = self.metadata.to_dict()
 
         pricing_status = self.pricing_status.value
-
-        request_id = self.request_id
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -141,7 +137,6 @@ class UsageEventOut:
             "id": id,
             "metadata": metadata,
             "pricing_status": pricing_status,
-            "request_id": request_id,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -189,8 +184,6 @@ class UsageEventOut:
 
 
 
-
-        request_id = d.pop("request_id")
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -290,7 +283,6 @@ class UsageEventOut:
             id=id,
             metadata=metadata,
             pricing_status=pricing_status,
-            request_id=request_id,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             event_type=event_type,

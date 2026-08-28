@@ -171,7 +171,6 @@ interface DetailSeed {
   cost_components?: ReceiptComponent[];
   /** Cross-reference ids — and never anything a reader could take a figure from. */
   provenance?: Record<string, unknown>;
-  request_id?: string;
   idempotency_key?: string;
   /**
    * Whether the measured quantities can still be read (#271). Most seeds below
@@ -190,27 +189,24 @@ interface DetailSeed {
 }
 
 /**
- * The two ids that correlate a posting with the call that produced it.
+ * The id that correlates a posting with the call that produced it.
  *
- * Derived from the posting's own id so a seed states neither unless it means
- * something by them, and exported so that a test assembling a detail of its own
- * does not have to SPELL either key.
+ * Derived from the posting's own id so a seed states it only when it means
+ * something by it.
  *
- * ⚠ THAT EXPORT IS THE POINT, and it is Phase B's second technique rather than
- * a convenience (#366). One of these two keys is a retired term whose console
- * ledger entry counts the files that name it, and that count is a ceiling on
- * SPREAD as well as a floor: a new test module naming it puts the count over
- * its entry and the sweep fails. This file already carries the word, so callers
- * say what they mean and the count does not move. ⚠ The trap is that the sweep
- * reads `git ls-files` — an UNTRACKED new file is invisible to it, so a
- * pre-commit run is not evidence. Stage the file first.
+ * THIS WAS `correlationIds`, PLURAL, AND RETURNED TWO. The second key was a
+ * retired term under a console spread ceiling, and hiding it behind this export
+ * so that no other file had to spell it was most of why the helper existed
+ * (#366, Phase B's second technique). #411 deleted the field, so there is one
+ * correlation value left and the plural name would now be a false description
+ * of what this returns. What survives is the weaker, real reason: a seed should
+ * not have to restate an id it does not care about.
  */
-export function correlationIds(
+export function correlationId(
   id: string,
-  stated: { request_id?: string; idempotency_key?: string } = {},
+  stated: { idempotency_key?: string } = {},
 ) {
   return {
-    request_id: stated.request_id ?? `req_${id.slice(0, 8)}`,
     idempotency_key: stated.idempotency_key ?? `idem_${id.slice(0, 8)}`,
   };
 }
@@ -237,7 +233,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
   }
   return {
     id: seed.id,
-    ...correlationIds(seed.id, seed),
+    ...correlationId(seed.id, seed),
     // All three from the seed's one PRICE scenario object, for the same reason
     // the cost trio below comes from its own: a constant `"known"` beside a
     // null amount is the row the posting's check constraint refuses (#351).
@@ -409,7 +405,6 @@ const FEATURE_EVENTS: MockEvent[] = [
         client: { sdk: "ubb-node@3.0.0" },
       },
       task_id: TASK_OPEN_ID,
-      request_id: "req_search_reindex_0042",
       idempotency_key: "idem_search_reindex_0042",
       // ⚠ AND THE SHAPE IS THE RECORD'S NOW (#372). #371 took the ratified
       // names for the two containers and said in this very comment that the

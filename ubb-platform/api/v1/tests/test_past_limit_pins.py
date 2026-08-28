@@ -72,7 +72,6 @@ class PastLimitPinTestBase(TestCase):
     def _record(self, **extra):
         data = {
             "customer_id": str(self.customer.id),
-            "request_id": f"req-{uuid.uuid4()}",
             "idempotency_key": f"idem-{uuid.uuid4()}",
             # Every body here states the supplier's own cost, admissible only
             # against an Event Type that declares it arrives on the call
@@ -170,7 +169,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         resp = self.http_client.post(
             "/api/v1/metering/usage/batch", data=json.dumps({"events": [{
                 "customer_id": str(self.customer.id),
-                "request_id": "rb1", "idempotency_key": "ib1",
+                "idempotency_key": "ib1",
                 "task_id": str(task.id), "provider_cost_micros": 500_000,
                 "event_type": DECLARED, "measurements": priced_at(500_000),
             }]}), content_type="application/json", **self._auth())
@@ -321,7 +320,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # episode — exactly what a pre-relabel write left behind, immutably.
         legacy = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="legacy-1", idempotency_key="legacy-1",
+            idempotency_key="legacy-1",
             provider_cost_micros=1_000_000, billed_cost_micros=4_000_000,
             stop_context=[{
                 "limit": "customer_floor", "stop_scope": "customer",
@@ -345,7 +344,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         excluded now that the filter is a deny-list, not an allow-list."""
         suspended_event = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="susp-1", idempotency_key="susp-1",
+            idempotency_key="susp-1",
             provider_cost_micros=1_000_000, billed_cost_micros=1_000_000,
             stop_context=[{
                 "limit": "suspended", "stop_scope": "customer",

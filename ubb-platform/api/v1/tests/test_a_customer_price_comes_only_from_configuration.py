@@ -314,7 +314,7 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
         """
         with self.assertRaisesRegex(TypeError, "billed_cost_micros"):
             UsageService.record_usage(
-                self.tenant, self.customer, "no-such-keyword",
+                self.tenant, self.customer,
                 "no-such-keyword",
                 billed_cost_micros=WHAT_A_CALLER_WOULD_HAVE_SENT)
 

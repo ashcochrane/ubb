@@ -16,23 +16,22 @@ from apps.metering.pricing.tests._helpers import (
 
 
 def usage_payload(customer, correlation, **fields):
-    """A recording-call body, without the caller naming the retired key.
+    """A recording-call body, from a customer and one correlation string.
 
-    The recording request still requires a second caller-supplied correlation
-    value beside `idempotency_key`. That word is RETIRED — slice 5 deletes it,
-    once the key that replaces it is finalised (`gates/migration-ledger.yaml`,
-    `backend::request_id`) — and its ledger entry caps how many files may still
-    contain it. **That cap is a ceiling on SPREAD, not only a count of what is
-    left to fix**, so a new test module naming the key puts the count over its
-    entry and the sweep fails. This module is already one of the counted ones,
-    so the word stays here and a caller elsewhere says what it means.
+    THE REASON THIS HELPER EXISTED IS GONE, AND IT IS KEPT ON A WEAKER ONE.
+    It was written to spell a retired word once, in a file already counted
+    against that word's ledger entry, so that no caller elsewhere had to name
+    it and push the entry past its spread ceiling. #411 deleted the field, the
+    entry with it, and the whole recording body now carries exactly one
+    correlation value — so there is nothing left to hide.
 
-    Exactly `cost_rate_in_default_book`'s shape, one retired word along
-    (`apps/metering/pricing/tests/_helpers.py`). Both callers pass one string
-    and never learn which key it lands under, so slice 5 re-spells it here and
-    nowhere else.
+    What it still buys is that `correlation` names what the string IS rather
+    than which key it lands under, which is the same service
+    `cost_rate_in_default_book` does one concept along
+    (`apps/metering/pricing/tests/_helpers.py`). That is worth a helper on its
+    own, and it is the only claim this docstring now makes.
     """
-    return {"customer_id": str(customer.id), "request_id": correlation,
+    return {"customer_id": str(customer.id),
             "idempotency_key": correlation, **fields}
 
 
@@ -50,9 +49,10 @@ def declared_grouping_values(values):
 
 #: EVERY PARAMETER THE RECORDING REQUEST PUBLISHES, and nothing else (#324).
 #:
-#: Spelled here for `usage_payload`'s reason one word wider: TWO of these keys
-#: are retired words under a spread ceiling — the correlation value above and
-#: the grouping bag slice 7 owns — and this module is already counted for both.
+#: Spelled here for `usage_payload`'s reason one word wider: ONE of these keys
+#: is a retired word under a spread ceiling — the grouping bag slice 7 owns —
+#: and this module is already counted for it. There were TWO until #411 deleted
+#: the second correlation value, which left the set as well as the ledger.
 #: The claim that reads it lives in
 #: `test_two_request_fields_each_with_one_meaning.py`, where the two cost
 #: fields' story is; only the spelling is here.
@@ -70,7 +70,7 @@ def declared_grouping_values(values):
 #: `test_a_customer_price_comes_only_from_configuration.py` holds both halves of
 #: that asymmetry and the measurement behind it.
 THE_WHOLE_RECORDING_REQUEST = frozenset({
-    "customer_id", "request_id", "idempotency_key", "metadata",
+    "customer_id", "idempotency_key", "metadata",
     "provider_cost_micros", "claimed_provider_cost_micros",
     "measurements", "currency", "task_id", "event_type",
     "provider", "dimensions", "effective_at",
@@ -189,7 +189,7 @@ class UsageEventDetailEndpointTest(TestCase):
         c = customer or self.customer
         return Posting.objects.create(
             tenant=t, customer=c,
-            request_id=f"req-{c.external_id}", idempotency_key=f"idem-{c.external_id}",
+            idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
             event_type="chat", provider="openai", currency="usd",
             # A RECEIPT IN THE OLDER SHAPE, WRITTEN ON PURPOSE. Every key here
@@ -277,7 +277,7 @@ class UsageEventDetailEndpointTest(TestCase):
 
         ev = Posting.objects.get(
             id=UsageService.record_usage(
-                self.tenant, self.customer, "r-avail", "i-avail",
+                self.tenant, self.customer, "i-avail",
                 measurements={"input_tokens": 1200})["event_id"])
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
@@ -300,7 +300,7 @@ class UsageEventDetailEndpointTest(TestCase):
 
         ev = Posting.objects.get(
             id=UsageService.record_usage(
-                self.tenant, self.customer, "r-pruned", "i-pruned",
+                self.tenant, self.customer, "i-pruned",
                 measurements={"input_tokens": 1200})["event_id"])
         # Two steps, because the database now holds the child's whole-record
         # rule (#354) and this call has no cost rate behind it, so it records
@@ -353,7 +353,7 @@ class UsageEventDetailEndpointTest(TestCase):
         self._a_cost_the_margin_can_be_taken_over()
         ev = Posting.objects.get(
             id=UsageService.record_usage(
-                self.tenant, self.customer, "r-method", "i-method",
+                self.tenant, self.customer, "i-method",
                 measurements={"input_tokens": 1200})["event_id"])
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
@@ -505,7 +505,6 @@ class MeteringTaskEndpointTest(TestCase):
     def _record(self, **extra):
         data = {
             "customer_id": str(self.customer.id),
-            "request_id": "req_1",
             "idempotency_key": "idem_1",
             "event_type": DECLARED,
             "provider_cost_micros": 1_000_000,
@@ -542,7 +541,6 @@ class MeteringTaskEndpointTest(TestCase):
         # First event under limit
         resp = self._record(
             task_id=str(task.id),
-            request_id="req_hs1",
             idempotency_key="idem_hs1",
             provider_cost_micros=9_000_000,
         )
@@ -555,7 +553,6 @@ class MeteringTaskEndpointTest(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(
                 task_id=str(task.id),
-                request_id="req_hs2",
                 idempotency_key="idem_hs2",
                 provider_cost_micros=2_000_000,
             )
@@ -613,7 +610,7 @@ class MeteringTaskEndpointTest(TestCase):
         other_tenant = Tenant.objects.create(name="Victim", products=["metering"])
         other_customer = Customer.objects.create(tenant=other_tenant, external_id="victim_c")
         victim_task = self._task(tenant=other_tenant, customer=other_customer)
-        resp = self._record(task_id=str(victim_task.id), request_id="req_idor1", idempotency_key="idem_idor1")
+        resp = self._record(task_id=str(victim_task.id), idempotency_key="idem_idor1")
         self.assertEqual(resp.status_code, 404)
         victim_task.refresh_from_db()
         self.assertEqual(victim_task.total_billed_cost_micros, 0)
@@ -625,7 +622,7 @@ class MeteringTaskEndpointTest(TestCase):
     def test_record_usage_cross_customer_same_tenant_task_id_is_404(self, mock_process):
         cust_b = Customer.objects.create(tenant=self.tenant, external_id="cust_b")
         task_b = self._task(customer=cust_b)
-        resp = self._record(task_id=str(task_b.id), request_id="req_idor2", idempotency_key="idem_idor2")
+        resp = self._record(task_id=str(task_b.id), idempotency_key="idem_idor2")
         self.assertEqual(resp.status_code, 404)
         task_b.refresh_from_db()
         self.assertEqual(task_b.total_billed_cost_micros, 0)
@@ -636,9 +633,12 @@ class MeteringTaskEndpointTest(TestCase):
     # ---- what the recording path publishes about completeness (#328) -------
     #
     # Both live HERE rather than beside the rest of #328 because the recording
-    # request still requires the retired correlation key, and this module is one
-    # of the files already counted for it. The behaviour is metering's; the
-    # readers proved elsewhere are subscriptions', platform's and referrals'.
+    # request then still required the retired second correlation key, and this
+    # module was one of the files already counted for it. #411 deleted that
+    # field, so the placement now rests on the reason that outlived it: these
+    # assert what the RECORDING ROUTE emits, and this is the route's own module.
+    # The behaviour is metering's; the readers proved elsewhere are
+    # subscriptions', platform's and referrals'.
 
     def test_the_emitted_payload_carries_the_status_the_posting_recorded(self):
         """The one line four products depend on, and nothing else asserted it.
@@ -674,7 +674,7 @@ class MeteringTaskEndpointTest(TestCase):
         task = self._task()
         first = self._record(task_id=str(task.id))
         self.assertEqual(first.status_code, 200)
-        second = self._record(task_id=str(task.id), request_id="req_2",
+        second = self._record(task_id=str(task.id),
                               idempotency_key="idem_2",
                               provider_cost_micros=None)
         body = second.json()
@@ -704,7 +704,6 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
             UsageService.record_usage(
                 tenant=self.tenant,
                 customer=self.customer,
-                request_id=f"req_analytics_{i}",
                 idempotency_key=f"idem_analytics_{i}",
                 provider_cost_micros=1_000_000,
             )
@@ -737,7 +736,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         other = Customer.objects.create(tenant=self.tenant, external_id="c_other")
         UsageService.record_usage(
             tenant=self.tenant, customer=other,
-            request_id="req_dim_1", idempotency_key="idem_dim_1",
+            idempotency_key="idem_dim_1",
             provider_cost_micros=2_000_000, metadata={"model": "gpt-4"},
             dimension_slots={"grouping_field_1": "chat"},
         )
@@ -781,7 +780,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_4", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme_multi")
         Posting.objects.create(
-            tenant=self.tenant, customer=c, request_id="r_md1", idempotency_key="i_md1",
+            tenant=self.tenant, customer=c, idempotency_key="i_md1",
             provider_cost_micros=300_000, billed_cost_micros=500_000, grouping_field_1="search",
             grouping_field_2="svcA", grouping_field_3="ag1", grouping_field_4="us",
         )
@@ -820,7 +819,7 @@ class MeteringUsageAnalyticsEndpointTest(TestCase):
         GroupingField.objects.create(tenant=self.tenant, key="dim1", slot="grouping_field_1", scope="event")
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         Posting.objects.create(
-            tenant=self.tenant, customer=c, request_id="r1", idempotency_key="i1",
+            tenant=self.tenant, customer=c, idempotency_key="i1",
             provider_cost_micros=300_000, billed_cost_micros=500_000, grouping_field_1="search",
         )
         resp = self.http_client.get(
@@ -1031,7 +1030,7 @@ class UsageTimeseriesEndpointTest(TestCase):
         from apps.metering.usage.models import Posting
         c = Customer.objects.create(tenant=self.tenant, external_id="acme")
         for i, day in enumerate([1, 2, 3]):
-            e = Posting.objects.create(tenant=self.tenant, customer=c, request_id=f"r{i}",
+            e = Posting.objects.create(tenant=self.tenant, customer=c,
                 idempotency_key=f"i{i}", provider_cost_micros=100_000, billed_cost_micros=150_000)
             Posting.objects.filter(id=e.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, day, 12, 0)))
@@ -1072,14 +1071,14 @@ class DimensionBreakdownReconciliationTest(TestCase):
         # Event 1: has a service tag -> grouping_field_2 = "svcA"
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="r_rec_1", idempotency_key="i_rec_1",
+            idempotency_key="i_rec_1",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
             grouping_field_2="svcA",
         )
         # Event 2: NO service tag -> dim2 is empty string (the default)
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="r_rec_2", idempotency_key="i_rec_2",
+            idempotency_key="i_rec_2",
             provider_cost_micros=100_000, billed_cost_micros=100_000,
             grouping_field_2="",
         )
@@ -1145,7 +1144,6 @@ class RecordUsageCurrencyTest(TestCase):
     def _body(self, idem, **extra):
         return {
             "customer_id": str(self.customer.id),
-            "request_id": f"req_{idem}",
             "idempotency_key": idem,
             "event_type": DECLARED,
             "provider_cost_micros": 1_000_000,
@@ -1180,7 +1178,6 @@ class RecordUsageCurrencyTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(eur_customer.id),
-                "request_id": "req_eur",
                 "idempotency_key": "idem_eur",
                 "event_type": DECLARED,
                 "provider_cost_micros": 1_000_000,

@@ -32,7 +32,7 @@ class TestGroupingFieldInheritance:
         # test_attribution_columns.py does, so attribute access below reads
         # the durable columns, not the response envelope.
         r = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key=kw.pop("key", "k1"),
+            tenant=t, customer=c, idempotency_key=kw.pop("key", "k1"),
             provider="aws_textract", event_type="ocr_page",
             provider_cost_micros=1000, task_id=task.id, **kw)
         return Posting.objects.get(id=r["event_id"])
@@ -76,7 +76,7 @@ class TestGroupingFieldInheritance:
         t = Tenant.objects.create(name="T2")
         c = Customer.objects.create(tenant=t, external_id="c2")
         r = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1)
         e = Posting.objects.get(id=r["event_id"])
         assert e.task_type == "" and e.grouping_field_1 == ""
@@ -94,7 +94,7 @@ class TestGroupingFieldInheritance:
         c = Customer.objects.create(tenant=t, external_id="c3")
         with pytest.raises(TypeError):
             UsageService.record_usage(
-                tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+                tenant=t, customer=c, idempotency_key="k1",
                 provider="openai", event_type="completion", provider_cost_micros=1,
                 product_id="legacy-product")
 
@@ -108,7 +108,7 @@ class TestGroupingFieldInheritance:
         parent = Task.objects.create(tenant=t, customer=c, balance_snapshot_micros=0,
                                     task_type="job", grouping_field_1="task-scoped-value")
         r = UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1,
             task_id=parent.id,
             dimension_slots={"grouping_field_1": "declared-value"})

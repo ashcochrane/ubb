@@ -41,7 +41,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r1", idempotency_key="i1",
+            customer_id="cust_1", idempotency_key="i1",
             provider_cost_micros=1_500_000,
         )
         self.assertIsInstance(result, RecordUsageResponse)
@@ -76,12 +76,12 @@ class MeteringClientTest(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "billed_cost_micros"):
             self.client.record_usage(
-                customer_id="cust_1", request_id="r2", idempotency_key="i2",
+                customer_id="cust_1", idempotency_key="i2",
                 billed_cost_micros=1_000_000,
             )
 
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r2", idempotency_key="i2",
+            customer_id="cust_1", idempotency_key="i2",
             provider_cost_micros=500_000,
             event_type="chat_completion", provider="openai",
         )
@@ -112,7 +112,7 @@ class MeteringClientTest(unittest.TestCase):
             "claimed_provider_cost_micros": 987_654,
         })
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="rc", idempotency_key="ic",
+            customer_id="cust_1", idempotency_key="ic",
             claimed_provider_cost_micros=987_654)
 
         body = mock_post.call_args.kwargs["json"]
@@ -133,7 +133,7 @@ class MeteringClientTest(unittest.TestCase):
             "event_id": "evt_d", "new_balance_micros": 9_000_000,
             "suspended": False, "costing_status": "known", "pricing_status": "known"})
 
-        self.client.record_usage(customer_id="cust_1", request_id="rd",
+        self.client.record_usage(customer_id="cust_1",
                                  idempotency_key="id")
 
         self.assertNotIn("claimed_provider_cost_micros",
@@ -146,7 +146,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="r3", idempotency_key="i3",
+            customer_id="cust_1", idempotency_key="i3",
             provider_cost_micros=1_000_000, metadata={"project": "proj_1"},
         )
         body = mock_post.call_args.kwargs["json"]
@@ -162,7 +162,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
-            customer_id="cust_1", request_id="r3b", idempotency_key="i3b",
+            customer_id="cust_1", idempotency_key="i3b",
             provider_cost_micros=1_000_000, dimensions={"service": "alpha"},
         )
         body = mock_post.call_args.kwargs["json"]
@@ -175,7 +175,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
-            customer_id="cust_1", request_id="r3c", idempotency_key="i3c",
+            customer_id="cust_1", idempotency_key="i3c",
             provider_cost_micros=1_000_000,
         )
         body = mock_post.call_args.kwargs["json"]
@@ -191,7 +191,7 @@ class MeteringClientTest(unittest.TestCase):
         })
         ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
         self.client.record_usage(
-            customer_id="cust_1", request_id="r4", idempotency_key="i4",
+            customer_id="cust_1", idempotency_key="i4",
             provider_cost_micros=1, recorded_at=ts,
         )
         body = mock_post.call_args.kwargs["json"]
@@ -205,7 +205,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
-            customer_id="cust_1", request_id="r5", idempotency_key="i5",
+            customer_id="cust_1", idempotency_key="i5",
             provider_cost_micros=1, recorded_at="2026-06-01T12:00:00+02:00",
         )
         body = mock_post.call_args.kwargs["json"]
@@ -215,7 +215,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_naive_recorded_at_rejected_before_http(self, mock_post):
         with self.assertRaises(ValueError):
             self.client.record_usage(
-                customer_id="cust_1", request_id="r6", idempotency_key="i6",
+                customer_id="cust_1", idempotency_key="i6",
                 provider_cost_micros=1, recorded_at=datetime(2026, 6, 1, 12, 0),
             )
         mock_post.assert_not_called()
@@ -227,7 +227,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
-            customer_id="cust_1", request_id="r7", idempotency_key="i7",
+            customer_id="cust_1", idempotency_key="i7",
             provider_cost_micros=1,
         )
         self.assertNotIn("effective_at", mock_post.call_args.kwargs["json"])
@@ -246,9 +246,9 @@ class MeteringClientTest(unittest.TestCase):
             "accepted": 1, "rejected": 1,
         })
         result = self.client.record_batch([
-            {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+            {"customer_id": "cust_1", "idempotency_key": "k1",
              "recorded_at": datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)},
-            {"customer_id": "cust_1", "request_id": "r2", "idempotency_key": "k2",
+            {"customer_id": "cust_1", "idempotency_key": "k2",
              "recorded_at": "2026-01-01T00:00:00+00:00"},
         ])
         # Endpoint + body mapping
@@ -274,7 +274,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_batch_naive_recorded_at_rejected_before_http(self, mock_post):
         with self.assertRaises(ValueError):
             self.client.record_batch([
-                {"customer_id": "cust_1", "request_id": "r1",
+                {"customer_id": "cust_1",
                  "idempotency_key": "k1", "recorded_at": datetime(2026, 6, 1)},
             ])
         mock_post.assert_not_called()
@@ -284,7 +284,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "results": [{"ok": True, "event_id": "e1", "suspended": False}], "succeeded": 1, "failed": 0,
         })
-        ev = {"customer_id": "cust_1", "request_id": "r1", "idempotency_key": "k1",
+        ev = {"customer_id": "cust_1", "idempotency_key": "k1",
               "recorded_at": "2026-06-01T12:00:00+00:00"}
         self.client.record_batch([ev])
         self.assertIn("recorded_at", ev)  # caller's dict untouched
@@ -296,7 +296,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_get_usage(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
-                {"id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1",
+                {"id": "00000000-0000-0000-0000-0000000000e1",
                  "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known",
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],
@@ -340,7 +340,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=401)
         with self.assertRaises(UBBAuthError):
             self.client.record_usage(
-                customer_id="c1", request_id="r1", idempotency_key="i1",
+                customer_id="c1", idempotency_key="i1",
                 provider_cost_micros=1000,
             )
 
@@ -350,7 +350,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.return_value.json.side_effect = Exception("not json")
         with self.assertRaises(UBBAPIError):
             self.client.record_usage(
-                customer_id="c1", request_id="r1", idempotency_key="i1",
+                customer_id="c1", idempotency_key="i1",
                 provider_cost_micros=1000,
             )
 
@@ -362,7 +362,7 @@ class MeteringClientTest(unittest.TestCase):
         )
         with self.assertRaises(UBBConflictError):
             self.client.record_usage(
-                customer_id="c1", request_id="r1", idempotency_key="i1",
+                customer_id="c1", idempotency_key="i1",
                 provider_cost_micros=1000,
             )
 
@@ -371,7 +371,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.side_effect = httpx.TimeoutException("timed out")
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
-                customer_id="c1", request_id="r1", idempotency_key="i1",
+                customer_id="c1", idempotency_key="i1",
                 provider_cost_micros=1000,
             )
         self.assertIsNotNone(ctx.exception.original)
@@ -381,7 +381,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.side_effect = httpx.ConnectError("connection refused")
         with self.assertRaises(UBBConnectionError) as ctx:
             self.client.record_usage(
-                customer_id="c1", request_id="r1", idempotency_key="i1",
+                customer_id="c1", idempotency_key="i1",
                 provider_cost_micros=1000,
             )
         self.assertIn("Could not connect", str(ctx.exception))
@@ -410,7 +410,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         result = self.client.record_usage(
-            customer_id="c", request_id="r", idempotency_key="i",
+            customer_id="c", idempotency_key="i",
             measurements={"input_tokens": 1000},
         )
         self.assertIsInstance(result, RecordUsageResponse)
@@ -431,7 +431,7 @@ class MeteringClientTest(unittest.TestCase):
             "uncosted_measurement_keys": ["foo"],
         })
         res = self.client.record_usage(
-            customer_id="c", request_id="r", idempotency_key="i",
+            customer_id="c", idempotency_key="i",
             measurements={"input_tokens": 1000},
         )
         self.assertIsInstance(res, RecordUsageResponse)
@@ -451,7 +451,7 @@ class MeteringClientTest(unittest.TestCase):
             "stop": False, "stop_reason": None, "stop_scope": None,
         })
         result = self.client.record_usage(
-            customer_id="cust_1", request_id="rt1", idempotency_key="it1",
+            customer_id="cust_1", idempotency_key="it1",
             provider_cost_micros=500_000, task_id="task_1",
         )
         body = mock_post.call_args.kwargs["json"]
@@ -469,7 +469,7 @@ class MeteringClientTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
-            customer_id="cust_1", request_id="rt2", idempotency_key="it2",
+            customer_id="cust_1", idempotency_key="it2",
             provider_cost_micros=1,
         )
         self.assertNotIn("task_id", mock_post.call_args.kwargs["json"])

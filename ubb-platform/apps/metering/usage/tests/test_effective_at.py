@@ -43,7 +43,7 @@ class TestEffectiveAtBounds:
     def test_four_minutes_ahead_accepted_lands_at_given_timestamp(self):
         t, c = _setup()
         eff = timezone.now() + timedelta(minutes=4)
-        r = UsageService.record_usage(t, c, "r1", "k1",
+        r = UsageService.record_usage(t, c, "k1",
                                       provider_cost_micros=10, effective_at=eff)
         event = Posting.objects.get(id=r["event_id"])
         assert event.effective_at == eff
@@ -51,42 +51,42 @@ class TestEffectiveAtBounds:
     def test_six_minutes_ahead_rejected(self):
         t, c = _setup()
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
+            UsageService.record_usage(t, c, "k1", provider_cost_micros=10,
                                       effective_at=timezone.now() + timedelta(minutes=6))
         assert exc.value.code == "effective_at_in_future"
         assert Posting.objects.count() == 0
 
     def test_default_window_33_days_accepted_35_rejected(self):
         t, c = _setup()
-        ok = UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
+        ok = UsageService.record_usage(t, c, "k1", provider_cost_micros=10,
                                        effective_at=timezone.now() - timedelta(days=33))
         assert Posting.objects.filter(id=ok["event_id"]).exists()
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r2", "k2", provider_cost_micros=10,
+            UsageService.record_usage(t, c, "k2", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(days=35))
         assert exc.value.code == "effective_at_too_old"
 
     def test_per_tenant_window_seven_days(self):
         t, c = _setup(backfill_window_days=7)
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
+            UsageService.record_usage(t, c, "k1", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(days=8))
         assert exc.value.code == "effective_at_too_old"
-        r = UsageService.record_usage(t, c, "r2", "k2", provider_cost_micros=10,
+        r = UsageService.record_usage(t, c, "k2", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(days=6))
         assert Posting.objects.filter(id=r["event_id"]).exists()
 
     def test_window_zero_rejects_any_backdated(self):
         t, c = _setup(backfill_window_days=0)
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
+            UsageService.record_usage(t, c, "k1", provider_cost_micros=10,
                                       effective_at=timezone.now() - timedelta(hours=1))
         assert exc.value.code == "effective_at_too_old"
 
     def test_naive_rejected(self):
         t, c = _setup()
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10,
+            UsageService.record_usage(t, c, "k1", provider_cost_micros=10,
                                       effective_at=timezone.now().replace(tzinfo=None))
         assert exc.value.code == "effective_at_naive"
 
@@ -95,7 +95,7 @@ class TestEffectiveAtBounds:
         auto_now_add behavior (effective_at ≈ created_at ≈ now)."""
         t, c = _setup()
         before = timezone.now()
-        r = UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10)
+        r = UsageService.record_usage(t, c, "k1", provider_cost_micros=10)
         event = Posting.objects.get(id=r["event_id"])
         assert before <= event.effective_at <= timezone.now()
         assert abs((event.effective_at - event.created_at).total_seconds()) < 5
@@ -110,8 +110,8 @@ class TestEffectiveAtBounds:
         """A replayed idempotency key returns the original event even when the
         replayed effective_at would now be rejected — batch-retry safety."""
         t, c = _setup()
-        r1 = UsageService.record_usage(t, c, "r1", "dup", provider_cost_micros=10)
-        r2 = UsageService.record_usage(t, c, "r1", "dup", provider_cost_micros=10,
+        r1 = UsageService.record_usage(t, c, "dup", provider_cost_micros=10)
+        r2 = UsageService.record_usage(t, c, "dup", provider_cost_micros=10,
                                        effective_at=timezone.now() - timedelta(days=300))
         assert r2["event_id"] == r1["event_id"]
         assert Posting.objects.count() == 1
@@ -138,7 +138,7 @@ class TestEffectiveAtEndpoint:
         return resp
 
     def test_naive_string_422_with_typed_code(self):
-        resp = self._post({"request_id": "r1", "idempotency_key": "k1",
+        resp = self._post({"idempotency_key": "k1",
                            "provider_cost_micros": 10,
                            "effective_at": "2026-06-01T12:00:00"})
         assert resp.status_code == 422
@@ -149,21 +149,21 @@ class TestEffectiveAtEndpoint:
 
     def test_in_future_422_with_typed_code(self):
         eff = (timezone.now() + timedelta(minutes=10)).isoformat()
-        resp = self._post({"request_id": "r1", "idempotency_key": "k1",
+        resp = self._post({"idempotency_key": "k1",
                            "provider_cost_micros": 10, "effective_at": eff})
         assert resp.status_code == 422
         assert resp.json()["code"] == "effective_at_in_future"
 
     def test_too_old_422_with_typed_code(self):
         eff = (timezone.now() - timedelta(days=40)).isoformat()
-        resp = self._post({"request_id": "r1", "idempotency_key": "k1",
+        resp = self._post({"idempotency_key": "k1",
                            "provider_cost_micros": 10, "effective_at": eff})
         assert resp.status_code == 422
         assert resp.json()["code"] == "effective_at_too_old"
 
     def test_valid_effective_at_200(self):
         eff = (timezone.now() - timedelta(days=3)).isoformat()
-        resp = self._post({"request_id": "r1", "idempotency_key": "k1",
+        resp = self._post({"idempotency_key": "k1",
                            "provider_cost_micros": 10, "effective_at": eff})
         assert resp.status_code == 200
 
@@ -193,7 +193,7 @@ class TestHistoricalPricing:
             valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(
-            t, c, "r1", "k1", measurements={"tok": 100},
+            t, c, "k1", measurements={"tok": 100},
             effective_at=now - timedelta(days=20))
         assert r_old["billed_cost_micros"] == 1_000  # 100 @ v1's 10
         # The rule this resolved against, read out of the receipt's own
@@ -206,7 +206,7 @@ class TestHistoricalPricing:
                 == {"tok": str(v1.id)})
 
         r_new = UsageService.record_usage(
-            t, c, "r2", "k2", measurements={"tok": 100})
+            t, c, "k2", measurements={"tok": 100})
         assert r_new["billed_cost_micros"] == 5_000  # 100 @ v2's 50
 
 
@@ -237,7 +237,7 @@ class TestClosedPeriodGuard:
             status=status, push_phase=push_phase, stripe_invoice_id=stripe_invoice_id,
             line_snapshot=line_snapshot)
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, c, "r1", "k1",
+            UsageService.record_usage(t, c, "k1",
                                       provider_cost_micros=10, effective_at=eff)
         assert exc.value.code == "billing_period_closed"
         assert Posting.objects.count() == 0
@@ -251,7 +251,7 @@ class TestClosedPeriodGuard:
         CustomerUsageInvoice.objects.create(
             tenant=t, customer=c, period_start=period_start, period_end=period_end,
             status="pending")  # line_snapshot defaults to []
-        r = UsageService.record_usage(t, c, "r1", "k1",
+        r = UsageService.record_usage(t, c, "k1",
                                       provider_cost_micros=10, effective_at=eff)
         assert Posting.objects.filter(id=r["event_id"]).exists()
 
@@ -271,7 +271,7 @@ class TestClosedPeriodGuard:
         # module: a price is resolved as of the posting's own moment, so a rule
         # opened today reaches nothing dated last month.
         a_rule_that_prices_what_it_measures(t, valid_from=eff - timedelta(days=1))
-        r = UsageService.record_usage(t, c, "r1", "k1",
+        r = UsageService.record_usage(t, c, "k1",
                                       measurements=priced_at(7_000_000),
                                       effective_at=eff)
         assert Posting.objects.filter(id=r["event_id"]).exists()
@@ -299,7 +299,7 @@ class TestClosedPeriodGuard:
             tenant=t, customer=biz, period_start=period_start, period_end=period_end,
             status="pushed", stripe_invoice_id="in_42")
         with pytest.raises(EffectiveAtError) as exc:
-            UsageService.record_usage(t, seat, "r1", "k1",
+            UsageService.record_usage(t, seat, "k1",
                                       provider_cost_micros=10, effective_at=eff)
         assert exc.value.code == "billing_period_closed"
 
@@ -317,19 +317,19 @@ class TestBackfillDirtyMarkers:
         t, c = _setup()
         eff = _prior_month_eff()
         period_start, _ = month_bounds(eff)
-        UsageService.record_usage(t, c, "r1", "k1",
+        UsageService.record_usage(t, c, "k1",
                                   provider_cost_micros=10, effective_at=eff)
         marker = BackfillDirtyPeriod.objects.get(tenant=t, customer=c)
         assert marker.period_start == period_start
         # Second backfill into the same period: unique swallowed, still 1 marker.
-        UsageService.record_usage(t, c, "r2", "k2",
+        UsageService.record_usage(t, c, "k2",
                                   provider_cost_micros=10, effective_at=eff)
         assert BackfillDirtyPeriod.objects.count() == 1
 
     def test_same_month_backdated_event_writes_no_marker(self):
         t, c = _setup()
         eff = timezone.now() - timedelta(minutes=30)
-        UsageService.record_usage(t, c, "r1", "k1",
+        UsageService.record_usage(t, c, "k1",
                                   provider_cost_micros=10, effective_at=eff)
         assert BackfillDirtyPeriod.objects.count() == 0
 
@@ -352,7 +352,7 @@ class TestUsageRecordedPayload:
         # Offset timezone: payload must be normalized to UTC.
         eff = (timezone.now() - timedelta(days=1)).astimezone(
             dt.timezone(dt.timedelta(hours=5)))
-        r = UsageService.record_usage(t, c, "r1", "k1",
+        r = UsageService.record_usage(t, c, "k1",
                                       provider_cost_micros=10, effective_at=eff)
         evt = OutboxEvent.objects.get(event_type="usage.recorded", tenant_id=t.id)
         payload_eff = dt.datetime.fromisoformat(evt.payload["effective_at"])
@@ -364,7 +364,7 @@ class TestUsageRecordedPayload:
     def test_payload_present_on_default_path_too(self):
         import datetime as dt
         t, c = _setup()
-        UsageService.record_usage(t, c, "r1", "k1", provider_cost_micros=10)
+        UsageService.record_usage(t, c, "k1", provider_cost_micros=10)
         evt = OutboxEvent.objects.get(event_type="usage.recorded", tenant_id=t.id)
         assert dt.datetime.fromisoformat(evt.payload["effective_at"])
 

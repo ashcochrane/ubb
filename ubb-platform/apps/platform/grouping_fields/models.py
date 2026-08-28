@@ -46,7 +46,14 @@ RESERVED_KEYS = ("provider", "event_type", "task_type", "subtask_type")
 
 # Correlation identifiers (D9): unbounded by construction, so they are filter
 # parameters and may never be declared as dimensions.
-FORBIDDEN_KEYS = ("task_id", "subtask_id", "request_id", "idempotency_key",
+#
+# The list lost a member in #411, and it left because the FIELD left: the
+# second caller-supplied correlation value is gone from the recording request,
+# so its name is no longer one of UBB's and a tenant binding that word to a
+# slot now collides with nothing. What remains here is exactly the set that is
+# still UBB's own — a guard against shadowing a real identifier, not a reserved
+# word list this repository maintains for its own sake.
+FORBIDDEN_KEYS = ("task_id", "subtask_id", "idempotency_key",
                   "customer_id", "event_id")
 
 

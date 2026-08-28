@@ -48,7 +48,6 @@ class RecordUsageReceiptTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                "request_id": "req_provenance_1",
                 "idempotency_key": "idem_provenance_1",
                 "provider": "openai",
                 "event_type": "chat",

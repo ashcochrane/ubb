@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,696 of 2,100 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,696 of 2,101 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -367,9 +367,10 @@ measurement_key:
     # silent wrong number rather than a red board.
     #
     # A CORRELATION KEY THAT ALMOST LANDED ON A DIFFERENT ENTRY. The new test
-    # module records usage, and the recording request still requires the
+    # module records usage, and the recording request THEN STILL REQUIRED the
     # retired second correlation value (`backend::request_id`, slice 5's, at 65
-    # files). Naming it would have made the module the 66th and failed the
+    # files at the time; #411 has since deleted the field and all five of its
+    # entries). Naming it would have made the module the 66th and failed the
     # sweep with `term_spread` — a ceiling on SPREAD, not only on what is left
     # to fix. Answered as `cost_rate_in_default_book` answers the same problem
     # one word along: the key is spelled once, in a file already counted, and
@@ -1387,8 +1388,10 @@ measurement_key:
     # REVIEW CYCLE. The sweep reads `git ls-files`, so an UNTRACKED file is
     # INVISIBLE to it — and to this test. #371's first commit ran both gates
     # green while five of its six new modules were still untracked, and one of
-    # them spelled `request_id`, whose console ledger entry counts six files and
-    # is a ceiling on SPREAD. Staging the commit turned both gates red at once:
+    # them spelled `request_id`, whose console ledger entry THEN counted six
+    # files and was a ceiling on SPREAD (#411 has since cleared that entry; the
+    # lesson about staging is untouched by it). Staging the commit turned both
+    # gates red at once:
     # the sweep on the seventh file, this test on the denominator. **Run
     # `git add` BEFORE the sweep and before this suite, not after** — #369's and
     # #370's paragraphs both say so and both were read as bookkeeping advice
@@ -1396,9 +1399,11 @@ measurement_key:
     #
     # ⚠ NO NEW TEST MODULE NAMES A RETIRED WORD AND NONE TOOK AN ALLOWLIST SEAT
     # (still 14). The `request_id` occurrence was removed by Phase B's SECOND
-    # technique — the word stays once in `features/events/api/mock-data.ts`,
+    # technique — the word stayed once in `features/events/api/mock-data.ts`,
     # which already carried it, behind a `correlationIds` helper the rendering
-    # test calls instead of spelling the key. Deriving it from a rename
+    # test called instead of spelling the key. (#411 deleted the field; that
+    # helper is now `correlationId`, singular, and returns the one key left.)
+    # Deriving it from a rename
     # operation was not available here: nothing in this commit renames it, and
     # it is slice 5's word rather than this slice's.
     #
@@ -1432,7 +1437,8 @@ measurement_key:
     # landed in a module of its own, once, with the fixture calling a builder
     # that takes `quantity` — the name the engine's own `_component` takes. That
     # is Phase B's second technique, and the same trade `correlationIds` in that
-    # file already makes for `request_id`.
+    # file already made for `request_id` — a trade that has since expired with
+    # the field, in #411.
     #
     # ⚠ ONE MORE COUNT MOVED IN THIS COMMIT AND IT IS NOT THIS ONE. `dimensions`
     # is a retired TERM with a console ledger entry, and reading the tenant's
@@ -1606,6 +1612,28 @@ measurement_key:
     # and the count did not move at all. The sense is exactly as alive as it
     # was, and that is what an unmoved numerator across a large slice-5 commit
     # means.
+    #
+    # #411 MOVED THE TRACKED DENOMINATOR ALONE AND LEFT EVERYTHING ELSE WHERE IT
+    # WAS (1,696 swept UNCHANGED, 2,100 -> 2,101 tracked, `units` UNMOVED at 45
+    # files and 123 occurrences), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 237 -> 238). One tracked file arrived — the
+    # migration that drops the second caller-supplied correlation value — and a
+    # migration is excluded, so it lifts tracked without touching swept. No
+    # swept file was added or removed at all.
+    #
+    # ⚠ THAT IS THE FLATTEST THIS BLOCK HAS EVER READ AGAINST THE LARGEST
+    # COMMIT IT HAS MEASURED, AND THE COMBINATION IS THE POINT. The commit
+    # edited 114 files — 85 of them the ones that actually NAMED the retired
+    # word, which is the ledger's count and not the diff's — deleted a published
+    # request field, a column and its two indexes, changed two hand-written SDK
+    # signatures, dropped a console row and cleared FIVE G7 ledger entries at
+    # once (188 -> 183), and this entry's numerator did not move by one
+    # occurrence. #410's paragraph above warned that prose being MOVED is the
+    # fourth way the count travels; this commit REWROTE a great deal of prose —
+    # eight docstrings and comments whose stated reason was a debt it had just
+    # paid — and still did not carry the word, because none of the sentences it
+    # rewrote were about quantities.
+    # **A large diff is not evidence either way — only the measurement is.**
 
     - term: units
       retired_as: >-
@@ -1727,11 +1755,17 @@ idempotency_key:
   kind: free_text
   summary: >-
     The caller's key for making a retried write safe. Opaque to UBB beyond its
-    length bound, and the only caller-supplied correlation value on the
-    recording path — which is what made the second one removable: it had no
-    uniqueness constraint, no lookup, no filter and no read that changed any
-    behaviour, while carrying an index write on the hottest path in the system
-    (#179 §4).
+    length bound, and now the ONLY caller-supplied correlation value on the
+    recording path — which is what made the second one removable, and #411
+    removed it. It had no uniqueness constraint, no lookup, no filter and no
+    read that changed any behaviour, while carrying an index write on the
+    hottest path in the system (#179 §4). The alias below stays after the
+    deletion, and that is the point of an alias rather than a leftover: the
+    five ledger entries that excused the word are gone, so the sweep now
+    refuses it in every SWEPT file rather than counting it in eighty-five. The
+    excluded sets still hold it and always will — the frozen migrations that
+    name the column they drop, and the gate bookkeeping recording the debt that
+    was paid — which is what those exclusions are for.
   retired_aliases:
     - request_id
   consumers:

@@ -32,7 +32,6 @@ class RecordUsageRequest:
         Attributes:
             customer_id (UUID):
             idempotency_key (str):
-            request_id (str):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
@@ -50,7 +49,6 @@ class RecordUsageRequest:
 
     customer_id: UUID
     idempotency_key: str
-    request_id: str
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: None | str | Unset = UNSET
     dimensions: RecordUsageRequestDimensions | Unset = UNSET
@@ -74,8 +72,6 @@ class RecordUsageRequest:
         customer_id = str(self.customer_id)
 
         idempotency_key = self.idempotency_key
-
-        request_id = self.request_id
 
         claimed_provider_cost_micros: int | None | Unset
         if isinstance(self.claimed_provider_cost_micros, Unset):
@@ -145,7 +141,6 @@ class RecordUsageRequest:
         field_dict.update({
             "customer_id": customer_id,
             "idempotency_key": idempotency_key,
-            "request_id": request_id,
         })
         if claimed_provider_cost_micros is not UNSET:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
@@ -184,8 +179,6 @@ class RecordUsageRequest:
 
 
         idempotency_key = d.pop("idempotency_key")
-
-        request_id = d.pop("request_id")
 
         def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -320,7 +313,6 @@ class RecordUsageRequest:
         record_usage_request = cls(
             customer_id=customer_id,
             idempotency_key=idempotency_key,
-            request_id=request_id,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,
             dimensions=dimensions,

@@ -80,7 +80,7 @@ class MeteringClient:
 
     # ---- public API ----
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
+    def record_usage(self, customer_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
@@ -98,6 +98,14 @@ class MeteringClient:
         stop sending work for the named scope (``result.stop_scope``: the
         task, or the whole customer). A non-200 always means "this was not
         recorded".
+
+        ``idempotency_key`` is the ONE correlation value this call takes, and
+        it is now the second positional parameter rather than the third. There
+        used to be a second one beside it; it had no uniqueness constraint, no
+        lookup and no read that changed anything, so it was deleted rather than
+        renamed. This key is what decides a replay: send the same one and you
+        get the original event back. Your own correlation strings belong in
+        ``metadata``, where the keys are yours.
 
         ``dimensions``: declared EVENT-scoped grouping field values (the
         tenant's registry, ``PUT /api/v1/metering/grouping-fields``) — what
@@ -154,7 +162,6 @@ class MeteringClient:
         """
         body: dict = {
             "customer_id": customer_id,
-            "request_id": request_id,
             "idempotency_key": idempotency_key,
             "metadata": metadata or {},
         }

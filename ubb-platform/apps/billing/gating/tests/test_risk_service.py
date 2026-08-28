@@ -154,7 +154,7 @@ class TestRiskServiceBudget:
 
     def _spend(self, c, amount):
         from apps.metering.usage.models import Posting
-        Posting.objects.create(tenant=c.tenant, customer=c, request_id="r", idempotency_key="i",
+        Posting.objects.create(tenant=c.tenant, customer=c, idempotency_key="i",
                                   provider_cost_micros=amount, billed_cost_micros=amount)
         LiveCounter.budget_incr(c.tenant_id, c.id, amount)
 
@@ -199,7 +199,7 @@ class TestRiskServiceBudget:
         t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="pp")
         BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
-        Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i",
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
         LiveCounter.budget_incr(t.id, c.id, 1_000)
         res = RiskService.check(c)

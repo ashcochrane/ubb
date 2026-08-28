@@ -957,7 +957,7 @@ class TheSelectorNarrowsOnThreeAxesTest(
         self.elsewhere = self.a_posting("elsewhere", event_type=PRICED_CALL,
                                         effective_at=self.later)
         result = UsageService.record_usage(
-            self.tenant, self.other, "corr-other", "other",
+            self.tenant, self.other, "other",
             event_type=CALCULATED_CALL, measurements={QUANTITY: ONE_CALL},
             effective_at=self.later)
         self.another_customers = Posting.objects.get(id=result["event_id"])

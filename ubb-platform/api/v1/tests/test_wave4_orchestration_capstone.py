@@ -208,7 +208,7 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
             (seat2, "u-bob", 3_000_000, 800_000),
         ]:
             ev = Posting.objects.create(
-                tenant=tenant, customer=seat, request_id=key, idempotency_key=key,
+                tenant=tenant, customer=seat, idempotency_key=key,
                 provider_cost_micros=provider, billed_cost_micros=billed)
             Posting.objects.filter(id=ev.id).update(effective_at=USAGE_AT)
 

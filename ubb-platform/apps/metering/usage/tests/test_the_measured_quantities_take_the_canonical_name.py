@@ -86,18 +86,13 @@ def schemas():
     )["components"]["schemas"]
 
 
-@cache
-def correlation_field():
-    """The recording request's other required identifier.
-
-    Read off the published contract rather than written down: it is a retired
-    word whose extent a later ticket owns, and spelling it here would make that
-    ticket's recorded count false before it starts. One-element unpack, so a
-    fourth required field arriving is a failure here rather than a silent pick.
-    """
-    (name,) = [name for name in schemas()["RecordUsageRequest"]["required"]
-               if name not in {"customer_id", "idempotency_key"}]
-    return name
+# A `correlation_field()` helper stood here, and #411 deleted it with its
+# subject. It read the recording request's OTHER required identifier off the
+# published contract rather than writing it down, because that word was retired
+# and under a spread ceiling a later ticket owned. That ticket has landed: the
+# field is gone, `customer_id` and `idempotency_key` are the whole required set,
+# and the helper's one-element unpack — its own guard against a fourth required
+# field arriving unnoticed — had nothing left to unpack.
 
 
 def _tenant_and_customer():
@@ -282,11 +277,13 @@ class TheRecordingPathWritesTheCanonicalColumnTest(TestCase):
         self.tenant, self.customer = _tenant_and_customer()
 
     def test_the_quantities_reach_the_child_record(self):
-        # The retired correlation argument is passed POSITIONALLY, never named:
-        # naming it here would add this file to an extent a later ticket owns
-        # and make that ticket's recorded count false.
+        # Three positional arguments, and the third is the idempotency key.
+        # There was a fourth until #411 — a second correlation value passed
+        # positionally here precisely so this file never named it, while its
+        # ledger entry still capped how many files could. The field is gone and
+        # so is the entry, so the key below is simply the argument it looks like.
         result = UsageService.record_usage(
-            self.tenant, self.customer, "", "idem_recorded",
+            self.tenant, self.customer, "idem_recorded",
             provider_cost_micros=1_000_000,
             **{CANONICAL_COLUMN: {"input_tokens": 1200, "output_tokens": 480}})
         posting = Posting.objects.get(id=result["event_id"])
@@ -296,7 +293,7 @@ class TheRecordingPathWritesTheCanonicalColumnTest(TestCase):
 
     def test_the_acknowledgement_answers_under_the_canonical_name(self):
         result = UsageService.record_usage(
-            self.tenant, self.customer, "", "idem_acked",
+            self.tenant, self.customer, "idem_acked",
             provider_cost_micros=1_000_000,
             **{CANONICAL_COLUMN: {"input_tokens": 7}})
         self.assertEqual(result[CANONICAL_COLUMN], {"input_tokens": 7})
@@ -365,7 +362,6 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps({
                 "customer_id": str(self.customer.id),
-                correlation_field(): "req_stale",
                 "idempotency_key": f"idem_{bag_key}",
                 "event_type": DECLARED,
                 "provider_cost_micros": 1_000_000,

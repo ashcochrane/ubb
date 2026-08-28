@@ -130,7 +130,6 @@ const STATUS_FOR_OUTCOME = {
 function toRow(detail: UsageEventDetail): UsageEventRow {
   return {
     id: detail.id,
-    request_id: detail.request_id,
     // Carried from the detail rather than restated: the list row and the
     // detail describe one posting, and a projection that decided this for
     // itself could disagree with the row it came from (#317).

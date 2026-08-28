@@ -112,7 +112,7 @@ class ResultSignatureTest(TestCase):
     def test_stop_fields_on_happy_path_and_replay(self, _mock):
         first = UsageService.record_usage(
             tenant=self.tenant, customer=self.customer,
-            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+            idempotency_key="k1", provider_cost_micros=1_000_000,
         )
         self.assertTrue(_STOP_KEYS <= set(first), "stop fields missing on happy path")
         self.assertFalse(first["stop"])
@@ -121,7 +121,7 @@ class ResultSignatureTest(TestCase):
         # original event) must ALSO carry the stop fields.
         replay = UsageService.record_usage(
             tenant=self.tenant, customer=self.customer,
-            request_id="r1", idempotency_key="k1", provider_cost_micros=1_000_000,
+            idempotency_key="k1", provider_cost_micros=1_000_000,
         )
         self.assertEqual(first["event_id"], replay["event_id"])
         self.assertTrue(_STOP_KEYS <= set(replay), "stop fields missing on replay path")
@@ -157,7 +157,6 @@ class UsageServiceCoreTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_1",
             idempotency_key="idem_1",
             provider_cost_micros=1_000_000,
         )
@@ -175,7 +174,6 @@ class UsageServiceCoreTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_1",
             idempotency_key="idem_1",
             provider_cost_micros=1_000_000,
         )
@@ -187,14 +185,12 @@ class UsageServiceCoreTest(TestCase):
         result1 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_2",
             idempotency_key="idem_2",
             provider_cost_micros=1_000_000,
         )
         result2 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_2",
             idempotency_key="idem_2",
             provider_cost_micros=1_000_000,
         )
@@ -215,7 +211,6 @@ class UsageServiceCoreTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_3",
             idempotency_key="idem_3",
             provider_cost_micros=10_000_000,
         )
@@ -229,7 +224,6 @@ class UsageServiceCoreTest(TestCase):
         result1 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_snap_1",
             idempotency_key="idem_snap_1",
             provider_cost_micros=1_000_000,
         )
@@ -238,7 +232,6 @@ class UsageServiceCoreTest(TestCase):
         result2 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_snap_1",
             idempotency_key="idem_snap_1",
             provider_cost_micros=1_000_000,
         )
@@ -261,7 +254,6 @@ class UsageServiceCoreTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_4",
             idempotency_key="idem_4",
             provider_cost_micros=1_000_000,
         )
@@ -294,7 +286,6 @@ class UsageServiceEventEmissionTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_emit_1",
             idempotency_key="idem_emit_1",
             provider_cost_micros=1_000_000,
         )
@@ -344,7 +335,6 @@ class UsageServiceTaskTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_task_1",
             idempotency_key="idem_task_1",
             provider_cost_micros=3_000_000,
             task_id=task.id,
@@ -367,7 +357,6 @@ class UsageServiceTaskTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_task_link",
             idempotency_key="idem_task_link",
             provider_cost_micros=1_000_000,
             task_id=task.id,
@@ -380,7 +369,6 @@ class UsageServiceTaskTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_no_task",
             idempotency_key="idem_no_task",
             provider_cost_micros=1_000_000,
         )
@@ -404,7 +392,6 @@ class UsageServiceTaskTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_hs_1",
             idempotency_key="idem_hs_1",
             provider_cost_micros=9_000_000,
             task_id=task.id,
@@ -414,7 +401,6 @@ class UsageServiceTaskTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_hs_2",
             idempotency_key="idem_hs_2",
             provider_cost_micros=2_000_000,
             task_id=task.id,
@@ -445,7 +431,6 @@ class UsageServiceTaskTest(TestCase):
         result = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_killed",
             idempotency_key="idem_killed",
             provider_cost_micros=1_000_000,
             task_id=task.id,
@@ -471,7 +456,6 @@ class UsageServiceTaskTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_outbox_task",
             idempotency_key="idem_outbox_task",
             provider_cost_micros=1_000_000,
             task_id=task.id,
@@ -486,7 +470,6 @@ class UsageServiceTaskTest(TestCase):
         UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_outbox_notask",
             idempotency_key="idem_outbox_notask",
             provider_cost_micros=1_000_000,
         )
@@ -501,7 +484,6 @@ class UsageServiceTaskTest(TestCase):
         result1 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_idem_task",
             idempotency_key="idem_idem_task",
             provider_cost_micros=1_000_000,
             task_id=task.id,
@@ -512,7 +494,6 @@ class UsageServiceTaskTest(TestCase):
         result2 = UsageService.record_usage(
             tenant=self.tenant,
             customer=self.customer,
-            request_id="req_idem_task",
             idempotency_key="idem_idem_task",
             provider_cost_micros=1_000_000,
             task_id=task.id,
@@ -527,7 +508,7 @@ class UsageServiceTaskTest(TestCase):
     def test_concurrent_duplicate_does_not_double_count_task(self, mock_process):
         task = self._task(balance=100_000_000)
         UsageService.record_usage(tenant=self.tenant, customer=self.customer,
-            request_id="req_dup", idempotency_key="idem_dup",
+            idempotency_key="idem_dup",
             provider_cost_micros=5_000_000, task_id=task.id)
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 5_000_000)
@@ -542,7 +523,7 @@ class UsageServiceTaskTest(TestCase):
             return orig_filter(*args, **kwargs)
         with patch.object(Posting.objects, "filter", side_effect=_fake_filter):
             UsageService.record_usage(tenant=self.tenant, customer=self.customer,
-                request_id="req_dup", idempotency_key="idem_dup",
+                idempotency_key="idem_dup",
                 provider_cost_micros=5_000_000, task_id=task.id)
         self.assertEqual(Posting.objects.filter(tenant=self.tenant, customer=self.customer,
             idempotency_key="idem_dup").count(), 1)

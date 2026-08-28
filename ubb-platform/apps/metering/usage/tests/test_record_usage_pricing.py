@@ -24,7 +24,7 @@ class TestRecordUsagePricing:
         # nothing settles at the supplier's figure, where no rung at all is
         # `unknown` (#356).
         declares_a_markup(t)
-        r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=4_000)
+        r = UsageService.record_usage(t, c, "i1", provider_cost_micros=4_000)
         assert r["provider_cost_micros"] == 4_000 and r["billed_cost_micros"] == 4_000
 
     def test_priced_from_cost_card_when_no_caller_cost(self):
@@ -32,7 +32,7 @@ class TestRecordUsagePricing:
         cost_rate_in_default_book(t, provider="openai", event_type="chat",
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         declares_a_markup(t)
-        r = UsageService.record_usage(t, c, "r1", "i1", provider_cost_micros=None,
+        r = UsageService.record_usage(t, c, "i1", provider_cost_micros=None,
             provider="openai", event_type="chat", measurements={"input_tokens": 1000})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
         e = Posting.objects.get(id=r["event_id"])
@@ -61,7 +61,7 @@ class TestRecordUsagePricing:
         resp = http.post(
             "/api/v1/metering/usage",
             data=json.dumps({
-                "customer_id": str(c.id), "request_id": "r_stale",
+                "customer_id": str(c.id),
                 "idempotency_key": "i_stale", "provider": "openai",
                 "event_type": "chat",
                 RETIRED_COLUMN: {"input_tokens": 1000},
@@ -133,7 +133,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         """No quantities, no caller cost → 200, a marker event at a real zero."""
         t, c, http, auth = self._setup()
         resp = self._post(http, auth, c, {
-            "request_id": "r5", "idempotency_key": "ik5",
+            "idempotency_key": "ik5",
         })
         assert resp.status_code == 200
         assert resp.json()["provider_cost_micros"] == 0
@@ -143,7 +143,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         """A supplied provider_cost_micros → 200; cost is explicitly known."""
         t, c, http, auth = self._setup()
         resp = self._post(http, auth, c, {
-            "request_id": "r3", "idempotency_key": "ik3",
+            "idempotency_key": "ik3",
             "event_type": DECLARED, "provider_cost_micros": 123,
         })
         assert resp.status_code == 200
@@ -164,7 +164,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         """
         t, c, http, auth = self._setup()
         resp = self._post(http, auth, c, {
-            "request_id": "r8", "idempotency_key": "ik8", "units": 5,
+            "idempotency_key": "ik8", "units": 5,
         })
 
         assert resp.status_code == 200
@@ -197,7 +197,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         t, c, http, auth = self._setup()
         self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
-            "request_id": "r6", "idempotency_key": "ik6",
+            "idempotency_key": "ik6",
             "measurements": {"uncovered_metric": 5},
         })
         assert resp.status_code == 200
@@ -234,14 +234,14 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         t, c, http, auth = self._setup()
         self._card_for_some_other_measurement(t)
         resp1 = self._post(http, auth, c, {
-            "request_id": "r7", "idempotency_key": "ik7",
+            "idempotency_key": "ik7",
             "measurements": {"uncovered_metric": 5},
         })
         assert resp1.status_code == 200
         assert resp1.json()["costing_status"] == "unresolved"
 
         resp2 = self._post(http, auth, c, {
-            "request_id": "r7", "idempotency_key": "ik7",
+            "idempotency_key": "ik7",
             "event_type": DECLARED, "provider_cost_micros": 500,
         })
 

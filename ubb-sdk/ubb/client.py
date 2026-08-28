@@ -153,7 +153,7 @@ class UBBClient:
     # is `POST /api/v1/tasks` now, and the wrapper for it is #422's — which is
     # also where the key that route requires gets its place in the signature.
 
-    def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
+    def record_usage(self, customer_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
@@ -196,7 +196,6 @@ class UBBClient:
         metering = self._require_metering()
         return metering.record_usage(
             customer_id=customer_id,
-            request_id=request_id,
             idempotency_key=idempotency_key,
             provider_cost_micros=provider_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,

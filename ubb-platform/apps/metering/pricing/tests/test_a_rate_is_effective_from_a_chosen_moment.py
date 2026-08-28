@@ -356,7 +356,7 @@ class AReplayedEventResolvesAgainstTheRateEffectiveThenTest(TestCase):
 
     def _record(self, **kwargs):
         return UsageService.record_usage(
-            self.tenant, self.customer, "r1", "k1",
+            self.tenant, self.customer, "k1",
             measurements={"tok": 100}, **kwargs)
 
     def test_a_replayed_event_costs_what_it_cost_then(self):
