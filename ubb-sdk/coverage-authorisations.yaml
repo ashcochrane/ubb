@@ -228,3 +228,37 @@ authorisations:
       surface of a three-surface workflow would hand an integrator a third of
       it. All three belong with the console feature that presents the filter
       (ruling 12b), which is a later ticket in this slice.
+  - id: slice-5-409-the-lifecycle-reads-move-to-the-root
+    issue: 409
+    operations_added: 2
+    reason: >-
+      ⚠ THE SDK'S COVERAGE DID NOT CHANGE AT ALL, AND THIS ENTRY IS STILL
+      CORRECT. Reading one unit of work and listing them moved from the metering
+      prefix to the root, so `api_v1_metering_endpoints_get_task` and
+      `api_v1_metering_endpoints_list_tasks` left the manifest and
+      `api_v1_task_endpoints_get_task` and `api_v1_task_endpoints_list_tasks`
+      arrived. Both were unwrapped before and both are unwrapped after; the
+      total is unmoved and not one integrator gains or loses a method.
+
+      The ratchet reports two new gaps anyway because it compares the SET of
+      unwrapped operations and never the total — which is this file's own header
+      arguing for exactly that, and it is right here rather than merely
+      tolerable. An operation id is how the manifest names a route, a rename IS
+      a new identity, and a ratchet that had netted this to zero would net a
+      real pair of gaps to zero on any change that wrapped two others in the
+      same commit. Signing for a move costs one entry; the alternative costs the
+      check.
+
+      WHY THEY STAY UNWRAPPED, which is the half a reader should not have to
+      infer from the paragraph above. The SDK's task surface is re-cut whole in
+      the ticket that gives it a way to START a unit of work and to declare how
+      one ended — reads included, because a client that cannot open a unit has
+      nothing to read the state of. Wrapping two reads here would be writing a
+      third of that surface early, against a client shape that ticket is
+      entitled to change.
+
+      The CLOSE is not among these two, and its absence is the control: it was
+      wrapped before this change and is wrapped after it, so
+      `MeteringClient.close_task` moved to the new operation constant and gained
+      the required outcome in this same commit. The operations gate is what
+      caught the stale reference, by name, before anything called it.

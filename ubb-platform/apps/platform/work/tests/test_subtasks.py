@@ -18,7 +18,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
@@ -193,7 +193,7 @@ class KillCascadeTest(SubtaskTestBase):
         parent = self._task()
         sub_active = self._task(parent=parent)
         sub_done = self._task(parent=parent)
-        TaskService.close_task(sub_done.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(sub_done.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
         _, transitioned = TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
         self.assertTrue(transitioned)
@@ -229,7 +229,7 @@ class KillCascadeTest(SubtaskTestBase):
         TaskService.kill_task(sub_killed.id)
 
         completed, transitioned = TaskService.close_task(
-            parent.id, TASK_OUTCOME_DELIVERED)
+            parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
         self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         sub.refresh_from_db()
@@ -243,7 +243,7 @@ class KillCascadeTest(SubtaskTestBase):
         parent = self._task()
         sub = self._task(parent=parent)
         completed, transitioned = TaskService.close_task(
-            sub.id, TASK_OUTCOME_DELIVERED)
+            sub.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
         self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         parent.refresh_from_db()

@@ -309,6 +309,42 @@ class TestReplayAndRefusal(LifecycleEndpointTestBase):
         assert unit.completed_at == written_at
         assert unit.outcome_reason == reason
 
+    def test_a_repeat_declaring_a_different_reason_is_refused(self):
+        """§5 refuses "any different declaration", and the REASON is declared.
+
+        The outcome alone would let a second close quietly rewrite why the work
+        did not deliver — a 200 that changed nothing, over a field a dashboard
+        groups on."""
+        unit = self._unit()
+        self._close(unit, outcome=TASK_OUTCOME_FAILED,
+                    outcome_reason=OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR)
+
+        resp = self._close(unit, outcome=TASK_OUTCOME_FAILED,
+                           outcome_reason=OUTCOME_REASON_CUSTOMER_CANCELLED)
+        assert resp.status_code == 409
+        assert resp.json()["task_status"] == TASK_STATUS_FAILED
+        unit.refresh_from_db()
+        assert unit.outcome_reason == OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR
+
+    def test_a_repeat_rewording_only_the_sentence_still_replays(self):
+        """And the free-text half is deliberately NOT compared. It is never
+        validated and never grouped on, so refusing a retry whose provider
+        message had been re-worded would fail an honest caller over a
+        difference with no consequence anywhere."""
+        unit = self._unit()
+        self._close(unit, outcome=TASK_OUTCOME_FAILED,
+                    outcome_reason=OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+                    reason_detail="the provider returned 503")
+
+        resp = self._close(unit, outcome=TASK_OUTCOME_FAILED,
+                           outcome_reason=OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+                           reason_detail="upstream said 503 again")
+        assert resp.status_code == 200
+        assert resp.json()["replayed"] is True
+        # ...and the replay wrote nothing, so the first sentence still stands.
+        unit.refresh_from_db()
+        assert unit.reason_detail == "the provider returned 503"
+
     def test_a_contradicting_close_is_refused_and_names_the_real_state(self):
         unit = self._unit()
         self._close(unit, outcome=TASK_OUTCOME_DELIVERED)

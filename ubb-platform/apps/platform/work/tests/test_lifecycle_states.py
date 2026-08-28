@@ -33,7 +33,8 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import (
     TASK_STATUS_CHOICES, TERMINAL_TASK_STATUSES, Task)
-from apps.platform.work.services import STATUS_FOR_OUTCOME, TaskService
+from apps.platform.work.services import (
+    STATUS_FOR_OUTCOME, CloseDeclaration, TaskService)
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
@@ -105,8 +106,8 @@ class TerminalToAnythingIsNeverPermittedTest(LifecycleTestBase):
     TRANSITIONS = {
         "kill_task": TaskService.kill_task,
         "expire_task": TaskService.expire_task,
-        **{f"close_task[{outcome}]": partial(TaskService.close_task,
-                                             outcome=outcome)
+        **{f"close_task[{outcome}]": partial(
+            TaskService.close_task, declaration=CloseDeclaration(outcome))
            for outcome in STATUS_FOR_OUTCOME},
     }
 
@@ -125,7 +126,7 @@ class TerminalToAnythingIsNeverPermittedTest(LifecycleTestBase):
             with self.subTest(terminal=terminal):
                 parent = self._task()
                 child = self._force(self._task(parent=parent), terminal)
-                TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
+                TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
                 child.refresh_from_db()
                 self.assertEqual(child.status, terminal)
 
@@ -136,7 +137,7 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
     def test_an_explicit_close_writes_it(self):
         task = self._task()
         closed, transitioned = TaskService.close_task(
-            task.id, TASK_OUTCOME_DELIVERED)
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
         self.assertEqual(closed.status, TASK_STATUS_COMPLETED)
 
@@ -164,7 +165,7 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
         # claiming a delivery nobody made.
         parent = self._task()
         child = self._task(parent=parent)
-        TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         parent.refresh_from_db()
         child.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_COMPLETED)
@@ -202,13 +203,13 @@ class KilledMeansUbbStoppedItOnASpendSignalTest(LifecycleTestBase):
 
     def test_an_explicit_close_never_writes_it(self):
         task = self._task()
-        closed, _ = TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        closed, _ = TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertNotEqual(closed.status, TASK_STATUS_KILLED)
 
     def test_a_parents_close_cascade_never_writes_it(self):
         parent = self._task()
         child = self._task(parent=parent)
-        TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         child.refresh_from_db()
         self.assertNotEqual(child.status, TASK_STATUS_KILLED)
 

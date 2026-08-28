@@ -112,12 +112,20 @@ function alreadyEnded(status: CloseTaskResult["status"]): ApiProblem {
 
 /** The outcome-to-state map, mirroring the server's. Three declarations, three
  *  states, and nothing maps onto `killed` or `expired` — which is why a close
- *  against either is refused by construction rather than by a special case. */
-const STATUS_FOR_OUTCOME: Record<TaskOutcome, CloseTaskResult["status"]> = {
+ *  against either is refused by construction rather than by a special case.
+ *
+ *  ⚠ `satisfies Record<TaskOutcome, …>` IS WHAT HOLDS THIS BY REFERENCE, and it
+ *  is the idiom the generated vocabulary uses for its own maps. The console
+ *  generator emits a VALUES array and a union type per concept, not a constant
+ *  per value, so there is no `TASK_OUTCOME_DELIVERED` to import in TypeScript —
+ *  the binding that can fail is the one on the whole map. A fourth declared
+ *  outcome, a mistyped key, or a state that is not a real one is a `tsc` error
+ *  here rather than a silently unmapped state at runtime. */
+const STATUS_FOR_OUTCOME = {
   delivered: "completed",
   failed: "failed",
   cancelled: "cancelled",
-};
+} as const satisfies Record<TaskOutcome, CloseTaskResult["status"]>;
 
 function toRow(detail: UsageEventDetail): UsageEventRow {
   return {

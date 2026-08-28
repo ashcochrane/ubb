@@ -317,6 +317,28 @@ class Task(BaseModel):
     # and the sentence is the provider's actual message, which is display-only
     # and never grouped. Merging them would make every distinct provider string
     # its own bucket.
+    #
+    # ⚠ THE RULE IS SET_ONCE AND THIS MODEL DECLARES NO `transition_classes`,
+    # WHICH IS A STATED GAP RATHER THAN AN ANSWER. What is allowed to happen to
+    # these two is exactly what the paragraph above says — written by the close
+    # that entered the terminal state, and never again, because the guard in
+    # `TaskService._flip` refuses a second transition and nothing else writes
+    # them. `docs/conventions/django-patterns.md` asks a model holding economic
+    # facts to say that per column in a `transition_classes` mapping, and this
+    # model has never had one: `status`, `parent` and `task_type` all carry
+    # their rule in prose here too, and #407 and #408 each shipped a column
+    # under the same gap.
+    #
+    # It is NOT declared here, and the reason is that declaring is not
+    # enforcing. A column named into a database-defended class owes a trigger
+    # on `ubb_task` and a behavioural test per class through all three doors —
+    # `save()`, `QuerySet.update()` and raw SQL — which is the shape #318 had
+    # to build for the posting. Declaring these two without it would put a
+    # false statement into the module whose whole subject is that declarations
+    # are true, and declaring the model's OTHER columns is a separate piece of
+    # work with its own migration. Whichever ticket installs that trigger
+    # should take all of them together; this comment is here so the next reader
+    # finds a decision rather than an omission.
     outcome_reason = models.CharField(max_length=32, blank=True, default="",
                                       choices=OUTCOME_REASON_CHOICES)
     reason_detail = models.TextField(blank=True, default="")

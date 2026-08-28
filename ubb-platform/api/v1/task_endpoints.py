@@ -48,13 +48,11 @@ from api.v1.schemas import (
 )
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
-    OUTCOMES_ACCEPTING_A_REASON, OUTCOMES_REQUIRING_A_REASON,
-    STATUS_FOR_OUTCOME, TaskService,
+    CloseDeclaration, DeclarationRefused, TaskService,
 )
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
-from core.vocabulary import OUTCOME_REASON_VALUES
 
 task_router = Router(auth=ApiKeyAuth())
 
@@ -110,14 +108,20 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     including usage that arrives after termination. A late report on a closed
     unit still lands, costs and rolls up.
     """
-    _refuse_an_ill_formed_declaration(payload)
+    # THE RULE IS THE PRODUCT'S AND THE DIALECT IS THIS LAYER'S. Which reason a
+    # given outcome requires, permits or refuses is a fact about the concept,
+    # so it is decided in `apps.platform.work`; rendering that refusal as
+    # problem+json is the composition layer's job and belongs nowhere else.
+    try:
+        declaration = CloseDeclaration.declared(
+            payload.outcome, payload.outcome_reason, payload.reason_detail)
+    except DeclarationRefused as refused:
+        raise Problem("validation_error", str(refused),
+                      extensions={"field": refused.field})
 
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
     with transaction.atomic():
-        closed, transitioned = TaskService.close_task(
-            task.id, payload.outcome,
-            outcome_reason=payload.outcome_reason or "",
-            reason_detail=payload.reason_detail or "")
+        closed, transitioned = TaskService.close_task(task.id, declaration)
 
     # A CLOSE THAT DID NOT WIN THE TRANSITION IS ONE OF EXACTLY TWO THINGS, and
     # telling them apart is the point of this endpoint (spec §5). The unit was
@@ -133,14 +137,11 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     # override a kill or an expiry was rejected outright: it makes ignoring the
     # stop signal free, so the ceiling stops being a ceiling.
     #
-    # THE OUTCOME IS WHAT IS COMPARED, and not the reason beside it. The
-    # outcome is the declaration — it is what the state and the money follow
-    # from — while the reason explains it and moves nothing. Refusing a retry
-    # whose free-text sentence had been re-worded would fail the honest caller
-    # for a difference with no consequence, and `killed` and `expired` are
-    # refused by construction anyway: no outcome maps onto either.
+    # WHAT COUNTS AS "THE SAME DECLARATION" IS THE DECLARATION'S OWN QUESTION,
+    # and `CloseDeclaration.already_recorded_on` carries the argument: the
+    # outcome and its reason are both compared, the free-text sentence is not.
     replayed = not transitioned
-    if replayed and closed.status != STATUS_FOR_OUTCOME[payload.outcome]:
+    if replayed and not declaration.already_recorded_on(closed):
         raise Problem(
             "task_already_terminal",
             f"this unit is already {closed.status} and cannot be closed as "
@@ -163,39 +164,3 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
         "unpriced_event_count": closed.unpriced_event_count,
         "event_count": closed.event_count,
     }
-
-
-def _refuse_an_ill_formed_declaration(payload):
-    """Judge the declaration itself, before any unit is read or locked.
-
-    ⚠ AN UNRECOGNISED REASON IS REFUSED, AND THE ARGUMENT THAT SOFTENS UBB'S
-    OWN STOP REASONS DOES NOT TRANSFER HERE. `apps/platform/work/reasons.py`
-    reconciles its own closed set with an open registry concept by ruling that
-    closed binds UBB's PRODUCERS while open binds CONSUMERS — which holds only
-    because a stop reason is UBB-produced. This value arrives from outside, so
-    the closed set is a rule on what may come in.
-    """
-    if payload.outcome not in STATUS_FOR_OUTCOME:
-        raise Problem("validation_error",
-                      f"outcome must be one of "
-                      f"{', '.join(sorted(STATUS_FOR_OUTCOME))}")
-
-    declared = payload.outcome_reason is not None or payload.reason_detail is not None
-    if payload.outcome not in OUTCOMES_ACCEPTING_A_REASON:
-        if declared:
-            raise Problem("validation_error",
-                          f"outcome_reason and reason_detail are not accepted "
-                          f"when the outcome is {payload.outcome}")
-        return
-
-    if payload.outcome_reason is None:
-        if payload.outcome in OUTCOMES_REQUIRING_A_REASON:
-            raise Problem("validation_error",
-                          f"outcome_reason is required when the outcome is "
-                          f"{payload.outcome}")
-        return
-
-    if payload.outcome_reason not in OUTCOME_REASON_VALUES:
-        raise Problem("validation_error",
-                      f"{payload.outcome_reason!r} is not a recognised "
-                      f"outcome_reason")

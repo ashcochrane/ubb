@@ -6,6 +6,7 @@ from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
+    OUTCOME_REASON_VALUES,
     PRICING_STATUS_KNOWN,
     TASK_OUTCOME_CANCELLED,
     TASK_OUTCOME_DELIVERED,
@@ -56,6 +57,109 @@ OUTCOMES_ACCEPTING_A_REASON = frozenset({TASK_OUTCOME_FAILED,
 #: cause is the row a dashboard cannot act on. `unspecified` is what keeps the
 #: requirement cheap — the caller always has a valid answer to give.
 OUTCOMES_REQUIRING_A_REASON = frozenset({TASK_OUTCOME_FAILED})
+
+
+class DeclarationRefused(ValueError):
+    """An ill-formed close declaration, with the field that spoiled it.
+
+    A ValueError subclass rather than a `Problem`: this module is a PRODUCT and
+    the error dialect belongs to the composition layer (ADR-001). The endpoint
+    translates; what is decided here is the rule, which is the half that must
+    not have two copies.
+    """
+
+    def __init__(self, field, detail):
+        self.field = field
+        super().__init__(detail)
+
+
+class CloseDeclaration:
+    """WHAT A CALLER SAYS WHEN IT CLOSES A UNIT OF WORK — the outcome, the
+    reason for it, and the sentence beside that.
+
+    ⚠ ONE OBJECT BECAUSE IT IS ONE STATEMENT, and the three parts are not
+    independently meaningful: whether a reason is required, permitted or
+    refused is a fact about the OUTCOME, so a caller passing them separately
+    passes three things that can only be judged together. They travelled as
+    three arguments through four layers before this existed, unbundled and
+    rebundled at each, which is how one of the layers comes to disagree about
+    the rule.
+
+    It also gives the replay comparison somewhere honest to live: deciding
+    whether a second close says the same thing is a question about a
+    declaration, not about a task row.
+    """
+
+    __slots__ = ("outcome", "outcome_reason", "reason_detail")
+
+    def __init__(self, outcome, outcome_reason="", reason_detail=""):
+        self.outcome = outcome
+        self.outcome_reason = outcome_reason or ""
+        self.reason_detail = reason_detail or ""
+
+    @classmethod
+    def declared(cls, outcome, outcome_reason=None, reason_detail=None):
+        """Build one from what arrived on the wire, or refuse it.
+
+        ⚠ `None` AND `""` ARE DIFFERENT ON THE WAY IN and the same on the way
+        out. Absent means *the caller said nothing*, which is what "required on
+        `failed`" is about; once judged, both are stored as `""`, because a
+        column has no third state and *nobody gave one* is what `""` means.
+        """
+        if outcome not in STATUS_FOR_OUTCOME:
+            raise DeclarationRefused(
+                "outcome",
+                f"outcome must be one of {', '.join(sorted(STATUS_FOR_OUTCOME))}")
+
+        if outcome not in OUTCOMES_ACCEPTING_A_REASON:
+            if outcome_reason is not None or reason_detail is not None:
+                raise DeclarationRefused(
+                    "outcome_reason",
+                    f"outcome_reason and reason_detail are not accepted when "
+                    f"the outcome is {outcome}")
+        elif outcome_reason is None:
+            if outcome in OUTCOMES_REQUIRING_A_REASON:
+                raise DeclarationRefused(
+                    "outcome_reason",
+                    f"outcome_reason is required when the outcome is {outcome}")
+        elif outcome_reason not in OUTCOME_REASON_VALUES:
+            # ⚠ AN UNRECOGNISED REASON IS REFUSED, AND THE ARGUMENT THAT
+            # SOFTENS UBB'S OWN STOP REASONS DOES NOT TRANSFER. `reasons.py`
+            # reconciles its own closed set with an open registry concept by
+            # ruling that closed binds UBB's PRODUCERS while open binds
+            # CONSUMERS — which holds only because a stop reason is
+            # UBB-produced. This value arrives from outside, so the closed set
+            # is a rule on what may come in (spec §6).
+            raise DeclarationRefused(
+                "outcome_reason",
+                f"{outcome_reason!r} is not a recognised outcome_reason")
+
+        # ⚠ AND THE SENTENCE IS NEVER VALIDATED AGAINST A VOCABULARY. It is the
+        # cardinality guard that lets the code above stay a small closed set,
+        # and checking it would defeat the only thing it is for.
+        return cls(outcome, outcome_reason, reason_detail)
+
+    def entered_status(self):
+        """The state this declaration puts a unit of work into."""
+        return STATUS_FOR_OUTCOME[self.outcome]
+
+    def already_recorded_on(self, task):
+        """Does ``task`` already hold exactly what this declaration says?
+
+        True makes a second close a REPLAY; False makes it a CONFLICT, and
+        `killed` and `expired` are conflicts by construction because no
+        declaration enters either.
+
+        ⚠ THE SENTENCE IS DELIBERATELY NOT COMPARED, and the code beside it is.
+        Spec §5 refuses "any different declaration", and the outcome and its
+        reason are both declared — but `reason_detail` is free text that is
+        never validated and never grouped on, so a retry that re-worded a
+        provider's message would be refused for a difference with no
+        consequence anywhere. What is compared is what UBB would have to
+        contradict itself to accept.
+        """
+        return (task.status == self.entered_status()
+                and task.outcome_reason == self.outcome_reason)
 
 
 class TaskService:
@@ -294,14 +398,14 @@ class TaskService:
         expiry — they are passed the same value on purpose, so the coincidence
         is stated rather than assumed.
 
-        ``declaration`` is what the CALLER said, written in the same UPDATE as
-        the state it explains so the two can never come apart (#409). It is a
-        separate argument from ``reason`` because they are separate concepts
-        with separate owners: ``reason`` is UBB's own stop reason and lands in
-        `metadata`, ``declaration`` is the caller's closed-set outcome reason
-        and its free-text sentence, and they land in columns. Only a close
-        passes one — nothing UBB decides on its own may write a field that
-        means *the tenant said so*.
+        ``declaration`` is the `CloseDeclaration` the CALLER made, written in
+        the same UPDATE as the state it explains so the two can never come
+        apart (#409). It is a separate argument from ``reason`` because they
+        are separate concepts with separate owners: ``reason`` is UBB's own
+        stop reason and lands in `metadata`, a declaration is the caller's
+        closed-set outcome reason and its free-text sentence, and they land in
+        columns. Only a close passes one — nothing UBB decides on its own may
+        write a field that means *the tenant said so*.
 
         Only the winning transition cascades, and only from a top-level unit:
         flipping contained work flips it ALONE, and its parent keeps running
@@ -327,9 +431,10 @@ class TaskService:
         if reason:
             task.metadata = {**task.metadata, "kill_reason": reason}
             update_fields.append("metadata")
-        for column, value in (declaration or {}).items():
-            setattr(task, column, value)
-            update_fields.append(column)
+        if declaration is not None:
+            task.outcome_reason = declaration.outcome_reason
+            task.reason_detail = declaration.reason_detail
+            update_fields += ["outcome_reason", "reason_detail"]
         task.save(update_fields=update_fields)
         if task.parent_id is None:
             TaskService._cascade(task, cascade_to)
@@ -494,19 +599,19 @@ class TaskService:
             return False
 
     @staticmethod
-    def close_task(task_id, outcome, *, outcome_reason="", reason_detail=""):
+    def close_task(task_id, declaration):
         """THE TENANT DECLARED HOW THIS ENDED, and a close is the only writer
         of any of the three states it can enter (I1, spec §2 and §5). Nothing
         else writes `completed` — which is what makes the state safe for a
         charge to key on, and is exactly the property the model could not offer
         while a sweeper wrote it too.
 
-        ``outcome`` is REQUIRED and this method has no default, deliberately: a
-        default here would put the forgiving path back under the money-moving
-        one, one layer below where the API refuses it. An outcome the map above
-        does not carry is a programming error rather than a caller's mistake —
-        the boundary already refused an unknown one — so it raises rather than
-        picking a state.
+        ``declaration`` is REQUIRED and this method has no default,
+        deliberately: a default here would put the forgiving path back under
+        the money-moving one, one layer below where the API refuses it. Build
+        it with `CloseDeclaration.declared`, which is where an ill-formed one
+        is refused — so by the time it reaches here the outcome is known good
+        and the reason rules have already been applied.
 
         ⚠ THE CASCADE WITHDRAWS, IT DOES NOT DELIVER, AND IT DOES NOT INHERIT.
         Closing a PARENT flips its still-active contained work to `cancelled`
@@ -520,12 +625,6 @@ class TaskService:
 
         Must be called inside @transaction.atomic.
         """
-        try:
-            status = STATUS_FOR_OUTCOME[outcome]
-        except KeyError:
-            raise ValueError(f"unknown outcome {outcome!r} — a close declares "
-                             f"one of {sorted(STATUS_FOR_OUTCOME)}")
         return TaskService._flip(
-            task_id, status, cascade_to=TASK_STATUS_CANCELLED,
-            declaration={"outcome_reason": outcome_reason,
-                         "reason_detail": reason_detail})
+            task_id, declaration.entered_status(),
+            cascade_to=TASK_STATUS_CANCELLED, declaration=declaration)

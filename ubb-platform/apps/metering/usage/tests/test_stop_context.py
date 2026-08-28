@@ -25,7 +25,7 @@ from apps.metering.usage.services.stop_context import build_stop_context
 from apps.platform.customers.models import Customer
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import TASK_OUTCOME_DELIVERED
 
@@ -114,7 +114,7 @@ class UnitContextTest(StopContextTestBase):
 
     def test_late_event_on_completed_task_is_task_not_active(self):
         task = self._task()
-        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         task.refresh_from_db()
         ctx = self._build(task, dict(NO_VERDICTS, task_not_active=True))
         self.assertEqual(ctx, [{

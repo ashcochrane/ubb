@@ -20,13 +20,22 @@ export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
 export type PastLimitReport = MeteringSchemas["PastLimitReportResponse"];
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
-// (#409), so these two come from the root schemas rather than from metering's.
+// (#409), so this comes from the root schemas rather than from metering's.
 export type CloseTaskResult = RootSchemas["CloseTaskResponse"];
-/** What a caller DECLARES when it closes a unit of work. Required, and taken
- *  from the contract rather than spelled here — there is no console consumer
- *  declared for this concept, so the generated request type is the honest
- *  source and a hand-written union would be a second copy of it. */
-export type TaskOutcome = RootSchemas["CloseTaskRequest"]["outcome"];
+
+// WHAT A CALLER DECLARES WHEN IT CLOSES A UNIT OF WORK — re-exported from the
+// generated vocabulary rather than re-derived from the request schema.
+//
+// ⚠ THE REGISTRY IS THE SOURCE, NOT THE CONTRACT, and the difference is not
+// cosmetic. `src/lib/vocabulary.ts` already generates `TASK_OUTCOME_VALUES` and
+// this type from `domain-vocabulary/`, and the console's rule is to import a
+// canonical value rather than retype or re-derive one. Reaching for
+// `RootSchemas["CloseTaskRequest"]["outcome"]` would produce the same union
+// today from a second source, and "there is no console consumer declared for
+// this concept" answers the G2 census — a question about which files the
+// registry NAMES — rather than this rule, which is about where the console gets
+// its canonical values from.
+export type { TaskOutcome } from "@/lib/vocabulary";
 export type RefundBody = BillingSchemas["RefundRequest"];
 export type RefundResult = BillingSchemas["RefundResponse"];
 export type MarginCustomers = MarginSchemas["MarginListOut"];

@@ -6,7 +6,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.work.tasks import close_abandoned_tasks
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
@@ -63,7 +63,7 @@ class CloseAbandonedTasksTest(TestCase):
         # terminal to anything is never permitted, so a closed unit is not
         # re-stated as an expiry an hour later.
         task = self._create_stale_task()
-        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
         closed = close_abandoned_tasks()
         self.assertEqual(closed, 0)

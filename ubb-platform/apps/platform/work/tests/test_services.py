@@ -9,7 +9,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED)
@@ -166,7 +166,7 @@ class TaskServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_on_completed_task_returns_not_active_and_persists(self):
         task = self._task(limit=self.limit)
-        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=1_000, provider_cost_micros=2_000)
@@ -208,12 +208,12 @@ class TaskServiceKillTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         result, _ = TaskService.kill_task(task.id)
         self.assertEqual(result.status, TASK_STATUS_COMPLETED)  # not changed to killed
 
 
-class TaskServiceCompleteTest(TestCase):
+class TaskServiceCloseTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", products=["metering", "billing"]
@@ -227,7 +227,7 @@ class TaskServiceCompleteTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         completed, transitioned = TaskService.close_task(
-            task.id, TASK_OUTCOME_DELIVERED)
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
         self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         self.assertIsNotNone(completed.completed_at)
@@ -236,9 +236,9 @@ class TaskServiceCompleteTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         completed, transitioned = TaskService.close_task(
-            task.id, TASK_OUTCOME_DELIVERED)
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertFalse(transitioned)
         self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
 
@@ -248,7 +248,7 @@ class TaskServiceCompleteTest(TestCase):
         )
         TaskService.kill_task(task.id)
         result, transitioned = TaskService.close_task(
-            task.id, TASK_OUTCOME_DELIVERED)
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertFalse(transitioned)
         self.assertEqual(result.status, TASK_STATUS_KILLED)  # not changed to completed
 
@@ -274,7 +274,7 @@ class KillTaskTransitionFlagTest(TestCase):
 
     def test_transitioned_false_on_completed_task(self):
         with transaction.atomic():
-            TaskService.close_task(self.task.id, TASK_OUTCOME_DELIVERED)
+            TaskService.close_task(self.task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         with transaction.atomic():
             task, transitioned = TaskService.kill_task(self.task.id)
         self.assertFalse(transitioned)

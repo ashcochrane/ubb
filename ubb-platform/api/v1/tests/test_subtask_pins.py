@@ -32,7 +32,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
@@ -345,7 +345,7 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
 
     def test_terminal_parent_refused_parent_task_not_active(self):
         parent = self._task()
-        TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
+        TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         body = self._pre_check(parent_task_id=str(parent.id)).json()
         self.assertFalse(body["allowed"])
         self.assertEqual(body["reason"], "parent_task_not_active")
