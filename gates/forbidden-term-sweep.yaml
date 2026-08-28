@@ -197,7 +197,12 @@ exclusions:
     # the number because this rule covers every migration directory wholesale,
     # which is the point #369's pair made and the thing a reader is most likely
     # to infer wrongly from the run of entries above.
-    files: 234
+    # 234 → 235 in #408: one migration, widening a unit of work's declared
+    # state set to the six the registry holds. ⚠ IT NAMES NO RETIRED TERM
+    # EITHER, and it is a `AlterField` on `choices` — it rewrites no row, so
+    # there is not even a data function in it to spell one. Same reason as the
+    # entry above: the rule covers every migration directory wholesale.
+    files: 235
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

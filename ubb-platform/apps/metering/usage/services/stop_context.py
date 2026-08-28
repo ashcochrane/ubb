@@ -34,6 +34,7 @@ Timestamps are stored as ISO-8601 strings, ids as strings — the array must
 be JSON-storable and byte-stable on replay reads.
 """
 from apps.platform.work import reasons
+from core.vocabulary import TASK_STATUS_KILLED
 
 # Kill reasons that name a limit episode a late event should point back at.
 _EPISODE_KILL_REASONS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
@@ -74,8 +75,13 @@ def _unit_contexts(task, verdicts, now):
     # Late arrival on a non-active unit: point back at the episode that
     # ended it, so the episode's itemization shares one context key.
     if verdicts.get("task_not_active"):
+        # ⚠ GATED ON `killed` ALONE, WHICH NOW MEANS ONE THING (#408). A unit
+        # UBB stopped on a spend signal is the only one with an episode a late
+        # event can point back at; a sweeper's `expired` carries a reason in
+        # the same metadata key and must NOT be read as one, which is exactly
+        # what this gate keeps out.
         kill_reason = (task.metadata or {}).get("kill_reason") \
-            if task.status == "killed" else None
+            if task.status == TASK_STATUS_KILLED else None
         if kill_reason == reasons.PARENT_KILLED:
             # The cascade was the PARENT's trip — chase one level up. A
             # parent reaped/completed for a non-limit reason falls through
@@ -84,7 +90,8 @@ def _unit_contexts(task, verdicts, now):
             parent = Task.objects.filter(id=task.parent_id).only(
                 "id", "status", "metadata", "completed_at").first()
             parent_reason = (parent.metadata or {}).get("kill_reason") \
-                if parent is not None and parent.status == "killed" else None
+                if parent is not None \
+                and parent.status == TASK_STATUS_KILLED else None
             if parent_reason in _EPISODE_KILL_REASONS:
                 out.append(_entry(
                     limit=parent_reason, stop_scope="task",

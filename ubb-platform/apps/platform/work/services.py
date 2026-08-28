@@ -4,12 +4,18 @@ from django.utils import timezone
 
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
-from core.vocabulary import COSTING_STATUS_KNOWN, PRICING_STATUS_KNOWN
-from apps.platform.work.models import Task
+from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
+    PRICING_STATUS_KNOWN,
+    TASK_STATUS_ACTIVE,
+    TASK_STATUS_CANCELLED,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_EXPIRED,
+    TASK_STATUS_KILLED,
+)
+from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
 
 logger = logging.getLogger(__name__)
-
-_TERMINAL_STATUSES = ("killed", "completed", "failed")
 
 
 class TaskService:
@@ -96,9 +102,9 @@ class TaskService:
         - ``crossed_subtask_limit``: THIS call pushed the subtask's own
           provider total past its own limit while the subtask was still
           active (always False for a top-level event).
-        - ``task_not_active``: the named unit was already
-          killed/completed/failed. The event still landed, billed, and
-          counted into both totals (and the parent's).
+        - ``task_not_active``: the named unit was already in one of the five
+          terminal states. The event still landed, billed, and counted into
+          both totals (and the parent's).
 
         A non-active unit keeps accumulating with no limit verdicts (the
         signal already fired; re-announcing every late event would be spam);
@@ -205,8 +211,9 @@ class TaskService:
             limit = unit.provider_cost_limit_micros
             return limit is not None and unit.total_provider_cost_micros > limit
 
-        was_active = task.status == "active"
-        parent_was_active = parent is not None and parent.status == "active"
+        was_active = task.status == TASK_STATUS_ACTIVE
+        parent_was_active = (parent is not None
+                             and parent.status == TASK_STATUS_ACTIVE)
         _add(task)
         if parent is not None:
             _add(parent)
@@ -223,22 +230,36 @@ class TaskService:
         return task, verdicts
 
     @staticmethod
-    def kill_task(task_id, reason="", *, tenant_id=None, customer_id=None):
-        """Mark a task as killed. Idempotent — no-op if already in a terminal
-        state. Returns (task, transitioned): transitioned is True iff THIS
-        call performed the active->killed transition, so callers can emit
-        fan-out events (TaskLimitExceeded / SubtaskLimitExceeded) exactly
-        once even when racing.
+    def _flip(task_id, status, *, cascade_to, reason="",
+              tenant_id=None, customer_id=None):
+        """THE ONE TERMINAL TRANSITION, and the one place terminality is
+        enforced (#408). Returns ``(task, transitioned)``; ``transitioned`` is
+        True iff THIS call performed the flip out of ``active``, so callers can
+        do their exactly-once work — emit a fan-out event, stamp an
+        announcement — even when racing.
 
-        Killing a PARENT cascades the flip downward to its active subtasks
-        in the same transaction (containment cuts downward, never upward,
-        #38) — cascaded flips are silent state changes carrying
-        ``kill_reason=parent_killed``; the parent's event is the one signal.
-        Only the winning transition cascades. Killing a subtask kills it
-        ALONE — the parent keeps running and counting.
+        **Terminal to anything is never permitted**, which is why the recheck
+        under the row lock lives here rather than once per entry point: three
+        copies of a refusal is three chances for the fourth transition to
+        arrive without one. A row already in a terminal state is returned
+        untouched with ``transitioned=False`` — a no-op rather than an
+        exception, because every caller is a retry-safe signal path and the
+        losing lane of a race has nothing to apologise for.
 
-        Killed is a signal point, not a wall: late events still land, bill,
-        and count into the killed unit's totals (and its parent's).
+        ``cascade_to`` is a SEPARATE argument from ``status`` and that is the
+        whole of I1. Contained work the tenant said nothing about must not
+        inherit a state that means *the tenant declared delivery*, so a close
+        cascades `cancelled` while it writes `completed` on the unit whose
+        delivery was actually declared. Where the two do coincide — a kill, an
+        expiry — they are passed the same value on purpose, so the coincidence
+        is stated rather than assumed.
+
+        Only the winning transition cascades, and only from a top-level unit:
+        flipping contained work flips it ALONE, and its parent keeps running
+        and counting.
+
+        A terminal state is a signal point, not a wall: late events still land,
+        bill, and count into this unit's totals (and its parent's).
 
         Must be called inside @transaction.atomic. Lock order: parent before
         children (see Task.parent).
@@ -249,16 +270,53 @@ class TaskService:
         if customer_id is not None:
             qs = qs.filter(customer_id=customer_id)
         task = qs.get(id=task_id)
-        if task.status in _TERMINAL_STATUSES:
+        if task.status in TERMINAL_TASK_STATUSES:
             return task, False
-        task.status = "killed"
+        task.status = status
         task.completed_at = timezone.now()
+        update_fields = ["status", "completed_at", "updated_at"]
         if reason:
             task.metadata = {**task.metadata, "kill_reason": reason}
-        task.save(update_fields=["status", "completed_at", "metadata", "updated_at"])
+            update_fields.append("metadata")
+        task.save(update_fields=update_fields)
         if task.parent_id is None:
-            TaskService._cascade(task, "killed")
+            TaskService._cascade(task, cascade_to)
         return task, True
+
+    @staticmethod
+    def kill_task(task_id, reason="", *, tenant_id=None, customer_id=None):
+        """UBB STOPPED THIS ON A SPEND SIGNAL, and nothing else writes
+        `killed` (I2, spec §2). A ceiling crossing, the patrol, or — through
+        the cascade below — a parent that crossed one.
+
+        Nothing the tenant declares may land here: that keeps the past-limit
+        report, the stop context and the announcement bookkeeping honest, and
+        makes *how often do we blow ceilings* answerable without first
+        filtering on a reason string.
+
+        Killing a PARENT cascades the flip downward to its active subtasks in
+        the same transaction (containment cuts downward, never upward, #38) —
+        cascaded flips are silent state changes carrying
+        ``kill_reason=parent_killed``; the parent's event is the one signal.
+        """
+        return TaskService._flip(
+            task_id, TASK_STATUS_KILLED, cascade_to=TASK_STATUS_KILLED,
+            reason=reason, tenant_id=tenant_id, customer_id=customer_id)
+
+    @staticmethod
+    def expire_task(task_id, reason="", *, tenant_id=None, customer_id=None):
+        """NOBODY EVER TOLD UBB HOW THIS ENDED (spec §7). Both sweepers write
+        it, and it is the honest answer the model could not give before: the
+        crash sweeper used to write `completed` and stamp a marker in metadata,
+        while the stale reaper wrote `killed` — the same silence recorded two
+        ways, and the spend story dishonest in both directions.
+
+        The cascade carries the same state, because a parent nobody reported on
+        is a parent whose contained work nobody reported on either.
+        """
+        return TaskService._flip(
+            task_id, TASK_STATUS_EXPIRED, cascade_to=TASK_STATUS_EXPIRED,
+            reason=reason, tenant_id=tenant_id, customer_id=customer_id)
 
     @staticmethod
     def _cascade(parent, status):
@@ -266,16 +324,26 @@ class TaskService:
         downward containment cut (#38). Runs inside the caller's transaction,
         after the parent's own winning flip (parent lock already held, so
         subtask registration — which locks the parent — can never slip a new
-        child past a finished cascade)."""
+        child past a finished cascade).
+
+        ⚠ ONLY THE KILL CASCADE RECORDS A REASON, AND THE OTHER TWO OWE ONE.
+        The registry names `outcome_reason: parent_closed` for a close cascade
+        and `reason_code: silence_window` for an expiry cascade; each arrives
+        with the ticket that wires its concept's consumers, because writing
+        either here would put a value set this slice has not yet taken
+        ownership of into a second place. The STATE is what this ticket owes
+        and what it writes — a withdrawn piece of contained work is already
+        distinguishable from a delivered one without the reason.
+        """
         from apps.platform.work import reasons
         now = timezone.now()
         children = Task.objects.select_for_update().filter(
-            parent=parent, status="active")
+            parent=parent, status=TASK_STATUS_ACTIVE)
         for child in children:
             child.status = status
             child.completed_at = now
             update_fields = ["status", "completed_at", "updated_at"]
-            if status == "killed":
+            if status == TASK_STATUS_KILLED:
                 child.metadata = {**child.metadata,
                                   "kill_reason": reasons.PARENT_KILLED}
                 update_fields.append("metadata")
@@ -283,20 +351,50 @@ class TaskService:
 
     @staticmethod
     def kill_and_announce(task_id, reason, *, tenant_id, customer_id):
-        """The idempotent kill flow: flip the unit to killed (cascading
-        downward if it is a parent) and, ONLY on the winning active->killed
-        transition, emit ``task.limit_exceeded`` — or, for a subtask,
+        """The idempotent kill flow: flip the unit to `killed` (cascading
+        downward if it is a parent) and, ONLY on the winning transition, emit
+        ``task.limit_exceeded`` — or, for contained work,
         ``subtask.limit_exceeded`` scoped to it alone — so racing callers
-        (sync endpoint, batch items, async settle workers, the reaper) can
+        (sync endpoint, batch items, async settle workers, the patrol) can
         never double-emit.
 
-        Runs in its OWN transaction: the event that tripped the limit is
+        This is the SPEND lane, and after #408 that is all it is: the callers
+        left are the ones holding a crossing.
+        """
+        return TaskService._stop_and_announce(
+            TaskService.kill_task, task_id, reason,
+            tenant_id=tenant_id, customer_id=customer_id)
+
+    @staticmethod
+    def expire_and_announce(task_id, reason, *, tenant_id, customer_id):
+        """The same flow for the state at the other end of §2's table: flip the
+        unit to `expired` and announce it exactly once.
+
+        ⚠ THE ANNOUNCEMENT IS UNCHANGED AND THE STATE IS NOT (#408). This lane
+        announced before the six states existed — the reaper's stop is what
+        tells a customer's idle workers to tear down — and taking the signal
+        away would be a regression nothing asked for. So the event still says
+        `limit_exceeded` while the row now says `expired`: an event named for a
+        bound rather than for the state entered, which is an individually
+        ledgered debt the terminal-event split pays by name. Recording the
+        state honestly first is what makes that split expressible at all.
+        """
+        return TaskService._stop_and_announce(
+            TaskService.expire_task, task_id, reason,
+            tenant_id=tenant_id, customer_id=customer_id)
+
+    @staticmethod
+    def _stop_and_announce(flip, task_id, reason, *, tenant_id, customer_id):
+        """Flip through ``flip`` and, on the winning transition only, emit the
+        fan-out event and stamp the announcement id.
+
+        Runs in its OWN transaction: the event that tripped the signal is
         already committed (one-rule — the tipping event lands and bills), and
-        the kill is a separate, replayable state change.
+        the stop is a separate, replayable state change.
 
         NEVER raises: under 200-always a non-2xx must mean "this was not
-        recorded", and the event WAS recorded — a kill failure is a loud log
-        (the next event's verdict retries the kill), never a 5xx.
+        recorded", and the event WAS recorded — a stop failure is a loud log
+        (the next event's verdict retries it), never a 5xx.
         Returns transitioned (bool).
         """
         from django.db import transaction
@@ -305,34 +403,34 @@ class TaskService:
             SubtaskLimitExceeded, TaskLimitExceeded)
         try:
             with transaction.atomic():
-                killed, transitioned = TaskService.kill_task(
+                stopped, transitioned = flip(
                     task_id, reason=reason,
                     tenant_id=tenant_id, customer_id=customer_id)
                 if transitioned:
                     common = dict(
                         tenant_id=str(tenant_id), customer_id=str(customer_id),
-                        billing_owner_id=str(killed.billing_owner_id or ""),
-                        external_task_id=killed.external_task_id,
+                        billing_owner_id=str(stopped.billing_owner_id or ""),
+                        external_task_id=stopped.external_task_id,
                         reason=reason,
-                        total_billed_cost_micros=killed.total_billed_cost_micros,
-                        total_provider_cost_micros=killed.total_provider_cost_micros,
+                        total_billed_cost_micros=stopped.total_billed_cost_micros,
+                        total_provider_cost_micros=stopped.total_provider_cost_micros,
                         # The total that crossed the limit is a floor when this
                         # is non-zero (#328) — the unit really spent at least
                         # that much, so the crossing is sound and understated.
-                        unresolved_event_count=killed.unresolved_event_count,
-                        provider_cost_limit_micros=killed.provider_cost_limit_micros or 0)
-                    if killed.parent_id is not None:
+                        unresolved_event_count=stopped.unresolved_event_count,
+                        provider_cost_limit_micros=stopped.provider_cost_limit_micros or 0)
+                    if stopped.parent_id is not None:
                         outbox = write_event(SubtaskLimitExceeded(
-                            subtask_id=str(killed.id),
-                            parent_task_id=str(killed.parent_id), **common))
+                            subtask_id=str(stopped.id),
+                            parent_task_id=str(stopped.parent_id), **common))
                     else:
                         outbox = write_event(TaskLimitExceeded(
-                            task_id=str(killed.id), **common))
+                            task_id=str(stopped.id), **common))
                     # Announcement bookkeeping (delivery spec §B, #43):
                     # stamp inside the same transaction as the flip + event —
                     # all three commit or vanish together.
-                    killed.announce_outbox_id = outbox.id
-                    killed.save(update_fields=["announce_outbox_id",
+                    stopped.announce_outbox_id = outbox.id
+                    stopped.save(update_fields=["announce_outbox_id",
                                                "updated_at"])
             return transitioned
         except Exception:
@@ -343,22 +441,21 @@ class TaskService:
 
     @staticmethod
     def complete_task(task_id):
-        """Mark a task as completed. Idempotent — no-op if already in a
-        terminal state. Returns (task, transitioned), mirroring kill_task.
+        """THE TENANT DECLARED DELIVERY, and nothing else writes `completed`
+        (I1, spec §2). An explicit close is the only writer — which is what
+        makes the state safe for a charge to key on, and is exactly the
+        property the model could not offer while a sweeper wrote it too.
 
-        Completing a PARENT auto-completes its active subtasks in the same
-        transaction (#38) — cleanup is one call; already-terminal subtasks
-        (e.g. killed) keep their state. Completing a subtask completes it
-        alone.
+        ⚠ THE CASCADE WITHDRAWS, IT DOES NOT DELIVER. Closing a PARENT flips
+        its still-active contained work to `cancelled` in the same transaction
+        (#38) — cleanup is still one call — because the tenant declared the
+        delivery of the whole unit and declared nothing at all about each
+        contained piece. Writing `completed` there would be UBB declaring a
+        delivery on the tenant's behalf, which is the one thing `completed` may
+        never mean. Already-terminal contained work keeps its state; closing
+        contained work closes it alone.
 
         Must be called inside @transaction.atomic.
         """
-        task = Task.objects.select_for_update().get(id=task_id)
-        if task.status in _TERMINAL_STATUSES:
-            return task, False
-        task.status = "completed"
-        task.completed_at = timezone.now()
-        task.save(update_fields=["status", "completed_at", "updated_at"])
-        if task.parent_id is None:
-            TaskService._cascade(task, "completed")
-        return task, True
+        return TaskService._flip(
+            task_id, TASK_STATUS_COMPLETED, cascade_to=TASK_STATUS_CANCELLED)

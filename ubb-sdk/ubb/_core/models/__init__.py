@@ -44,6 +44,7 @@ from .budget_status_out import BudgetStatusOut
 from .business_margin_out import BusinessMarginOut
 from .business_margin_totals import BusinessMarginTotals
 from .close_task_response import CloseTaskResponse
+from .close_task_response_status import CloseTaskResponseStatus
 from .configure_auto_top_up_request import ConfigureAutoTopUpRequest
 from .connect_start_in import ConnectStartIn
 from .cost_book_in import CostBookIn
@@ -214,8 +215,10 @@ from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
 from .task_detail_out import TaskDetailOut
 from .task_detail_out_dimensions import TaskDetailOutDimensions
+from .task_detail_out_status import TaskDetailOutStatus
 from .task_out import TaskOut
 from .task_out_dimensions import TaskOutDimensions
+from .task_out_status import TaskOutStatus
 from .task_type_in import TaskTypeIn
 from .task_type_in_kind import TaskTypeInKind
 from .task_type_out import TaskTypeOut
@@ -337,6 +340,7 @@ __all__ = (
     "BusinessMarginOut",
     "BusinessMarginTotals",
     "CloseTaskResponse",
+    "CloseTaskResponseStatus",
     "ConfigureAutoTopUpRequest",
     "ConnectStartIn",
     "CostBookIn",
@@ -507,8 +511,10 @@ __all__ = (
     "TaskAnalyticsRow",
     "TaskDetailOut",
     "TaskDetailOutDimensions",
+    "TaskDetailOutStatus",
     "TaskOut",
     "TaskOutDimensions",
+    "TaskOutStatus",
     "TaskTypeIn",
     "TaskTypeInKind",
     "TaskTypeOut",

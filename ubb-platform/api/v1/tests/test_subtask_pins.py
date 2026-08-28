@@ -34,6 +34,9 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
+    TASK_STATUS_KILLED)
 
 
 class SubtaskPinMixin:
@@ -124,9 +127,9 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         # The subtask is killed ALONE; the response says so, scoped to it.
         sub.refresh_from_db()
         parent.refresh_from_db()
-        self.assertEqual(sub.status, "killed")
+        self.assertEqual(sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], "subtask_limit")
         self.assertEqual(body["stop_scope"], "subtask")
@@ -162,8 +165,8 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         # Containment and rollup are both already true on this response.
         sub.refresh_from_db()
         parent.refresh_from_db()
-        self.assertEqual(sub.status, "killed")
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(sub.status, TASK_STATUS_KILLED)
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros, 6_000_000)
         self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
 
@@ -179,8 +182,8 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
                          bills=6_000_000)
         sub.refresh_from_db()
         parent.refresh_from_db()
-        self.assertEqual(sub.status, "killed")
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(sub.status, TASK_STATUS_KILLED)
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         # Rollup: the parent's provider total carries the subtask's spend.
         self.assertEqual(parent.total_provider_cost_micros, 6_000_000)
 
@@ -194,7 +197,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(body["stop_reason"], "task_not_active")
         self.assertEqual(body["stop_scope"], "subtask")
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros, 9_000_000)
         self.assertEqual(parent.event_count, 3)
 
@@ -218,11 +221,11 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         parent.refresh_from_db()
         tripping_sub.refresh_from_db()
         sibling_sub.refresh_from_db()
-        self.assertEqual(parent.status, "killed")
+        self.assertEqual(parent.status, TASK_STATUS_KILLED)
         self.assertEqual(parent.metadata["kill_reason"], "task_limit")
         # Containment cuts downward: BOTH subtasks are cascade-killed ...
-        self.assertEqual(tripping_sub.status, "killed")
-        self.assertEqual(sibling_sub.status, "killed")
+        self.assertEqual(tripping_sub.status, TASK_STATUS_KILLED)
+        self.assertEqual(sibling_sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sibling_sub.metadata["kill_reason"], "parent_killed")
         # ... but only the parent announces (the subtasks crossed nothing).
         self.assertEqual(self._events("task.limit_exceeded").count(), 1)
@@ -282,7 +285,7 @@ class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
         for item in body["results"]:
             self.assertEqual(item["parent_task_id"], str(parent.id))
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros, 12_000_000)
 
 
@@ -297,7 +300,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         body = resp.json()
         self.assertFalse(body["stop"])
         sub.refresh_from_db()
-        self.assertEqual(sub.status, "active")
+        self.assertEqual(sub.status, TASK_STATUS_ACTIVE)
         self.assertEqual(self._events("subtask.limit_exceeded").count(), 0)
 
         # Both totals on the record and the response, denominationally explicit.
@@ -316,7 +319,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
                                 bills=1_000)
         self.assertEqual(resp.json()["stop_reason"], "subtask_limit")
         sub.refresh_from_db()
-        self.assertEqual(sub.status, "killed")
+        self.assertEqual(sub.status, TASK_STATUS_KILLED)
 
 
 class StartGateSubtaskTest(SubtaskPinTestBase):
@@ -394,7 +397,11 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
 
 
 class CloseCascadeTest(SubtaskPinTestBase):
-    def test_closing_a_parent_auto_completes_active_subtasks(self):
+    def test_closing_a_parent_withdraws_active_subtasks(self):
+        # One call still cleans the tree up; what changed is what the tree
+        # then SAYS (#408). The close declared the delivery of the parent, so
+        # only the parent may read `completed` — each contained piece was
+        # withdrawn, which is what `cancelled` means.
         parent = self._task()
         sub_active = self._task(parent=parent)
         sub_killed = self._task(parent=parent)
@@ -404,13 +411,13 @@ class CloseCascadeTest(SubtaskPinTestBase):
             f"/api/v1/metering/tasks/{parent.id}/close", **self._auth())
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["status"], TASK_STATUS_COMPLETED)
         self.assertIsNone(body["parent_task_id"])
         sub_active.refresh_from_db()
         sub_killed.refresh_from_db()
-        self.assertEqual(sub_active.status, "completed")
+        self.assertEqual(sub_active.status, TASK_STATUS_CANCELLED)
         # A killed subtask keeps its state — cleanup never rewrites history.
-        self.assertEqual(sub_killed.status, "killed")
+        self.assertEqual(sub_killed.status, TASK_STATUS_KILLED)
 
     def test_closing_a_subtask_closes_it_alone(self):
         parent = self._task()
@@ -418,7 +425,7 @@ class CloseCascadeTest(SubtaskPinTestBase):
         resp = self.http_client.post(
             f"/api/v1/metering/tasks/{sub.id}/close", **self._auth())
         body = resp.json()
-        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["status"], TASK_STATUS_COMPLETED)
         self.assertEqual(body["parent_task_id"], str(parent.id))
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)

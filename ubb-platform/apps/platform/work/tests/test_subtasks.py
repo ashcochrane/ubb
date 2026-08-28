@@ -2,8 +2,13 @@
 
 A subtask is a Task row with `parent` set: its spend rolls up into the
 parent's totals (containment: the parent sees everything), its own limit
-kills it ALONE, a parent kill/close cascades DOWNWARD to its active
+kills it ALONE, a parent's stop cascades DOWNWARD to its active
 subtasks — containment cuts downward, never upward.
+
+⚠ WHAT THE CASCADE WRITES IS NOT ALWAYS WHAT THE PARENT GOT (#408): a kill
+cascades `killed`, but a CLOSE cascades `cancelled`, because the tenant
+declared the delivery of the parent and declared nothing about each contained
+piece.
 """
 import uuid
 
@@ -15,6 +20,9 @@ from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
+    TASK_STATUS_KILLED)
 
 
 class SubtaskTestBase(TestCase):
@@ -39,7 +47,7 @@ class CreateSubtaskTest(SubtaskTestBase):
         parent = self._task()
         sub = self._task(limit=5_000_000, parent=parent)
         self.assertEqual(sub.parent_id, parent.id)
-        self.assertEqual(sub.status, "active")
+        self.assertEqual(sub.status, TASK_STATUS_ACTIVE)
         self.assertEqual(list(parent.subtasks.all()), [sub])
 
     def test_create_task_refuses_a_subtask_parent(self):
@@ -176,9 +184,9 @@ class KillCascadeTest(SubtaskTestBase):
         sub = self._task(parent=parent)
         killed, transitioned = TaskService.kill_task(sub.id, reason=reasons.SUBTASK_LIMIT)
         self.assertTrue(transitioned)
-        self.assertEqual(killed.status, "killed")
+        self.assertEqual(killed.status, TASK_STATUS_KILLED)
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")  # containment never cuts upward
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)  # containment never cuts upward
 
     def test_kill_parent_cascades_to_active_subtasks(self):
         parent = self._task()
@@ -190,11 +198,11 @@ class KillCascadeTest(SubtaskTestBase):
         self.assertTrue(transitioned)
         sub_active.refresh_from_db()
         sub_done.refresh_from_db()
-        self.assertEqual(sub_active.status, "killed")
+        self.assertEqual(sub_active.status, TASK_STATUS_KILLED)
         self.assertEqual(sub_active.metadata["kill_reason"], reasons.PARENT_KILLED)
         self.assertIsNotNone(sub_active.completed_at)
         # Terminal subtasks are left untouched by the cascade.
-        self.assertEqual(sub_done.status, "completed")
+        self.assertEqual(sub_done.status, TASK_STATUS_COMPLETED)
 
     def test_kill_parent_second_call_does_not_recascade(self):
         parent = self._task()
@@ -207,9 +215,13 @@ class KillCascadeTest(SubtaskTestBase):
         _, transitioned = TaskService.kill_task(parent.id)
         self.assertFalse(transitioned)
         late_sub.refresh_from_db()
-        self.assertEqual(late_sub.status, "active")
+        self.assertEqual(late_sub.status, TASK_STATUS_ACTIVE)
 
-    def test_complete_parent_auto_completes_active_subtasks(self):
+    def test_close_parent_withdraws_active_subtasks(self):
+        # The cascade WITHDRAWS rather than delivers (#408): the tenant
+        # declared the delivery of the parent and declared nothing about each
+        # contained piece, and `completed` may only ever mean a declaration
+        # the tenant actually made.
         parent = self._task()
         sub = self._task(parent=parent)
         sub_killed = self._task(parent=parent)
@@ -217,22 +229,22 @@ class KillCascadeTest(SubtaskTestBase):
 
         completed, transitioned = TaskService.complete_task(parent.id)
         self.assertTrue(transitioned)
-        self.assertEqual(completed.status, "completed")
+        self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         sub.refresh_from_db()
         sub_killed.refresh_from_db()
-        self.assertEqual(sub.status, "completed")
+        self.assertEqual(sub.status, TASK_STATUS_CANCELLED)
         self.assertIsNotNone(sub.completed_at)
         # A killed subtask stays killed — cleanup never rewrites history.
-        self.assertEqual(sub_killed.status, "killed")
+        self.assertEqual(sub_killed.status, TASK_STATUS_KILLED)
 
     def test_complete_subtask_completes_it_alone(self):
         parent = self._task()
         sub = self._task(parent=parent)
         completed, transitioned = TaskService.complete_task(sub.id)
         self.assertTrue(transitioned)
-        self.assertEqual(completed.status, "completed")
+        self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
 
 
 class AnnounceTest(SubtaskTestBase):
@@ -257,7 +269,7 @@ class AnnounceTest(SubtaskTestBase):
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
         parent.refresh_from_db()
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
 
     def test_parent_kill_announces_once_and_cascades_silently(self):
         parent = self._task(limit=10_000_000)
@@ -278,7 +290,7 @@ class AnnounceTest(SubtaskTestBase):
         # The parent's totals are the rolled-up totals.
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
         sub.refresh_from_db()
-        self.assertEqual(sub.status, "killed")
+        self.assertEqual(sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sub.metadata["kill_reason"], reasons.PARENT_KILLED)
 
 

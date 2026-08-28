@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.task_detail_out_status import TaskDetailOutStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,7 +30,7 @@ class TaskDetailOut:
         Attributes:
             created_at (str):
             event_count (int):
-            status (str):
+            status (TaskDetailOutStatus):
             task_id (str):
             total_billed_cost_micros (int):
             total_provider_cost_micros (int):
@@ -45,7 +46,7 @@ class TaskDetailOut:
 
     created_at: str
     event_count: int
-    status: str
+    status: TaskDetailOutStatus
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
@@ -70,7 +71,7 @@ class TaskDetailOut:
 
         event_count = self.event_count
 
-        status = self.status
+        status = self.status.value
 
         task_id = self.task_id
 
@@ -154,7 +155,10 @@ class TaskDetailOut:
 
         event_count = d.pop("event_count")
 
-        status = d.pop("status")
+        status = TaskDetailOutStatus(d.pop("status"))
+
+
+
 
         task_id = d.pop("task_id")
 

@@ -1,20 +1,63 @@
 from django.db import models
 
 from core.models import BaseModel
-from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE,
+    TASK_STATUS_CANCELLED,
+    TASK_STATUS_COMPLETED,
+    TASK_STATUS_EXPIRED,
+    TASK_STATUS_FAILED,
+    TASK_STATUS_KILLED,
+    TASK_STATUS_VALUES,
+    TASK_TYPE_KIND_SUBTASK,
+    TASK_TYPE_KIND_TASK,
+)
 
 
+# THE DURABLE STATE, AND EACH VALUE IS TOLD APART BY WHO WROTE IT (#408).
+#
+# THE RULE BOTH VALUE SETS IN THIS MODULE ARE HELD UNDER (ADR-0008 §4): the
+# identities come from the generated registry and only the WORDING is written
+# here. A value set the registry owns is held by reference so the backend
+# cannot keep a second copy of it that drifts, while the English beside each
+# value is display text this model is free to spell.
+#
+#   active     running.
+#   completed  THE TENANT DECLARED DELIVERY, and nothing else writes it (I1).
+#              An explicit close is the only writer, which is what makes a
+#              charge safe to key on it.
+#   failed     the tenant declared the work could not be delivered.
+#   cancelled  deliberately stopped or withdrawn — an explicit close saying so,
+#              or a parent's close cascade over contained work the tenant
+#              declared nothing about.
+#   killed     UBB STOPPED IT ON A SPEND SIGNAL, and nothing tenant-declared
+#              lands here (I2). A ceiling crossing, the patrol, or a parent's
+#              kill cascade.
+#   expired    nobody ever told UBB how it ended. Either sweeper.
+#
+# `cancelled` deliberately does NOT map onto `killed`, and that was considered
+# and rejected: the kill path emits a terminal event and stamps an announcement
+# id, so a tenant cancellation landing there would either fire a spurious spend
+# event at the customer's workers or become the only `killed` row with no
+# announcement — which means *silently cascaded by a parent*.
 TASK_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("completed", "Completed"),
-    ("failed", "Failed"),
-    ("killed", "Killed"),
+    (TASK_STATUS_ACTIVE, "Active"),
+    (TASK_STATUS_COMPLETED, "Completed"),
+    (TASK_STATUS_FAILED, "Failed"),
+    (TASK_STATUS_CANCELLED, "Cancelled"),
+    (TASK_STATUS_KILLED, "Killed"),
+    (TASK_STATUS_EXPIRED, "Expired"),
 ]
 
-# The identities come from the generated registry and only the WORDING is
-# written here (ADR-0008 §4): a value set the registry owns is held by
-# reference so the backend cannot keep a second copy of it that drifts, while
-# the English beside each value is display text this model is free to spell.
+#: EVERY STATE BUT `active`, DERIVED RATHER THAN LISTED. Terminal to anything
+#: is never permitted, and `active` is the only non-terminal state — which is
+#: the registry's own summary of this concept, not a second rule stated here.
+#: Deriving it is what makes that true of a seventh value on the day it is
+#: declared, instead of on the day somebody remembers a list in this file.
+TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES) - {TASK_STATUS_ACTIVE}
+
+# WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR, held under the same rule
+# stated above the state set — by reference, wording only.
 TASK_TYPE_KIND_CHOICES = [
     (TASK_TYPE_KIND_TASK, "Task"),
     (TASK_TYPE_KIND_SUBTASK, "Subtask"),
@@ -75,10 +118,18 @@ class Task(BaseModel):
     (start-gate creation, cost tracking) need to reference it without
     cross-product imports.
 
-    One-rule model: limits are signal points, never billing walls. A task
-    flips to "killed" the moment its limit trips (the flip is the durable
-    record that the stop signal fired), but late events still land, bill,
-    and keep counting into both totals.
+    One-rule model: limits are signal points, never billing walls. A unit
+    flips to a terminal state the moment its limit trips (the flip is the
+    durable record that the stop signal fired), but late events still land,
+    bill, and keep counting into both totals — a terminal state prevents the
+    creation of a customer charge and never rejects genuine operational usage,
+    including usage that arrives after termination.
+
+    WHICH TERMINAL STATE IT FLIPS TO IS THE WHOLE POINT (#408). See
+    `TASK_STATUS_CHOICES` above: the five terminal states are told apart by who
+    wrote them, so `completed` answers *the tenant declared delivery* and
+    `killed` answers *UBB stopped this on a spend signal*, each with no second
+    meaning to filter out first.
     """
 
     tenant = models.ForeignKey(
@@ -132,7 +183,7 @@ class Task(BaseModel):
     status = models.CharField(
         max_length=20,
         choices=TASK_STATUS_CHOICES,
-        default="active",
+        default=TASK_STATUS_ACTIVE,
         db_index=True,
     )
     # Both running totals, denominationally explicit, maintained on EVERY
@@ -195,13 +246,20 @@ class Task(BaseModel):
     # accumulate_cost. Null until the first metered event.
     last_event_at = models.DateTimeField(null=True, blank=True)
     # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
-    # this unit's kill announcement (task.limit_exceeded /
-    # subtask.limit_exceeded), stamped by kill_and_announce inside the same
-    # transaction as the winning flip + emission. Stays null on silent
-    # cascaded kills (the parent's event is the one signal) and on
-    # completed/failed units (nothing to announce). Plain UUID, not an FK —
+    # this unit's stop announcement (task.limit_exceeded /
+    # subtask.limit_exceeded), stamped inside the same transaction as the
+    # winning flip + emission. Stays null on silent cascaded stops (the
+    # parent's event is the one signal) and on the states a tenant declares
+    # (nothing to announce — the tenant already knows). Plain UUID, not an FK —
     # outbox cleanup deletes terminally-successful rows and the stamp must
     # keep meaning "announced" (see apps.platform.events.announcements).
+    #
+    # ⚠ IT IS STAMPED ON `killed` AND ON `expired` ALIKE (#408). UBB announced
+    # both before the six states existed and announces both after; what changed
+    # is which state the announcement accompanies, not whether one is sent. The
+    # event NAME still says `limit_exceeded` for an expiry, which is the debt
+    # the terminal-event split pays — a ledgered debt this ticket neither
+    # widens nor pretends to have paid.
     announce_outbox_id = models.UUIDField(null=True, blank=True)
 
     metadata = models.JSONField(default=dict)
@@ -235,7 +293,7 @@ class Task(BaseModel):
             # cross, never to tenant history.
             models.Index(
                 fields=["tenant"],
-                condition=models.Q(status="active",
+                condition=models.Q(status=TASK_STATUS_ACTIVE,
                                    provider_cost_limit_micros__isnull=False),
                 name="idx_task_active_limited",
             ),

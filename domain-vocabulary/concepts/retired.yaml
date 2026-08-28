@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,679 of 2,080 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,683 of 2,085 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    51 files, 132 occurrences
+    #     units    50 files, 131 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1502,6 +1502,42 @@ measurement_key:
     # zero. #372's console fall is the precedent for a whole file leaving; this
     # one is smaller and needs the distinction stated, because a numerator that
     # falls for two unrelated reasons looks from the number alone like one.
+    #
+    # #408 MOVED BOTH DENOMINATORS UP AND THE NUMERATOR DOWN BY A WHOLE FILE
+    # AGAIN (1,679 -> 1,683 swept, 2,080 -> 2,085 tracked, `units` 51 -> 50
+    # files and 132 -> 131 occurrences), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 234 -> 235). Five files arrive and none leaves:
+    # the migration that widens a unit of work's declared state set, which is
+    # EXCLUDED and so lifts tracked without lifting swept; the test module that
+    # holds the two invariants; and three generated SDK enum modules minted by
+    # the state set becoming an advertised closed concept — one per schema
+    # carrying it, which is #355's per-node arithmetic and #407's own reading
+    # of it, one schema larger because a unit's state appears on the close
+    # answer as well as on the listing row and the detail view.
+    #
+    # ⚠ THE FALL IS THE SAME SHAPE AS #407's AND FOR THE SAME REASON, WHICH IS
+    # WORTH SAYING RATHER THAN LETTING TWO IN A ROW LOOK LIKE A TREND. The file
+    # is `apps/platform/work/models.py` and the occurrence was the announcement
+    # column's *"and on completed/failed units (nothing to announce)"*. That
+    # was not one of the three surviving senses either — it is the same
+    # ordinary-English-about-work use — and it left because this commit
+    # FALSIFIED the sentence carrying it: there are five terminal states now,
+    # not two, and the set that announces is `killed` and `expired` rather than
+    # the set that does not. Rewriting a claim the ticket had made untrue is
+    # what removed the word; nobody went looking for it. The sense is exactly
+    # as alive as it was, and two consecutive falls arriving this way are two
+    # accidents rather than progress.
+    #
+    # ⚠ AND THE NUMERATOR ROSE TO 52 FILES / 134 OCCURRENCES FIRST, WHICH IS
+    # #407's WARNING LANDING ON THE VERY NEXT TICKET. Three occurrences across
+    # two files, all of them this commit's own new prose: two sweeper
+    # docstrings reaching for "EXPIRE units that…" / "stale active units", and
+    # the patrol's re-mint reaching for "stopped units". Every one is ordinary
+    # English about work, nowhere near money or rate arithmetic, so care about
+    # the three surviving senses would not have caught any of them — the only
+    # thing that did was measuring. The repair was "anything still active",
+    # "stale active work" and "a stopped unit", and the figures recorded above
+    # are the ones the tree gave after it.
 
     - term: units
       retired_as: >-

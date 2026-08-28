@@ -254,7 +254,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # not a retirement — and moves this number only because the rule covers
         # every migration directory wholesale. Read the run of entries above
         # and the opposite is the easy inference.
-        "historical-migrations": (UNTIL_SLICE_8, 234, 19),
+        # 234 -> 235 in #408: a unit of work's declared state set widens to the
+        # six the registry holds.
+        # ⚠ It names no retired term either, and it is an `AlterField` on
+        # `choices` — it rewrites no row, so there is not even a data function
+        # in it that could spell one. Two entries in a row saying "this one
+        # names nothing" is the wholesale rule working, not a run worth
+        # reading anything into.
+        "historical-migrations": (UNTIL_SLICE_8, 235, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

@@ -930,8 +930,17 @@
             "title": "Parent Task Id"
           },
           "status": {
+            "enum": [
+              "active",
+              "completed",
+              "failed",
+              "cancelled",
+              "killed",
+              "expired"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "task_status"
           },
           "task_id": {
             "title": "Task Id",
@@ -6733,8 +6742,17 @@
             "title": "Provider Cost Limit Micros"
           },
           "status": {
+            "enum": [
+              "active",
+              "completed",
+              "failed",
+              "cancelled",
+              "killed",
+              "expired"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "task_status"
           },
           "subtasks": {
             "items": {
@@ -6831,8 +6849,17 @@
             "title": "Provider Cost Limit Micros"
           },
           "status": {
+            "enum": [
+              "active",
+              "completed",
+              "failed",
+              "cancelled",
+              "killed",
+              "expired"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "task_status"
           },
           "task_id": {
             "title": "Task Id",

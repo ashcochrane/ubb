@@ -6,6 +6,8 @@ from django.db import transaction
 from django.db.utils import OperationalError, InterfaceError
 from django.utils import timezone
 
+from core.vocabulary import TASK_STATUS_ACTIVE
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,10 +18,19 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
 )
 def close_abandoned_tasks():
-    """Close tasks that have been active for longer than 1 hour.
+    """EXPIRE anything still active after longer than 1 hour.
 
-    Safety net for tasks that were never explicitly closed by the SDK
-    (e.g., client crash, network failure, forgotten close call).
+    Safety net for work that was never explicitly closed by the SDK (client
+    crash, network failure, forgotten close call) — and `expired` is what that
+    is: nobody ever told UBB how it ended.
+
+    ⚠ IT USED TO WRITE `completed` AND STAMP A MARKER IN METADATA (#408), so
+    the state meant *the tenant declared delivery* OR *we gave up waiting* and
+    no report could tell the two apart without reading a metadata key. The
+    state says it now, so the marker is gone with it. Nothing else here moves:
+    the windows, the cede to the reaper below, and the count returned are
+    unchanged — the two windows become configurable and per kind of work in
+    their own ticket.
     """
     from django.db.models import Q
     from apps.platform.work.models import Task
@@ -29,38 +40,42 @@ def close_abandoned_tasks():
     heartbeat_cutoff = now - timedelta(minutes=15)
     hard_age_cutoff = now - timedelta(hours=6)
     # Tier-2 (D10): a task that emitted an event recently is still ALIVE — do
-    # not complete it just for being >1h old. BUT keep an absolute 6h ceiling
+    # not expire it just for being >1h old. BUT keep an absolute 6h ceiling
     # so no tenant (incl. off, which has no reaper) ever gets an
     # immortal task. And CEDE an enforcing tenant's EMITTED tasks to
-    # reap_stale_tasks so their terminal state is deterministically 'killed'
-    # (+ task.limit_exceeded), never silently 'completed' when this beat wins
-    # the race; never-emitted (last_event_at IS NULL) tasks stay eligible (the
+    # reap_stale_tasks, which announces the stop to the tenant's workers;
+    # never-emitted (last_event_at IS NULL) tasks stay eligible (the
     # original safety net, and for enforcing tenants this frees the
     # concurrency slot before 6h).
+    #
+    # ⚠ THE CEDE IS NOW ABOUT THE ANNOUNCEMENT, NOT THE STATE. Both sweepers
+    # write `expired`, so which one wins the race no longer decides what the
+    # row says — it decides only whether the tenant's idle workers are told.
+    # That is a narrower reason for the cede than the one it replaces, and it
+    # is the real one: the deterministic-terminal-state argument was solving a
+    # problem the six states delete.
     stale_tasks = (
-        Task.objects.filter(status="active", created_at__lt=cutoff)
+        Task.objects.filter(status=TASK_STATUS_ACTIVE, created_at__lt=cutoff)
         .exclude(Q(last_event_at__gte=heartbeat_cutoff) & Q(created_at__gte=hard_age_cutoff))
         .exclude(tenant__enforcement_mode="enforcing", last_event_at__isnull=False)
     )
-    closed_count = 0
+    expired_count = 0
 
     from apps.platform.work.services import TaskService
 
     for task in stale_tasks.iterator():
         with transaction.atomic():
-            # complete_task owns the terminal-state recheck and the downward
-            # cascade (#38): auto-closing an abandoned parent auto-completes
-            # its active subtasks, same as an explicit close.
-            completed, transitioned = TaskService.complete_task(task.id)
+            # expire_task owns the terminal-state recheck and the downward
+            # cascade (#38): an abandoned parent expires its still-active
+            # contained work, which nobody reported on either.
+            _, transitioned = TaskService.expire_task(task.id)
             if not transitioned:
                 continue
-            completed.metadata["auto_closed"] = True
-            completed.save(update_fields=["metadata", "updated_at"])
-            closed_count += 1
+            expired_count += 1
 
-    if closed_count:
-        logger.info("Auto-closed %d abandoned tasks", closed_count)
-    return closed_count
+    if expired_count:
+        logger.info("Expired %d abandoned tasks", expired_count)
+    return expired_count
 
 
 @shared_task(
@@ -70,21 +85,28 @@ def close_abandoned_tasks():
     retry_backoff=True,
 )
 def reap_stale_tasks():
-    """Tier-2 P5 (D10): KILL stale active tasks for ENFORCING tenants.
+    """Tier-2 P5 (D10): EXPIRE stale active work for ENFORCING tenants.
 
-    A task that emitted events then went silent for >15 min (STALE), or any
-    task older than 6 h (STALE_MAX_AGE — a runaway hard ceiling), is killed
-    and a task.limit_exceeded event (subtask.limit_exceeded for a stale
-    subtask, killed alone) is emitted so sibling/idle workers tear down.
-    Reaping a parent cascades the kill to its active subtasks (#38) — note a
-    parent whose subtasks are still emitting is never heartbeat-stale, since
-    rollup stamps the parent's heartbeat too.
+    A unit that emitted events then went silent for >15 min (STALE), or any
+    unit older than 6 h (STALE_MAX_AGE — a runaway hard ceiling), is expired
+    and a task.limit_exceeded event (subtask.limit_exceeded for stale
+    contained work, expired alone) is emitted so sibling/idle workers tear
+    down. Reaping a parent cascades the expiry to its active contained work
+    (#38) — note a parent whose contained work is still emitting is never
+    heartbeat-stale, since rollup stamps the parent's heartbeat too.
 
-    Enforcing-only: off tenants keep only the baseline
-    close_abandoned_tasks (graceful >1h complete). Tasks that NEVER emitted
-    are left to close_abandoned_tasks (no premature 15-min kill of a
-    slow-to-start task). The winning active->killed transition (inside
-    kill_and_announce) guards against double-emit.
+    ⚠ IT USED TO WRITE `killed` (#408), which meant the same silence was
+    recorded two ways — this sweeper's `killed` and the other's `completed` —
+    and left `killed` unable to answer *how often do we blow ceilings* without
+    filtering on a reason string first. Both of this module's sweepers converge
+    on `expired`, and nothing else about the flow moves: the two windows, the
+    enforcing-only rule and the announcement are all as they were.
+
+    Enforcing-only: off tenants keep only the baseline close_abandoned_tasks
+    (the silent >1h expiry, unannounced). Units that NEVER emitted are left to
+    close_abandoned_tasks (no premature 15-min stop of a slow-to-start unit).
+    The winning transition (inside expire_and_announce) guards against
+    double-emit.
     """
     from django.db.models import Q
     from apps.platform.work.models import Task
@@ -110,14 +132,16 @@ def reap_stale_tasks():
                 last_event_at__isnull=False, last_event_at__lt=heartbeat_cutoff)
         else:
             candidate_filter = age_filter
-        candidates = Task.objects.filter(tenant=tenant, status="active").filter(candidate_filter)
+        candidates = (Task.objects.filter(tenant=tenant,
+                                          status=TASK_STATUS_ACTIVE)
+                      .filter(candidate_filter))
         for task in candidates.iterator():
             # created_at is immutable, so the reason is stable across the
-            # unlocked candidate read; kill_and_announce owns the winning
-            # active->killed transition, the downward cascade, the
-            # task/subtask event split, and the exactly-once emit.
+            # unlocked candidate read; expire_and_announce owns the winning
+            # transition, the downward cascade, the two-altitude event split,
+            # and the exactly-once emit.
             reason = STALE_MAX_AGE if task.created_at < age_cutoff else STALE
-            if TaskService.kill_and_announce(
+            if TaskService.expire_and_announce(
                     task.id, reason,
                     tenant_id=tenant.id, customer_id=task.customer_id):
                 reaped += 1

@@ -876,6 +876,30 @@ CONCEPTS_IN_THE_CONTRACT = {
     # adding a value, changing a value or touching what any caller may send —
     # the #317 mechanism with nothing to write.
     "task_type_kind": Published(2, ENUM),
+    # THE DURABLE STATE A UNIT OF WORK IS IN (#408) — three nodes: the close
+    # response, the listing row, and the detail view that extends it. Every
+    # published shape that carries a state carries the marker, and there is no
+    # fourth: the listing's `status` FILTER is deliberately not marked, because
+    # a query parameter that refuses an unknown word would turn a caller's
+    # typo into a 422 where it is a legitimately empty page today, and that is
+    # a change to what callers may SEND rather than to what UBB advertises.
+    #
+    # ⚠ ITS BACKEND HALF WAS THE THIRD SHAPE OF THE THREE §27 NAMES, and this
+    # is the one the entry's own wording hides. It read `0 of 6 values` while
+    # the model's `choices=` list already held FOUR of the six as literals — so
+    # a reader who took the number at face value would add the two missing
+    # values, re-run the census, and get `0 of 6` again for a diff that looks
+    # like a payment. Adding the values was necessary and was NOT the payment.
+    # The payment was deleting the locally written list and building the whole
+    # set out of the generated constants, after which the census counts six
+    # references where it counted none.
+    #
+    # THE SET IS PUBLISHED WHOLE THOUGH `failed` HAS NO WRITER YET, on the same
+    # posture as `pricing_receipt_subject_type` above: a closed set ships
+    # entire or a later slice adding the value is a breaking change to a client
+    # that switched exhaustively over the partial one. `failed` gains its first
+    # writer in the ticket that makes the close declare an outcome.
+    "task_status": Published(3, ENUM),
 }
 
 
@@ -1149,6 +1173,18 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # off. The declaration is where the altitude is a decision somebody makes;
     # on a unit it is a consequence of the parent link.
     placed("task_type_kind", {"TaskTypeIn", "TaskTypeOut"})
+    # THE DURABLE STATE A UNIT OF WORK IS IN (#408), on every published shape
+    # that carries one: the answer to a close, a row in a listing, and the
+    # detail view that extends that row.
+    #
+    # ⚠ AND DELIBERATELY NOT ON THE LISTING'S `status` FILTER, which is the one
+    # place a reader would expect a fourth. The marker would restrict what a
+    # caller may SEND, turning a mistyped filter into a 422 where it is an
+    # empty page today — a change to the request surface smuggled in under a
+    # ticket about what UBB advertises. The concept is what UBB RETURNS here;
+    # narrowing the query is a separate decision nobody has made.
+    placed("task_status",
+           {"CloseTaskResponse", "TaskOut", "TaskDetailOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1783,8 +1819,9 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     side of the margin, and the same single-entry step — 23 → 22 in #355, which
     advertised `pricing_method`, the second concept of that pair's own slice and
     again one entry, 22 → 21 in #366, which advertised `rate_structure`,
-    21 → 20 in #370, which advertised `pricing_receipt_subject_type`, and
-    20 → 19 in #407, which advertised `task_type_kind`.
+    21 → 20 in #370, which advertised `pricing_receipt_subject_type`,
+    20 → 19 in #407, which advertised `task_type_kind`, and 19 → 18 in #408,
+    which advertised `task_status`.
 
     ⚠ #366 AND #370 EACH PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
     right rather than an accounting slip: the G4 debt and the backend G2 debt
@@ -1800,6 +1837,19 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     not by itself an instruction to write any. The pairing is the usual one:
     the G4 debt and the backend G2 debt were the same debt read from two sides,
     only the G4 entry is in this seeding, and so only one comes out of it.
+
+    ⚠ #408 IS THE FIRST WHOSE G2 HALF WAS PART RE-SOURCING AND PART NEW
+    VALUES, AND THE ENTRY'S NUMBER COULD NOT SAY SO. It read `0 of 6` while the
+    backend consumer's `choices=` list already held FOUR of the six as
+    literals. A reader taking that number at face value would add the two
+    missing values and re-measure — and get `0 of 6` again, because the census
+    counts references and a literal serves none. So the two values had to be
+    added AND the whole set re-sourced from the generated constants, and only
+    the second half is what the entry was measuring. #407 above is the pure
+    re-sourcing case and this is the mixed one; between them they cover why
+    `0 of N` is an instruction to look at the consumer rather than at N. The
+    pairing is otherwise the usual one — one G4 entry in this seeding, one
+    entry out of it.
 
     ⚠ #370 IS STILL THE ONLY ONE OF THE SIX THAT PAID ITS G2 HALF WITHOUT
     WRITING ANY CODE THAT HOLDS A VALUE, and it is worth saying so rather than
@@ -1830,6 +1880,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 19, (
+    assert len(_entries(programme)) >= 18, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

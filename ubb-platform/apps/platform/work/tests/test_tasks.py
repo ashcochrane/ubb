@@ -8,6 +8,9 @@ from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.work.tasks import close_abandoned_tasks
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED,
+    TASK_STATUS_KILLED)
 
 
 class CloseAbandonedTasksTest(TestCase):
@@ -29,15 +32,20 @@ class CloseAbandonedTasksTest(TestCase):
         )
         return task
 
-    def test_close_abandoned_tasks_closes_stale(self):
+    def test_close_abandoned_tasks_expires_stale(self):
+        # `expired` means exactly *nobody ever told UBB how this ended*
+        # (#408). It used to read `completed` with a marker in metadata, so
+        # the state claimed a delivery the tenant never declared and only the
+        # marker said otherwise. The state carries it now, so the marker is
+        # gone rather than moved.
         task = self._create_stale_task()
         closed = close_abandoned_tasks()
         self.assertEqual(closed, 1)
 
         task.refresh_from_db()
-        self.assertEqual(task.status, "completed")
+        self.assertEqual(task.status, TASK_STATUS_EXPIRED)
         self.assertIsNotNone(task.completed_at)
-        self.assertTrue(task.metadata.get("auto_closed"))
+        self.assertEqual(task.metadata, {})
 
     def test_close_abandoned_tasks_skips_recent(self):
         task = TaskService.create_task(
@@ -47,9 +55,12 @@ class CloseAbandonedTasksTest(TestCase):
         self.assertEqual(closed, 0)
 
         task.refresh_from_db()
-        self.assertEqual(task.status, "active")
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
 
     def test_close_abandoned_tasks_skips_already_closed(self):
+        # And the tenant's declaration survives the sweeper untouched:
+        # terminal to anything is never permitted, so a closed unit is not
+        # re-stated as an expiry an hour later.
         task = self._create_stale_task()
         TaskService.complete_task(task.id)
 
@@ -57,7 +68,7 @@ class CloseAbandonedTasksTest(TestCase):
         self.assertEqual(closed, 0)
 
         task.refresh_from_db()
-        self.assertEqual(task.status, "completed")
+        self.assertEqual(task.status, TASK_STATUS_COMPLETED)
 
     def test_close_abandoned_tasks_skips_killed(self):
         task = self._create_stale_task()
@@ -67,7 +78,7 @@ class CloseAbandonedTasksTest(TestCase):
         self.assertEqual(closed, 0)
 
         task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
 
     def test_close_abandoned_tasks_multiple(self):
         self._create_stale_task()
@@ -79,4 +90,5 @@ class CloseAbandonedTasksTest(TestCase):
 
         closed = close_abandoned_tasks()
         self.assertEqual(closed, 2)
-        self.assertEqual(Task.objects.filter(status="active").count(), 1)
+        self.assertEqual(
+            Task.objects.filter(status=TASK_STATUS_ACTIVE).count(), 1)
