@@ -16,9 +16,11 @@ was an index write on the hottest path in the system, on every recorded event.
 correlation values is only safe once the other one is load-bearing on its own.
 `idempotency_key` became caller-supplied with a permanent claim in #410, the
 ticket immediately before this one — it is what decides a replay, and it is now
-the only correlation identity UBB has. `gates/migration-ledger.yaml` recorded
-that ordering as the reason the debt was owned by this slice: *"the deletion is
-safe only once the key that replaces it is finalised."*
+the only correlation identity UBB has. That ordering is why the debt was owned
+by slice 5 rather than by the slice that retired the word: the five G7 entries
+in `gates/migration-ledger.yaml` each gave it as their reason, and this same
+commit deletes all five, so do not go looking for them there. Spec §23 on #187
+carries the ruling and outlives them.
 
 **THIS IS A CONTRACT BREAK AND IT IS DELIBERATE.** The field was REQUIRED on
 `POST /api/v1/metering/usage` and is published on the usage list row and the

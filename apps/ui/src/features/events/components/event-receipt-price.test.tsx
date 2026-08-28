@@ -71,11 +71,12 @@ const METERING_ONLY_EVENT_ID = "0b4d7e21-5c68-4a39-9d02-8e1f3a6c7b50";
  */
 const METERING_ONLY_DETAIL: UsageEventDetail = {
   id: METERING_ONLY_EVENT_ID,
-  // The two correlation ids, from the events feature's own helper rather than
-  // spelled here. One of them is a retired term whose console ledger entry
-  // counts the files that name it, and that count is a ceiling on SPREAD — a
-  // new test module naming it would put the count over its entry and fail the
-  // sweep (#366, Phase B's second technique). This is a key-shape helper, not a
+  // The correlation id, from the events feature's own helper rather than
+  // spelled here. There were TWO until #411, and the helper was plural: one of
+  // them was a retired term whose console ledger entry capped the files naming
+  // it, so routing through the helper kept this module out of that count (#366,
+  // Phase B's second technique). The field and the entry are both gone, and the
+  // helper is now singular. It is still a key-shape helper rather than a
   // fixture: nothing about the payload below comes from the mock.
   ...correlationId(METERING_ONLY_EVENT_ID),
   ...priceNotApplicable("tenant_not_billing"),

@@ -49,9 +49,10 @@ def declared_grouping_values(values):
 
 #: EVERY PARAMETER THE RECORDING REQUEST PUBLISHES, and nothing else (#324).
 #:
-#: Spelled here for `usage_payload`'s reason one word wider: TWO of these keys
-#: are retired words under a spread ceiling — the correlation value above and
-#: the grouping bag slice 7 owns — and this module is already counted for both.
+#: Spelled here for `usage_payload`'s reason one word wider: ONE of these keys
+#: is a retired word under a spread ceiling — the grouping bag slice 7 owns —
+#: and this module is already counted for it. There were TWO until #411 deleted
+#: the second correlation value, which left the set as well as the ledger.
 #: The claim that reads it lives in
 #: `test_two_request_fields_each_with_one_meaning.py`, where the two cost
 #: fields' story is; only the spelling is here.
@@ -632,9 +633,12 @@ class MeteringTaskEndpointTest(TestCase):
     # ---- what the recording path publishes about completeness (#328) -------
     #
     # Both live HERE rather than beside the rest of #328 because the recording
-    # request still requires the retired correlation key, and this module is one
-    # of the files already counted for it. The behaviour is metering's; the
-    # readers proved elsewhere are subscriptions', platform's and referrals'.
+    # request then still required the retired second correlation key, and this
+    # module was one of the files already counted for it. #411 deleted that
+    # field, so the placement now rests on the reason that outlived it: these
+    # assert what the RECORDING ROUTE emits, and this is the route's own module.
+    # The behaviour is metering's; the readers proved elsewhere are
+    # subscriptions', platform's and referrals'.
 
     def test_the_emitted_payload_carries_the_status_the_posting_recorded(self):
         """The one line four products depend on, and nothing else asserted it.

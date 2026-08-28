@@ -510,7 +510,7 @@ POST /api/v1/billing/pre-check removed the request property `provider_cost_limit
 POST /api/v1/billing/pre-check removed the request property `start_task`
 POST /api/v1/billing/pre-check removed the request property `task_metadata`
 # ---------------------------------------------------------------------------
-# #411 (slice 5) - the second caller-supplied correlation value is deleted
+# #411 (slice 5) — the second caller-supplied correlation value is deleted
 # ---------------------------------------------------------------------------
 #
 # The recording request and its batch sibling stop naming the field. ⚠ THESE
@@ -518,7 +518,7 @@ POST /api/v1/billing/pre-check removed the request property `task_metadata`
 # cover them: they are warn-level because of what they do to a caller, not
 # because they were ever optional. Dropping a property the request REQUIRED can
 # only relax what a caller must send, and a caller still sending it gets a
-# `200` with the key discarded - the ratified posture for a retired wire field
+# `200` with the key discarded — the ratified posture for a retired wire field
 # (#272, argued at `api/v1/schemas.py`). The err file's block carries the
 # response half, where the direction is reversed and the level with it.
 #

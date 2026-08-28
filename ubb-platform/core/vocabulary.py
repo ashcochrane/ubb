@@ -583,8 +583,11 @@ DECLARATION_STATUS_VALUES = frozenset({
 # that changed any behaviour, while carrying an index write on the hottest path
 # in the system (#179 §4). The alias below stays after the deletion, and that
 # is the point of an alias rather than a leftover: the five ledger entries that
-# excused the word are gone, so the sweep now refuses it in every file rather
-# than counting it in eighty-five.
+# excused the word are gone, so the sweep now refuses it in every SWEPT file
+# rather than counting it in eighty-five. The excluded sets still hold it and
+# always will — the frozen migrations that name the column they drop, and the
+# gate bookkeeping recording the debt that was paid — which is what those
+# exclusions are for.
 #
 # Declared in concepts/retired.yaml.
 #

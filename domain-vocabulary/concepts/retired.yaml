@@ -1623,14 +1623,16 @@ measurement_key:
     #
     # ⚠ THAT IS THE FLATTEST THIS BLOCK HAS EVER READ AGAINST THE LARGEST
     # COMMIT IT HAS MEASURED, AND THE COMBINATION IS THE POINT. The commit
-    # edited 85 files across five surfaces, deleted a published request field, a
-    # column and its index, changed two hand-written SDK signatures, dropped a
-    # console row and cleared FIVE G7 ledger entries at once (188 -> 183) — and
-    # this entry's numerator did not move by one occurrence. #410's paragraph
-    # above warned that prose being MOVED is the fourth way the count travels;
-    # this commit moved a great deal of prose (three docstrings rewritten
-    # because the debt they described had been paid) and still did not carry the
-    # word, because none of the sentences it rewrote were about quantities.
+    # edited 114 files — 85 of them the ones that actually NAMED the retired
+    # word, which is the ledger's count and not the diff's — deleted a published
+    # request field, a column and its two indexes, changed two hand-written SDK
+    # signatures, dropped a console row and cleared FIVE G7 ledger entries at
+    # once (188 -> 183), and this entry's numerator did not move by one
+    # occurrence. #410's paragraph above warned that prose being MOVED is the
+    # fourth way the count travels; this commit REWROTE a great deal of prose —
+    # eight docstrings and comments whose stated reason was a debt it had just
+    # paid — and still did not carry the word, because none of the sentences it
+    # rewrote were about quantities.
     # **A large diff is not evidence either way — only the measurement is.**
 
     - term: units
@@ -1760,7 +1762,10 @@ idempotency_key:
     hottest path in the system (#179 §4). The alias below stays after the
     deletion, and that is the point of an alias rather than a leftover: the
     five ledger entries that excused the word are gone, so the sweep now
-    refuses it in every file rather than counting it in eighty-five.
+    refuses it in every SWEPT file rather than counting it in eighty-five. The
+    excluded sets still hold it and always will — the frozen migrations that
+    name the column they drop, and the gate bookkeeping recording the debt that
+    was paid — which is what those exclusions are for.
   retired_aliases:
     - request_id
   consumers:

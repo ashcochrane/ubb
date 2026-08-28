@@ -277,9 +277,11 @@ class TheRecordingPathWritesTheCanonicalColumnTest(TestCase):
         self.tenant, self.customer = _tenant_and_customer()
 
     def test_the_quantities_reach_the_child_record(self):
-        # The retired correlation argument is passed POSITIONALLY, never named:
-        # naming it here would add this file to an extent a later ticket owns
-        # and make that ticket's recorded count false.
+        # Three positional arguments, and the third is the idempotency key.
+        # There was a fourth until #411 — a second correlation value passed
+        # positionally here precisely so this file never named it, while its
+        # ledger entry still capped how many files could. The field is gone and
+        # so is the entry, so the key below is simply the argument it looks like.
         result = UsageService.record_usage(
             self.tenant, self.customer, "idem_recorded",
             provider_cost_micros=1_000_000,

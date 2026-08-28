@@ -121,10 +121,11 @@ describe("EventDetailPage", () => {
     // `queryByText(...)` returning null is satisfied by a page that failed to
     // render at all — the row is missing either way — so an absence on its own
     // is not evidence that the rest survived. Reading every label out of the
-    // section says both things at once: these rows are here, in this order, and
-    // there is no eighth row where the deleted one used to sit. It is the same
-    // technique `THE_WHOLE_RECORDING_REQUEST` uses on the backend's request
-    // body, for the same reason.
+    // section says both things at once: these nine rows are here, in this
+    // order, and there is no tenth — the deleted row sat SECOND, so restoring
+    // it shows up as an extra label in position two rather than at the end. It
+    // is the same technique `THE_WHOLE_RECORDING_REQUEST` uses on the backend's
+    // request body, for the same reason.
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
