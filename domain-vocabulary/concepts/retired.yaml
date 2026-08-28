@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,683 of 2,085 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,691 of 2,094 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    50 files, 131 occurrences
+    #     units    45 files, 123 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1527,6 +1527,45 @@ measurement_key:
     # what removed the word; nobody went looking for it. The sense is exactly
     # as alive as it was, and two consecutive falls arriving this way are two
     # accidents rather than progress.
+    #
+    # #409 MOVED BOTH DENOMINATORS UP AND THE NUMERATOR DOWN BY FIVE FILES
+    # (1,683 -> 1,691 swept, 2,085 -> 2,094 tracked, `units` 50 -> 45 files and
+    # 131 -> 123 occurrences), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 235 -> 236). It is the largest numerator fall
+    # since #272, and it is the SMALLEST cause this entry has recorded.
+    #
+    # ⚠ ALL EIGHT OCCURRENCES ARE ONE SENTENCE, PROPAGATED. The `list_tasks`
+    # docstring read *"Top-level units of work with their materialized cost
+    # rollups"*, and this commit moved that route to the root prefix and
+    # rewrote the line as *"Top-level work"*. That one edit reached five files
+    # because four of them are downstream of it by machine: the source
+    # docstring in the composition layer, its exported `description` in
+    # `openapi/v1.json`, the console's committed copy of that document, the
+    # test module quoting it — and the generated SDK operation module, which
+    # held it FOUR times, once per sync/async variant. The replacement modules
+    # generated beside them carry the new wording and so gained nothing back.
+    #
+    # ⚠ THIS IS THE SECOND CASE OF THE THREE ABOVE, NOT THE THIRD, AND THE
+    # MOVED EXCLUSION COUNT IS WHY THAT NEEDS SAYING. The rule says the two are
+    # told apart by whether an exclusion count moved — and one did. It moved
+    # for the migration this commit adds, which contains the word nowhere: a
+    # file ARRIVING in an excluded directory lifts tracked without lifting
+    # swept and takes no occurrence out of the swept set with it. No
+    # units-bearing file left the swept set, and no exclusion rule widened over
+    # one. The occurrences left the tree.
+    #
+    # ⚠ AND IT IS THE THIRD CONSECUTIVE FALL OF THE SAME KIND, which by now is
+    # worth naming as a pattern rather than as three accidents. The sense
+    # removed was the ordinary-English-about-work one again — never one of the
+    # three surviving senses — and it left because the commit was rewriting the
+    # sentence carrying it for an unrelated reason. #407's fall came from a
+    # docstring the commit had falsified, #408's from a column comment the
+    # commit had falsified, and this one from a route description the commit
+    # was moving. THE PATTERN IS THAT THIS SLICE'S SUBJECT IS UNITS OF WORK, so
+    # every prose it touches is prose that reaches for the word. None of the
+    # three is progress toward zero, the sense is exactly as alive as it was,
+    # and a reader watching only the number would conclude the opposite three
+    # times running.
     #
     # ⚠ AND THE NUMERATOR ROSE TO 52 FILES / 134 OCCURRENCES FIRST, WHICH IS
     # #407's WARNING LANDING ON THE VERY NEXT TICKET. Three occurrences across

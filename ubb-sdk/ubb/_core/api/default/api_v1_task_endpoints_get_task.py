@@ -27,7 +27,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/tasks/{task_id}".format(task_id=quote(str(task_id), safe=""),),
+        "url": "/api/v1/tasks/{task_id}".format(task_id=quote(str(task_id), safe=""),),
     }
 
 
@@ -73,7 +73,7 @@ def sync_detailed(
 ) -> Response[ProblemOut | TaskDetailOut]:
     """ Get Task
 
-     One unit's cost receipt plus its subtask tree.
+     One unit's cost receipt plus the work contained in it.
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
@@ -110,7 +110,7 @@ def sync(
 ) -> ProblemOut | TaskDetailOut | None:
     """ Get Task
 
-     One unit's cost receipt plus its subtask tree.
+     One unit's cost receipt plus the work contained in it.
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
@@ -142,7 +142,7 @@ async def asyncio_detailed(
 ) -> Response[ProblemOut | TaskDetailOut]:
     """ Get Task
 
-     One unit's cost receipt plus its subtask tree.
+     One unit's cost receipt plus the work contained in it.
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates
@@ -179,7 +179,7 @@ async def asyncio(
 ) -> ProblemOut | TaskDetailOut | None:
     """ Get Task
 
-     One unit's cost receipt plus its subtask tree.
+     One unit's cost receipt plus the work contained in it.
 
     Reads the rollups `TaskService.accumulate_cost` maintains — including
     events that landed after a kill — so this never aggregates

@@ -106,12 +106,13 @@ export function TaskSection({ taskId }: { taskId: string }) {
               onClick={() => setConfirmOpen(true)}
               disabled={!canWrite || closeTask.isPending}
             >
-              {closeTask.isPending ? "Working…" : "Close task"}
+              {closeTask.isPending ? "Working…" : "Close as delivered"}
             </Button>
           </span>
           <p className="text-[11px] text-text-muted">
-            Marks the job finished. A parent's active subtasks complete with
-            it; late events still land and count.
+            Declares this task delivered. Any still-running subtasks under it
+            are withdrawn rather than marked delivered; late events still land
+            and count.
           </p>
         </div>
       )}
@@ -119,12 +120,17 @@ export function TaskSection({ taskId }: { taskId: string }) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Close this task?"
-        description="Closing marks the task completed and completes any active subtasks under it. Events that arrive later still land and are billed."
-        confirmLabel="Yes, close it"
+        title="Close this task as delivered?"
+        description="This declares the work delivered. Any still-running subtasks under it are withdrawn rather than marked delivered, because nobody declared anything about them. Events that arrive later still land and are billed."
+        confirmLabel="Yes, it delivered"
         pending={closeTask.isPending}
         onConfirm={() =>
-          closeTask.mutate(taskId, {
+          // ⚠ THE OUTCOME IS NAMED HERE, at the one place a person actually
+          // asserts it (#409). This is the money-moving declaration once a
+          // delivery creates a charge, which is why the button and the dialog
+          // above both say so rather than reading "Close task" — and why
+          // nothing below this line supplies a default.
+          closeTask.mutate({ taskId, outcome: "delivered" }, {
             onSuccess: (res) => {
               setConfirmOpen(false);
               toastSuccess(

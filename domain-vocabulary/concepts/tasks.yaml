@@ -170,26 +170,30 @@ external_task_id:
 # not-applicable pricing status, `affordability_reason` explains an
 # affordability answer. This one explains the declared `outcome`.
 #
-# NO CONSUMERS YET, AND THAT IS THE HONEST DECLARATION. Naming the three
-# surfaces this will eventually reach produces three unexcused gate findings
-# today — G2 on the backend and the console, G4 on the contract — and a slice
-# may not add a ledger entry to excuse a debt it created. So it waits, exactly
-# as `unresolved_reason` waited between #316 and #317.
+# TWO OF THE THREE SURFACES HAVE ARRIVED (#409), AND THE THIRD IS STILL OWED.
+# #406 coined this concept with NO consumers at all, which was the honest
+# declaration at the time: naming a surface before it holds the values produces
+# an unexcused gate finding, and a slice may not add a ledger entry to excuse a
+# debt it created. It waited exactly as `unresolved_reason` waited between #316
+# and #317.
 #
 # WHICH TICKET BRINGS EACH SURFACE, so that "waiting" can be told apart from
 # "quietly forgotten":
 #
-#   backend   #409 adds the close field that holds these values by reference,
-#             and declares the consumer in that same commit.
-#   openapi   #409 again. G4 lets the contract advertise a value set only once
-#             the backend serves it, so the two cannot be separated — the same
-#             ticket already kills `g4-openapi-task_outcome` beside its backend
-#             twin.
-#   console   #424, the runs surface, which is where a unit of work's terminal
-#             state is rendered and therefore where a reader asks why it did
-#             not deliver. §25 does not pin the reason's home more precisely
-#             than that, so a ticket that moves it should correct this line
-#             rather than assume it was ruled.
+#   backend   ARRIVED in #409. `work/models.py` builds `OUTCOME_REASON_CHOICES`
+#             from the nine generated constants, and `Task.outcome_reason` is
+#             the column a close writes them into.
+#   openapi   ARRIVED in #409 too, and it could not have arrived separately: G4
+#             lets the contract advertise a value set only once the backend
+#             serves it, and the same ticket kills `g4-openapi-task_outcome`
+#             beside its backend twin. The marked fields are the close
+#             request's `outcome_reason` and `TaskOut.outcome_reason` — the
+#             declaration going in, and the same declaration read back.
+#   console   STILL OWED, by #424, the runs surface — where a unit of work's
+#             terminal state is rendered and therefore where a reader asks why
+#             it did not deliver. §25 does not pin the reason's home more
+#             precisely than that, so a ticket that moves it should correct
+#             this line rather than assume it was ruled.
 outcome_reason:
   kind: closed
   summary: >-
@@ -236,7 +240,11 @@ outcome_reason:
     # Declared with no stated cause.
     - unspecified
   label_key_prefix: outcome_reason
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/work/models.py
+    - surface: openapi
+      path: openapi/v1.json
 
 reason_detail:
   kind: free_text

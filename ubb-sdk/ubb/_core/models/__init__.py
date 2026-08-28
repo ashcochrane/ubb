@@ -43,7 +43,11 @@ from .budget_config_out import BudgetConfigOut
 from .budget_status_out import BudgetStatusOut
 from .business_margin_out import BusinessMarginOut
 from .business_margin_totals import BusinessMarginTotals
+from .close_task_request import CloseTaskRequest
+from .close_task_request_outcome import CloseTaskRequestOutcome
+from .close_task_request_outcome_reason_type_0 import CloseTaskRequestOutcomeReasonType0
 from .close_task_response import CloseTaskResponse
+from .close_task_response_outcome import CloseTaskResponseOutcome
 from .close_task_response_status import CloseTaskResponseStatus
 from .configure_auto_top_up_request import ConfigureAutoTopUpRequest
 from .connect_start_in import ConnectStartIn
@@ -215,9 +219,11 @@ from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
 from .task_detail_out import TaskDetailOut
 from .task_detail_out_dimensions import TaskDetailOutDimensions
+from .task_detail_out_outcome_reason_type_0 import TaskDetailOutOutcomeReasonType0
 from .task_detail_out_status import TaskDetailOutStatus
 from .task_out import TaskOut
 from .task_out_dimensions import TaskOutDimensions
+from .task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from .task_out_status import TaskOutStatus
 from .task_type_in import TaskTypeIn
 from .task_type_in_kind import TaskTypeInKind
@@ -339,7 +345,11 @@ __all__ = (
     "BudgetStatusOut",
     "BusinessMarginOut",
     "BusinessMarginTotals",
+    "CloseTaskRequest",
+    "CloseTaskRequestOutcome",
+    "CloseTaskRequestOutcomeReasonType0",
     "CloseTaskResponse",
+    "CloseTaskResponseOutcome",
     "CloseTaskResponseStatus",
     "ConfigureAutoTopUpRequest",
     "ConnectStartIn",
@@ -511,9 +521,11 @@ __all__ = (
     "TaskAnalyticsRow",
     "TaskDetailOut",
     "TaskDetailOutDimensions",
+    "TaskDetailOutOutcomeReasonType0",
     "TaskDetailOutStatus",
     "TaskOut",
     "TaskOutDimensions",
+    "TaskOutOutcomeReasonType0",
     "TaskOutStatus",
     "TaskTypeIn",
     "TaskTypeInKind",

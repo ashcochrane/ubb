@@ -170,6 +170,11 @@ class StripeTaxNotActiveError(UnprocessableEntityError):
     CODE = 'stripe_tax_not_active'
 
 
+class TaskAlreadyTerminalError(ConflictError):
+    STATUS = 409
+    CODE = 'task_already_terminal'
+
+
 class UnsupportedCurrencyError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'unsupported_currency'
@@ -225,6 +230,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'rate_limit_exceeded': RateLimitExceededError,
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
+    'task_already_terminal': TaskAlreadyTerminalError,
     'unsupported_currency': UnsupportedCurrencyError,
     'validation_error': ValidationError,
     'would_overdraw': WouldOverdrawError,
@@ -274,6 +280,7 @@ __all__ = [
     'LastActiveKeyError',
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
+    'TaskAlreadyTerminalError',
     'UnsupportedCurrencyError',
     'ValidationError',
     'WouldOverdrawError',

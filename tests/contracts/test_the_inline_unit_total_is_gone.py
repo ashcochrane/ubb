@@ -326,8 +326,20 @@ def test_the_control_the_match_is_field_shaped():
                          'summary["total_units"]', 'the `units` unit'):
         assert FIELD.search(field_shaped), field_shaped
 
+    # ⚠ THE ORDINARY-ENGLISH NEAR MISS MOVED IN #409, and the control below is
+    # what forced it. It used to be the `list_tasks` docstring's phrase; that
+    # route moved to the root prefix with its description rewritten, so the
+    # string stopped being a spelling the tree has. Its replacement is the same
+    # sense in the one place it cannot leave from — a GENERATED module,
+    # rendered from a concept summary in `domain-vocabulary/`, which the
+    # retired-sense entry names as the row that makes this word unremovable by
+    # any commit at all.
+    #
+    # ⚠ AND THE PROSE HERE IS ITSELF SWEPT, so this note deliberately does not
+    # SPELL the departed phrase: naming it would put the word back into the
+    # tree from the very file explaining that it left.
     for near_miss in ("minor_units", "major_units_decimal", "whole_minor_units",
-                      "units_val", "Top-level units of work",
+                      "units_val", "rather than units of work",
                       "per 1K units", "different units, so each ceiling"):
         assert not FIELD.search(near_miss), near_miss
 
@@ -342,18 +354,26 @@ def test_the_control_the_near_misses_are_spellings_the_tree_really_has():
     """
     surfaces = [_read(relative) for relative in (
         # Currency minor units, rate arithmetic, and the ordinary English inside
-        # a generated module — one file per surviving sense, plus the two API
-        # modules whose own spellings the matcher must walk past.
+        # a generated module — one file per surviving sense, plus the API schema
+        # module whose own spellings the matcher must walk past.
+        #
+        # ⚠ `api/v1/metering_endpoints.py` LEFT THIS LIST IN #409 and was not
+        # replaced. It was here for exactly one spelling — the `list_tasks`
+        # docstring's, named rather than quoted for the reason given above —
+        # and the route carrying it moved to the root prefix with its
+        # description rewritten, so the module now holds no occurrence of the
+        # word at all. A surface kept in this list after it stops contributing
+        # a spelling is a reader that proves nothing, which is the failure this
+        # control exists to catch one level down.
         "ubb-platform/core/money.py",
         "ubb-platform/api/v1/schemas.py",
-        "ubb-platform/api/v1/metering_endpoints.py",
         SURVIVING_SENSE,
         "apps/ui/src/features/pricing/lib/pricing-math.ts",
         "ubb-platform/core/vocabulary.py",
     )]
 
     for near_miss in ("minor_units", "major_units_decimal", "whole_minor_units",
-                      "units_val", "Top-level units of work",
+                      "units_val", "rather than units of work",
                       "per 1K units", "different units, so each ceiling"):
         assert any(near_miss in text for text in surfaces), (
             f"`{near_miss}` is not a spelling the tree has, so requiring the "

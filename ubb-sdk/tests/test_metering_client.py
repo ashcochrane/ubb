@@ -477,13 +477,25 @@ class MeteringClientTest(unittest.TestCase):
             "unresolved_event_count": 3,
             "unpriced_event_count": 0,
             "event_count": 12,
+            # The declaration echoed back beside the state it produced, and
+            # whether this call was the one that performed the close (#409).
+            "outcome": "delivered",
+            "replayed": False,
+            "charge_created": False,
         })
-        result = self.client.close_task("task_1")
+        result = self.client.close_task("task_1", "delivered")
         self.assertEqual(mock_post.call_args.args[0],
-                         "/api/v1/metering/tasks/task_1/close")
+                         "/api/v1/tasks/task_1/close")
+        # THE OUTCOME IS SENT, and it is the whole point of the call: the
+        # server has no default and neither does this wrapper.
+        self.assertEqual(mock_post.call_args.kwargs["json"],
+                         {"outcome": "delivered"})
         self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.task_id, "task_1")
         self.assertEqual(result.status, "completed")
+        self.assertEqual(result.outcome, "delivered")
+        self.assertIs(result.replayed, False)
+        self.assertIs(result.charge_created, False)
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
         self.assertEqual(result.total_provider_cost_micros, 1_750_000)
         self.assertEqual(result.unresolved_event_count, 3)
@@ -500,10 +512,34 @@ class MeteringClientTest(unittest.TestCase):
             "unresolved_event_count": 0,
             "unpriced_event_count": 0,
             "event_count": 1,
+            "outcome": "delivered",
+            "replayed": False,
+            "charge_created": False,
         })
-        result = self.client.close_task("sub_1")
+        result = self.client.close_task("sub_1", "delivered")
         self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.parent_task_id, "task_1")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_a_reason_travels_beside_the_outcome(self, mock_post):
+        """Both optional fields are omitted from the body unless given, so a
+        caller that says nothing sends nothing — which is what lets the server
+        tell *not declared* apart from *declared empty*."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "task_id": "task_1", "status": "failed",
+            "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
+            "unresolved_event_count": 0, "unpriced_event_count": 0,
+            "event_count": 0, "outcome": "failed", "replayed": False,
+            "charge_created": False,
+        })
+        self.client.close_task("task_1", "failed",
+                               outcome_reason="upstream_provider_error",
+                               reason_detail="the provider returned 503")
+        self.assertEqual(mock_post.call_args.kwargs["json"], {
+            "outcome": "failed",
+            "outcome_reason": "upstream_provider_error",
+            "reason_detail": "the provider returned 503",
+        })
 
     # ---- book URL correctness ----
 

@@ -1122,6 +1122,54 @@ class TenantDefaultMarkupOut(Schema):
 TaskStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "task_status"})]
 
+#: WHAT THE CALLER DECLARES WHEN IT CLOSES A UNIT OF WORK (#409). The state it
+#: enters follows from it — `apps.platform.work.services.STATUS_FOR_OUTCOME` is
+#: the map, and it is the backend consumer that lets this field be advertised
+#: at all. Three values, and a close must pick one: the winning transition is
+#: what a charge will later key on, so there is no default here and no default
+#: below it.
+#:
+#: NO HAND-WRITTEN `description`, on the same footing as `TaskStatus` above:
+#: the registry owns the summary and generates the values.
+TaskOutcome = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "task_outcome"})]
+
+#: WHY IT DID NOT DELIVER — the closed set beside the outcome (#409, spec §6).
+#: Required on `failed`, optional on `cancelled`, and accepted on neither when
+#: the outcome is `delivered`.
+#:
+#: ⚠ IT IS NOT `reason_code`, which is a different concept wearing the same
+#: word: that one answers why work was STOPPED, it is open, and it is
+#: UBB-produced. This value is CALLER-SUPPLIED, so an unrecognised one is
+#: refused rather than carried through — the producer/consumer reconciliation
+#: that softens UBB's own stop reasons does not transfer to it.
+OutcomeReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "outcome_reason"})]
+
+
+class CloseTaskRequest(Schema):
+    """The declaration that ends a unit of work.
+
+    ONE call and ONE mandatory field. Two endpoints (`/close` and `/fail`) was
+    rejected as two of everything, and optional-with-a-delivered-default was
+    rejected on the strongest rule available: THE FORGIVING PATH MUST NEVER BE
+    THE MONEY-MOVING ONE. A dropped field, a stale example or an old client
+    would otherwise bill a customer for work that failed.
+    """
+
+    outcome: TaskOutcome
+    #: Optional HERE and conditional at the endpoint, because "required on
+    #: `failed`" is a rule about a PAIR of fields and a schema can only speak
+    #: about one at a time. Making it unconditionally required would force a
+    #: caller to name a cause for work it merely cancelled; leaving the whole
+    #: rule to the schema would let a failure through with no stated cause.
+    outcome_reason: Optional[OutcomeReason] = None
+    #: The provider's actual message, beside the code rather than instead of
+    #: it. Never required, and NEVER validated against a vocabulary — it is the
+    #: cardinality guard that lets the code above stay a small closed set, and
+    #: validating it would defeat the only thing it is for.
+    reason_detail: Optional[str] = None
+
 
 class CloseTaskResponse(Schema):
     task_id: str
@@ -1132,6 +1180,21 @@ class CloseTaskResponse(Schema):
     # it alone.
     parent_task_id: Optional[str] = None
     status: TaskStatus
+    #: WHAT THE CALLER DECLARED, echoed back beside the state it produced. Both
+    #: are here rather than one: the state is what UBB now holds and the
+    #: outcome is what was asserted to reach it, and on a replay below they are
+    #: the two halves a caller compares to know its retry was understood.
+    outcome: TaskOutcome
+    #: THIS CALL FOUND THE UNIT ALREADY IN THE STATE IT DECLARED, and wrote
+    #: nothing. A retry after a lost response is not an error and must not read
+    #: as a second close — the symmetry with the start gate is deliberate.
+    replayed: bool
+    #: WHETHER A CUSTOMER CHARGE WAS CREATED BY THIS CALL. Honestly `false` on
+    #: every path today, because the Charge does not exist yet — that is this
+    #: field's true value under the rules in force, not a placeholder. It is
+    #: here now because the close is breaking anyway and a client that must
+    #: learn *did this bill?* should not have to learn it twice.
+    charge_created: bool
     total_billed_cost_micros: int
     total_provider_cost_micros: int
     #: See `TaskOut.unresolved_event_count` — a closed unit's total is a floor
@@ -1152,6 +1215,23 @@ class TaskOut(Schema):
     #: second thing (#407). `parent_task_id` above says which altitude.
     task_type: str = ""
     status: TaskStatus
+    #: WHY THE CALLER SAID IT DID NOT DELIVER, and the sentence beside it
+    #: (#409). Read back on exactly the terms they were declared: null means
+    #: nobody gave one — on a delivery, because neither field is accepted
+    #: there, and on a `killed` or `expired` unit because no caller declared
+    #: anything at all. Those two record their reason under the OTHER concept,
+    #: which is a separate field this surface does not serve.
+    #:
+    #: NULLABLE, WHICH IS WHY THE MARKER SITS WHERE IT DOES — the argument
+    #: `NotApplicableReason` makes in full. `Optional` renders `anyOf: [string,
+    #: null]` and the marker travels into the STRING MEMBER; on the union node
+    #: it would publish a closed set under which `null` is invalid, while the
+    #: server returns null for every unit nobody explained.
+    outcome_reason: Optional[OutcomeReason] = None
+    #: Free text, and therefore deliberately UNMARKED: the registry refuses a
+    #: concept marker on a `free_text` concept, because there is no value set
+    #: to advertise and pretending otherwise would publish an empty promise.
+    reason_detail: Optional[str] = None
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
     #:
@@ -1190,6 +1270,11 @@ def task_out(t):
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
         "task_type": t.task_type,
         "status": t.status,
+        # NULL RATHER THAN "" ON THE WIRE, and the column is the one that holds
+        # "": a reader gets ONE absent-value shape to test instead of two, and
+        # the marked node is nullable precisely so that shape is expressible.
+        "outcome_reason": t.outcome_reason or None,
+        "reason_detail": t.reason_detail or None,
         "total_provider_cost_micros": t.total_provider_cost_micros,
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,

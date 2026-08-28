@@ -13,6 +13,7 @@ import type {
   RefundBody,
   RefundResult,
   ReportWindow,
+  TaskOutcome,
   TimeseriesParams,
   UsageAnalytics,
   UsageEventDetail,
@@ -120,11 +121,27 @@ export async function refundUsage(
   );
 }
 
-/** Close (complete) a task or subtask; returns rolled-up totals + status. */
-export async function closeTask(taskId: string): Promise<CloseTaskResult> {
+/**
+ * Close a unit of work, DECLARING HOW IT ENDED; returns the state that
+ * declaration produced plus the rolled-up totals.
+ *
+ * On `rootApi` rather than `meteringApi` (#409): a unit of work is a kernel
+ * concept neither metering nor billing owns, so the lifecycle is mounted at
+ * the root prefix and is ungated.
+ *
+ * `outcome` is required and has NO default here, deliberately, because it has
+ * none on the server either — the forgiving path must never be the
+ * money-moving one, and a default would put one back a layer below the call
+ * that refuses it.
+ */
+export async function closeTask(
+  taskId: string,
+  outcome: TaskOutcome,
+): Promise<CloseTaskResult> {
   return unwrap(
-    await meteringApi.POST("/tasks/{task_id}/close", {
+    await rootApi.POST("/tasks/{task_id}/close", {
       params: { path: { task_id: taskId } },
+      body: { outcome },
     }),
   );
 }

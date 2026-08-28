@@ -8,6 +8,7 @@ import type {
   BillingSchemas,
   MarginSchemas,
   MeteringSchemas,
+  RootSchemas,
 } from "@/api/types";
 import { asCostingStatus } from "@/lib/supplier-cost";
 import type { CostingStatus } from "@/lib/vocabulary";
@@ -18,7 +19,14 @@ export type UsagePage = MeteringSchemas["PaginatedUsageResponse"];
 export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
 export type PastLimitReport = MeteringSchemas["PastLimitReportResponse"];
-export type CloseTaskResult = MeteringSchemas["CloseTaskResponse"];
+// A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
+// (#409), so these two come from the root schemas rather than from metering's.
+export type CloseTaskResult = RootSchemas["CloseTaskResponse"];
+/** What a caller DECLARES when it closes a unit of work. Required, and taken
+ *  from the contract rather than spelled here — there is no console consumer
+ *  declared for this concept, so the generated request type is the honest
+ *  source and a hand-written union would be a second copy of it. */
+export type TaskOutcome = RootSchemas["CloseTaskRequest"]["outcome"];
 export type RefundBody = BillingSchemas["RefundRequest"];
 export type RefundResult = BillingSchemas["RefundResponse"];
 export type MarginCustomers = MarginSchemas["MarginListOut"];

@@ -2,6 +2,15 @@ from django.db import models
 
 from core.models import BaseModel
 from core.vocabulary import (
+    OUTCOME_REASON_CUSTOMER_CANCELLED,
+    OUTCOME_REASON_EXECUTION_FAILED,
+    OUTCOME_REASON_INTERNAL_ERROR,
+    OUTCOME_REASON_INVALID_INPUT,
+    OUTCOME_REASON_PARENT_CLOSED,
+    OUTCOME_REASON_SUPERSEDED,
+    OUTCOME_REASON_TIMEOUT,
+    OUTCOME_REASON_UNSPECIFIED,
+    OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
     TASK_STATUS_ACTIVE,
     TASK_STATUS_CANCELLED,
     TASK_STATUS_COMPLETED,
@@ -61,6 +70,36 @@ TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES) - {TASK_STATUS_ACTIVE}
 TASK_TYPE_KIND_CHOICES = [
     (TASK_TYPE_KIND_TASK, "Task"),
     (TASK_TYPE_KIND_SUBTASK, "Subtask"),
+]
+
+# WHY THE CALLER SAID IT DID NOT DELIVER (#409), held by reference under the
+# same rule as the two sets above — identities from the registry, wording here.
+#
+# THIS IS NOT `reason_code`, AND THE TWO MUST NEVER BE TIDIED TOGETHER. That
+# one answers why work was STOPPED, it is open, and it is UBB-PRODUCED —
+# `apps/platform/work/reasons.py` is its consumer and slice 6 owns it. This one
+# answers why the caller could not deliver, it is closed, and it is
+# CALLER-SUPPLIED. `parent_closed` below and `reasons.PARENT_KILLED` are two
+# concepts for two actors, not a near-miss: the first is what a tenant declares
+# for contained work it withdrew when it closed the parent, the second is what
+# UBB records when it cascaded a spend stop.
+#
+# ⚠ AND THE PRODUCER/CONSUMER RECONCILIATION IN `reasons.py` DOES NOT TRANSFER
+# HERE. That module reconciles its own closed set with an open registry concept
+# by ruling that closed binds UBB's producers while open binds consumers — which
+# works only because a stop reason is UBB's own. This value arrives from
+# outside, so an unrecognised one is REFUSED at the boundary rather than carried
+# through it (spec §6).
+OUTCOME_REASON_CHOICES = [
+    (OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, "Upstream provider error"),
+    (OUTCOME_REASON_TIMEOUT, "Timeout"),
+    (OUTCOME_REASON_INVALID_INPUT, "Invalid input"),
+    (OUTCOME_REASON_INTERNAL_ERROR, "Internal error"),
+    (OUTCOME_REASON_EXECUTION_FAILED, "Execution failed"),
+    (OUTCOME_REASON_CUSTOMER_CANCELLED, "Customer cancelled"),
+    (OUTCOME_REASON_SUPERSEDED, "Superseded"),
+    (OUTCOME_REASON_PARENT_CLOSED, "Parent closed"),
+    (OUTCOME_REASON_UNSPECIFIED, "Unspecified"),
 ]
 
 
@@ -261,6 +300,26 @@ class Task(BaseModel):
     # the terminal-event split pays — a ledgered debt this ticket neither
     # widens nor pretends to have paid.
     announce_outbox_id = models.UUIDField(null=True, blank=True)
+
+    # WHY THE CALLER SAID IT DID NOT DELIVER, and the sentence beside it (#409).
+    #
+    # Written by the close that declared the terminal state, in the SAME UPDATE
+    # as `status`, so a state and the explanation the caller gave for it can
+    # never come apart. "" throughout means nobody gave one: on `completed`
+    # because neither field is accepted beside a declared delivery, and on
+    # `killed` / `expired` because no caller declared anything at all — those
+    # two are UBB's own stops and record their reason under the OTHER concept
+    # (`reasons.py`, still in `metadata`), which is the separation
+    # `OUTCOME_REASON_CHOICES` above argues for.
+    #
+    # TWO COLUMNS RATHER THAN ONE, which is #140 §3.3's cardinality argument
+    # made physical: the code is a small closed set a dashboard can group on,
+    # and the sentence is the provider's actual message, which is display-only
+    # and never grouped. Merging them would make every distinct provider string
+    # its own bucket.
+    outcome_reason = models.CharField(max_length=32, blank=True, default="",
+                                      choices=OUTCOME_REASON_CHOICES)
+    reason_detail = models.TextField(blank=True, default="")
 
     metadata = models.JSONField(default=dict)
     external_task_id = models.CharField(max_length=255, blank=True, default="")

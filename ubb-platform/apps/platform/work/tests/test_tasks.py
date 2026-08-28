@@ -9,6 +9,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.work.tasks import close_abandoned_tasks
 from core.vocabulary import (
+    TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED,
     TASK_STATUS_KILLED)
 
@@ -62,7 +63,7 @@ class CloseAbandonedTasksTest(TestCase):
         # terminal to anything is never permitted, so a closed unit is not
         # re-stated as an expiry an hour later.
         task = self._create_stale_task()
-        TaskService.complete_task(task.id)
+        TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
 
         closed = close_abandoned_tasks()
         self.assertEqual(closed, 0)

@@ -163,10 +163,21 @@
       ]
     },
     "outcome_reason": {
-      "advertised": false,
-      "backend_serves": null,
+      "advertised": true,
+      "backend_serves": "9 of 9 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "upstream_provider_error",
+        "timeout",
+        "invalid_input",
+        "internal_error",
+        "execution_failed",
+        "customer_cancelled",
+        "superseded",
+        "parent_closed",
+        "unspecified"
+      ]
     },
     "payment_rail": {
       "advertised": false,
@@ -295,10 +306,15 @@
       "representation": "none"
     },
     "task_outcome": {
-      "advertised": false,
-      "backend_serves": "0 of 3 values",
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "delivered",
+        "failed",
+        "cancelled"
+      ]
     },
     "task_status": {
       "advertised": true,

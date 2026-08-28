@@ -912,11 +912,79 @@
         "title": "BusinessMarginTotals",
         "type": "object"
       },
+      "CloseTaskRequest": {
+        "description": "The declaration that ends a unit of work.\n\nONE call and ONE mandatory field. Two endpoints (`/close` and `/fail`) was\nrejected as two of everything, and optional-with-a-delivered-default was\nrejected on the strongest rule available: THE FORGIVING PATH MUST NEVER BE\nTHE MONEY-MOVING ONE. A dropped field, a stale example or an old client\nwould otherwise bill a customer for work that failed.",
+        "properties": {
+          "outcome": {
+            "enum": [
+              "delivered",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string",
+            "x-ubb-concept": "task_outcome"
+          },
+          "outcome_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "upstream_provider_error",
+                  "timeout",
+                  "invalid_input",
+                  "internal_error",
+                  "execution_failed",
+                  "customer_cancelled",
+                  "superseded",
+                  "parent_closed",
+                  "unspecified"
+                ],
+                "type": "string",
+                "x-ubb-concept": "outcome_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Reason"
+          },
+          "reason_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Detail"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "CloseTaskRequest",
+        "type": "object"
+      },
       "CloseTaskResponse": {
         "properties": {
+          "charge_created": {
+            "title": "Charge Created",
+            "type": "boolean"
+          },
           "event_count": {
             "title": "Event Count",
             "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "delivered",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string",
+            "x-ubb-concept": "task_outcome"
           },
           "parent_task_id": {
             "anyOf": [
@@ -928,6 +996,10 @@
               }
             ],
             "title": "Parent Task Id"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -966,6 +1038,9 @@
         "required": [
           "task_id",
           "status",
+          "outcome",
+          "replayed",
+          "charge_created",
           "total_billed_cost_micros",
           "total_provider_cost_micros",
           "unresolved_event_count",
@@ -6719,6 +6794,29 @@
             "title": "Event Count",
             "type": "integer"
           },
+          "outcome_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "upstream_provider_error",
+                  "timeout",
+                  "invalid_input",
+                  "internal_error",
+                  "execution_failed",
+                  "customer_cancelled",
+                  "superseded",
+                  "parent_closed",
+                  "unspecified"
+                ],
+                "type": "string",
+                "x-ubb-concept": "outcome_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Reason"
+          },
           "parent_task_id": {
             "anyOf": [
               {
@@ -6740,6 +6838,17 @@
               }
             ],
             "title": "Provider Cost Limit Micros"
+          },
+          "reason_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Detail"
           },
           "status": {
             "enum": [
@@ -6826,6 +6935,29 @@
             "title": "Event Count",
             "type": "integer"
           },
+          "outcome_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "upstream_provider_error",
+                  "timeout",
+                  "invalid_input",
+                  "internal_error",
+                  "execution_failed",
+                  "customer_cancelled",
+                  "superseded",
+                  "parent_closed",
+                  "unspecified"
+                ],
+                "type": "string",
+                "x-ubb-concept": "outcome_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Reason"
+          },
           "parent_task_id": {
             "anyOf": [
               {
@@ -6847,6 +6979,17 @@
               }
             ],
             "title": "Provider Cost Limit Micros"
+          },
+          "reason_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Detail"
           },
           "status": {
             "enum": [
@@ -14365,188 +14508,6 @@
         "summary": "Declare Task Types"
       }
     },
-    "/api/v1/metering/tasks": {
-      "get": {
-        "description": "Top-level units of work with their materialized cost rollups.\n\nSubtasks are omitted \u2014 they belong to their parent's detail view, so a\nlisting counts JOBS, not steps.",
-        "operationId": "api_v1_metering_endpoints_list_tasks",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "customer_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Customer Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "task_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Task Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedTasks"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Tasks"
-      }
-    },
-    "/api/v1/metering/tasks/{task_id}": {
-      "get": {
-        "description": "One unit's cost receipt plus its subtask tree.\n\nReads the rollups `TaskService.accumulate_cost` maintains \u2014 including\nevents that landed after a kill \u2014 so this never aggregates\nubb_posting. One indexed row read plus its children.",
-        "operationId": "api_v1_metering_endpoints_get_task",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskDetailOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Task"
-      }
-    },
-    "/api/v1/metering/tasks/{task_id}/close": {
-      "post": {
-        "description": "Close (complete) a task or subtask. Closing a PARENT auto-completes\nits active subtasks in the same transaction (#38) \u2014 cleanup is one call;\na killed subtask keeps its state. Closing a subtask completes it alone.",
-        "operationId": "api_v1_metering_endpoints_close_task",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Task Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CloseTaskResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Close Task"
-      }
-    },
     "/api/v1/metering/usage": {
       "post": {
         "description": "Record one usage event. One-rule contract: every event that reaches\nUBB is priced, recorded, and billed with an HTTP 200 \u2014 including the\ntipping event that crosses a limit and everything arriving after a kill.\nThe stop instruction rides the response fields (stop / stop_reason /\nstop_scope); a non-200 always means \"this was not recorded\" (auth,\nmalformed payload, unknown customer/task, validation errors).\n\nA cost UBB cannot work out is NOT one of those (#320): the event is\nrecorded, and `costing_status` plus `uncosted_measurement_keys` on this\nbody say so at the moment the gap is created.",
@@ -16291,6 +16252,218 @@
           }
         ],
         "summary": "Trigger Sync"
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "description": "Top-level work with its materialized cost rollups.\n\nContained work is omitted \u2014 it belongs to its parent's detail view, so a\nlisting counts whole jobs rather than the steps inside them.",
+        "operationId": "api_v1_task_endpoints_list_tasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTasks"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Tasks"
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "description": "One unit's cost receipt plus the work contained in it.\n\nReads the rollups `TaskService.accumulate_cost` maintains \u2014 including\nevents that landed after a kill \u2014 so this never aggregates\nubb_posting. One indexed row read plus its children.",
+        "operationId": "api_v1_task_endpoints_get_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetailOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Task"
+      }
+    },
+    "/api/v1/tasks/{task_id}/close": {
+      "post": {
+        "description": "Close a unit of work, DECLARING HOW IT ENDED.\n\nThe outcome is required and the winning transition is the exactly-once\ntrigger a charge will later key on. Closing a parent withdraws its\nstill-running contained work in the same transaction \u2014 cleanup is one call\n\u2014 and closing contained work closes it alone.\n\n\u26a0 THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer\ncharge; it never rejects, deletes or zeroes genuine operational usage,\nincluding usage that arrives after termination. A late report on a closed\nunit still lands, costs and rolls up.",
+        "operationId": "api_v1_task_endpoints_close_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseTaskResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Close Task"
       }
     },
     "/api/v1/tenant/api-keys": {

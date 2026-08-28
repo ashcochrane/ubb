@@ -50,6 +50,9 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.vocabulary import (
+    TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
+    TASK_STATUS_KILLED)
 
 
 class OneRulePinTestBase(TestCase):
@@ -129,7 +132,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         task.refresh_from_db()
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(task.total_billed_cost_micros, 15_000_000)
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.metadata["kill_reason"], "task_limit")
 
         # The stop verdict rides the 200; the fan-out event fired exactly once.
@@ -174,7 +177,7 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
         self.assertEqual(event.task_id, task.id)
         self.assertEqual(event.provider_cost_micros, 12_000_000)
         task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.total_provider_cost_micros, 12_000_000)
         self.assertEqual(self._limit_events().count(), 1)
         self.assertEqual(self._limit_events().get().payload["reason"], "task_limit")
@@ -207,7 +210,7 @@ class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
         # The late event landed, billed, and counted into BOTH totals.
         self.assertEqual(Posting.objects.count(), 2)
         task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.total_provider_cost_micros, 13_000_000)
         self.assertEqual(task.total_billed_cost_micros, 14_000_000)
         self.assertEqual(body["task_total_provider_cost_micros"], 13_000_000)
@@ -279,7 +282,7 @@ class Pin14DenominationTest(OneRulePinTestBase):
         body = resp.json()
         self.assertFalse(body["stop"])
         task.refresh_from_db()
-        self.assertEqual(task.status, "active")
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
         self.assertEqual(self._limit_events().count(), 0)
 
         # Both totals on the record and the response, denominationally explicit.
@@ -300,7 +303,7 @@ class Pin14DenominationTest(OneRulePinTestBase):
         self.assertTrue(resp.json()["stop"])
         self.assertEqual(resp.json()["stop_reason"], "task_limit")
         task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
 
 
 class CeilingResolutionAtStartTest(OneRulePinTestBase):
@@ -363,7 +366,7 @@ class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
         self.assertIsNone(event.task_id)
         self.assertEqual(event.metadata, {"task": str(task.id)})  # labels only
         task.refresh_from_db()
-        self.assertEqual(task.status, "active")
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
         self.assertEqual(task.event_count, 0)
         self.assertEqual(self._limit_events().count(), 0)
 
@@ -465,10 +468,12 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
     def test_task_routes_replaced_run_routes(self):
         task = self._task(limit=None)
         resp = self.http_client.post(
-            f"/api/v1/metering/tasks/{task.id}/close", **self._auth())
+            f"/api/v1/tasks/{task.id}/close",
+            data=json.dumps({"outcome": TASK_OUTCOME_DELIVERED}),
+            content_type="application/json", **self._auth())
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["status"], TASK_STATUS_COMPLETED)
         self.assertIn("total_billed_cost_micros", body)
         self.assertIn("total_provider_cost_micros", body)
         resp = self.http_client.post(

@@ -41,6 +41,7 @@ for both.
 never called, for the reason #327's module gives: the recording request's
 correlation key is a retired word at a ledger this file must not widen.
 """
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -58,6 +59,7 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    TASK_OUTCOME_DELIVERED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
@@ -151,7 +153,7 @@ class TestTheWorkUnitTotalIsAFloor:
         unit = self._unit()
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
-        body = Client().get(f"/api/v1/metering/tasks/{unit.id}",
+        body = Client().get(f"/api/v1/tasks/{unit.id}",
                             HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
         assert body["total_provider_cost_micros"] == KNOWN_COST_MICROS
         assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1
@@ -237,8 +239,11 @@ class TestTheWorkUnitTotalIsAFloor:
         unit = self._unit()
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
-        body = Client().post(f"/api/v1/metering/tasks/{unit.id}/close",
-                             HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
+        body = Client().post(
+            f"/api/v1/tasks/{unit.id}/close",
+            data=json.dumps({"outcome": TASK_OUTCOME_DELIVERED}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
         assert body["status"] == "completed"
         assert body["total_provider_cost_micros"] == KNOWN_COST_MICROS
         assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1

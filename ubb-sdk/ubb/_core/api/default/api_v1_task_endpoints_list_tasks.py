@@ -65,7 +65,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/tasks",
+        "url": "/api/v1/tasks",
         "params": params,
     }
 
@@ -109,10 +109,10 @@ def sync_detailed(
 ) -> Response[PaginatedTasks]:
     """ List Tasks
 
-     Top-level units of work with their materialized cost rollups.
+     Top-level work with its materialized cost rollups.
 
-    Subtasks are omitted — they belong to their parent's detail view, so a
-    listing counts JOBS, not steps.
+    Contained work is omitted — it belongs to its parent's detail view, so a
+    listing counts whole jobs rather than the steps inside them.
 
     Args:
         cursor (None | str | Unset):
@@ -157,10 +157,10 @@ def sync(
 ) -> PaginatedTasks | None:
     """ List Tasks
 
-     Top-level units of work with their materialized cost rollups.
+     Top-level work with its materialized cost rollups.
 
-    Subtasks are omitted — they belong to their parent's detail view, so a
-    listing counts JOBS, not steps.
+    Contained work is omitted — it belongs to its parent's detail view, so a
+    listing counts whole jobs rather than the steps inside them.
 
     Args:
         cursor (None | str | Unset):
@@ -200,10 +200,10 @@ async def asyncio_detailed(
 ) -> Response[PaginatedTasks]:
     """ List Tasks
 
-     Top-level units of work with their materialized cost rollups.
+     Top-level work with its materialized cost rollups.
 
-    Subtasks are omitted — they belong to their parent's detail view, so a
-    listing counts JOBS, not steps.
+    Contained work is omitted — it belongs to its parent's detail view, so a
+    listing counts whole jobs rather than the steps inside them.
 
     Args:
         cursor (None | str | Unset):
@@ -248,10 +248,10 @@ async def asyncio(
 ) -> PaginatedTasks | None:
     """ List Tasks
 
-     Top-level units of work with their materialized cost rollups.
+     Top-level work with its materialized cost rollups.
 
-    Subtasks are omitted — they belong to their parent's detail view, so a
-    listing counts JOBS, not steps.
+    Contained work is omitted — it belongs to its parent's detail view, so a
+    listing counts whole jobs rather than the steps inside them.
 
     Args:
         cursor (None | str | Unset):

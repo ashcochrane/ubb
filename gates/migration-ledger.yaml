@@ -1888,19 +1888,6 @@ entries:
       than importing them from `core.vocabulary`. A Pool refuses starts and
       stops a customer but kills nothing (#150). Slice 6 rebuilds it.
 
-  - id: g2-backend-task_outcome
-    gate: G2
-    site: ubb-platform/apps/platform/work/services.py::task_outcome
-    expected: task_outcome
-    found: 0 of 3 values
-    owner_slice: slice_5
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. #140 makes the outcome
-      a required argument of close and the only thing that decides whether a
-      Charge fires. Slice 5 rebuilds the lifecycle.
-
   - id: g2-backend-tenant_posture
     gate: G2
     site: ubb-platform/apps/platform/tenants/models.py::tenant_posture
@@ -2489,20 +2476,6 @@ entries:
       that. Slice 6 rebuilds spend control, where the customer spend pool
       replaces today's container (#150 §7.1). The metadata appears in that
       slice.
-
-  - id: g4-openapi-task_outcome
-    gate: G4
-    site: openapi/v1.json::task_outcome
-    expected: task_outcome
-    found: 0 of 3 values
-    owner_slice: slice_5
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 3 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 5 rebuilds Work, and #140 makes the close carry a required
-      outcome because the charge keys on how a job ended. The metadata appears
-      in that slice.
 
   - id: g4-openapi-tenant_posture
     gate: G4

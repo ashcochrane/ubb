@@ -202,7 +202,15 @@ exclusions:
     # EITHER, and it is a `AlterField` on `choices` — it rewrites no row, so
     # there is not even a data function in it to spell one. Same reason as the
     # entry above: the rule covers every migration directory wholesale.
-    files: 235
+    # 235 → 236 in #409: one migration, adding the two columns a close writes
+    # its declaration into — the caller's closed-set `outcome_reason` and the
+    # free-text sentence beside it. ⚠ IT NAMES NO RETIRED TERM EITHER. It is a
+    # pure `AddField` pair with no data function, and the closed set it carries
+    # in `choices` is a set this commit COINS a consumer for rather than one
+    # anything retired. Same reason as the two entries above: the rule covers
+    # every migration directory wholesale, so the number moves for the file
+    # existing and not for anything it says.
+    files: 236
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

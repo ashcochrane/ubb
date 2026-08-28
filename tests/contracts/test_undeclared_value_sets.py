@@ -124,7 +124,13 @@ VALUE_SETS = {
     "ubb-platform/apps/platform/plans/models.py": 1,
     "ubb-platform/apps/platform/tenants/management/commands/seed_dev_data.py": 1,
     "ubb-platform/apps/platform/tenants/models.py": 3,
-    "ubb-platform/apps/platform/work/models.py": 2,
+    # 2 → 3 in #409: `OUTCOME_REASON_CHOICES`, the caller's closed set of
+    # reasons a unit of work did not deliver. It rises for the same reason the
+    # usage models' pair above rose — this inventory counts the SHAPE and not
+    # the provenance, and every value in it is held by reference from the
+    # generated constants. A derived list still comes past a reviewer, which is
+    # the whole point of counting shapes.
+    "ubb-platform/apps/platform/work/models.py": 3,
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,

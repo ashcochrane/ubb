@@ -22,6 +22,7 @@ every loop below on the day it is declared rather than on the day somebody
 remembers to extend a list here.
 """
 from datetime import timedelta
+from functools import partial
 
 from django.test import TestCase
 from django.utils import timezone
@@ -32,9 +33,10 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import (
     TASK_STATUS_CHOICES, TERMINAL_TASK_STATUSES, Task)
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import STATUS_FOR_OUTCOME, TaskService
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from core.vocabulary import (
+    TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
     TASK_STATUS_EXPIRED, TASK_STATUS_KILLED, TASK_STATUS_VALUES)
 
@@ -95,15 +97,25 @@ class TerminalToAnythingIsNeverPermittedTest(LifecycleTestBase):
     """Every terminal state, against every transition this service offers."""
 
     #: Every transition this service offers, so the loops below are over the
-    #: whole surface rather than over the three somebody thought of.
-    TRANSITIONS = ("kill_task", "complete_task", "expire_task")
+    #: whole surface rather than over the three somebody thought of. A close is
+    #: THREE of them since #409 — one per declarable outcome — and they are
+    #: derived from the outcome map rather than listed here, so a fourth
+    #: outcome is covered on the day it is declared instead of on the day
+    #: somebody remembers this tuple.
+    TRANSITIONS = {
+        "kill_task": TaskService.kill_task,
+        "expire_task": TaskService.expire_task,
+        **{f"close_task[{outcome}]": partial(TaskService.close_task,
+                                             outcome=outcome)
+           for outcome in STATUS_FOR_OUTCOME},
+    }
 
     def test_each_terminal_state_refuses_each_transition(self):
         for terminal in sorted(TERMINAL_TASK_STATUSES):
-            for name in self.TRANSITIONS:
+            for name, transition in sorted(self.TRANSITIONS.items()):
                 with self.subTest(terminal=terminal, transition=name):
                     task = self._force(self._task(), terminal)
-                    _, transitioned = getattr(TaskService, name)(task.id)
+                    _, transitioned = transition(task.id)
                     task.refresh_from_db()
                     self.assertFalse(transitioned)
                     self.assertEqual(task.status, terminal)
@@ -113,7 +125,7 @@ class TerminalToAnythingIsNeverPermittedTest(LifecycleTestBase):
             with self.subTest(terminal=terminal):
                 parent = self._task()
                 child = self._force(self._task(parent=parent), terminal)
-                TaskService.complete_task(parent.id)
+                TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
                 child.refresh_from_db()
                 self.assertEqual(child.status, terminal)
 
@@ -123,7 +135,8 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
 
     def test_an_explicit_close_writes_it(self):
         task = self._task()
-        closed, transitioned = TaskService.complete_task(task.id)
+        closed, transitioned = TaskService.close_task(
+            task.id, TASK_OUTCOME_DELIVERED)
         self.assertTrue(transitioned)
         self.assertEqual(closed.status, TASK_STATUS_COMPLETED)
 
@@ -151,7 +164,7 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
         # claiming a delivery nobody made.
         parent = self._task()
         child = self._task(parent=parent)
-        TaskService.complete_task(parent.id)
+        TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
         parent.refresh_from_db()
         child.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_COMPLETED)
@@ -189,13 +202,13 @@ class KilledMeansUbbStoppedItOnASpendSignalTest(LifecycleTestBase):
 
     def test_an_explicit_close_never_writes_it(self):
         task = self._task()
-        closed, _ = TaskService.complete_task(task.id)
+        closed, _ = TaskService.close_task(task.id, TASK_OUTCOME_DELIVERED)
         self.assertNotEqual(closed.status, TASK_STATUS_KILLED)
 
     def test_a_parents_close_cascade_never_writes_it(self):
         parent = self._task()
         child = self._task(parent=parent)
-        TaskService.complete_task(parent.id)
+        TaskService.close_task(parent.id, TASK_OUTCOME_DELIVERED)
         child.refresh_from_db()
         self.assertNotEqual(child.status, TASK_STATUS_KILLED)
 
