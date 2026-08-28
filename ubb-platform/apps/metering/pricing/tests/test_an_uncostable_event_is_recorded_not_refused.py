@@ -435,7 +435,7 @@ class TestTheRecordingCallStopsRefusing:
         _declaration(tenant)
 
         result = UsageService.record_usage(
-            tenant, customer, "req-1", "idem-1",
+            tenant, customer, "idem-1",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000})
 
@@ -451,7 +451,7 @@ class TestTheRecordingCallStopsRefusing:
         _declaration(tenant)
 
         result = UsageService.record_usage(
-            tenant, customer, "req-2", "idem-2",
+            tenant, customer, "idem-2",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000})
 
@@ -489,7 +489,7 @@ class TestTheRecordingCallStopsRefusing:
         _cost_rate(tenant, measurement_key="prompt_tokens")
 
         result = UsageService.record_usage(
-            tenant, customer, "req-5", "idem-5",
+            tenant, customer, "idem-5",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000, "reasoning_tokens": 40})
 
@@ -505,7 +505,7 @@ class TestTheRecordingCallStopsRefusing:
         # nothing to do with what this test claims, and this is the assertion
         # that fails when it does.
         control = UsageService.record_usage(
-            tenant, customer, "req-6", "idem-6",
+            tenant, customer, "idem-6",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000})
 
@@ -517,12 +517,12 @@ class TestTheRecordingCallStopsRefusing:
         customer = _customer(tenant)
         _declaration(tenant)
         first = UsageService.record_usage(
-            tenant, customer, "req-3", "idem-3",
+            tenant, customer, "idem-3",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000})
 
         replay = UsageService.record_usage(
-            tenant, customer, "req-3", "idem-3",
+            tenant, customer, "idem-3",
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000})
 
@@ -551,7 +551,7 @@ class TestTheRecordingCallStopsRefusing:
                                    balance_snapshot_micros=0)
 
         UsageService.record_usage(
-            tenant, customer, "req-4", "idem-4", task_id=task.id,
+            tenant, customer, "idem-4", task_id=task.id,
             event_type=EVENT_TYPE_KEY, provider="openai",
             measurements={"prompt_tokens": 1_000, "image_pixels": 40})
 

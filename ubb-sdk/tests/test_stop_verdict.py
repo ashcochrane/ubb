@@ -29,7 +29,7 @@ class StopVerdictTest(unittest.TestCase):
             "event_id": "e1", "suspended": False,
             "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
-        result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
+        result = self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertTrue(result.stop)
         self.assertEqual(result.stop_reason, "customer_wide_stop")
         self.assertEqual(result.stop_scope, "customer")
@@ -44,7 +44,7 @@ class StopVerdictTest(unittest.TestCase):
             "stop_scope": "task", "task_id": "task_1", "parent_task_id": None,
             "task_total_billed_cost_micros": 2_000_000,
             "task_total_provider_cost_micros": 1_100_000})
-        result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+        result = self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                           task_id="task_1")
         self.assertTrue(result.stop)
         self.assertEqual(result.stop_reason, "task_limit")
@@ -59,7 +59,7 @@ class StopVerdictTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
             "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop"})
-        result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1")
+        result = self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertTrue(result.stop)  # returned, not raised
 
     @patch("ubb.metering.httpx.Client.post")
@@ -69,7 +69,7 @@ class StopVerdictTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "customer_wide_stop",
             "stop_scope": "customer"})
         with self.assertRaises(UBBStoppedError) as cm:
-            self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+            self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                      raise_on_stop=True)
         self.assertEqual(cm.exception.reason, "customer_wide_stop")
         self.assertEqual(cm.exception.scope, "customer")
@@ -82,7 +82,7 @@ class StopVerdictTest(unittest.TestCase):
             "costing_status": "known", "pricing_status": "known", "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "task_id": "task_1"})
         with self.assertRaises(UBBStoppedError) as cm:
-            self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+            self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                      task_id="task_1", raise_on_stop=True)
         self.assertEqual(cm.exception.reason, "task_limit")
         self.assertEqual(cm.exception.scope, "task")
@@ -99,7 +99,7 @@ class StopVerdictTest(unittest.TestCase):
             "task_total_billed_cost_micros": 3_000_000,
             "task_total_provider_cost_micros": 1_500_000})
         with self.assertRaises(UBBStoppedError) as cm:
-            self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+            self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                      task_id="task_1", raise_on_stop=True)
         self.assertEqual(cm.exception.reason, "task_not_active")
         self.assertEqual(cm.exception.scope, "task")
@@ -110,7 +110,7 @@ class StopVerdictTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False,
             "costing_status": "known", "pricing_status": "known", "stop": False})
-        result = self.client.record_usage(customer_id="c1", request_id="r1", idempotency_key="i1",
+        result = self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                           raise_on_stop=True)
         self.assertFalse(result.stop)  # no raise
 

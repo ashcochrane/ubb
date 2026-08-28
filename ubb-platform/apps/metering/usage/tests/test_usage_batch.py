@@ -44,7 +44,7 @@ def _post(http, auth, url, body):
 
 
 def _item(c, n, **extra):
-    return {"customer_id": str(c.id), "request_id": f"r{n}",
+    return {"customer_id": str(c.id),
             "idempotency_key": f"k{n}", "provider_cost_micros": 10,
             "event_type": DECLARED, **extra}
 
@@ -85,7 +85,7 @@ class TestBatchBasics:
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
             _item(c, 1),
-            {"customer_id": str(c.id), "request_id": "r-other",
+            {"customer_id": str(c.id),
              "idempotency_key": "k1", "provider_cost_micros": 99,
              "event_type": DECLARED},
         ]}).json()
@@ -116,7 +116,7 @@ class TestBatchBasics:
         t, c, http, auth = _setup()
         bogus = str(uuid.uuid4())
         resp = _post(http, auth, BATCH_URL, {"events": [
-            {"customer_id": bogus, "request_id": "r1", "idempotency_key": "k1",
+            {"customer_id": bogus, "idempotency_key": "k1",
              "provider_cost_micros": 10},
             _item(c, 2),
         ]}).json()
@@ -164,7 +164,7 @@ class TestBatchBasics:
         """A batch success item carries the single-call success body + accepted."""
         t, c, http, auth = _setup()
         single = _post(http, auth, SINGLE_URL,
-                       {"customer_id": str(c.id), "request_id": "s1",
+                       {"customer_id": str(c.id),
                         "idempotency_key": "ks1", "provider_cost_micros": 10,
                         "event_type": DECLARED}).json()
         batch = _post(http, auth, BATCH_URL, {"events": [_item(c, 1)]}).json()
@@ -196,14 +196,14 @@ class TestBatchOneRuleParity:
 
     def _items(self, c, task, n0=1):
         return [
-            {"customer_id": str(c.id), "request_id": f"r{n0}",
+            {"customer_id": str(c.id),
              "idempotency_key": f"k{n0}", "provider_cost_micros": 600,
              "event_type": DECLARED, "task_id": str(task.id)},
-            {"customer_id": str(c.id), "request_id": f"r{n0+1}",
+            {"customer_id": str(c.id),
              "idempotency_key": f"k{n0+1}", "provider_cost_micros": 600,
              "event_type": DECLARED,
              "task_id": str(task.id)},  # 1200 > 1000 → task_limit crossing
-            {"customer_id": str(c.id), "request_id": f"r{n0+2}",
+            {"customer_id": str(c.id),
              "idempotency_key": f"k{n0+2}", "provider_cost_micros": 100,
              "event_type": DECLARED,
              "task_id": str(task.id)},  # task now killed → task_not_active

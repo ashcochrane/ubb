@@ -67,7 +67,6 @@ class BrokerDownAtAcceptTest(TestCase):
                     "/api/v1/metering/usage",
                     data=json.dumps({
                         "customer_id": str(self.customer.id),
-                        "request_id": f"req-{uuid.uuid4()}",
                         "idempotency_key": f"idem-{uuid.uuid4()}",
                         # Billed by the tenant's own rule now (#365).
                         "measurements": priced_at(1_000_000),

@@ -577,10 +577,14 @@ DECLARATION_STATUS_VALUES = frozenset({
 # an enum to it.
 #
 # The caller's key for making a retried write safe. Opaque to UBB beyond its
-# length bound, and the only caller-supplied correlation value on the recording
-# path — which is what made the second one removable: it had no uniqueness
-# constraint, no lookup, no filter and no read that changed any behaviour,
-# while carrying an index write on the hottest path in the system (#179 §4).
+# length bound, and now the ONLY caller-supplied correlation value on the
+# recording path — which is what made the second one removable, and #411
+# removed it. It had no uniqueness constraint, no lookup, no filter and no read
+# that changed any behaviour, while carrying an index write on the hottest path
+# in the system (#179 §4). The alias below stays after the deletion, and that
+# is the point of an alias rather than a leftover: the five ledger entries that
+# excused the word are gone, so the sweep now refuses it in every file rather
+# than counting it in eighty-five.
 #
 # Declared in concepts/retired.yaml.
 #

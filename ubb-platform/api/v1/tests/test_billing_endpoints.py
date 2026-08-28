@@ -1130,11 +1130,11 @@ class PooledSeatBillingSurfaceTest(TestCase):
 
     # ---------- refund_usage ----------
 
-    def _usage_event(self, customer, amount=1_000_000, request_id="r1"):
+    def _usage_event(self, customer, amount=1_000_000, correlation="r1"):
         from apps.metering.usage.models import Posting
         return Posting.objects.create(
-            tenant=self.tenant, customer=customer, request_id=request_id,
-            idempotency_key=f"idem_{request_id}",
+            tenant=self.tenant, customer=customer,
+            idempotency_key=f"idem_{correlation}",
             provider_cost_micros=amount, billed_cost_micros=amount)
 
     def test_refund_pooled_seat_moves_business_wallet_no_second_wallet(self):
@@ -1152,7 +1152,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
 
     def test_refund_allocated_seat_unchanged(self):
         Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
-        event = self._usage_event(self.alloc_seat, amount=1_000_000, request_id="r2")
+        event = self._usage_event(self.alloc_seat, amount=1_000_000)
         r = self.http_client.post(
             f"/api/v1/billing/customers/{self.alloc_seat.id}/refund",
             data=json.dumps({"usage_event_id": str(event.id),
@@ -1164,7 +1164,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
 
     def test_refund_individual_unchanged(self):
         Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
-        event = self._usage_event(self.individual, amount=1_000_000, request_id="r3")
+        event = self._usage_event(self.individual, amount=1_000_000)
         r = self.http_client.post(
             f"/api/v1/billing/customers/{self.individual.id}/refund",
             data=json.dumps({"usage_event_id": str(event.id),
@@ -1193,7 +1193,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
 
         Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
         event = Posting.objects.create(
-            tenant=self.tenant, customer=self.individual, request_id="r_unpriced",
+            tenant=self.tenant, customer=self.individual,
             idempotency_key="idem_r_unpriced", provider_cost_micros=1_000,
             billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN)
 
@@ -1232,7 +1232,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
     def test_refund_audit_keeps_seat_as_subject_and_records_owner(self):
         from apps.platform.audit.models import AuditRecord
         Wallet.objects.create(customer=self.pooled_biz, balance_micros=5_000_000)
-        event = self._usage_event(self.pooled_seat, amount=1_000_000, request_id="r4")
+        event = self._usage_event(self.pooled_seat, amount=1_000_000)
         self.http_client.post(
             f"/api/v1/billing/customers/{self.pooled_seat.id}/refund",
             data=json.dumps({"usage_event_id": str(event.id),

@@ -19,7 +19,7 @@ class TestPostpaidClose:
                                   charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         start, end = _prior_month()
-        ev = Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        ev = Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=500_000, billed_cost_micros=1_000_000)
         # auto_now_add can't be set on create — force effective_at into the prior month:
         Posting.objects.filter(id=ev.id).update(
@@ -37,7 +37,7 @@ class TestPostpaidClose:
         t = Tenant.objects.create(name="PRE", products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
         start, _ = _prior_month()
-        ev = Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        ev = Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=1, billed_cost_micros=1_000_000)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
@@ -73,7 +73,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
-        Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="pushing", total_billed_micros=1_000_000)
@@ -114,7 +114,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
-        Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="failed", total_billed_micros=0)
@@ -135,7 +135,7 @@ class TestPostpaidReconcile:
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage
         from apps.billing.invoicing.models import CustomerUsageInvoice
         t, c = self._tenant_customer()
-        Posting.objects.create(tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=1, billed_cost_micros=1_000_000, effective_at=self.MID)
         rec = CustomerUsageInvoice.objects.create(tenant=t, customer=c, period_start=self.PS,
             period_end=self.PE, status="pending", total_billed_micros=1_000_000)

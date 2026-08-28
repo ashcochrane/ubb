@@ -221,7 +221,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
             rate_per_unit_micros=17, unit_quantity=1_000_000,
             fixed_micros=250)
         self.result = UsageService.record_usage(
-            self.tenant, self.customer, "r1", "k1",
+            self.tenant, self.customer, "k1",
             measurements={"input_tokens": 4_100, "image_pixels": 2_000_000})
 
     def test_every_component_reproduces_its_own_amount_after_the_prune(self):
@@ -267,7 +267,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
         rate_in_default_book(self.tenant, measurement_key="input_tokens",
                              rate_per_unit_micros=9_000, unit_quantity=1_000)
         result = UsageService.record_usage(
-            self.tenant, self.customer, "r2", "k2",
+            self.tenant, self.customer, "k2",
             measurements={"input_tokens": 4_100})
 
         receipt = _prune(result["event_id"])
@@ -294,7 +294,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
             self.tenant, measurement_key="api_calls", fixed_micros=7_500,
             **{Rate.STRUCTURE_COLUMN: "flat"})
         result = UsageService.record_usage(
-            self.tenant, self.customer, "r-flat", "k-flat",
+            self.tenant, self.customer, "k-flat",
             measurements={"api_calls": 9})
 
         receipt = _prune(result["event_id"])
@@ -332,7 +332,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
             self.tenant, measurement_key="input_tokens",
             rate_per_unit_micros=3_000, unit_quantity=1_000)
         self.result = UsageService.record_usage(
-            self.tenant, self.customer, "r1", "k1",
+            self.tenant, self.customer, "k1",
             measurements={"input_tokens": 4_100, "image_pixels": 2_000_000})
 
     def _resolved_then_pruned(self):
@@ -423,7 +423,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
             self.tenant, measurement_key="image_pixels",
             rate_per_unit_micros=17, unit_quantity=1_000_000, fixed_micros=250)
         live = UsageService.record_usage(
-            self.tenant, self.customer, "r-late", "k-late",
+            self.tenant, self.customer, "k-late",
             measurements={"image_pixels": 2_000_000})
         priced, = [line for line
                    in _receipt_of(live["event_id"])["costing"]["detail"][
@@ -474,10 +474,10 @@ class NoPruningExemptionExistsTest(TestCase):
             self.tenant, measurement_key="input_tokens",
             rate_per_unit_micros=3_000, unit_quantity=1_000)
         self.settled = UsageService.record_usage(
-            self.tenant, self.customer, "r1", "k1",
+            self.tenant, self.customer, "k1",
             measurements={"input_tokens": 4_100})
         self.unsettled = UsageService.record_usage(
-            self.tenant, self.customer, "r2", "k2",
+            self.tenant, self.customer, "k2",
             measurements={"image_pixels": 2_000_000})
 
     def _postings(self):

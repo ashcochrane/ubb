@@ -265,7 +265,12 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # into. A pure `AddField` pair naming no retired term, and the number
         # moves for the file existing rather than for anything it says — the
         # rule covers every migration directory wholesale.
-        "historical-migrations": (UNTIL_SLICE_8, 237, 19),
+        # 237 -> 238 in #411: the migration that drops the second caller-
+        # supplied correlation value. It NAMES a retired term, as every
+        # `RemoveField` must, and the number still moved only because the file
+        # exists. The same commit deleted that word's five G7 entries, so the
+        # ledger fell 188 -> 183 while this rose by one.
+        "historical-migrations": (UNTIL_SLICE_8, 238, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

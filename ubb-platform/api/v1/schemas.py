@@ -173,7 +173,6 @@ A_PRICE_A_CALLER_MAY_NOT_STATE = "billed_cost_micros"
 # headstone.
 class RecordUsageRequest(Schema):
     customer_id: UUID
-    request_id: str = Field(min_length=1, max_length=500)
     idempotency_key: str = Field(min_length=1, max_length=500)
     # THE ONE OPEN BAG (#273). Free-form labelling: filterable and readable,
     # never grouped, never priced, never unit attribution. Anything you want to
@@ -604,7 +603,6 @@ class BalanceResponse(Schema):
 
 class UsageEventOut(Schema):
     id: UUID
-    request_id: str
     event_type: str = ""
     provider: str = ""
     provider_cost_micros: Optional[int] = None
@@ -641,7 +639,6 @@ def usage_event_out(e):
     receipt is the detail view's, GET /usage/{event_id})."""
     return {
         "id": e.id,
-        "request_id": e.request_id,
         "event_type": e.event_type,
         "provider": e.provider,
         "provider_cost_micros": e.provider_cost_micros,
@@ -676,7 +673,6 @@ class UsageEventDetailOut(Schema):
     # versions, the typed subject, the costing and pricing sections by value,
     # the totals and the cross-reference ids (#349).
     id: UUID
-    request_id: str
     idempotency_key: str
     event_type: str = ""
     provider: str = ""

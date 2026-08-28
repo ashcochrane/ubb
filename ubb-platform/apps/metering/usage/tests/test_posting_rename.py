@@ -419,12 +419,13 @@ class TheNeighboursMovedWithItTest(TestCase):
         shell, or inside a log line during an incident.
 
         The value it prints is asserted next door in `test_models.py`, not here.
-        That field is a retired term with a live ledger debt (its deletion is
-        slice 5's), and the sweep's `term_spread` rule refuses a 66th file
-        naming it while the debt stands — a debt is a finite migration plan, not
-        a licence for the word to reach further. `test_models.py` is already one
-        of the sixty-five and is the model's own test module, so the assertion
-        goes there and this one proves the traversal.
+        When this was written that field was a retired term under a spread
+        ceiling, and keeping the value out of this module was partly bookkeeping;
+        #411 deleted the field, so the ceiling is gone and the string now reads
+        the idempotency key. The split stands on the reason that outlived it:
+        `test_models.py` is the model's own test module and owns what the string
+        SAYS, and this one owns only that the traversal still resolves. Asserting
+        the value here too would be a second place to edit for one change.
         """
         refund = Refund.objects.create(
             tenant=self.tenant, customer=self.customer, posting=self.posting,

@@ -59,7 +59,7 @@ class MarginServiceTest(TestCase):
         a_rule_that_prices_what_it_measures(self.tenant)
         with patch("apps.platform.events.tasks.process_single_event"):
             UsageService.record_usage(
-                tenant=self.tenant, customer=self.customer, request_id="r1",
+                tenant=self.tenant, customer=self.customer,
                 idempotency_key="i1", provider_cost_micros=800_000,
                 measurements=priced_at(1_000_000))
         # live window covering today; just assert the shape + margin math

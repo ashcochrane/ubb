@@ -24,10 +24,10 @@ def test_compute_business_sums_seats():
                                   billing_topology="allocated")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
-    Posting.objects.create(tenant=t, customer=s1, request_id="r1", idempotency_key="i1",
+    Posting.objects.create(tenant=t, customer=s1, idempotency_key="i1",
                               provider_cost_micros=200_000, billed_cost_micros=500_000,
                               effective_at=MID)
-    Posting.objects.create(tenant=t, customer=s2, request_id="r2", idempotency_key="i2",
+    Posting.objects.create(tenant=t, customer=s2, idempotency_key="i2",
                               provider_cost_micros=100_000, billed_cost_micros=300_000,
                               effective_at=MID)
     d = MarginService.compute_business(t.id, biz, PS, PE)
@@ -49,10 +49,10 @@ def test_compute_business_includes_business_own_subscription():
         stripe_product_name="Pro Access", status="active", amount_micros=130_000_000, quantity=10,
         currency="usd", interval="month", current_period_start=now, current_period_end=now,
         last_synced_at=now)
-    Posting.objects.create(tenant=t, customer=s1, request_id="r1", idempotency_key="i1",
+    Posting.objects.create(tenant=t, customer=s1, idempotency_key="i1",
                               provider_cost_micros=200_000, billed_cost_micros=500_000,
                               effective_at=MID)
-    Posting.objects.create(tenant=t, customer=s2, request_id="r2", idempotency_key="i2",
+    Posting.objects.create(tenant=t, customer=s2, idempotency_key="i2",
                               provider_cost_micros=100_000, billed_cost_micros=300_000,
                               effective_at=MID)
     d = MarginService.compute_business(t.id, biz, PS, PE)
@@ -76,11 +76,11 @@ class BusinessMarginEndpointTest(TestCase):
         with patch("apps.platform.events.tasks.process_single_event"):
             from apps.metering.usage.services.usage_service import UsageService
             UsageService.record_usage(
-                tenant=self.tenant, customer=self.s1, request_id="r1", idempotency_key="i1",
+                tenant=self.tenant, customer=self.s1, idempotency_key="i1",
                 provider_cost_micros=200_000, measurements=priced_at(500_000),
                 provider="openai")
             UsageService.record_usage(
-                tenant=self.tenant, customer=self.s2, request_id="r2", idempotency_key="i2",
+                tenant=self.tenant, customer=self.s2, idempotency_key="i2",
                 provider_cost_micros=100_000, measurements=priced_at(300_000),
                 provider="openai")
 

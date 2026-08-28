@@ -115,7 +115,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         # (b) record usage with measurements and NO caller cost -> engine computes COGS.
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
         #     contract, real (tolerant) deserialization into RecordUsageResult.
-        res = client.record_usage(customer_id=str(customer.id), request_id="r1",
+        res = client.record_usage(customer_id=str(customer.id),
                                   idempotency_key="i1", dimensions={"dim1": "search"},
                                   measurements={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).

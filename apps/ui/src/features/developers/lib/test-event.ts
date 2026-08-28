@@ -92,7 +92,6 @@ export function toMicros(value: string): number {
  */
 export function buildTestEventRequest(
   values: TestEventFormValues,
-  requestId: string,
 ): RecordUsageRequest {
   const measurements: Record<string, number> = {};
   for (const row of values.measurements) {
@@ -102,7 +101,6 @@ export function buildTestEventRequest(
   }
   return {
     customer_id: values.customer_id,
-    request_id: requestId,
     idempotency_key: values.idempotency_key,
     ...(values.event_type !== "" && { event_type: values.event_type }),
     ...(values.provider !== "" && { provider: values.provider }),

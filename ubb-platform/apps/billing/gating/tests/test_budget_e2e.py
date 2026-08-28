@@ -27,7 +27,7 @@ class TestBudgetEndToEnd:
     def _draw(self, tenant, customer, billed, n):
         # Mirror production: the Posting is durably committed before the drawdown handler runs.
         Posting.objects.create(
-            tenant=tenant, customer=customer, request_id=f"r{n}", idempotency_key=f"i{n}",
+            tenant=tenant, customer=customer, idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,

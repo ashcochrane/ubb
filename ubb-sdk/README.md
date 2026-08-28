@@ -64,7 +64,6 @@ Do **not** pass `provider_cost_micros` when you want the engine to price it.
 ```python
 res = client.record_usage(
     customer_id="cust-uuid-here",
-    request_id="req-abc-123",
     idempotency_key="idem-abc-123",
     dimensions={"product_id": "search"},
     measurements={"input_tokens": 1000},
@@ -104,7 +103,6 @@ from datetime import datetime, timezone
 
 client.record_usage(
     customer_id="cust-uuid-here",
-    request_id="req-late-1",
     idempotency_key="idem-late-1",
     measurements={"input_tokens": 1000},
     recorded_at=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
@@ -127,9 +125,9 @@ your input order:
 
 ```python
 batch = client.record_batch([
-    {"customer_id": "cust-1", "request_id": "r1", "idempotency_key": "k1",
+    {"customer_id": "cust-1", "idempotency_key": "k1",
      "measurements": {"input_tokens": 500}},
-    {"customer_id": "cust-1", "request_id": "r2", "idempotency_key": "k2",
+    {"customer_id": "cust-1", "idempotency_key": "k2",
      "measurements": {"input_tokens": 800},
      "recorded_at": "2026-06-01T12:00:00+00:00"},
 ])
@@ -401,7 +399,7 @@ client.withdraw_pricing_book(book_id)
 client.list_pricing_books(cursor=None, limit=None)
 
 # record_usage  → RecordUsageResponse
-client.record_usage(customer_id: str, request_id: str, idempotency_key: str, *,
+client.record_usage(customer_id: str, idempotency_key: str, *,
     provider_cost_micros=None, claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
     dimensions=None, metadata=None, task_id=None, measurements=None,

@@ -287,7 +287,7 @@ class TestAnalyticsOnly:
             # is spelled with a word this programme has retired, and naming it
             # here would extend a debt a later slice owes rather than pay it.
             return UsageService.record_usage(
-                tenant, customer, key, key, event_type=event_type.key,
+                tenant, customer, key, event_type=event_type.key,
                 provider_cost_micros=1_000_000)
 
         ungrouped = _record("before")
@@ -328,7 +328,7 @@ class TestAnalyticsOnly:
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         _measurement(_event_type(tenant))
 
-        result = UsageService.record_usage(tenant, customer, "r", "i",
+        result = UsageService.record_usage(tenant, customer, "i",
                                            provider_cost_micros=1_000_000)
 
         assert MeasurementConcept.objects.count() == 0

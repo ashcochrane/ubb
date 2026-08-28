@@ -62,7 +62,7 @@ class TestEnforcementSeam:
 
         def record(key, billed, task_id):
             return client.post("/api/v1/metering/usage", data=json.dumps({
-                "customer_id": str(c.id), "request_id": key, "idempotency_key": key,
+                "customer_id": str(c.id), "idempotency_key": key,
                 "measurements": priced_at(billed), "task_id": task_id}), **hdr)
 
         # 1. Start-gate allows a new task ($10 above floor).
@@ -126,7 +126,7 @@ class TestEnforcementSeam:
             {"customer_id": str(c.id), "idempotency_key": "attempt-1"}), **hdr)
         task_id = p1.json()["task_id"]
         r = client.post("/api/v1/metering/usage", data=json.dumps({
-            "customer_id": str(c.id), "request_id": "k1", "idempotency_key": "k1",
+            "customer_id": str(c.id), "idempotency_key": "k1",
             "measurements": priced_at(50_000_000), "task_id": task_id}), **hdr)  # way over balance
         assert r.json()["stop"] is False  # off => no stop verdict
         p2 = client.post("/api/v1/tasks", data=json.dumps(

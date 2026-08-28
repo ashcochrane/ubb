@@ -251,7 +251,6 @@ class RefundLotAwareTest(TestCase):
         """Record a real Posting + drive the live drawdown handler."""
         ev = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id=f"req-{uuid.uuid4()}",
             idempotency_key=f"uek-{uuid.uuid4()}",
             billed_cost_micros=cost)
         handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(

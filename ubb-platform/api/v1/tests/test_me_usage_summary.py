@@ -33,7 +33,7 @@ class WidgetUsageSummaryTest(TestCase):
     def _event(self, customer, key, *, event_type="", billed=0):
         return Posting.objects.create(
             tenant=self.tenant, customer=customer,
-            request_id=f"r-{key}", idempotency_key=f"i-{key}",
+            idempotency_key=f"i-{key}",
             event_type=event_type, billed_cost_micros=billed,
         )
 
@@ -93,7 +93,7 @@ class WidgetUsageSummaryTest(TestCase):
         tenant = Tenant.objects.create(name="MeterOnly", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="m1")
         Posting.objects.create(
-            tenant=tenant, customer=customer, request_id="r", idempotency_key="i",
+            tenant=tenant, customer=customer, idempotency_key="i",
             event_type="tokens", billed_cost_micros=30_000)
         token = create_widget_token(
             tenant.widget_secret, str(customer.id), str(tenant.id))

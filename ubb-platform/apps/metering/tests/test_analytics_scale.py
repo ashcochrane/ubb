@@ -40,7 +40,7 @@ def _pin(event, effective_at):
 def _seed(tenant, customer, n, effective_at, billed=1_000_000, provider_cost=600_000, **extra):
     ev = Posting.objects.create(
         tenant=tenant, customer=customer,
-        request_id=f"req_f21_{n}", idempotency_key=f"idem_f21_{n}",
+        idempotency_key=f"idem_f21_{n}",
         billed_cost_micros=billed, provider_cost_micros=provider_cost, **extra)
     _pin(ev, effective_at)
     return ev
@@ -197,11 +197,11 @@ class PlannerIndexProofTest(TestCase):
         # multiple (single-column paths must fetch 6-8x the tuples), not a
         # coin-flip that cross-suite heap/index bloat could tip.
         rows = [Posting(tenant=self.tenant, customer=self.customers[i % 8],
-                           request_id=f"req_pl_{i}", idempotency_key=f"idem_pl_{i}",
+                           idempotency_key=f"idem_pl_{i}",
                            billed_cost_micros=1_000)
                 for i in range(1000)]
         rows += [Posting(tenant=self.other, customer=other_customer,
-                            request_id=f"req_plo_{i}", idempotency_key=f"idem_plo_{i}",
+                            idempotency_key=f"idem_plo_{i}",
                             billed_cost_micros=1_000)
                  for i in range(1000)]
         Posting.objects.bulk_create(rows, batch_size=500)
@@ -369,7 +369,7 @@ class OpenBagGinPlannerProofTest(TestCase):
         # Haystack: 1000 rows with a common key so the rare needle is selective.
         haystack = [Posting(
             tenant=self.tenant, customer=self.customer,
-            request_id=f"req_f22_h{i}", idempotency_key=f"idem_f22_h{i}",
+            idempotency_key=f"idem_f22_h{i}",
             billed_cost_micros=500, metadata={"env": "prod", "team": "common"})
             for i in range(1000)]
         Posting.objects.bulk_create(haystack, batch_size=500)
@@ -377,7 +377,7 @@ class OpenBagGinPlannerProofTest(TestCase):
         # Needle: 1 row with a rare unique value, plus a common key for @>.
         self.needle = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="req_f22_needle", idempotency_key="idem_f22_needle",
+            idempotency_key="idem_f22_needle",
             billed_cost_micros=1_000,
             metadata={"env": "prod", "rare_key": "unique_val_xyz", "team": "common"})
 
@@ -451,7 +451,7 @@ class TagGroupByPushdownTest(TestCase):
         def _create(n, bag, billed, provider, ts):
             ev = Posting.objects.create(
                 tenant=self.tenant, customer=self.customer,
-                request_id=f"req_f23_{n}", idempotency_key=f"idem_f23_{n}",
+                idempotency_key=f"idem_f23_{n}",
                 billed_cost_micros=billed, provider_cost_micros=provider,
                 metadata=bag)
             _pin(ev, ts)
@@ -661,7 +661,6 @@ class TagGroupByPushdownTest(TestCase):
             for i in range(n):
                 evs.append(Posting(
                     tenant=t, customer=c,
-                    request_id=f"req_f23s_{n}_{i}",
                     idempotency_key=f"idem_f23s_{n}_{i}",
                     billed_cost_micros=1_000,
                     provider_cost_micros=500,
@@ -727,7 +726,7 @@ class TagGroupByPushdownTest(TestCase):
         """
         Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            request_id="req_f23_E", idempotency_key="idem_f23_E",
+            idempotency_key="idem_f23_E",
             billed_cost_micros=7_000_000, provider_cost_micros=None,
             costing_status="unresolved", unresolved_reason="cost_rate_missing",
             metadata={"env": "prod"})

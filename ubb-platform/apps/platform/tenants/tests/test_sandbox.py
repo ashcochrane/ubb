@@ -204,7 +204,7 @@ class SandboxResetTest(TestCase):
             wallet=wallet, transaction_type="TOP_UP", amount_micros=5_000_000,
             balance_after_micros=5_000_000, idempotency_key=f"{ext_prefix}seed")
         settled = Posting.objects.create(
-            tenant=tenant, customer=seat, request_id=f"{ext_prefix}r1",
+            tenant=tenant, customer=seat,
             idempotency_key=f"{ext_prefix}k1", provider_cost_micros=100,
             billed_cost_micros=120)
         # ⚠ THE MEASUREMENT CHILDREN, AND THEY ARE WHY THIS FIXTURE CHANGED
@@ -222,7 +222,7 @@ class SandboxResetTest(TestCase):
         # Both shapes are seeded because the rule has two conditions and either
         # alone would have refused the wipe.
         waiting = Posting.objects.create(
-            tenant=tenant, customer=seat, request_id=f"{ext_prefix}r2",
+            tenant=tenant, customer=seat,
             idempotency_key=f"{ext_prefix}k2", provider_cost_micros=None,
             costing_status=COSTING_STATUS_UNRESOLVED,
             unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING,

@@ -193,9 +193,15 @@ export function EventDetailPage({
   const backfilled =
     detail.created_at.slice(0, 10) !== detail.effective_at.slice(0, 10);
 
+  // THE SECOND CORRELATION ROW IS GONE AND HAS NO REPLACEMENT (#411, spec §25).
+  // The posting used to carry a second caller-supplied correlation value beside
+  // the idempotency key, and this list showed both. The field is deleted, and
+  // the row is DROPPED rather than repointed at a metadata key: a tenant's own
+  // metadata has no fixed name, so the console would have to guess a label for
+  // it — which is precisely the identity/expression defect ADR-0008 §4 exists
+  // to remove. Their metadata is already rendered as metadata, below.
   const identityItems: DetailItem[] = [
     idItem("Event ID", detail.id),
-    idItem("Request ID", detail.request_id),
     idItem("Idempotency key", detail.idempotency_key),
     { label: "Happened at", value: formatDate(detail.effective_at) },
     {

@@ -67,7 +67,7 @@ class UBBClientTest(unittest.TestCase):
             }
         )
         result = self.client.record_usage(
-            customer_id="c1", request_id="r1", idempotency_key="i1", provider_cost_micros=1500000,
+            customer_id="c1", idempotency_key="i1", provider_cost_micros=1500000,
         )
         self.assertEqual(result.new_balance_micros, 8500000)
         self.assertFalse(result.suspended)
@@ -138,7 +138,7 @@ class UBBClientTest(unittest.TestCase):
     def test_get_usage(self):
         expected = PaginatedResponse(
             data=[from_wire(UsageEventOut, {
-                "id": "00000000-0000-0000-0000-0000000000e1", "request_id": "r1",
+                "id": "00000000-0000-0000-0000-0000000000e1",
                 "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known",
                 "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,

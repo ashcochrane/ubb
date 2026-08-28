@@ -44,7 +44,6 @@ class UsageEventDetailOut:
             idempotency_key (str):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
             pricing_status (UsageEventDetailOutPricingStatus):
-            request_id (str):
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
@@ -79,7 +78,6 @@ class UsageEventDetailOut:
     idempotency_key: str
     measurements_status: UsageEventDetailOutMeasurementsStatus
     pricing_status: UsageEventDetailOutPricingStatus
-    request_id: str
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: str | Unset = 'usd'
@@ -120,8 +118,6 @@ class UsageEventDetailOut:
         measurements_status = self.measurements_status.value
 
         pricing_status = self.pricing_status.value
-
-        request_id = self.request_id
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -222,7 +218,6 @@ class UsageEventDetailOut:
             "idempotency_key": idempotency_key,
             "measurements_status": measurements_status,
             "pricing_status": pricing_status,
-            "request_id": request_id,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -293,8 +288,6 @@ class UsageEventDetailOut:
 
 
 
-
-        request_id = d.pop("request_id")
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -488,7 +481,6 @@ class UsageEventDetailOut:
             idempotency_key=idempotency_key,
             measurements_status=measurements_status,
             pricing_status=pricing_status,
-            request_id=request_id,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,

@@ -202,7 +202,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
-            f'-d \'{{"customer_id": "{customer.id}", "request_id": "req-1", '
+            f'-d \'{{"customer_id": "{customer.id}", '
             f'"idempotency_key": "idem-1", '
             f'"measurements": {{"input_tokens": 1000}}}}\' '
             f'http://localhost:8001/api/v1/metering/usage\n')

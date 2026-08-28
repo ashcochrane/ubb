@@ -338,10 +338,13 @@ entries:
   #
   # Every owner slice below is taken from what #194's slice issues say they
   # CARRY, not from the concept's neighbourhood. That is why `revenue_mode` is
-  # slice 7 and not slice 1 — #189 deletes `Customer.revenue_mode` outright —
-  # and why `request_id` is slice 5, where the key that replaces it gets its
-  # permanent claim. The webhook events repeat G8's owners exactly, because one
-  # event cannot be owed by two slices.
+  # slice 7 and not slice 1 — #189 deletes `Customer.revenue_mode` outright.
+  # The rule's other worked example has since been PAID and is kept here as
+  # method rather than as a live entry: `request_id`'s five entries were slice
+  # 5's, not slice 2's, because slice 5 is where the key that replaced it got
+  # its permanent claim (#410) and the deletion was only safe after that; #411
+  # then cleared all five in one commit. The webhook events repeat G8's owners
+  # exactly, because one event cannot be owed by two slices.
   #
   # ONE ENTRY HAS NO POSITIVE OWNER: `meter_only` is slice 8 by default, and its
   # reason says so. It is #205's residue in a new place — an owner slice that
@@ -589,21 +592,6 @@ entries:
   # than only an exercise of the filter. The other was the pricing changelog,
   # where the rule's pointer at its container is `pricing_book` now under that
   # file's own header rule for a name retired AND REPLACED.
-
-  - id: g7-backend-request_id
-    gate: G7
-    site: backend::request_id
-    expected: idempotency_key
-    found: 65 files
-    owner_slice: slice_5
-    reason: >-
-      A second caller-supplied correlation value with no uniqueness
-      constraint, no lookup and no read that changed any behaviour,
-      while carrying an index write on the hottest path in the system
-      (#179 §4). Owned by slice 5 rather than slice 2 because that is
-      where the key that replaces it — caller-supplied `idempotency_key`
-      with a permanent claim — is finalised, and the deletion is safe
-      only once it is.
 
   - id: g7-backend-revenue_mode
     gate: G7
@@ -929,21 +917,6 @@ entries:
   # an action whose humanised form is already correct keeps this commit out of a
   # debt it does not own.
 
-  - id: g7-console-request_id
-    gate: G7
-    site: console::request_id
-    expected: idempotency_key
-    found: 6 files
-    owner_slice: slice_5
-    reason: >-
-      A second caller-supplied correlation value with no uniqueness
-      constraint, no lookup and no read that changed any behaviour,
-      while carrying an index write on the hottest path in the system
-      (#179 §4). Owned by slice 5 rather than slice 2 because that is
-      where the key that replaces it — caller-supplied `idempotency_key`
-      with a permanent claim — is finalised, and the deletion is safe
-      only once it is.
-
   - id: g7-console-revenue_mode
     gate: G7
     site: console::revenue_mode
@@ -1109,27 +1082,6 @@ entries:
       the file left the swept set rather than being rewritten, and slice 6
       now pays three living documents instead of four. The word is still
       in the prototype, correctly, and no slice will remove it from there.
-
-  - id: g7-docs-request_id
-    gate: G7
-    site: docs::request_id
-    expected: idempotency_key
-    found: 1 files
-    owner_slice: slice_5
-    reason: >-
-      A second caller-supplied correlation value with no uniqueness
-      constraint, no lookup and no read that changed any behaviour,
-      while carrying an index write on the hottest path in the system
-      (#179 §4). Owned by slice 5 rather than slice 2 because that is
-      where the key that replaces it — caller-supplied `idempotency_key`
-      with a permanent claim — is finalised, and the deletion is safe
-      only once it is.
-      TWO UNTIL #284, and the second was a dated prototype. That ticket
-      widened the frozen-documents exclusion over `docs/prototypes/`, so
-      the file left the swept set rather than being rewritten. The one
-      left is ADR-0005, which spells the key deliberately — #283 records
-      it as a literal the running system still uses (`FORBIDDEN_KEYS`),
-      so slice 5 clears it when the field goes, not before.
 
   - id: g7-docs-soft_floor.cleared
     gate: G7
@@ -1315,21 +1267,6 @@ entries:
   # ⚠ `pricing_provenance` REACHED ZERO ON THE CONTRACT IN #370 and its entry is
   # deleted — see the note on the backend side. One file, and it was the wire
   # key on the two schemas that publish the record.
-
-  - id: g7-openapi-request_id
-    gate: G7
-    site: openapi::request_id
-    expected: idempotency_key
-    found: 1 files
-    owner_slice: slice_5
-    reason: >-
-      A second caller-supplied correlation value with no uniqueness
-      constraint, no lookup and no read that changed any behaviour,
-      while carrying an index write on the hottest path in the system
-      (#179 §4). Owned by slice 5 rather than slice 2 because that is
-      where the key that replaces it — caller-supplied `idempotency_key`
-      with a permanent claim — is finalised, and the deletion is safe
-      only once it is.
 
   - id: g7-openapi-revenue_mode
     gate: G7
@@ -1614,21 +1551,6 @@ entries:
   # against a response the server has stopped sending. #373's SDK work left it
   # alone, as that ticket predicted: the three dead methods it deleted, and the
   # result type that went with them, spelled this word nowhere.
-
-  - id: g7-sdk-request_id
-    gate: G7
-    site: sdk::request_id
-    expected: idempotency_key
-    found: 12 files
-    owner_slice: slice_5
-    reason: >-
-      A second caller-supplied correlation value with no uniqueness
-      constraint, no lookup and no read that changed any behaviour,
-      while carrying an index write on the hottest path in the system
-      (#179 §4). Owned by slice 5 rather than slice 2 because that is
-      where the key that replaces it — caller-supplied `idempotency_key`
-      with a permanent claim — is finalised, and the deletion is safe
-      only once it is.
 
   - id: g7-sdk-revenue_mode
     gate: G7

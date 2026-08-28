@@ -183,7 +183,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         expected_cost = {"alpha": COST_ALPHA, "beta": COST_BETA}
         for i, (product, service, agent, day) in enumerate(matrix):
             res = client.record_usage(
-                customer_id=str(c1.id), request_id=f"r{i}", idempotency_key=f"i{i}",
+                customer_id=str(c1.id), idempotency_key=f"i{i}",
                 measurements={"tokens": 100},
                 # "product"/"service"/"agent" are all DECLARED dimensions
                 # (dim1/dim2/dim3) — what the cost card selects on and the
@@ -216,7 +216,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # one for the event that carries it.
         declares_a_caller_supplied_cost(tenant, UNATTRIBUTED_EVENT_TYPE)
         unattr_res = client.record_usage(
-            customer_id=str(c1.id), request_id="r_unattr", idempotency_key="i_unattr",
+            customer_id=str(c1.id), idempotency_key="i_unattr",
             event_type=UNATTRIBUTED_EVENT_TYPE,
             provider_cost_micros=COST_UNATTR,
             # Deliberately no product/service/agent dimensions, so all three
@@ -353,7 +353,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # not know and which declaration would settle it. Still no silent $0 —
         # the amount is absent, which is the whole point of the column.
         recorded = client.record_usage(
-            customer_id=str(c1.id), request_id="r_uncosted",
+            customer_id=str(c1.id),
             idempotency_key="i_uncosted", measurements={"unmatched_metric": 5},
             dimensions={"service": "alpha"})
         assert recorded.costing_status == "unresolved"

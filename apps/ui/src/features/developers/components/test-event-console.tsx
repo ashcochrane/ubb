@@ -69,7 +69,7 @@ export function TestEventConsole() {
   const errors = form.formState.errors;
 
   const submit = form.handleSubmit((values) => {
-    const body = buildTestEventRequest(values, `console-${crypto.randomUUID()}`);
+    const body = buildTestEventRequest(values);
     send.mutate(body, {
       onSuccess: (response) => {
         setHistory((previous) =>

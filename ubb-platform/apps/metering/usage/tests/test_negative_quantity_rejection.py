@@ -59,7 +59,7 @@ class TestNegativeMetricSchemaRejection:
             rate_structure="per_unit", rate_per_unit_micros=10, unit_quantity=1,
         )
         resp = _post(http, auth, customer, {
-            "request_id": "r1", "idempotency_key": "k1",
+            "idempotency_key": "k1",
             "measurements": {"calls": -5},
         })
         assert resp.status_code == 422
@@ -81,7 +81,7 @@ class TestNegativeMetricSchemaRejection:
         tenant, customer, http, auth = _setup_http()
 
         resp = _post(http, auth, customer, {
-            "request_id": "r2", "idempotency_key": "k2",
+            "idempotency_key": "k2",
             "measurements": {"calls": -5, "fine": 1},
         })
 
@@ -103,7 +103,7 @@ class TestNegativeMetricSchemaRejection:
         """Zero is valid (boundary check — ge=0)."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r4", "idempotency_key": "k4",
+            "idempotency_key": "k4",
             "measurements": {"calls": 0},
         })
         assert resp.status_code == 200
@@ -112,7 +112,7 @@ class TestNegativeMetricSchemaRejection:
         """Positive value passes validation."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r5", "idempotency_key": "k5",
+            "idempotency_key": "k5",
             "measurements": {"calls": 1},
         })
         assert resp.status_code == 200
@@ -121,7 +121,7 @@ class TestNegativeMetricSchemaRejection:
         """Even if only one quantity is negative the whole request is rejected."""
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r6", "idempotency_key": "k6",
+            "idempotency_key": "k6",
             "measurements": {"good": 10, "bad": -1},
         })
         assert resp.status_code == 422
@@ -158,7 +158,7 @@ class TestTheRenameTightenedNothing:
         """
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r7", "idempotency_key": "k7",
+            "idempotency_key": "k7",
             "measurements": {"nothing_declares_this": 5000},
         })
         assert resp.status_code == 200
@@ -176,7 +176,7 @@ class TestTheRenameTightenedNothing:
         """
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r8", "idempotency_key": "k8",
+            "idempotency_key": "k8",
             "measurements": {"Input-Tokens": 1, "cost centre": 2, "x": 3},
         })
         assert resp.status_code == 200
@@ -191,6 +191,6 @@ class TestTheRenameTightenedNothing:
         """
         tenant, customer, http, auth = _setup_http()
         resp = _post(http, auth, customer, {
-            "request_id": "r9", "idempotency_key": "k9",
+            "idempotency_key": "k9",
         })
         assert resp.status_code == 200

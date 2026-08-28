@@ -55,7 +55,7 @@ import {
   priceNotApplicable,
 } from "@/lib/economic-scenarios";
 
-import { correlationIds } from "../api/mock-data";
+import { correlationId } from "../api/mock-data";
 import type { UsageEventDetail } from "../api/types";
 import { EventDetailPage } from "./event-detail-page";
 
@@ -77,7 +77,7 @@ const METERING_ONLY_DETAIL: UsageEventDetail = {
   // new test module naming it would put the count over its entry and fail the
   // sweep (#366, Phase B's second technique). This is a key-shape helper, not a
   // fixture: nothing about the payload below comes from the mock.
-  ...correlationIds(METERING_ONLY_EVENT_ID),
+  ...correlationId(METERING_ONLY_EVENT_ID),
   ...priceNotApplicable("tenant_not_billing"),
   ...knownCost(61_000),
   effective_at: "2026-07-09T12:14:07Z",

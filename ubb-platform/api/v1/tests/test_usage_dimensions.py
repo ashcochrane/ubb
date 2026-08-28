@@ -35,7 +35,7 @@ class TestUsageDimensions:
                                     scope="task")
 
     def _post(self, **extra):
-        body = {"customer_id": str(self.customer.id), "request_id": "r1",
+        body = {"customer_id": str(self.customer.id),
                 "idempotency_key": "k1", "provider": "openai",
                 "event_type": "completion", "provider_cost_micros": 1000}
         body.update(extra)
@@ -66,7 +66,7 @@ class TestUsageDimensions:
         self._post(dimensions={"model": "b"})
         r = self.client.post(
             "/api/v1/metering/usage",
-            data={"customer_id": str(self.customer.id), "request_id": "r9",
+            data={"customer_id": str(self.customer.id),
                   "idempotency_key": "k9", "provider": "openai",
                   "event_type": "completion", "provider_cost_micros": 1,
                   "dimensions": {"model": "c"}},

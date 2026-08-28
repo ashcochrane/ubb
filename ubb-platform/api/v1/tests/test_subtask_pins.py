@@ -75,7 +75,6 @@ class SubtaskPinMixin:
     def _record(self, **extra):
         data = {
             "customer_id": str(self.customer.id),
-            "request_id": f"req-{uuid.uuid4()}",
             "idempotency_key": f"idem-{uuid.uuid4()}",
             # Every body here states the supplier's own cost, admissible only
             # against an Event Type that declares it arrives on the call
@@ -281,7 +280,7 @@ class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
         sub = self._task(limit=5_000_000, parent=parent)
         events = [{
             "customer_id": str(self.customer.id),
-            "request_id": f"rb{i}", "idempotency_key": f"ib{i}",
+            "idempotency_key": f"ib{i}",
             "task_id": str(sub.id), "provider_cost_micros": 6_000_000,
             "event_type": DECLARED,
         } for i in range(2)]

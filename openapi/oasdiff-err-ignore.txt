@@ -709,3 +709,33 @@ PUT /api/v1/metering/pricing/markup api path removed without deprecation
 # this same commit — the SDK core, its hand-written `close_task`, the console's
 # committed schema snapshot, and the platform's own tests.
 POST /api/v1/metering/tasks/{task_id}/close api path removed without deprecation
+# ---------------------------------------------------------------------------
+# #411 (slice 5) - the second caller-supplied correlation value is deleted
+# ---------------------------------------------------------------------------
+#
+# Both reads promised `request_id` on every row they returned, and it is gone.
+# These two are ERROR-level and the two request-side lines in the warn file are
+# not, which is a fact about direction rather than a judgement about severity:
+# a property this contract PROMISED a reader and no longer sends can break a
+# consumer that reads it, while a property the contract used to REQUIRE of a
+# caller and no longer names cannot - a caller still sending it gets a `200`
+# and the key is dropped, which is this repository's ratified posture for a
+# retired wire field (#272). Both halves were REQUIRED at the `api-v1-launch`
+# tag, so unlike the seven above them neither is excused by having been
+# optional; each is excused by the pre-live lane and by there being nothing
+# left for a reader to read.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE EXACTLY - four breaks, the same four,
+# from `--baseline HEAD` and from the cumulative gate alike. That is not the
+# usual answer: #407's task surface post-dated the tag, so its authoring
+# direction reported six breaks and the cumulative gate none. This field
+# pre-dates the tag on all four operations, so its removal is visible from the
+# tag as well as from `main` and every line here is live rather than inert.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 - the launch tag is not what binds), and every known consumer moves in
+# this same commit - the SDK core and its hand-written `record_usage`, the
+# console's committed schema snapshot and its event detail page, and the
+# platform's own tests.
+GET /api/v1/metering/customers/{customer_id}/usage removed the required property `data/items/request_id` from the response with the `200` status
+GET /api/v1/metering/usage/{event_id} removed the required property `request_id` from the response with the `200` status

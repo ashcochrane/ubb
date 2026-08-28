@@ -14,7 +14,7 @@ MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
 def _usage(t, c, provider, billed):
-    Posting.objects.create(tenant=t, customer=c, request_id="r", idempotency_key="i",
+    Posting.objects.create(tenant=t, customer=c, idempotency_key="i",
                               provider_cost_micros=provider, billed_cost_micros=billed,
                               effective_at=MID)
 

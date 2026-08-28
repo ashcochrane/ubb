@@ -69,7 +69,6 @@ class Posting(BaseModel):
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="postings"
     )
-    request_id = models.CharField(max_length=255, db_index=True)
     idempotency_key = models.CharField(max_length=500, db_index=True)
     balance_after_micros = models.BigIntegerField(null=True, blank=True)
     # THE ONE OPEN BAG. Caller-supplied, free-form, unbounded and undeclared:
@@ -521,7 +520,7 @@ class Posting(BaseModel):
         ordering = ["-effective_at"]
 
     def __str__(self):
-        return f"Posting({self.request_id}: {self.billed_cost_micros})"
+        return f"Posting({self.idempotency_key}: {self.billed_cost_micros})"
 
     @property
     def measurements(self):
@@ -747,4 +746,4 @@ class Refund(BaseModel):
         db_table = "ubb_refund"
 
     def __str__(self):
-        return f"Refund({self.posting.request_id}: {self.amount_micros})"
+        return f"Refund({self.posting.idempotency_key}: {self.amount_micros})"

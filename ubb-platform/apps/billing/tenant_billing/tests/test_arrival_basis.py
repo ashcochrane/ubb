@@ -29,10 +29,10 @@ class TestPlatformFeeArrivalBasis:
         # One event is effective THIS month, the other is a backfill into the
         # PRIOR month — but both arrived (created_at) this month.
         Posting.objects.create(
-            tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+            tenant=t, customer=c, idempotency_key="i1",
             billed_cost_micros=100)
         e2 = Posting.objects.create(
-            tenant=t, customer=c, request_id="r2", idempotency_key="i2",
+            tenant=t, customer=c, idempotency_key="i2",
             billed_cost_micros=100)
         prior = timezone.now().replace(day=1) - datetime.timedelta(days=2)
         Posting.objects.filter(id=e2.id).update(effective_at=prior)

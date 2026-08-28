@@ -44,7 +44,7 @@ def test_unparseable_payload_effective_at_falls_back_to_getter():
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
     e = Posting.objects.create(
-        tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=1, billed_cost_micros=2)
     Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
@@ -74,7 +74,7 @@ def test_reconcile_covers_two_months_back():
     two_back_start = two_back.date().replace(day=1)
 
     e = Posting.objects.create(
-        tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=111, billed_cost_micros=222)
     Posting.objects.filter(id=e.id).update(effective_at=two_back)
 
@@ -98,7 +98,7 @@ def test_backdated_event_buckets_by_effective_at_not_wallclock():
     prior_month_start = backdated.date().replace(day=1)
 
     e = Posting.objects.create(
-        tenant=t, customer=c, request_id="r1", idempotency_key="i1",
+        tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=800_000, billed_cost_micros=1_000_000,
     )
     # auto_now_add blocks direct assignment; bypass via queryset .update()
@@ -133,7 +133,7 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     prior_month_start = backdated.date().replace(day=1)
 
     e = Posting.objects.create(
-        tenant=t, customer=c, request_id="r2", idempotency_key="i2",
+        tenant=t, customer=c, idempotency_key="i2",
         provider_cost_micros=500_000, billed_cost_micros=700_000,
     )
     Posting.objects.filter(id=e.id).update(effective_at=backdated)

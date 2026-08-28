@@ -85,7 +85,6 @@ class OneRulePinTestBase(TestCase):
     def _record(self, **extra):
         data = {
             "customer_id": str(self.customer.id),
-            "request_id": f"req-{uuid.uuid4()}",
             "idempotency_key": f"idem-{uuid.uuid4()}",
             # Every body here states the supplier's own cost, admissible only
             # against an Event Type that declares it arrives on the call
@@ -251,7 +250,7 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
         # accepted=True.
         events = [{
             "customer_id": str(self.customer.id),
-            "request_id": f"rb{i}", "idempotency_key": f"ib{i}",
+            "idempotency_key": f"ib{i}",
             "task_id": str(task.id), "provider_cost_micros": 500_000,
             "event_type": DECLARED,
         } for i in range(2)]

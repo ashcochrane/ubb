@@ -149,7 +149,7 @@ class TestPin2EmitFailureCompletes:
         # The crossing amount is what the tenant's rule charges (#365).
         a_rule_that_prices_what_it_measures(t)
         UsageService.record_usage(
-            tenant=t, customer=c, request_id="r1", idempotency_key="k1",
+            tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))  # crossing; stop.fired insert dies
         assert not StopSignalState.objects.filter(owner=c).exists()
         monkeypatch.setattr(OutboxEvent.objects, "create", orig_create)
