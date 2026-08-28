@@ -230,7 +230,17 @@ exclusions:
     # 188 → 183 while this count rose by one. The two numbers move in opposite
     # directions for unrelated reasons, and reading the rise as spread is
     # exactly the misreading the paragraph above warns about.
-    files: 238
+    # 238 → 240 in #412: TWO migrations, in two apps, giving each of the two
+    # expiry windows a rung on the kind of work and a rung on the tenant.
+    # ⚠ NEITHER NAMES A RETIRED TERM, and this is the first entry in the run
+    # that moves by two rather than by one — because the ticket adds a column
+    # pair to two different models and a migration belongs to its own app.
+    # The number of migrations is not the number of tickets and never was;
+    # the rule covers every migration directory wholesale, so what it counts
+    # is files. The sweep's own retired-term totals were UNCHANGED across the
+    # same commit — 26 terms in 87 sites, in both directions — which is the
+    # number to read when asking whether anything spread.
+    files: 240
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

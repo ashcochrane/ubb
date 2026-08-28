@@ -253,7 +253,7 @@
     },
     "reason_code": {
       "advertised": false,
-      "backend_serves": "1 of 5 values",
+      "backend_serves": "2 of 5 values",
       "kind": "open",
       "representation": "known_values"
     },
@@ -364,10 +364,17 @@
       ]
     },
     "trigger_source": {
-      "advertised": false,
-      "backend_serves": "0 of 5 values",
+      "advertised": true,
+      "backend_serves": "5 of 5 values",
       "kind": "open",
-      "representation": "known_values"
+      "representation": "known_values",
+      "values": [
+        "usage_ingest",
+        "enforcement_patrol",
+        "parent_cascade",
+        "pool_crossing",
+        "stale_reaper"
+      ]
     },
     "unit": {
       "advertised": true,

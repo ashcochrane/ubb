@@ -34,6 +34,59 @@ CONSUMER_PATH = "ubb-platform/apps/example/models.py"
 ABSENT = object()
 
 
+#: The module that declares every outbox payload, and therefore every webhook.
+PAYLOAD_SCHEMAS = "ubb-platform/apps/platform/events/schemas.py"
+
+
+def events_whose_payload_declares(field):
+    """The webhook names whose payload class declares ``field``.
+
+    ``{event type, ...}``, read out of the payload module's own source. Two
+    reasons this is derived rather than written down, and both matter:
+
+    **The names cannot be spelled here.** The two terminal stop events are
+    retired words the split renames, and this suite's ledger seat for them on
+    this surface is ZERO — so a module naming one fails the sweep for a word it
+    does not own. Deriving is the first of the three techniques the sweep's own
+    plan prefers, and it is the one that leaves nothing behind.
+
+    **It is the comparison worth making anyway.** A caller pins what the
+    published CONTRACT says about a field against what the PRODUCER declares —
+    two encodings of one fact held to each other, which is this suite's whole
+    job (#203). A hard-coded pair would agree with both right up until one of
+    them moved.
+
+    ⚠ IT GOES RED WHEN THE SPLIT LANDS, WHICH IS THE POINT. The two events
+    become four, so every caller's expected set changes and a person has to
+    say what the new answer is instead of a stale literal quietly still
+    passing.
+
+    Read with :mod:`ast` and never imported — this suite has no Django, which
+    is the same rule the rename migration's own contract test states.
+    """
+    import ast
+
+    source = (REPO_ROOT / PAYLOAD_SCHEMAS).read_text(encoding="utf-8")
+    found = set()
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        event_type, declares = None, False
+        for statement in node.body:
+            if (isinstance(statement, ast.AnnAssign)
+                    and isinstance(statement.target, ast.Name)
+                    and statement.target.id == field):
+                declares = True
+            if (isinstance(statement, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "EVENT_TYPE"
+                            for t in statement.targets)
+                    and isinstance(statement.value, ast.Constant)):
+                event_type = statement.value.value
+        if declares and event_type:
+            found.add(event_type)
+    return found
+
+
 def concept(**overrides):
     """A minimal valid `closed` concept — the baseline each control mutates."""
     body = {

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,696 of 2,101 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,697 of 2,104 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1634,6 +1634,28 @@ measurement_key:
     # paid — and still did not carry the word, because none of the sentences it
     # rewrote were about quantities.
     # **A large diff is not evidence either way — only the measurement is.**
+    #
+    # #412 MOVED BOTH DENOMINATORS AND LEFT THE NUMERATOR EXACTLY WHERE IT WAS
+    # (1,696 -> 1,697 swept, 2,101 -> 2,104 tracked, `units` UNMOVED at 45
+    # files and 123 occurrences), WITH THE EXCLUSION UP BY TWO
+    # (`historical-migrations` 238 -> 240). Three tracked files arrived — two
+    # migrations, which are excluded and so lift tracked alone, and one test
+    # module, which is swept and lifts both. That is the arithmetic the two
+    # paragraphs above describe, with both of their shapes in one commit.
+    #
+    # ⚠ AND THE NUMERATOR IS UNMOVED ONLY BECAUSE IT WAS CAUGHT AND PUT BACK,
+    # WHICH IS WORTH RECORDING AS PLAINLY AS A MOVE WOULD BE. The first draft
+    # of the expiry ladder's read contract described an operator widening a
+    # window to rescue "a fleet of units" about to be reaped — ordinary English
+    # about work, nowhere near any of the three surviving senses, in a file
+    # that had never carried the word. It measured 46 files and 124
+    # occurrences; this gate is what found it, not review. The sentence now
+    # says "a whole fleet of work". **That is the fourth consecutive window in
+    # which the retired PLURAL was reached for by prose about units of work
+    # rather than by anything about quantities, rates or money** — the sense
+    # this word is retired in has nothing to do with the sense that keeps
+    # arriving, and no amount of care about the three survivors helps. Write
+    # "work", "a whole unit of work", "contained work".
 
     - term: units
       retired_as: >-

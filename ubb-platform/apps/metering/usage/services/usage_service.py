@@ -8,7 +8,8 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.time_windows import month_bounds
-from core.vocabulary import PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT
+from core.vocabulary import (
+    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT, TRIGGER_SOURCE_USAGE_INGEST)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
@@ -388,8 +389,13 @@ def _execute_kills(kills, *, tenant_id, customer_id):
     from apps.platform.work.services import TaskService
     for target_id, reason in kills:
         try:
+            # WHICH MECHANISM APPLIED THIS STOP (#412): a usage report tipped
+            # a ceiling and this is the lane that carried it. Named here rather
+            # than derived downstream, because the same reason is also reached
+            # by the patrol sweeping a unit that crossed while nobody reported.
             TaskService.kill_and_announce(
-                target_id, reason, tenant_id=tenant_id, customer_id=customer_id)
+                target_id, reason, tenant_id=tenant_id, customer_id=customer_id,
+                trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         except Exception:
             logger.exception("usage.kill_failed", extra={"data": {
                 "task_id": str(target_id), "reason": reason,

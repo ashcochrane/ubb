@@ -41,6 +41,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import TRIGGER_SOURCE_ENFORCEMENT_PATROL
 
 
 def _tenant(enf="enforcing", mode="prepaid"):
@@ -306,6 +307,11 @@ class TestPin6TaskSweep:
         ev = _events("task.limit_exceeded").get()
         assert ev.payload["task_id"] == str(task.id)
         assert ev.payload["reason"] == "task_limit"
+        # WHICH MECHANISM APPLIED IT (#412). The sweep found a unit already
+        # over its ceiling that no usage report had stopped, and saying so is
+        # the only way a subscriber tells this apart from the ingest lane
+        # reaching the identical reason.
+        assert ev.payload["trigger_source"] == TRIGGER_SOURCE_ENFORCEMENT_PATROL
         assert ev.payload["re_announcement"] is False  # a fresh kill signal
         assert task.announce_outbox_id == ev.id
         # Idempotent: the next pass finds nothing active.
@@ -352,6 +358,13 @@ class TestPin6TaskSweep:
         assert ev.payload["re_announcement"] is True
         assert ev.payload["task_id"] == str(task.id)
         assert ev.payload["reason"] == "task_limit"
+        # ⚠ AND IT NAMES NO MECHANISM (#412), WHICH IS THE POINT OF ASSERTING
+        # IT. A re-mint applies no transition — it repairs the delivery of a
+        # stop some other mechanism already made — and the row records the
+        # cause but not the mechanism, so there is nothing true to put here.
+        # Naming the patrol would tell a subscriber the patrol stopped this
+        # unit, which it did not.
+        assert ev.payload["trigger_source"] == ""
         assert ev.payload["total_provider_cost_micros"] == 2_000
         task.refresh_from_db()
         assert task.announce_outbox_id == ev.id

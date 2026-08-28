@@ -112,13 +112,38 @@ class Tenant(BaseModel):
     # #246; that lane died in slice 1 and the switch never was its switch.
     # Read ONLY via apps.platform.tenants.flags.live_counter_maintenance_on.
     live_counter_maintenance_enabled = models.BooleanField(default=True)
-    # Tier-2 P5: how long an ENFORCING task may go without a metered event
-    # (heartbeat, stamped by accumulate_cost) before the reaper kills it as
-    # stale. On Tenant (not RiskConfig) so the platform reaper can read it
-    # without importing billing. Widen it for workloads with long uninstrumented
-    # steps. 0 = disable the heartbeat reaper (the 6h max-age ceiling still
-    # applies). Lives here next to enforcement_mode.
-    task_stale_seconds = models.PositiveIntegerField(default=900)
+    # THE TENANT'S OWN SILENCE WINDOW — how long a unit of work may go without
+    # a metered event (heartbeat, stamped by accumulate_cost) before a sweeper
+    # expires it. On Tenant (not RiskConfig) so the platform sweepers can read
+    # it without importing billing. Lives here next to enforcement_mode.
+    #
+    # ⚠ IT IS NOW THE MIDDLE RUNG OF A LADDER, NOT THE ONLY ANSWER (#412).
+    # `TaskType.silence_window_seconds` sits above it, so a tenant no longer has
+    # to widen every kind of work to accommodate its slowest one; UBB's backstop
+    # sits below it. NULL = this tenant declares nothing and the backstop
+    # applies; 0 = the tenant declares that it wants no silence window at all,
+    # which is the meaning it has always had here (the absolute deadline below
+    # still applies, so 0 cannot produce an immortal unit).
+    #
+    # ⚠ THE COLUMN KEEPS ITS NAME, DELIBERATELY. The registry's word for the
+    # STOP this window produces is `silence_window` and `reasons.py` holds it;
+    # the registry declares no concept for the configuration, so there is no
+    # canonical name for this column to be wrong about, and renaming a column
+    # that no surface publishes is churn a later slice can take with the rest
+    # of the tenant configuration if it wants it.
+    task_stale_seconds = models.PositiveIntegerField(null=True, blank=True,
+                                                     default=None)
+    # THE TENANT'S OWN ABSOLUTE DEADLINE — how long a unit of work may run at
+    # all, measured from creation and regardless of activity (#412). The middle
+    # rung of the second ladder, under `TaskType.absolute_deadline_seconds` and
+    # over UBB's backstop.
+    #
+    # ⚠ ZERO IS REFUSED HERE TOO, and for the reason the declaration states:
+    # the absolute ceiling is the guard that stops any tenant getting an
+    # immortal unit, so no rung may switch it off. NULL falls through to the
+    # backstop; it is not a way to disable it.
+    task_absolute_deadline_seconds = models.PositiveIntegerField(
+        null=True, blank=True, default=None)
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile
@@ -149,6 +174,17 @@ class Tenant(BaseModel):
                     | models.Q(is_sandbox=False, parent_tenant__isnull=True)
                 ),
                 name="ck_sandbox_iff_parent",
+            ),
+            # The absolute deadline is either undeclared at this rung or a real
+            # window. See the column: no rung may switch the ceiling off, and
+            # this is what makes that a property of the database rather than of
+            # whichever code path last read it. There is deliberately no twin
+            # for the silence window beside it — zero IS a declaration there,
+            # and has been since that column was added.
+            models.CheckConstraint(
+                condition=models.Q(task_absolute_deadline_seconds__isnull=True)
+                | models.Q(task_absolute_deadline_seconds__gt=0),
+                name="ck_tenant_absolute_deadline_positive",
             ),
         ]
 

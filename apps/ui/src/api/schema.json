@@ -7093,7 +7093,20 @@
         "type": "object"
       },
       "TaskTypeIn": {
+        "description": "One declared kind of work, and the policy that comes with it.\n\nTHREE OF THESE FIELDS ARE BOUNDS, and each is the top rung of its own\nladder: what the kind declares, then the tenant's default for it, then\nUBB's own. Omitting one is not the same as setting it low \u2014 an omitted\nbound falls through to the rung beneath, which is why every one of them is\nnullable and none has a default here.",
         "properties": {
+          "absolute_deadline_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Deadline Seconds"
+          },
           "default_provider_cost_limit_micros": {
             "anyOf": [
               {
@@ -7128,6 +7141,18 @@
             "maxItems": 6,
             "title": "Required Dimensions",
             "type": "array"
+          },
+          "silence_window_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Silence Window Seconds"
           }
         },
         "required": [
@@ -7137,7 +7162,19 @@
         "type": "object"
       },
       "TaskTypeOut": {
+        "description": "One declared kind of work, as UBB holds it.\n\nThe three bounds echo back exactly what was declared, NULL included: a\nreader has to be able to tell *this kind declared nothing and inherits*\nfrom *this kind declared the same number the tenant did*, and a response\nthat resolved the ladder before answering would collapse the two.",
         "properties": {
+          "absolute_deadline_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Deadline Seconds"
+          },
           "default_provider_cost_limit_micros": {
             "anyOf": [
               {
@@ -7172,6 +7209,17 @@
           "retired": {
             "title": "Retired",
             "type": "boolean"
+          },
+          "silence_window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Silence Window Seconds"
           }
         },
         "required": [
@@ -20275,6 +20323,19 @@
                         "title": "Total Provider Cost Micros",
                         "type": "integer"
                       },
+                      "trigger_source": {
+                        "default": "",
+                        "title": "Trigger Source",
+                        "type": "string",
+                        "x-ubb-concept": "trigger_source",
+                        "x-ubb-known-values": [
+                          "usage_ingest",
+                          "enforcement_patrol",
+                          "parent_cascade",
+                          "pool_crossing",
+                          "stale_reaper"
+                        ]
+                      },
                       "unresolved_event_count": {
                         "default": 0,
                         "title": "Unresolved Event Count",
@@ -20368,7 +20429,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning active->killed transition \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle) and the\nstale-task reaper \u2014 so sibling/idle workers tear the task down. The task\nis a signal point, not a wall: events arriving after this still land,\nbill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.work.reasons (closed set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
+                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning active->killed transition \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle) and the\nstale-task reaper \u2014 so sibling/idle workers tear the task down. The task\nis a signal point, not a wall: events arriving after this still land,\nbill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.work.reasons (closed set).\ntrigger_source   = which mechanism applied the stop (open set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
@@ -20418,6 +20479,19 @@
                         "default": 0,
                         "title": "Total Provider Cost Micros",
                         "type": "integer"
+                      },
+                      "trigger_source": {
+                        "default": "",
+                        "title": "Trigger Source",
+                        "type": "string",
+                        "x-ubb-concept": "trigger_source",
+                        "x-ubb-known-values": [
+                          "usage_ingest",
+                          "enforcement_patrol",
+                          "parent_cascade",
+                          "pool_crossing",
+                          "stale_reaper"
+                        ]
                       },
                       "unresolved_event_count": {
                         "default": 0,

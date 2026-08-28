@@ -270,7 +270,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # `RemoveField` must, and the number still moved only because the file
         # exists. The same commit deleted that word's five G7 entries, so the
         # ledger fell 188 -> 183 while this rose by one.
-        "historical-migrations": (UNTIL_SLICE_8, 238, 19),
+        # 238 -> 240 in #412: TWO migrations, one per app, giving each expiry
+        # window a rung on the kind of work and a rung on the tenant. Neither
+        # names a retired term, and this is the first entry in the run to move
+        # by two -- a migration belongs to its app, so a ticket touching two
+        # models writes two files. The sweep's retired-term totals were
+        # unchanged over the same commit, 26 terms in 87 sites.
+        "historical-migrations": (UNTIL_SLICE_8, 240, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

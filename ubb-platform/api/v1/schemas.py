@@ -2643,9 +2643,26 @@ TaskTypeKind = Annotated[
 
 
 class TaskTypeIn(Schema):
+    """One declared kind of work, and the policy that comes with it.
+
+    THREE OF THESE FIELDS ARE BOUNDS, and each is the top rung of its own
+    ladder: what the kind declares, then the tenant's default for it, then
+    UBB's own. Omitting one is not the same as setting it low — an omitted
+    bound falls through to the rung beneath, which is why every one of them is
+    nullable and none has a default here.
+    """
     key: str = Field(max_length=64)
     kind: TaskTypeKind = TASK_TYPE_KIND_TASK
     default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    #: How long this kind of work may go without a usage report before UBB
+    #: treats it as gone. Reporting usage is the ONLY thing that proves a unit
+    #: is alive: there is no keepalive call, and reading a unit never extends
+    #: its life. 0 declares that this kind has no silence window at all.
+    silence_window_seconds: Optional[int] = Field(default=None, ge=0)
+    #: How long this kind of work may run at all, measured from registration
+    #: and regardless of activity. It cannot be switched off at any rung: omit
+    #: it to inherit, but there is no value that removes it.
+    absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
     required_dimensions: list[str] = Field(default_factory=list, max_length=6)
 
 
@@ -2654,9 +2671,18 @@ class TaskTypeRegistryIn(Schema):
 
 
 class TaskTypeOut(Schema):
+    """One declared kind of work, as UBB holds it.
+
+    The three bounds echo back exactly what was declared, NULL included: a
+    reader has to be able to tell *this kind declared nothing and inherits*
+    from *this kind declared the same number the tenant did*, and a response
+    that resolved the ladder before answering would collapse the two.
+    """
     key: str
     kind: TaskTypeKind
     default_provider_cost_limit_micros: Optional[int] = None
+    silence_window_seconds: Optional[int] = None
+    absolute_deadline_seconds: Optional[int] = None
     required_dimensions: list[str]
     retired: bool
 

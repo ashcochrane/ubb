@@ -1,7 +1,8 @@
 """Read contract for tasks and task types (ADR-001).
 
 Billing's start-gate reads task-type policy through here; the API's analytics
-routes read task rollups through here. Plain data only — never ORM objects.
+routes read task rollups through here; the platform's own sweepers read the
+expiry ladder through here. Plain data only — never ORM objects.
 """
 from django.db import models
 from django.db.models import Avg, Count, F, Q, Sum
@@ -10,18 +11,33 @@ from django.db.models.aggregates import Aggregate
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from apps.platform.work.models import Task, TaskType
 
+#: WHAT A UNIT GETS WHEN NOBODY DECLARED ANYTHING, at either window (#412).
+#:
+#: The bottom rung of both ladders, and it is UBB's number rather than a
+#: tenant's: fifteen minutes of silence is the window every enforcing tenant
+#: already ran under before the window became declarable, and six hours is the
+#: ceiling both sweepers already applied. Nothing about the numbers is new
+#: here; what is new is that they are now the LAST answer rather than the only
+#: one, and that they are named where the ladder bottoms out instead of being
+#: spelled as durations at each sweeper.
+SILENCE_WINDOW_BACKSTOP_SECONDS = 15 * 60
+ABSOLUTE_DEADLINE_BACKSTOP_SECONDS = 6 * 60 * 60
+
 
 def task_type_policy(tenant_id, key, kind) -> dict | None:
     """One task type's policy, or None when the key is not declared."""
     row = TaskType.objects.filter(
         tenant_id=tenant_id, key=key, kind=kind
-    ).values("key", "default_provider_cost_limit_micros", "required_dimensions",
-             "retired_at").first()
+    ).values("key", "default_provider_cost_limit_micros",
+             "silence_window_seconds", "absolute_deadline_seconds",
+             "required_dimensions", "retired_at").first()
     if row is None:
         return None
     return {"key": row["key"],
             "default_provider_cost_limit_micros":
                 row["default_provider_cost_limit_micros"],
+            "silence_window_seconds": row["silence_window_seconds"],
+            "absolute_deadline_seconds": row["absolute_deadline_seconds"],
             "required_dimensions": row["required_dimensions"] or [],
             "retired": row["retired_at"] is not None}
 
@@ -32,13 +48,89 @@ def declared_task_types(tenant_id) -> list[dict]:
         {"key": r["key"], "kind": r["kind"],
          "default_provider_cost_limit_micros":
              r["default_provider_cost_limit_micros"],
+         "silence_window_seconds": r["silence_window_seconds"],
+         "absolute_deadline_seconds": r["absolute_deadline_seconds"],
          "required_dimensions": r["required_dimensions"] or [],
          "retired": r["retired_at"] is not None}
         for r in TaskType.objects.filter(tenant_id=tenant_id)
         .order_by("kind", "key")
         .values("key", "kind", "default_provider_cost_limit_micros",
+                "silence_window_seconds", "absolute_deadline_seconds",
                 "required_dimensions", "retired_at")
     ]
+
+
+#: The key an expiry policy is resolved for: the altitude a unit sits at and
+#: the kind of work it declared. Both halves are needed and neither alone will
+#: do — a TaskType's uniqueness is `(tenant, kind, key)`, so one word may name a
+#: kind of work at either altitude and the two are different declarations with
+#: different policy (#407). ``None`` is the fallback entry: every unit whose
+#: declaration this tenant does not have, which includes the untyped ones.
+EXPIRY_LADDER_FALLBACK = None
+
+
+def expiry_windows(tenant_id) -> dict:
+    """How long each of this tenant's kinds of work may go quiet, and how long
+    it may run at all — every rung already resolved.
+
+    ``{(kind, key): (silence_seconds, absolute_seconds), ...}`` plus one entry
+    under :data:`EXPIRY_LADDER_FALLBACK` for everything this tenant has not
+    declared. ``silence_seconds`` is ``None`` where the resolved answer is that
+    there is no silence window; ``absolute_seconds`` is **never** ``None``,
+    because the absolute ceiling cannot be switched off at any rung and both
+    models refuse a zero.
+
+    THE LADDER, PER WINDOW, IN THIS ORDER: the declared kind of work, then the
+    tenant's own default, then UBB's backstop. It is the ladder the COGS
+    ceiling already climbs (`RiskService.resolve_start_policy`), and for the
+    same argument the kind-of-work declaration makes about ceilings: one kind
+    of job that legitimately behaves differently from its sibling should not
+    force the tenant to loosen the rule for both.
+
+    ⚠ RESOLVED WHEN A SWEEPER RUNS, NOT PINNED AT REGISTRATION, and that is a
+    decision rather than an accident. The COGS ceiling is snapshotted onto the
+    unit at creation so a configuration change cannot move a bound the unit is
+    already racing; these two are read fresh precisely so a change CAN reach
+    work already in flight, which is what makes widening a window the way an
+    operator rescues a whole fleet of work about to be reaped for a silence its
+    own workload explains. Neither number is an economic fact anything is
+    charged against, so nothing depends on it being pinned.
+    """
+    from apps.platform.tenants.models import Tenant
+
+    tenant = Tenant.objects.filter(id=tenant_id).values(
+        "task_stale_seconds", "task_absolute_deadline_seconds").first()
+    if tenant is None:
+        tenant = {"task_stale_seconds": None,
+                  "task_absolute_deadline_seconds": None}
+
+    fallback = (_rung(tenant["task_stale_seconds"],
+                      SILENCE_WINDOW_BACKSTOP_SECONDS),
+                _rung(tenant["task_absolute_deadline_seconds"],
+                      ABSOLUTE_DEADLINE_BACKSTOP_SECONDS))
+    windows = {EXPIRY_LADDER_FALLBACK: fallback}
+    for row in TaskType.objects.filter(tenant_id=tenant_id).values(
+            "kind", "key", "silence_window_seconds",
+            "absolute_deadline_seconds"):
+        windows[(row["kind"], row["key"])] = (
+            _rung(row["silence_window_seconds"], fallback[0]),
+            _rung(row["absolute_deadline_seconds"], fallback[1]),
+        )
+    return windows
+
+
+def _rung(declared, beneath):
+    """One step of a ladder: what this rung says, or what is under it.
+
+    ``None`` means *nothing was declared here*, which is the only thing that
+    falls through. **Zero does not**: at the silence window zero is a tenant
+    declaring that it wants no window, which has been that column's documented
+    meaning since it was added, and reading it as a fall-through would silently
+    re-arm a sweeper somebody switched off. The absolute deadline has no zero
+    to read — both models refuse one — so the rule is stated once and holds for
+    both ladders.
+    """
+    return beneath if declared is None else (declared or None)
 
 
 class PercentileCont(Aggregate):

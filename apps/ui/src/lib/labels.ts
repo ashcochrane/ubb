@@ -282,7 +282,12 @@ export const stopReasonLabel = legacyLabelMap({
   customer_floor: "Customer balance floor",
   task_not_active: "Task not active",
   customer_wide_stop: "Customer-wide stop",
-  stale: "Stale task",
+  // The word the silence-window stop travels under changed when the backend
+  // started taking it from the registry (#412). Its wording is the registry's
+  // own, so this entry and `reason_code.silence_window` in the catalogue say
+  // the same thing; the entry it replaces named a value nothing produces any
+  // more, and a map that keeps one is a map that will be believed.
+  silence_window: "Silence window elapsed",
   stale_max_age: "Task exceeded max age",
   parent_killed: "Parent task killed",
   suspended: "Customer suspended",

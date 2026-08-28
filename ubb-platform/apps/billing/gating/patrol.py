@@ -42,7 +42,8 @@ from django.db.models import Exists, F, OuterRef
 from django.utils import timezone
 
 from core.vocabulary import (
-    TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED)
+    TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -213,8 +214,16 @@ def sweep_over_limit_tasks(tenant):
         reason = SUBTASK_LIMIT if task.parent_id is not None else TASK_LIMIT
         # kill_and_announce never raises; a lost race (already terminal)
         # returns False and is simply not counted.
-        if TaskService.kill_and_announce(task.id, reason, tenant_id=tenant.id,
-                                         customer_id=task.customer_id):
+        #
+        # WHICH MECHANISM APPLIED THIS STOP (#412): the patrol found a unit
+        # already over its ceiling that no usage report had stopped, so this
+        # sweep is the mechanism and the ingest lane is not — a subscriber
+        # alerting on ceiling crossings can tell a live trip from a repair
+        # only because the two lanes say which they are.
+        if TaskService.kill_and_announce(
+                task.id, reason, tenant_id=tenant.id,
+                customer_id=task.customer_id,
+                trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL):
             swept += 1
     return swept
 
@@ -281,6 +290,15 @@ def _remint_kill(task, tenant):
         billing_owner_id=str(task.billing_owner_id or ""),
         external_task_id=task.external_task_id,
         reason=task.metadata.get("kill_reason", ""),
+        # ⚠ THE MECHANISM IS DELIBERATELY LEFT UNSTATED HERE (#412), AND IT IS
+        # NOT THIS PATROL. A re-mint applies no transition — it repairs the
+        # delivery of a stop some other mechanism already applied — and the
+        # row records the CAUSE of that stop but not the mechanism, so there
+        # is nothing to read back and naming the patrol would answer a
+        # question nobody asked. `re_announcement` below is what says what
+        # this event is. Recording the mechanism on the row is the ticket that
+        # splits these two events into four; when it does, this line reads it
+        # exactly as the one above reads the cause.
         total_billed_cost_micros=task.total_billed_cost_micros,
         total_provider_cost_micros=task.total_provider_cost_micros,
         # A re-mint publishes the unit's CURRENT state, so it publishes the
