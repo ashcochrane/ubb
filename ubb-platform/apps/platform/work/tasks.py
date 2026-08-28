@@ -26,10 +26,23 @@ def _declaration_of(task):
     return (kind, task.task_type)
 
 
-def _selects(declaration):
+def _declaring(declaration):
     """Every unit under one declared kind of work, at its own altitude."""
     kind, key = declaration
     return Q(task_type=key, parent__isnull=(kind == TASK_TYPE_KIND_TASK))
+
+
+def _deadline_instant(absolute_seconds, now):
+    """When a unit registered at this instant runs out of time.
+
+    One expression, because the same arithmetic is asked twice for two
+    different jobs and they must not drift: once as a bound the database
+    filters on, and once per candidate row to say WHICH window ran out. A
+    second spelling of it would put a sweeper's filter and its reason one
+    rounding apart, and the row it disagreed about is exactly the one on the
+    boundary.
+    """
+    return now - timedelta(seconds=absolute_seconds)
 
 
 def _past_a_window(windows, now):
@@ -51,14 +64,13 @@ def _past_a_window(windows, now):
 
     declared = Q()
     expression = Q()
-    for declaration, (silence, absolute) in windows.items():
+    for declaration, pair in windows.items():
         if declaration is EXPIRY_LADDER_FALLBACK:
             continue
-        declared |= _selects(declaration)
-        expression |= _selects(declaration) & _elapsed(silence, absolute, now)
+        declared |= _declaring(declaration)
+        expression |= _declaring(declaration) & _elapsed(pair, now)
 
-    silence, absolute = windows[EXPIRY_LADDER_FALLBACK]
-    fallback = _elapsed(silence, absolute, now)
+    fallback = _elapsed(windows[EXPIRY_LADDER_FALLBACK], now)
     # `~Q()` is not "nothing"; an empty Q negates to a refusal Django cannot
     # render usefully, so a tenant that has declared no kind of work gets the
     # fallback over the whole table rather than over "everything except the
@@ -67,12 +79,12 @@ def _past_a_window(windows, now):
                          else ~declared & fallback)
 
 
-def _elapsed(silence_seconds, absolute_seconds, now):
+def _elapsed(pair, now):
     """One pair of windows, as a condition on a unit's two timestamps."""
-    elapsed = Q(created_at__lt=now - timedelta(seconds=absolute_seconds))
-    if silence_seconds is not None:
+    elapsed = Q(created_at__lt=_deadline_instant(pair.absolute, now))
+    if pair.silence is not None:
         elapsed |= Q(last_event_at__isnull=False,
-                     last_event_at__lt=now - timedelta(seconds=silence_seconds))
+                     last_event_at__lt=now - timedelta(seconds=pair.silence))
     return elapsed
 
 
@@ -88,9 +100,9 @@ def _reason_for(task, windows, now):
     from apps.platform.work.queries import EXPIRY_LADDER_FALLBACK
     from apps.platform.work.reasons import SILENCE_WINDOW, STALE_MAX_AGE
 
-    _, absolute = windows.get(_declaration_of(task),
-                              windows[EXPIRY_LADDER_FALLBACK])
-    past_deadline = task.created_at < now - timedelta(seconds=absolute)
+    pair = windows.get(_declaration_of(task),
+                       windows[EXPIRY_LADDER_FALLBACK])
+    past_deadline = task.created_at < _deadline_instant(pair.absolute, now)
     return STALE_MAX_AGE if past_deadline else SILENCE_WINDOW
 
 

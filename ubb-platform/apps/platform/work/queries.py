@@ -4,6 +4,8 @@ Billing's start-gate reads task-type policy through here; the API's analytics
 routes read task rollups through here; the platform's own sweepers read the
 expiry ladder through here. Plain data only — never ORM objects.
 """
+from typing import NamedTuple
+
 from django.db import models
 from django.db.models import Avg, Count, F, Q, Sum
 from django.db.models.aggregates import Aggregate
@@ -69,16 +71,32 @@ def declared_task_types(tenant_id) -> list[dict]:
 EXPIRY_LADDER_FALLBACK = None
 
 
+class ExpiryWindows(NamedTuple):
+    """The two resolved bounds on one kind of work, as a pair with names.
+
+    A NamedTuple rather than a bare pair because the two halves are not
+    interchangeable and `[0]` / `[1]` at four call sites said nothing about
+    which was which — and rather than a dict or a dataclass because this is
+    still a tuple, which keeps it the plain data this module is only allowed
+    to return.
+
+    ``silence`` is ``None`` where the resolved answer is that there is no
+    silence window. ``absolute`` is NEVER ``None``: the absolute ceiling
+    cannot be switched off at any rung and both models refuse a zero, so a
+    reader may rely on it being a number and does not have to handle an
+    absence that cannot arise.
+    """
+    silence: int | None
+    absolute: int
+
+
 def expiry_windows(tenant_id) -> dict:
     """How long each of this tenant's kinds of work may go quiet, and how long
     it may run at all — every rung already resolved.
 
-    ``{(kind, key): (silence_seconds, absolute_seconds), ...}`` plus one entry
-    under :data:`EXPIRY_LADDER_FALLBACK` for everything this tenant has not
-    declared. ``silence_seconds`` is ``None`` where the resolved answer is that
-    there is no silence window; ``absolute_seconds`` is **never** ``None``,
-    because the absolute ceiling cannot be switched off at any rung and both
-    models refuse a zero.
+    ``{(kind, key): ExpiryWindows, ...}`` plus one entry under
+    :data:`EXPIRY_LADDER_FALLBACK` for everything this tenant has not declared.
+    See :class:`ExpiryWindows` for what each half may hold.
 
     THE LADDER, PER WINDOW, IN THIS ORDER: the declared kind of work, then the
     tenant's own default, then UBB's backstop. It is the ladder the COGS
@@ -104,17 +122,18 @@ def expiry_windows(tenant_id) -> dict:
         tenant = {"task_stale_seconds": None,
                   "task_absolute_deadline_seconds": None}
 
-    fallback = (_rung(tenant["task_stale_seconds"],
+    fallback = ExpiryWindows(
+        silence=_rung(tenant["task_stale_seconds"],
                       SILENCE_WINDOW_BACKSTOP_SECONDS),
-                _rung(tenant["task_absolute_deadline_seconds"],
-                      ABSOLUTE_DEADLINE_BACKSTOP_SECONDS))
+        absolute=_rung(tenant["task_absolute_deadline_seconds"],
+                       ABSOLUTE_DEADLINE_BACKSTOP_SECONDS))
     windows = {EXPIRY_LADDER_FALLBACK: fallback}
     for row in TaskType.objects.filter(tenant_id=tenant_id).values(
             "kind", "key", "silence_window_seconds",
             "absolute_deadline_seconds"):
-        windows[(row["kind"], row["key"])] = (
-            _rung(row["silence_window_seconds"], fallback[0]),
-            _rung(row["absolute_deadline_seconds"], fallback[1]),
+        windows[(row["kind"], row["key"])] = ExpiryWindows(
+            silence=_rung(row["silence_window_seconds"], fallback.silence),
+            absolute=_rung(row["absolute_deadline_seconds"], fallback.absolute),
         )
     return windows
 
@@ -122,15 +141,23 @@ def expiry_windows(tenant_id) -> dict:
 def _rung(declared, beneath):
     """One step of a ladder: what this rung says, or what is under it.
 
-    ``None`` means *nothing was declared here*, which is the only thing that
-    falls through. **Zero does not**: at the silence window zero is a tenant
+    ``None`` means *nothing was declared here*, and it is the ONLY thing that
+    falls through. **Zero does not**: at the silence window zero is a rung
     declaring that it wants no window, which has been that column's documented
     meaning since it was added, and reading it as a fall-through would silently
     re-arm a sweeper somebody switched off. The absolute deadline has no zero
     to read — both models refuse one — so the rule is stated once and holds for
     both ladders.
+
+    Written as three branches rather than as `declared or beneath`, because
+    that expression maps zero to the rung beneath and this one must not: the
+    difference between the two is the whole of the paragraph above.
     """
-    return beneath if declared is None else (declared or None)
+    if declared is None:
+        return beneath
+    if declared == 0:
+        return None
+    return declared
 
 
 class PercentileCont(Aggregate):

@@ -75,13 +75,15 @@ CUSTOMER_WIDE_STOP = "customer_wide_stop"
 # reference: the registry has a word for this stop and it is that word, so the
 # backend cannot keep a second spelling of it that drifts.
 #
-# ⚠ ITS STRING CHANGED WHEN IT BECAME REGISTRY-SOURCED, AND THAT MATTERS TO ONE
-# LATER TICKET. Outbox rows written before #412 carry the pre-registry spelling
-# `stale`, so the terminal-event split's row-routing rule — reaper reasons to
-# `*.expired`, everything else to `*.killed` — must match that older value as
-# well as this constant, or a row that predates this commit is routed as a
-# spend stop. Nothing else reads the value: every other consumer names the
-# constant.
+# ⚠ ITS STRING CHANGED WHEN IT BECAME REGISTRY-SOURCED, AND STORED DATA STILL
+# HOLDS THE OLD ONE. Outbox rows and stop metadata written before #412 carry the
+# pre-registry spelling `stale`, so the terminal-event split's row-routing rule
+# — reaper reasons to `*.expired`, everything else to `*.killed` — must match
+# that older value as well as this constant, or a row that predates this commit
+# is routed as a spend stop. Every code consumer names the constant; the two
+# places that hold the VALUE both keep the old spelling beside the new one, on
+# `customer_floor`'s precedent — the published `stop_reasons` list in
+# `openapi/error-codes.json` and the console's display map.
 SILENCE_WINDOW = REASON_CODE_SILENCE_WINDOW
 # Reaped: the unit passed its absolute deadline, whatever it was still doing.
 #
@@ -139,13 +141,19 @@ CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
 # ingest or by the patrol, and the same mechanism can find several causes —
 # so the producer names its own mechanism at the point it acts.
 #
-# ⚠ NO PRODUCTION PATH READS THIS SET YET, AND THAT IS A STATED GAP RATHER THAN
-# AN OMISSION. The terminal-event payload does not carry the mechanism today;
-# the ticket that splits that event into four ships the field and is what fills
-# this in. Holding the values here now is what makes that ticket an addition to
-# a payload rather than a second place these five words get spelled — and the
-# registry names this module as the concept's backend consumer, so the values
-# belong here whether or not a payload carries them yet.
+# ⚠ THREE OF THE FIVE ARE PRODUCED TODAY AND TWO ARE NOT, WHICH IS WHAT AN OPEN
+# SET IS FOR. The terminal stop events carry the mechanism, and the three paths
+# that APPLY a stop each name themselves: the usage-ingest lane, the enforcement
+# patrol, and the sweeper. `pool_crossing` waits on the mechanism that produces
+# it, and `parent_cascade` is real but announces nothing — a cascade is a silent
+# state change whose parent's event is the one signal — so it reaches no payload
+# until a cascade records its own reason.
+#
+# The whole five are held here anyway, because the registry names this module as
+# the concept's backend consumer and a consumer holds the vocabulary rather than
+# the subset it happens to drive. That is also what makes the ticket splitting
+# those two events into four an addition to a payload rather than a second place
+# these words get spelled.
 KNOWN_TRIGGER_SOURCES = frozenset({
     TRIGGER_SOURCE_USAGE_INGEST,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL,

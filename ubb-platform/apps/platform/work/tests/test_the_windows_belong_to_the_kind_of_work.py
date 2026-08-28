@@ -114,22 +114,22 @@ class TheSilenceLadderTest(WindowTestBase):
         self.tenant.task_stale_seconds = 1800
         self.tenant.save(update_fields=["task_stale_seconds"])
         self._kind("slow-crawl", silence=7200)
-        self.assertEqual(self._windows("slow-crawl")[0], 7200)
+        self.assertEqual(self._windows("slow-crawl").silence, 7200)
 
     def test_the_tenant_default_answers_where_the_kind_declares_nothing(self):
         self.tenant.task_stale_seconds = 1800
         self.tenant.save(update_fields=["task_stale_seconds"])
         self._kind("ordinary")
-        self.assertEqual(self._windows("ordinary")[0], 1800)
+        self.assertEqual(self._windows("ordinary").silence, 1800)
         # And for work whose kind this tenant has never declared at all.
-        self.assertEqual(self._windows()[0], 1800)
+        self.assertEqual(self._windows().silence, 1800)
 
     def test_ubbs_backstop_answers_where_neither_declares_anything(self):
         self.assertIsNone(self.tenant.task_stale_seconds)
         self._kind("ordinary")
-        self.assertEqual(self._windows("ordinary")[0],
+        self.assertEqual(self._windows("ordinary").silence,
                          SILENCE_WINDOW_BACKSTOP_SECONDS)
-        self.assertEqual(self._windows()[0], SILENCE_WINDOW_BACKSTOP_SECONDS)
+        self.assertEqual(self._windows().silence, SILENCE_WINDOW_BACKSTOP_SECONDS)
 
     def test_a_kind_of_work_may_declare_that_it_has_no_silence_window(self):
         """Zero is a declaration, not an absence — which is why it does NOT
@@ -137,8 +137,8 @@ class TheSilenceLadderTest(WindowTestBase):
         self.tenant.task_stale_seconds = 60
         self.tenant.save(update_fields=["task_stale_seconds"])
         self._kind("long-atomic", silence=0)
-        self.assertIsNone(self._windows("long-atomic")[0])
-        self.assertEqual(self._windows()[0], 60)
+        self.assertIsNone(self._windows("long-atomic").silence)
+        self.assertEqual(self._windows().silence, 60)
 
     def test_a_tenant_may_declare_that_it_wants_no_silence_window(self):
         """The meaning zero has always had on the tenant column, preserved:
@@ -146,13 +146,13 @@ class TheSilenceLadderTest(WindowTestBase):
         switched off."""
         self.tenant.task_stale_seconds = 0
         self.tenant.save(update_fields=["task_stale_seconds"])
-        self.assertIsNone(self._windows()[0])
+        self.assertIsNone(self._windows().silence)
 
     def test_a_kind_of_work_reclaims_a_window_its_tenant_switched_off(self):
         self.tenant.task_stale_seconds = 0
         self.tenant.save(update_fields=["task_stale_seconds"])
         self._kind("chatty", silence=30)
-        self.assertEqual(self._windows("chatty")[0], 30)
+        self.assertEqual(self._windows("chatty").silence, 30)
 
 
 class TheAbsoluteLadderTest(WindowTestBase):
@@ -160,21 +160,21 @@ class TheAbsoluteLadderTest(WindowTestBase):
         self.tenant.task_absolute_deadline_seconds = 3 * HOUR
         self.tenant.save(update_fields=["task_absolute_deadline_seconds"])
         self._kind("overnight", deadline=12 * HOUR)
-        self.assertEqual(self._windows("overnight")[1], 12 * HOUR)
+        self.assertEqual(self._windows("overnight").absolute, 12 * HOUR)
 
     def test_the_tenant_default_answers_where_the_kind_declares_nothing(self):
         self.tenant.task_absolute_deadline_seconds = 3 * HOUR
         self.tenant.save(update_fields=["task_absolute_deadline_seconds"])
         self._kind("ordinary")
-        self.assertEqual(self._windows("ordinary")[1], 3 * HOUR)
-        self.assertEqual(self._windows()[1], 3 * HOUR)
+        self.assertEqual(self._windows("ordinary").absolute, 3 * HOUR)
+        self.assertEqual(self._windows().absolute, 3 * HOUR)
 
     def test_ubbs_backstop_answers_where_neither_declares_anything(self):
         self.assertIsNone(self.tenant.task_absolute_deadline_seconds)
         self._kind("ordinary")
-        self.assertEqual(self._windows("ordinary")[1],
+        self.assertEqual(self._windows("ordinary").absolute,
                          ABSOLUTE_DEADLINE_BACKSTOP_SECONDS)
-        self.assertEqual(self._windows()[1],
+        self.assertEqual(self._windows().absolute,
                          ABSOLUTE_DEADLINE_BACKSTOP_SECONDS)
 
     def test_no_resolved_deadline_is_ever_absent(self):
@@ -183,7 +183,7 @@ class TheAbsoluteLadderTest(WindowTestBase):
         self._kind("a", silence=0)
         self._kind("b", kind=TASK_TYPE_KIND_SUBTASK, silence=0)
         for pair in expiry_windows(self.tenant.id).values():
-            self.assertIsNotNone(pair[1])
+            self.assertIsNotNone(pair.absolute)
 
 
 class TheDeadlineCannotBeRemovedTest(WindowTestBase):

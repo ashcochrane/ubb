@@ -215,10 +215,14 @@ inheritance down the task tree; immutable once declared, since re-scoping would 
 rows disagree about where a value came from. (ADR-0005)
 
 **Task type**:
-A tenant's declared kind of work, carrying server-side policy (a COGS ceiling,
-`required_dimensions`) rather than being a bare label; immutable on a `Task` once created. **One
+A tenant's declared kind of work, carrying server-side policy (a COGS ceiling, a **Silence
+window**, an **Absolute deadline**, `required_dimensions`) rather than being a bare label;
+immutable on a `Task` once created. **One
 column carries it at either altitude** — a `Task` and a `Subtask` declare their kind in the same
 place and `Task.parent` is the only thing that says which altitude a row is at.
+Each of its three bounds is the top rung of its own ladder: the declaration, then the tenant's
+default, then UBB's backstop — so one kind of job that legitimately costs or runs far more than its
+sibling never forces the rule open on both.
 (ADR-0005, whose Decision clause on what a `Task` carries is superseded on exactly this point;
 `apps/platform/work/models.py:TaskType`)
 _Avoid_: a second name for the contained case. The column that carried one was collapsed into this
@@ -297,7 +301,10 @@ _Avoid_: reading it as "terminated" in general — the reaper's stop is an **Exp
 
 **Expired (task)**:
 **Nobody ever told UBB how this ended.** Both sweepers write it: the >1h safety net for work the SDK
-never closed, and the stale reaper for work that went silent or ran past the absolute age ceiling.
+never closed, and the announcing reaper for work past its **Silence window** or its **Absolute
+deadline**. Both read the same two ladders, so a declared kind of work gets its own windows whether
+or not its tenant enforces; what the windows decide in the safety net is LIVENESS rather than
+reaping, since that sweeper's one-hour floor is its whole subject.
 It replaces a state the model could not honestly give — the safety net used to write `completed`
 with a marker in metadata and the reaper used to write `killed`, so one silence was recorded two
 ways and neither state meant one thing. An expiry can strike a live unit doing long atomic work, and
@@ -314,23 +321,63 @@ already means *silently cascaded by a parent*.
 (written by the close cascade in `apps/platform/work/services.py:TaskService.complete_task`)
 
 **Heartbeat**:
-A task's most-recent-event timestamp; its absence past the stale window is what the reaper expires
-on. (`apps/platform/work/models.py:Task.last_event_at`)
+A task's most-recent-event timestamp; its absence past the **Silence window** is what a sweeper
+expires on. Reporting usage is the ONLY thing that stamps it and therefore the only thing that
+proves a task alive: there is no keepalive call, and no read extends a task's life — an implicit
+keepalive on reads was rejected outright, because a console listing, a support query or an admin
+inspecting stopped work would silently resurrect it.
+(`apps/platform/work/models.py:Task.last_event_at`, written only by
+`TaskService.accumulate_cost`)
+
+**Silence window**:
+How long a task may go without a usage report before a sweeper expires it. Resolved on a ladder —
+the declared **Task type**, then `Tenant.task_stale_seconds`, then UBB's backstop of fifteen
+minutes — and resolved when a sweeper RUNS rather than pinned at registration, so widening it
+rescues work already in flight. `NULL` at a rung means nothing was declared there and the ladder
+falls through; `0` means that rung declares no window at all, which is a real answer for work that
+is legitimately quiet for hours and can never produce an immortal task because the **Absolute
+deadline** still applies. Its stop is `reason_code: silence_window`.
+(`apps/platform/work/queries.py:expiry_windows`)
+
+**Absolute deadline**:
+How long a task may run at all, measured from registration and regardless of activity. Same three
+rungs — the declared **Task type**, then `Tenant.task_absolute_deadline_seconds`, then UBB's
+backstop of six hours. **It cannot be switched off at any rung**, and a `CHECK` on each of the two
+columns is what makes that a property of the database: dropping it entirely was considered and
+rejected, because it is the guard that stops any tenant getting an immortal task holding a
+concurrency slot and a prepaid reservation forever. Its stop is `stale_max_age`, which stays this
+backend's own word — the registry declares no known value for it and `reason_code` is open, so it
+travels legally rather than being coined here.
+(`apps/platform/work/queries.py:expiry_windows`)
 
 **Stop reason**:
 The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
-`task_not_active`, `customer_wide_stop`, `stale`, `stale_max_age`, plus the kill-metadata-only
+`task_not_active`, `customer_wide_stop`, `silence_window`, `stale_max_age`, plus the kill-metadata-only
 `parent_killed` (the KILL cascade's flip, never on an ack or event) and the stop-context-only
 `suspended` (an owner suspended with no open floor episode — taggable, but never an episode reason,
 so it is NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer
-and consumer; rides the ack's `stop_reason`, never an HTTP error.
+and consumer; rides the ack's `stop_reason`, never an HTTP error. **Two of them come from the
+registry by reference** — `parent_killed`, and `silence_window` since the expiry paths that produce
+it were built. The three spend-shaped words above are still this backend's own spellings and are
+renamed by the slice that rebuilds spend control.
 (`apps/platform/work/reasons.py`)
 _Note_: the metadata key is still spelled `kill_reason` and now carries an **Expired (task)**'s
-reason too — `stale` / `stale_max_age` on a row that says `expired`. The rename is `outcome_reason`'s,
-in the ticket that wires that concept's consumers; every consumer of the key gates on
-`status == killed` first, so nothing mis-reads it meanwhile. The close and expiry cascades record no
-reason at all yet: the registry names `outcome_reason: parent_closed` and `reason_code:
-silence_window` for them, each owed by the same later tickets.
+reason too — `silence_window` / `stale_max_age` on a row that says `expired`. The rename is
+`outcome_reason`'s, in the ticket that wires that concept's consumers; every consumer of the key
+gates on `status == killed` first, so nothing mis-reads it meanwhile. The close and expiry cascades
+record no reason at all yet: the registry names `outcome_reason: parent_closed` for the first and
+`silence_window` above is what the second will stamp, so what that cascade still owes is the
+writing and not the word.
+
+**Trigger source**:
+WHICH MECHANISM applied a stop, beside the **Stop reason** saying why — two fields because they are
+two questions, and neither derives from the other: one reason is reached by several mechanisms and
+one mechanism reaches several reasons. Open (`usage_ingest`, `enforcement_patrol`, `parent_cascade`,
+`pool_crossing`, `stale_reaper`), so a subscriber must accept one it has not seen. It rides both
+terminal stop events, where the contract advertises the set as documentation metadata rather than
+as an `enum`. Every path that APPLIES a stop names itself; a patrol RE-MINT deliberately names none,
+because it repairs the delivery of a stop another mechanism made and the row does not record which.
+(`apps/platform/work/reasons.py:KNOWN_TRIGGER_SOURCES`; registry concept `trigger_source`)
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though
 immutable pre-removal `Posting.stop_context` rows may still carry it forever.

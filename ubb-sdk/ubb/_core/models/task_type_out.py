@@ -25,10 +25,8 @@ T = TypeVar("T", bound="TaskTypeOut")
 class TaskTypeOut:
     """ One declared kind of work, as UBB holds it.
 
-    The three bounds echo back exactly what was declared, NULL included: a
-    reader has to be able to tell *this kind declared nothing and inherits*
-    from *this kind declared the same number the tenant did*, and a response
-    that resolved the ladder before answering would collapse the two.
+    Each bound is echoed back exactly as declared. `null` means this kind
+    declared none and inherits your workspace default for it.
 
         Attributes:
             key (str):

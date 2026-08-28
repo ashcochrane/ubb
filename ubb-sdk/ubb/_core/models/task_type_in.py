@@ -25,11 +25,9 @@ T = TypeVar("T", bound="TaskTypeIn")
 class TaskTypeIn:
     """ One declared kind of work, and the policy that comes with it.
 
-    THREE OF THESE FIELDS ARE BOUNDS, and each is the top rung of its own
-    ladder: what the kind declares, then the tenant's default for it, then
-    UBB's own. Omitting one is not the same as setting it low — an omitted
-    bound falls through to the rung beneath, which is why every one of them is
-    nullable and none has a default here.
+    Three of these fields are bounds: a spending ceiling, a silence window and
+    an absolute deadline. Omit one and this kind inherits your workspace
+    default for it; there is no value that removes the absolute deadline.
 
         Attributes:
             key (str):

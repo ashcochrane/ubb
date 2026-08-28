@@ -471,11 +471,11 @@ class TaskLimitExceeded(EventSchema):
     """One-rule task-kill fan-out event (#37). The SINGLE canonical class —
     no other module may redefine it.
 
-    Emitted exactly once per winning active->killed transition — by the
-    verdict-driven kill flow (sync record, batch items, async settle) and the
-    stale-task reaper — so sibling/idle workers tear the task down. The task
-    is a signal point, not a wall: events arriving after this still land,
-    bill, and count into both totals.
+    Emitted exactly once per winning transition OUT OF `active` — by the
+    verdict-driven kill flow (sync record, batch items, async settle), by the
+    enforcement patrol, and by either sweeper — so sibling/idle workers tear
+    the task down. The task is a signal point, not a wall: events arriving
+    after this still land, bill, and count into both totals.
 
     customer_id      = the SEAT that owns the task.
     billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
@@ -516,8 +516,8 @@ class TaskLimitExceeded(EventSchema):
 @dataclass(frozen=True)
 class SubtaskLimitExceeded(EventSchema):
     """Subtask-kill fan-out event (#38) — the subtask sibling of
-    TaskLimitExceeded, emitted exactly once per winning active->killed
-    transition of a SUBTASK (its own limit/floor crossing, or the reaper).
+    TaskLimitExceeded, emitted exactly once per winning transition out of
+    `active` on a SUBTASK (its own limit/floor crossing, or a sweeper).
     The subtask is killed ALONE: the parent keeps running and counting, so
     consumers tear down only the named child. A parent's own crossing emits
     task.limit_exceeded instead and cascades its kill downward silently —

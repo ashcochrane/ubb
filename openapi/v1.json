@@ -7093,7 +7093,7 @@
         "type": "object"
       },
       "TaskTypeIn": {
-        "description": "One declared kind of work, and the policy that comes with it.\n\nTHREE OF THESE FIELDS ARE BOUNDS, and each is the top rung of its own\nladder: what the kind declares, then the tenant's default for it, then\nUBB's own. Omitting one is not the same as setting it low \u2014 an omitted\nbound falls through to the rung beneath, which is why every one of them is\nnullable and none has a default here.",
+        "description": "One declared kind of work, and the policy that comes with it.\n\nThree of these fields are bounds: a spending ceiling, a silence window and\nan absolute deadline. Omit one and this kind inherits your workspace\ndefault for it; there is no value that removes the absolute deadline.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -7162,7 +7162,7 @@
         "type": "object"
       },
       "TaskTypeOut": {
-        "description": "One declared kind of work, as UBB holds it.\n\nThe three bounds echo back exactly what was declared, NULL included: a\nreader has to be able to tell *this kind declared nothing and inherits*\nfrom *this kind declared the same number the tenant did*, and a response\nthat resolved the ladder before answering would collapse the two.",
+        "description": "One declared kind of work, as UBB holds it.\n\nEach bound is echoed back exactly as declared. `null` means this kind\ndeclared none and inherits your workspace default for it.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -20267,7 +20267,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "Subtask-kill fan-out event (#38) \u2014 the subtask sibling of\nTaskLimitExceeded, emitted exactly once per winning active->killed\ntransition of a SUBTASK (its own limit/floor crossing, or the reaper).\nThe subtask is killed ALONE: the parent keeps running and counting, so\nconsumers tear down only the named child. A parent's own crossing emits\ntask.limit_exceeded instead and cascades its kill downward silently \u2014\ncascaded children never emit this event (they crossed nothing).\n\nIds are explicit (spec \u00a7B \u2014 the run-era scope field died with the\nsplit): subtask_id = the killed child unit, parent_task_id = the parent\nwhose totals its spend rolls up into. Totals and limit are the\nSUBTASK's own, denominationally explicit; only the provider (COGS)\ntotal races the limit.",
+                    "description": "Subtask-kill fan-out event (#38) \u2014 the subtask sibling of\nTaskLimitExceeded, emitted exactly once per winning transition out of\n`active` on a SUBTASK (its own limit/floor crossing, or a sweeper).\nThe subtask is killed ALONE: the parent keeps running and counting, so\nconsumers tear down only the named child. A parent's own crossing emits\ntask.limit_exceeded instead and cascades its kill downward silently \u2014\ncascaded children never emit this event (they crossed nothing).\n\nIds are explicit (spec \u00a7B \u2014 the run-era scope field died with the\nsplit): subtask_id = the killed child unit, parent_task_id = the parent\nwhose totals its spend rolls up into. Totals and limit are the\nSUBTASK's own, denominationally explicit; only the provider (COGS)\ntotal races the limit.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
@@ -20429,7 +20429,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning active->killed transition \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle) and the\nstale-task reaper \u2014 so sibling/idle workers tear the task down. The task\nis a signal point, not a wall: events arriving after this still land,\nbill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.work.reasons (closed set).\ntrigger_source   = which mechanism applied the stop (open set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
+                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning transition OUT OF `active` \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle), by the\nenforcement patrol, and by either sweeper \u2014 so sibling/idle workers tear\nthe task down. The task is a signal point, not a wall: events arriving\nafter this still land, bill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.work.reasons (closed set).\ntrigger_source   = which mechanism applied the stop (open set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",

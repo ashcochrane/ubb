@@ -2645,23 +2645,40 @@ TaskTypeKind = Annotated[
 class TaskTypeIn(Schema):
     """One declared kind of work, and the policy that comes with it.
 
-    THREE OF THESE FIELDS ARE BOUNDS, and each is the top rung of its own
-    ladder: what the kind declares, then the tenant's default for it, then
-    UBB's own. Omitting one is not the same as setting it low — an omitted
-    bound falls through to the rung beneath, which is why every one of them is
-    nullable and none has a default here.
+    Three of these fields are bounds: a spending ceiling, a silence window and
+    an absolute deadline. Omit one and this kind inherits your workspace
+    default for it; there is no value that removes the absolute deadline.
     """
+    # ⚠ THE RATIONALE FOR ALL OF THIS LIVES IN `#:` COMMENTS AND NOT IN THE
+    # DOCSTRING ABOVE. Django Ninja exports a Schema docstring verbatim into
+    # `openapi/v1.json` as the component's `description` and the generated SDK
+    # carries it, so a tenant reads every word; a `#:` comment reaches neither
+    # pydantic nor the exporter, which is what makes it the right home for why
+    # rather than what.
     key: str = Field(max_length=64)
     kind: TaskTypeKind = TASK_TYPE_KIND_TASK
     default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
-    #: How long this kind of work may go without a usage report before UBB
-    #: treats it as gone. Reporting usage is the ONLY thing that proves a unit
-    #: is alive: there is no keepalive call, and reading a unit never extends
-    #: its life. 0 declares that this kind has no silence window at all.
+    #: The top rung of the silence ladder: this declaration, then the tenant's
+    #: own default, then UBB's backstop. Nullable with NO default here because
+    #: omitting a bound and setting it low are different declarations — an
+    #: absent one has to fall through, and a default would silence that.
+    #:
+    #: Liveness is proved by reporting usage and by nothing else: there is no
+    #: keepalive call, and no read of a unit of work extends its life. An
+    #: implicit keepalive on reads was rejected outright, because a console
+    #: listing, a support query or an admin inspecting stopped work would
+    #: silently resurrect it. `ge=0` rather than `gt=0` because zero is a real
+    #: declaration here — this kind wants no silence window — which the
+    #: absolute deadline below keeps safe.
     silence_window_seconds: Optional[int] = Field(default=None, ge=0)
-    #: How long this kind of work may run at all, measured from registration
-    #: and regardless of activity. It cannot be switched off at any rung: omit
-    #: it to inherit, but there is no value that removes it.
+    #: The top rung of the absolute ladder, on the same three rungs.
+    #:
+    #: `gt=0`, and a `CHECK` on the column behind it, because this bound may
+    #: not be switched off at any rung: it is the guard that stops any tenant
+    #: getting an immortal unit of work holding a concurrency slot and a
+    #: prepaid reservation forever. Dropping it entirely was considered and
+    #: rejected. Zero is refused rather than read, because a zero-length
+    #: deadline and a disabled one are two readings and only one is a window.
     absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
     required_dimensions: list[str] = Field(default_factory=list, max_length=6)
 
@@ -2673,11 +2690,17 @@ class TaskTypeRegistryIn(Schema):
 class TaskTypeOut(Schema):
     """One declared kind of work, as UBB holds it.
 
-    The three bounds echo back exactly what was declared, NULL included: a
-    reader has to be able to tell *this kind declared nothing and inherits*
-    from *this kind declared the same number the tenant did*, and a response
-    that resolved the ladder before answering would collapse the two.
+    Each bound is echoed back exactly as declared. `null` means this kind
+    declared none and inherits your workspace default for it.
     """
+    # ⚠ WHY THE RESPONSE DOES NOT RESOLVE THE LADDER FIRST, kept out of the
+    # docstring above for the reason stated on `TaskTypeIn`: a reader has to be
+    # able to tell *this kind declared nothing and inherits* from *this kind
+    # declared the same number the tenant did*, and an answer that resolved the
+    # rungs before replying would collapse the two into one number with no way
+    # back. The resolved answer is not a fact about the declaration; it is a
+    # fact about the declaration AND the tenant AND UBB at the instant a
+    # sweeper asks, and it can change without this row changing.
     key: str
     kind: TaskTypeKind
     default_provider_cost_limit_micros: Optional[int] = None
