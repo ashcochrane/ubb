@@ -219,21 +219,38 @@ class StartDeclaration:
     """
 
     __slots__ = ("idempotency_key", "parent_task_id", "task_type",
-                 "slot_values", "provider_cost_limit_micros",
-                 "external_task_id", "metadata")
+                 "grouping_values", "provider_cost_limit_micros")
 
     def __init__(self, idempotency_key, *, parent_task_id=None, task_type="",
-                 slot_values=None, provider_cost_limit_micros=None,
-                 external_task_id="", metadata=None):
+                 grouping_values=None, provider_cost_limit_micros=None):
         self.idempotency_key = idempotency_key
         self.parent_task_id = parent_task_id
         self.task_type = task_type or ""
-        self.slot_values = dict(slot_values or {})
+        self.grouping_values = dict(grouping_values or {})
         self.provider_cost_limit_micros = provider_cost_limit_micros
-        self.external_task_id = external_task_id or ""
-        self.metadata = dict(metadata or {})
 
-    def conflicting_field_on(self, task):
+    def scope(self):
+        """Which altitude this declaration sets its grouping values at.
+
+        ⚠ IT IS A FACT ABOUT WHETHER A PARENT WAS NAMED, which is why it lives
+        on the declaration rather than being re-derived beside every caller.
+        And it is NOT the `task_type_kind` vocabulary, though two of its words
+        are spelled the same — `RiskService.resolve_type_policy` makes that
+        argument in full.
+        """
+        return "subtask" if self.parent_task_id is not None else "task"
+
+    def slots(self, tenant):
+        """What this declaration's grouping values bind to, RECORDING NOTHING.
+
+        Resolved rather than admitted, so a repeat that is about to be refused
+        cannot permanently burn a key's cardinality for work that never began.
+        """
+        from apps.platform.grouping_fields.services import DimensionService
+        return DimensionService.resolve(tenant, self.grouping_values,
+                                        self.scope())
+
+    def conflicting_field_on(self, task, tenant):
         """The first PINNED field this declaration states differently from
         ``task``, or ``None`` when the two say the same thing.
 
@@ -250,13 +267,22 @@ class StartDeclaration:
         would be charged the render price for a transcode job while its own
         records said otherwise.
 
-        ⚠ THE COMPARISON IS AGAINST THE DECLARATION, NEVER AGAINST A
-        RE-RESOLUTION, and that is what makes the retry work FOREVER rather
-        than until the tenant next edits their configuration. Re-deriving the
-        ceiling or re-validating the kind of work here would let a tenant
-        lowering a default, or retiring a kind of work, turn every in-flight
-        retry into a refusal — the one case a permanently-claimed key exists to
-        answer. Every field below is compared as the caller stated it.
+        ⚠ NO POLICY IS RE-DERIVED HERE, and that is what makes the retry work
+        FOREVER rather than until the tenant next edits their configuration.
+        Re-running the ceiling ladder, or re-asking whether the declared kind of
+        work is still declared and unretired, would let a tenant lowering a
+        default or retiring a kind of work turn every in-flight retry into a
+        refusal — the one case a permanently-claimed key exists to answer.
+
+        ⚠ THE ONE THING IT DOES READ BACK IS THE SLOT A GROUPING KEY BINDS TO,
+        and that is safe for a stated reason rather than by luck:
+        `DimensionService.declare` makes a key's slot and its scope IMMUTABLE
+        once declared, refusing a rebind in either — so the mapping this reads
+        cannot move under a retry the way a ceiling or a retirement can. It is
+        also read LAST, below every comparison that needs no database at all,
+        so a repeat that already contradicts the claim on a cheap field is
+        answered with THAT field rather than with whatever the registry says
+        about a bag nobody disagreed about.
 
         ⚠ THE CUSTOMER IS PINNED AND CANNOT APPEAR HERE, which is not an
         omission. The claim is scoped `(tenant, customer, key)`, so the same
@@ -288,8 +314,10 @@ class StartDeclaration:
                 and self.provider_cost_limit_micros
                 != task.provider_cost_limit_micros):
             return PINNED_COST_CEILING
-        if self.slot_values != {slot: getattr(task, slot) for slot in SLOTS
-                                if getattr(task, slot)}:
+        # LAST, AND THE ONLY COMPARISON THAT READS THE DATABASE — see the ⚠
+        # above. Resolving is not admitting: a repeat records nothing.
+        if self.slots(tenant) != {slot: getattr(task, slot) for slot in SLOTS
+                                  if getattr(task, slot)}:
             return PINNED_GROUPING_VALUES
         return None
 

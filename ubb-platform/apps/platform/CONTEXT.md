@@ -247,6 +247,22 @@ decision key on one: `completed` means the tenant declared delivery and nothing 
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
 the open bag is labelling only and never attaches a limit.
 
+**Idempotency key (on a unit of work)**:
+The caller's key for ONE ATTEMPT, required by the route that registers a unit of work and unique
+per customer at the database — `UNIQUE(tenant, customer, idempotency_key)`, the Posting's own
+scope, because both are a caller reporting that something happened for a NAMED customer and two
+customers may each run a `nightly-batch`. **The claim never lapses**: no release at a terminal
+state, no expiry window, so a retry after a lost response gets back the unit it already started
+instead of beginning a second one that is charged twice.
+Distinct from `external_task_id`, which is the caller's free-text LABEL for the work — reusable
+across attempts, never unique, never required. The label is the only place the relationship
+*between* attempts can live, which is why it was not promoted to the key.
+The column is nullable and the uniqueness rule is PARTIAL: every unit registered before the key
+existed holds NULL, and there is no caller-supplied value to invent for them that would not be a
+fabricated declaration.
+(`apps/platform/work/models.py:Task.idempotency_key`, `uq_task_idempotency_key`)
+_Avoid_: treating the label as an identity, and "releasing" a key at a terminal state.
+
 **Subtask**:
 A parent-linked child unit of work — **the same record with a parent**, not a second model and not
 a separate pricing entity: a task registered under an active top-level task, declaring its kind in

@@ -31,8 +31,11 @@ import uuid
 
 import pytest
 from django.test import Client
+from django.utils import timezone
 
 from api.v1.tests.test_metering_endpoints import declared_grouping_values
+from apps.billing.gating.models import RiskConfig
+from apps.billing.gating.services.risk_service import CONCURRENCY_LIMIT
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingFieldValue
@@ -77,6 +80,17 @@ class StartTestBase:
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+
+    def _a_tenant_that_bills(self):
+        """Switch this tenant's posture after the fixture is up.
+
+        Two classes need it: one varies the posture to prove the money-shaped
+        half is conditioned on it, and one needs a tenant that bills in order
+        to have a wallet regime at all.
+        """
+        self.tenant.products = ["metering", "billing"]
+        self.tenant.billing_mode = "prepaid"
+        self.tenant.save(update_fields=["products", "billing_mode"])
 
     def _start(self, **body):
         """The start call, with the caller's key defaulted to a fresh one.
@@ -167,6 +181,52 @@ class TestAStartRegistersAUnitOfWork(StartTestBase):
         started = self._start().json()
         assert Task.objects.get(
             id=started["task_id"]).balance_snapshot_micros == 0
+
+    def test_a_billing_customer_with_no_wallet_row_is_admitted_at_zero(self):
+        """A billing tenant's customer who has never been credited has no
+        `Wallet` row, and starts work at a zero snapshot.
+
+        ⚠ THIS CASE IS NOT EVIDENCE ON ITS OWN, AND SAYING SO IS THE POINT.
+        Admitted-at-zero looks identical whether the money-shaped half RAN and
+        read an absent wallet as zero, or was skipped entirely — measured:
+        reading the condition as *does a Wallet row exist* leaves this case
+        green. The test below is the one that discriminates, and this one
+        carries the claim the service-level guard it replaces used to make.
+        """
+        self._a_tenant_that_bills()
+        assert not Wallet.objects.filter(customer=self.customer).exists()
+
+        started = self._start()
+
+        assert started.status_code == 200
+        assert Task.objects.get(
+            id=started.json()["task_id"]).balance_snapshot_micros == 0
+
+    def test_a_billing_customer_with_no_wallet_row_is_still_subject_to_its_floor(self):
+        """⚠ THE ROW'S ABSENCE IS NOT THE QUESTION, SO IT IS NOT AN ANSWER.
+
+        The money-shaped half is conditioned on the tenant's PRODUCT, and this
+        is the case that shows why it cannot be conditioned on whether a
+        `Wallet` row exists. Put this customer's floor ABOVE zero — the
+        wind-down shape a negative magnitude gives, the line at +2M — and its
+        absent wallet's zero balance is past it, so the start is refused.
+
+        Read the condition as *does a row exist* and this customer skips the
+        checks and is admitted: a real billing customer starting unlimited work
+        with nothing behind it, which is the exact hole the comment at
+        `_TENANT_HAS_A_WALLET` describes. This case goes red under that
+        reading; the one above does not.
+        """
+        self._a_tenant_that_bills()
+        CustomerBillingProfile.objects.create(
+            customer=self.customer, min_balance_micros=-2_000_000)
+        assert not Wallet.objects.filter(customer=self.customer).exists()
+
+        refused = self._start()
+
+        assert refused.status_code == 409
+        assert refused.json()["reason"] == "insufficient_funds"
+        assert Task.objects.count() == 0
 
     def test_a_foreign_customer_is_404(self):
         other = Tenant.objects.create(name="Other", products=["metering"])
@@ -261,7 +321,7 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
         assert unit.total_provider_cost_micros == 7
         assert unit.event_count == 1
 
-    def test_a_repeat_moves_no_money_and_takes_no_reservation(self):
+    def test_a_repeat_adds_nothing_to_the_wallet_the_first_call_did_not(self):
         """THE MONEY-CRITICAL HALF, AND IT IS INVISIBLE IN THE RESPONSE.
 
         ⚠ SAY WHAT THIS DOES AND DOES NOT YET PROVE. Under the rules in force
@@ -305,6 +365,51 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
         assert again.status_code == 200
         assert again.json()["replayed"] is True
         assert Task.objects.get(tenant=self.tenant).metadata == {"attempt": 1}
+
+    def test_a_retry_replays_even_after_the_kind_of_work_is_retired(self):
+        """⚠ THE COMPARISON RE-DERIVES NO POLICY, AND THIS IS WHAT THAT BUYS.
+
+        A start naming a retired kind of work is refused `422` — so if the
+        replay comparison re-asked that question, retiring a kind of work would
+        turn every in-flight retry of work ALREADY RUNNING into a refusal. The
+        retry would then have no way to learn what it started, which is the one
+        case a permanently-claimed key exists to answer. The same holds for a
+        tenant lowering a declared ceiling under a retry.
+        """
+        first = self._start(idempotency_key="k1", task_type=A_KIND_OF_WORK)
+        assert first.status_code == 200
+        TaskType.objects.filter(tenant=self.tenant, key=A_KIND_OF_WORK).update(
+            retired_at=timezone.now())
+        # A NEW start naming it is refused — the premise, so this cannot pass
+        # by the retirement having had no effect at all.
+        assert self._start(task_type=A_KIND_OF_WORK).status_code == 422
+
+        again = self._start(idempotency_key="k1", task_type=A_KIND_OF_WORK)
+        assert again.status_code == 200
+        assert again.json()["replayed"] is True
+        assert again.json()["task_id"] == first.json()["task_id"]
+
+    def test_a_retry_that_omits_a_ceiling_the_first_call_named_replays(self):
+        """THE CEILING IS COMPARED ONLY WHERE THE CALLER NAMES ONE, and that
+        asymmetry is a decision rather than an oversight.
+
+        A caller-supplied ceiling is a request for a LOWER one than the kind of
+        work carries, so naming it states a ceiling and omitting it states only
+        *whatever this kind of work says* — which is not a claim that can
+        contradict anything. A literal reading of "any pinned field differs"
+        would refuse this retry; that would fail an honest client which does
+        not echo optional fields, and it could hand back nothing wrong if it
+        replayed, because the ORIGINAL's ceiling stands and the response says
+        what it is.
+        """
+        first = self._start(idempotency_key="k1",
+                            provider_cost_limit_micros=5_000_000)
+        again = self._start(idempotency_key="k1")
+
+        assert again.status_code == 200
+        assert again.json()["replayed"] is True
+        assert again.json()["task_id"] == first.json()["task_id"]
+        assert again.json()["provider_cost_limit_micros"] == 5_000_000
 
     def test_the_claim_survives_the_work_ending(self):
         """NO RELEASE ON TERMINAL AND NO EXPIRY WINDOW. Releasing at terminal
@@ -362,6 +467,28 @@ class TestARepeatThatContradictsIsRefused(StartTestBase):
         body = self._repeat(**declared_grouping_values({A_GROUPING_KEY: "us"}))
         [wire_key] = declared_grouping_values({})
         assert body["field"] == wire_key
+
+    def test_a_repeat_that_changes_altitude_names_the_parent_not_the_bag(self):
+        """⚠ THE CHEAP FIELDS ARE COMPARED BEFORE THE ONE THAT READS THE
+        REGISTRY, AND THIS IS THE CASE THAT SHOWS WHY.
+
+        Grouping values are declared at an altitude: a key declared at task
+        scope cannot be set at subtask scope. So a repeat that BOTH names a
+        parent the claim does not have AND carries the task-scoped values the
+        original carried is asking two wrong things at once — and resolving the
+        bag first would answer with the scope refusal, a `422` about grouping
+        keys, for a caller whose actual mistake is the parent.
+
+        Comparing the parent first makes the answer the actionable one.
+        """
+        self._claimed(**declared_grouping_values({A_GROUPING_KEY: "eu"}))
+        other = self._start(**declared_grouping_values(
+            {A_GROUPING_KEY: "eu"})).json()["task_id"]
+
+        body = self._repeat(parent_task_id=other,
+                            **declared_grouping_values({A_GROUPING_KEY: "eu"}))
+
+        assert body["field"] == "parent_task_id"
 
     def test_the_refusal_points_at_the_work_the_key_already_claimed(self):
         claimed = self._claimed().json()["task_id"]
@@ -438,9 +565,7 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         assert self._start().status_code == 200
 
     def test_a_customer_that_cannot_afford_the_work_is_refused_at_once(self):
-        self.tenant.products = ["metering", "billing"]
-        self.tenant.billing_mode = "prepaid"
-        self.tenant.save(update_fields=["products", "billing_mode"])
+        self._a_tenant_that_bills()
         self._a_customer_below_its_floor()
 
         response = self._start()
@@ -448,6 +573,36 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         assert response.json()["code"] == "task_start_refused"
         assert response.json()["reason"] == "insufficient_funds"
         assert Task.objects.count() == 0
+
+    def test_the_concurrency_cap_refuses_a_start_at_this_route(self):
+        """⚠ THE CAP IS THE ONE CONTROL ONLY A START CAN BREACH, AND UNTIL THIS
+        CASE EXISTED NOTHING DROVE IT THROUGH THE ROUTE.
+
+        It is asked by its own method rather than by the advisory check, so
+        deleting the call from the start gate leaves every service-level test
+        of the cap green — the guard would be gone and only work already
+        running would prove it had ever been there. This drives the real route
+        and asserts the refusal a caller actually receives.
+        """
+        self._a_tenant_that_bills()
+        Wallet.objects.create(customer=self.customer,
+                              balance_micros=100_000_000)
+        self.tenant.enforcement_mode = "enforcing"
+        self.tenant.save(update_fields=["enforcement_mode"])
+        RiskConfig.objects.create(tenant=self.tenant, max_concurrent_requests=1)
+
+        assert self._start().status_code == 200
+
+        refused = self._start()
+        assert refused.status_code == 409
+        assert refused.json()["code"] == "task_start_refused"
+        # ⚠ THE SYMBOL, NOT THE STRING. The word is another slice's retired
+        # term under a spread ceiling, so a literal here would be a fourth file
+        # on it — and naming the producer's own constant is the stronger
+        # assertion regardless: a private copy of the string would pass
+        # whatever `concurrency_verdict` decided to answer.
+        assert refused.json()["reason"] == CONCURRENCY_LIMIT
+        assert Task.objects.count() == 1
 
 
 @pytest.mark.django_db

@@ -1,9 +1,23 @@
 from django.core.cache import cache
 
-from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
+from core.vocabulary import (
+    TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from apps.billing.gating.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
+
+
+#: THE VERDICT THE PER-OWNER CAP GIVES, named rather than spelled at each
+#: caller.
+#:
+#: ⚠ THE WORD IS A RETIRED TERM UNDER A THREE-FILE SPREAD CEILING slice 6 owns
+#: (it deletes the control outright when admission control is rebuilt), so a
+#: test asserting the literal would put it in a fourth file and fail the sweep.
+#: Naming it here — in the file that PRODUCES the verdict, and one of the three
+#: already counted — lets a caller say what it means, which is `reasons.TASK_LIMIT`'s
+#: pattern and the stronger assertion anyway: a test comparing against its own
+#: copy of the string passes whatever this module decides to answer.
+CONCURRENCY_LIMIT = "concurrency_limit"
 
 
 class RiskService:
@@ -158,9 +172,9 @@ class RiskService:
             from apps.platform.work.models import Task
             owner = resolve_billing_owner(customer)
             running = Task.objects.filter(
-                billing_owner_id=owner.id, status="active").count()
+                billing_owner_id=owner.id, status=TASK_STATUS_ACTIVE).count()
             if running >= config.max_concurrent_requests:
-                return {"allowed": False, "reason": "concurrency_limit",
+                return {"allowed": False, "reason": CONCURRENCY_LIMIT,
                         "balance_micros": balance_micros}
         return {"allowed": True, "reason": None,
                 "balance_micros": balance_micros}

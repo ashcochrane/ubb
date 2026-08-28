@@ -67,7 +67,9 @@ from api.v1.schemas import (
     PaginatedTasks, StartTaskRequest, StartTaskResponse, TaskDetailOut,
     start_task_out, task_out,
 )
+from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.customers.models import Customer
+from apps.platform.grouping_fields.services import DimensionError
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
     CloseDeclaration, DeclarationRefused, StartDeclaration, StartRefused,
@@ -76,6 +78,7 @@ from apps.platform.work.services import (
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
+from core.vocabulary import TENANT_PRODUCT_BILLING
 
 task_router = Router(auth=ApiKeyAuth())
 
@@ -95,8 +98,10 @@ task_router = Router(auth=ApiKeyAuth())
 #: exist*, and those are not the same question: a billing tenant's customer who
 #: has never been credited has no wallet row and a zero balance, and reading
 #: the absence of the row as *no wallet regime to test* would let exactly that
-#: customer start unlimited work with nothing behind it.
-_TENANT_HAS_A_WALLET = "billing"
+#: customer start unlimited work with nothing behind it. That customer is
+#: admitted at zero, which is what `test_a_billing_customer_with_no_wallet_row`
+#: pins — the row's absence is not the question, so it is not an answer either.
+_TENANT_HAS_A_WALLET = TENANT_PRODUCT_BILLING
 
 
 @task_router.post("/tasks", response={200: StartTaskResponse, 404: ProblemOut,
@@ -125,20 +130,8 @@ def start_task(request, payload: StartTaskRequest):
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
     """
-    # ADR-001's boundary discipline puts the product import in the body; this
-    # is the composition layer, which may import any product, and the money
-    # -shaped half of a start is billing's rule to state.
-    from apps.billing.gating.services.risk_service import RiskService
-    from apps.platform.grouping_fields.services import (
-        DimensionError, DimensionService)
-
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
-    # ⚠ NOT THE SAME VOCABULARY AS THE DECLARED KIND OF WORK, though two of its
-    # words are spelled the same — this is `GroupingField.scope`, saying where a
-    # value is SET and therefore how far it is inherited. The argument is made
-    # in full in `RiskService.resolve_type_policy`.
-    scope = "subtask" if payload.parent_task_id is not None else "task"
 
     # ⚠ ONE TRANSACTION AROUND THE WHOLE START, AND EVERY REFUSAL IS RAISED
     # FROM INSIDE IT. That is what makes a refused start spend nothing: the
@@ -157,23 +150,24 @@ def start_task(request, payload: StartTaskRequest):
         claimed = TaskService.claimed_by(tenant, customer,
                                          payload.idempotency_key)
         if claimed is not None:
-            # RESOLVED, NEVER ADMITTED, and never re-derived from policy. A
-            # comparison is a question about what the caller SAID, and both a
-            # recording resolution and a re-run of the ceiling ladder would
-            # make the answer depend on configuration that can move under a
-            # retry — which is the one case a permanent claim exists to answer.
+            # THE DECLARATION DECIDES, AND IT RE-DERIVES NO POLICY. A
+            # comparison is a question about what the caller SAID, so re-running
+            # the ceiling ladder or re-asking whether the kind of work is still
+            # declared would make a retry's answer depend on configuration that
+            # can move under it — the one case a permanent claim exists for.
+            # `conflicting_field_on` reads the database only for the grouping
+            # bag, only after every cheaper field has agreed, and only to
+            # RESOLVE: a repeat records nothing.
             try:
-                declared_slots = DimensionService.resolve(
-                    tenant, payload.dimensions, scope)
+                differing = StartDeclaration(
+                    payload.idempotency_key,
+                    parent_task_id=payload.parent_task_id,
+                    task_type=payload.task_type,
+                    grouping_values=payload.dimensions,
+                    provider_cost_limit_micros=payload.provider_cost_limit_micros,
+                ).conflicting_field_on(claimed, tenant)
             except DimensionError as exc:
                 raise Problem("validation_error", str(exc))
-            differing = StartDeclaration(
-                payload.idempotency_key,
-                parent_task_id=payload.parent_task_id,
-                task_type=payload.task_type,
-                slot_values=declared_slots,
-                provider_cost_limit_micros=payload.provider_cost_limit_micros,
-            ).conflicting_field_on(claimed)
             if differing is not None:
                 field = PINNED_FIELD_ON_THE_WIRE[differing]
                 raise Problem(
