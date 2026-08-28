@@ -600,33 +600,13 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(task.total_provider_cost_micros, 1_000_000)
         self.assertEqual(task.event_count, 1)
 
-    @patch("apps.platform.events.tasks.process_single_event")
-    def test_close_task_success(self, mock_process):
-        task = self._task()
-        # Record some usage first
-        self._record(task_id=str(task.id))
-
-        resp = self.http_client.post(
-            f"/api/v1/metering/tasks/{task.id}/close",
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["task_id"], str(task.id))
-        self.assertEqual(body["status"], "completed")
-        self.assertEqual(body["total_billed_cost_micros"], 1_000_000)
-        self.assertEqual(body["total_provider_cost_micros"], 1_000_000)
-        self.assertEqual(body["event_count"], 1)
-
-    def test_close_task_not_found_returns_404(self):
-        import uuid
-        resp = self.http_client.post(
-            f"/api/v1/metering/tasks/{uuid.uuid4()}/close",
-            content_type="application/json",
-            **self._auth(),
-        )
-        self.assertEqual(resp.status_code, 404)
+    # THE CLOSE'S OWN TESTS MOVED WITH THE ROUTE (#409), to
+    # `test_task_lifecycle_endpoints.py`. It is no longer a metering endpoint:
+    # a unit of work is a kernel concept neither metering nor billing owns, so
+    # the call sits at the root prefix and is ungated. What stays here is the
+    # metering behaviour that happens to close a unit on its way — the rollups
+    # a close reports are still the accumulate primitive's, and the tests below
+    # are about those.
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_cross_tenant_task_id_is_404_and_not_mutated(self, mock_process):

@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from ..models.task_out_status import TaskOutStatus
 from ..types import UNSET, Unset
 from typing import cast
@@ -37,8 +38,10 @@ class TaskOut:
             unresolved_event_count (int):
             completed_at (None | str | Unset):
             dimensions (TaskOutDimensions | Unset):
+            outcome_reason (None | TaskOutOutcomeReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             provider_cost_limit_micros (int | None | Unset):
+            reason_detail (None | str | Unset):
             task_type (str | Unset):  Default: ''.
      """
 
@@ -52,8 +55,10 @@ class TaskOut:
     unresolved_event_count: int
     completed_at: None | str | Unset = UNSET
     dimensions: TaskOutDimensions | Unset = UNSET
+    outcome_reason: None | TaskOutOutcomeReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
+    reason_detail: None | str | Unset = UNSET
     task_type: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -89,6 +94,14 @@ class TaskOut:
         if not isinstance(self.dimensions, Unset):
             dimensions = self.dimensions.to_dict()
 
+        outcome_reason: None | str | Unset
+        if isinstance(self.outcome_reason, Unset):
+            outcome_reason = UNSET
+        elif isinstance(self.outcome_reason, TaskOutOutcomeReasonType0):
+            outcome_reason = self.outcome_reason.value
+        else:
+            outcome_reason = self.outcome_reason
+
         parent_task_id: None | str | Unset
         if isinstance(self.parent_task_id, Unset):
             parent_task_id = UNSET
@@ -100,6 +113,12 @@ class TaskOut:
             provider_cost_limit_micros = UNSET
         else:
             provider_cost_limit_micros = self.provider_cost_limit_micros
+
+        reason_detail: None | str | Unset
+        if isinstance(self.reason_detail, Unset):
+            reason_detail = UNSET
+        else:
+            reason_detail = self.reason_detail
 
         task_type = self.task_type
 
@@ -120,10 +139,14 @@ class TaskOut:
             field_dict["completed_at"] = completed_at
         if dimensions is not UNSET:
             field_dict["dimensions"] = dimensions
+        if outcome_reason is not UNSET:
+            field_dict["outcome_reason"] = outcome_reason
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
         if provider_cost_limit_micros is not UNSET:
             field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if reason_detail is not UNSET:
+            field_dict["reason_detail"] = reason_detail
         if task_type is not UNSET:
             field_dict["task_type"] = task_type
 
@@ -174,6 +197,26 @@ class TaskOut:
 
 
 
+        def _parse_outcome_reason(data: object) -> None | TaskOutOutcomeReasonType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                outcome_reason_type_0 = TaskOutOutcomeReasonType0(data)
+
+
+
+                return outcome_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TaskOutOutcomeReasonType0 | Unset, data)
+
+        outcome_reason = _parse_outcome_reason(d.pop("outcome_reason", UNSET))
+
+
         def _parse_parent_task_id(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -194,6 +237,16 @@ class TaskOut:
         provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
 
 
+        def _parse_reason_detail(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        reason_detail = _parse_reason_detail(d.pop("reason_detail", UNSET))
+
+
         task_type = d.pop("task_type", UNSET)
 
         task_out = cls(
@@ -207,8 +260,10 @@ class TaskOut:
             unresolved_event_count=unresolved_event_count,
             completed_at=completed_at,
             dimensions=dimensions,
+            outcome_reason=outcome_reason,
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,
+            reason_detail=reason_detail,
             task_type=task_type,
         )
 

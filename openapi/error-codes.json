@@ -104,6 +104,10 @@
       "status": 422,
       "title": "Stripe Tax not active"
     },
+    "task_already_terminal": {
+      "status": 409,
+      "title": "This unit of work has already ended, and differently"
+    },
     "unauthorized": {
       "status": 401,
       "title": "Unauthorized"

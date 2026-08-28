@@ -219,12 +219,37 @@ class MeteringClient:
         return BatchResult(results=results, accepted=body.get("accepted", 0),
                            rejected=body.get("rejected", 0))
 
-    def close_task(self, task_id: str) -> CloseTaskResponse:
-        """Close (complete) a task via POST /api/v1/metering/tasks/{task_id}/close.
+    def close_task(self, task_id: str, outcome: str, *,
+                   outcome_reason: str | None = None,
+                   reason_detail: str | None = None) -> CloseTaskResponse:
+        """Close a task via POST /api/v1/tasks/{task_id}/close, DECLARING HOW
+        IT ENDED.
 
-        Closing a parent auto-completes its active subtasks server-side —
-        cleanup is one call. Closing a subtask closes it alone."""
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_CLOSE_TASK(task_id))
+        ``outcome`` is REQUIRED and positional, and this wrapper supplies no
+        default — the server does not either. A default here would be the
+        forgiving path becoming the money-moving one: a caller that forgot the
+        argument would silently declare a delivery.
+
+        ``outcome_reason`` is required when the outcome is a failure, optional
+        on a cancellation, and accepted on neither when the work was delivered;
+        ``reason_detail`` is the free-text sentence beside it and is never
+        required. An unrecognised reason is refused by the server rather than
+        carried through — it is caller-supplied.
+
+        The response says whether this call performed the close or found it
+        already done (``replayed``); a close that contradicts a state the
+        server already recorded is refused rather than answered 200.
+
+        Closing a parent withdraws its still-running contained work
+        server-side — cleanup is one call. Closing contained work closes it
+        alone."""
+        body: dict = {"outcome": outcome}
+        if outcome_reason is not None:
+            body["outcome_reason"] = outcome_reason
+        if reason_detail is not None:
+            body["reason_detail"] = reason_detail
+        r = self._request(*ops.API_V1_TASK_ENDPOINTS_CLOSE_TASK(task_id),
+                          json=body)
         return from_wire(CloseTaskResponse, r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,

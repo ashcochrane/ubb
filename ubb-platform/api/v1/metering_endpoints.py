@@ -35,8 +35,6 @@ from api.v1.schemas import (
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantDefaultMarkupIn, TenantDefaultMarkupOut,
-    CloseTaskResponse,
-    TaskDetailOut, PaginatedTasks, task_out,
     UsageAnalyticsResponse,
     UsageTimeseriesResponse,
     TaskAnalyticsOut,
@@ -510,70 +508,17 @@ def get_usage_event(request, event_id: UUID):
     }
 
 
-# --- Task lifecycle ---
-
-
-@metering_router.post("/tasks/{task_id}/close", response=CloseTaskResponse)
-@role_floor(WRITE)
-def close_task(request, task_id: UUID):
-    """Close (complete) a task or subtask. Closing a PARENT auto-completes
-    its active subtasks in the same transaction (#38) — cleanup is one call;
-    a killed subtask keeps its state. Closing a subtask completes it alone."""
-    _product_check(request)
-    from django.db import transaction
-    from apps.platform.work.services import TaskService
-
-    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
-    with transaction.atomic():
-        completed, _ = TaskService.complete_task(task.id)
-    return {
-        "task_id": str(completed.id),
-        "parent_task_id": str(completed.parent_id) if completed.parent_id else None,
-        "status": completed.status,
-        "total_billed_cost_micros": completed.total_billed_cost_micros,
-        "total_provider_cost_micros": completed.total_provider_cost_micros,
-        "unresolved_event_count": completed.unresolved_event_count,
-        "unpriced_event_count": completed.unpriced_event_count,
-        "event_count": completed.event_count,
-    }
-
-
-@metering_router.get("/tasks", response=PaginatedTasks)
-@role_floor(READ)
-def list_tasks(request, cursor: str = None, limit: int = 50,
-               customer_id: UUIDIdentifier = None, task_type: str = None,
-               status: str = None):
-    """Top-level units of work with their materialized cost rollups.
-
-    Subtasks are omitted — they belong to their parent's detail view, so a
-    listing counts JOBS, not steps."""
-    _product_check(request)
-
-    qs = Task.objects.filter(tenant=request.auth.tenant, parent__isnull=True)
-    if customer_id:
-        qs = qs.filter(customer_id=customer_id)
-    if task_type:
-        qs = qs.filter(task_type=task_type)
-    if status:
-        qs = qs.filter(status=status)
-    return page(qs, cursor, limit, serialize=task_out, time_field="created_at")
-
-
-@metering_router.get("/tasks/{task_id}", response={200: TaskDetailOut, 404: ProblemOut})
-@role_floor(READ)
-def get_task(request, task_id: UUID):
-    """One unit's cost receipt plus its subtask tree.
-
-    Reads the rollups `TaskService.accumulate_cost` maintains — including
-    events that landed after a kill — so this never aggregates
-    ubb_posting. One indexed row read plus its children."""
-    _product_check(request)
-
-    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
-    body = task_out(task)
-    body["subtasks"] = [task_out(s) for s in
-                        task.subtasks.all().order_by("created_at")]
-    return 200, body
+# --- Task analytics ---
+#
+# THE LIFECYCLE ITSELF IS NO LONGER HERE (#409). Reading one unit of work,
+# listing them and closing one moved to the root prefix and are ungated — a
+# unit of work is a kernel concept neither metering nor billing owns, and
+# api/v1/task_endpoints.py carries the argument.
+#
+# The report below deliberately stayed, and stayed gated on `metering`: it is a
+# reporting surface rather than part of the lifecycle, it belongs to the
+# five-endpoint analytics collapse, and moving it on the way past would break
+# one path twice.
 
 
 @metering_router.get("/analytics/tasks", response={200: TaskAnalyticsOut,

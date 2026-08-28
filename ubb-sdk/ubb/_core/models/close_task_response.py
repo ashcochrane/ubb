@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.close_task_response_outcome import CloseTaskResponseOutcome
 from ..models.close_task_response_status import CloseTaskResponseStatus
 from ..types import UNSET, Unset
 from typing import cast
@@ -25,7 +26,10 @@ T = TypeVar("T", bound="CloseTaskResponse")
 class CloseTaskResponse:
     """ 
         Attributes:
+            charge_created (bool):
             event_count (int):
+            outcome (CloseTaskResponseOutcome):
+            replayed (bool):
             status (CloseTaskResponseStatus):
             task_id (str):
             total_billed_cost_micros (int):
@@ -35,7 +39,10 @@ class CloseTaskResponse:
             parent_task_id (None | str | Unset):
      """
 
+    charge_created: bool
     event_count: int
+    outcome: CloseTaskResponseOutcome
+    replayed: bool
     status: CloseTaskResponseStatus
     task_id: str
     total_billed_cost_micros: int
@@ -50,7 +57,13 @@ class CloseTaskResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        charge_created = self.charge_created
+
         event_count = self.event_count
+
+        outcome = self.outcome.value
+
+        replayed = self.replayed
 
         status = self.status.value
 
@@ -74,7 +87,10 @@ class CloseTaskResponse:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "charge_created": charge_created,
             "event_count": event_count,
+            "outcome": outcome,
+            "replayed": replayed,
             "status": status,
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
@@ -92,7 +108,16 @@ class CloseTaskResponse:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        charge_created = d.pop("charge_created")
+
         event_count = d.pop("event_count")
+
+        outcome = CloseTaskResponseOutcome(d.pop("outcome"))
+
+
+
+
+        replayed = d.pop("replayed")
 
         status = CloseTaskResponseStatus(d.pop("status"))
 
@@ -120,7 +145,10 @@ class CloseTaskResponse:
 
 
         close_task_response = cls(
+            charge_created=charge_created,
             event_count=event_count,
+            outcome=outcome,
+            replayed=replayed,
             status=status,
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,

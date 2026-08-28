@@ -29,6 +29,7 @@ import {
   type RefundBody,
   type RefundResult,
   type ReportWindow,
+  type TaskOutcome,
   type TimeseriesParams,
   type UsageAnalytics,
   type UsageEventDetail,
@@ -95,6 +96,36 @@ function notFound(detail: string): ApiProblem {
     detail,
   });
 }
+
+/** A close that contradicts a state the server already recorded (#409). It
+ *  names the unit's REAL state, which is the half that matters: a caller told
+ *  only "conflict" cannot tell a delivery refused on a killed unit from a
+ *  double-submitted button. */
+function alreadyEnded(status: CloseTaskResult["status"]): ApiProblem {
+  return new ApiProblem({
+    status: 409,
+    code: "task_already_terminal",
+    title: "This unit of work has already ended, and differently",
+    detail: `this unit is already ${status} and cannot be closed that way`,
+  });
+}
+
+/** The outcome-to-state map, mirroring the server's. Three declarations, three
+ *  states, and nothing maps onto `killed` or `expired` — which is why a close
+ *  against either is refused by construction rather than by a special case.
+ *
+ *  ⚠ `satisfies Record<TaskOutcome, …>` IS WHAT HOLDS THIS BY REFERENCE, and it
+ *  is the idiom the generated vocabulary uses for its own maps. The console
+ *  generator emits a VALUES array and a union type per concept, not a constant
+ *  per value, so there is no `TASK_OUTCOME_DELIVERED` to import in TypeScript —
+ *  the binding that can fail is the one on the whole map. A fourth declared
+ *  outcome, a mistyped key, or a state that is not a real one is a `tsc` error
+ *  here rather than a silently unmapped state at runtime. */
+const STATUS_FOR_OUTCOME = {
+  delivered: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
+} as const satisfies Record<TaskOutcome, CloseTaskResult["status"]>;
 
 function toRow(detail: UsageEventDetail): UsageEventRow {
   return {
@@ -388,14 +419,30 @@ export async function refundUsage(
 
 const closedTasks = new Map<string, CloseTaskResult>();
 
-export async function closeTask(taskId: string): Promise<CloseTaskResult> {
+export async function closeTask(
+  taskId: string,
+  outcome: TaskOutcome,
+): Promise<CloseTaskResult> {
   await mockDelay(500);
+  // A REPEATED IDENTICAL CLOSE REPLAYS AND WRITES NOTHING (#409). The stored
+  // answer comes back with `replayed` flipped, which is the one field that
+  // tells a retry after a lost response apart from a second close.
   const replay = closedTasks.get(taskId);
-  if (replay) return replay;
+  if (replay) {
+    if (replay.outcome !== outcome) throw alreadyEnded(replay.status);
+    return { ...replay, replayed: true };
+  }
   const taskEvents = ALL_EVENTS.filter(
     (event) => event.detail.task_id === taskId,
   );
   if (taskEvents.length === 0) throw notFound("No task with that id.");
+  // ⚠ AND A UNIT UBB ALREADY KILLED REFUSES EVERY CLOSE (#409), where this
+  // mock used to answer 200 carrying the killed status. That silent success is
+  // exactly what becomes silent revenue loss once a delivery creates a charge:
+  // the caller would be told the close succeeded and never told that no charge
+  // fired. Letting a late delivery override a kill was rejected outright — it
+  // makes ignoring the stop signal free, so the ceiling stops being a ceiling.
+  if (taskId === TASK_KILLED_ID) throw alreadyEnded("killed");
   let billed = 0;
   let provider = 0;
   for (const event of taskEvents) {
@@ -405,8 +452,12 @@ export async function closeTask(taskId: string): Promise<CloseTaskResult> {
   const result: CloseTaskResult = {
     task_id: taskId,
     parent_task_id: null,
-    // A killed unit keeps its state when closed (#38 semantics).
-    status: taskId === TASK_KILLED_ID ? "killed" : "completed",
+    status: STATUS_FOR_OUTCOME[outcome],
+    outcome,
+    replayed: false,
+    // Honestly false on every path: the Charge does not exist yet, and this is
+    // the field's true value under the rules in force rather than a stub.
+    charge_created: false,
     event_count: taskEvents.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,

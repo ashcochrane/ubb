@@ -307,12 +307,6 @@ operations:
     method: GET
     path: /api/v1/me/usage-invoices
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_close_task
-    method: POST
-    path: /api/v1/metering/tasks/{task_id}/close
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.close_task
   - operation_id: api_v1_metering_endpoints_declare_book_publish
     method: POST
     path: /api/v1/metering/pricing/books/{book_id}/publishes
@@ -364,10 +358,6 @@ operations:
   - operation_id: api_v1_metering_endpoints_get_projected_adjustment
     method: GET
     path: /api/v1/metering/pricing/projected-adjustment
-    disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_get_task
-    method: GET
-    path: /api/v1/metering/tasks/{task_id}
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_get_tenant_default_markup
     method: GET
@@ -422,10 +412,6 @@ operations:
   - operation_id: api_v1_metering_endpoints_list_task_types
     method: GET
     path: /api/v1/metering/task-types
-    disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_list_tasks
-    method: GET
-    path: /api/v1/metering/tasks
     disposition: generated_only
   - operation_id: api_v1_metering_endpoints_publish_book_publish
     method: POST
@@ -522,6 +508,20 @@ operations:
   - operation_id: api_v1_sandbox_endpoints_reset_sandbox
     method: POST
     path: /api/v1/sandbox/reset
+    disposition: generated_only
+  - operation_id: api_v1_task_endpoints_close_task
+    method: POST
+    path: /api/v1/tasks/{task_id}/close
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.close_task
+  - operation_id: api_v1_task_endpoints_get_task
+    method: GET
+    path: /api/v1/tasks/{task_id}
+    disposition: generated_only
+  - operation_id: api_v1_task_endpoints_list_tasks
+    method: GET
+    path: /api/v1/tasks
     disposition: generated_only
   - operation_id: api_v1_tenant_endpoints_create_api_key
     method: POST

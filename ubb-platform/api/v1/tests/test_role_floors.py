@@ -41,7 +41,7 @@ _WRITE_ROUTES = {
     # usage ingestion & tasks
     ("POST", "/metering/usage"),
     ("POST", "/metering/usage/batch"),
-    ("POST", "/metering/tasks/{task_id}/close"),
+    ("POST", "/tasks/{task_id}/close"),
     # spend pre-check (may start a task)
     ("POST", "/billing/pre-check"),
     # money IN (driver's amendment: paying into your own wallet is day-to-day)
@@ -177,6 +177,17 @@ _WRITE_ROUTES = {
 # tenant's default markup rung's three routes, counted at #357 above, and a
 # customer's own price, which is a rule declared through a publish on their own
 # book and adds no route of its own. 155 - 5 = 150.
+#
+# ⚠ AND THEN THREE MOVED WITHOUT THE COUNT MOVING AT ALL (slice 5, #409), which
+# is the first entry here that changes the carve table while leaving both
+# numbers alone. Reading one unit of work, listing them and closing one left
+# `/metering/` for the root prefix — a unit of work is a kernel concept neither
+# metering nor billing owns — so `_WRITE_ROUTES` above had to be re-keyed from
+# `/metering/tasks/{task_id}/close` to `/tasks/{task_id}/close` and the two
+# reads keep the Read default under their new key. **A stale carve entry here
+# would not have failed: it would have gone VACUOUS**, silently demanding Admin
+# of a route the entry no longer names, so a close that had quietly become
+# Admin-floored would still pass. 150 + 0 = 150.
 _EXPECTED_FLOORED = 150
 _EXPECTED_EXEMPT = 10
 

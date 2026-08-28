@@ -180,10 +180,6 @@ API_V1_EVENT_TYPE_ENDPOINTS_WITHDRAW_REPORTED_COST_MAPPING = Operation(
     'api_v1_event_type_endpoints_withdraw_reported_cost_mapping',
     'delete',
     '/api/v1/event-types/{key}/reported-cost-mapping')
-API_V1_METERING_ENDPOINTS_CLOSE_TASK = Operation(
-    'api_v1_metering_endpoints_close_task',
-    'post',
-    '/api/v1/metering/tasks/{task_id}/close')
 API_V1_METERING_ENDPOINTS_DECLARE_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_declare_book_publish',
     'post',
@@ -232,8 +228,6 @@ API_V1_METERING_ENDPOINTS_GET_PROJECTED_ADJUSTMENT = Operation(
     'api_v1_metering_endpoints_get_projected_adjustment',
     'get',
     '/api/v1/metering/pricing/projected-adjustment')
-API_V1_METERING_ENDPOINTS_GET_TASK = Operation(
-    'api_v1_metering_endpoints_get_task', 'get', '/api/v1/metering/tasks/{task_id}')
 API_V1_METERING_ENDPOINTS_GET_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_get_tenant_default_markup',
     'get',
@@ -278,8 +272,6 @@ API_V1_METERING_ENDPOINTS_LIST_PRICING_BOOKS = Operation(
     'api_v1_metering_endpoints_list_pricing_books',
     'get',
     '/api/v1/metering/pricing/pricing-books')
-API_V1_METERING_ENDPOINTS_LIST_TASKS = Operation(
-    'api_v1_metering_endpoints_list_tasks', 'get', '/api/v1/metering/tasks')
 API_V1_METERING_ENDPOINTS_LIST_TASK_TYPES = Operation(
     'api_v1_metering_endpoints_list_task_types', 'get', '/api/v1/metering/task-types')
 API_V1_METERING_ENDPOINTS_PUBLISH_BOOK_PUBLISH = Operation(
@@ -358,6 +350,12 @@ API_V1_PLATFORM_ENDPOINTS_GET_BUSINESS = Operation(
     '/api/v1/platform/accounts/business/{external_id}')
 API_V1_SANDBOX_ENDPOINTS_RESET_SANDBOX = Operation(
     'api_v1_sandbox_endpoints_reset_sandbox', 'post', '/api/v1/sandbox/reset')
+API_V1_TASK_ENDPOINTS_CLOSE_TASK = Operation(
+    'api_v1_task_endpoints_close_task', 'post', '/api/v1/tasks/{task_id}/close')
+API_V1_TASK_ENDPOINTS_GET_TASK = Operation(
+    'api_v1_task_endpoints_get_task', 'get', '/api/v1/tasks/{task_id}')
+API_V1_TASK_ENDPOINTS_LIST_TASKS = Operation(
+    'api_v1_task_endpoints_list_tasks', 'get', '/api/v1/tasks')
 API_V1_TENANT_ENDPOINTS_CREATE_API_KEY = Operation(
     'api_v1_tenant_endpoints_create_api_key', 'post', '/api/v1/tenant/api-keys')
 API_V1_TENANT_ENDPOINTS_CREATE_INVITATION = Operation(

@@ -10,9 +10,16 @@ import type {
   AnalyticsParams,
   RefundBody,
   ReportWindow,
+  TaskOutcome,
   TimeseriesParams,
   UsageListFilters,
 } from "./types";
+
+/** What closing a unit of work takes: which one, and how it ended. */
+export interface CloseTaskVariables {
+  taskId: string;
+  outcome: TaskOutcome;
+}
 
 export function useMarginCustomers() {
   return useQuery({
@@ -89,10 +96,17 @@ export function useRefundUsage(customerId: string) {
   });
 }
 
+/** Close a unit of work, declaring how it ended.
+ *
+ * The mutation takes a PAIR rather than a task id (#409), so the outcome has
+ * to be named at the call site. A hook that defaulted it would be the
+ * forgiving path becoming the money-moving one, two layers above the server
+ * that refuses exactly that. */
 export function useCloseTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (taskId: string) => eventsApi.closeTask(taskId),
+    mutationFn: ({ taskId, outcome }: CloseTaskVariables) =>
+      eventsApi.closeTask(taskId, outcome),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
     },

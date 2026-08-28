@@ -7,6 +7,19 @@ from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
 from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
+# ⚠ THE CLOSE'S VALUES ARE NAMED, NEVER SPELLED, on the same footing as the
+# platform tests that land beside them. A test spelling `"delivered"` would go
+# on passing against a wrapper that had stopped agreeing with the registry,
+# which is the whole thing the generated module exists to make impossible.
+#
+# This is a TEST importing them, so it neither pays nor moves
+# `g2-sdk-task_outcome`: the consumer census skips `/tests/` outright — "a test
+# is not a surface a value set ships on" — and the hand-written client's own
+# conversion belongs to the ticket that re-cuts the SDK's task surface.
+from ubb.vocabulary import (
+    OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
+    TASK_OUTCOME_FAILED, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED,
+)
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
 
@@ -467,7 +480,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_close_task_url_and_result(self, mock_post):
         from ubb._core.models.close_task_response import CloseTaskResponse
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "task_id": "task_1", "status": "completed",
+            "task_id": "task_1", "status": TASK_STATUS_COMPLETED,
             "total_billed_cost_micros": 2_500_000,
             "total_provider_cost_micros": 1_750_000,
             # Closing a unit settles nothing UBB never learned (#328), so a
@@ -477,13 +490,25 @@ class MeteringClientTest(unittest.TestCase):
             "unresolved_event_count": 3,
             "unpriced_event_count": 0,
             "event_count": 12,
+            # The declaration echoed back beside the state it produced, and
+            # whether this call was the one that performed the close (#409).
+            "outcome": TASK_OUTCOME_DELIVERED,
+            "replayed": False,
+            "charge_created": False,
         })
-        result = self.client.close_task("task_1")
+        result = self.client.close_task("task_1", TASK_OUTCOME_DELIVERED)
         self.assertEqual(mock_post.call_args.args[0],
-                         "/api/v1/metering/tasks/task_1/close")
+                         "/api/v1/tasks/task_1/close")
+        # THE OUTCOME IS SENT, and it is the whole point of the call: the
+        # server has no default and neither does this wrapper.
+        self.assertEqual(mock_post.call_args.kwargs["json"],
+                         {"outcome": TASK_OUTCOME_DELIVERED})
         self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.task_id, "task_1")
-        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.status, TASK_STATUS_COMPLETED)
+        self.assertEqual(result.outcome, TASK_OUTCOME_DELIVERED)
+        self.assertIs(result.replayed, False)
+        self.assertIs(result.charge_created, False)
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
         self.assertEqual(result.total_provider_cost_micros, 1_750_000)
         self.assertEqual(result.unresolved_event_count, 3)
@@ -495,15 +520,39 @@ class MeteringClientTest(unittest.TestCase):
         from ubb._core.models.close_task_response import CloseTaskResponse
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "task_id": "sub_1", "parent_task_id": "task_1",
-            "status": "completed",
+            "status": TASK_STATUS_COMPLETED,
             "total_billed_cost_micros": 100, "total_provider_cost_micros": 80,
             "unresolved_event_count": 0,
             "unpriced_event_count": 0,
             "event_count": 1,
+            "outcome": TASK_OUTCOME_DELIVERED,
+            "replayed": False,
+            "charge_created": False,
         })
-        result = self.client.close_task("sub_1")
+        result = self.client.close_task("sub_1", TASK_OUTCOME_DELIVERED)
         self.assertIsInstance(result, CloseTaskResponse)
         self.assertEqual(result.parent_task_id, "task_1")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_a_reason_travels_beside_the_outcome(self, mock_post):
+        """Both optional fields are omitted from the body unless given, so a
+        caller that says nothing sends nothing — which is what lets the server
+        tell *not declared* apart from *declared empty*."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "task_id": "task_1", "status": TASK_STATUS_FAILED,
+            "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
+            "unresolved_event_count": 0, "unpriced_event_count": 0,
+            "event_count": 0, "outcome": TASK_OUTCOME_FAILED, "replayed": False,
+            "charge_created": False,
+        })
+        self.client.close_task("task_1", TASK_OUTCOME_FAILED,
+                               outcome_reason=OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+                               reason_detail="the provider returned 503")
+        self.assertEqual(mock_post.call_args.kwargs["json"], {
+            "outcome": TASK_OUTCOME_FAILED,
+            "outcome_reason": OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+            "reason_detail": "the provider returned 503",
+        })
 
     # ---- book URL correctness ----
 

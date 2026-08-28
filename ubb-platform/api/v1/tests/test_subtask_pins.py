@@ -32,9 +32,10 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
+    TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED)
 
@@ -344,7 +345,7 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
 
     def test_terminal_parent_refused_parent_task_not_active(self):
         parent = self._task()
-        TaskService.complete_task(parent.id)
+        TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         body = self._pre_check(parent_task_id=str(parent.id)).json()
         self.assertFalse(body["allowed"])
         self.assertEqual(body["reason"], "parent_task_not_active")
@@ -408,7 +409,9 @@ class CloseCascadeTest(SubtaskPinTestBase):
         TaskService.kill_task(sub_killed.id)
 
         resp = self.http_client.post(
-            f"/api/v1/metering/tasks/{parent.id}/close", **self._auth())
+            f"/api/v1/tasks/{parent.id}/close",
+            data=json.dumps({"outcome": TASK_OUTCOME_DELIVERED}),
+            content_type="application/json", **self._auth())
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["status"], TASK_STATUS_COMPLETED)
@@ -423,7 +426,9 @@ class CloseCascadeTest(SubtaskPinTestBase):
         parent = self._task()
         sub = self._task(parent=parent)
         resp = self.http_client.post(
-            f"/api/v1/metering/tasks/{sub.id}/close", **self._auth())
+            f"/api/v1/tasks/{sub.id}/close",
+            data=json.dumps({"outcome": TASK_OUTCOME_DELIVERED}),
+            content_type="application/json", **self._auth())
         body = resp.json()
         self.assertEqual(body["status"], TASK_STATUS_COMPLETED)
         self.assertEqual(body["parent_task_id"], str(parent.id))

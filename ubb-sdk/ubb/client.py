@@ -245,9 +245,20 @@ class UBBClient:
             raise_on_stop=raise_on_stop,
         )
 
-    def close_task(self, task_id: str) -> CloseTaskResponse:
-        """Close (complete) a task. Requires metering product."""
-        return self._require_metering().close_task(task_id)
+    def close_task(self, task_id: str, outcome: str, *,
+                   outcome_reason: str | None = None,
+                   reason_detail: str | None = None) -> CloseTaskResponse:
+        """Close a task, DECLARING HOW IT ENDED. Requires metering product.
+
+        `outcome` is required and positional here for the reason it is on the
+        client beneath: a facade that defaulted it would put the forgiving path
+        back under the money-moving one, and a caller that forgot the argument
+        would silently declare a delivery. See `MeteringClient.close_task` for
+        the reason rules the server applies to the two optional fields.
+        """
+        return self._require_metering().close_task(
+            task_id, outcome, outcome_reason=outcome_reason,
+            reason_detail=reason_detail)
 
     # ---- platform-level methods (use metering's HTTP client) ----
 

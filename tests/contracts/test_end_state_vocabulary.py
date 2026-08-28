@@ -790,17 +790,26 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     say which ticket. That is the whole reason this is an equality: a concept
     that quietly LOST its consumer would otherwise join the list unremarked.
 
-    **`outcome_reason` joins on the same terms (#406).** Slice 5's one coinage
-    is declared before anything reads it, for #316's reason exactly: a public
-    closed value set that reaches code before it reaches the registry is an
-    undeclared public value set, and ADR-0007 §3 leaves no way to park one under
-    a provisional name. Declaring its three eventual consumers now would produce
-    three unexcused findings — two G2 and one G4 — and the slice may add no
-    ledger entry to excuse them. **#409 adds the close field that holds the
-    values by reference, and declares the backend consumer in that same commit.**
+    **`outcome_reason` joined on the same terms in #406 and LEFT in #409**,
+    which is the shortest round trip this list has recorded. It was declared
+    before anything read it for #316's reason exactly: a public closed value set
+    that reaches code before it reaches the registry is an undeclared public
+    value set, and ADR-0007 §3 leaves no way to park one under a provisional
+    name. Declaring its eventual consumers then would have produced unexcused
+    findings the slice may add no ledger entry to excuse. #409 added the close
+    field that holds the values by reference and declared the backend and
+    openapi consumers in that same commit, so the concept came off this list
+    exactly as the entry above said it would — leaving the pair that has been
+    here since slice 0.
+
+    **The console consumer is still owed, by #424, and that does NOT put the
+    concept back on this list.** This list is about a concept with NO consumer
+    at all; a concept whose declared consumers all serve it, and which a later
+    ticket will teach to a third surface, is not an unconsumed concept. The
+    registry entry names the owing ticket, which is where that claim lives.
     """
     assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment", "outcome_reason",
+        "payment_rail", "payment_rail_environment",
     }
 
 
@@ -954,30 +963,32 @@ def test_the_entry_says_the_value_is_caller_supplied_and_refused_when_unseen(
     )
 
 
-def test_the_close_reason_names_the_ticket_that_will_consume_it(registry):
-    """`consumers: []` is the honest declaration, and it has to be legible.
+def test_the_close_reason_names_the_ticket_that_still_owes_it_a_surface(
+        registry):
+    """A surface a concept has not reached yet has to say which ticket brings
+    it, or "waiting" is indistinguishable from "quietly forgotten".
 
-    Declaring a consumer that does not yet hold the values is an UNEXCUSED G2
-    or G4 failure — proved, not assumed: the three surfaces §6 will eventually
-    reach produce exactly three findings, and this slice is forbidden from
-    adding a ledger entry to excuse one. So the concept waits, exactly as
-    `unresolved_reason` waited between #316 and #317.
+    ⚠ **THIS TEST WAS SCAFFOLDING WITH A LARGER CLAIM, AND #409 NARROWED IT TO
+    WHAT IS STILL TRUE.** It used to assert that `outcome_reason` was in
+    `concepts_without_consumers` at all — the state #406 left it in, when
+    declaring ANY consumer would have been an unexcused G2 or G4 finding the
+    slice could add no ledger entry to excuse. #409 declared the backend and
+    openapi consumers, so that assertion became a claim about a state the tree
+    no longer has, which is the shape a later reader "fixes" by re-emptying the
+    consumer list. It was deleted rather than adjusted.
 
-    What tells "waiting" apart from "quietly forgotten" is whether anybody can
-    say which ticket — for EVERY surface, not just the first. #406's acceptance
-    criterion asks for the backend, console and contract consumers to be named,
-    and with the list itself empty the commentary is the only place that can
-    honestly carry them.
-
-    ⚠ **THIS TEST IS SCAFFOLDING, AND #409 DELETES IT.** The moment that ticket
-    declares the backend consumer, `outcome_reason` leaves
-    `concepts_without_consumers` and the first assertion below goes red — so
-    deleting this test is part of paying the debt, in the same commit that
-    drops the concept from the closing equality above. Left standing it would
-    be a test asserting a state the tree no longer has, which is the shape a
-    later reader "fixes" by re-emptying the consumer list.
+    What survives is the half that is still owed. The console consumer arrives
+    with #424, the runs surface — where a unit of work's terminal state is
+    rendered and therefore where a reader asks why it did not deliver — and
+    until it does, the entry's own commentary is the only place that can say
+    so. #409 stays named beside it because the commentary now records which
+    ticket each ARRIVED surface came in on, and a reader tracing the console's
+    absence needs to know the other two are not absent for the same reason.
     """
-    assert "outcome_reason" in registry.concepts_without_consumers
+    assert "outcome_reason" not in registry.concepts_without_consumers, (
+        "the close reason has lost its consumers — #409 declared the backend "
+        "and openapi ones, and re-emptying the list would un-advertise a value "
+        "set the contract now publishes")
 
     commentary = _close_reason_commentary()
     assert commentary, (

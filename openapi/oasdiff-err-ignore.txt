@@ -666,3 +666,46 @@ GET /api/v1/metering/pricing/customers/{customer_id}/markup api path removed wit
 GET /api/v1/metering/pricing/markup api path removed without deprecation
 PUT /api/v1/metering/pricing/customers/{customer_id}/markup api path removed without deprecation
 PUT /api/v1/metering/pricing/markup api path removed without deprecation
+
+# --- slice 5 (#409): the unit-of-work lifecycle moves to the root prefix -----
+#
+# Reading one unit of work, listing them and closing one leave `/metering/` for
+# the root prefix, ungated:
+#
+#     GET  /api/v1/metering/tasks             -> GET  /api/v1/tasks
+#     GET  /api/v1/metering/tasks/{task_id}   -> GET  /api/v1/tasks/{task_id}
+#     POST /api/v1/metering/tasks/{id}/close  -> POST /api/v1/tasks/{id}/close
+#
+# A unit of work is a KERNEL concept: metering hangs postings off it, billing
+# starts one behind its spend gate and will key a charge on how it ended, and
+# spend control kills one. A thing several products realize and none owns is
+# mounted at the root prefix — the rule `/plans` and `/event-types` already
+# follow, and which `api/v1/event_type_endpoints.py` names these very routes as
+# NOT having settled: they sat under `/metering/` *because they predate that
+# rule, not because it spared them*. ADR-0007 §3 forbids breaking a name twice
+# to repair a first break, so leaving them there would have made the mismatch
+# permanent.
+#
+# ⚠ ONLY ONE OF THE THREE REMOVALS APPEARS BELOW, AND THAT IS THE CUMULATIVE
+# COMPARISON WORKING RATHER THAN TWO LINES SOMEBODY FORGOT. The two reads did
+# not exist at the `api-v1-launch` tag — they arrived after it and depart here,
+# so a diff against the tag sees neither their arrival nor their departure and
+# emits nothing for either. This is the shape #368 and #369 both recorded, and
+# it is why BOTH directions were run: the authoring direction (`--baseline
+# origin/main`) reports all three, the cumulative gate reports one, and only
+# what the cumulative gate is missing may be filed. Pasting the other two would
+# fail this gate as suppressions that suppress nothing.
+#
+# ⚠ THE CLOSE'S NEW REQUIRED `outcome` EMITS NOTHING EITHER, for the reason the
+# deleted component schemas above emit nothing: the body arrives on a path
+# `oasdiff` sees as ADDED, so there is no before-and-after body to compare. The
+# requirement is real, and it is the sharpest part of this change — a close now
+# refuses to default to a delivery, because the forgiving path must never be
+# the money-moving one — but it is not a break the tool can report, and a
+# hand-typed line for it would suppress nothing.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and every known consumer moves in
+# this same commit — the SDK core, its hand-written `close_task`, the console's
+# committed schema snapshot, and the platform's own tests.
+POST /api/v1/metering/tasks/{task_id}/close api path removed without deprecation

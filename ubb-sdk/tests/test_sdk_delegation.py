@@ -230,6 +230,64 @@ class TestRecordUsageSignatureParity:
                 )
 
 
+class TestCloseTaskSignatureParity:
+    """`UBBClient.close_task` must be a non-lossy passthrough too (#409).
+
+    ⚠ THIS IS THE PARITY CHECK THE CLASS ABOVE ALREADY HAD FOR `record_usage`,
+    AND ITS ABSENCE HERE COST A REAL BUG. When the close gained its required
+    `outcome`, the facade went on calling the metering client with a task id
+    alone — a `TypeError` on every call through `UBBClient`, with the whole SDK
+    suite green because nothing exercised the facade's close at all. Generalised
+    rather than copied: one list, both methods, so the third facade method to
+    grow an argument is covered on the day it does.
+    """
+
+    #: (facade method, metering method) pairs the facade must mirror in full.
+    #: Params intentionally NOT mirrored go in `KNOWN_DIVERGENCES` with a
+    #: comment; there are none today for either method.
+    PASSTHROUGHS = ("record_usage", "close_task")
+    KNOWN_DIVERGENCES: set = set()
+
+    def test_every_facade_passthrough_accepts_every_lower_param(self):
+        for method in self.PASSTHROUGHS:
+            facade = inspect.signature(getattr(UBBClient, method)).parameters
+            lower = inspect.signature(getattr(MeteringClient, method)).parameters
+            for name in lower:
+                if name == "self" or name in self.KNOWN_DIVERGENCES:
+                    continue
+                assert name in facade, (
+                    f"UBBClient.{method} is missing '{name}', which "
+                    f"MeteringClient.{method} accepts"
+                )
+
+    def test_the_facade_close_actually_forwards_the_declaration(self):
+        """A signature can match while the body drops an argument, which is a
+        different failure and the one that reaches a caller."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        sentinel = object()
+        client.metering.close_task = MagicMock(return_value=sentinel)
+
+        result = client.close_task("task_1", "delivered",
+                                   outcome_reason="timeout",
+                                   reason_detail="took too long")
+
+        assert result is sentinel
+        args, kwargs = client.metering.close_task.call_args
+        assert args == ("task_1", "delivered")
+        assert kwargs == {"outcome_reason": "timeout",
+                          "reason_detail": "took too long"}
+        client.close()
+
+    def test_the_facade_close_requires_an_outcome(self):
+        """No default on the facade either: the forgiving path must never be
+        the money-moving one, at any layer."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        client.metering.close_task = MagicMock()
+        with pytest.raises(TypeError):
+            client.close_task("task_1")
+        client.close()
+
+
 class TestCreateCustomerDelegation:
     """create_customer uses metering._request to call the platform API."""
 

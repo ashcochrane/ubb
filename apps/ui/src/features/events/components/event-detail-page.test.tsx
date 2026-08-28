@@ -157,12 +157,12 @@ describe("EventDetailPage", () => {
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
 
     const closeButton = await screen.findByRole("button", {
-      name: "Close task",
+      name: "Close as delivered",
     });
     fireEvent.click(closeButton);
 
     // Confirm inside the dialog.
-    const confirm = await screen.findByRole("button", { name: "Yes, close it" });
+    const confirm = await screen.findByRole("button", { name: "Yes, it delivered" });
     fireEvent.click(confirm);
 
     // The returned status + rolled-up totals render inline.
@@ -461,31 +461,76 @@ describe("EventDetailPage", () => {
     // supplier cost can only be higher than it says.
     renderPage({ eventId: EVENT_UNRESOLVED_ID, customerId: CUSTOMER_A_ID });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Close task" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Yes, close it" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Close as delivered" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, it delivered" }));
 
     expect(await screen.findByText(/Task closed/)).toBeInTheDocument();
     expect(screen.getByText(/^at least \$\d/)).toBeInTheDocument();
     expect(screen.getByText("Costs still unknown")).toBeInTheDocument();
   });
 
-  // AC 3, and the case a marker would get wrong. The killed task holds two
-  // events costed two different ways — one reported by the caller, one
-  // calculated from Cost Rates — and nothing is missing from it. Mixed
-  // derivation is COMPLETE: a footnote on every mixed total is a footnote on
-  // almost every total, and the completeness question reads the count and
-  // nothing else.
+  // AC 3, and the case a marker would get wrong. A task holding two events
+  // costed two different ways — one reported by the caller, one calculated
+  // from Cost Rates — has nothing missing from it. Mixed derivation is
+  // COMPLETE: a footnote on every mixed total is a footnote on almost every
+  // total, and the completeness question reads the count and nothing else.
+  //
+  // ⚠ THE VEHICLE MOVED IN #409 AND THE CLAIM DID NOT. This used to close the
+  // KILLED task, which held the reported/calculated pair on purpose — and a
+  // close against a killed unit is now REFUSED rather than answered 200 (see
+  // the test below). The fixed-price task carries the same pair: a calculated
+  // supplier cost on one event and a `reported` one on the other, both known,
+  // and nothing unresolved between them. The claim under test is the caveat
+  // logic, not which task carries it.
   it("reads a task costed BOTH ways as complete, with no caveat", async () => {
-    renderPage({ eventId: EVENT_TASK_KILL_ID, customerId: CUSTOMER_A_ID });
+    renderPage({ eventId: EVENT_TASK_CHARGE_ID, customerId: CUSTOMER_A_ID });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Close task" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Yes, close it" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Close as delivered" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Yes, it delivered" }),
+    );
 
-    expect(await screen.findByText(/Task closed — Killed/)).toBeInTheDocument();
-    // Two events, $0.05 reported + $0.03 calculated, and the total is a figure.
-    expect(screen.getByText("$0.08")).toBeInTheDocument();
+    expect(await screen.findByText(/Task closed — Completed/)).toBeInTheDocument();
     expect(screen.queryByText(/at least/)).not.toBeInTheDocument();
     expect(screen.queryByText("Costs still unknown")).not.toBeInTheDocument();
+  });
+
+  // ⚠ THE CASE THAT MATTERS, AND IT USED TO BE A SILENT SUCCESS (#409). This
+  // console answered 200 for a close against a unit UBB had already killed,
+  // carrying the killed status and no indication that anything had been
+  // refused. Once a delivery creates a charge that is silent revenue loss
+  // whose first symptom is a month-end number lower than expected — and
+  // letting the late delivery win instead was rejected outright, because it
+  // makes ignoring the stop signal free and the ceiling stops being a ceiling.
+  it("refuses a delivery declared on a task UBB already killed", async () => {
+    renderPage({ eventId: EVENT_TASK_KILL_ID, customerId: CUSTOMER_A_ID });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Close as delivered" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Yes, it delivered" }),
+    );
+
+    // Wait for the refusal to land: the confirm button leaves its pending
+    // wording, and the dialog stays OPEN because only success dismisses it.
+    expect(
+      await screen.findByRole("button", { name: "Yes, it delivered" }),
+    ).toBeInTheDocument();
+
+    // NOTHING IS RECORDED, which is the claim. The inline totals block renders
+    // only from a successful close, so its absence is the console saying the
+    // declaration did not take.
+    //
+    // ⚠ ASSERTED AS AN ABSENCE ON PURPOSE. The refusal itself is presented as
+    // a toast, and this harness mounts no toaster, so a test for its wording
+    // would be a test of the harness. The failure mode actually being guarded
+    // is a console that renders a delivery the server declined — which is what
+    // this page did before #409, because the mock beside it answered 200.
+    expect(screen.queryByText(/Task closed/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Total billed")).not.toBeInTheDocument();
   });
 
   it("shows the refund dialog with replay-safe copy and issues the refund", async () => {

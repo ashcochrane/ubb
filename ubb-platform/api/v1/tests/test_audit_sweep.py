@@ -25,7 +25,7 @@ _EXEMPT = {
     ("POST", "/metering/usage/batch"),
     # Task close finalises a metering task — the tail of usage ingestion, and
     # any settlement it triggers is automatic, not a principal moving money.
-    ("POST", "/metering/tasks/{task_id}/close"),
+    ("POST", "/tasks/{task_id}/close"),
     # Spend pre-check — an enforcement read on the hot path that may open a task;
     # telemetry-adjacent, authors no governance/config/money change.
     ("POST", "/billing/pre-check"),

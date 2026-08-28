@@ -1,6 +1,6 @@
 """The one versioned NinjaAPI (#77, ADR-002 Stage 1).
 
-Twelve routers — eight composition-layer, four product-owned — mounted on a
+Sixteen routers — twelve composition-layer, four product-owned — mounted on a
 single API served at ``/api/v1/``. Products expose ``Router`` objects; this
 module (the composition layer) mounts them, so ADR-001's import matrix is
 respected, not amended. Per-router ``auth=`` preserves the pre-restructure
@@ -25,6 +25,7 @@ from api.v1.metering_endpoints import metering_router
 from api.v1.plan_endpoints import plan_router
 from api.v1.platform_endpoints import platform_router
 from api.v1.sandbox_endpoints import sandbox_router
+from api.v1.task_endpoints import task_router
 from api.v1.tenant_endpoints import tenant_router
 from apps.platform.events.api.webhook_endpoints import webhook_router
 from apps.platform.events.openapi import build_webhooks_section
@@ -106,6 +107,14 @@ api.add_router("audit/", audit_router)
 # one product's prefix would say the opposite on the published contract —
 # which ADR-0007 §3 then forbids correcting. api/v1/event_type_endpoints.py
 # carries the argument.
+#
+# The unit-of-work lifecycle joins them on the same footing and settles the
+# question those two left open — its three routes were behind /metering/
+# because they predate the rule, not because the rule spared them. It differs
+# from both in ONE respect, argued in api/v1/task_endpoints.py: it is UNGATED,
+# because a unit of work is not a vocabulary a product declares but the thing
+# every product's answer is about.
 api.add_router("", plan_router)
 api.add_router("", event_type_router)
+api.add_router("", task_router)
 api.add_router("", root_router)

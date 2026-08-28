@@ -900,6 +900,30 @@ CONCEPTS_IN_THE_CONTRACT = {
     # that switched exhaustively over the partial one. `failed` gains its first
     # writer in the ticket that makes the close declare an outcome.
     "task_status": Published(3, ENUM),
+    # WHAT THE CALLER DECLARES WHEN IT CLOSES A UNIT OF WORK (#409) — two
+    # nodes, and they are the two DIRECTIONS of one declaration: the request
+    # field that carries it in, and the response field that echoes it back
+    # beside the state it produced. There is no third, because a unit does not
+    # store the outcome: `task_status` above IS the outcome, recorded.
+    #
+    # ⚠ ITS BACKEND HALF WAS §27's FOURTH SHAPE, and the shortest of the four.
+    # The entry read `0 of 3 values` over a consumer that spelled the words
+    # inline and enumerated nothing, so paying it ADDED AN IMPORT rather than
+    # replacing a list: `STATUS_FOR_OUTCOME` in the work service now maps each
+    # generated constant to the state it enters, and the census counts three
+    # references where it counted none.
+    "task_outcome": Published(2, ENUM),
+    # WHY THE CALLER SAID IT DID NOT DELIVER (#409) — three nodes: the request
+    # field, and the two published shapes that read it back.
+    #
+    # ⚠ IT HAS NO LEDGER ENTRY AND NEVER DID, which is `not_applicable_reason`'s
+    # precedent rather than an omission. #406 coined it with NO consumers at
+    # all — naming a surface before it holds the values is an unexcused finding,
+    # and a slice may not add a ledger entry to excuse a debt it created — so
+    # this concept went from unadvertised to fully served in one commit and
+    # there was never a G4 debt to delete. The seeding floor below therefore
+    # moves for `task_outcome` alone.
+    "outcome_reason": Published(3, ENUM),
 }
 
 
@@ -1185,6 +1209,21 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # narrowing the query is a separate decision nobody has made.
     placed("task_status",
            {"CloseTaskResponse", "TaskOut", "TaskDetailOut"})
+    # WHAT THE CALLER DECLARED (#409), on the request that carries it and the
+    # response that echoes it. Both directions of one field, and the only two
+    # schemas a declared outcome appears on.
+    placed("task_outcome", {"CloseTaskRequest", "CloseTaskResponse"})
+    # AND WHY IT DID NOT DELIVER — declared on the close and read back on both
+    # published shapes of a unit.
+    #
+    # ⚠ NOT ON `CloseTaskResponse`, and that is the placement a reader would
+    # expect a fourth of. The close answers with the outcome and the state; the
+    # reason is not part of what the call decided, and echoing it would be a
+    # second copy of a field the detail view beside it already serves. The
+    # free-text `reason_detail` travelling with it carries NO marker anywhere,
+    # because the registry refuses one on a `free_text` concept — there is no
+    # value set to advertise, and a marker would publish an empty promise.
+    placed("outcome_reason", {"CloseTaskRequest", "TaskOut", "TaskDetailOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1820,8 +1859,9 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     advertised `pricing_method`, the second concept of that pair's own slice and
     again one entry, 22 → 21 in #366, which advertised `rate_structure`,
     21 → 20 in #370, which advertised `pricing_receipt_subject_type`,
-    20 → 19 in #407, which advertised `task_type_kind`, and 19 → 18 in #408,
-    which advertised `task_status`.
+    20 → 19 in #407, which advertised `task_type_kind`, 19 → 18 in #408,
+    which advertised `task_status`, and 18 → 17 in #409, which advertised
+    `task_outcome`.
 
     ⚠ #366 AND #370 EACH PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
     right rather than an accounting slip: the G4 debt and the backend G2 debt
@@ -1870,6 +1910,16 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     and the seeding does not shrink. A floor lowered for it would have been
     lowered for a deletion that never happened.
 
+    ⚠ #409 IS THE SAME CASE ONE SLICE LATER, and it is worth naming because it
+    is the first time the coinage and the payment were in DIFFERENT commits.
+    `outcome_reason` was coined in #406 with no consumers at all, reached both
+    of its surfaces here, and owed no G4 entry at any point in between — so it
+    moved this floor by nothing, exactly as `not_applicable_reason` did. The
+    single step above is `task_outcome`'s alone, and its G2 half was §27's
+    fourth shape: an entry reading `0 of 3` over a consumer that spelled the
+    words inline and enumerated nothing, paid by ADDING AN IMPORT rather than
+    by replacing a list.
+
     Lowering it is the correct
     response to a debt being paid and the WRONG response to a walk breaking,
     and the two are told apart by the assertion above it rather than by this
@@ -1880,6 +1930,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 18, (
+    assert len(_entries(programme)) >= 17, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

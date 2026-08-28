@@ -9,7 +9,10 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import CloseDeclaration, TaskService
+from core.vocabulary import (
+    TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
+    TASK_STATUS_KILLED)
 
 
 class TaskServiceCreateTest(TestCase):
@@ -27,7 +30,7 @@ class TaskServiceCreateTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=3_000_000,
             provider_cost_limit_micros=10_000_000,
         )
-        self.assertEqual(task.status, "active")
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
         self.assertEqual(task.balance_snapshot_micros, 3_000_000)
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 0)
@@ -108,7 +111,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertEqual(task.total_billed_cost_micros, 2_000_000)
         self.assertEqual(task.event_count, 2)
         # accumulate_cost never kills — the caller owns the kill flow.
-        self.assertEqual(task.status, "active")
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
 
     def test_only_the_provider_total_races_the_limit(self):
         task = self._task(balance=100_000_000, limit=self.limit)
@@ -124,7 +127,7 @@ class TaskServiceAccumulateTest(TestCase):
             provider_cost_micros=999_999_999_999)
         self.assertEqual(result.total_billed_cost_micros, 999_999_999_999)
         self.assertEqual(result.total_provider_cost_micros, 999_999_999_999)
-        self.assertEqual(result.status, "active")
+        self.assertEqual(result.status, TASK_STATUS_ACTIVE)
         self.assertFalse(any(verdicts.values()))
 
     def test_accumulate_cost_exact_limit_not_crossed(self):
@@ -133,7 +136,7 @@ class TaskServiceAccumulateTest(TestCase):
             task.id, billed_cost_micros=0, provider_cost_micros=10_000_000)
         self.assertEqual(result.total_provider_cost_micros, 10_000_000)
         self.assertFalse(verdicts["crossed_task_limit"])
-        self.assertEqual(result.status, "active")
+        self.assertEqual(result.status, TASK_STATUS_ACTIVE)
 
     def test_accumulate_cost_one_over_limit_crosses(self):
         task = self._task(limit=self.limit)
@@ -155,7 +158,7 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertFalse(verdicts["crossed_task_limit"])
 
         # The late event still landed, billed, and counted into BOTH totals.
-        self.assertEqual(result.status, "killed")
+        self.assertEqual(result.status, TASK_STATUS_KILLED)
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 1_000)
         self.assertEqual(task.total_provider_cost_micros, 5_000_000)
@@ -163,12 +166,12 @@ class TaskServiceAccumulateTest(TestCase):
 
     def test_accumulate_cost_on_completed_task_returns_not_active_and_persists(self):
         task = self._task(limit=self.limit)
-        TaskService.complete_task(task.id)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=1_000, provider_cost_micros=2_000)
         self.assertTrue(verdicts["task_not_active"])
-        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.status, TASK_STATUS_COMPLETED)
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 1_000)
         self.assertEqual(task.total_provider_cost_micros, 2_000)
@@ -189,7 +192,7 @@ class TaskServiceKillTest(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         killed, _ = TaskService.kill_task(task.id, reason=TASK_LIMIT)
-        self.assertEqual(killed.status, "killed")
+        self.assertEqual(killed.status, TASK_STATUS_KILLED)
         self.assertIsNotNone(killed.completed_at)
         self.assertEqual(killed.metadata["kill_reason"], TASK_LIMIT)
 
@@ -199,18 +202,18 @@ class TaskServiceKillTest(TestCase):
         )
         TaskService.kill_task(task.id)
         killed, _ = TaskService.kill_task(task.id)  # second call = no-op
-        self.assertEqual(killed.status, "killed")
+        self.assertEqual(killed.status, TASK_STATUS_KILLED)
 
     def test_kill_task_noop_on_completed(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        TaskService.complete_task(task.id)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         result, _ = TaskService.kill_task(task.id)
-        self.assertEqual(result.status, "completed")  # not changed to killed
+        self.assertEqual(result.status, TASK_STATUS_COMPLETED)  # not changed to killed
 
 
-class TaskServiceCompleteTest(TestCase):
+class TaskServiceCloseTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test Tenant", products=["metering", "billing"]
@@ -219,32 +222,35 @@ class TaskServiceCompleteTest(TestCase):
             tenant=self.tenant, external_id="cust-1"
         )
 
-    def test_complete_task_sets_status(self):
+    def test_close_task_sets_status(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        completed, transitioned = TaskService.complete_task(task.id)
+        completed, transitioned = TaskService.close_task(
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
-        self.assertEqual(completed.status, "completed")
+        self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         self.assertIsNotNone(completed.completed_at)
 
-    def test_complete_task_idempotent(self):
+    def test_close_task_idempotent(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        TaskService.complete_task(task.id)
-        completed, transitioned = TaskService.complete_task(task.id)
+        TaskService.close_task(task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
+        completed, transitioned = TaskService.close_task(
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertFalse(transitioned)
-        self.assertEqual(completed.status, "completed")
+        self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
 
-    def test_complete_task_noop_on_killed(self):
+    def test_close_task_noop_on_killed(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
         TaskService.kill_task(task.id)
-        result, transitioned = TaskService.complete_task(task.id)
+        result, transitioned = TaskService.close_task(
+            task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         self.assertFalse(transitioned)
-        self.assertEqual(result.status, "killed")  # not changed to completed
+        self.assertEqual(result.status, TASK_STATUS_KILLED)  # not changed to completed
 
 
 class KillTaskTransitionFlagTest(TestCase):
@@ -252,7 +258,7 @@ class KillTaskTransitionFlagTest(TestCase):
         self.tenant = Tenant.objects.create(name="KillFlag")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="kf1")
         self.task = Task.objects.create(
-            tenant=self.tenant, customer=self.customer, status="active",
+            tenant=self.tenant, customer=self.customer, status=TASK_STATUS_ACTIVE,
             billing_owner_id=self.customer.id, balance_snapshot_micros=0,
         )
 
@@ -260,19 +266,19 @@ class KillTaskTransitionFlagTest(TestCase):
         with transaction.atomic():
             task, transitioned = TaskService.kill_task(self.task.id)
         self.assertTrue(transitioned)
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
         with transaction.atomic():
             task, transitioned = TaskService.kill_task(self.task.id)
         self.assertFalse(transitioned)
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
 
     def test_transitioned_false_on_completed_task(self):
         with transaction.atomic():
-            TaskService.complete_task(self.task.id)
+            TaskService.close_task(self.task.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
         with transaction.atomic():
             task, transitioned = TaskService.kill_task(self.task.id)
         self.assertFalse(transitioned)
-        self.assertEqual(task.status, "completed")  # kill never demotes completed
+        self.assertEqual(task.status, TASK_STATUS_COMPLETED)  # kill never demotes completed
 
 
 class KillAndAnnounceTest(TestCase):
@@ -301,7 +307,7 @@ class KillAndAnnounceTest(TestCase):
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
         task.refresh_from_db()
-        self.assertEqual(task.status, "killed")
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.metadata["kill_reason"], TASK_LIMIT)
 
         self.assertEqual(self._events().count(), 1)
@@ -370,7 +376,7 @@ class KillAndAnnounceTest(TestCase):
         event = OutboxEvent.objects.get(event_type="subtask.limit_exceeded")
         self.assertEqual(sub.announce_outbox_id, event.id)
         # The parent keeps running, unstamped — nothing was announced for it.
-        self.assertEqual(parent.status, "active")
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertIsNone(parent.announce_outbox_id)
 
     def test_failed_event_insert_rolls_the_kill_flip_back(self):
@@ -401,7 +407,7 @@ class KillAndAnnounceTest(TestCase):
                 tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertFalse(transitioned)
         task.refresh_from_db()
-        self.assertEqual(task.status, "active")  # flip rolled back with the event
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)  # flip rolled back with the event
         self.assertIsNone(task.announce_outbox_id)
         self.assertEqual(self._events().count(), 0)
 
@@ -425,6 +431,6 @@ class KillAndAnnounceTest(TestCase):
         parent.refresh_from_db()
         child.refresh_from_db()
         self.assertEqual(parent.announce_outbox_id, self._events().get().id)
-        self.assertEqual(child.status, "killed")
+        self.assertEqual(child.status, TASK_STATUS_KILLED)
         self.assertIsNone(child.announce_outbox_id)
         self.assertEqual(child.metadata["kill_reason"], PARENT_KILLED)
