@@ -18,6 +18,7 @@ from core.vocabulary import (
     TASK_STATUS_FAILED,
     TASK_STATUS_KILLED,
 )
+from apps.platform.grouping_fields.models import SLOTS
 from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
 
 logger = logging.getLogger(__name__)
@@ -162,24 +163,247 @@ class CloseDeclaration:
                 and task.outcome_reason == self.outcome_reason)
 
 
+#: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the words the start
+#: gate's verdict vocabulary already publishes (`openapi/error-codes.json`).
+#: Named rather than spelled at each raise so a caller — and a test — asserts
+#: the SYMBOL: the words themselves belong to a vocabulary slice 6 rebuilds,
+#: and a literal in twelve places is twelve edits when it does.
+PARENT_NOT_ACTIVE = "parent_task_not_active"
+SUBTASK_DEPTH_EXCEEDED = "subtask_depth_exceeded"
+
+#: THE FACTS A UNIT OF WORK SNAPSHOTS AT ITS START AND CANNOT THEN CHANGE, as
+#: this module names them. `StartDeclaration.conflicting_field_on` answers with
+#: one of these and the composition layer says which request field the caller
+#: must look at, because the two vocabularies are genuinely different: the
+#: grouping bag's wire key is another slice's retired word, and `parent` here is
+#: a row while `parent_task_id` out there is an identifier in a body.
+#:
+#: Named constants rather than literals so a test asserts the SYMBOL. A test
+#: comparing against its own copy of the string passes whatever this module
+#: decides to say, which is the half that decays silently.
+PINNED_PARENT = "parent"
+PINNED_TASK_TYPE = "task_type"
+PINNED_COST_CEILING = "provider_cost_limit_micros"
+PINNED_GROUPING_VALUES = "grouping_values"
+
+
+class StartRefused(ValueError):
+    """A start refused by the work it names, carrying the reason.
+
+    A `ValueError` subclass for `DeclarationRefused`'s reason one class up:
+    this module is a PRODUCT-side kernel and the error dialect belongs to the
+    composition layer (ADR-001). What is decided here is the rule.
+    """
+
+    def __init__(self, reason, detail):
+        self.reason = reason
+        super().__init__(detail)
+
+
+class StartDeclaration:
+    """WHAT A CALLER SAYS WHEN IT REGISTERS A UNIT OF WORK — the key claiming
+    the attempt, and the five facts the unit then snapshots.
+
+    ⚠ ONE OBJECT FOR THE SAME REASON `CloseDeclaration` IS ONE: the parts are
+    not independently meaningful. Deciding whether a repeated start is a retry
+    or a contradiction is a question about the WHOLE declaration, and a caller
+    passing the parts separately passes things that can only be judged
+    together.
+
+    **The key and the label are two fields doing two jobs.** The key identifies
+    ONE ATTEMPT and is required and unique; `external_task_id` is the caller's
+    free-text JOB LABEL, reusable across attempts. Promoting the label to the
+    key was rejected: the label is the only place the relationship BETWEEN
+    attempts can live, so making it the identity would force attempt 2 to be
+    called something else and leave nothing tying the attempts together.
+    """
+
+    __slots__ = ("idempotency_key", "parent_task_id", "task_type",
+                 "grouping_values", "provider_cost_limit_micros")
+
+    def __init__(self, idempotency_key, *, parent_task_id=None, task_type="",
+                 grouping_values=None, provider_cost_limit_micros=None):
+        self.idempotency_key = idempotency_key
+        self.parent_task_id = parent_task_id
+        self.task_type = task_type or ""
+        self.grouping_values = dict(grouping_values or {})
+        self.provider_cost_limit_micros = provider_cost_limit_micros
+
+    def scope(self):
+        """Which altitude this declaration sets its grouping values at.
+
+        ⚠ IT IS A FACT ABOUT WHETHER A PARENT WAS NAMED, which is why it lives
+        on the declaration rather than being re-derived beside every caller.
+        And it is NOT the `task_type_kind` vocabulary, though two of its words
+        are spelled the same — `RiskService.resolve_type_policy` makes that
+        argument in full.
+        """
+        return "subtask" if self.parent_task_id is not None else "task"
+
+    def slots(self, tenant):
+        """What this declaration's grouping values bind to, RECORDING NOTHING.
+
+        Resolved rather than admitted, so a repeat that is about to be refused
+        cannot permanently burn a key's cardinality for work that never began.
+        """
+        from apps.platform.grouping_fields.services import DimensionService
+        return DimensionService.resolve(tenant, self.grouping_values,
+                                        self.scope())
+
+    def conflicting_field_on(self, task, tenant):
+        """The first PINNED field this declaration states differently from
+        ``task``, or ``None`` when the two say the same thing.
+
+        `None` makes a repeated start a REPLAY — the caller gets back the unit
+        it already started. A name makes it a CONFLICT, and the name is the
+        whole value of the refusal: *this key is taken* sends a caller looking
+        through its own code, while *this key is taken and you asked for a
+        different parent* is the sentence that ends the search.
+
+        **THE PINNED FIELDS ARE THE ONES THE UNIT SNAPSHOTS AND CANNOT CHANGE.**
+        A silent replay across a differing one would hand back a unit of work
+        that is not the one the caller just described — and under a whole-job
+        price a differing kind of work IS a differing price, so the tenant
+        would be charged the render price for a transcode job while its own
+        records said otherwise.
+
+        ⚠ NO POLICY IS RE-DERIVED HERE, and that is what makes the retry work
+        FOREVER rather than until the tenant next edits their configuration.
+        Re-running the ceiling ladder, or re-asking whether the declared kind of
+        work is still declared and unretired, would let a tenant lowering a
+        default or retiring a kind of work turn every in-flight retry into a
+        refusal — the one case a permanently-claimed key exists to answer.
+
+        ⚠ THE ONE THING IT DOES READ BACK IS THE SLOT A GROUPING KEY BINDS TO,
+        and that is safe for a stated reason rather than by luck:
+        `DimensionService.declare` makes a key's slot and its scope IMMUTABLE
+        once declared, refusing a rebind in either — so the mapping this reads
+        cannot move under a retry the way a ceiling or a retirement can. It is
+        also read LAST, below every comparison that needs no database at all,
+        so a repeat that already contradicts the claim on a cheap field is
+        answered with THAT field rather than with whatever the registry says
+        about a bag nobody disagreed about.
+
+        ⚠ THE CUSTOMER IS PINNED AND CANNOT APPEAR HERE, which is not an
+        omission. The claim is scoped `(tenant, customer, key)`, so the same
+        key under a different customer finds no claim at all and starts a
+        second, legitimate unit of work. That is the uniqueness rule doing the
+        pinning; there is no row to contradict.
+
+        ⚠ THE NAMES RETURNED ARE THIS MODULE'S, NOT THE WIRE'S, and the
+        composition layer translates — the same split `DeclarationRefused`
+        takes one class up, where the rule is the product's and the dialect is
+        the API layer's. It is load-bearing here for a second reason: the wire
+        key for the grouping bag is retired vocabulary under a spread ceiling
+        another slice owns, so spelling it in this module would put the word in
+        one more file and fail the sweep for a debt this commit does not own.
+        """
+        if self.parent_task_id != task.parent_id:
+            return PINNED_PARENT
+        if self.task_type != task.task_type:
+            return PINNED_TASK_TYPE
+        # ⚠ COMPARED ONLY WHERE THE CALLER NAMED ONE, and the asymmetry is the
+        # field's own meaning rather than a softening. A caller-supplied
+        # ceiling is a request for a LOWER one than the kind of work already
+        # carries — never a higher one — so naming it states a ceiling and
+        # omitting it states only *whatever this kind of work says*, which is
+        # not a claim that can contradict anything. Where one IS named, it is
+        # the resolved ceiling by construction: the resolution returns a
+        # supplied value unchanged or refuses the request outright.
+        if (self.provider_cost_limit_micros is not None
+                and self.provider_cost_limit_micros
+                != task.provider_cost_limit_micros):
+            return PINNED_COST_CEILING
+        # LAST, AND THE ONLY COMPARISON THAT READS THE DATABASE — see the ⚠
+        # above. Resolving is not admitting: a repeat records nothing.
+        if self.slots(tenant) != {slot: getattr(task, slot) for slot in SLOTS
+                                  if getattr(task, slot)}:
+            return PINNED_GROUPING_VALUES
+        return None
+
+
 class TaskService:
+
+    @staticmethod
+    def claimed_by(tenant, customer, idempotency_key):
+        """The unit of work this key already claims for this customer, or None.
+
+        A pure read, and it is deliberately the FIRST thing the start gate
+        does. Everything else a start runs — the wallet checks, the grouping
+        values it would record, the concurrency slot it would count against —
+        either spends something or reads something that moves, so a retry that
+        reached them would be paying twice for an answer that is already
+        written down. Answering the repeat from the claim itself is what makes
+        *a replay creates nothing* a property of the gate rather than a
+        by-product of a constraint firing later.
+        """
+        return Task.objects.filter(
+            tenant=tenant, customer=customer,
+            idempotency_key=idempotency_key).first()
+
+    @staticmethod
+    def parent_for(tenant, customer, parent_task_id):
+        """Resolve and LOCK the parent a contained start names, or refuse.
+
+        Returns None when nothing is named — a top-level start, which is the
+        common case and has no parent to check.
+
+        Locking here is what makes contained work safe to register: the row is
+        held for the rest of the caller's transaction, so a cascade that
+        withdraws or kills this parent cannot interleave and leave a step born
+        under an already-terminal unit. It takes the PARENT-first lock order
+        `Task.parent` states, which is the order rollup and both cascades take.
+
+        The refusals are legitimate in the way the start gate's refusals always
+        are: they refuse work that has not happened yet, never a usage report.
+        A missing or foreign parent reads as not-active — a unit that does not
+        exist here is not an active one — and the depth refusal WINS over
+        status for a row that does exist, because the structural mistake is the
+        actionable one.
+        """
+        if parent_task_id is None:
+            return None
+        parent = Task.objects.select_for_update().filter(
+            id=parent_task_id, tenant=tenant, customer=customer).first()
+        if parent is None:
+            raise StartRefused(
+                PARENT_NOT_ACTIVE,
+                "the parent named is not an active unit of work")
+        if parent.parent_id is not None:
+            raise StartRefused(
+                SUBTASK_DEPTH_EXCEEDED,
+                "contained work cannot contain further work "
+                "(one containment level at launch)")
+        if parent.status != TASK_STATUS_ACTIVE:
+            raise StartRefused(
+                PARENT_NOT_ACTIVE,
+                f"the parent named is {parent.status}, not active")
+        return parent
 
     @staticmethod
     def create_task(tenant, customer, balance_snapshot_micros,
                     provider_cost_limit_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
-                    parent=None, task_type="", dimension_slots=None):
+                    parent=None, task_type="", dimension_slots=None,
+                    idempotency_key=None):
         """Create a Task, snapshotting limit config and wallet balance.
         Passing ``parent`` registers a SUBTASK under it (#38) — a Task row
         with the self-FK set, one containment level at launch.
 
-        Limits are passed explicitly by the caller (billing pre-check), which
-        owns the explicit-or-tenant-default resolution, the cost-coverage
-        gate, and the parent active/depth refusals; the depth guard here is
-        defense in depth against internal misuse. Tier-2 (D4): billing_owner_id
-        is PINNED here (resolve_billing_owner) so the concurrency slot +
-        reapers never re-resolve a re-parented owner. Must be called inside
-        @transaction.atomic.
+        Limits are passed explicitly by the caller — the start gate at
+        ``api/v1/task_endpoints.py`` — which owns the ceiling ladder, the
+        money-shaped admission and the parent active/depth refusals; the depth
+        guard here is defense in depth against internal misuse. Tier-2 (D4):
+        billing_owner_id is PINNED here (resolve_billing_owner) so the
+        concurrency slot + reapers never re-resolve a re-parented owner. Must
+        be called inside @transaction.atomic.
+
+        ``idempotency_key`` is the caller's claim on this attempt (#410), and
+        it is pass-through like everything else here: this seam writes the key
+        it is handed and the DATABASE decides whether the claim stands. It
+        defaults to None because the reapers, the cascades and every fixture
+        that stands a unit of work up directly are not callers making a claim,
+        and a synthesised key would be a fabricated declaration.
 
         ``task_type`` and ``dimension_slots`` (design D7/D6) are pure
         pass-through: the caller (billing's start-gate) already resolved the
@@ -199,6 +423,7 @@ class TaskService:
             provider_cost_limit_micros=provider_cost_limit_micros,
             metadata=metadata or {},
             external_task_id=external_task_id,
+            idempotency_key=idempotency_key,
             billing_owner_id=billing_owner_id,
             task_type=task_type,
             **(dimension_slots or {}),

@@ -75,8 +75,7 @@ class TestPreCheckNoBilling(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.assertEqual(result.balance_micros, 10_000_000)
         client.billing.pre_check.assert_called_once_with(
-            "cust_1", start_task=False, task_metadata=None, external_task_id="",
-            provider_cost_limit_micros=None, parent_task_id=None,
+            "cust_1", parent_task_id=None,
         )
         client.close()
 
@@ -233,106 +232,20 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         self.assertFalse(result.can_proceed)
         self.assertEqual(result.balance_micros, -6_000_000)
 
-    @patch.object(BillingClient, "_request")
-    def test_pre_check_start_task_threads_task_fields(self, mock_bill_request):
-        """start_task=True sends the task keys on the wire and threads the
-        created task's id/limit back into PreCheckResult."""
-        mock_bill_request.return_value = MagicMock(
-            status_code=200, json=lambda: {
-                "allowed": True, "reason": None, "balance_micros": 10_000_000,
-                "task_id": "task_1",
-                "provider_cost_limit_micros": 5_000_000,
-            }
-        )
-        result = self.client.pre_check(
-            customer_id="cust_1", start_task=True,
-            task_metadata={"job": "batch-7"}, external_task_id="ext-7",
-            provider_cost_limit_micros=5_000_000,
-        )
-        self.assertTrue(result.allowed)
-        self.assertEqual(result.task_id, "task_1")
-        self.assertEqual(result.provider_cost_limit_micros, 5_000_000)
-        call = mock_bill_request.call_args
-        self.assertEqual(call.args[0], "post")
-        self.assertEqual(call.args[1], "/api/v1/billing/pre-check")
-        body = call.kwargs["json"]
-        self.assertTrue(body["start_task"])
-        self.assertEqual(body["task_metadata"], {"job": "batch-7"})
-        self.assertEqual(body["external_task_id"], "ext-7")
-        self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
-
-    @patch.object(BillingClient, "_request")
-    def test_start_task_convenience_wrapper(self, mock_bill_request):
-        """UBBClient.start_task is pre_check(start_task=True) with the same
-        task fields threaded through."""
-        mock_bill_request.return_value = MagicMock(
-            status_code=200, json=lambda: {
-                "allowed": True, "task_id": "task_2",
-                "provider_cost_limit_micros": 2_000_000,
-            }
-        )
-        result = self.client.start_task(
-            "cust_1", metadata={"k": "v"}, external_task_id="ext-2",
-            provider_cost_limit_micros=2_000_000,
-        )
-        self.assertTrue(result.allowed)
-        self.assertEqual(result.task_id, "task_2")
-        self.assertEqual(result.provider_cost_limit_micros, 2_000_000)
-        body = mock_bill_request.call_args.kwargs["json"]
-        self.assertTrue(body["start_task"])
-        self.assertEqual(body["task_metadata"], {"k": "v"})
-        self.assertEqual(body["external_task_id"], "ext-2")
-
-    @patch.object(BillingClient, "_request")
-    def test_start_task_parent_task_id_registers_a_subtask(self, mock_bill_request):
-        """parent_task_id rides the wire and the created subtask's parent
-        comes back on PreCheckResult (#38)."""
-        mock_bill_request.return_value = MagicMock(
-            status_code=200, json=lambda: {
-                "allowed": True, "task_id": "sub_1", "parent_task_id": "task_1",
-                "provider_cost_limit_micros": 1_000_000,
-            }
-        )
-        result = self.client.start_task(
-            "cust_1", parent_task_id="task_1",
-            provider_cost_limit_micros=1_000_000,
-        )
-        self.assertTrue(result.allowed)
-        self.assertEqual(result.task_id, "sub_1")
-        self.assertEqual(result.parent_task_id, "task_1")
-        body = mock_bill_request.call_args.kwargs["json"]
-        self.assertTrue(body["start_task"])
-        self.assertEqual(body["parent_task_id"], "task_1")
-
-    @patch.object(BillingClient, "_request")
-    def test_subtask_registration_refusal_threads_reason(self, mock_bill_request):
-        mock_bill_request.return_value = MagicMock(
-            status_code=200, json=lambda: {
-                "allowed": False, "reason": "parent_task_not_active",
-                "balance_micros": 10_000_000,
-            }
-        )
-        result = self.client.start_task("cust_1", parent_task_id="task_dead")
-        self.assertFalse(result.allowed)
-        self.assertEqual(result.reason, "parent_task_not_active")
-        self.assertIsNone(result.task_id)
-
-    @patch.object(BillingClient, "_request")
-    def test_top_level_start_omits_parent_task_id_from_the_wire(self, mock_bill_request):
-        mock_bill_request.return_value = MagicMock(
-            status_code=200, json=lambda: {"allowed": True, "task_id": "task_3"}
-        )
-        result = self.client.start_task("cust_1")
-        self.assertIsNone(result.parent_task_id)
-        body = mock_bill_request.call_args.kwargs["json"]
-        self.assertNotIn("parent_task_id", body)
-
-    def test_start_task_requires_billing(self):
-        from ubb.exceptions import UBBError
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
-        with self.assertRaises(UBBError):
-            client.start_task("cust_1")
-        client.close()
+    # ⚠ SIX CASES STOOD HERE AND ALL SIX WERE ABOUT THE RETIRED CREATION PATH
+    # (#410). They proved that `start_task=True` threaded a unit of work's
+    # fields onto the wire, that `UBBClient.start_task` was a wrapper around
+    # that flag, that a named parent registered contained work, that a
+    # registration refusal came back as a verdict, and that the method demanded
+    # the billing product. Every one of those claims is about a call this
+    # client can no longer make: the flag is gone from the contract, the
+    # wrapper is deleted with it, and the route that registers work is
+    # ungated, requires the caller's key, and answers a refusal as a refusal.
+    #
+    # THEY ARE DELETED RATHER THAN REPOINTED because #422 owns the SDK's start
+    # and the shape of its signature, and a case rewritten here would be a
+    # second answer to a question that ticket has to settle. What survives of
+    # this client's half is the advisory check, covered by the cases above.
 
     def test_pre_check_no_billing_trivially_allowed(self):
         """Without billing, pre_check returns trivially allowed."""

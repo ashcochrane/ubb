@@ -136,6 +136,16 @@ docstring — the guard's whole value is that its exception set is small, named,
 **Start-gate (spend gate)**:
 The durable pre-start check — suspension, stop flag, rate/concurrency limits, affordability, the
 soft floor (top-level starts only), budget — run before a Task is created.
+It is COMPOSED at `api/v1/task_endpoints.py`, not called as one method: registering a unit of work
+is its own route at the root and the money-shaped checks run INSIDE it, conditioned on the tenant
+having a wallet rather than on a product flag at the door. A metering-only tenant is not refused
+them — there is no wallet to test, so they do not apply, and it registers work like anyone else.
+The condition is the tenant's PRODUCT and deliberately not *does a `Wallet` row exist*: a billing
+customer who has never been credited has no row, and reading its absence as "nothing to test" would
+let exactly that customer start unlimited work with nothing behind it.
+The per-owner concurrency cap is `concurrency_verdict`, apart from `check` because it is the one
+control only a call that REGISTERS work can breach — folding it into the advisory answer would make
+`/billing/pre-check` report a verdict it has never reported.
 Refusing a start is legitimate under the one-rule model: it refuses work that hasn't happened,
 never a usage report.
 A cost-coverage condition sat in this list until #321 and is gone with nothing in its place: it

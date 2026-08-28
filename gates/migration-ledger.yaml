@@ -534,11 +534,30 @@ entries:
     gate: G7
     site: backend::pre_check
     expected: affordability_reason
-    found: 3 files
+    found: 1 files
     owner_slice: slice_6
     reason: >-
       It named when the question was asked rather than what was asked.
       Slice 6's admission control gives the answer its own vocabulary.
+      THREE UNTIL #410, AND THE OWNER DOES NOT MOVE — slice 6 still owes the
+      rename, and that is a slice-5 commit paying two files of it as a SIDE
+      EFFECT rather than a slice-5 ticket taking the debt on. It deletes the
+      creation path this call carried behind a flag, and both surviving
+      occurrences were about that flag rather than about the word: the
+      end-to-end enforcement test's local helper was named for the call rather
+      than for what it did (with the flag gone it starts a unit of work through
+      `POST /api/v1/tasks`, so the old name would have been false), and
+      `test_soft_floor_pins.py` held a case whose whole subject was that the
+      FLAGLESS call was refused on the same line as a start — one of two cases
+      that had become the same case, with a comment asserting this endpoint IS
+      the start gate, which it no longer is. A recorded extent that overstates
+      is an excuse with no upper bound, so the number comes down in the commit
+      that made it true. ⚠ WHAT IS LEFT IS ONE FILE AND IT IS THE ENDPOINT'S
+      OWN FUNCTION NAME, which is a PUBLIC name — django-ninja builds the
+      operationId from it and the generated SDK names a module and a constant
+      after that. So the last file cannot be paid by a comment edit: it is the
+      rename itself, which is slice 6's, and this entry is now exactly as wide
+      as the work left in it.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and

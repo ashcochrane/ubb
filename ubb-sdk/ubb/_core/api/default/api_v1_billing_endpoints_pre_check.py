@@ -10,7 +10,6 @@ from ... import errors
 
 from ...models.pre_check_request import PreCheckRequest
 from ...models.pre_check_response import PreCheckResponse
-from ...models.problem_out import ProblemOut
 from typing import cast
 
 
@@ -41,7 +40,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> PreCheckResponse | None:
     if response.status_code == 200:
         response_200 = PreCheckResponse.from_dict(response.json())
 
@@ -49,20 +48,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
-    if response.status_code == 422:
-        response_422 = ProblemOut.from_dict(response.json())
-
-
-
-        return response_422
-
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[PreCheckResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -76,18 +68,34 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
+) -> Response[PreCheckResponse]:
     """ Pre Check
 
+     Ask whether this customer's spending state would let work proceed.
+
+    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
+    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
+    only call that creates one.
+
+    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
+    the question was answered.
+
     Args:
-        body (PreCheckRequest):
+        body (PreCheckRequest): ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+            It used to, behind a flag, and every field that served the flag has gone
+            with it: registering a unit of work is now its own call, `POST
+            /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+            admission check and the registration of a unit of work were one call
+            answering two questions, and a metering-only tenant could not reach the
+            second because the first sat behind billing.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[PreCheckResponse]
      """
 
 
@@ -107,18 +115,34 @@ def sync(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
+) -> PreCheckResponse | None:
     """ Pre Check
 
+     Ask whether this customer's spending state would let work proceed.
+
+    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
+    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
+    only call that creates one.
+
+    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
+    the question was answered.
+
     Args:
-        body (PreCheckRequest):
+        body (PreCheckRequest): ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+            It used to, behind a flag, and every field that served the flag has gone
+            with it: registering a unit of work is now its own call, `POST
+            /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+            admission check and the registration of a unit of work were one call
+            answering two questions, and a metering-only tenant could not reach the
+            second because the first sat behind billing.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        PreCheckResponse
      """
 
 
@@ -133,18 +157,34 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> Response[PreCheckResponse | ProblemOut]:
+) -> Response[PreCheckResponse]:
     """ Pre Check
 
+     Ask whether this customer's spending state would let work proceed.
+
+    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
+    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
+    only call that creates one.
+
+    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
+    the question was answered.
+
     Args:
-        body (PreCheckRequest):
+        body (PreCheckRequest): ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+            It used to, behind a flag, and every field that served the flag has gone
+            with it: registering a unit of work is now its own call, `POST
+            /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+            admission check and the registration of a unit of work were one call
+            answering two questions, and a metering-only tenant could not reach the
+            second because the first sat behind billing.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[PreCheckResponse | ProblemOut]
+        Response[PreCheckResponse]
      """
 
 
@@ -164,18 +204,34 @@ async def asyncio(
     client: AuthenticatedClient,
     body: PreCheckRequest,
 
-) -> PreCheckResponse | ProblemOut | None:
+) -> PreCheckResponse | None:
     """ Pre Check
 
+     Ask whether this customer's spending state would let work proceed.
+
+    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
+    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
+    only call that creates one.
+
+    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
+    the question was answered.
+
     Args:
-        body (PreCheckRequest):
+        body (PreCheckRequest): ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+            It used to, behind a flag, and every field that served the flag has gone
+            with it: registering a unit of work is now its own call, `POST
+            /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+            admission check and the registration of a unit of work were one call
+            answering two questions, and a metering-only tenant could not reach the
+            second because the first sat behind billing.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        PreCheckResponse | ProblemOut
+        PreCheckResponse
      """
 
 

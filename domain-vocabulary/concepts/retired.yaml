@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,691 of 2,094 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,696 of 2,100 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1577,6 +1577,35 @@ measurement_key:
     # thing that did was measuring. The repair was "anything still active",
     # "stale active work" and "a stopped unit", and the figures recorded above
     # are the ones the tree gave after it.
+    #
+    # #410 MOVED BOTH DENOMINATORS UP AND LEFT THE NUMERATOR EXACTLY WHERE IT
+    # WAS (1,691 -> 1,696 swept, 2,094 -> 2,100 tracked, `units` UNMOVED at 45
+    # files and 123 occurrences), WITH THE EXCLUSION UP BY ONE
+    # (`historical-migrations` 236 -> 237). Five swept files arrived — a test
+    # module, a renamed one, two generated SDK models and a generated SDK
+    # operation — and the sixth tracked file is the migration, which is
+    # excluded and so lifts tracked alone.
+    #
+    # ⚠ IT ROSE BY A WHOLE FILE FIRST, AND THE FILE WAS NOT ONE THIS ENTRY HAS
+    # SEEN BEFORE. `risk_service.py` gained *"the number of ACTIVE units for
+    # the billing owner"* — a sentence this commit MOVED rather than wrote,
+    # lifted verbatim out of an inline comment in the call it was splitting and
+    # into the new method's docstring. That is a fourth way for the numerator
+    # to move and the only one the three cases above do not name: the word
+    # travelled with a paragraph that was being relocated, so nobody reached
+    # for it and nobody had a reason to re-read it. The repair was *"how much
+    # work is ACTIVE"*, and the figures recorded above are the ones the tree
+    # gave after it. **Re-measure after moving prose, not only after writing
+    # it.**
+    #
+    # ⚠ AND THE FOUR-IN-A-ROW PATTERN #409 NAMED HAS BROKEN, WHICH IS WORTH
+    # SAYING BECAUSE THE BREAK IS THE EVIDENCE THE PATTERN WAS REAL. #407, #408
+    # and #409 each fell because the commit was rewriting a sentence that
+    # happened to carry the word; this commit rewrote a whole route surface,
+    # deleted a creation path and added a test module about registering work,
+    # and the count did not move at all. The sense is exactly as alive as it
+    # was, and that is what an unmoved numerator across a large slice-5 commit
+    # means.
 
     - term: units
       retired_as: >-

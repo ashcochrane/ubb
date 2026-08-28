@@ -210,7 +210,16 @@ exclusions:
     # anything retired. Same reason as the two entries above: the rule covers
     # every migration directory wholesale, so the number moves for the file
     # existing and not for anything it says.
-    files: 236
+    # 236 → 237 in #410: one migration, adding the caller's idempotency key and
+    # the partial uniqueness rule that makes its claim permanent. ⚠ IT NAMES NO
+    # RETIRED TERM EITHER, and `idempotency_key` is an end-state name the
+    # registry rules free to spell everywhere. Fourth entry running with the
+    # same reason, which is by now the point rather than a coincidence: this
+    # rule covers every migration directory wholesale, so a slice landing one
+    # migration per ticket moves this number once per ticket whatever those
+    # migrations contain. **Quote the RULE count, never this one, when arguing
+    # that no allowlist grew.**
+    files: 237
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

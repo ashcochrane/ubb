@@ -42,9 +42,19 @@ class TestEnforcementSeam:
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=10_000_000)  # $10; floor = -min_balance = 0
 
-        def pre_check():
-            return client.post("/api/v1/billing/pre-check",
-                               data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)
+        # ⚠ THE START GATE IS ITS OWN CALL NOW (#410), at the root and
+        # ungated, with the caller's key required. The seam this test walks is
+        # unchanged: a start is admitted, usage crosses the floor, the start
+        # is then refused, a top-up recovers, and a start is admitted again.
+        # What moved is which call the first and last of those make — a refusal
+        # is an HTTP refusal rather than a verdict inside a 200.
+        started = [0]
+
+        def start():
+            started[0] += 1
+            return client.post("/api/v1/tasks", data=json.dumps(
+                {"customer_id": str(c.id),
+                 "idempotency_key": f"attempt-{started[0]}"}), **hdr)
 
         # Each event bills what the tenant's rule charges for it (#365) — the
         # figures below are unchanged, they are configured rather than sent.
@@ -56,8 +66,8 @@ class TestEnforcementSeam:
                 "measurements": priced_at(billed), "task_id": task_id}), **hdr)
 
         # 1. Start-gate allows a new task ($10 above floor).
-        p1 = pre_check()
-        assert p1.status_code == 200 and p1.json()["allowed"] is True
+        p1 = start()
+        assert p1.status_code == 200
         task_id = p1.json()["task_id"]
 
         # 2. Usage under the floor -> no stop.
@@ -75,8 +85,8 @@ class TestEnforcementSeam:
         #    gate's status check answers first — the suspension-shaped refusal,
         #    not the flag-shaped customer_stopped (which now only surfaces when
         #    the flag exists without the suspension, e.g. a stale flag).
-        p2 = pre_check()
-        assert p2.json()["allowed"] is False
+        p2 = start()
+        assert p2.status_code == 409
         assert p2.json()["reason"] == "insufficient_funds"
         c.refresh_from_db()
         assert c.status == "suspended"  # the fold landed synchronously
@@ -99,8 +109,7 @@ class TestEnforcementSeam:
         assert cleared.get().payload["episode_seq"] == 1
 
         # 6. Start-gate ALLOWS again (recovery — the seam closes the loop).
-        p3 = pre_check()
-        assert p3.json()["allowed"] is True
+        assert start().status_code == 200
 
     def test_off_tenant_pipeline_never_stops(self):
         # Control: the identical flow with enforcement_mode=off never stops or
@@ -113,13 +122,13 @@ class TestEnforcementSeam:
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=10_000_000)
         a_rule_that_prices_what_it_measures(t)
-        p1 = client.post("/api/v1/billing/pre-check",
-                         data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)
+        p1 = client.post("/api/v1/tasks", data=json.dumps(
+            {"customer_id": str(c.id), "idempotency_key": "attempt-1"}), **hdr)
         task_id = p1.json()["task_id"]
         r = client.post("/api/v1/metering/usage", data=json.dumps({
             "customer_id": str(c.id), "request_id": "k1", "idempotency_key": "k1",
             "measurements": priced_at(50_000_000), "task_id": task_id}), **hdr)  # way over balance
         assert r.json()["stop"] is False  # off => no stop verdict
-        p2 = client.post("/api/v1/billing/pre-check",
-                         data=json.dumps({"customer_id": str(c.id), "start_task": True}), **hdr)
-        assert p2.json()["allowed"] is True  # off => never blocks on the flag
+        p2 = client.post("/api/v1/tasks", data=json.dumps(
+            {"customer_id": str(c.id), "idempotency_key": "attempt-2"}), **hdr)
+        assert p2.status_code == 200  # off => never blocks on the flag

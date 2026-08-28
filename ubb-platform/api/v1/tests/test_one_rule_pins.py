@@ -315,21 +315,32 @@ class CeilingResolutionAtStartTest(OneRulePinTestBase):
     `cost_coverage_required` with no task created.
     """
 
-    def _pre_check(self, **extra):
-        data = {"customer_id": str(self.customer.id), "start_task": True}
+    def _start(self, **extra):
+        """Register a unit of work through the one route that registers one.
+
+        ⚠ THIS USED TO BE THE AFFORDABILITY CALL WITH A FLAG ON IT (#410).
+        Registering work is `POST /api/v1/tasks` now — at the root, ungated,
+        and with the caller's key required — so a refusal is an HTTP refusal
+        rather than a verdict riding inside a 200.
+        """
+        data = {"customer_id": str(self.customer.id),
+                "idempotency_key": f"attempt-{uuid.uuid4()}"}
         data.update(extra)
         return self.http_client.post(
-            "/api/v1/billing/pre-check", data=json.dumps(data),
+            "/api/v1/tasks", data=json.dumps(data),
             content_type="application/json", **self._auth())
+
+    def _started(self, **extra):
+        """...and the body of a start that was admitted."""
+        response = self._start(**extra)
+        assert response.status_code == 200, response.json()
+        return response.json()
 
     def test_an_explicit_ceiling_wins_over_the_tenant_default(self):
         RiskConfig.objects.create(
             tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
 
-        resp = self._pre_check(provider_cost_limit_micros=5_000_000)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["allowed"])
+        body = self._started(provider_cost_limit_micros=5_000_000)
         task = Task.objects.get(id=body["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 5_000_000)
         self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
@@ -338,13 +349,11 @@ class CeilingResolutionAtStartTest(OneRulePinTestBase):
         RiskConfig.objects.create(
             tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
 
-        body = self._pre_check().json()
-        self.assertTrue(body["allowed"])
+        body = self._started()
         self.assertEqual(body["provider_cost_limit_micros"], 7_000_000)
 
     def test_a_start_with_no_ceiling_anywhere_is_uncapped(self):
-        body = self._pre_check().json()
-        self.assertTrue(body["allowed"])
+        body = self._started()
         task = Task.objects.get(id=body["task_id"])
         self.assertIsNone(task.provider_cost_limit_micros)
 

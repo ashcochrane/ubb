@@ -10,10 +10,11 @@ class PreCheckResult:
     reason: str | None = None
     can_proceed: bool | None = None
     balance_micros: int | None = None
-    task_id: str | None = None
-    # Set when the started unit is a subtask — the parent it registered under.
-    parent_task_id: str | None = None
-    provider_cost_limit_micros: int | None = None
+    # THE THREE FIELDS THAT DESCRIBED A UNIT OF WORK ARE GONE (#410). This
+    # answer used to double as the response to a registration, because a flag
+    # on the same call created one; registering work is its own call now, and
+    # a wrapper for it is #422's. Keeping them would publish three values that
+    # are permanently None.
 
 @dataclass(frozen=True)
 class BatchItemResult:

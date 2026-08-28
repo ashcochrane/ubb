@@ -899,7 +899,15 @@ CONCEPTS_IN_THE_CONTRACT = {
     # entire or a later slice adding the value is a breaking change to a client
     # that switched exhaustively over the partial one. `failed` gains its first
     # writer in the ticket that makes the close declare an outcome.
-    "task_status": Published(3, ENUM),
+    #
+    # 3 -> 4 IN #410, AND THE FOURTH IS A START'S ANSWER. Registering a unit of
+    # work is its own route now, and what it answers with says which state the
+    # unit is in — `active` on the call that created it, and on a replay
+    # whatever state the unit the caller already started has reached since.
+    # That is the same concept the three shapes above carry, so it takes the
+    # same marker; a start answering with an unadvertised state would be the
+    # one published shape whose state a generated client could not switch over.
+    "task_status": Published(4, ENUM),
     # WHAT THE CALLER DECLARES WHEN IT CLOSES A UNIT OF WORK (#409) — two
     # nodes, and they are the two DIRECTIONS of one declaration: the request
     # field that carries it in, and the response field that echoes it back
@@ -1207,8 +1215,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # empty page today — a change to the request surface smuggled in under a
     # ticket about what UBB advertises. The concept is what UBB RETURNS here;
     # narrowing the query is a separate decision nobody has made.
+    #
+    # ⚠ AND A FOURTH ARRIVED WITH THE START (#410), which is the shape a reader
+    # should expect rather than be surprised by: every published body that
+    # SAYS what state a unit of work is in carries this marker, and a start's
+    # answer says exactly that. The rule above is unchanged and is what keeps
+    # the listing's filter out — a query parameter is what a caller may SEND.
     placed("task_status",
-           {"CloseTaskResponse", "TaskOut", "TaskDetailOut"})
+           {"CloseTaskResponse", "StartTaskResponse", "TaskOut",
+            "TaskDetailOut"})
     # WHAT THE CALLER DECLARED (#409), on the request that carries it and the
     # response that echoes it. Both directions of one field, and the only two
     # schemas a declared outcome appears on.

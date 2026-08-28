@@ -24,6 +24,7 @@ from django.core.cache import cache
 from apps.billing.gating.models import StopSignalState
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
+from apps.platform.work.services import TaskService
 from apps.billing.gating.services.stop_signal_service import StopSignalService
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.queries import get_billing_config, get_customer_soft_min_balance
@@ -112,17 +113,14 @@ class TestPin12StartGate:
         cache.clear()
 
     def test_crossing_refuses_a_new_top_level_task_start(self):
+        # ⚠ THERE WAS A SECOND CASE HERE AND ITS SUBJECT IS GONE (#410). It
+        # asked the same question WITHOUT the flag that created a unit of work,
+        # to prove the advisory poll was refused on the same line as a start.
+        # There is no flag now — this call never creates anything and the one
+        # that does asks this same question inside itself — so the two cases
+        # were the same case, and this is it.
         t = _tenant()
         c = _customer(t, balance_micros=-3_000_000)  # past soft (-2M), above hard (-5M)
-        out = RiskService.check(c, create_task=True)
-        assert out["allowed"] is False
-        assert out["reason"] == "soft_floor_reached"
-        assert out["task_id"] is None
-
-    def test_plain_pre_check_is_also_refused(self):
-        # pre_check IS the start-gate (the poll asks "may new work start").
-        t = _tenant()
-        c = _customer(t, balance_micros=-3_000_000)
         out = RiskService.check(c)
         assert out["allowed"] is False
         assert out["reason"] == "soft_floor_reached"
@@ -130,49 +128,51 @@ class TestPin12StartGate:
     def test_subtask_start_under_an_active_parent_passes(self):
         t = _tenant()
         c = _customer(t, balance_micros=0)
-        parent = RiskService.check(c, create_task=True)
-        assert parent["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True
+        # The parent is stood up directly rather than through the gate: what
+        # this case is about is which ANSWER the gate gives once a parent is
+        # named, and registering one is another module's subject (#410).
+        parent = TaskService.create_task(t, c, balance_snapshot_micros=0,
+                                         billing_owner_id=c.id)
         Wallet.objects.filter(customer=c).update(balance_micros=-3_000_000)
         # A contained child of running work is running work completing —
         # explicitly permitted past the soft line.
-        child = RiskService.check(c, create_task=True,
-                                  parent_task_id=parent["task_id"])
+        child = RiskService.check(c, parent_task_id=str(parent.id))
         assert child["allowed"] is True
-        assert child["task_id"] is not None
         # ...while a sibling TOP-LEVEL start stays refused.
-        top = RiskService.check(c, create_task=True)
+        top = RiskService.check(c)
         assert top["allowed"] is False and top["reason"] == "soft_floor_reached"
 
     def test_hard_floor_wins_below_both_lines(self):
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000)
-        out = RiskService.check(c, create_task=True)
+        out = RiskService.check(c)
         assert out["allowed"] is False
         assert out["reason"] == "insufficient_funds"
 
     def test_above_the_soft_line_passes(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True
 
     def test_no_soft_floor_configured_never_refuses(self):
         t = _tenant()
         c = _customer(t, balance_micros=-3_000_000, soft=None)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True
 
     def test_positive_balance_can_still_be_past_a_raised_soft_line(self):
         # soft=-2M puts the wind-down line at +2M: a customer with money
         # left is refused new starts while running work completes.
         t = _tenant()
         c = _customer(t, balance_micros=1_500_000, hard=0, soft=-2_000_000)
-        out = RiskService.check(c, create_task=True)
+        out = RiskService.check(c)
         assert out["allowed"] is False
         assert out["reason"] == "soft_floor_reached"
 
     def test_enforcement_off_never_refuses(self):
         t = _tenant(enf="off")
         c = _customer(t, balance_micros=-3_000_000)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True
 
     def test_postpaid_has_no_soft_floor(self):
         t = _tenant(mode="postpaid")
@@ -180,7 +180,7 @@ class TestPin12StartGate:
         cfg = get_billing_config(t.id)
         cfg.soft_min_balance_micros = -1_000_000  # line at +1M; balance reads 0
         cfg.save()
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True
 
 
 @pytest.mark.django_db

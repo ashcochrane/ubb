@@ -265,7 +265,7 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # into. A pure `AddField` pair naming no retired term, and the number
         # moves for the file existing rather than for anything it says — the
         # rule covers every migration directory wholesale.
-        "historical-migrations": (UNTIL_SLICE_8, 236, 19),
+        "historical-migrations": (UNTIL_SLICE_8, 237, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

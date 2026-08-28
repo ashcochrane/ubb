@@ -149,8 +149,6 @@ from .plan_update_in import PlanUpdateIn
 from .postpaid_config_in import PostpaidConfigIn
 from .postpaid_config_out import PostpaidConfigOut
 from .pre_check_request import PreCheckRequest
-from .pre_check_request_dimensions import PreCheckRequestDimensions
-from .pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
 from .pre_check_response import PreCheckResponse
 from .pricing_book_in import PricingBookIn
 from .pricing_book_out import PricingBookOut
@@ -209,6 +207,11 @@ from .rule_terms_out_rate_structure import RuleTermsOutRateStructure
 from .sandbox_reset_in import SandboxResetIn
 from .seat_margin_out import SeatMarginOut
 from .seats_in import SeatsIn
+from .start_task_request import StartTaskRequest
+from .start_task_request_dimensions import StartTaskRequestDimensions
+from .start_task_request_metadata_type_0 import StartTaskRequestMetadataType0
+from .start_task_response import StartTaskResponse
+from .start_task_response_status import StartTaskResponseStatus
 from .status_response import StatusResponse
 from .stripe_subscription_out import StripeSubscriptionOut
 from .subscribe_in import SubscribeIn
@@ -451,8 +454,6 @@ __all__ = (
     "PostpaidConfigIn",
     "PostpaidConfigOut",
     "PreCheckRequest",
-    "PreCheckRequestDimensions",
-    "PreCheckRequestTaskMetadataType0",
     "PreCheckResponse",
     "PricingBookIn",
     "PricingBookOut",
@@ -511,6 +512,11 @@ __all__ = (
     "SandboxResetIn",
     "SeatMarginOut",
     "SeatsIn",
+    "StartTaskRequest",
+    "StartTaskRequestDimensions",
+    "StartTaskRequestMetadataType0",
+    "StartTaskResponse",
+    "StartTaskResponseStatus",
     "StatusResponse",
     "StripeSubscriptionOut",
     "SubscribeIn",

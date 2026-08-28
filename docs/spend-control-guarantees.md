@@ -113,7 +113,8 @@ The launch stop-propagation contract is a triad
    that was down for a day gets the current bottom line within the hour of recovery, not a
    replay of every intermediate flap. *(Delivery pins 3–5:
    `apps/billing/gating/tests/test_patrol_pins.py`.)*
-3. **`pre_check`** is the poll and the start-gate.
+3. **`pre_check`** is the poll. The start-gate is `POST /api/v1/tasks`, which
+   runs the same spending checks inside itself before it registers anything.
 
 The delivery fine print, in one place: signals are **at-least-once — late, never lost**; an
 unreachable endpoint gets the **current bottom line** on recovery, never a replay of

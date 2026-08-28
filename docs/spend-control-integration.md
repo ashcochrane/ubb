@@ -30,16 +30,28 @@ Back-out is instant (set `off`).
 
 ## The contract — 4 things to do
 
-1. **Start-gate.** Call `pre_check(customer_id, start_task=True)` at the start
-   of each task (your unit of agent work — a workflow execution). Pass
-   `provider_cost_limit_micros` to cap what the task may **burn** (provider
-   cost / COGS — not your marked-up price); omitted, your tenant default
-   applies; absent both, the task is uncapped and no signal ever fires. If
-   `allowed` is `False`, don't start (`reason` says why —
-   `insufficient_funds`, `soft_floor_reached`, …). You get back `task_id`.
-   *(A read-only check without creating a task: `pre_check(customer_id)` —
-   also your "is this customer allowed right now?" poll for webhook-less
-   setups.)* A limit needs nothing declared in advance: an event UBB cannot
+1. **Start-gate.** `POST /api/v1/tasks` at the start of each task (your unit of
+   agent work — a workflow execution), with `customer_id` and a **required**
+   `idempotency_key` of your own. Pass `provider_cost_limit_micros` to cap what
+   the task may **burn** (provider cost / COGS — not your marked-up price);
+   omitted, your tenant default applies; absent both, the task is uncapped and
+   no signal ever fires. You get back `task_id`. A refusal is an HTTP refusal,
+   not a `200`: `409 task_start_refused` carries a `reason` saying why
+   (`insufficient_funds`, `soft_floor_reached`, …) and `422 validation_error`
+   answers a request that is wrong in itself.
+
+   **The key is the retry story, and it is the reason it is required.** Send
+   the same key again and you get back the task you already started, with
+   `replayed: true` and nothing created a second time — so a retry after a lost
+   response can never start a second task. It is unique per customer and its
+   claim never expires. Send the same key describing a *different* task and the
+   call is refused (`409 idempotency_key_conflict`) naming the field that
+   differs, rather than quietly handing you the first one.
+
+   *(Registering nothing, just asking: `pre_check(customer_id)` — your "is this
+   customer allowed right now?" poll for webhook-less setups. It answers `200`
+   with `allowed: false` rather than refusing, and it starts nothing.)*
+   A limit needs nothing declared in advance: an event UBB cannot
    cost yet is recorded with its cost unresolved and the gaps named, so what
    the limit races is a **floor** on the burn rather than a total that
    silently counted uncovered events as zero.
@@ -75,8 +87,12 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
 
 ## The signals, in one place
 
-- **`pre_check` →** `{allowed, reason, task_id, provider_cost_limit_micros}` —
-  pull, at task start (and as a poll).
+- **`POST /api/v1/tasks` →** `{task_id, parent_task_id, task_type, status,
+  provider_cost_limit_micros, external_task_id, created_at, replayed}` — push,
+  at task start. `replayed` says this call found your key already claimed and
+  created nothing.
+- **`pre_check` →** `{allowed, reason, balance_micros}` — pull, as a poll. It
+  registers nothing; the call above is the only one that starts a task.
 - **`record_usage` result →** always 200 for a recorded event: `stop` /
   `stop_reason` / `stop_scope` (cooperative — the event *was* charged),
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both

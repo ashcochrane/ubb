@@ -26,20 +26,12 @@ class PreCheckResponse:
         Attributes:
             allowed (bool):
             balance_micros (int | None | Unset):
-            parent_task_id (None | str | Unset):
-            provider_cost_limit_micros (int | None | Unset):
             reason (None | str | Unset):
-            task_id (None | str | Unset):
-            task_type (None | str | Unset):
      """
 
     allowed: bool
     balance_micros: int | None | Unset = UNSET
-    parent_task_id: None | str | Unset = UNSET
-    provider_cost_limit_micros: int | None | Unset = UNSET
     reason: None | str | Unset = UNSET
-    task_id: None | str | Unset = UNSET
-    task_type: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -55,35 +47,11 @@ class PreCheckResponse:
         else:
             balance_micros = self.balance_micros
 
-        parent_task_id: None | str | Unset
-        if isinstance(self.parent_task_id, Unset):
-            parent_task_id = UNSET
-        else:
-            parent_task_id = self.parent_task_id
-
-        provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.provider_cost_limit_micros, Unset):
-            provider_cost_limit_micros = UNSET
-        else:
-            provider_cost_limit_micros = self.provider_cost_limit_micros
-
         reason: None | str | Unset
         if isinstance(self.reason, Unset):
             reason = UNSET
         else:
             reason = self.reason
-
-        task_id: None | str | Unset
-        if isinstance(self.task_id, Unset):
-            task_id = UNSET
-        else:
-            task_id = self.task_id
-
-        task_type: None | str | Unset
-        if isinstance(self.task_type, Unset):
-            task_type = UNSET
-        else:
-            task_type = self.task_type
 
 
         field_dict: dict[str, Any] = {}
@@ -93,16 +61,8 @@ class PreCheckResponse:
         })
         if balance_micros is not UNSET:
             field_dict["balance_micros"] = balance_micros
-        if parent_task_id is not UNSET:
-            field_dict["parent_task_id"] = parent_task_id
-        if provider_cost_limit_micros is not UNSET:
-            field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
         if reason is not UNSET:
             field_dict["reason"] = reason
-        if task_id is not UNSET:
-            field_dict["task_id"] = task_id
-        if task_type is not UNSET:
-            field_dict["task_type"] = task_type
 
         return field_dict
 
@@ -123,26 +83,6 @@ class PreCheckResponse:
         balance_micros = _parse_balance_micros(d.pop("balance_micros", UNSET))
 
 
-        def _parse_parent_task_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        parent_task_id = _parse_parent_task_id(d.pop("parent_task_id", UNSET))
-
-
-        def _parse_provider_cost_limit_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
-
-
         def _parse_reason(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -153,34 +93,10 @@ class PreCheckResponse:
         reason = _parse_reason(d.pop("reason", UNSET))
 
 
-        def _parse_task_id(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        task_id = _parse_task_id(d.pop("task_id", UNSET))
-
-
-        def _parse_task_type(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        task_type = _parse_task_type(d.pop("task_type", UNSET))
-
-
         pre_check_response = cls(
             allowed=allowed,
             balance_micros=balance_micros,
-            parent_task_id=parent_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
             reason=reason,
-            task_id=task_id,
-            task_type=task_type,
         )
 
 

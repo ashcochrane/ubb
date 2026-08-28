@@ -32,7 +32,8 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
-from apps.platform.work.services import CloseDeclaration, TaskService
+from apps.platform.work.services import (
+    PARENT_NOT_ACTIVE, SUBTASK_DEPTH_EXCEEDED, CloseDeclaration, TaskService)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
@@ -92,12 +93,26 @@ class SubtaskPinMixin:
             "/api/v1/metering/usage", data=json.dumps(data),
             content_type="application/json", **self._auth())
 
-    def _pre_check(self, **extra):
-        data = {"customer_id": str(self.customer.id), "start_task": True}
+    def _start(self, **extra):
+        """Register a unit of work through the one route that registers one.
+
+        ⚠ THIS USED TO BE THE AFFORDABILITY CALL WITH A FLAG ON IT (#410).
+        Registering work is `POST /api/v1/tasks` now — at the root, ungated,
+        and with the caller's key required — so a refusal is an HTTP refusal
+        rather than a verdict riding inside a 200.
+        """
+        data = {"customer_id": str(self.customer.id),
+                "idempotency_key": f"attempt-{uuid.uuid4()}"}
         data.update(extra)
         return self.http_client.post(
-            "/api/v1/billing/pre-check", data=json.dumps(data),
+            "/api/v1/tasks", data=json.dumps(data),
             content_type="application/json", **self._auth())
+
+    def _started(self, **extra):
+        """...and the body of a start that was admitted."""
+        response = self._start(**extra)
+        assert response.status_code == 200, response.json()
+        return response.json()
 
     def _events(self, event_type):
         return OutboxEvent.objects.filter(event_type=event_type)
@@ -326,45 +341,43 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
 class StartGateSubtaskTest(SubtaskPinTestBase):
     def test_register_subtask_under_active_parent(self):
         parent = self._task()
-        body = self._pre_check(parent_task_id=str(parent.id)).json()
-        self.assertTrue(body["allowed"])
+        body = self._started(parent_task_id=str(parent.id))
         self.assertEqual(body["parent_task_id"], str(parent.id))
         sub = Task.objects.get(id=body["task_id"])
         self.assertEqual(sub.parent_id, parent.id)
 
     def test_top_level_start_has_null_parent(self):
-        body = self._pre_check().json()
-        self.assertTrue(body["allowed"])
+        body = self._started()
         self.assertIsNone(body["parent_task_id"])
 
     def test_nonexistent_parent_refused_parent_task_not_active(self):
-        body = self._pre_check(parent_task_id=str(uuid.uuid4())).json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "parent_task_not_active")
+        refused = self._start(parent_task_id=str(uuid.uuid4()))
+        self.assertEqual(refused.status_code, 409)
+        self.assertEqual(refused.json()["reason"], PARENT_NOT_ACTIVE)
         self.assertEqual(Task.objects.count(), 0)
 
     def test_terminal_parent_refused_parent_task_not_active(self):
         parent = self._task()
         TaskService.close_task(parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
-        body = self._pre_check(parent_task_id=str(parent.id)).json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "parent_task_not_active")
+        refused = self._start(parent_task_id=str(parent.id))
+        self.assertEqual(refused.status_code, 409)
+        self.assertEqual(refused.json()["reason"], PARENT_NOT_ACTIVE)
 
     def test_foreign_customers_parent_refused(self):
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         foreign_parent = TaskService.create_task(
             self.tenant, other, balance_snapshot_micros=0,
             billing_owner_id=other.id)
-        body = self._pre_check(parent_task_id=str(foreign_parent.id)).json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "parent_task_not_active")
+        refused = self._start(parent_task_id=str(foreign_parent.id))
+        self.assertEqual(refused.status_code, 409)
+        self.assertEqual(refused.json()["reason"], PARENT_NOT_ACTIVE)
 
     def test_subtask_parent_refused_subtask_depth_exceeded(self):
         parent = self._task()
         sub = self._task(parent=parent)
-        body = self._pre_check(parent_task_id=str(sub.id)).json()
-        self.assertFalse(body["allowed"])
-        self.assertEqual(body["reason"], "subtask_depth_exceeded")
+        refused = self._start(parent_task_id=str(sub.id))
+        self.assertEqual(refused.status_code, 409)
+        self.assertEqual(refused.json()["reason"], SUBTASK_DEPTH_EXCEEDED)
 
     def test_subtask_default_limit_applies_with_no_cost_rates_declared(self):
         # The SUBTASK default (not the task default) is the fallback for a
@@ -375,14 +388,12 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
             tenant=self.tenant,
             default_subtask_provider_cost_limit_micros=3_000_000)
         parent = self._task()
-        body = self._pre_check(parent_task_id=str(parent.id)).json()
-        self.assertTrue(body["allowed"])
+        body = self._started(parent_task_id=str(parent.id))
         self.assertEqual(body["provider_cost_limit_micros"], 3_000_000)
 
         # A top-level start ignores the subtask default (no task default set
         # -> uncapped).
-        body = self._pre_check().json()
-        self.assertTrue(body["allowed"])
+        body = self._started()
         self.assertIsNone(body["provider_cost_limit_micros"])
 
     def test_explicit_subtask_limit_wins_over_default(self):
@@ -390,9 +401,8 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
             tenant=self.tenant,
             default_subtask_provider_cost_limit_micros=3_000_000)
         parent = self._task()
-        body = self._pre_check(parent_task_id=str(parent.id),
-                               provider_cost_limit_micros=7_000_000).json()
-        self.assertTrue(body["allowed"])
+        body = self._started(parent_task_id=str(parent.id),
+                             provider_cost_limit_micros=7_000_000)
         sub = Task.objects.get(id=body["task_id"])
         self.assertEqual(sub.provider_cost_limit_micros, 7_000_000)
 

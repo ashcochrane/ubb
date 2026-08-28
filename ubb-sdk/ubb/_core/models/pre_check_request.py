@@ -12,9 +12,6 @@ from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
 
-if TYPE_CHECKING:
-  from ..models.pre_check_request_dimensions import PreCheckRequestDimensions
-  from ..models.pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
 
 
 
@@ -26,26 +23,22 @@ T = TypeVar("T", bound="PreCheckRequest")
 
 @_attrs_define
 class PreCheckRequest:
-    """ 
+    """ ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+    It used to, behind a flag, and every field that served the flag has gone
+    with it: registering a unit of work is now its own call, `POST
+    /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+    admission check and the registration of a unit of work were one call
+    answering two questions, and a metering-only tenant could not reach the
+    second because the first sat behind billing.
+
         Attributes:
             customer_id (UUID):
-            dimensions (PreCheckRequestDimensions | Unset):
-            external_task_id (str | Unset):  Default: ''.
             parent_task_id (None | Unset | UUID):
-            provider_cost_limit_micros (int | None | Unset):
-            start_task (bool | Unset):  Default: False.
-            task_metadata (None | PreCheckRequestTaskMetadataType0 | Unset):
-            task_type (None | str | Unset):
      """
 
     customer_id: UUID
-    dimensions: PreCheckRequestDimensions | Unset = UNSET
-    external_task_id: str | Unset = ''
     parent_task_id: None | Unset | UUID = UNSET
-    provider_cost_limit_micros: int | None | Unset = UNSET
-    start_task: bool | Unset = False
-    task_metadata: None | PreCheckRequestTaskMetadataType0 | Unset = UNSET
-    task_type: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -53,15 +46,7 @@ class PreCheckRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.pre_check_request_dimensions import PreCheckRequestDimensions
-        from ..models.pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
         customer_id = str(self.customer_id)
-
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
-
-        external_task_id = self.external_task_id
 
         parent_task_id: None | str | Unset
         if isinstance(self.parent_task_id, Unset):
@@ -71,48 +56,14 @@ class PreCheckRequest:
         else:
             parent_task_id = self.parent_task_id
 
-        provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.provider_cost_limit_micros, Unset):
-            provider_cost_limit_micros = UNSET
-        else:
-            provider_cost_limit_micros = self.provider_cost_limit_micros
-
-        start_task = self.start_task
-
-        task_metadata: dict[str, Any] | None | Unset
-        if isinstance(self.task_metadata, Unset):
-            task_metadata = UNSET
-        elif isinstance(self.task_metadata, PreCheckRequestTaskMetadataType0):
-            task_metadata = self.task_metadata.to_dict()
-        else:
-            task_metadata = self.task_metadata
-
-        task_type: None | str | Unset
-        if isinstance(self.task_type, Unset):
-            task_type = UNSET
-        else:
-            task_type = self.task_type
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
             "customer_id": customer_id,
         })
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
-        if external_task_id is not UNSET:
-            field_dict["external_task_id"] = external_task_id
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
-        if provider_cost_limit_micros is not UNSET:
-            field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
-        if start_task is not UNSET:
-            field_dict["start_task"] = start_task
-        if task_metadata is not UNSET:
-            field_dict["task_metadata"] = task_metadata
-        if task_type is not UNSET:
-            field_dict["task_type"] = task_type
 
         return field_dict
 
@@ -120,25 +71,11 @@ class PreCheckRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.pre_check_request_dimensions import PreCheckRequestDimensions
-        from ..models.pre_check_request_task_metadata_type_0 import PreCheckRequestTaskMetadataType0
         d = dict(src_dict)
         customer_id = UUID(d.pop("customer_id"))
 
 
 
-
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: PreCheckRequestDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
-        else:
-            dimensions = PreCheckRequestDimensions.from_dict(_dimensions)
-
-
-
-
-        external_task_id = d.pop("external_task_id", UNSET)
 
         def _parse_parent_task_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -160,57 +97,9 @@ class PreCheckRequest:
         parent_task_id = _parse_parent_task_id(d.pop("parent_task_id", UNSET))
 
 
-        def _parse_provider_cost_limit_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
-
-
-        start_task = d.pop("start_task", UNSET)
-
-        def _parse_task_metadata(data: object) -> None | PreCheckRequestTaskMetadataType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                task_metadata_type_0 = PreCheckRequestTaskMetadataType0.from_dict(data)
-
-
-
-                return task_metadata_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | PreCheckRequestTaskMetadataType0 | Unset, data)
-
-        task_metadata = _parse_task_metadata(d.pop("task_metadata", UNSET))
-
-
-        def _parse_task_type(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        task_type = _parse_task_type(d.pop("task_type", UNSET))
-
-
         pre_check_request = cls(
             customer_id=customer_id,
-            dimensions=dimensions,
-            external_task_id=external_task_id,
             parent_task_id=parent_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
-            start_task=start_task,
-            task_metadata=task_metadata,
-            task_type=task_type,
         )
 
 

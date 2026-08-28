@@ -119,73 +119,39 @@ class UBBClient:
 
     # ---- orchestrated methods ----
 
-    def pre_check(self, customer_id: str, start_task: bool = False,
-                  task_metadata: dict | None = None,
-                  external_task_id: str = "",
-                  provider_cost_limit_micros: int | None = None,
+    def pre_check(self, customer_id: str,
                   parent_task_id: str | None = None) -> PreCheckResult:
-        """Pre-check whether a request should proceed.
+        """Ask whether this customer's spending state would let work proceed.
 
-        If billing is enabled, delegates to billing pre-check which checks
-        customer status, rate limits, and wallet balance vs arrears threshold.
-        If billing is not enabled, returns trivially allowed.
+        If billing is enabled, delegates to the billing check, which reads
+        customer status, rate limits, and wallet balance against the arrears
+        threshold. If billing is not enabled, returns trivially allowed.
 
-        If start_task=True and the check passes, a Task is created
-        server-side and its ID is returned in the result. Passing
-        ``parent_task_id`` registers a SUBTASK under that active top-level
-        task instead — a child unit with its own limit whose spend rolls up
-        into the parent's totals; refused ``parent_task_not_active`` /
-        ``subtask_depth_exceeded`` when the parent is not an active
-        top-level task.
-        ``provider_cost_limit_micros`` is the unit's COGS limit (what the job
-        burns); omitted, the tenant default applies (the subtask default for
-        a subtask) — absent both, the unit is uncapped and no stop signal
-        ever fires.
+        ADVISORY ONLY — it registers nothing (#410).
+
+        ``parent_task_id`` is read only for the soft floor: past the wind-down
+        line new top-level work is refused while contained work under a running
+        parent passes.
         """
         if self.billing:
             check = self.billing.pre_check(
-                customer_id,
-                start_task=start_task,
-                task_metadata=task_metadata,
-                external_task_id=external_task_id,
-                provider_cost_limit_micros=provider_cost_limit_micros,
-                parent_task_id=parent_task_id,
-            )
+                customer_id, parent_task_id=parent_task_id)
             return PreCheckResult(
                 allowed=check.get("allowed", check.get("can_proceed", True)),
                 can_proceed=check.get("can_proceed", check.get("allowed", True)),
                 reason=check.get("reason"),
                 balance_micros=check.get("balance_micros"),
-                task_id=check.get("task_id"),
-                parent_task_id=check.get("parent_task_id"),
-                provider_cost_limit_micros=check.get("provider_cost_limit_micros"),
             )
 
         return PreCheckResult(allowed=True, can_proceed=True)
 
-    def start_task(self, customer_id: str, metadata: dict | None = None,
-                   external_task_id: str = "",
-                   provider_cost_limit_micros: int | None = None,
-                   parent_task_id: str | None = None) -> PreCheckResult:
-        """Start a task: pre-check + create a Task if allowed.
-
-        Passing ``parent_task_id`` registers a subtask under that active
-        task: its own COGS limit races only its own spend (crossing kills it
-        ALONE — the parent keeps running), while everything it spends also
-        rolls up into the parent's totals and races the parent's limit.
-
-        Convenience wrapper around pre_check(start_task=True).
-        Requires billing product.
-        """
-        self._require_billing()
-        return self.pre_check(
-            customer_id,
-            start_task=True,
-            task_metadata=metadata,
-            external_task_id=external_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
-            parent_task_id=parent_task_id,
-        )
+    # ⚠ `start_task` STOOD HERE AND IS DELETED RATHER THAN REPOINTED (#410).
+    # It was documented as a convenience wrapper around the flag that made the
+    # affordability call create a unit of work, and that flag is gone: the call
+    # it wrapped can no longer register anything, so the method could only have
+    # gone on returning an answer with no unit of work in it. Registering work
+    # is `POST /api/v1/tasks` now, and the wrapper for it is #422's — which is
+    # also where the key that route requires gets its place in the signature.
 
     def record_usage(self, customer_id: str, request_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,
