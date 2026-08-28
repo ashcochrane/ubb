@@ -464,3 +464,48 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/bil
 # routes; it reaches them under the name the registry ratified.
 GET /api/v1/metering/usage/{event_id} removed the optional property `pricing_provenance` from the response with the `200` status
 POST /api/v1/metering/usage removed the optional property `pricing_provenance` from the response with the `200` status
+# --- #410, slice 5: the affordability call stops registering a unit of work ---
+#
+# WHAT CHANGED. `POST /api/v1/billing/pre-check` used to create a unit of work
+# as a side effect of a flag on its own body, and answer with the identifiers
+# of the thing it had made. Registering a unit of work is `POST /api/v1/tasks`
+# now — at the root, behind no product gate, with the caller's idempotency key
+# required — so the flag and the four request properties that only ever served
+# it are gone, and so are the three response properties that described what it
+# created. What survives is the advisory answer: `allowed`, `reason`,
+# `balance_micros`, and the one request property the soft floor still reads.
+#
+# WHY IT IS RETIRED RATHER THAN REDIRECTED. Map constraint 1 buys exactly one
+# clean break of this call, and #140 changes its contract regardless; two live
+# ways to register a unit of work would spend that break on nothing and split
+# the idempotency key's uniqueness domain across two surfaces.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the only caller-side consumers in
+# the tree are UBB's own console and the SDK, both changed in this same commit
+# because CI's contract check and the SDK drift gate leave no window in which
+# they could be stale.
+#
+# ⚠ THREE MORE PROPERTIES LEFT THIS ROUTE AND EMIT NOTHING HERE, WHICH IS THE
+# DIRECTION PEOPLE FORGET. The declared kind of work and the grouping bag on
+# the request, and the kind of work on the response, were all ADDED after the
+# `api-v1-launch` tag, so against that baseline they net to zero and the
+# cumulative run reports them nowhere. The authoring direction (`--baseline
+# HEAD`) reports ten; this gate is missing seven, and pasting the other three
+# would file inert suppressions, which fail exactly as an unreviewed break
+# does. Both runs were taken and only the cumulative one's findings are here.
+#
+# ⚠ AND THE NEW ROUTE EMITS NOTHING EITHER. Adding an operation, two schemas
+# and two error codes is additive in every direction.
+#
+# ⚠ WARN-LEVEL RATHER THAN ERROR, and that is a fact about the schemas rather
+# than a judgement: every one of the seven was OPTIONAL at the launch tag — the
+# request properties all carried defaults and the response properties were all
+# nullable — so none of them was ever required of, or promised to, a caller.
+POST /api/v1/billing/pre-check removed the optional property `parent_task_id` from the response with the `200` status
+POST /api/v1/billing/pre-check removed the optional property `provider_cost_limit_micros` from the response with the `200` status
+POST /api/v1/billing/pre-check removed the optional property `task_id` from the response with the `200` status
+POST /api/v1/billing/pre-check removed the request property `external_task_id`
+POST /api/v1/billing/pre-check removed the request property `provider_cost_limit_micros`
+POST /api/v1/billing/pre-check removed the request property `start_task`
+POST /api/v1/billing/pre-check removed the request property `task_metadata`

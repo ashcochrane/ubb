@@ -116,16 +116,15 @@ class TestStartGateHonorsStopFlag:
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())  # crosses -> flag set
-        res = RiskService.check(c, create_task=True)
+        res = RiskService.check(c)
         assert res["allowed"] is False
         assert res["reason"] == "customer_stopped"
-        assert res["task_id"] is None
 
     def test_allowed_again_after_flag_cleared(self):
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
-        assert RiskService.check(c, create_task=True)["allowed"] is False
+        assert RiskService.check(c)["allowed"] is False
         LiveCounter.credit(c.id, t, 10_000_000)  # recovery clears the flag
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.check(c)["allowed"] is True

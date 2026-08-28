@@ -1,7 +1,6 @@
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.work.models import Task
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -84,9 +83,15 @@ class RiskServiceTest(TestCase):
         self.assertTrue(result["allowed"])
         self.assertEqual(result["balance_micros"], 0)
 
-    def test_check_returns_null_task_id_by_default(self):
+    def test_the_answer_names_no_unit_of_work(self):
+        """It used to answer with a null identifier for the unit it had not
+        created; it answers with no such key at all now (#410). A whole set
+        rather than one absent key: an answer that quietly grew a fourth
+        member would be a registration riding back on an advisory call, which
+        is the shape this route was split to remove.
+        """
         result = RiskService.check(self.customer)
-        self.assertIsNone(result["task_id"])
+        self.assertEqual(set(result), {"allowed", "reason", "balance_micros"})
 
 
 class RiskServiceRedisFailureTest(TestCase):
@@ -104,83 +109,22 @@ class RiskServiceRedisFailureTest(TestCase):
         self.assertTrue(result["allowed"])
 
 
-class RiskServiceTaskTest(TestCase):
-    def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test")
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="u1"
-        )
-        RiskConfig.objects.create(tenant=self.tenant)
-        BillingTenantConfig.objects.create(tenant=self.tenant)
-
-    def test_check_with_create_task_returns_task_id(self):
-        # No explicit limit and no RiskConfig default -> uncapped task.
-        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(self.customer, create_task=True)
-        self.assertTrue(result["allowed"])
-        self.assertIsNotNone(result["task_id"])
-        self.assertIsNone(result["provider_cost_limit_micros"])
-
-        # Verify the Task was created in DB
-        task = Task.objects.get(id=result["task_id"])
-        self.assertEqual(task.status, "active")
-        self.assertEqual(task.balance_snapshot_micros, 20_000_000)
-        self.assertEqual(task.customer_id, self.customer.id)
-        self.assertIsNone(task.provider_cost_limit_micros)
-
-    def test_explicit_limit_creates_limited_task(self):
-        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(
-            self.customer, create_task=True,
-            provider_cost_limit_micros=10_000_000,
-        )
-        self.assertTrue(result["allowed"])
-        self.assertEqual(result["provider_cost_limit_micros"], 10_000_000)
-        task = Task.objects.get(id=result["task_id"])
-        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
-
-    def test_tenant_default_limit_applies_when_no_explicit_limit(self):
-        config = self.tenant.risk_config
-        config.default_task_provider_cost_limit_micros = 7_000_000
-        config.save(update_fields=["default_task_provider_cost_limit_micros"])
-        result = RiskService.check(self.customer, create_task=True)
-        self.assertTrue(result["allowed"])
-        self.assertEqual(result["provider_cost_limit_micros"], 7_000_000)
-        task = Task.objects.get(id=result["task_id"])
-        self.assertEqual(task.provider_cost_limit_micros, 7_000_000)
-
-    def test_check_denied_does_not_create_task(self):
-        Wallet.objects.create(customer=self.customer, balance_micros=-6_000_000)
-        result = RiskService.check(self.customer, create_task=True)
-        self.assertFalse(result["allowed"])
-        self.assertIsNone(result["task_id"])
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_check_without_create_task_returns_null_task_id(self):
-        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(self.customer, create_task=False)
-        self.assertTrue(result["allowed"])
-        self.assertIsNone(result["task_id"])
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_check_create_task_with_metadata_and_external_id(self):
-        Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
-        result = RiskService.check(
-            self.customer,
-            create_task=True,
-            task_metadata={"workflow": "search"},
-            external_task_id="ext-abc",
-        )
-        task = Task.objects.get(id=result["task_id"])
-        self.assertEqual(task.metadata, {"workflow": "search"})
-        self.assertEqual(task.external_task_id, "ext-abc")
-
-    def test_check_create_task_no_wallet_snapshots_zero(self):
-        # No wallet created — balance defaults to 0
-        result = RiskService.check(self.customer, create_task=True)
-        self.assertTrue(result["allowed"])
-        task = Task.objects.get(id=result["task_id"])
-        self.assertEqual(task.balance_snapshot_micros, 0)
+# ⚠ `RiskServiceTaskTest` STOOD HERE AND ITS SUBJECT MOVED WHOLE (#410).
+# Seven cases, every one of them about the unit of work this service created
+# behind a flag: that it was born active, that it snapshotted the wallet
+# balance, that an explicit ceiling and a tenant default each landed on the
+# row, that a denied answer created nothing, that the flagless call created
+# nothing, and that the caller's metadata and label were carried onto it.
+#
+# This service registers nothing now — `POST /api/v1/tasks` does, at the root
+# and behind no product gate — so the cases went with the behaviour rather
+# than being deleted. `api/v1/tests/test_a_start_claims_its_key.py` holds the
+# balance snapshot, the uncapped default, the ceiling carried through, the
+# refusal that creates nothing, the metadata and the label, and this service's
+# own half (that the advisory call registers nothing at all);
+# `api/v1/tests/test_one_rule_pins.py` holds the tenant default rung and
+# `api/v1/tests/test_the_ceiling_belongs_to_the_kind_of_work.py` the rest of
+# the ladder.
 
 
 import pytest

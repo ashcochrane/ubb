@@ -268,25 +268,33 @@ def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
             "balance_micros": result.balance_micros}
 
 
-@billing_router.post("/pre-check", response={200: PreCheckResponse, 422: ProblemOut})
+@billing_router.post("/pre-check", response={200: PreCheckResponse})
 @role_floor(WRITE)
 def pre_check(request, payload: PreCheckRequest):
+    """Ask whether this customer's spending state would let work proceed.
+
+    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
+    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
+    only call that creates one.
+
+    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
+    the question was answered.
+    """
+    # ⚠ THE CREATION HALF IS GONE, NOT MOVED BEHIND A DEFAULT (#410). This
+    # route used to create a unit of work as a side effect of a flag, which
+    # fused three things: a money-shaped admission check, the registration of a
+    # unit of work, and a billing product wall in front of both. A
+    # metering-only tenant
+    # could not begin work at all, and a billing tenant could not ask the
+    # question without deciding whether to answer it by starting something.
+    # The 422 went with it — the refusals that raised one all belonged to the
+    # creation (an undeclared kind of work, a grouping key nobody declared, a
+    # ceiling above the declared one) and are the start gate's now, so keeping
+    # the status on the published document would advertise an answer this route
+    # can no longer give.
     _product_check(request)
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    try:
-        result = RiskService.check(
-            customer,
-            create_task=payload.start_task,
-            task_metadata=payload.task_metadata,
-            external_task_id=payload.external_task_id,
-            provider_cost_limit_micros=payload.provider_cost_limit_micros,
-            parent_task_id=payload.parent_task_id,
-            task_type=payload.task_type,
-            dimensions=payload.dimensions,
-        )
-    except ValueError as exc:
-        raise Problem("validation_error", str(exc))
-    return 200, result
+    return 200, RiskService.check(customer, parent_task_id=payload.parent_task_id)
 
 
 @billing_router.post("/customers/{customer_id}/refund", response=RefundResponse)

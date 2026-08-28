@@ -120,6 +120,11 @@ class FeatureNotEnabledError(ForbiddenError):
     CODE = 'feature_not_enabled'
 
 
+class IdempotencyKeyConflictError(ConflictError):
+    STATUS = 409
+    CODE = 'idempotency_key_conflict'
+
+
 class InsufficientBalanceError(ConflictError):
     STATUS = 409
     CODE = 'insufficient_balance'
@@ -175,6 +180,11 @@ class TaskAlreadyTerminalError(ConflictError):
     CODE = 'task_already_terminal'
 
 
+class TaskStartRefusedError(ConflictError):
+    STATUS = 409
+    CODE = 'task_start_refused'
+
+
 class UnsupportedCurrencyError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'unsupported_currency'
@@ -217,6 +227,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'feature_not_enabled': FeatureNotEnabledError,
     'forbidden': ForbiddenError,
     'gone': GoneError,
+    'idempotency_key_conflict': IdempotencyKeyConflictError,
     'insufficient_balance': InsufficientBalanceError,
     'internal_error': InternalError,
     'invalid_config': InvalidConfigError,
@@ -231,6 +242,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
     'task_already_terminal': TaskAlreadyTerminalError,
+    'task_start_refused': TaskStartRefusedError,
     'unsupported_currency': UnsupportedCurrencyError,
     'validation_error': ValidationError,
     'would_overdraw': WouldOverdrawError,
@@ -270,6 +282,7 @@ __all__ = [
     'EffectiveAtTooFarAheadError',
     'EffectiveAtTooOldError',
     'FeatureNotEnabledError',
+    'IdempotencyKeyConflictError',
     'InsufficientBalanceError',
     'InternalError',
     'InvalidConfigError',
@@ -281,6 +294,7 @@ __all__ = [
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'TaskAlreadyTerminalError',
+    'TaskStartRefusedError',
     'UnsupportedCurrencyError',
     'ValidationError',
     'WouldOverdrawError',

@@ -647,81 +647,16 @@ class WithdrawOutboxEventTest(TestCase):
         self.assertEqual(events.count(), 0)
 
 
-class PreCheckTaskTest(TestCase):
-    def setUp(self):
-        self.http_client = Client()
-        self.tenant = Tenant.objects.create(
-            name="Task Tenant",
-            products=["metering", "billing"],
-        )
-        BillingTenantConfig.objects.create(tenant=self.tenant)
-        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust_task_1"
-        )
-        self.wallet = Wallet.objects.create(
-            customer=self.customer, balance_micros=20_000_000
-        )
-
-    def _pre_check(self, **extra):
-        data = {"customer_id": str(self.customer.id)}
-        data.update(extra)
-        return self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps(data),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-
-    def test_pre_check_start_task_returns_task_id(self):
-        # Uncapped start (no provider_cost_limit_micros anywhere) — the
-        # coverage gate only fires for a RESOLVED limit, so no coverage
-        # setup is needed here.
-        resp = self._pre_check(start_task=True)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["allowed"])
-        self.assertIsNotNone(body["task_id"])
-        self.assertIsNone(body["provider_cost_limit_micros"])
-
-        # Task exists in DB
-        task = Task.objects.get(id=body["task_id"])
-        self.assertEqual(task.status, "active")
-        self.assertEqual(task.balance_snapshot_micros, 20_000_000)
-        self.assertIsNone(task.provider_cost_limit_micros)
-
-    def test_pre_check_capped_start_snapshots_limit(self):
-        # This tenant has declared no cost rates at all, and a limited start
-        # is admitted anyway (#321): the coverage gate that refused one is
-        # gone, with nothing in its place. What used to justify it — a COGS
-        # ceiling racing a total that silently counted uncovered events as 0 —
-        # stopped being true in #320, which records an uncosted event with its
-        # cost unresolved instead of counting it as nothing.
-        resp = self._pre_check(start_task=True, provider_cost_limit_micros=10_000_000)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["allowed"])
-        self.assertEqual(body["provider_cost_limit_micros"], 10_000_000)
-        task = Task.objects.get(id=body["task_id"])
-        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
-
-    def test_pre_check_start_task_denied_no_task_created(self):
-        self.wallet.balance_micros = -6_000_000
-        self.wallet.save()
-
-        resp = self._pre_check(start_task=True)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertFalse(body["allowed"])
-        self.assertIsNone(body["task_id"])
-        self.assertEqual(Task.objects.count(), 0)
-
-    def test_pre_check_without_start_task_returns_null_task(self):
-        resp = self._pre_check()
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["allowed"])
-        self.assertIsNone(body["task_id"])
+# THE CLASS THAT STOOD HERE TESTED A SIDE EFFECT THIS ROUTE NO LONGER HAS
+# (#410). Four cases, all about the unit of work a flag on `/pre-check`
+# used to create: that it was born active with the wallet balance
+# snapshotted onto it, that a requested ceiling was snapshotted too, that a
+# denied answer created nothing, and that the flagless call created
+# nothing. Registering work is its own call now, at the root and ungated,
+# so all four moved WITH their subject rather than being deleted:
+# `api/v1/tests/test_a_start_claims_its_key.py` holds each of them, and
+# `TestTodaysCreationPathIsGone` in that module is where *this* route's
+# half — that it registers nothing at all any more — is now asserted.
 
 
 class TopUpWithoutConnectorTest(TestCase):

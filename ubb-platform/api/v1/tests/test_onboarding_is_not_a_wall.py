@@ -19,17 +19,42 @@ Every assertion below is an ABSENCE, so each one fails on the commit before
 this one — they were written that way on purpose. Relaxing any of them puts
 the wall back.
 """
+import json
+import uuid
+
 from django.core.exceptions import FieldDoesNotExist
-from django.test import TestCase
+from django.test import Client, TestCase
 
 from apps.billing.gating.models import RiskConfig
-from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from apps.platform.work.models import Task
+
+
+def a_limited_start(tenant, customer, *, ceiling):
+    """Register a unit of work with a ceiling, through the one route that
+    registers one.
+
+    ⚠ THROUGH THE API RATHER THAN THROUGH THE ADMISSION SERVICE (#410). Every
+    case in this module used to drive a start by setting a flag on that
+    service, because that flag was the only way to create a unit of work.
+    Registering one is `POST /api/v1/tasks` now, and the deleted coverage gate
+    this module is about was a START-GATE refusal — so the honest place to
+    assert its absence is the call that would have met it.
+    """
+    # The key's mode must match the tenant's — a live key cannot exist on a
+    # sandbox and vice versa — and this helper is called with both.
+    _, raw_key = TenantApiKey.create_key(tenant, is_test=tenant.is_sandbox)
+    return Client().post(
+        "/api/v1/tasks",
+        data=json.dumps({"customer_id": str(customer.id),
+                         "idempotency_key": f"attempt-{uuid.uuid4()}",
+                         "provider_cost_limit_micros": ceiling}),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {raw_key}")
 
 
 class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
@@ -43,13 +68,11 @@ class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
         Wallet.objects.create(customer=self.customer, balance_micros=20_000_000)
 
     def test_an_explicit_ceiling_starts_a_task_on_a_tenant_with_no_cost_rates(self):
-        result = RiskService.check(
-            self.customer, create_task=True,
-            provider_cost_limit_micros=10_000_000)
+        response = a_limited_start(self.tenant, self.customer,
+                                   ceiling=10_000_000)
 
-        self.assertTrue(result["allowed"])
-        self.assertIsNone(result["reason"])
-        task = Task.objects.get(id=result["task_id"])
+        self.assertEqual(response.status_code, 200)
+        task = Task.objects.get(id=response.json()["task_id"])
         self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
 
     def test_a_tenant_default_ceiling_starts_a_task_too(self):
@@ -57,11 +80,11 @@ class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
         config.default_task_provider_cost_limit_micros = 7_000_000
         config.save(update_fields=["default_task_provider_cost_limit_micros"])
 
-        result = RiskService.check(self.customer, create_task=True)
+        response = a_limited_start(self.tenant, self.customer, ceiling=None)
 
-        self.assertTrue(result["allowed"])
-        self.assertIsNone(result["reason"])
-        self.assertEqual(result["provider_cost_limit_micros"], 7_000_000)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["provider_cost_limit_micros"], 7_000_000)
 
 
 class TheSettingIsGoneRatherThanDefaultedOffTest(TestCase):
@@ -130,12 +153,12 @@ class ASandboxAdmitsWhatItsLiveParentAdmitsTest(TestCase):
         self.sandbox = get_or_create_sandbox(self.live)
 
     def _outcome_of_a_limited_start(self, tenant, external_id):
-        """The verdict, reduced to what a caller can act on.
+        """The answer, reduced to what a caller can act on.
 
-        `task_id` and `balance_micros` are excluded because they differ
-        between two tenants for reasons that have nothing to do with this
-        ticket; the ceiling that comes back is included, because a gate that
-        refused would return none.
+        The identifiers are excluded because they differ between two tenants
+        for reasons that have nothing to do with this ticket; the STATUS is
+        included, because a gate that refused would not answer 200, and so is
+        the ceiling, because a gate that refused would pin none.
         """
         customer = Customer.objects.create(
             tenant=tenant, external_id=external_id)
@@ -143,13 +166,11 @@ class ASandboxAdmitsWhatItsLiveParentAdmitsTest(TestCase):
         BillingTenantConfig.objects.create(tenant=tenant)
         Wallet.objects.create(customer=customer, balance_micros=20_000_000)
 
-        result = RiskService.check(
-            customer, create_task=True, provider_cost_limit_micros=5_000_000)
+        response = a_limited_start(tenant, customer, ceiling=5_000_000)
         task = Task.objects.filter(tenant=tenant).get()
         return {
-            "allowed": result["allowed"],
-            "reason": result["reason"],
-            "ceiling_returned": result["provider_cost_limit_micros"],
+            "http_status": response.status_code,
+            "ceiling_returned": response.json().get("provider_cost_limit_micros"),
             "ceiling_on_the_task": task.provider_cost_limit_micros,
         }
 
@@ -159,8 +180,7 @@ class ASandboxAdmitsWhatItsLiveParentAdmitsTest(TestCase):
 
         # Stated absolutely first, so this cannot pass by both being refused.
         self.assertEqual(live, {
-            "allowed": True,
-            "reason": None,
+            "http_status": 200,
             "ceiling_returned": 5_000_000,
             "ceiling_on_the_task": 5_000_000,
         })

@@ -43,6 +43,16 @@ def _task(t, c, owner_id):
 
 @pytest.mark.django_db
 class TestConcurrencyCap:
+    """The per-owner cap on work already running.
+
+    ⚠ IT IS ASKED THROUGH `concurrency_verdict` NOW, NOT THROUGH A FLAG ON THE
+    ADVISORY CHECK (#410). The cap is the one control only a call that
+    REGISTERS work can breach, so it stayed out of the advisory answer when
+    registering became its own route — which is what lets that answer keep
+    reporting exactly the verdicts it always has. Everything asserted here is
+    unchanged.
+    """
+
     def setup_method(self):
         cache.clear()
 
@@ -52,10 +62,9 @@ class TestConcurrencyCap:
         c = Customer.objects.create(tenant=t, external_id="c1")
         _task(t, c, c.id)
         _task(t, c, c.id)
-        res = RiskService.check(c, create_task=True)
+        res = RiskService.concurrency_verdict(c)
         assert res["allowed"] is False
         assert res["reason"] == "concurrency_limit"
-        assert res["task_id"] is None
 
     def test_off_tenant_not_capped(self):
         t = _tenant(enf="off")
@@ -63,7 +72,7 @@ class TestConcurrencyCap:
         c = Customer.objects.create(tenant=t, external_id="c1")
         for _ in range(3):
             _task(t, c, c.id)
-        res = RiskService.check(c, create_task=True)
+        res = RiskService.concurrency_verdict(c)
         assert res["allowed"] is True
 
     def test_pooled_business_shares_cap_counted_per_owner(self):
@@ -75,7 +84,7 @@ class TestConcurrencyCap:
         s2 = Customer.objects.create(tenant=t, external_id="s2", account_type="seat", parent=biz)
         _task(t, s1, biz.id)  # both tasks pin the business as billing owner
         _task(t, s2, biz.id)
-        res = RiskService.check(s1, create_task=True)  # 3rd task, any seat -> blocked
+        res = RiskService.concurrency_verdict(s1)  # 3rd task, any seat -> blocked
         assert res["allowed"] is False and res["reason"] == "concurrency_limit"
 
 
@@ -197,14 +206,14 @@ class TestP5ReviewFixes:
         c = Customer.objects.create(tenant=t, external_id="c1")
         for _ in range(3):
             _task(t, c, c.id)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.concurrency_verdict(c)["allowed"] is True
 
     def test_concurrency_cap_negative_does_not_brick(self):
         t = _tenant()
         RiskConfig.objects.create(tenant=t, max_concurrent_requests=-1)
         c = Customer.objects.create(tenant=t, external_id="c1")
         # 0 active tasks; a negative cap must NOT block (no -1 >= active=0 trap)
-        assert RiskService.check(c, create_task=True)["allowed"] is True
+        assert RiskService.concurrency_verdict(c)["allowed"] is True
 
     def test_reaper_respects_tenant_task_stale_seconds(self):
         t = _tenant(stale=1800)  # 30-min window

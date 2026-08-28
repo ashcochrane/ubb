@@ -344,11 +344,62 @@ class Task(BaseModel):
     reason_detail = models.TextField(blank=True, default="")
 
     metadata = models.JSONField(default=dict)
+
+    # THE CALLER'S KEY FOR ONE ATTEMPT, CLAIMED PERMANENTLY (#410).
+    #
+    # TWO FIELDS, TWO JOBS, and this is the identity one. `external_task_id`
+    # below stays the caller's free-text JOB LABEL — reusable across attempts,
+    # not unique, not required — and promoting that label to the key was
+    # rejected: the label is the only place the relationship BETWEEN attempts
+    # can live, so if the label were the identity then attempt 2 would have to
+    # be called something else and nothing would tie the attempts together in
+    # the tenant's own reporting.
+    #
+    # THE CLAIM NEVER LAPSES. No release when the unit reaches a terminal
+    # state, no expiry window. Releasing at terminal was rejected on the case
+    # that matters and only on that case: attempt 1 delivers, its response is
+    # lost, the retry arrives, and a released key starts a SECOND unit of work
+    # that is charged a second time. A permanent claim answers that retry with
+    # the unit it already started, for as long as the row exists.
+    #
+    # ⚠ NULLABLE, WITH THE UNIQUENESS PARTIAL — the top-up's exact shape
+    # (`WalletTransaction.idempotency_key`), and required at the API boundary
+    # rather than by the column. Two reasons, both about rows this column
+    # cannot speak for: every unit of work that predates it was registered
+    # without one, and there is no caller-supplied value to invent for them
+    # that would not be a fabricated declaration; and a NULL is the honest
+    # record of *nobody claimed a key here* in a way `""` is not, because ""
+    # is a value and would collide every such row against every other. What
+    # makes the key REQUIRED is that the one route which registers a unit of
+    # work refuses a request without one — a rule about what a caller may ask
+    # for, which is where it belongs.
+    idempotency_key = models.CharField(max_length=500, null=True, blank=True)
+
     external_task_id = models.CharField(max_length=255, blank=True, default="")
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "ubb_task"
+        constraints = [
+            # THE KEY'S CLAIM, ENFORCED WHERE IT CANNOT BE ROUTED AROUND.
+            #
+            # (tenant, customer, key) is the POSTING'S OWN SCOPE
+            # (`uq_usage_event_idempotency_v2`), on the same argument: both are
+            # a caller reporting that something happened FOR A NAMED CUSTOMER,
+            # and two of a tenant's customers may each run a `nightly-batch`.
+            # Scoping it to the tenant alone would make one customer's key
+            # collide with another's and hand back the wrong customer's work.
+            #
+            # The start gate reads this claim before it does anything else and
+            # answers a repeat itself, so the constraint is not what a caller
+            # normally meets. It is what holds when two identical starts race:
+            # both probe, both find nothing, and exactly one INSERT survives.
+            models.UniqueConstraint(
+                fields=["tenant", "customer", "idempotency_key"],
+                condition=models.Q(idempotency_key__isnull=False),
+                name="uq_task_idempotency_key",
+            ),
+        ]
         indexes = [
             models.Index(
                 fields=["customer", "-created_at"],

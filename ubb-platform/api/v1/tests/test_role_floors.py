@@ -41,8 +41,11 @@ _WRITE_ROUTES = {
     # usage ingestion & tasks
     ("POST", "/metering/usage"),
     ("POST", "/metering/usage/batch"),
+    # Registering a unit of work is the head of usage ingestion and closing one
+    # is its tail — the same footing as the two routes above (#410).
+    ("POST", "/tasks"),
     ("POST", "/tasks/{task_id}/close"),
-    # spend pre-check (may start a task)
+    # the spend enforcement read (advisory only since #410 — it starts nothing)
     ("POST", "/billing/pre-check"),
     # money IN (driver's amendment: paying into your own wallet is day-to-day)
     ("POST", "/billing/customers/{customer_id}/top-up"),
@@ -188,7 +191,14 @@ _WRITE_ROUTES = {
 # would not have failed: it would have gone VACUOUS**, silently demanding Admin
 # of a route the entry no longer names, so a close that had quietly become
 # Admin-floored would still pass. 150 + 0 = 150.
-_EXPECTED_FLOORED = 150
+#
+# ⚠ AND THEN ONE ARRIVED THAT HAD NEVER EXISTED (slice 5, #410): `POST /tasks`
+# registers a unit of work, which until now was a side effect of a flag on an
+# affordability call rather than a route at all. It takes Write, not Admin, on
+# the footing the carve already gives the close beside it — registering work is
+# the HEAD of usage ingestion and closing it is the tail, and neither changes
+# the rules nor moves money. 150 + 1 = 151.
+_EXPECTED_FLOORED = 151
 _EXPECTED_EXEMPT = 10
 
 

@@ -23,11 +23,16 @@ _EXEMPT = {
     # Usage ingestion — the firehose of metered telemetry (ADR-004 excludes it).
     ("POST", "/metering/usage"),
     ("POST", "/metering/usage/batch"),
+    # Registering a unit of work is the HEAD of usage ingestion — the row every
+    # metered event then hangs off — and closing one is its tail. Neither
+    # authors a governance, config or money change (#410).
+    ("POST", "/tasks"),
     # Task close finalises a metering task — the tail of usage ingestion, and
     # any settlement it triggers is automatic, not a principal moving money.
     ("POST", "/tasks/{task_id}/close"),
-    # Spend pre-check — an enforcement read on the hot path that may open a task;
-    # telemetry-adjacent, authors no governance/config/money change.
+    # The spend enforcement read on the hot path — advisory, and since #410 it
+    # authors nothing at all: it registers no unit of work and no
+    # governance/config/money change.
     ("POST", "/billing/pre-check"),
     # Subscription sync — a reconciliation trigger that pulls external Stripe
     # truth; it authors no tenant-side governance decision.
@@ -136,8 +141,20 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # the rename ADR-004 §2 governs, so no part of the one-time pre-production
 # audit-registry reset is spent on it. Neither was exempt, so the exempt count
 # below is untouched. 81 - 3 = 78.
-_EXPECTED_MUTATING = 78
-_EXPECTED_EXEMPT = 5
+#
+# ⚠ 78 -> 79 WITH #410's START, AND EVERY ONE OF THE EXTRA IS EXEMPT: 5 -> 6.
+# `POST /tasks` is the first route that registers a unit of work — until now
+# that was a side effect of a flag on the affordability call, which is why the
+# surface grows by one without any act becoming newly auditable. It takes the
+# row beside the close for the reason the close has one: closing is the TAIL of
+# usage ingestion and registering is its HEAD, so if one is telemetry rather
+# than governance then so is the other. Nothing about a start changes the rules
+# or moves money — it authors no config, and the money-shaped checks inside it
+# only READ a wallet — while what it does author is the row every metered event
+# then hangs off, which is the firehose ADR-004 excludes by name. The RECORDING
+# count is therefore unmoved at 73: 79 - 6 = 73, where it was 78 - 5 = 73.
+_EXPECTED_MUTATING = 79
+_EXPECTED_EXEMPT = 6
 
 
 def mutating_operations():

@@ -9,6 +9,7 @@ from api.v1.pagination import Paginated
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
+from apps.platform.work import services as work_services
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.vocabulary import RATE_STRUCTURE_PER_UNIT, TASK_TYPE_KIND_TASK
@@ -68,29 +69,23 @@ def whole_minor_units(value, message=None):
 
 
 class PreCheckRequest(Schema):
+    """ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+
+    It used to, behind a flag, and every field that served the flag has gone
+    with it: registering a unit of work is now its own call, `POST
+    /api/v1/tasks`, at the root and behind no product gate. A money-shaped
+    admission check and the registration of a unit of work were one call
+    answering two questions, and a metering-only tenant could not reach the
+    second because the first sat behind billing.
+    """
+
     customer_id: UUID
-    start_task: bool = False
-    task_metadata: Optional[dict] = None
-    external_task_id: str = ""
-    # Registers a SUBTASK under this active top-level task (#38): a child
-    # unit with its own limit whose spend rolls up into the parent's totals.
-    # Only meaningful with start_task=True (ignored otherwise).
+    # READ FOR THE SOFT FLOOR AND NOTHING ELSE. Past the wind-down line NEW
+    # top-level work is refused while contained work under a running parent
+    # passes, so the answer differs by altitude even though this call creates
+    # nothing. The parent's own liveness is not checked here — a start checks
+    # that, under the parent's lock, in the transaction that writes the row.
     parent_task_id: Optional[UUID] = None
-    # COGS-denominated unit limit (what the job burns). Omitted/null = the
-    # tenant default (RiskConfig.default_task_provider_cost_limit_micros, or
-    # default_subtask_provider_cost_limit_micros when parent_task_id is set);
-    # absent both, the unit is uncapped and no signal ever fires.
-    provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
-    # The declared KIND of work (design D7), at EITHER altitude: a unit of
-    # work declares its kind once and `parent_task_id` above is what says
-    # whether that kind is being used for a whole unit or a contained one
-    # (#407). Resolves the server-side COGS ceiling; a caller may request lower
-    # via provider_cost_limit_micros but never higher.
-    task_type: Optional[str] = Field(default=None, max_length=64)
-    # Declared grouping field values at task/subtask scope, inherited by every
-    # event in the tree (design D6). Keys must be declared; values are
-    # cardinality-capped on write.
-    dimensions: dict = Field(default_factory=dict)
 
 
 class PreCheckResponse(Schema):
@@ -98,10 +93,15 @@ class PreCheckResponse(Schema):
     # reason vocabulary: insufficient_funds | account_closed |
     # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
     # NEW top-level starts refuse; subtask starts under an active parent
-    # pass) | rate_limit_exceeded | budget-cap reasons |
-    # concurrency_limit | parent_task_not_active |
-    # subtask_depth_exceeded (subtask registration refusals, #38 — refusing
-    # work that hasn't happened, never a usage report).
+    # pass) | rate_limit_exceeded | budget-cap reasons.
+    #
+    # THREE WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and none of
+    # them was deleted: `concurrency_limit`, `parent_task_not_active` and
+    # `subtask_depth_exceeded` are refusals only a call that REGISTERS work
+    # can give, and they are given by `POST /api/v1/tasks`, which names them
+    # in its own refusal. They were unreachable here without the retired
+    # flag, so the list is shorter and the vocabulary is not.
+    #
     # A resolved COGS ceiling used to refuse here unless the tenant promised
     # full cost coverage; #321 deleted that verdict outright rather than
     # renaming it, because #320 made the promise unkeepable — an uncosted
@@ -109,14 +109,6 @@ class PreCheckResponse(Schema):
     # floor rather than a total (#328 makes the floor say so).
     reason: Optional[str] = None
     balance_micros: Optional[int] = None
-    task_id: Optional[str] = None
-    # Set when the started unit is a subtask — the parent it registered under.
-    parent_task_id: Optional[str] = None
-    provider_cost_limit_micros: Optional[int] = None
-    #: The declared kind of work the started unit was registered under, at
-    #: whichever altitude it sits at — `parent_task_id` above is what says
-    #: which (#407).
-    task_type: Optional[str] = None
 
 
 #: What the caller's own cost figure MEANS, published on the wire rather than
@@ -1301,6 +1293,139 @@ class TaskDetailOut(TaskOut):
 
 class PaginatedTasks(Paginated[TaskOut]):
     pass
+
+
+class StartTaskRequest(Schema):
+    """The declaration that REGISTERS a unit of work (#410).
+
+    There is one start call and one start shape, whichever altitude the work
+    sits at: naming ``parent_task_id`` registers contained work under a running
+    unit, and everything else about the call is identical. A contained start is
+    a start, so it claims a key like any other.
+    """
+
+    customer_id: UUID
+    #: THE CALLER'S KEY FOR THIS ATTEMPT — REQUIRED, and unique per customer.
+    #: Send it again and you get back the unit of work you already started,
+    #: with `replayed: true`; send it again describing a DIFFERENT unit and the
+    #: call is refused rather than silently answering with the first one. The
+    #: claim never expires and is never released, so a retry after a lost
+    #: response can never start a second unit and be charged twice.
+    #:
+    #: `min_length=1` because "" is not a key: an empty string would let every
+    #: keyless caller collide with every other on one shared claim.
+    idempotency_key: str = Field(min_length=1, max_length=500)
+    #: The caller's own free-text label for the WORK, reusable across attempts
+    #: — NOT an identity. Two attempts at one piece of work share a label and
+    #: differ by the key above, which is what lets a tenant's own reporting tie
+    #: the attempts together. Never unique, never required, and a differing
+    #: value on a replay is not a conflict: the original's label stands.
+    external_task_id: str = ""
+    #: Registers contained work under this running top-level unit (#38): its
+    #: own COGS ceiling races only its own spend, while everything it spends
+    #: also rolls up into the parent's totals.
+    parent_task_id: Optional[UUID] = None
+    #: COGS-denominated ceiling for this unit (what the work burns). A REQUEST
+    #: for a lower ceiling than the declared kind of work already carries — a
+    #: value above that ceiling is refused rather than granted. Omitted, the
+    #: kind of work's default applies, then the tenant default for this
+    #: altitude; absent all three the unit is uncapped and no signal ever fires.
+    provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    #: The declared KIND of work, at EITHER altitude: a unit declares its kind
+    #: once and `parent_task_id` above is what says whether that kind is being
+    #: used for a whole unit or a contained one (#407).
+    task_type: Optional[str] = Field(default=None, max_length=64)
+    #: Declared grouping field values at task/subtask scope, inherited by every
+    #: event in this unit's tree (design D6). Keys must be declared; values are
+    #: cardinality-capped on write.
+    dimensions: dict = Field(default_factory=dict)
+    #: The caller's own free-form bag, carried and returned. Not pinned: a
+    #: replay carrying different metadata is still a replay, and the original's
+    #: bag stands.
+    metadata: Optional[dict] = None
+
+
+#: WHICH REQUEST FIELD A PINNED FACT ARRIVED IN, keyed by the name the kernel
+#: uses for it (`apps.platform.work.services`).
+#:
+#: ⚠ TWO VOCABULARIES, TRANSLATED IN ONE PLACE. `StartDeclaration` decides
+#: WHETHER a repeated start contradicts the unit it is replaying and names the
+#: fact that differs in its own terms; a caller needs the field of the request
+#: it just sent. The map lives beside the request that declares those fields,
+#: which is also the only file on this side already licensed to spell the
+#: grouping bag's retired wire key.
+PINNED_FIELD_ON_THE_WIRE = {
+    work_services.PINNED_PARENT: "parent_task_id",
+    work_services.PINNED_TASK_TYPE: "task_type",
+    work_services.PINNED_COST_CEILING: "provider_cost_limit_micros",
+    work_services.PINNED_GROUPING_VALUES: "dimensions",
+}
+
+
+class StartTaskResponse(Schema):
+    """What a start registered, or what its key already claimed.
+
+    ⚠ THE REGISTRATION, NOT THE READ. A start answers *which unit of work is
+    this, and did I just create it* — the identity, the altitude, and the five
+    facts the unit pinned. What it deliberately does NOT carry is the cost
+    rollups: they are a read's answer, they are all zero on the call that
+    creates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a
+    caller replaying an attempt that has since run up cost.
+
+    ⚠ AND THE DECLARED GROUPING VALUES ARE NOT ECHOED, for two reasons that
+    point the same way. The caller just sent them, and a start that pinned
+    something else would say so by refusing rather than by handing back a
+    corrected bag. The second is a constraint rather than a preference and is
+    recorded because it decided a published surface: that bag's wire key is
+    retired vocabulary under a spread ceiling another slice owns, and every
+    schema publishing it mints one more generated SDK module that counts
+    against the ceiling — so a third copy of the property would fail the sweep
+    for a debt this commit does not own. #358 is the precedent, in the same
+    direction.
+    """
+
+    task_id: str
+    #: Set when this is contained work — the running unit it was registered
+    #: under. There is one start call shape, and this is what says which
+    #: altitude the caller asked for.
+    parent_task_id: Optional[str] = None
+    #: The declared kind of work this unit is, at either altitude — one field,
+    #: because contained work is the same record with a parent rather than a
+    #: second thing (#407).
+    task_type: str = ""
+    status: TaskStatus
+    #: The COGS ceiling this unit pinned, after the whole ladder resolved it:
+    #: the caller's own request, then the declared kind of work's default, then
+    #: the tenant default for this altitude. Null means uncapped, and no stop
+    #: signal will ever fire for spend on this unit.
+    provider_cost_limit_micros: Optional[int] = None
+    #: The caller's own label for the work, echoed back — reusable across
+    #: attempts and never an identity. On a replay this is the ORIGINAL
+    #: attempt's label, which is the point: a differing label does not conflict
+    #: and does not overwrite.
+    external_task_id: str = ""
+    created_at: str
+    #: THIS CALL FOUND THE KEY ALREADY CLAIMED and wrote nothing: no second
+    #: unit, no second ceiling, no second set of totals. A retry after a lost
+    #: response is not an error, and everything above describes the unit the
+    #: ORIGINAL call created. The symmetry with the close's own `replayed` is
+    #: deliberate.
+    replayed: bool
+
+
+def start_task_out(t, *, replayed):
+    """`StartTaskResponse`'s serializer — what the caller registered, or what
+    its key already claimed."""
+    return {
+        "task_id": str(t.id),
+        "parent_task_id": str(t.parent_id) if t.parent_id else None,
+        "task_type": t.task_type,
+        "status": t.status,
+        "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "external_task_id": t.external_task_id,
+        "created_at": t.created_at.isoformat(),
+        "replayed": replayed,
+    }
 
 
 class UsageAnalyticsResponse(Schema):

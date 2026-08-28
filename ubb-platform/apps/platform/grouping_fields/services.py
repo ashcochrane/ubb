@@ -83,8 +83,29 @@ class DimensionService:
         return existing
 
     @staticmethod
+    def resolve(tenant, values, scope):
+        """Map a {key: value} declaration onto {slot: value}, RECORDING NOTHING.
+
+        The reading half of ``admit`` below, split out because a caller that
+        only needs to know *what this declaration binds to* must not spend a
+        key's cardinality to find out (#410). The start gate compares a
+        repeated start's declared grouping values against the ones the unit of
+        work it is replaying already snapshotted, and admitting in order to make
+        that comparison would let a start that is about to be REFUSED
+        permanently burn keyspace for work that never began.
+
+        Every refusal reachable from here is about the declaration itself — an
+        undeclared key, the wrong scope, an over-long value — so it answers the
+        same way whatever the value ledger holds. The refusals that READ the
+        ledger (a retired field, a cap already reached) live in
+        ``_record_value``, which only ``admit`` reaches.
+        """
+        return {slot: value for _, slot, value
+                in DimensionService._bindings(tenant, values, scope)}
+
+    @staticmethod
     def admit(tenant, values, scope):
-        """Validate a {key: value} map for one scope and return {slot: value}.
+        """``resolve`` above, plus the recording that makes each value legitimate.
 
         Records novel values in the GroupingFieldValue ledger, refusing any that
         would push a key past its cap (D4). The cap is a keyspace guard, not
@@ -94,29 +115,44 @@ class DimensionService:
         The entire operation is atomic: if any key validation or cardinality
         check fails, no values are recorded.
         """
-        values = values or {}
-        if not values:
-            return {}
-        defs = {d.key: d for d in GroupingField.objects.filter(
-            tenant=tenant, key__in=list(values))}
         out = {}
         with transaction.atomic():
-            for key, raw in values.items():
-                d = defs.get(key)
-                if d is None:
-                    raise DimensionError(
-                        f"unknown grouping field {key!r}: declare it first")
-                if d.scope != scope:
-                    raise DimensionError(
-                        f"{key!r} is declared at {d.scope} scope and cannot be set "
-                        f"at {scope} scope")
-                value = str(raw)
-                if len(value) > 100:
-                    raise DimensionError(
-                        f"grouping field {key!r} value exceeds 100 characters")
-                DimensionService._record_value(tenant, d, value)
-                out[d.slot] = value
+            for definition, slot, value in DimensionService._bindings(
+                    tenant, values, scope):
+                DimensionService._record_value(tenant, definition, value)
+                out[slot] = value
         return out
+
+    @staticmethod
+    def _bindings(tenant, values, scope):
+        """The one walk both callers above share, yielding (definition, slot,
+        value) per declared key.
+
+        ⚠ ONE WALK RATHER THAN TWO, because two copies of a search agree with
+        each other and prove nothing: a scope rule that drifted between the
+        comparing caller and the recording one would make a start's replay
+        disagree with the start it is replaying, which is the only thing the
+        comparison exists to decide.
+        """
+        values = values or {}
+        if not values:
+            return
+        defs = {d.key: d for d in GroupingField.objects.filter(
+            tenant=tenant, key__in=list(values))}
+        for key, raw in values.items():
+            d = defs.get(key)
+            if d is None:
+                raise DimensionError(
+                    f"unknown grouping field {key!r}: declare it first")
+            if d.scope != scope:
+                raise DimensionError(
+                    f"{key!r} is declared at {d.scope} scope and cannot be set "
+                    f"at {scope} scope")
+            value = str(raw)
+            if len(value) > 100:
+                raise DimensionError(
+                    f"grouping field {key!r} value exceeds 100 characters")
+            yield d, d.slot, value
 
     @staticmethod
     def _record_value(tenant, grouping_field, value):

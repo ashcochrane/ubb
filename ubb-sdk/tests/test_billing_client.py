@@ -139,38 +139,32 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(result["reason"], "insufficient_funds")
 
     @patch("ubb.billing.httpx.Client.post")
-    def test_pre_check_start_task_sends_task_keys(self, mock_post):
-        """The start-gate wire body uses the task vocabulary: start_task,
-        task_metadata, external_task_id, provider_cost_limit_micros; the
-        response carries task_id + the resolved limit."""
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "allowed": True, "reason": None, "balance_micros": 10_000_000,
-            "task_id": "task_1", "provider_cost_limit_micros": 5_000_000,
-        })
-        result = self.client.pre_check(
-            customer_id="cust_1", start_task=True,
-            task_metadata={"job": "batch"}, external_task_id="ext-1",
-            provider_cost_limit_micros=5_000_000,
-        )
-        body = mock_post.call_args.kwargs["json"]
-        self.assertTrue(body["start_task"])
-        self.assertEqual(body["task_metadata"], {"job": "batch"})
-        self.assertEqual(body["external_task_id"], "ext-1")
-        self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
-        self.assertEqual(result["task_id"], "task_1")
-        self.assertEqual(result["provider_cost_limit_micros"], 5_000_000)
+    def test_the_body_carries_no_registration_keys_at_all(self, mock_post):
+        """THE TWO CASES THAT STOOD HERE WERE ABOUT A FLAG THAT IS GONE (#410).
 
-    @patch("ubb.billing.httpx.Client.post")
-    def test_pre_check_omits_task_keys_when_not_starting(self, mock_post):
+        One proved the wire body could carry the task vocabulary, the other
+        that it did not when the flag was off. This call registers nothing
+        now, so the second case is the whole claim and the first has no
+        subject — the wrapper for the route that DOES register work is #422's.
+        """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "allowed": True, "reason": None, "balance_micros": 10_000_000,
         })
         self.client.pre_check(customer_id="cust_1")
         body = mock_post.call_args.kwargs["json"]
-        self.assertNotIn("start_task", body)
-        self.assertNotIn("task_metadata", body)
-        self.assertNotIn("external_task_id", body)
-        self.assertNotIn("provider_cost_limit_micros", body)
+        self.assertEqual(body, {"customer_id": "cust_1"})
+
+    @patch("ubb.billing.httpx.Client.post")
+    def test_a_named_parent_is_sent_because_the_soft_floor_reads_it(self, mock_post):
+        """The one keyword that survived, and only for the soft floor: past
+        the wind-down line new top-level work is refused while contained work
+        under a running parent passes."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "allowed": True, "reason": None, "balance_micros": 10_000_000,
+        })
+        self.client.pre_check(customer_id="cust_1", parent_task_id="task_1")
+        self.assertEqual(mock_post.call_args.kwargs["json"]["parent_task_id"],
+                         "task_1")
 
     # ---- create_top_up ----
 

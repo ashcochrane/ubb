@@ -262,3 +262,27 @@ authorisations:
       `MeteringClient.close_task` moved to the new operation constant and gained
       the required outcome in this same commit. The operations gate is what
       caught the stale reference, by name, before anything called it.
+  - id: slice-5-410-a-unit-of-work-is-registered-in-one-call
+    issue: 410
+    operations_added: 1
+    reason: >-
+      `POST /api/v1/tasks` is a brand-new operation — the first way to REGISTER
+      a unit of work, where before it was a side effect of a flag on the
+      affordability call — so this is a genuine new gap rather than the
+      identity change #409 signed for above.
+
+      IT SHIPS UNWRAPPED, DELIBERATELY, AND THE HAND-WRITTEN SDK LOST A METHOD
+      IN THE SAME COMMIT. `UBBClient.start_task` was documented as a wrapper
+      around that flag; the flag is gone, so the method could only have gone on
+      returning an answer with no unit of work in it, and it is deleted rather
+      than repointed. That leaves this client, for now, with no way to start
+      work — which is the honest state: the ticket that re-cuts the SDK's task
+      surface is the one that gives it a start and a close together, and its
+      signature has to carry the caller's idempotency key, whose shape is
+      settled by the route this commit builds and not before.
+
+      Writing the wrapper here would put a start method into a client that
+      cannot yet read what it started through the same shape, against a client
+      form that ticket is entitled to change — the same argument #409's entry
+      makes for the two reads, which are still waiting for exactly that
+      re-cut.

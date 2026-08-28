@@ -130,23 +130,20 @@ class BillingClient:
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_BALANCE(customer_id))
         return from_wire(BalanceResponse, r.json())
 
-    def pre_check(self, customer_id: str, start_task: bool = False,
-                  task_metadata: dict | None = None, external_task_id: str = "",
-                  provider_cost_limit_micros: int | None = None,
+    def pre_check(self, customer_id: str,
                   parent_task_id: str | None = None) -> dict:
-        """Pre-check billing via POST /api/v1/billing/pre-check.
+        """Ask whether this customer's spending state would let work proceed,
+        via POST /api/v1/billing/pre-check.
 
-        ``parent_task_id`` (with start_task=True) registers a subtask under
-        that active top-level task."""
+        ADVISORY ONLY — it registers nothing (#410). Every keyword that
+        described a unit of work went with the flag that created one; the call
+        that registers work is its own route now and #422 wraps it.
+
+        ``parent_task_id`` is still read, and only for the soft floor: past the
+        wind-down line new top-level work is refused while contained work under
+        a running parent passes.
+        """
         body: dict = {"customer_id": customer_id}
-        if start_task:
-            body["start_task"] = True
-        if task_metadata:
-            body["task_metadata"] = task_metadata
-        if external_task_id:
-            body["external_task_id"] = external_task_id
-        if provider_cost_limit_micros is not None:
-            body["provider_cost_limit_micros"] = provider_cost_limit_micros
         if parent_task_id is not None:
             body["parent_task_id"] = parent_task_id
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PRE_CHECK, json=body)

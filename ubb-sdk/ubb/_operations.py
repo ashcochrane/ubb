@@ -356,6 +356,8 @@ API_V1_TASK_ENDPOINTS_GET_TASK = Operation(
     'api_v1_task_endpoints_get_task', 'get', '/api/v1/tasks/{task_id}')
 API_V1_TASK_ENDPOINTS_LIST_TASKS = Operation(
     'api_v1_task_endpoints_list_tasks', 'get', '/api/v1/tasks')
+API_V1_TASK_ENDPOINTS_START_TASK = Operation(
+    'api_v1_task_endpoints_start_task', 'post', '/api/v1/tasks')
 API_V1_TENANT_ENDPOINTS_CREATE_API_KEY = Operation(
     'api_v1_tenant_endpoints_create_api_key', 'post', '/api/v1/tenant/api-keys')
 API_V1_TENANT_ENDPOINTS_CREATE_INVITATION = Operation(

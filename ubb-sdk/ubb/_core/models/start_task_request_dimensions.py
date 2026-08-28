@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="PreCheckRequestTaskMetadataType0")
+T = TypeVar("T", bound="StartTaskRequestDimensions")
 
 
 
 @_attrs_define
-class PreCheckRequestTaskMetadataType0:
+class StartTaskRequestDimensions:
     """ 
      """
 
@@ -41,12 +41,12 @@ class PreCheckRequestTaskMetadataType0:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        pre_check_request_task_metadata_type_0 = cls(
+        start_task_request_dimensions = cls(
         )
 
 
-        pre_check_request_task_metadata_type_0.additional_properties = d
-        return pre_check_request_task_metadata_type_0
+        start_task_request_dimensions.additional_properties = d
+        return start_task_request_dimensions
 
     @property
     def additional_keys(self) -> list[str]:
