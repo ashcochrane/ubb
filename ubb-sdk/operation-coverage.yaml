@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 161
-  unwrapped: 84
+  operations: 162
+  unwrapped: 85
   wrapped: 77
-  generated_only: 84
+  generated_only: 85
   not_yet_wrapped: 0
 
 operations:
@@ -518,6 +518,10 @@ operations:
   - operation_id: api_v1_task_endpoints_get_task
     method: GET
     path: /api/v1/tasks/{task_id}
+    disposition: generated_only
+  - operation_id: api_v1_task_endpoints_list_subtasks
+    method: GET
+    path: /api/v1/tasks/{task_id}/subtasks
     disposition: generated_only
   - operation_id: api_v1_task_endpoints_list_tasks
     method: GET

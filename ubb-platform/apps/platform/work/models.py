@@ -351,6 +351,12 @@ class Task(BaseModel):
     # (`reasons.py`, still in `metadata`), which is the separation
     # `OUTCOME_REASON_CHOICES` above argues for.
     #
+    # THE ONE OTHER WRITER IS A PARENT'S CLOSE CASCADE (#413), and it is the
+    # same declaration one level down rather than a second kind of writer: the
+    # tenant's close is what withdrew the contained work, and `parent_closed` is
+    # the caller-supplied reason for exactly that. It is still the close that
+    # wrote it.
+    #
     # TWO COLUMNS RATHER THAN ONE, which is #140 §3.3's cardinality argument
     # made physical: the code is a small closed set a dashboard can group on,
     # and the sentence is the provider's actual message, which is display-only
@@ -359,10 +365,13 @@ class Task(BaseModel):
     #
     # ⚠ THE RULE IS SET_ONCE AND THIS MODEL DECLARES NO `transition_classes`,
     # WHICH IS A STATED GAP RATHER THAN AN ANSWER. What is allowed to happen to
-    # these two is exactly what the paragraph above says — written by the close
-    # that entered the terminal state, and never again, because the guard in
-    # `TaskService._flip` refuses a second transition and nothing else writes
-    # them. `docs/conventions/django-patterns.md` asks a model holding economic
+    # these two is exactly what the paragraph above says — written once, when
+    # the row enters its terminal state, and never again. Two writes reach them
+    # and both are held to that by the same rule from different directions: the
+    # guard in `TaskService._flip` refuses a second transition, and the cascade
+    # beside it selects only work still running, so a row it can reach is by
+    # construction one that has never been written.
+    # `docs/conventions/django-patterns.md` asks a model holding economic
     # facts to say that per column in a `transition_classes` mapping, and this
     # model has never had one: `status`, `parent` and `task_type` all carry
     # their rule in prose here too, and #407 and #408 each shipped a column

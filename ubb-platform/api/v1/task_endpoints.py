@@ -27,7 +27,9 @@ the advisory answer, which stays where it is and is slice 6's to rebuild.
 not broken a second time to repair the first break, so a lifecycle left under
 one product's prefix while its subject is a kernel concept would be permanent.
 
-**AND ALL FOUR ARE UNGATED, WHICH IS A SEPARATE QUESTION FROM THE MOUNT.**
+**AND ALL FIVE ARE UNGATED, WHICH IS A SEPARATE QUESTION FROM THE MOUNT.**
+(Four until #413 added the containment collection, which is a read on the same
+kernel concept and gates on nothing for the same reason the other reads do.)
 The neighbours at the root still gate — ``/event-types`` on ``metering``,
 ``/plans`` on ``billing`` — because each declares a *vocabulary* a tenant who
 does not use that product has no reason to hold. A unit of work is not a
@@ -289,6 +291,31 @@ def get_task(request, task_id: UUID):
     body["subtasks"] = [task_out(s) for s in
                         task.subtasks.all().order_by("created_at")]
     return 200, body
+
+
+@task_router.get("/tasks/{task_id}/subtasks",
+                 response={200: PaginatedTasks, 404: ProblemOut})
+@role_floor(READ)
+def list_subtasks(request, task_id: UUID, cursor: str = None, limit: int = 50):
+    """The work contained in one unit.
+
+    A unit with nothing inside it answers an empty collection, not a 404: the
+    unit exists, and *nothing is contained in it* is the true answer about it.
+    An unknown unit — or one belonging to another tenant — is a 404.
+
+    Registering contained work is not here. A contained start is a start and
+    goes through `POST /tasks` with `parent_task_id` named, so there is one
+    registration shape at either altitude and this collection is purely the
+    read side of it.
+    """
+    # THE PARENT IS RESOLVED UNDER THE TENANT FIRST, AND THAT IS WHAT MAKES THE
+    # EMPTY ANSWER MEAN SOMETHING. Filtering contained work by `parent_id`
+    # alone would answer an empty collection for a unit that does not exist and
+    # for one belonging to somebody else — the same body for three different
+    # facts, and the caller could not tell which it had.
+    parent = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    return page(Task.objects.filter(parent=parent), cursor, limit,
+                serialize=task_out, time_field="created_at")
 
 
 @task_router.post("/tasks/{task_id}/close",

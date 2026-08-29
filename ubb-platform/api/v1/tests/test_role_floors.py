@@ -198,7 +198,14 @@ _WRITE_ROUTES = {
 # the footing the carve already gives the close beside it — registering work is
 # the HEAD of usage ingestion and closing it is the tail, and neither changes
 # the rules nor moves money. 150 + 1 = 151.
-_EXPECTED_FLOORED = 151
+#
+# ⚠ AND THEN ONE MORE READ (slice 5, #413): `GET /tasks/{task_id}/subtasks`
+# lists the work contained in one unit — the read side of containment, whose
+# write side is the create route above with a parent named rather than a second
+# registration shape. It is a Read GET and takes the carve's default for the
+# ordinary reason: it decides nothing. Not carved and not exempt, so the exempt
+# count below is untouched. 151 + 1 = 152.
+_EXPECTED_FLOORED = 152
 _EXPECTED_EXEMPT = 10
 
 

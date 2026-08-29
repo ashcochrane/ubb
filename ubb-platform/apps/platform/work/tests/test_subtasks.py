@@ -9,6 +9,12 @@ subtasks — containment cuts downward, never upward.
 cascades `killed`, but a CLOSE cascades `cancelled`, because the tenant
 declared the delivery of the parent and declared nothing about each contained
 piece.
+
+⚠ AND WHAT IT WRITES DOWN BESIDE THE STATE IS THREE DIFFERENT RECORDS (#413).
+Each ending records a reason belonging to whoever ended it — the tenant's close
+writes the caller-supplied concept, UBB's own two stops write the UBB-produced
+one — while the MECHANISM is the same on all three and is written on every
+cascaded row, because a cascade announces nothing of its own.
 """
 import uuid
 
@@ -21,9 +27,11 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
-    TASK_OUTCOME_DELIVERED,
+    OUTCOME_REASON_EXECUTION_FAILED, OUTCOME_REASON_PARENT_CLOSED,
+    TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
-    TASK_STATUS_KILLED)
+    TASK_STATUS_EXPIRED, TASK_STATUS_FAILED, TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_PARENT_CASCADE)
 
 
 class SubtaskTestBase(TestCase):
@@ -248,6 +256,229 @@ class KillCascadeTest(SubtaskTestBase):
         self.assertEqual(completed.status, TASK_STATUS_COMPLETED)
         parent.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
+
+
+class CascadeRecordTest(SubtaskTestBase):
+    """WHAT A CASCADE WRITES DOWN, AND WHY IT IS THREE RECORDS RATHER THAN ONE
+    (#413, spec §8).
+
+    A parent's end stops the work still running inside it, and each of the three
+    endings records a reason belonging to whoever ended it. A tenant's close is a
+    DECLARATION, so the work it withdrew carries `outcome_reason` — the
+    caller-supplied set. UBB's own two stops carry `reason_code`, the
+    UBB-produced one. Tidying the two together would put a word meaning *the
+    tenant said so* on a row no tenant said anything about.
+
+    THE MECHANISM IS THE SAME ON ALL THREE AND IS WRITTEN ON EVERY CASCADED ROW.
+    A cascade emits no event — the parent's own signal is the one announcement —
+    so the row is the only place a reader can find out that this piece was
+    stopped by containment rather than by anything it did itself.
+
+    ⚠ EVERY REASON BELOW IS ASSERTED BY CONSTANT IDENTITY. A case spelling the
+    value would keep passing against a boundary that had stopped importing the
+    registry, which is the whole debt this area is paying down — and this app
+    holds other slices' retired words under ceilings on how many files may spell
+    them.
+    """
+
+    def _a_parent_and_its_contained_work(self):
+        parent = self._task()
+        return parent, self._task(parent=parent)
+
+    def test_a_close_cascade_records_the_withdrawal_and_its_mechanism(self):
+        parent, contained = self._a_parent_and_its_contained_work()
+
+        TaskService.close_task(parent.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
+
+        contained.refresh_from_db()
+        self.assertEqual(contained.status, TASK_STATUS_CANCELLED)
+        self.assertEqual(contained.outcome_reason, OUTCOME_REASON_PARENT_CLOSED)
+        self.assertEqual(contained.metadata["trigger_source"],
+                         TRIGGER_SOURCE_PARENT_CASCADE)
+        # The parent's own record is untouched by the cascade it caused: the
+        # tenant explained the whole thing and explained none of the pieces.
+        parent.refresh_from_db()
+        self.assertEqual(parent.status, TASK_STATUS_COMPLETED)
+        self.assertEqual(parent.outcome_reason, "")
+
+    def test_contained_work_closed_beforehand_keeps_its_own_outcome(self):
+        """The cascade only ever touches work still running.
+
+        A state nobody asserted never borrows a state that means someone did —
+        and the converse is what this case pins: a declaration somebody DID make
+        is never overwritten by one nobody made.
+        """
+        parent = self._task()
+        declared = self._task(parent=parent)
+        still_running = self._task(parent=parent)
+        TaskService.close_task(
+            declared.id,
+            CloseDeclaration(TASK_OUTCOME_FAILED,
+                             OUTCOME_REASON_EXECUTION_FAILED))
+
+        TaskService.close_task(parent.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
+
+        declared.refresh_from_db()
+        still_running.refresh_from_db()
+        self.assertEqual(declared.status, TASK_STATUS_FAILED)
+        self.assertEqual(declared.outcome_reason,
+                         OUTCOME_REASON_EXECUTION_FAILED)
+        # Not merely a surviving reason — the cascade did not touch the row at
+        # all, and the mechanism it stamps is what says so.
+        self.assertNotIn("trigger_source", declared.metadata)
+        self.assertEqual(still_running.status, TASK_STATUS_CANCELLED)
+        self.assertEqual(still_running.outcome_reason,
+                         OUTCOME_REASON_PARENT_CLOSED)
+
+    def test_a_kill_cascade_records_containment_and_its_mechanism(self):
+        parent, contained = self._a_parent_and_its_contained_work()
+
+        TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
+
+        parent.refresh_from_db()
+        contained.refresh_from_db()
+        self.assertEqual(contained.status, TASK_STATUS_KILLED)
+        self.assertEqual(contained.metadata["kill_reason"],
+                         reasons.PARENT_KILLED)
+        self.assertEqual(contained.metadata["trigger_source"],
+                         TRIGGER_SOURCE_PARENT_CASCADE)
+        # IT NEVER INHERITS THE PARENT'S CAUSE, and that is the half a report of
+        # what really reached a ceiling depends on: this piece crossed nothing
+        # of its own.
+        self.assertNotEqual(contained.metadata["kill_reason"],
+                            parent.metadata["kill_reason"])
+
+    def test_an_expiry_cascade_records_the_silence_window_and_its_mechanism(self):
+        parent, contained = self._a_parent_and_its_contained_work()
+
+        TaskService.expire_task(parent.id, reason=reasons.SILENCE_WINDOW)
+
+        contained.refresh_from_db()
+        self.assertEqual(contained.status, TASK_STATUS_EXPIRED)
+        self.assertEqual(contained.metadata["kill_reason"],
+                         reasons.SILENCE_WINDOW)
+        self.assertEqual(contained.metadata["trigger_source"],
+                         TRIGGER_SOURCE_PARENT_CASCADE)
+
+    def test_the_three_cascades_record_three_different_reasons(self):
+        """The records are told apart, not merely present.
+
+        Each case above asserts one of them; asserting the three are distinct is
+        what stops a repair that collapsed them onto one value passing all three.
+        """
+        recorded = set()
+        for stop, reason in ((TaskService.kill_task, reasons.TASK_LIMIT),
+                             (TaskService.expire_task, reasons.SILENCE_WINDOW)):
+            parent, contained = self._a_parent_and_its_contained_work()
+            stop(parent.id, reason=reason)
+            contained.refresh_from_db()
+            recorded.add(contained.metadata["kill_reason"])
+
+        parent, contained = self._a_parent_and_its_contained_work()
+        TaskService.close_task(parent.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
+        contained.refresh_from_db()
+        recorded.add(contained.outcome_reason)
+
+        self.assertEqual(recorded, {reasons.PARENT_KILLED,
+                                    reasons.SILENCE_WINDOW,
+                                    OUTCOME_REASON_PARENT_CLOSED})
+
+
+class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
+    """A parent's end reaches the work inside it; nothing inside it reaches the
+    parent (#413, spec §8).
+
+    Contained work that failed is frequently recoverable — retried, sent to a
+    second provider, degraded gracefully — and only the tenant's code knows
+    whether the whole thing still delivered. Once that outcome IS the money, an
+    automatic upward cascade would let one contained detail destroy the charge
+    for work that really delivered through a fallback.
+
+    A per-kind *this one fails its parent* flag was rejected for the same
+    reason: it makes the commercial outcome a function of configuration set
+    weeks earlier rather than an assertion made at the moment the answer is
+    known.
+    """
+
+    def test_contained_work_that_failed_leaves_the_whole_thing_running(self):
+        parent = self._task()
+        contained = self._task(parent=parent)
+
+        TaskService.close_task(
+            contained.id,
+            CloseDeclaration(TASK_OUTCOME_FAILED,
+                             OUTCOME_REASON_EXECUTION_FAILED))
+
+        parent.refresh_from_db()
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
+        self.assertEqual(parent.outcome_reason, "")
+        self.assertIsNone(parent.completed_at)
+
+    def test_the_whole_thing_still_closes_as_delivered_after_that(self):
+        """The half that decides money: the outcome is an assertion made when
+        the answer is known, never a function of what happened underneath."""
+        parent = self._task()
+        contained = self._task(parent=parent)
+        fallback = self._task(parent=parent)
+        TaskService.close_task(
+            contained.id,
+            CloseDeclaration(TASK_OUTCOME_FAILED,
+                             OUTCOME_REASON_EXECUTION_FAILED))
+        TaskService.close_task(fallback.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
+
+        delivered, transitioned = TaskService.close_task(
+            parent.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
+
+        self.assertTrue(transitioned)
+        self.assertEqual(delivered.status, TASK_STATUS_COMPLETED)
+        # The failure keeps its own record; the delivery keeps its own.
+        contained.refresh_from_db()
+        self.assertEqual(contained.status, TASK_STATUS_FAILED)
+        self.assertEqual(contained.outcome_reason,
+                         OUTCOME_REASON_EXECUTION_FAILED)
+
+    def test_stopping_contained_work_leaves_the_whole_thing_counting(self):
+        """Stopping one piece stops it alone, AND THE CONJUNCTION IS THE CLAIM.
+
+        Two cases above prove each half on its own — one that the parent stays
+        running, one that a late report on stopped work still rolls up — and
+        neither is evidence for the other. This one acts once and asks both
+        questions of the same parent afterwards, which is what *the parent keeps
+        running and counting* actually means.
+        """
+        parent = self._task(limit=100_000_000)
+        contained = self._task(parent=parent)
+        TaskService.accumulate_cost(
+            contained.id, billed_cost_micros=1_000_000,
+            provider_cost_micros=2_000_000)
+
+        TaskService.kill_task(contained.id, reason=reasons.SUBTASK_LIMIT)
+
+        parent.refresh_from_db()
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
+        rolled_up_before = parent.total_provider_cost_micros
+
+        TaskService.accumulate_cost(
+            contained.id, billed_cost_micros=3_000_000,
+            provider_cost_micros=5_000_000)
+        sibling = self._task(parent=parent)
+        TaskService.accumulate_cost(
+            sibling.id, billed_cost_micros=1_000_000,
+            provider_cost_micros=1_000_000)
+
+        parent.refresh_from_db()
+        self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
+        self.assertEqual(parent.total_provider_cost_micros,
+                         rolled_up_before + 6_000_000)
+        self.assertEqual(parent.event_count, 3)
+        # And the piece that was stopped stayed stopped — the parent going on
+        # is not the cascade running backwards.
+        contained.refresh_from_db()
+        self.assertEqual(contained.status, TASK_STATUS_KILLED)
 
 
 class AnnounceTest(SubtaskTestBase):

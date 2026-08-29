@@ -354,6 +354,8 @@ API_V1_TASK_ENDPOINTS_CLOSE_TASK = Operation(
     'api_v1_task_endpoints_close_task', 'post', '/api/v1/tasks/{task_id}/close')
 API_V1_TASK_ENDPOINTS_GET_TASK = Operation(
     'api_v1_task_endpoints_get_task', 'get', '/api/v1/tasks/{task_id}')
+API_V1_TASK_ENDPOINTS_LIST_SUBTASKS = Operation(
+    'api_v1_task_endpoints_list_subtasks', 'get', '/api/v1/tasks/{task_id}/subtasks')
 API_V1_TASK_ENDPOINTS_LIST_TASKS = Operation(
     'api_v1_task_endpoints_list_tasks', 'get', '/api/v1/tasks')
 API_V1_TASK_ENDPOINTS_START_TASK = Operation(

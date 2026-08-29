@@ -272,11 +272,19 @@ A parent-linked child unit of work — **the same record with a parent**, not a 
 a separate pricing entity: a task registered under an active top-level task, declaring its kind in
 the same column its parent uses, with its own COGS limit and lifecycle. Its spend rolls up into the
 parent's totals (the parent's cap covers everything underneath it); crossing its own limit kills it
-alone (`subtask.limit_exceeded`) while the parent keeps running; a parent's stop cascades downward
-to its active subtasks — never upward — and **what the cascade writes is not always what the parent
-got**: a kill cascades `killed` and an expiry cascades `expired`, but a CLOSE cascades `cancelled`,
-because the tenant declared the delivery of the parent and declared nothing about each contained
-piece. Two altitudes and no third: deeper structure is a
+alone (`subtask.limit_exceeded`) while the parent keeps running and counting; a parent's stop
+cascades downward to its active subtasks — never upward — and **what the cascade writes is not
+always what the parent got**: a kill cascades `killed` and an expiry cascades `expired`, but a CLOSE
+cascades `cancelled`, because the tenant declared the delivery of the parent and declared nothing
+about each contained piece. **Each cascade also records WHY and BY WHAT**: `outcome_reason:
+parent_closed` for a close, `reason_code: parent_killed` for a kill and `reason_code:
+silence_window` for an expiry, each beside `trigger_source: parent_cascade` — the mechanism is the
+same for all three and is written on the row because a cascade announces nothing of its own. **A
+FAILED subtask never fails its parent**: a contained failure is frequently recoverable and only the
+tenant's code knows whether the whole unit still delivered, so the outcome stays an assertion made
+when the answer is known rather than an inference from what happened underneath. The read side is
+`GET /api/v1/tasks/{task_id}/subtasks`; the write side is the one create route with a parent named.
+Two altitudes and no third: deeper structure is a
 task-scoped Grouping Field value, which is already inherited down the tree and already
 cardinality-capped. (`apps/platform/work/models.py:Task.parent`)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
@@ -312,13 +320,16 @@ that is **not** a failure and must not be counted as one.
 (`apps/platform/work/services.py:TaskService.expire_task`)
 
 **Cancelled (task)**:
-Deliberately stopped or withdrawn. Today its only writer is a parent's CLOSE cascade over still-
-active contained work; an explicit close declaring cancellation joins it when the close carries an
-outcome. It deliberately does **not** map onto `killed`: the kill path announces on the winning
-transition and stamps an announcement id, so a withdrawal landing there would either fire a spurious
-spend event at the customer's workers or become the only `killed` row with no announcement — which
-already means *silently cascaded by a parent*.
-(written by the close cascade in `apps/platform/work/services.py:TaskService.complete_task`)
+Deliberately stopped or withdrawn. Two writers, both a close: an explicit close declaring
+`cancelled` as its outcome, and a parent's CLOSE cascade over still-active contained work. The
+second records `outcome_reason: parent_closed`, which is what makes a withdrawal readable as one —
+and it is the caller-supplied concept rather than **Stop reason**, because the tenant's close is
+the declaration the withdrawal rests on. It deliberately does **not** map onto `killed`: the kill
+path announces on the winning transition and stamps an announcement id, so a withdrawal landing
+there would either fire a spurious spend event at the customer's workers or become the only
+`killed` row with no announcement — which already means *silently cascaded by a parent*.
+(`apps/platform/work/services.py:TaskService.close_task`, cascading
+`WITHDRAWN_BY_A_CLOSE`)
 
 **Heartbeat**:
 A task's most-recent-event timestamp; its absence past the **Silence window** is what a sweeper
@@ -364,10 +375,16 @@ renamed by the slice that rebuilds spend control.
 _Note_: the metadata key is still spelled `kill_reason` and now carries an **Expired (task)**'s
 reason too — `silence_window` / `stale_max_age` on a row that says `expired`. The rename is
 `outcome_reason`'s, in the ticket that wires that concept's consumers; every consumer of the key
-gates on `status == killed` first, so nothing mis-reads it meanwhile. The close and expiry cascades
-record no reason at all yet: the registry names `outcome_reason: parent_closed` for the first and
-`silence_window` above is what the second will stamp, so what that cascade still owes is the
-writing and not the word.
+gates on `status == killed` first, so nothing mis-reads it meanwhile. **All three cascades record a
+reason now**, and they are not the same concept: a close cascade writes `outcome_reason:
+parent_closed` (caller-supplied, so not in this vocabulary at all), while the kill and expiry
+cascades write `parent_killed` and `silence_window` under this key.
+_Note_: the expiry cascade writes `silence_window` **whichever sweeper reaped the parent**, and that
+is a stated approximation. Reporting usage on contained work stamps its parent's heartbeat, so a
+parent reaped for silence really had nothing reported underneath it and the word is exactly true;
+for one reaped on its **Absolute deadline** it is the nearest true thing this vocabulary declares,
+since there is no known value meaning *the whole thing ended* and coining one here would be this
+backend naming values in a concept another slice owns.
 
 **Trigger source**:
 WHICH MECHANISM applied a stop, beside the **Stop reason** saying why — two fields because they are
@@ -377,6 +394,9 @@ one mechanism reaches several reasons. Open (`usage_ingest`, `enforcement_patrol
 terminal stop events, where the contract advertises the set as documentation metadata rather than
 as an `enum`. Every path that APPLIES a stop names itself; a patrol RE-MINT deliberately names none,
 because it repairs the delivery of a stop another mechanism made and the row does not record which.
+**`parent_cascade` is the one that reaches no event and never will**: a cascade announces nothing,
+because its parent's own stop is the one signal a customer's workers receive, so that mechanism is
+recorded on each stopped row's metadata instead of on a payload.
 (`apps/platform/work/reasons.py:KNOWN_TRIGGER_SOURCES`; registry concept `trigger_source`)
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though

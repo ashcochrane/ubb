@@ -16607,6 +16607,78 @@
         "summary": "Close Task"
       }
     },
+    "/api/v1/tasks/{task_id}/subtasks": {
+      "get": {
+        "description": "The work contained in one unit.\n\nA unit with nothing inside it answers an empty collection, not a 404: the\nunit exists, and *nothing is contained in it* is the true answer about it.\nAn unknown unit \u2014 or one belonging to another tenant \u2014 is a 404.\n\nRegistering contained work is not here. A contained start is a start and\ngoes through `POST /tasks` with `parent_task_id` named, so there is one\nregistration shape at either altitude and this collection is purely the\nread side of it.",
+        "operationId": "api_v1_task_endpoints_list_subtasks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTasks"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Subtasks"
+      }
+    },
     "/api/v1/tenant/api-keys": {
       "get": {
         "description": "THIS tenant's API keys (active and revoked), newest first.\n\nlast_used_at is buffered in Redis and flushed to the DB periodically, so\nit may lag a recently-used key by up to the flush interval.",
