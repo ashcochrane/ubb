@@ -286,3 +286,27 @@ authorisations:
       form that ticket is entitled to change — the same argument #409's entry
       makes for the two reads, which are still waiting for exactly that
       re-cut.
+  - id: slice-5-413-the-read-side-of-containment
+    issue: 413
+    operations_added: 1
+    reason: >-
+      `GET /api/v1/tasks/{task_id}/subtasks` is a brand-new operation: the read
+      side of containment, which the surface has never published. Until now the
+      only way to see what one unit of work contains was to read that unit's
+      detail, which embeds the whole set with no bound on it. This is a genuine
+      new gap rather than an identity change, on #410's footing rather than
+      #409's.
+
+      IT SHIPS UNWRAPPED FOR THE THIRD TIME ON THE SAME ARGUMENT, and by now
+      that argument is a pattern rather than a judgement call. This client has
+      no way to START a unit of work — #410 deleted the method that pretended
+      to and signed for the gap — so a wrapper here would let an integrator
+      list the contents of something it cannot open. The three reads and the
+      start are one surface and are re-cut together in the ticket that gives
+      this client a start and a close, whose client shape that ticket is
+      entitled to change.
+
+      THE CLOSE IS STILL THE CONTROL, unchanged from #409's entry: it was
+      wrapped before this change and is wrapped after it, so a commit that had
+      accidentally dropped a wrapper rather than published a new operation
+      would show up as a fall on the wrapped side rather than as this rise.

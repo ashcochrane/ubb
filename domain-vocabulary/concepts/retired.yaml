@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,697 of 2,104 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,698 of 2,105 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1656,6 +1656,25 @@ measurement_key:
     # this word is retired in has nothing to do with the sense that keeps
     # arriving, and no amount of care about the three survivors helps. Write
     # "work", "a whole unit of work", "contained work".
+
+    # #413 MOVED BOTH DENOMINATORS BY ONE AND LEFT EVERYTHING ELSE WHERE IT
+    # WAS (1,697 -> 1,698 swept, 2,104 -> 2,105 tracked, `units` UNMOVED at 45
+    # files and 123 occurrences), WITH EVERY EXCLUSION RULE'S COUNT UNCHANGED.
+    # One tracked file arrived and it is GENERATED: publishing the containment
+    # collection mints one module under the SDK's generated core, which is
+    # swept like any other source file and so lifts both totals together. No
+    # migration landed, which is why the excluded total is the one number that
+    # did not move — the plainest form of the "needs no story" case, and the
+    # mirror of #273's note that generated files leaving the tree can move the
+    # denominator downward with nobody having deleted anything.
+    #
+    # THE NUMERATOR HELD WITH NO REPAIR NEEDED, which is worth one sentence
+    # after four consecutive windows in which it did not. This commit writes a
+    # great deal of prose about work contained inside other work — the exact
+    # subject matter that reached for the retired plural in #328, #407, #412
+    # and once before that — and it says "contained work", "the whole unit of
+    # work" and "each piece" throughout. The word was not written, so there
+    # was nothing to put back.
 
     - term: units
       retired_as: >-

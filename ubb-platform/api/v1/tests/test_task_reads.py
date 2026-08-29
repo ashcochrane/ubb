@@ -4,13 +4,17 @@ Reads the materialized rollups the accumulate primitive maintains
 (total_billed_cost_micros, total_provider_cost_micros, event_count) —
 never aggregates ubb_posting. GET /tasks lists top-level work only
 (parent__isnull=True); a contained unit's numbers surface in its parent's
-detail view via `subtasks`.
+detail view via `subtasks`, and in the containment collection beside it
+(#413) — `GET /tasks/{id}/subtasks`, the READ side of containment, whose
+write side is the one create route with a parent named.
 
 ⚠ THE PATHS MOVED TO THE ROOT PREFIX AND STOPPED BEING GATED (#409). What is
 asserted here is unchanged — the rollups and the shape of the receipt — and
 `test_task_lifecycle_endpoints.py` beside this one is where the mount and the
 absence of a product gate are proved.
 """
+import uuid
+
 import pytest
 from django.test import Client
 
@@ -75,11 +79,51 @@ class TestTaskReads:
         r = self._get("/api/v1/tasks?task_type=receipt_scan")
         assert [t["task_type"] for t in r.json()["data"]] == ["receipt_scan"]
 
-    def test_foreign_task_is_404(self):
+    def test_the_contained_collection_lists_what_is_inside_one_unit(self):
+        """`GET /tasks/{id}/subtasks` — the read side of containment (#413).
+
+        The START of contained work is deliberately NOT here: a start is a start
+        and goes through the one create route with a parent named, so there is
+        one registration shape at either altitude. This is the read.
+        """
+        parent = self._tree()
+        r = self._get(f"/api/v1/tasks/{parent.id}/subtasks")
+        assert r.status_code == 200
+        body = r.json()
+        assert [t["task_type"] for t in body["data"]] == ["ocr"]
+        assert body["data"][0]["parent_task_id"] == str(parent.id)
+        assert body["has_more"] is False
+
+    def test_a_unit_with_nothing_inside_it_answers_an_empty_collection(self):
+        """An empty collection, never a 404. The unit exists and the honest
+        answer about it is that nothing is contained in it — a 404 would say
+        the unit does not, and would send a caller looking for the wrong bug."""
+        alone = Task.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            balance_snapshot_micros=0, task_type="invoice_batch")
+        r = self._get(f"/api/v1/tasks/{alone.id}/subtasks")
+        assert r.status_code == 200
+        assert r.json()["data"] == []
+
+    def test_the_collection_of_an_unknown_unit_is_a_404(self):
+        r = self._get(f"/api/v1/tasks/{uuid.uuid4()}/subtasks")
+        assert r.status_code == 404
+
+    def test_the_collection_of_another_tenants_unit_is_a_404(self):
+        """The 404 that matters: a real row, read by the tenant it does not
+        belong to. `test_foreign_task_is_404` below makes the same claim about
+        the detail read, and neither is evidence for the other."""
+        r = self._get(f"/api/v1/tasks/{self._a_foreign_task().id}/subtasks")
+        assert r.status_code == 404
+
+    def _a_foreign_task(self):
         other_tenant = Tenant.objects.create(name="Other", products=["metering"])
-        other_customer = Customer.objects.create(tenant=other_tenant, external_id="c2")
-        other_task = Task.objects.create(
-            tenant=other_tenant, customer=other_customer, balance_snapshot_micros=0,
-            task_type="invoice_batch")
-        r = self._get(f"/api/v1/tasks/{other_task.id}")
+        other_customer = Customer.objects.create(tenant=other_tenant,
+                                                 external_id="c2")
+        return Task.objects.create(
+            tenant=other_tenant, customer=other_customer,
+            balance_snapshot_micros=0, task_type="invoice_batch")
+
+    def test_foreign_task_is_404(self):
+        r = self._get(f"/api/v1/tasks/{self._a_foreign_task().id}")
         assert r.status_code == 404

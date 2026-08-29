@@ -1,4 +1,5 @@
 import logging
+from dataclasses import KW_ONLY, dataclass
 
 from django.utils import timezone
 
@@ -6,6 +7,7 @@ from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
+    OUTCOME_REASON_PARENT_CLOSED,
     OUTCOME_REASON_VALUES,
     PRICING_STATUS_KNOWN,
     TASK_OUTCOME_CANCELLED,
@@ -17,8 +19,10 @@ from core.vocabulary import (
     TASK_STATUS_EXPIRED,
     TASK_STATUS_FAILED,
     TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_PARENT_CASCADE,
 )
 from apps.platform.grouping_fields.models import SLOTS
+from apps.platform.work import reasons
 from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
 
 logger = logging.getLogger(__name__)
@@ -162,6 +166,121 @@ class CloseDeclaration:
         return (task.status == self.entered_status()
                 and task.outcome_reason == self.outcome_reason)
 
+
+@dataclass(frozen=True, slots=True)
+class CascadeRecord:
+    """WHAT A PARENT'S END WRITES ON THE WORK STILL RUNNING INSIDE IT (#413,
+    spec §8).
+
+    FROZEN, because the three below are module-level SINGLETONS rather than
+    per-call objects like the two declarations above: a shared record with
+    writable attributes is one caller away from re-pointing what every future
+    close cascades to.
+
+    ⚠ THREE RECORDS RATHER THAN ONE, AND EACH NAMES A DIFFERENT CONCEPT FOR A
+    DIFFERENT ACTOR. A tenant's close is a DECLARATION, so what that close
+    withdrew records `outcome_reason` — the caller-supplied set, which is where
+    `parent_closed` lives. UBB's own two stops record the UBB-produced concept
+    instead, under the metadata key that has always carried it. Tidying the two
+    together would put a word meaning *the tenant said so* onto a row about
+    which the tenant said nothing, which is the distinction
+    `OUTCOME_REASON_CHOICES` and `reasons.PARENT_KILLED` are two concepts for.
+
+    ⚠ AND THE CASCADED STATE IS DECLARED HERE RATHER THAN INHERITED, which is
+    the rule this object exists to make unavoidable. Contained work the tenant
+    said nothing about must not take a state that means somebody declared one:
+    a close cascades `cancelled` whatever the parent's own outcome was, because
+    inheriting `failed` would record the pieces that worked as failures because
+    the last one did. Where the cascaded state and the parent's DO coincide,
+    they coincide because a record below says so and not because a caller
+    happened to pass one value twice.
+
+    THE MECHANISM IS NOT A FIELD HERE. It is the same on all three, it is what
+    a cascade *is* rather than something a particular ending chooses, and
+    `TaskService._cascade` writes it once for that reason.
+    """
+
+    status: str
+    _: KW_ONLY
+    #: The CALLER-supplied concept, written to the column. Only a close has one.
+    outcome_reason: str = ""
+    #: The UBB-PRODUCED concept, written to the stop-cause metadata key. Only
+    #: UBB's own two stops have one.
+    stop_reason: str = ""
+
+
+#: A PARENT THE TENANT CLOSED. What it contained is WITHDRAWN — not delivered,
+#: because UBB would be declaring a delivery on the tenant's behalf, and not
+#: failed, because nothing failed. `parent_closed` is the caller-supplied reason
+#: for exactly this shape, and the close that declared the whole unit's outcome
+#: is the declaration it rests on.
+WITHDRAWN_BY_A_CLOSE = CascadeRecord(
+    TASK_STATUS_CANCELLED, outcome_reason=OUTCOME_REASON_PARENT_CLOSED)
+
+#: A PARENT UBB KILLED ON A SPEND SIGNAL. The contained work crossed nothing of
+#: its own, so it records containment rather than the parent's cause — which is
+#: what keeps *how often do we reach a ceiling* countable off these rows instead
+#: of over-counting one crossing once per piece underneath it.
+KILLED_WITH_ITS_PARENT = CascadeRecord(
+    TASK_STATUS_KILLED, stop_reason=reasons.PARENT_KILLED)
+
+#: A PARENT NOBODY EVER TOLD UBB ABOUT. Its contained work goes the same way: a
+#: parent nobody reported on is a parent whose contained work nobody reported on
+#: either.
+#:
+#: ⚠ THE REASON IS THE SILENCE WINDOW ON EVERY EXPIRY CASCADE, WHICH THE SPEC
+#: RULES AND WHICH IS AN APPROXIMATION IN ONE OF THE THREE CASES. Recorded here
+#: in full, because the case it approximates is one THIS APP ALREADY DECIDED THE
+#: OTHER WAY ONE MODULE OVER, and a reader who finds that first is entitled to
+#: think this was written without seeing it.
+#:
+#: The three ways a parent can reach an expiry, and what each leaves on the row:
+#:
+#:   the announcing sweeper, silence     parent `silence_window`, contained
+#:                                       work `silence_window` — exactly true,
+#:                                       since reporting usage on contained work
+#:                                       stamps its parent's heartbeat too, so a
+#:                                       parent reaped for silence really did
+#:                                       have nothing reported underneath it.
+#:   the announcing sweeper, deadline    parent `stale_max_age`, contained work
+#:                                       `silence_window` — ⚠ THE TWO ROWS OF
+#:                                       ONE TREE DISAGREE, IN ONE TRANSACTION.
+#:   the unannounced sweeper             parent NO CAUSE AT ALL (it calls
+#:                                       `expire_task` with no reason),
+#:                                       contained work `silence_window`.
+#:
+#: ⚠ `tasks._reason_for` RULES AGAINST THIS WORD FOR THE MIDDLE CASE, in the
+#: parent's own right: it asks the absolute deadline FIRST because "reporting
+#: the silence instead would say the tenant stopped talking about work that had
+#: in fact run out of time." That argument transfers to contained work
+#: unchanged, so this record is NOT the reading that module would have chosen.
+#:
+#: It is kept because every alternative is worse HERE and none of them is this
+#: slice's to take. Carrying the parent's cause down contradicts the ticket's
+#: own table, which names this word unconditionally, and leaves the third case
+#: with nothing at all to carry. Coining `parent_expired` would be this app
+#: minting a value in `reason_code`, an OPEN concept whose known values another
+#: slice owns — the same refusal that leaves `STALE_MAX_AGE` this app's own word
+#: rather than a registry one. And the row is not left blank, because *this
+#: stopped because it was contained in something that ended* is exactly what the
+#: mechanism beside it says, and the mechanism is recorded unconditionally.
+#:
+#: ⚠ RESIDUAL, for the slice that owns `reason_code`: the concept has no known
+#: value meaning *the unit containing this one ended*, and until it does, one of
+#: these three cases records a cause that its own parent's row contradicts.
+EXPIRED_WITH_ITS_PARENT = CascadeRecord(
+    TASK_STATUS_EXPIRED, stop_reason=reasons.SILENCE_WINDOW)
+
+#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT — the cause
+#: and the mechanism, side by side and never merged (ADR-0006 §5).
+#:
+#: ⚠ THE CAUSE'S KEY IS STILL SPELLED FOR A KILL AND CARRIES EVERY OTHER STOP
+#: TOO (#408). Both sweepers write `expired` and both stamp their reason here;
+#: renaming the key belongs with the ticket that wires the concept's consumers,
+#: and every reader gates on the state first. Named here rather than spelled at
+#: each write so the rename is one edit on this side of it.
+STOP_CAUSE_KEY = "kill_reason"
+STOP_MECHANISM_KEY = "trigger_source"
 
 #: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the words the start
 #: gate's verdict vocabulary already publishes (`openapi/error-codes.json`).
@@ -599,7 +718,7 @@ class TaskService:
         return task, verdicts
 
     @staticmethod
-    def _flip(task_id, status, *, cascade_to, reason="", declaration=None,
+    def _flip(task_id, status, *, cascade, reason="", declaration=None,
               tenant_id=None, customer_id=None):
         """THE ONE TERMINAL TRANSITION, and the one place terminality is
         enforced (#408). Returns ``(task, transitioned)``; ``transitioned`` is
@@ -615,13 +734,13 @@ class TaskService:
         exception, because every caller is a retry-safe signal path and the
         losing lane of a race has nothing to apologise for.
 
-        ``cascade_to`` is a SEPARATE argument from ``status`` and that is the
-        whole of I1. Contained work the tenant said nothing about must not
-        inherit a state that means *the tenant declared delivery*, so a close
-        cascades `cancelled` while it writes `completed` on the unit whose
-        delivery was actually declared. Where the two do coincide — a kill, an
-        expiry — they are passed the same value on purpose, so the coincidence
-        is stated rather than assumed.
+        ``cascade`` is a SEPARATE argument from ``status`` and that is the whole
+        of I1. Contained work the tenant said nothing about must not inherit a
+        state that means *the tenant declared delivery*, so a close cascades
+        `cancelled` while it writes `completed` on the unit whose delivery was
+        actually declared. It carries what the cascade RECORDS as well as the
+        state it writes, because those differ per ending too — see
+        `CascadeRecord`, where all three are declared and argued.
 
         ``declaration`` is the `CloseDeclaration` the CALLER made, written in
         the same UPDATE as the state it explains so the two can never come
@@ -654,7 +773,7 @@ class TaskService:
         task.completed_at = timezone.now()
         update_fields = ["status", "completed_at", "updated_at"]
         if reason:
-            task.metadata = {**task.metadata, "kill_reason": reason}
+            task.metadata = {**task.metadata, STOP_CAUSE_KEY: reason}
             update_fields.append("metadata")
         if declaration is not None:
             task.outcome_reason = declaration.outcome_reason
@@ -662,7 +781,7 @@ class TaskService:
             update_fields += ["outcome_reason", "reason_detail"]
         task.save(update_fields=update_fields)
         if task.parent_id is None:
-            TaskService._cascade(task, cascade_to)
+            TaskService._cascade(task, cascade)
         return task, True
 
     @staticmethod
@@ -678,11 +797,11 @@ class TaskService:
 
         Killing a PARENT cascades the flip downward to its active subtasks in
         the same transaction (containment cuts downward, never upward, #38) —
-        cascaded flips are silent state changes carrying
-        ``kill_reason=parent_killed``; the parent's event is the one signal.
+        cascaded flips are silent state changes recording
+        `KILLED_WITH_ITS_PARENT`; the parent's event is the one signal.
         """
         return TaskService._flip(
-            task_id, TASK_STATUS_KILLED, cascade_to=TASK_STATUS_KILLED,
+            task_id, TASK_STATUS_KILLED, cascade=KILLED_WITH_ITS_PARENT,
             reason=reason, tenant_id=tenant_id, customer_id=customer_id)
 
     @staticmethod
@@ -694,43 +813,55 @@ class TaskService:
         ways, and the spend story dishonest in both directions.
 
         The cascade carries the same state, because a parent nobody reported on
-        is a parent whose contained work nobody reported on either.
+        is a parent whose contained work nobody reported on either — and it
+        records `EXPIRED_WITH_ITS_PARENT`, whose own comment argues the one
+        approximation in that sentence.
         """
         return TaskService._flip(
-            task_id, TASK_STATUS_EXPIRED, cascade_to=TASK_STATUS_EXPIRED,
+            task_id, TASK_STATUS_EXPIRED, cascade=EXPIRED_WITH_ITS_PARENT,
             reason=reason, tenant_id=tenant_id, customer_id=customer_id)
 
     @staticmethod
-    def _cascade(parent, status):
-        """Flip the parent's still-active subtasks to ``status`` — the
-        downward containment cut (#38). Runs inside the caller's transaction,
-        after the parent's own winning flip (parent lock already held, so
-        subtask registration — which locks the parent — can never slip a new
-        child past a finished cascade).
+    def _cascade(parent, cascade):
+        """Stop the parent's still-active subtasks, writing what ``cascade``
+        records — the downward containment cut (#38, #413). Runs inside the
+        caller's transaction, after the parent's own winning flip (parent lock
+        already held, so subtask registration — which locks the parent — can
+        never slip a new child past a finished cascade).
 
-        ⚠ ONLY THE KILL CASCADE RECORDS A REASON, AND THE OTHER TWO OWE ONE.
-        The registry names `outcome_reason: parent_closed` for a close cascade
-        and `reason_code: silence_window` for an expiry cascade. Both still
-        arrive with the containment ticket that owns the cascade itself — the
-        column `parent_closed` will land in EXISTS as of #409, so what is left
-        owing is the cascade's own decision to write it, which is a behaviour
-        change to this function rather than a value set to take ownership of.
-        The STATE is what is written here today, and a withdrawn piece of
-        contained work is already distinguishable from a delivered one without
-        the reason.
+        ⚠ IT ONLY EVER TOUCHES WORK STILL RUNNING, and the filter below is the
+        whole of that rule. Contained work closed explicitly beforehand keeps
+        the outcome its own close declared: a state somebody asserted is never
+        overwritten by one nobody did, which is the same principle as the one
+        `CascadeRecord` states in the other direction.
+
+        ⚠ AND THE MECHANISM IS WRITTEN ON EVERY ROW, WHICHEVER RECORD APPLIES.
+        A cascade announces nothing — the parent's own stop is the one signal a
+        customer's workers receive, and re-announcing per contained piece would
+        be a fan-out nobody asked for — so this row is the only place a reader
+        can learn that a piece was stopped by containment rather than by
+        anything it did itself. The cause answers *why this stopped* and the
+        mechanism answers *what stopped it*: two questions with two value sets,
+        which is why they are two keys and never one (ADR-0006 §5).
         """
-        from apps.platform.work import reasons
         now = timezone.now()
         children = Task.objects.select_for_update().filter(
             parent=parent, status=TASK_STATUS_ACTIVE)
         for child in children:
-            child.status = status
+            child.status = cascade.status
             child.completed_at = now
-            update_fields = ["status", "completed_at", "updated_at"]
-            if status == TASK_STATUS_KILLED:
-                child.metadata = {**child.metadata,
-                                  "kill_reason": reasons.PARENT_KILLED}
-                update_fields.append("metadata")
+            # COPY-ON-WRITE, like `_flip` above: the bag is built whole and
+            # assigned once, never assigned and then reached back into.
+            stamped = {**child.metadata,
+                       STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE}
+            if cascade.stop_reason:
+                stamped[STOP_CAUSE_KEY] = cascade.stop_reason
+            child.metadata = stamped
+            update_fields = ["status", "completed_at", "metadata",
+                             "updated_at"]
+            if cascade.outcome_reason:
+                child.outcome_reason = cascade.outcome_reason
+                update_fields.append("outcome_reason")
             child.save(update_fields=update_fields)
 
     @staticmethod
@@ -866,11 +997,18 @@ class TaskService:
         ended and declared nothing at all about each contained piece: writing
         `completed` there would be UBB declaring a delivery on the tenant's
         behalf, and inheriting `failed` would record the pieces that worked as
-        failures because the last one did. Already-terminal contained work
-        keeps its own outcome; closing contained work closes it alone.
+        failures because the last one did. Each withdrawn piece records
+        `parent_closed` as the reason, which is what makes the withdrawal
+        readable as one (`WITHDRAWN_BY_A_CLOSE`). Already-terminal contained
+        work keeps its own outcome; closing contained work closes it alone.
+
+        ⚠ REFUSING TO CLOSE A UNIT WITH WORK STILL RUNNING INSIDE IT WAS
+        REJECTED. Cleanup would stop being one call, and one forgotten piece
+        would block the whole unit's close — and therefore its charge — until a
+        sweeper expired the lot hours later.
 
         Must be called inside @transaction.atomic.
         """
         return TaskService._flip(
             task_id, declaration.entered_status(),
-            cascade_to=TASK_STATUS_CANCELLED, declaration=declaration)
+            cascade=WITHDRAWN_BY_A_CLOSE, declaration=declaration)

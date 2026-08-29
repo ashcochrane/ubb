@@ -2,11 +2,16 @@
 
 Two claims, and they are independent of each other:
 
-* **THE MOUNT AND THE GATE.** Reading one unit of work, listing them and
-  closing one are at the root prefix and are UNGATED — a unit of work is a
-  kernel concept neither metering nor billing owns. The old
+* **THE MOUNT AND THE GATE.** Reading one unit of work, listing them, listing
+  what one contains and closing one are at the root prefix and are UNGATED — a
+  unit of work is a kernel concept neither metering nor billing owns. The old
   metering-prefixed paths are gone rather than aliased, which is what makes
   this the clean break rather than a second name for one thing.
+
+  ⚠ **THE CONTAINMENT COLLECTION JOINED THEM IN #413**, so the claim is about
+  four calls and not the three it was written for. It is a read on the same
+  kernel concept and there is no product whose absence would make it
+  meaningless, which is the whole of why any of them is ungated.
 * **THE CLOSE DECLARES AN OUTCOME.** Required, one of three, and the state
   follows from it. A repeated identical close replays; a contradicting one is
   refused and says what the unit really is.
@@ -46,7 +51,7 @@ NOT_A_DECLARED_REASON = "not-a-declared-reason"
 
 
 class LifecycleEndpointTestBase:
-    """One tenant, one customer, and the three calls under test."""
+    """One tenant, one customer, and the four calls under test."""
 
     #: Which products the tenant declares. Overridden below to prove the calls
     #: do not depend on it. It is never empty because `Tenant.clean` refuses a
@@ -77,16 +82,29 @@ class LifecycleEndpointTestBase:
             f"/api/v1/tasks/{unit.id}/close", data=json.dumps(declaration),
             content_type="application/json", **self._auth())
 
+    def _every_lifecycle_call(self, unit):
+        """Every call this surface publishes, answered once, as status codes.
+
+        ONE LIST RATHER THAN FOUR LINES REPEATED IN THREE CLASSES: the mount and
+        the gate are claims about the WHOLE surface, so a route added without
+        being asked the question here would be a route nobody proved was
+        ungated. The close is last because it is the only one that changes
+        anything.
+        """
+        return [
+            self._get("/api/v1/tasks").status_code,
+            self._get(f"/api/v1/tasks/{unit.id}").status_code,
+            self._get(f"/api/v1/tasks/{unit.id}/subtasks").status_code,
+            self._close(unit, outcome=TASK_OUTCOME_DELIVERED).status_code,
+        ]
+
 
 @pytest.mark.django_db
 class TestTheLifecycleIsAtTheRootAndUngated(LifecycleEndpointTestBase):
-    """The mount, and the absence of a product gate on all three calls."""
+    """The mount, and the absence of a product gate on all four calls."""
 
-    def test_all_three_reach_a_metering_only_tenant(self):
-        unit = self._unit()
-        assert self._get("/api/v1/tasks").status_code == 200
-        assert self._get(f"/api/v1/tasks/{unit.id}").status_code == 200
-        assert self._close(unit, outcome=TASK_OUTCOME_DELIVERED).status_code == 200
+    def test_every_call_reaches_a_metering_only_tenant(self):
+        assert self._every_lifecycle_call(self._unit()) == [200, 200, 200, 200]
 
     def test_the_metering_prefixed_paths_are_gone(self):
         """Gone, not aliased. Map constraint 1 buys exactly one clean break,
@@ -106,16 +124,13 @@ class TestTheLifecycleIsAtTheRootAndUngated(LifecycleEndpointTestBase):
 
 
 @pytest.mark.django_db
-class TestABillingTenantReachesAllThreeToo(LifecycleEndpointTestBase):
-    """The other half of the claim: a tenant that bills reaches all three."""
+class TestABillingTenantReachesEveryCallToo(LifecycleEndpointTestBase):
+    """The other half of the claim: a tenant that bills reaches all four."""
 
     PRODUCTS = ["metering", "billing"]
 
-    def test_all_three_reach_a_billing_tenant(self):
-        unit = self._unit()
-        assert self._get("/api/v1/tasks").status_code == 200
-        assert self._get(f"/api/v1/tasks/{unit.id}").status_code == 200
-        assert self._close(unit, outcome=TASK_OUTCOME_DELIVERED).status_code == 200
+    def test_every_call_reaches_a_billing_tenant(self):
+        assert self._every_lifecycle_call(self._unit()) == [200, 200, 200, 200]
 
 
 @pytest.mark.django_db
@@ -126,7 +141,7 @@ class TestNoProductGatesTheLifecycle(LifecycleEndpointTestBase):
     refuses to save a tenant whose products omit metering, which is why the
     neighbouring gated surfaces state that their 403 branch is unreachable and
     assert the constraint instead. **This module's claim is the opposite one** —
-    that these three calls carry no product check at all — and a claim about
+    that these four calls carry no product check at all — and a claim about
     what a gate would do cannot be proved by a tenant every gate admits. So the
     column is written through the queryset, which bypasses `save()` and
     therefore `clean()`: the row is one the model declines to author and the
@@ -142,12 +157,10 @@ class TestNoProductGatesTheLifecycle(LifecycleEndpointTestBase):
         self.tenant.refresh_from_db()
         return self.tenant
 
-    def test_all_three_reach_a_tenant_that_does_not_meter(self):
+    def test_every_call_reaches_a_tenant_that_does_not_meter(self):
         unit = self._unit()
         self._a_tenant_that_does_not_meter()
-        assert self._get("/api/v1/tasks").status_code == 200
-        assert self._get(f"/api/v1/tasks/{unit.id}").status_code == 200
-        assert self._close(unit, outcome=TASK_OUTCOME_DELIVERED).status_code == 200
+        assert self._every_lifecycle_call(unit) == [200, 200, 200, 200]
 
     def test_the_gated_report_beside_them_refuses_the_same_tenant(self):
         self._a_tenant_that_does_not_meter()

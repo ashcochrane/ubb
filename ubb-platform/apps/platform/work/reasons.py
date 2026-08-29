@@ -98,15 +98,13 @@ STALE_MAX_AGE = "stale_max_age"
 # cascade — it crossed nothing of its own, so this never rides an ack's
 # stop_reason or a limit event; late events on it say TASK_NOT_ACTIVE.
 #
-# ⚠ IT IS THE KILL CASCADE'S REASON AND NOT THE OTHER TWO'S (#408). A parent's
-# close cascades `cancelled` and a parent's expiry cascades `expired`, and
-# NEITHER RECORDS A REASON YET — which is still true after #412, and for the
-# expiry half the missing thing is now only the write. The registry declares
-# `outcome_reason: parent_closed` for the close cascade, a CALLER-supplied
-# concept this module does not hold and must not; `SILENCE_WINDOW` above is
-# what the expiry cascade will stamp, and it is held here now, so what that
-# cascade still owes is the stamping and not the word. Each arrives with the
-# ticket that wires its own concept's consumers.
+# ⚠ IT IS THE KILL CASCADE'S REASON AND NOT THE OTHER TWO'S (#408, #413). All
+# three cascades record a reason now, and they are not the same one: a parent's
+# close cascades `cancelled` recording `outcome_reason: parent_closed`, a
+# CALLER-supplied concept this module does not hold and must not, and a
+# parent's expiry cascades `expired` recording `SILENCE_WINDOW` above. Where
+# each is declared, and the one approximation the expiry record makes, is
+# `services.CascadeRecord`.
 PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
 # customer scope) — an owner suspended with no open floor episode
@@ -141,13 +139,15 @@ CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
 # ingest or by the patrol, and the same mechanism can find several causes —
 # so the producer names its own mechanism at the point it acts.
 #
-# ⚠ THREE OF THE FIVE ARE PRODUCED TODAY AND TWO ARE NOT, WHICH IS WHAT AN OPEN
+# ⚠ FOUR OF THE FIVE ARE PRODUCED TODAY AND ONE IS NOT, WHICH IS WHAT AN OPEN
 # SET IS FOR. The terminal stop events carry the mechanism, and the three paths
-# that APPLY a stop each name themselves: the usage-ingest lane, the enforcement
-# patrol, and the sweeper. `pool_crossing` waits on the mechanism that produces
-# it, and `parent_cascade` is real but announces nothing — a cascade is a silent
-# state change whose parent's event is the one signal — so it reaches no payload
-# until a cascade records its own reason.
+# that APPLY a stop each name themselves on the event: the usage-ingest lane,
+# the enforcement patrol, and the sweeper. `pool_crossing` waits on the
+# mechanism that produces it. `parent_cascade` is produced too, since #413, but
+# it reaches no PAYLOAD and never will while a cascade stays silent — a cascade
+# announces nothing because its parent's event is the one signal, so the
+# mechanism is recorded on each stopped row instead
+# (`services.TaskService._cascade`).
 #
 # The whole five are held here anyway, because the registry names this module as
 # the concept's backend consumer and a consumer holds the vocabulary rather than
