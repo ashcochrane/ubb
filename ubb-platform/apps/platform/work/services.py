@@ -1,4 +1,5 @@
 import logging
+from dataclasses import KW_ONLY, dataclass
 
 from django.utils import timezone
 
@@ -166,9 +167,15 @@ class CloseDeclaration:
                 and task.outcome_reason == self.outcome_reason)
 
 
+@dataclass(frozen=True, slots=True)
 class CascadeRecord:
     """WHAT A PARENT'S END WRITES ON THE WORK STILL RUNNING INSIDE IT (#413,
     spec §8).
+
+    FROZEN, because the three below are module-level SINGLETONS rather than
+    per-call objects like the two declarations above: a shared record with
+    writable attributes is one caller away from re-pointing what every future
+    close cascades to.
 
     ⚠ THREE RECORDS RATHER THAN ONE, AND EACH NAMES A DIFFERENT CONCEPT FOR A
     DIFFERENT ACTOR. A tenant's close is a DECLARATION, so what that close
@@ -193,12 +200,13 @@ class CascadeRecord:
     `TaskService._cascade` writes it once for that reason.
     """
 
-    __slots__ = ("status", "outcome_reason", "stop_reason")
-
-    def __init__(self, status, *, outcome_reason="", stop_reason=""):
-        self.status = status
-        self.outcome_reason = outcome_reason
-        self.stop_reason = stop_reason
+    status: str
+    _: KW_ONLY
+    #: The CALLER-supplied concept, written to the column. Only a close has one.
+    outcome_reason: str = ""
+    #: The UBB-PRODUCED concept, written to the stop-cause metadata key. Only
+    #: UBB's own two stops have one.
+    stop_reason: str = ""
 
 
 #: A PARENT THE TENANT CLOSED. What it contained is WITHDRAWN — not delivered,
@@ -220,20 +228,46 @@ KILLED_WITH_ITS_PARENT = CascadeRecord(
 #: parent nobody reported on is a parent whose contained work nobody reported on
 #: either.
 #:
-#: ⚠ THE REASON IS THE SILENCE WINDOW WHICHEVER SWEEPER REAPED THE PARENT, AND
-#: THAT IS A STATED APPROXIMATION RATHER THAN AN OVERSIGHT. Reporting usage on
-#: contained work stamps its parent's heartbeat too, so a parent reaped for
-#: silence really did have nothing reported anywhere underneath it and the word
-#: is exactly true there. A parent reaped on its ABSOLUTE deadline may have been
-#: humming, and for that one this is the nearest true thing the registry
-#: declares: `reason_code` has no known value meaning *the whole thing ended*,
-#: the absolute deadline's own reason is a word this app coined precisely
-#: because the registry declares none (`reasons.STALE_MAX_AGE`), and passing the
-#: parent's cause down would be the inheritance the kill record above refuses on
-#: principle. Coining a fourth spelling here would be this app naming values in
-#: a concept another slice owns. Whether the concept gains a value for either is
-#: that slice's to settle; until it does, the honest record is the one word that
-#: is true of the whole tree's silence.
+#: ⚠ THE REASON IS THE SILENCE WINDOW ON EVERY EXPIRY CASCADE, WHICH THE SPEC
+#: RULES AND WHICH IS AN APPROXIMATION IN ONE OF THE THREE CASES. Recorded here
+#: in full, because the case it approximates is one THIS APP ALREADY DECIDED THE
+#: OTHER WAY ONE MODULE OVER, and a reader who finds that first is entitled to
+#: think this was written without seeing it.
+#:
+#: The three ways a parent can reach an expiry, and what each leaves on the row:
+#:
+#:   the announcing sweeper, silence     parent `silence_window`, contained
+#:                                       work `silence_window` — exactly true,
+#:                                       since reporting usage on contained work
+#:                                       stamps its parent's heartbeat too, so a
+#:                                       parent reaped for silence really did
+#:                                       have nothing reported underneath it.
+#:   the announcing sweeper, deadline    parent `stale_max_age`, contained work
+#:                                       `silence_window` — ⚠ THE TWO ROWS OF
+#:                                       ONE TREE DISAGREE, IN ONE TRANSACTION.
+#:   the unannounced sweeper             parent NO CAUSE AT ALL (it calls
+#:                                       `expire_task` with no reason),
+#:                                       contained work `silence_window`.
+#:
+#: ⚠ `tasks._reason_for` RULES AGAINST THIS WORD FOR THE MIDDLE CASE, in the
+#: parent's own right: it asks the absolute deadline FIRST because "reporting
+#: the silence instead would say the tenant stopped talking about work that had
+#: in fact run out of time." That argument transfers to contained work
+#: unchanged, so this record is NOT the reading that module would have chosen.
+#:
+#: It is kept because every alternative is worse HERE and none of them is this
+#: slice's to take. Carrying the parent's cause down contradicts the ticket's
+#: own table, which names this word unconditionally, and leaves the third case
+#: with nothing at all to carry. Coining `parent_expired` would be this app
+#: minting a value in `reason_code`, an OPEN concept whose known values another
+#: slice owns — the same refusal that leaves `STALE_MAX_AGE` this app's own word
+#: rather than a registry one. And the row is not left blank, because *this
+#: stopped because it was contained in something that ended* is exactly what the
+#: mechanism beside it says, and the mechanism is recorded unconditionally.
+#:
+#: ⚠ RESIDUAL, for the slice that owns `reason_code`: the concept has no known
+#: value meaning *the unit containing this one ended*, and until it does, one of
+#: these three cases records a cause that its own parent's row contradicts.
 EXPIRED_WITH_ITS_PARENT = CascadeRecord(
     TASK_STATUS_EXPIRED, stop_reason=reasons.SILENCE_WINDOW)
 
@@ -816,12 +850,15 @@ class TaskService:
         for child in children:
             child.status = cascade.status
             child.completed_at = now
-            child.metadata = {**child.metadata,
-                              STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE}
+            # COPY-ON-WRITE, like `_flip` above: the bag is built whole and
+            # assigned once, never assigned and then reached back into.
+            stamped = {**child.metadata,
+                       STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE}
+            if cascade.stop_reason:
+                stamped[STOP_CAUSE_KEY] = cascade.stop_reason
+            child.metadata = stamped
             update_fields = ["status", "completed_at", "metadata",
                              "updated_at"]
-            if cascade.stop_reason:
-                child.metadata[STOP_CAUSE_KEY] = cascade.stop_reason
             if cascade.outcome_reason:
                 child.outcome_reason = cascade.outcome_reason
                 update_fields.append("outcome_reason")

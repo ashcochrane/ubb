@@ -366,11 +366,12 @@ class Task(BaseModel):
     # ⚠ THE RULE IS SET_ONCE AND THIS MODEL DECLARES NO `transition_classes`,
     # WHICH IS A STATED GAP RATHER THAN AN ANSWER. What is allowed to happen to
     # these two is exactly what the paragraph above says — written once, when
-    # the row enters its terminal state, and never again. Two writes reach them
-    # and both are held to that by the same rule from different directions: the
-    # guard in `TaskService._flip` refuses a second transition, and the cascade
-    # beside it selects only work still running, so a row it can reach is by
-    # construction one that has never been written.
+    # the row enters its terminal state, and never again. `reason_detail` has
+    # exactly one writer, the close; `outcome_reason` has two, the close and a
+    # parent's close cascade, and both are held to write-once by the same rule
+    # from different directions: the guard in `TaskService._flip` refuses a
+    # second transition, and the cascade beside it selects only work still
+    # running, so a row it can reach is by construction one never written.
     # `docs/conventions/django-patterns.md` asks a model holding economic
     # facts to say that per column in a `transition_classes` mapping, and this
     # model has never had one: `status`, `parent` and `task_type` all carry

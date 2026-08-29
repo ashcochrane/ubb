@@ -379,12 +379,19 @@ gates on `status == killed` first, so nothing mis-reads it meanwhile. **All thre
 reason now**, and they are not the same concept: a close cascade writes `outcome_reason:
 parent_closed` (caller-supplied, so not in this vocabulary at all), while the kill and expiry
 cascades write `parent_killed` and `silence_window` under this key.
-_Note_: the expiry cascade writes `silence_window` **whichever sweeper reaped the parent**, and that
-is a stated approximation. Reporting usage on contained work stamps its parent's heartbeat, so a
-parent reaped for silence really had nothing reported underneath it and the word is exactly true;
-for one reaped on its **Absolute deadline** it is the nearest true thing this vocabulary declares,
-since there is no known value meaning *the whole thing ended* and coining one here would be this
-backend naming values in a concept another slice owns.
+_Note_: the expiry cascade writes `silence_window` on **every** expiry, and in one of the three ways
+a parent reaches one that is an approximation. Reaped for silence, it is exactly true — reporting
+usage on contained work stamps its parent's heartbeat, so a parent reaped for silence really had
+nothing reported underneath it. Reaped on its **Absolute deadline**, the parent's own row says
+`stale_max_age` and its contained work says `silence_window`, so **two rows of one tree disagree in
+one transaction** — and `work/tasks.py:_reason_for` rules against this word for exactly that case in
+the parent's own right, because "reporting the silence instead would say the tenant stopped talking
+about work that had in fact run out of time". Reaped by the UNANNOUNCED sweeper, the parent gets no
+cause at all while its contained work still gets this one. It is kept because carrying the parent's
+cause down contradicts the ruling that names this word unconditionally and leaves the third case
+nothing to carry, and coining *the unit containing this one ended* would be this backend minting a
+value in a concept another slice owns. **Residual for that slice**; the mechanism beside it,
+`trigger_source: parent_cascade`, is unconditional and is what actually says why the row stopped.
 
 **Trigger source**:
 WHICH MECHANISM applied a stop, beside the **Stop reason** saying why — two fields because they are

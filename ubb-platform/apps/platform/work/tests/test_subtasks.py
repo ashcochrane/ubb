@@ -24,7 +24,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import CloseDeclaration, TaskService
+from apps.platform.work.services import (
+    STOP_CAUSE_KEY, STOP_MECHANISM_KEY, CloseDeclaration, TaskService)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     OUTCOME_REASON_EXECUTION_FAILED, OUTCOME_REASON_PARENT_CLOSED,
@@ -46,6 +47,12 @@ class SubtaskTestBase(TestCase):
             self.tenant, self.customer, balance_snapshot_micros=balance,
             provider_cost_limit_micros=limit,
             billing_owner_id=self.customer.id, parent=parent)
+
+    def _a_parent_and_its_contained_work(self, **kwargs):
+        """The pair almost every containment case needs: a top-level unit and
+        one piece of work running inside it."""
+        parent = self._task(**kwargs)
+        return parent, self._task(parent=parent)
 
     def _events(self, event_type):
         return OutboxEvent.objects.filter(event_type=event_type)
@@ -281,10 +288,6 @@ class CascadeRecordTest(SubtaskTestBase):
     them.
     """
 
-    def _a_parent_and_its_contained_work(self):
-        parent = self._task()
-        return parent, self._task(parent=parent)
-
     def test_a_close_cascade_records_the_withdrawal_and_its_mechanism(self):
         parent, contained = self._a_parent_and_its_contained_work()
 
@@ -294,7 +297,7 @@ class CascadeRecordTest(SubtaskTestBase):
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_CANCELLED)
         self.assertEqual(contained.outcome_reason, OUTCOME_REASON_PARENT_CLOSED)
-        self.assertEqual(contained.metadata["trigger_source"],
+        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
                          TRIGGER_SOURCE_PARENT_CASCADE)
         # The parent's own record is untouched by the cascade it caused: the
         # tenant explained the whole thing and explained none of the pieces.
@@ -327,7 +330,7 @@ class CascadeRecordTest(SubtaskTestBase):
                          OUTCOME_REASON_EXECUTION_FAILED)
         # Not merely a surviving reason — the cascade did not touch the row at
         # all, and the mechanism it stamps is what says so.
-        self.assertNotIn("trigger_source", declared.metadata)
+        self.assertNotIn(STOP_MECHANISM_KEY, declared.metadata)
         self.assertEqual(still_running.status, TASK_STATUS_CANCELLED)
         self.assertEqual(still_running.outcome_reason,
                          OUTCOME_REASON_PARENT_CLOSED)
@@ -340,15 +343,15 @@ class CascadeRecordTest(SubtaskTestBase):
         parent.refresh_from_db()
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_KILLED)
-        self.assertEqual(contained.metadata["kill_reason"],
+        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
                          reasons.PARENT_KILLED)
-        self.assertEqual(contained.metadata["trigger_source"],
+        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
                          TRIGGER_SOURCE_PARENT_CASCADE)
         # IT NEVER INHERITS THE PARENT'S CAUSE, and that is the half a report of
         # what really reached a ceiling depends on: this piece crossed nothing
         # of its own.
-        self.assertNotEqual(contained.metadata["kill_reason"],
-                            parent.metadata["kill_reason"])
+        self.assertNotEqual(contained.metadata[STOP_CAUSE_KEY],
+                            parent.metadata[STOP_CAUSE_KEY])
 
     def test_an_expiry_cascade_records_the_silence_window_and_its_mechanism(self):
         parent, contained = self._a_parent_and_its_contained_work()
@@ -357,9 +360,9 @@ class CascadeRecordTest(SubtaskTestBase):
 
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(contained.metadata["kill_reason"],
+        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
                          reasons.SILENCE_WINDOW)
-        self.assertEqual(contained.metadata["trigger_source"],
+        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
                          TRIGGER_SOURCE_PARENT_CASCADE)
 
     def test_the_three_cascades_record_three_different_reasons(self):
@@ -374,7 +377,7 @@ class CascadeRecordTest(SubtaskTestBase):
             parent, contained = self._a_parent_and_its_contained_work()
             stop(parent.id, reason=reason)
             contained.refresh_from_db()
-            recorded.add(contained.metadata["kill_reason"])
+            recorded.add(contained.metadata[STOP_CAUSE_KEY])
 
         parent, contained = self._a_parent_and_its_contained_work()
         TaskService.close_task(parent.id,
@@ -404,8 +407,7 @@ class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
     """
 
     def test_contained_work_that_failed_leaves_the_whole_thing_running(self):
-        parent = self._task()
-        contained = self._task(parent=parent)
+        parent, contained = self._a_parent_and_its_contained_work()
 
         TaskService.close_task(
             contained.id,
@@ -420,8 +422,7 @@ class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
     def test_the_whole_thing_still_closes_as_delivered_after_that(self):
         """The half that decides money: the outcome is an assertion made when
         the answer is known, never a function of what happened underneath."""
-        parent = self._task()
-        contained = self._task(parent=parent)
+        parent, contained = self._a_parent_and_its_contained_work()
         fallback = self._task(parent=parent)
         TaskService.close_task(
             contained.id,
@@ -450,8 +451,8 @@ class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
         questions of the same parent afterwards, which is what *the parent keeps
         running and counting* actually means.
         """
-        parent = self._task(limit=100_000_000)
-        contained = self._task(parent=parent)
+        parent, contained = self._a_parent_and_its_contained_work(
+            limit=100_000_000)
         TaskService.accumulate_cost(
             contained.id, billed_cost_micros=1_000_000,
             provider_cost_micros=2_000_000)

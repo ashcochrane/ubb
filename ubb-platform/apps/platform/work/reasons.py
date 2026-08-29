@@ -146,7 +146,8 @@ CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
 # mechanism that produces it. `parent_cascade` is produced too, since #413, but
 # it reaches no PAYLOAD and never will while a cascade stays silent — a cascade
 # announces nothing because its parent's event is the one signal, so the
-# mechanism is recorded on each stopped row instead (`services._cascade`).
+# mechanism is recorded on each stopped row instead
+# (`services.TaskService._cascade`).
 #
 # The whole five are held here anyway, because the registry names this module as
 # the concept's backend consumer and a consumer holds the vocabulary rather than

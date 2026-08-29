@@ -99,10 +99,8 @@ def sync_detailed(
     unit exists, and *nothing is contained in it* is the true answer about it.
     An unknown unit — or one belonging to another tenant — is a 404.
 
-    Registering contained work is not here. A contained start is a start and
-    goes through `POST /tasks` with `parent_task_id` named, so there is one
-    registration shape at either altitude and this collection is purely the
-    read side of it.
+    Registering contained work is not here: to start it, call `POST /tasks`
+    naming `parent_task_id`.
 
     Args:
         task_id (UUID):
@@ -147,10 +145,8 @@ def sync(
     unit exists, and *nothing is contained in it* is the true answer about it.
     An unknown unit — or one belonging to another tenant — is a 404.
 
-    Registering contained work is not here. A contained start is a start and
-    goes through `POST /tasks` with `parent_task_id` named, so there is one
-    registration shape at either altitude and this collection is purely the
-    read side of it.
+    Registering contained work is not here: to start it, call `POST /tasks`
+    naming `parent_task_id`.
 
     Args:
         task_id (UUID):
@@ -190,10 +186,8 @@ async def asyncio_detailed(
     unit exists, and *nothing is contained in it* is the true answer about it.
     An unknown unit — or one belonging to another tenant — is a 404.
 
-    Registering contained work is not here. A contained start is a start and
-    goes through `POST /tasks` with `parent_task_id` named, so there is one
-    registration shape at either altitude and this collection is purely the
-    read side of it.
+    Registering contained work is not here: to start it, call `POST /tasks`
+    naming `parent_task_id`.
 
     Args:
         task_id (UUID):
@@ -238,10 +232,8 @@ async def asyncio(
     unit exists, and *nothing is contained in it* is the true answer about it.
     An unknown unit — or one belonging to another tenant — is a 404.
 
-    Registering contained work is not here. A contained start is a start and
-    goes through `POST /tasks` with `parent_task_id` named, so there is one
-    registration shape at either altitude and this collection is purely the
-    read side of it.
+    Registering contained work is not here: to start it, call `POST /tasks`
+    naming `parent_task_id`.
 
     Args:
         task_id (UUID):

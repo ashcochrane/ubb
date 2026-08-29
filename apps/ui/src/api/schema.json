@@ -16609,7 +16609,7 @@
     },
     "/api/v1/tasks/{task_id}/subtasks": {
       "get": {
-        "description": "The work contained in one unit.\n\nA unit with nothing inside it answers an empty collection, not a 404: the\nunit exists, and *nothing is contained in it* is the true answer about it.\nAn unknown unit \u2014 or one belonging to another tenant \u2014 is a 404.\n\nRegistering contained work is not here. A contained start is a start and\ngoes through `POST /tasks` with `parent_task_id` named, so there is one\nregistration shape at either altitude and this collection is purely the\nread side of it.",
+        "description": "The work contained in one unit.\n\nA unit with nothing inside it answers an empty collection, not a 404: the\nunit exists, and *nothing is contained in it* is the true answer about it.\nAn unknown unit \u2014 or one belonging to another tenant \u2014 is a 404.\n\nRegistering contained work is not here: to start it, call `POST /tasks`\nnaming `parent_task_id`.",
         "operationId": "api_v1_task_endpoints_list_subtasks",
         "parameters": [
           {

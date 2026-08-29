@@ -303,11 +303,16 @@ def list_subtasks(request, task_id: UUID, cursor: str = None, limit: int = 50):
     unit exists, and *nothing is contained in it* is the true answer about it.
     An unknown unit — or one belonging to another tenant — is a 404.
 
-    Registering contained work is not here. A contained start is a start and
-    goes through `POST /tasks` with `parent_task_id` named, so there is one
-    registration shape at either altitude and this collection is purely the
-    read side of it.
+    Registering contained work is not here: to start it, call `POST /tasks`
+    naming `parent_task_id`.
     """
+    # ONE REGISTRATION SHAPE AT EITHER ALTITUDE, WHICH IS WHY THERE IS NO POST
+    # HERE. A contained start is a start; this collection is purely the read
+    # side of containment. That argument belongs in a comment rather than in
+    # the docstring above, which is exported verbatim into `openapi/v1.json`
+    # and the generated SDK — a caller needs the route to call, not the reason
+    # this one does not exist.
+    #
     # THE PARENT IS RESOLVED UNDER THE TENANT FIRST, AND THAT IS WHAT MAKES THE
     # EMPTY ANSWER MEAN SOMETHING. Filtering contained work by `parent_id`
     # alone would answer an empty collection for a unit that does not exist and
