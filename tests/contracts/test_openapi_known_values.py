@@ -52,7 +52,9 @@ from typing import NamedTuple
 
 import pytest
 
-from _helpers import CONSUMER_PATH, REPO_ROOT, concept, write_registry
+from _helpers import (
+    CONSUMER_PATH, REPO_ROOT, concept, events_whose_payload_declares,
+    write_registry)
 from tools.consumers import serving_surfaces, take_census
 from tools.gates import load_programme
 from tools.known_values import (
@@ -932,6 +934,22 @@ CONCEPTS_IN_THE_CONTRACT = {
     # there was never a G4 debt to delete. The seeding floor below therefore
     # moves for `task_outcome` alone.
     "outcome_reason": Published(3, ENUM),
+    # WHICH MECHANISM APPLIED A STOP (#412) — two nodes, the two terminal stop
+    # events, which are one fact carried at two altitudes.
+    #
+    # ⚠ THE FIRST **OPEN** CONCEPT IN THIS MAP TO BE ADVERTISED, so it renders
+    # `x-ubb-known-values` documentation metadata beside an untouched
+    # `type: string` rather than an `enum`. The kind travels in the row because
+    # a concept switching kind is the conversion ADR-0003 forbids and no count
+    # would notice it; this is the row that makes the KNOWN_VALUES half of that
+    # check non-vacuous for a concept a slice actually paid, rather than for the
+    # tenant-owned sets that were the only ones carrying it before.
+    #
+    # An open set may be advertised while UBB produces a SUBSET of it — that is
+    # what open means — and here UBB drives three of the five: the ingest lane,
+    # the enforcement patrol, and the sweeper. The other two arrive with the
+    # mechanisms that produce them.
+    "trigger_source": Published(2, KNOWN_VALUES),
 }
 
 
@@ -1239,6 +1257,33 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # because the registry refuses one on a `free_text` concept — there is no
     # value set to advertise, and a marker would publish an empty promise.
     placed("outcome_reason", {"CloseTaskRequest", "TaskOut", "TaskDetailOut"})
+    # WHICH MECHANISM APPLIED A STOP (#412), on the two terminal stop events
+    # and on nothing else. The rule is the one the receipt lines above make a
+    # habit of stating: the marker belongs wherever the VALUE travels, and it
+    # travels on an announcement of a stop. Both altitudes carry it because
+    # both announce one — a subscriber tearing down a step needs the same
+    # answer as one tearing down a job.
+    #
+    # ⚠ AND NOT ON ANY SCHEMA DESCRIBING A UNIT OF WORK, which is a placement a
+    # reader would look for and is a real absence rather than an oversight. The
+    # mechanism is a fact about a TRANSITION, not about a row, and the row does
+    # not record it — the metadata carries the stop's CAUSE and nothing has
+    # ever written the mechanism beside it. Marking `TaskOut` would advertise a
+    # field UBB cannot fill. The ticket that splits these two events into four
+    # is where the row starts recording it.
+    #
+    # ⚠ THIS IS THE ONLY OPEN CONCEPT IN THIS FUNCTION, so it is the only line
+    # where the marker renders documentation metadata rather than an `enum`.
+    # The placement rule does not change with the kind: a concept advertised on
+    # a schema that does not carry its value is exactly as wrong either way.
+    #
+    # ⚠ AND THE ONLY LINE WHOSE SCHEMAS ARE DERIVED RATHER THAN NAMED, for two
+    # reasons that happen to point the same way. Both event names are retired
+    # words this suite has no ledger seat for, so spelling them fails the
+    # sweep; and reading them off the payload classes that DECLARE the field
+    # makes this line hold the published document to the producer rather than
+    # to a literal that would agree with both until one moved.
+    placed("trigger_source", events_whose_payload_declares("trigger_source"))
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1875,8 +1920,28 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     again one entry, 22 → 21 in #366, which advertised `rate_structure`,
     21 → 20 in #370, which advertised `pricing_receipt_subject_type`,
     20 → 19 in #407, which advertised `task_type_kind`, 19 → 18 in #408,
-    which advertised `task_status`, and 18 → 17 in #409, which advertised
-    `task_outcome`.
+    which advertised `task_status`, 18 → 17 in #409, which advertised
+    `task_outcome`, and 17 → 16 in #412, which advertised `trigger_source`.
+
+    ⚠ #412 IS THE FIRST TO ADVERTISE AN **OPEN** CONCEPT, AND THE STEP IS THE
+    SAME SIZE FOR A DIFFERENT REASON. Every concept above is `closed`, so
+    advertising one writes a real `enum` and the debt was that a document must
+    not close a set the backend does not yet serve. An open one writes
+    `x-ubb-known-values` metadata beside an untouched `type: string`, which
+    constrains nothing — but the debt was never about constraint. It was that
+    the document would name values on a field returning the vocabulary they
+    replace, and that is exactly as false in documentation as it is in an
+    enum. So the pairing holds unchanged: the G4 entry and its backend G3 twin
+    were one debt read from two sides, only the G4 entry is in this seeding,
+    and one comes out of it.
+
+    ⚠ AND IT IS THE FIRST WHERE PAYING THE BACKEND SIDE FORCED THE CONTRACT
+    SIDE RATHER THAN MERELY PERMITTING IT. `test_every_advertised_concept_
+    reaches_the_contract` refuses a concept the backend serves that declares
+    an `openapi` consumer and names no field — so the commit that made the
+    backend hold all five mechanisms could not stop there. That is the gate
+    working: the alternative it refused is a contract silent about a value UBB
+    is already sending.
 
     ⚠ #366 AND #370 EACH PAID TWO ENTRIES AND MOVED THIS FLOOR BY ONE, which is
     right rather than an accounting slip: the G4 debt and the backend G2 debt
@@ -1945,6 +2010,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 17, (
+    assert len(_entries(programme)) >= 16, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

@@ -158,6 +158,7 @@
       "customer_floor",
       "customer_wide_stop",
       "parent_killed",
+      "silence_window",
       "stale",
       "stale_max_age",
       "subtask_limit",

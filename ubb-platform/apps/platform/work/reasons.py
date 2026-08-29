@@ -1,28 +1,40 @@
-"""Closed vocabulary of task-stop / limit reasons.
+"""Closed vocabulary of task-stop / limit reasons, and the mechanisms that
+apply one.
 
 The single source of truth for the `reason` field on TaskLimitExceeded /
 SubtaskLimitExceeded, on the ack stop-verdict fields (`stop_reason`), and on the
 stop metadata a unit carries. Every producer and consumer imports these
 constants; no stop path may invent a reason string.
 
-⚠ THE METADATA KEY IS STILL SPELLED `kill_reason` AND NOW CARRIES EXPIRIES TOO
+⚠ WHAT THIS MODULE TAKES FROM THE REGISTRY, AND WHAT IT STILL SPELLS (#412).
+Two registry concepts have their declared backend consumer HERE, and this module
+now sources from `core.vocabulary` everything it legitimately can:
+
+  `trigger_source`  — PAID IN FULL. All five known mechanisms are held by
+                      reference below, in `KNOWN_TRIGGER_SOURCES`.
+  `reason_code`     — TWO of five. `parent_killed` (#200) and `silence_window`,
+                      which the silence-window expiry path produces. The other
+                      three known values are the end-state names for mechanisms
+                      that do not exist yet; importing them here would be this
+                      module performing another slice's renames on paths it
+                      cannot drive, so they are deliberately left.
+
+Both concepts are `open`, which is what makes shipping a subset legal rather
+than partial: an open set is designed for a consumer that produces some of it.
+
+⚠ THE METADATA KEY IS STILL SPELLED `kill_reason` AND CARRIES EXPIRIES TOO
 (#408). Both sweepers write `expired` rather than `killed`, and the reason they
-pass — `stale` or `stale_max_age` — is stamped under the key it always used. The
-key is `outcome_reason`'s to rename, in the ticket that wires that concept's
-consumers; renaming it here would be a second spelling of a value set another
-ticket owns. Nothing mis-reads it in the meantime: every consumer of the key
-gates on `status == killed` first.
+pass — a silence window elapsed, or the absolute deadline — is stamped under the
+key it always used. The key is `outcome_reason`'s to rename, in the ticket that
+wires that concept's consumers; renaming it here would be a second spelling of a
+value set another ticket owns. Nothing mis-reads it in the meantime: every
+consumer of the key gates on `status == killed` first.
 
 One-rule model (docs/plans/2026-07-15-one-rule-enforcement-spec.md): these are
 signal reasons, not refusal codes — every usage report answers HTTP 200; the
 reason rides the response's stop fields. The retired 429-era strings
 (`cost_limit_exceeded`, `balance_floor_exceeded`, the label-cap
 `task_limit_exceeded`) are deliberately NOT reused.
-
-The registry (`domain-vocabulary/`) is the source of these tokens (#200). Where
-a reason's canonical name IS the string already in flight, this module takes it
-from `core.vocabulary` rather than restating it, so the backend cannot hold a
-second copy that drifts. Today that is one of them.
 
 "Closed" above and the registry's `open` kind are not in conflict, and the
 generated name is `REASON_CODE_KNOWN_VALUES` for exactly that reason. Closed is
@@ -33,11 +45,19 @@ travel rather than be rejected at the boundary (ADR-0003). Neither set may be
 used to refuse a value arriving from outside.
 
 The rest carry names the registry retires. Swapping one here would change what
-the API returns, which slice 0 does not do — each is a rename owned by a later
+the API returns, which slice 0 did not do — each is a rename owned by a later
 slice and recorded in the migration ledger (#201).
 """
 
-from core.vocabulary import REASON_CODE_PARENT_KILLED
+from core.vocabulary import (
+    REASON_CODE_PARENT_KILLED,
+    REASON_CODE_SILENCE_WINDOW,
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+    TRIGGER_SOURCE_PARENT_CASCADE,
+    TRIGGER_SOURCE_POOL_CROSSING,
+    TRIGGER_SOURCE_STALE_REAPER,
+    TRIGGER_SOURCE_USAGE_INGEST,
+)
 
 # The task's provider-cost (COGS) limit was crossed (Task.provider_cost_limit_micros).
 # On a subtask event this means the PARENT's limit was crossed by the rolled-up
@@ -50,9 +70,29 @@ SUBTASK_LIMIT = "subtask_limit"
 TASK_NOT_ACTIVE = "task_not_active"
 # Customer-wide spend stop: the owner crossed the wallet floor / budget cap.
 CUSTOMER_WIDE_STOP = "customer_wide_stop"
-# Reaped: task had no heartbeat within the stale window.
-STALE = "stale"
-# Reaped: task exceeded the maximum wall-clock age.
+# Reaped: nothing was reported on this unit inside its silence window, and
+# reporting usage is the only thing that proves a unit is alive (#412). Held by
+# reference: the registry has a word for this stop and it is that word, so the
+# backend cannot keep a second spelling of it that drifts.
+#
+# ⚠ ITS STRING CHANGED WHEN IT BECAME REGISTRY-SOURCED, AND STORED DATA STILL
+# HOLDS THE OLD ONE. Outbox rows and stop metadata written before #412 carry the
+# pre-registry spelling `stale`, so the terminal-event split's row-routing rule
+# — reaper reasons to `*.expired`, everything else to `*.killed` — must match
+# that older value as well as this constant, or a row that predates this commit
+# is routed as a spend stop. Every code consumer names the constant; the two
+# places that hold the VALUE both keep the old spelling beside the new one, on
+# `customer_floor`'s precedent — the published `stop_reasons` list in
+# `openapi/error-codes.json` and the console's display map.
+SILENCE_WINDOW = REASON_CODE_SILENCE_WINDOW
+# Reaped: the unit passed its absolute deadline, whatever it was still doing.
+#
+# ⚠ THIS ONE KEEPS THE MODULE'S OWN VALUE, AND THAT IS NOT AN OVERSIGHT (#412).
+# The registry declares no known value for the absolute deadline's stop, and
+# `reason_code` is an OPEN concept with `allow_unknown` — so a value it has
+# never seen travels legally rather than being refused at the boundary.
+# Coining one here would be this module inventing a name the registry owns.
+# Slice 6 settles whether the concept gains one.
 STALE_MAX_AGE = "stale_max_age"
 # Kill-metadata only (#38): a subtask flipped by its parent's downward KILL
 # cascade — it crossed nothing of its own, so this never rides an ack's
@@ -60,10 +100,13 @@ STALE_MAX_AGE = "stale_max_age"
 #
 # ⚠ IT IS THE KILL CASCADE'S REASON AND NOT THE OTHER TWO'S (#408). A parent's
 # close cascades `cancelled` and a parent's expiry cascades `expired`, and
-# neither records a reason yet: the registry declares `outcome_reason:
-# parent_closed` for the first and `reason_code: silence_window` for the second,
-# and each arrives with the ticket that wires its concept's consumers. Stamping
-# either here would be this module holding a value set it does not own.
+# NEITHER RECORDS A REASON YET — which is still true after #412, and for the
+# expiry half the missing thing is now only the write. The registry declares
+# `outcome_reason: parent_closed` for the close cascade, a CALLER-supplied
+# concept this module does not hold and must not; `SILENCE_WINDOW` above is
+# what the expiry cascade will stamp, and it is held here now, so what that
+# cascade still owes is the stamping and not the word. Each arrives with the
+# ticket that wires its own concept's consumers.
 PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
 # customer scope) — an owner suspended with no open floor episode
@@ -79,7 +122,7 @@ ALL_REASONS = frozenset({
     SUBTASK_LIMIT,
     TASK_NOT_ACTIVE,
     CUSTOMER_WIDE_STOP,
-    STALE,
+    SILENCE_WINDOW,
     STALE_MAX_AGE,
     PARENT_KILLED,
 })
@@ -87,6 +130,37 @@ ALL_REASONS = frozenset({
 # The reasons whose verdict drives the idempotent kill flow (a fresh
 # crossing); TASK_NOT_ACTIVE signals but never re-kills.
 CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
+
+# EVERY MECHANISM UBB HAS THAT CAN APPLY A STOP, held by reference (#412).
+#
+# A stop's CAUSE and the MECHANISM that applied it are two different questions,
+# and both travel as structured fields so a webhook never carries either in its
+# name (ADR-0006 §5). The causes are the reasons above; these are the
+# mechanisms. Nothing in this module maps one to the other, because the mapping
+# is not one-to-one in either direction — the same cause can be found by
+# ingest or by the patrol, and the same mechanism can find several causes —
+# so the producer names its own mechanism at the point it acts.
+#
+# ⚠ THREE OF THE FIVE ARE PRODUCED TODAY AND TWO ARE NOT, WHICH IS WHAT AN OPEN
+# SET IS FOR. The terminal stop events carry the mechanism, and the three paths
+# that APPLY a stop each name themselves: the usage-ingest lane, the enforcement
+# patrol, and the sweeper. `pool_crossing` waits on the mechanism that produces
+# it, and `parent_cascade` is real but announces nothing — a cascade is a silent
+# state change whose parent's event is the one signal — so it reaches no payload
+# until a cascade records its own reason.
+#
+# The whole five are held here anyway, because the registry names this module as
+# the concept's backend consumer and a consumer holds the vocabulary rather than
+# the subset it happens to drive. That is also what makes the ticket splitting
+# those two events into four an addition to a payload rather than a second place
+# these words get spelled.
+KNOWN_TRIGGER_SOURCES = frozenset({
+    TRIGGER_SOURCE_USAGE_INGEST,
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+    TRIGGER_SOURCE_PARENT_CASCADE,
+    TRIGGER_SOURCE_POOL_CROSSING,
+    TRIGGER_SOURCE_STALE_REAPER,
+})
 
 
 def kill_scope(reason, *, is_subtask):

@@ -134,6 +134,36 @@ class TaskType(BaseModel):
     # COGS-denominated, matching Task.provider_cost_limit_micros. NULL = fall
     # back to the RiskConfig tenant default, then to uncapped.
     default_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # HOW LONG THIS KIND OF WORK MAY GO QUIET (#412), the first rung of the
+    # silence ladder — this declaration, then the tenant's own default, then
+    # UBB's backstop. The docstring above makes the argument for the ceiling
+    # and it is the same argument: one kind of job that legitimately runs
+    # twenty minutes between reports should not force you to widen the window
+    # for its sibling that reports every second.
+    #
+    # LIVENESS IS PROVED BY REPORTING USAGE AND BY NOTHING ELSE. There is no
+    # keepalive call and no read extends a unit's life — an implicit keepalive
+    # on reads was rejected outright, because a console listing, a support
+    # query or an admin inspecting a stuck unit would silently resurrect it.
+    #
+    # NULL = this kind declares nothing, so the ladder falls through. 0 = this
+    # kind declares that it has NO silence window, which is a real answer for
+    # work that is legitimately quiet for hours; the absolute deadline below
+    # still applies to it, so 0 here can never produce an immortal unit.
+    silence_window_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # HOW LONG THIS KIND OF WORK MAY RUN AT ALL (#412), the first rung of the
+    # absolute ladder, and it is measured from creation regardless of activity.
+    #
+    # ⚠ IT CANNOT BE SWITCHED OFF AT ANY RUNG, AND THE CONSTRAINT BELOW IS WHAT
+    # MAKES THAT TRUE RATHER THAN CUSTOMARY. Dropping the absolute ceiling was
+    # considered and rejected: it is the guard that stops any tenant getting an
+    # immortal unit, and a tenant with no reaper of its own would otherwise have
+    # stuck work living forever holding a concurrency slot and a prepaid
+    # reservation. NULL falls through to the tenant default and then to UBB's
+    # backstop; zero is refused, because a zero-length deadline and a disabled
+    # one are the two readings a reader would have to choose between and only
+    # one of them is a window.
+    absolute_deadline_seconds = models.PositiveIntegerField(null=True, blank=True)
     # Declared grouping field keys a start call MUST supply for this kind of work.
     required_dimensions = models.JSONField(default=_empty_list, blank=True)
     retired_at = models.DateTimeField(null=True, blank=True)
@@ -143,6 +173,15 @@ class TaskType(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=["tenant", "kind", "key"],
                                     name="uq_task_type_key"),
+            # The absolute deadline is either undeclared at this rung or a
+            # real window. See the column: this is the rule that keeps "no
+            # tenant gets an immortal unit" a property of the database rather
+            # than of whichever code path last read the column.
+            models.CheckConstraint(
+                condition=models.Q(absolute_deadline_seconds__isnull=True)
+                | models.Q(absolute_deadline_seconds__gt=0),
+                name="ck_task_type_absolute_deadline_positive",
+            ),
         ]
 
     def __str__(self):

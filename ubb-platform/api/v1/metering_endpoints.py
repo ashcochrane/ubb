@@ -2080,6 +2080,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
                 defaults={
                     "default_provider_cost_limit_micros":
                         tt.default_provider_cost_limit_micros,
+                    "silence_window_seconds": tt.silence_window_seconds,
+                    "absolute_deadline_seconds": tt.absolute_deadline_seconds,
                     "required_dimensions": tt.required_dimensions,
                 })
         audit_record(
@@ -2091,6 +2093,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
                 {"key": tt.key, "kind": tt.kind,
                  "default_provider_cost_limit_micros":
                      tt.default_provider_cost_limit_micros,
+                 "silence_window_seconds": tt.silence_window_seconds,
+                 "absolute_deadline_seconds": tt.absolute_deadline_seconds,
                  "required_dimensions": tt.required_dimensions}
                 for tt in payload.task_types]},
         )

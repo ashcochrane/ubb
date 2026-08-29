@@ -734,7 +734,8 @@ class TaskService:
             child.save(update_fields=update_fields)
 
     @staticmethod
-    def kill_and_announce(task_id, reason, *, tenant_id, customer_id):
+    def kill_and_announce(task_id, reason, *, tenant_id, customer_id,
+                          trigger_source=""):
         """The idempotent kill flow: flip the unit to `killed` (cascading
         downward if it is a parent) and, ONLY on the winning transition, emit
         ``task.limit_exceeded`` — or, for contained work,
@@ -744,13 +745,21 @@ class TaskService:
 
         This is the SPEND lane, and after #408 that is all it is: the callers
         left are the ones holding a crossing.
+
+        ``trigger_source`` names the MECHANISM the caller is (#412) — a
+        different question from ``reason``, which is the cause. It defaults to
+        empty because this seam cannot know which lane called it and inventing
+        one would be worse than saying nothing; every production caller passes
+        one.
         """
         return TaskService._stop_and_announce(
             TaskService.kill_task, task_id, reason,
-            tenant_id=tenant_id, customer_id=customer_id)
+            tenant_id=tenant_id, customer_id=customer_id,
+            trigger_source=trigger_source)
 
     @staticmethod
-    def expire_and_announce(task_id, reason, *, tenant_id, customer_id):
+    def expire_and_announce(task_id, reason, *, tenant_id, customer_id,
+                            trigger_source=""):
         """The same flow for the state at the other end of §2's table: flip the
         unit to `expired` and announce it exactly once.
 
@@ -762,13 +771,18 @@ class TaskService:
         bound rather than for the state entered, which is an individually
         ledgered debt the terminal-event split pays by name. Recording the
         state honestly first is what makes that split expressible at all.
+
+        ``trigger_source`` names the mechanism, on the same terms as the kill
+        lane above.
         """
         return TaskService._stop_and_announce(
             TaskService.expire_task, task_id, reason,
-            tenant_id=tenant_id, customer_id=customer_id)
+            tenant_id=tenant_id, customer_id=customer_id,
+            trigger_source=trigger_source)
 
     @staticmethod
-    def _stop_and_announce(flip, task_id, reason, *, tenant_id, customer_id):
+    def _stop_and_announce(flip, task_id, reason, *, tenant_id, customer_id,
+                           trigger_source=""):
         """Flip through ``flip`` and, on the winning transition only, emit the
         fan-out event and stamp the announcement id.
 
@@ -796,6 +810,13 @@ class TaskService:
                         billing_owner_id=str(stopped.billing_owner_id or ""),
                         external_task_id=stopped.external_task_id,
                         reason=reason,
+                        # The cause and the mechanism, side by side (#412):
+                        # the caller above is the only thing that knows which
+                        # lane it is, so it says so rather than being guessed
+                        # at from the reason — the same reason can be reached
+                        # by more than one mechanism and one mechanism reaches
+                        # more than one reason.
+                        trigger_source=trigger_source,
                         total_billed_cost_micros=stopped.total_billed_cost_micros,
                         total_provider_cost_micros=stopped.total_provider_cost_micros,
                         # The total that crossed the limit is a floor when this

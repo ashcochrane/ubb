@@ -31,7 +31,7 @@ import json
 
 import pytest
 
-from _helpers import REPO_ROOT
+from _helpers import REPO_ROOT, events_whose_payload_declares
 
 MARKER = "x-ubb-concept"
 
@@ -53,6 +53,22 @@ THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT = {
     ("usage.recorded", "costing_status"),
     ("usage.recorded", "pricing_status"),
 }
+
+#: What has legally arrived since, and the concept it is (#412): the mechanism
+#: that applied a stop, on the two events that announce one.
+#:
+#: ⚠ NOT FOLDED INTO THE SET ABOVE, because that set's name is a claim about
+#: WHEN — the population as it stood before the container's split — and
+#: widening it in place would quietly make the name false. Kept apart, the two
+#: sets say what this module actually knows: the split moved no payload, and
+#: something else later added one marker to two events.
+#:
+#: The event names are DERIVED, never spelled: they are retired words this
+#: suite has no ledger seat for, and reading them off the payload classes that
+#: declare the field holds the document to the producer rather than to a
+#: literal. The pair goes red when the split renames these two events into
+#: four, which is a person's decision rather than a stale literal's.
+THE_MECHANISM_MARKER = "trigger_source"
 
 
 @pytest.fixture(scope="module")
@@ -119,13 +135,25 @@ def test_the_walk_finds_the_markers_that_ARE_owed(spec):
 def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     """Read off the document rather than off the outbox, because the callback
     schemas are generated from payload classes and a change to one lands here
-    whether or not anybody thought of this file."""
+    whether or not anybody thought of this file.
+
+    ⚠ "EXACTLY" IS STILL EXACTLY, and the second set is what keeps it so. A
+    marker arriving on a payload is a deliberate act — it means a governed
+    value set started travelling to every subscriber — so the check is an
+    equality against a stated whole, never a subset test that would let the
+    next one through unread.
+    """
     seen = set()
     for event_name, node in spec.get("webhooks", {}).items():
         for path, concept in _marked(node):
             seen.add((event_name, concept))
 
-    assert seen == THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
+    arrived_since = {(event, THE_MECHANISM_MARKER) for event
+                     in events_whose_payload_declares(THE_MECHANISM_MARKER)}
+    assert arrived_since, (
+        "no payload class declares the mechanism field, so the second half of "
+        "this equality is empty and proves nothing — suspect the reader")
+    assert seen == THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT | arrived_since
 
 
 def test_no_webhook_marker_names_a_book(spec):

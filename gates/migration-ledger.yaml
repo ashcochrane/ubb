@@ -2102,29 +2102,27 @@ entries:
     gate: G3
     site: ubb-platform/apps/platform/work/reasons.py::reason_code
     expected: reason_code
-    found: 1 of 5 values
+    found: 2 of 5 values
     owner_slice: slice_6
     reason: >-
-      Partly paid: 1 of 5 values already come from the registry. This consumer
-      spells these values inline rather than importing them from
+      Partly paid: 2 of 5 values now come from the registry. This consumer
+      spells the rest inline rather than importing them from
       `core.vocabulary`, and declares no enumeration of its own — so paying
       this adds an import rather than replacing a list. The stop reasons are
-      rewritten under #150's four families. Slice 6 owns them, and one value
-      is already held by reference here (#200).
+      rewritten under #150's four families. Slice 6 owns them. One value was
+      already held by reference here (#200) and a second joined it in #412,
+      which built the expiry paths that produce the silence window's stop —
+      the rule being that a value is imported when a path here can produce it.
+      The remaining three are end-state names for mechanisms slice 6 builds,
+      so importing them now would rename paths that do not exist yet.
 
-  - id: g3-backend-trigger_source
-    gate: G3
-    site: ubb-platform/apps/platform/work/reasons.py::trigger_source
-    expected: trigger_source
-    found: 0 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. The mechanism that
-      applied a transition, travelling as a structured field so a webhook
-      never carries it in its name (ADR-0006 §5). Slice 6 rebuilds the
-      enforcement paths that populate it.
+  # g3-backend-trigger_source WAS HERE AND IS PAID (#412, slice 5). All five
+  # mechanisms are held by reference in that module, which is what the census
+  # measures, and the terminal stop events now publish the field. It was slice
+  # 6's entry and an owner may move EARLIER, never later: the site is a file
+  # slice 5 rewrote, so leaving it would have meant landing that rewrite with
+  # a debt on it for slice 6 to come back and re-edit the same lines. Its G4
+  # twin died in the same commit.
 
   - id: g3-console-affordability_reason
     gate: G3
@@ -2394,15 +2392,18 @@ entries:
     gate: G4
     site: openapi/v1.json::reason_code
     expected: reason_code
-    found: 1 of 5 values
+    found: 2 of 5 values
     owner_slice: slice_6
     reason: >-
       The contract may not advertise these values while the backend consumer
-      holds 1 of 5 of them: the spec would publish the agreed vocabulary on a
+      holds 2 of 5 of them: the spec would publish the agreed vocabulary on a
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 6 rebuilds spend control, where #150's four families rewrite
-      the stop reasons — and one value is already held by reference in the
-      backend (#200). The metadata appears in that slice.
+      the stop reasons. Two values are now held by reference in the backend —
+      `parent_killed` (#200) and the silence window's stop, added by #412 when
+      the expiry paths that produce it were built. The remaining three are the
+      end-state names for mechanisms slice 6 builds, so importing them earlier
+      would name paths that do not exist. The metadata appears in that slice.
 
   - id: g4-openapi-spend_pool_enforce_mode
     gate: G4
@@ -2431,20 +2432,15 @@ entries:
       that. No slice's issue says it rebuilds the tenant's posture, and the
       cutover is where it lands. The metadata appears in that slice.
 
-  - id: g4-openapi-trigger_source
-    gate: G4
-    site: openapi/v1.json::trigger_source
-    expected: trigger_source
-    found: 0 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 5 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds the enforcement paths that populate it — the
-      mechanism that applied a transition, travelling as a structured field so
-      a webhook never carries it in its name (ADR-0006 §5). The metadata
-      appears in that slice.
+  # g4-openapi-trigger_source WAS HERE AND IS PAID (#412, slice 5). The
+  # backend consumer holds all five mechanisms by reference, and the terminal
+  # stop events publish the field with its `x-ubb-known-values` metadata — an
+  # OPEN concept's shape, documentation beside an untouched `type: string`,
+  # never an enum. It was slice 6's entry and an owner may move EARLIER; the
+  # site is `apps/platform/work/reasons.py`, a file slice 5 rewrote, so
+  # leaving it would have meant shipping that rewrite with a debt on it for
+  # slice 6 to come back and re-edit. Its G3 twin died in the same commit:
+  # the two are one debt read from two sides.
 
   - id: g4-openapi-usage_event_kind
     gate: G4

@@ -45,6 +45,29 @@ CostingStatus = Annotated[
 PricingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
 
+#: A payload field naming the MECHANISM that applied a stop (#412), which is a
+#: different question from the business cause beside it: *what stopped this*
+#: and *why it was stopped* are answered by two fields so that a subscriber
+#: classifies an event by reading it rather than by parsing its name
+#: (ADR-0006 §5).
+#:
+#: ⚠ OPEN, NOT CLOSED — and the marker renders `x-ubb-known-values`
+#: documentation metadata beside an untouched `type: string` rather than an
+#: `enum`. The set grows whenever UBB adds an enforcement path, so a subscriber
+#: must accept a mechanism it has not seen instead of rejecting the event
+#: carrying it (ADR-0003). That is also what makes shipping a SUBSET honest:
+#: an open set is designed for a producer that drives some of it.
+#:
+#: THE FIELD IS HERE BECAUSE THE BACKEND NOW SERVES THE CONCEPT. Its declared
+#: backend consumer is `apps/platform/work/reasons.py`, which holds all five
+#: mechanisms by reference — and a concept the backend serves that declares an
+#: `openapi` consumer must appear in the published document, or the contract
+#: is silent about a value UBB is already sending. The alternative was to hold
+#: fewer than five words in that module for no reason but to keep this field
+#: away, which is a worse contract bought with a worse module.
+TriggerSource = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
+
 
 class EventSchema:
     """Base for all payload schemas: the consumer half of the frozen contract
@@ -448,15 +471,16 @@ class TaskLimitExceeded(EventSchema):
     """One-rule task-kill fan-out event (#37). The SINGLE canonical class —
     no other module may redefine it.
 
-    Emitted exactly once per winning active->killed transition — by the
-    verdict-driven kill flow (sync record, batch items, async settle) and the
-    stale-task reaper — so sibling/idle workers tear the task down. The task
-    is a signal point, not a wall: events arriving after this still land,
-    bill, and count into both totals.
+    Emitted exactly once per winning transition OUT OF `active` — by the
+    verdict-driven kill flow (sync record, batch items, async settle), by the
+    enforcement patrol, and by either sweeper — so sibling/idle workers tear
+    the task down. The task is a signal point, not a wall: events arriving
+    after this still land, bill, and count into both totals.
 
     customer_id      = the SEAT that owns the task.
     billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
     reason           = one of apps.platform.work.reasons (closed set).
+    trigger_source   = which mechanism applied the stop (open set).
     Both running totals are carried, denominationally explicit; only the
     provider (COGS) total races provider_cost_limit_micros.
     """
@@ -467,6 +491,14 @@ class TaskLimitExceeded(EventSchema):
     task_id: str = ""
     external_task_id: str = ""
     reason: str = ""
+    #: THE MECHANISM, beside the cause (#412) — see `TriggerSource` above for
+    #: why an open set may ship a subset. Every path that APPLIES a stop names
+    #: itself; `""` means UBB is not stating one, which today is true of a
+    #: patrol RE-MINT alone. A re-mint repairs the delivery of a stop some
+    #: other mechanism applied, and the row does not record which — so naming
+    #: the patrol there would answer the wrong question, and the
+    #: `re_announcement` marker below already says what that event is.
+    trigger_source: TriggerSource = ""
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     #: How many of this unit's events the provider total could not include
@@ -484,8 +516,8 @@ class TaskLimitExceeded(EventSchema):
 @dataclass(frozen=True)
 class SubtaskLimitExceeded(EventSchema):
     """Subtask-kill fan-out event (#38) — the subtask sibling of
-    TaskLimitExceeded, emitted exactly once per winning active->killed
-    transition of a SUBTASK (its own limit/floor crossing, or the reaper).
+    TaskLimitExceeded, emitted exactly once per winning transition out of
+    `active` on a SUBTASK (its own limit/floor crossing, or a sweeper).
     The subtask is killed ALONE: the parent keeps running and counting, so
     consumers tear down only the named child. A parent's own crossing emits
     task.limit_exceeded instead and cascades its kill downward silently —
@@ -505,6 +537,9 @@ class SubtaskLimitExceeded(EventSchema):
     parent_task_id: str = ""
     external_task_id: str = ""
     reason: str = ""
+    #: The mechanism, on the same terms as `TaskLimitExceeded.trigger_source`
+    #: — the two payloads carry one fact, so they carry it identically.
+    trigger_source: TriggerSource = ""
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     #: The SUBTASK's own count, like the totals beside it (#328).

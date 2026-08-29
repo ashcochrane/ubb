@@ -126,7 +126,7 @@ class UnitContextTest(StopContextTestBase):
 
     def test_late_event_on_reaped_task_is_task_not_active(self):
         task = self._task()
-        TaskService.kill_task(task.id, reason=reasons.STALE)
+        TaskService.kill_task(task.id, reason=reasons.SILENCE_WINDOW)
         task.refresh_from_db()
         ctx = self._build(task, dict(NO_VERDICTS, task_not_active=True))
         self.assertEqual(ctx[0]["limit"], "task_not_active")

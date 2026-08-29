@@ -52,7 +52,7 @@ from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
-    TASK_STATUS_KILLED)
+    TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
 
 
 class OneRulePinTestBase(TestCase):
@@ -143,6 +143,13 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertEqual(self._limit_events().count(), 1)
         payload = self._limit_events().get().payload
         self.assertEqual(payload["reason"], "task_limit")
+        # WHICH MECHANISM APPLIED IT, beside why (#412). This crossing was
+        # tipped by the usage report the test just made, and the field is what
+        # tells a subscriber that apart from the patrol finding the same
+        # crossing later — the reason string cannot, because both lanes reach
+        # this one. Asserted through the ROUTE, on the emitted payload, since
+        # a hand-built one would hard-code the key the producer sets.
+        self.assertEqual(payload["trigger_source"], TRIGGER_SOURCE_USAGE_INGEST)
         self.assertEqual(payload["task_id"], str(task.id))
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 10_000_000)

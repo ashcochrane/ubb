@@ -2,14 +2,22 @@
 
 The concurrency cap is enforcing-only and counts ACTIVE tasks for the billing
 owner (pooled business shares one cap). The reaper EXPIRES stale active work of
-enforcing tenants (heartbeat past the tenant window or age >6h) and emits
-task.limit_exceeded; close_abandoned_tasks stays the baseline >1h sweeper but
-skips alive (recent heartbeat) tasks.
+enforcing tenants (past its silence window or past its absolute deadline) and
+emits task.limit_exceeded; close_abandoned_tasks stays the baseline >1h sweeper
+but skips alive (recent heartbeat) tasks.
 
 ⚠ BOTH SWEEPERS WRITE `expired` (#408) — nobody ever told UBB how the work
 ended, which is the one thing a silence CAN say. `killed` is reserved for a
 spend signal, so the assertions below name the state each sweeper is entitled
 to write and never the other.
+
+⚠ EVERY WINDOW HERE IS NOW A RESOLVED ONE (#412). The tenants below declare no
+kind of work, so each falls to the rung it always ran on — the tenant's own
+default where these fixtures set one, and UBB's backstop (the same fifteen
+minutes and six hours these cases were written against) where they do not. The
+cases stand unchanged for that reason; what a DECLARED kind of work does to
+either window is the subject of
+`apps/platform/work/tests/test_the_windows_belong_to_the_kind_of_work.py`.
 """
 from datetime import timedelta
 
@@ -105,11 +113,11 @@ class TestReaper:
         assert reap_stale_tasks() == 1
         task.refresh_from_db()
         assert task.status == TASK_STATUS_EXPIRED
-        assert task.metadata.get("kill_reason") == reasons.STALE
+        assert task.metadata.get("kill_reason") == reasons.SILENCE_WINDOW
         assert self._emitted(task.id)
         payload = OutboxEvent.objects.get(
             event_type="task.limit_exceeded", payload__task_id=str(task.id)).payload
-        assert payload["reason"] == reasons.STALE
+        assert payload["reason"] == reasons.SILENCE_WINDOW
         assert payload["total_billed_cost_micros"] == 0
         assert payload["total_provider_cost_micros"] == 0
         assert "scope" not in payload
