@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.task_type_out_kind import TaskTypeOutKind
+from ..models.task_type_out_pricing_mode import TaskTypeOutPricingMode
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -28,22 +29,29 @@ class TaskTypeOut:
     Each bound is echoed back exactly as declared. `null` means this kind
     declared none and inherits your workspace default for it.
 
+    `retired_at` is the instant this kind of work stopped being offered, or
+    `null` while it is live.
+
         Attributes:
             key (str):
             kind (TaskTypeOutKind):
+            pricing_mode (TaskTypeOutPricingMode):
             required_dimensions (list[str]):
             retired (bool):
             absolute_deadline_seconds (int | None | Unset):
             default_provider_cost_limit_micros (int | None | Unset):
+            retired_at (None | str | Unset):
             silence_window_seconds (int | None | Unset):
      """
 
     key: str
     kind: TaskTypeOutKind
+    pricing_mode: TaskTypeOutPricingMode
     required_dimensions: list[str]
     retired: bool
     absolute_deadline_seconds: int | None | Unset = UNSET
     default_provider_cost_limit_micros: int | None | Unset = UNSET
+    retired_at: None | str | Unset = UNSET
     silence_window_seconds: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -55,6 +63,8 @@ class TaskTypeOut:
         key = self.key
 
         kind = self.kind.value
+
+        pricing_mode = self.pricing_mode.value
 
         required_dimensions = self.required_dimensions
 
@@ -74,6 +84,12 @@ class TaskTypeOut:
         else:
             default_provider_cost_limit_micros = self.default_provider_cost_limit_micros
 
+        retired_at: None | str | Unset
+        if isinstance(self.retired_at, Unset):
+            retired_at = UNSET
+        else:
+            retired_at = self.retired_at
+
         silence_window_seconds: int | None | Unset
         if isinstance(self.silence_window_seconds, Unset):
             silence_window_seconds = UNSET
@@ -86,6 +102,7 @@ class TaskTypeOut:
         field_dict.update({
             "key": key,
             "kind": kind,
+            "pricing_mode": pricing_mode,
             "required_dimensions": required_dimensions,
             "retired": retired,
         })
@@ -93,6 +110,8 @@ class TaskTypeOut:
             field_dict["absolute_deadline_seconds"] = absolute_deadline_seconds
         if default_provider_cost_limit_micros is not UNSET:
             field_dict["default_provider_cost_limit_micros"] = default_provider_cost_limit_micros
+        if retired_at is not UNSET:
+            field_dict["retired_at"] = retired_at
         if silence_window_seconds is not UNSET:
             field_dict["silence_window_seconds"] = silence_window_seconds
 
@@ -106,6 +125,11 @@ class TaskTypeOut:
         key = d.pop("key")
 
         kind = TaskTypeOutKind(d.pop("kind"))
+
+
+
+
+        pricing_mode = TaskTypeOutPricingMode(d.pop("pricing_mode"))
 
 
 
@@ -135,6 +159,16 @@ class TaskTypeOut:
         default_provider_cost_limit_micros = _parse_default_provider_cost_limit_micros(d.pop("default_provider_cost_limit_micros", UNSET))
 
 
+        def _parse_retired_at(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        retired_at = _parse_retired_at(d.pop("retired_at", UNSET))
+
+
         def _parse_silence_window_seconds(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -148,10 +182,12 @@ class TaskTypeOut:
         task_type_out = cls(
             key=key,
             kind=kind,
+            pricing_mode=pricing_mode,
             required_dimensions=required_dimensions,
             retired=retired,
             absolute_deadline_seconds=absolute_deadline_seconds,
             default_provider_cost_limit_micros=default_provider_cost_limit_micros,
+            retired_at=retired_at,
             silence_window_seconds=silence_window_seconds,
         )
 

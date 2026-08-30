@@ -86,7 +86,8 @@ _WRITE_ROUTES = {
 # default, needing no _WRITE_ROUTES entry], GET /metering/grouping-fields [Read],
 # GET /metering/grouping-fields/{key}/values [Read]. +2 (task 7) PUT
 # /metering/task-types [Admin — same ruling: a task type's ceiling prices
-# usage], GET /metering/task-types [Read]. +2 (task 14) GET /metering/tasks
+# usage], GET /metering/task-types [Read]. (Both are at /task-types since #414;
+# see the last paragraph of this block.) +2 (task 14) GET /metering/tasks
 # and GET /metering/tasks/{task_id} [Read] — the task read surface over the
 # materialized cost rollups. +1 (task 16) GET /metering/analytics/tasks
 # [Read] — the per-task-type unit economics rollup. 116 + 8 = 124.
@@ -205,6 +206,18 @@ _WRITE_ROUTES = {
 # registration shape. It is a Read GET and takes the carve's default for the
 # ordinary reason: it decides nothing. Not carved and not exempt, so the exempt
 # count below is untouched. 151 + 1 = 152.
+#
+# ⚠ AND THEN TWO MORE MOVED WITH NEITHER NUMBER MOVING (slice 5, #414), which
+# is #409's shape again with one difference worth naming: the carve table is
+# untouched THIS time. Declaring the kinds of work a tenant meters, and listing
+# them, left `/metering/task-types` for `/task-types` — the declaration now
+# decides how the work is SOLD as well as what it may spend, which billing
+# realizes and metering realizes and neither owns. Neither route was ever a
+# carve entry: the PUT takes the Admin write DEFAULT on the ruling this file
+# already records for it (*a task type's ceiling prices usage*), and the GET
+# takes the Read default. So there was no key to re-write and nothing here
+# could go vacuous — which is worth stating, because #409's entry above makes
+# re-keying look like what a move always costs. 152 + 0 = 152.
 _EXPECTED_FLOORED = 152
 _EXPECTED_EXEMPT = 10
 

@@ -48,7 +48,6 @@ from api.v1.schemas import (
     book_change_body, book_change_diff_out, book_publish_out,
     pricing_book_out, cost_book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
-    TaskTypeRegistryIn, TaskTypeRegistryOut,
 )
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE,
@@ -71,7 +70,7 @@ from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    SOURCE_KIND_CALLER_SUPPLIED, TASK_TYPE_KIND_VALUES)
+    SOURCE_KIND_CALLER_SUPPLIED)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -2045,66 +2044,3 @@ def list_grouping_field_values(request, key: str):
     values = list(GroupingFieldValue.objects.filter(
         tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
     return 200, {"key": key, "values": values}
-
-
-@metering_router.put("/task-types", response={200: TaskTypeRegistryOut, 422: ProblemOut})
-@role_floor(ADMIN)
-@records_audit("task_type.declared")
-def declare_task_types(request, payload: TaskTypeRegistryIn):
-    """Declare the tenant's work vocabulary and its per-kind COGS ceilings
-    (design D7). Idempotent; the ceiling and required_dimensions may be updated
-    on a re-PUT. Admin-floored: a task type's ceiling prices usage the same way
-    declaring a book or a markup rung does, so it takes the write-default Admin
-    floor rather than a Write carve-out."""
-    _product_check(request)
-    from apps.platform.grouping_fields.queries import slot_map
-    from apps.platform.work.models import TaskType
-    from apps.platform.work.queries import declared_task_types
-
-    tenant = request.auth.tenant
-    declared = set(slot_map(tenant.id))
-    with transaction.atomic():
-        for tt in payload.task_types:
-            # THE REFUSAL AT DECLARATION TIME (#407), against the registry's
-            # own value set rather than a list restated here: a kind of work
-            # says which altitude it is meant for, and that is the one thing a
-            # unit's single type column cannot carry.
-            if tt.kind not in TASK_TYPE_KIND_VALUES:
-                raise Problem("validation_error", f"invalid kind {tt.kind!r}")
-            missing = [d for d in tt.required_dimensions if d not in declared]
-            if missing:
-                raise Problem("validation_error",
-                              f"required_dimensions not declared: {missing}")
-            TaskType.objects.update_or_create(
-                tenant=tenant, key=tt.key, kind=tt.kind,
-                defaults={
-                    "default_provider_cost_limit_micros":
-                        tt.default_provider_cost_limit_micros,
-                    "silence_window_seconds": tt.silence_window_seconds,
-                    "absolute_deadline_seconds": tt.absolute_deadline_seconds,
-                    "required_dimensions": tt.required_dimensions,
-                })
-        audit_record(
-            action="task_type.declared",
-            tenant_id=tenant.id,
-            resource_type="task_type_registry",
-            resource_id=tenant.id,
-            metadata={"task_types": [
-                {"key": tt.key, "kind": tt.kind,
-                 "default_provider_cost_limit_micros":
-                     tt.default_provider_cost_limit_micros,
-                 "silence_window_seconds": tt.silence_window_seconds,
-                 "absolute_deadline_seconds": tt.absolute_deadline_seconds,
-                 "required_dimensions": tt.required_dimensions}
-                for tt in payload.task_types]},
-        )
-    return 200, {"task_types": declared_task_types(tenant.id)}
-
-
-@metering_router.get("/task-types", response=TaskTypeRegistryOut)
-@role_floor(READ)
-def list_task_types(request):
-    """The tenant's declared work vocabulary."""
-    _product_check(request)
-    from apps.platform.work.queries import declared_task_types
-    return {"task_types": declared_task_types(request.auth.tenant.id)}

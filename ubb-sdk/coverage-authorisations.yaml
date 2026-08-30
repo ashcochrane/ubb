@@ -310,3 +310,42 @@ authorisations:
       wrapped before this change and is wrapped after it, so a commit that had
       accidentally dropped a wrapper rather than published a new operation
       would show up as a fall on the wrapped side rather than as this rise.
+  - id: slice-5-414-the-kind-of-work-registry-moves-to-the-root
+    issue: 414
+    operations_added: 2
+    reason: >-
+      ⚠ THE SDK'S COVERAGE DID NOT CHANGE AT ALL, AND THIS ENTRY IS STILL
+      CORRECT — #409's case a second time, in the same slice and for the same
+      reason. Declaring the kinds of work a tenant meters, and listing them,
+      moved from the metering prefix to the root, so
+      `api_v1_metering_endpoints_declare_task_types` and
+      `api_v1_metering_endpoints_list_task_types` left the manifest and
+      `api_v1_task_type_endpoints_declare_task_types` and
+      `api_v1_task_type_endpoints_list_task_types` arrived. Both were unwrapped
+      before and both are unwrapped after; the total is unmoved at 85 and not
+      one integrator gains or loses a method.
+
+      The ratchet reports two new gaps anyway because it compares the SET of
+      unwrapped operations and never the total, which is this file's own header
+      arguing for exactly that. An operation id is how the manifest names a
+      route, a move IS a new identity, and a ratchet that netted this to zero
+      would net a real pair of gaps to zero on any change that wrapped two
+      others in the same commit.
+
+      WHY THEY STAY UNWRAPPED, which is the half a reader should not have to
+      infer. This registry is a tenant OPERATOR's surface — an Admin declares
+      the vocabulary, its ceilings, its two expiry windows and now how each kind
+      of work is sold — and the client this SDK is has no operator surface at
+      all: it meters usage and, once the ticket that re-cuts its task surface
+      lands, opens and closes a unit of work. Wrapping a declaration API here
+      would be the first operator method on a metering client, decided in a
+      commit whose subject is a mount.
+
+      ⚠ AND ONE OF THE TWO IS A WRITE WHOSE REFUSAL A WRAPPER WOULD HAVE TO
+      CARRY. `pricing_mode` is frozen after the first declaration, so the PUT
+      answers `409 pricing_mode_frozen` on a re-declaration that changes it.
+      `docs/conventions/sdk-wrap.md` forbids a client holding its own list of
+      valid values and requires every response parsed through a generated
+      model; a wrapper for this route would want to say something about that
+      refusal, and the generated exception for it exists and is reachable
+      without one.

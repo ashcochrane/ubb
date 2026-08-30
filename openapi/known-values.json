@@ -214,10 +214,14 @@
       ]
     },
     "pricing_mode": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "event_priced",
+        "fixed"
+      ]
     },
     "pricing_receipt_subject_type": {
       "advertised": true,

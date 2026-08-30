@@ -165,6 +165,11 @@ class LastActiveKeyError(ConflictError):
     CODE = 'last_active_key'
 
 
+class PricingModeFrozenError(ConflictError):
+    STATUS = 409
+    CODE = 'pricing_mode_frozen'
+
+
 class RateLimitExceededError(RateLimitError):
     STATUS = 429
     CODE = 'rate_limit_exceeded'
@@ -238,6 +243,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'last_active_key': LastActiveKeyError,
     'method_not_allowed': MethodNotAllowedError,
     'not_found': NotFoundError,
+    'pricing_mode_frozen': PricingModeFrozenError,
     'rate_limit_exceeded': RateLimitExceededError,
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
@@ -291,6 +297,7 @@ __all__ = [
     'InvalidTenantIdError',
     'LastActiveAdminError',
     'LastActiveKeyError',
+    'PricingModeFrozenError',
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'TaskAlreadyTerminalError',

@@ -7093,7 +7093,7 @@
         "type": "object"
       },
       "TaskTypeIn": {
-        "description": "One declared kind of work, and the policy that comes with it.\n\nThree of these fields are bounds: a spending ceiling, a silence window and\nan absolute deadline. Omit one and this kind inherits your workspace\ndefault for it; there is no value that removes the absolute deadline.",
+        "description": "One declared kind of work, and the policy that comes with it.\n\nThree of these fields are bounds: a spending ceiling, a silence window and\nan absolute deadline. Omit one and this kind inherits your workspace\ndefault for it; there is no value that removes the absolute deadline.\n\n`pricing_mode` is not a bound and is not revisable: it is fixed when the\nkind of work is first declared. `retired` is the two-way switch that takes\na kind of work out of use without deleting the record of it.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -7134,6 +7134,22 @@
             "type": "string",
             "x-ubb-concept": "task_type_kind"
           },
+          "pricing_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "event_priced",
+                  "fixed"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_mode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Mode"
+          },
           "required_dimensions": {
             "items": {
               "type": "string"
@@ -7141,6 +7157,17 @@
             "maxItems": 6,
             "title": "Required Dimensions",
             "type": "array"
+          },
+          "retired": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired"
           },
           "silence_window_seconds": {
             "anyOf": [
@@ -7162,7 +7189,7 @@
         "type": "object"
       },
       "TaskTypeOut": {
-        "description": "One declared kind of work, as UBB holds it.\n\nEach bound is echoed back exactly as declared. `null` means this kind\ndeclared none and inherits your workspace default for it.",
+        "description": "One declared kind of work, as UBB holds it.\n\nEach bound is echoed back exactly as declared. `null` means this kind\ndeclared none and inherits your workspace default for it.\n\n`retired_at` is the instant this kind of work stopped being offered, or\n`null` while it is live.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -7199,6 +7226,15 @@
             "type": "string",
             "x-ubb-concept": "task_type_kind"
           },
+          "pricing_mode": {
+            "enum": [
+              "event_priced",
+              "fixed"
+            ],
+            "title": "Pricing Mode",
+            "type": "string",
+            "x-ubb-concept": "pricing_mode"
+          },
           "required_dimensions": {
             "items": {
               "type": "string"
@@ -7209,6 +7245,17 @@
           "retired": {
             "title": "Retired",
             "type": "boolean"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
           },
           "silence_window_seconds": {
             "anyOf": [
@@ -7225,6 +7272,7 @@
         "required": [
           "key",
           "kind",
+          "pricing_mode",
           "required_dimensions",
           "retired"
         ],
@@ -14518,74 +14566,6 @@
         "summary": "Get Waived Loss"
       }
     },
-    "/api/v1/metering/task-types": {
-      "get": {
-        "description": "The tenant's declared work vocabulary.",
-        "operationId": "api_v1_metering_endpoints_list_task_types",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskTypeRegistryOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List Task Types"
-      },
-      "put": {
-        "description": "Declare the tenant's work vocabulary and its per-kind COGS ceilings\n(design D7). Idempotent; the ceiling and required_dimensions may be updated\non a re-PUT. Admin-floored: a task type's ceiling prices usage the same way\ndeclaring a book or a markup rung does, so it takes the write-default Admin\nfloor rather than a Write carve-out.",
-        "operationId": "api_v1_metering_endpoints_declare_task_types",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskTypeRegistryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskTypeRegistryOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Declare Task Types"
-      }
-    },
     "/api/v1/metering/usage": {
       "post": {
         "description": "Record one usage event. One-rule contract: every event that reaches\nUBB is priced, recorded, and billed with an HTTP 200 \u2014 including the\ntipping event that crosses a limit and everything arriving after a kill.\nThe stop instruction rides the response fields (stop / stop_reason /\nstop_scope); a non-200 always means \"this was not recorded\" (auth,\nmalformed payload, unknown customer/task, validation errors).\n\nA cost UBB cannot work out is NOT one of those (#320): the event is\nrecorded, and `costing_status` plus `uncosted_measurement_keys` on this\nbody say so at the moment the gap is created.",
@@ -16330,6 +16310,84 @@
           }
         ],
         "summary": "Trigger Sync"
+      }
+    },
+    "/api/v1/task-types": {
+      "get": {
+        "description": "Every kind of work you have declared, retired ones included.\n\nA retired one carries `retired_at`, the instant it stopped being offered;\na live one carries `null`.",
+        "operationId": "api_v1_task_type_endpoints_list_task_types",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTypeRegistryOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Task Types"
+      },
+      "put": {
+        "description": "Declare the kinds of work you meter, and the policy each one carries.\n\nIdempotent: send the whole vocabulary every time. A kind of work you have\nalready declared has its ceiling, its two windows and its\n`required_dimensions` updated in place.\n\n`pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a\ndifferent one answers `409 pricing_mode_frozen`; to change how a kind of\nwork is sold, retire it with `retired: true` and declare a replacement under\na new key. A key change is an integration change for you, so choose the\nregime with that in mind. Omitting it leaves an existing kind of work\nexactly as it is, and declares a new one `event_priced`.\n\n`retired: true` stops new work of that kind being started and leaves the\ndeclaration readable; `retired: false` brings it back. Omitting `retired`\nleaves it exactly as it is.\n\n`422 validation_error` answers a kind this registry does not recognise or a\n`required_dimensions` entry you have not declared as a grouping field.",
+        "operationId": "api_v1_task_type_endpoints_declare_task_types",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskTypeRegistryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskTypeRegistryOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Declare Task Types"
       }
     },
     "/api/v1/tasks": {

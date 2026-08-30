@@ -18,6 +18,13 @@ broken a second time to repair the first break: the two nearest neighbours
 (``/metering/grouping-fields``, ``/metering/task-types``) are where they are
 because they predate that rule, not because they settle this.
 
+⚠ **One of those two has since settled it the same way.** #414 moved the
+kind-of-work registry to ``/api/v1/task-types``, at the root and still gated on
+``metering`` — this paragraph's argument taken up by the surface it named as
+unsettled, on the evidence that the declaration decides how work is SOLD as
+well as what it may spend. ``/metering/grouping-fields`` is where it was, and
+is still named here for the reason it always was.
+
 **The product gate is metering**, which is a different question from the mount:
 a tenant who does not meter has no vocabulary to declare. ``/plans`` gates on
 ``billing`` from the root prefix on exactly this footing.

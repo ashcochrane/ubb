@@ -24,7 +24,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/metering/task-types",
+        "url": "/api/v1/task-types",
     }
 
 
@@ -62,7 +62,10 @@ def sync_detailed(
 ) -> Response[TaskTypeRegistryOut]:
     """ List Task Types
 
-     The tenant's declared work vocabulary.
+     Every kind of work you have declared, retired ones included.
+
+    A retired one carries `retired_at`, the instant it stopped being offered;
+    a live one carries `null`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -90,7 +93,10 @@ def sync(
 ) -> TaskTypeRegistryOut | None:
     """ List Task Types
 
-     The tenant's declared work vocabulary.
+     Every kind of work you have declared, retired ones included.
+
+    A retired one carries `retired_at`, the instant it stopped being offered;
+    a live one carries `null`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -113,7 +119,10 @@ async def asyncio_detailed(
 ) -> Response[TaskTypeRegistryOut]:
     """ List Task Types
 
-     The tenant's declared work vocabulary.
+     Every kind of work you have declared, retired ones included.
+
+    A retired one carries `retired_at`, the instant it stopped being offered;
+    a live one carries `null`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -141,7 +150,10 @@ async def asyncio(
 ) -> TaskTypeRegistryOut | None:
     """ List Task Types
 
-     The tenant's declared work vocabulary.
+     Every kind of work you have declared, retired ones included.
+
+    A retired one carries `retired_at`, the instant it stopped being offered;
+    a live one carries `null`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

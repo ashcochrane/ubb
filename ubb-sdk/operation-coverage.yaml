@@ -331,10 +331,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.declare_pricing_book
-  - operation_id: api_v1_metering_endpoints_declare_task_types
-    method: PUT
-    path: /api/v1/metering/task-types
-    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_declare_tenant_default_markup
     method: PUT
     path: /api/v1/metering/pricing/default-markup
@@ -409,10 +405,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.list_pricing_books
-  - operation_id: api_v1_metering_endpoints_list_task_types
-    method: GET
-    path: /api/v1/metering/task-types
-    disposition: generated_only
   - operation_id: api_v1_metering_endpoints_publish_book_publish
     method: POST
     path: /api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}/publish
@@ -530,6 +522,14 @@ operations:
   - operation_id: api_v1_task_endpoints_start_task
     method: POST
     path: /api/v1/tasks
+    disposition: generated_only
+  - operation_id: api_v1_task_type_endpoints_declare_task_types
+    method: PUT
+    path: /api/v1/task-types
+    disposition: generated_only
+  - operation_id: api_v1_task_type_endpoints_list_task_types
+    method: GET
+    path: /api/v1/task-types
     disposition: generated_only
   - operation_id: api_v1_tenant_endpoints_create_api_key
     method: POST

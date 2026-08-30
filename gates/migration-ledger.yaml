@@ -1795,17 +1795,30 @@ entries:
       unavailable at the requested grain must never render as zero (#141,
       #147). Slice 7 rebuilds the analytics surface that has to say so.
 
-  - id: g2-backend-pricing_mode
-    gate: G2
-    site: ubb-platform/apps/platform/work/models.py::pricing_mode
-    expected: pricing_mode
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #147 snapshots
-      `Task.pricing_mode` at creation, so the column is the Task's. Slice 5
-      rebuilds the Task.
+  # ⚠ `pricing_mode` REACHED 2 OF 2 ON THE BACKEND IN #414 and its entry is
+  # deleted. It was the odd one in this family: every other G2 entry excuses a
+  # consumer that keeps its OWN list of the registry's values, and this one
+  # excused a consumer holding NOTHING — there was no `pricing_mode` column, no
+  # map in the console's label layer and no occurrence in the contract, so
+  # `0 of 2` meant *this does not exist yet* rather than *this is spelled
+  # locally*. Paying it was creation, not correction.
+  #
+  # `TaskType.pricing_mode` builds its `choices=` from the two generated
+  # constants, so the set the column admits IS the registry's set. The entry
+  # named the Task rather than the declaration, on #147's reading that the
+  # column is snapshotted onto a unit of work at creation — both are true, and
+  # the DECLARATION is where the value is authored, which is what the census
+  # asks about. The registry's own consumer path already named
+  # `work/models.py`, so nothing was re-pointed.
+  #
+  # ⚠ ITS G4 TWIN DIED IN THE SAME COMMIT AND COULD NOT HAVE DIED IN ANY OTHER.
+  # `advertised` is derived from the backend census alone, so the commit that
+  # made the backend hold both values made the contract's excuse false; see the
+  # note at `g4-openapi-pricing_mode`'s old position.
+  #
+  # `g2-console-pricing_mode` SURVIVES and is still slice 5's, owed by the
+  # console ticket that gives the registry a front door. G2 is measured per
+  # surface and `labels.ts` holds no map for this concept yet.
 
   # ⚠ `pricing_receipt_subject_type` REACHED 2 OF 2 ON THE BACKEND IN #370 and
   # its entry is deleted. The entry named `usage/models.py` as the consumer,
@@ -2365,18 +2378,22 @@ entries:
       unavailable must never render as a zero (#141, #147). The metadata
       appears in that slice.
 
-  - id: g4-openapi-pricing_mode
-    gate: G4
-    site: openapi/v1.json::pricing_mode
-    expected: pricing_mode
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 5 rebuilds Work, and #147 snapshots this on the Task at
-      creation. The metadata appears in that slice.
+  # ⚠ `pricing_mode` IS ADVERTISED SINCE #414 and its entry is deleted. This
+  # entry excused the contract for carrying no metadata while the backend
+  # consumer held 0 of 2 of the values; the same commit that made the backend
+  # hold both (see the G2 note above) made this excuse false, because
+  # `advertised` is derived from the backend census alone — so the two entries
+  # die together and could not have died apart. It ships on the two schemas that
+  # carry the declaration, `TaskTypeIn` and `TaskTypeOut`, as a real `enum` in a
+  # plain string node: every declaration is sold one way or the other, so the
+  # marker never sits inside a nullable union.
+  #
+  # ⚠ THE EXCUSE WAS ALSO PARTLY WRONG ABOUT ITS SUBJECT, which is worth
+  # recording because the correction is what made it payable in one commit. It
+  # said the metadata appears when "#147 snapshots this on the Task at
+  # creation"; the snapshot is a later ticket's, and what the contract
+  # advertises here is the DECLARATION's field on the kind-of-work registry.
+  # The snapshot inherits the marker rather than introducing it.
 
   # ⚠ `pricing_receipt_subject_type` IS ADVERTISED SINCE #370 and its entry is
   # deleted. This entry excused the contract for carrying no metadata while the

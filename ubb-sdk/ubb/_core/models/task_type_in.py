@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.task_type_in_kind import TaskTypeInKind
+from ..models.task_type_in_pricing_mode_type_0 import TaskTypeInPricingModeType0
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,12 +30,18 @@ class TaskTypeIn:
     an absolute deadline. Omit one and this kind inherits your workspace
     default for it; there is no value that removes the absolute deadline.
 
+    `pricing_mode` is not a bound and is not revisable: it is fixed when the
+    kind of work is first declared. `retired` is the two-way switch that takes
+    a kind of work out of use without deleting the record of it.
+
         Attributes:
             key (str):
             absolute_deadline_seconds (int | None | Unset):
             default_provider_cost_limit_micros (int | None | Unset):
             kind (TaskTypeInKind | Unset):  Default: TaskTypeInKind.TASK.
+            pricing_mode (None | TaskTypeInPricingModeType0 | Unset):
             required_dimensions (list[str] | Unset):
+            retired (bool | None | Unset):
             silence_window_seconds (int | None | Unset):
      """
 
@@ -42,7 +49,9 @@ class TaskTypeIn:
     absolute_deadline_seconds: int | None | Unset = UNSET
     default_provider_cost_limit_micros: int | None | Unset = UNSET
     kind: TaskTypeInKind | Unset = TaskTypeInKind.TASK
+    pricing_mode: None | TaskTypeInPricingModeType0 | Unset = UNSET
     required_dimensions: list[str] | Unset = UNSET
+    retired: bool | None | Unset = UNSET
     silence_window_seconds: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -70,11 +79,25 @@ class TaskTypeIn:
             kind = self.kind.value
 
 
+        pricing_mode: None | str | Unset
+        if isinstance(self.pricing_mode, Unset):
+            pricing_mode = UNSET
+        elif isinstance(self.pricing_mode, TaskTypeInPricingModeType0):
+            pricing_mode = self.pricing_mode.value
+        else:
+            pricing_mode = self.pricing_mode
+
         required_dimensions: list[str] | Unset = UNSET
         if not isinstance(self.required_dimensions, Unset):
             required_dimensions = self.required_dimensions
 
 
+
+        retired: bool | None | Unset
+        if isinstance(self.retired, Unset):
+            retired = UNSET
+        else:
+            retired = self.retired
 
         silence_window_seconds: int | None | Unset
         if isinstance(self.silence_window_seconds, Unset):
@@ -94,8 +117,12 @@ class TaskTypeIn:
             field_dict["default_provider_cost_limit_micros"] = default_provider_cost_limit_micros
         if kind is not UNSET:
             field_dict["kind"] = kind
+        if pricing_mode is not UNSET:
+            field_dict["pricing_mode"] = pricing_mode
         if required_dimensions is not UNSET:
             field_dict["required_dimensions"] = required_dimensions
+        if retired is not UNSET:
+            field_dict["retired"] = retired
         if silence_window_seconds is not UNSET:
             field_dict["silence_window_seconds"] = silence_window_seconds
 
@@ -138,7 +165,37 @@ class TaskTypeIn:
 
 
 
+        def _parse_pricing_mode(data: object) -> None | TaskTypeInPricingModeType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_mode_type_0 = TaskTypeInPricingModeType0(data)
+
+
+
+                return pricing_mode_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TaskTypeInPricingModeType0 | Unset, data)
+
+        pricing_mode = _parse_pricing_mode(d.pop("pricing_mode", UNSET))
+
+
         required_dimensions = cast(list[str], d.pop("required_dimensions", UNSET))
+
+
+        def _parse_retired(data: object) -> bool | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(bool | None | Unset, data)
+
+        retired = _parse_retired(d.pop("retired", UNSET))
 
 
         def _parse_silence_window_seconds(data: object) -> int | None | Unset:
@@ -156,7 +213,9 @@ class TaskTypeIn:
             absolute_deadline_seconds=absolute_deadline_seconds,
             default_provider_cost_limit_micros=default_provider_cost_limit_micros,
             kind=kind,
+            pricing_mode=pricing_mode,
             required_dimensions=required_dimensions,
+            retired=retired,
             silence_window_seconds=silence_window_seconds,
         )
 

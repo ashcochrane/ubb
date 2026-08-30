@@ -22,12 +22,25 @@ disjoint columns and in the same mechanism. Nothing *here* installs a trigger, a
 rule or a ``CHECK`` — this module is the vocabulary, and the gates that hold a
 column to what it says live with the table.
 
+**Slice 5 (#414) is the first declarer outside a product**, and it extends the
+gate the same way rather than re-owning it: ``TaskType.pricing_mode`` — how a
+kind of work is sold — is ``FROZEN``, held by a third trigger in
+``apps/platform/work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py``
+over its own table. That the first three declarers were all in ``apps/metering``
+was an accident of which slices came first, not a property of this vocabulary:
+the kernel holds economic facts too.
+
 **⚠ And the walk that reads these declarations cannot tell you a rule holds.**
 It asks whether each declared column is *named* by a rule on its table — a
 word-boundary search over the trigger bodies — which is exactly what lets it
 judge a new declaration on the day it is made, and exactly why it goes green
 over a branch that refuses nothing. What a declaration here promises is proved
-behaviourally, per pair, in the usage app's two transition modules.
+behaviourally, per rule, in the usage app's two transition modules and in
+``apps/platform/work/tests/test_a_kind_of_work_declares_how_it_is_sold.py``.
+Each of those drives every prohibited write through all three doors and keeps an
+admitted move beside it — measured, in #414's case, by gutting the refusal while
+leaving the column named: the walk above stayed green and nine subtests of that
+module went red.
 
 **A different rule was genuinely deferred, and slice 4 has now paid it.**
 ``PostingMeasurement``'s whole-record ``DELETE`` condition is cross-table — it

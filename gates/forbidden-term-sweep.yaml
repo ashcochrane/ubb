@@ -240,7 +240,14 @@ exclusions:
     # is files. The sweep's own retired-term totals were UNCHANGED across the
     # same commit — 26 terms in 87 sites, in both directions — which is the
     # number to read when asking whether anything spread.
-    files: 240
+    # 240 → 241 in #414: ONE migration, adding `pricing_mode` to the kind-of-work
+    # declaration and installing the rule that freezes it. It names no retired
+    # term either, and the sweep's retired-term totals were again UNCHANGED in
+    # both directions across the commit — 26 terms in 87 sites — while the
+    # ledger fell 181 → 179 on the concept's two paid entries. That is the
+    # ordinary shape of this run: the exclusion counts files, the ledger counts
+    # debts, and the two move for unrelated reasons.
+    files: 241
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

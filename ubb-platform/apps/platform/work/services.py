@@ -28,6 +28,108 @@ from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
 logger = logging.getLogger(__name__)
 
 
+class RegimeChangeRefused(ValueError):
+    """A kind of work already declares how it is sold, and that cannot change.
+
+    A ``ValueError`` subclass for the reason ``DeclarationRefused`` below is
+    one: this module is a PRODUCT and the error dialect belongs to the
+    composition layer (ADR-001). The endpoint renders it as problem+json; what
+    is decided here is the rule, which is the half that must not have two
+    copies.
+
+    It carries the standing regime rather than only a sentence, because the
+    surface answers with it — a caller that sent nothing about the regime, or
+    sent the wrong one, needs to be told which one the row holds.
+    """
+
+    def __init__(self, kind, key, standing_regime):
+        self.kind = kind
+        self.key = key
+        self.standing_regime = standing_regime
+        super().__init__(
+            f"{kind} type {key!r} is declared {standing_regime!r} and how a "
+            f"kind of work is sold cannot change; retire it and declare a "
+            f"replacement")
+
+
+class KindOfWorkDeclaration:
+    """WHAT A TENANT SAYS ABOUT ONE KIND OF WORK when it re-sends its
+    vocabulary — how the work is sold, and whether it is still offered (#414).
+
+    ⚠ ONE OBJECT BECAUSE BOTH RULES ARE ABOUT THE SAME QUESTION: what does this
+    item mean for the row that already stands? Neither can be answered from the
+    item alone. The registry's write surface is an idempotent PUT, so a caller
+    sends its WHOLE vocabulary on every call and most items describe rows that
+    already exist — which makes *what the caller left out* as meaningful as
+    what it put in, and makes both of these comparisons against a standing row
+    rather than reads of a request.
+
+    ``CloseDeclaration`` below is the same shape for the same reason, and the
+    rule it states applies here unchanged: which refusal a given declaration
+    earns is a fact about the CONCEPT, so it is decided in this product;
+    rendering that refusal is the composition layer's job and belongs nowhere
+    else.
+    """
+
+    __slots__ = ("pricing_mode", "retired")
+
+    def __init__(self, pricing_mode=None, retired=None):
+        #: ``None`` means the caller said nothing, which is NOT the same as any
+        #: value it could have sent. See each method for what it then means.
+        self.pricing_mode = pricing_mode
+        self.retired = retired
+
+    def regime_over(self, standing):
+        """The regime this declaration leaves the row holding.
+
+        ⚠ SAYING NOTHING IS NOT DECLARING PER-EVENT, and the difference is what
+        keeps this surface usable. A client that omits the regime — one written
+        before the field existed, or one that simply does not set it — must
+        keep whatever each kind of work already holds. Reading the absence as
+        `event_priced` would have every such call try to re-sell every `fixed`
+        kind of work per event, be refused for a word the caller never used,
+        and lock that tenant out of ever revising the ceiling or the windows on
+        it.
+
+        ``None`` comes back for a kind of work that does not exist yet and was
+        declared without one: the COLUMN's default answers there, and it is
+        `event_priced` — what every declaration made before this field existed
+        has always meant. Inventing the value here instead would put a second
+        writer of that default one layer above the one that owns it.
+
+        Raises ``RegimeChangeRefused`` where the caller states a regime that
+        disagrees with the standing row. This is the courtesy, not the
+        enforcement: `ubb_task_type` carries a trigger that refuses the move
+        whichever door it arrives through, and this exists so a tenant gets a
+        sentence naming the next step rather than an integrity error.
+        """
+        if self.pricing_mode is None:
+            return getattr(standing, "pricing_mode", None)
+        if standing is not None and standing.pricing_mode != self.pricing_mode:
+            raise RegimeChangeRefused(standing.kind, standing.key,
+                                      standing.pricing_mode)
+        return self.pricing_mode
+
+    def retirement_over(self, standing):
+        """The ``retired_at`` this declaration moves, as columns to write.
+
+        Empty where nothing moves, which is both of the cases that are not a
+        change: the caller said nothing, or it said what is already true.
+
+        ⚠ THE SECOND OF THOSE IS WHAT KEEPS THE INSTANT A RECORD. Re-sending an
+        already-retired declaration would otherwise slide that row's retirement
+        forward on every call — and the retirement instants are exactly what
+        the frozen regime leans on, since retire-plus-redeclare is only a
+        record of a change if a reader can see when each half happened.
+        """
+        if self.retired is None:
+            return {}
+        was_retired = standing is not None and standing.retired_at is not None
+        if self.retired == was_retired:
+            return {}
+        return {"retired_at": timezone.now() if self.retired else None}
+
+
 # WHAT THE CALLER DECLARED, AND THE STATE THAT DECLARATION ENTERS (#409).
 #
 # ONE call, ONE mandatory field, ONE code path — and the winning transition is

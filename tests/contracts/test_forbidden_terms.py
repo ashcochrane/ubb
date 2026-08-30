@@ -276,7 +276,12 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # by two -- a migration belongs to its app, so a ticket touching two
         # models writes two files. The sweep's retired-term totals were
         # unchanged over the same commit, 26 terms in 87 sites.
-        "historical-migrations": (UNTIL_SLICE_8, 240, 19),
+        # 240 -> 241 in #414: ONE migration, adding `pricing_mode` to the
+        # kind-of-work declaration and installing the rule that freezes it. It
+        # names no retired term, and the retired-term totals were again
+        # unchanged in both directions, 26 terms in 87 sites, while the ledger
+        # fell 181 -> 179 on that concept's two paid entries.
+        "historical-migrations": (UNTIL_SLICE_8, 241, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

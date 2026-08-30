@@ -12,7 +12,8 @@ from apps.platform.grouping_fields.models import (
 from apps.platform.work import services as work_services
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
-from core.vocabulary import RATE_STRUCTURE_PER_UNIT, TASK_TYPE_KIND_TASK
+from core.vocabulary import (
+    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT, TASK_TYPE_KIND_TASK)
 
 #: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
 #:
@@ -2641,6 +2642,27 @@ class GroupingFieldValuesOut(Schema):
 TaskTypeKind = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "task_type_kind"})]
 
+#: HOW A KIND OF WORK IS SOLD. `closed` — UBB owns both values — so the export
+#: writes a real `enum` here and this file spells neither of them; the default
+#: below is the registry's own constant for the same reason.
+#:
+#: ⚠ IT IS THE ONE FIELD ON THIS DECLARATION THAT NEVER MOVES (#414, spec §10).
+#: `event_priced` prices every event as it arrives; `fixed` replaces metered
+#: revenue for the whole delivered piece of work with one agreed number. The
+#: column behind it is declared FROZEN under ADR-0007 §2 and a trigger on
+#: `ubb_task_type` keeps it; `apps/platform/work/models.py:TaskType.pricing_mode`
+#: states why that is the answer rather than a publish record.
+#:
+#: Non-null on both schemas: every declaration is sold one way or the other, so
+#: the marker sits on a plain string node and never inside a union — the trap
+#: `UnresolvedReason` argues in full.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+PricingMode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_mode"})]
+
 
 class TaskTypeIn(Schema):
     """One declared kind of work, and the policy that comes with it.
@@ -2648,6 +2670,10 @@ class TaskTypeIn(Schema):
     Three of these fields are bounds: a spending ceiling, a silence window and
     an absolute deadline. Omit one and this kind inherits your workspace
     default for it; there is no value that removes the absolute deadline.
+
+    `pricing_mode` is not a bound and is not revisable: it is fixed when the
+    kind of work is first declared. `retired` is the two-way switch that takes
+    a kind of work out of use without deleting the record of it.
     """
     # ⚠ THE RATIONALE FOR ALL OF THIS LIVES IN `#:` COMMENTS AND NOT IN THE
     # DOCSTRING ABOVE. Django Ninja exports a Schema docstring verbatim into
@@ -2657,6 +2683,24 @@ class TaskTypeIn(Schema):
     # rather than what.
     key: str = Field(max_length=64)
     kind: TaskTypeKind = TASK_TYPE_KIND_TASK
+    #: ⚠ NULLABLE WITH NO DEFAULT, FOR THE REASON `retired` BELOW IS: on a
+    #: surface whose whole shape is *send the vocabulary again*, saying nothing
+    #: has to mean LEAVE IT. An eager `= event_priced` would materialise a value
+    #: the caller never sent, so an integration written before this field
+    #: existed — or a client that simply omits it — would re-declare every
+    #: `fixed` kind of work as per-event and be refused by the frozen rule for a
+    #: word it never used, permanently locking it out of revising that kind of
+    #: work's ceiling and windows. Omitted on a kind of work that does not exist
+    #: yet, the column's own default applies and it is declared `event_priced`,
+    #: which is what every declaration made before this field existed meant.
+    #:
+    #: The marker sits inside the string member rather than on the union: an
+    #: `enum` and an `anyOf` at one JSON Schema node are CONJUNCTIVE, so a
+    #: marker on the union would publish a field that admits `null` under the
+    #: `anyOf` and refuses it under the `enum` — a contract that refuses the
+    #: server's own response, with every gate green
+    #: (`docs/conventions/api-contract.md`).
+    pricing_mode: Optional[PricingMode] = None
     default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
     #: The top rung of the silence ladder: this declaration, then the tenant's
     #: own default, then UBB's backstop. Nullable with NO default here because
@@ -2681,6 +2725,16 @@ class TaskTypeIn(Schema):
     #: deadline and a disabled one are two readings and only one is a window.
     absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
     required_dimensions: list[str] = Field(default_factory=list, max_length=6)
+    #: THREE ANSWERS, NOT TWO, WHICH IS WHY IT IS NULLABLE WITH NO DEFAULT.
+    #: `true` retires, `false` brings back, and omitting it leaves the row where
+    #: it is — the answer every caller who has never heard of this field gives,
+    #: on a surface whose whole shape is *send the vocabulary again*. A plain
+    #: `bool = False` would silently un-retire every kind of work on the next
+    #: PUT. `ProviderUpdateIn` is the same switch for the same reason.
+    #:
+    #: A BOOLEAN IN AND AN INSTANT OUT, deliberately: WHEN a kind of work was
+    #: retired is UBB's record of an act, not something a caller declares.
+    retired: Optional[bool] = None
 
 
 class TaskTypeRegistryIn(Schema):
@@ -2692,6 +2746,9 @@ class TaskTypeOut(Schema):
 
     Each bound is echoed back exactly as declared. `null` means this kind
     declared none and inherits your workspace default for it.
+
+    `retired_at` is the instant this kind of work stopped being offered, or
+    `null` while it is live.
     """
     # ⚠ WHY THE RESPONSE DOES NOT RESOLVE THE LADDER FIRST, kept out of the
     # docstring above for the reason stated on `TaskTypeIn`: a reader has to be
@@ -2703,11 +2760,21 @@ class TaskTypeOut(Schema):
     # sweeper asks, and it can change without this row changing.
     key: str
     kind: TaskTypeKind
+    pricing_mode: PricingMode
     default_provider_cost_limit_micros: Optional[int] = None
     silence_window_seconds: Optional[int] = None
     absolute_deadline_seconds: Optional[int] = None
     required_dimensions: list[str]
     retired: bool
+    #: WHEN, BESIDE THE PREDICATE, AND BOTH ARE SERVED FROM ONE COLUMN.
+    #: `retired` is what a caller branches on and it was here first; this is the
+    #: instant, which a boolean throws away. The instant is what the frozen
+    #: `pricing_mode` above leans on — retire-plus-redeclare is only a record of
+    #: a change if a reader can see when each half happened — so publishing only
+    #: the predicate would leave that argument true in the database and
+    #: unreadable on the contract. `ProviderOut` publishes the same instant for
+    #: the same reason. Null while the kind of work is live.
+    retired_at: Optional[str] = None
 
 
 class TaskTypeRegistryOut(Schema):

@@ -130,7 +130,13 @@ VALUE_SETS = {
     # the provenance, and every value in it is held by reference from the
     # generated constants. A derived list still comes past a reviewer, which is
     # the whole point of counting shapes.
-    "ubb-platform/apps/platform/work/models.py": 3,
+    # 3 → 4 in #414: `PRICING_MODE_CHOICES`, how a kind of work is sold. Same
+    # shape and same provenance as the three above it — both identities come
+    # from the generated constants and only the wording is written here — and
+    # it is worth one line that this one is also the module's first column
+    # declared into a transition class, so what the reviewer is being shown is a
+    # value set whose members can never change ON A ROW either.
+    "ubb-platform/apps/platform/work/models.py": 4,
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,
