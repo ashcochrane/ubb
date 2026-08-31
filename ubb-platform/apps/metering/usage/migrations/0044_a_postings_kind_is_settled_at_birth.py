@@ -48,10 +48,11 @@ create a `task_charge` row*, and the database cannot answer it: `ubb_posting`
 has one caller-facing writer and one system writer and no column says which one
 is running. What the database CAN say is that the answer never changes, which is
 this rule. Which rows may be BORN a charge is held one layer up, by the
-projection being the only code that writes the value — and by
-`ck_charge_one_original_per_unit_of_work` and this table's own
-`uq_usage_event_idempotency_v2` making a second projection of one Charge an
-error rather than a second row.
+projection being the only code that writes the value — and by TWO UNIQUENESS
+RULES, not two checks: `uq_charge_one_original_per_unit_of_work` on `ubb_charge`
+(partial, on a charge having nothing to compensate) and this table's own
+`uq_usage_event_idempotency_v2`, which together make a second projection of one
+Charge an error rather than a second row.
 
 **THE COST.** `BEFORE UPDATE` only, so **inserts pay nothing at all** — which
 matters here more than for the three rules beside it, because this column is on

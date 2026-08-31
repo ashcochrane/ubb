@@ -426,13 +426,16 @@ class Posting(BaseModel):
     #: `tests/test_a_postings_kind_is_settled_at_birth.py`, each a refusal per
     #: declared class plus the one admitted move, through all three doors.
     #:
-    #: **AND THE DISCRIMINATOR IS `FROZEN`, WHICH IS A FOURTH RULE AND A SECOND
-    #: CLASS ON THIS TABLE (#417).** `kind` has no lifecycle at all: a row is
-    #: born a metered event or a charge projection and is never converted, so
-    #: the class is *none after insert* rather than *once*. Its rule is a
-    #: FOURTH trigger (`migrations/0044`), for the reason the price pair's is a
-    #: second and the receipt's is a third — disjoint columns, a `WHEN` clause
-    #: naming only its own, and a drop that leaves the other three standing.
+    #: **AND THE DISCRIMINATOR IS `FROZEN`, WHICH IS A FOURTH RULE ON THIS
+    #: TABLE AND THE SECOND COLUMN DECLARED INTO THAT CLASS (#417).** `kind` has
+    #: no lifecycle at all: a row is born a metered event or a charge projection
+    #: and is never converted, so the class is *none after insert* rather than
+    #: *once* — the same class `claimed_provider_cost_micros` above already
+    #: carries, which is exactly why its refusals have to name the COLUMN and
+    #: not only the class. Its rule is a FOURTH trigger (`migrations/0044`), for
+    #: the reason the price pair's is a second and the receipt's is a third —
+    #: disjoint columns, a `WHEN` clause naming only its own, and a drop that
+    #: leaves the other three standing.
     #:
     #: ⚠ It is DECLARED rather than left silent, and the omission would have
     #: been invisible: G19 asks only whether a declared column is defended, so

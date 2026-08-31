@@ -126,7 +126,7 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     1:1 projection — a sentence this test would have kept passing over, because
     what it asserts is that the row is OWED and never why. Two of G14's four
     pins became writable and are written
-    (`apps/metering/usage/tests/test_the_kind_discriminator_pins.py`); the other
+    (`ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`); the other
     two still have no subject, which is what keeps the row owed and what moved
     it to slice 7. The column exists; the measure that counts it and the single
     analytics surface that must exclude it do not.

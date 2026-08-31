@@ -35,11 +35,18 @@ protects it: a second debit under one key is refused and logged rather than
 applied.
 
 ⚠ **THIS MODULE IS IN `pricing` AND WRITES A `usage` ROW, WHICH IS THE
-`cost_settlement` SHAPE.** Three service modules in this app already write
-`usage.Posting` (`cost_settlement`, `price_resolution`, `resolution_run`); a
-posting is metering's record either way, and what decides which app a writer
-lives in is which concept owns the statement. The statement here is *what a
-Charge looks like on the rails*, and the Charge is this app's.
+`cost_settlement` SHAPE.** Two service modules in this app already write
+`usage.Posting` — `cost_settlement` and `price_resolution`, one `UPDATE` each —
+and `resolution_run` reads it. A posting is metering's record either way, and
+what decides which app a writer lives in is which concept owns the statement.
+The statement here is *what a Charge looks like on the rails*, and the Charge is
+this app's.
+
+⚠ It is nonetheless the first INSERT of a posting outside
+`usage.services.usage_service`, which is worth saying rather than leaving for a
+reader to notice: the two writers above complete a column on a row the recording
+path created, and this one creates the row. What makes that admissible is that
+the row it creates is the one kind no caller can report.
 """
 from apps.metering.usage.models import Posting
 from apps.platform.events.outbox import write_event
@@ -69,6 +76,13 @@ PROVIDER_COST_OF_A_PROJECTION = 0
 #: that one is a fact about `Charge`, and the day the two tables disagree about
 #: how many slots exist is the day one shared constant would be silently wrong
 #: for one of them.
+#:
+#: ⚠ SO AN ELEVENTH POSTING SLOT WITH NO `Charge` TWIN RAISES `AttributeError`
+#: AT WRITE TIME, AND THAT IS THE INTENDED FAILURE. Reading the slots off the
+#: CHARGE instead would project nine of ten silently, which is #361's lesson
+#: exactly — walk the record you are writing and let a missing value raise,
+#: because the alternative is a bucket quietly losing one of its axes. The two
+#: tables are widened together or the widening stops here, loudly.
 _GROUPING_SLOTS = tuple(
     field.name for field in Posting._meta.get_fields()
     if field.name.startswith("grouping_field_"))
@@ -116,6 +130,19 @@ def project_the_charge(charge):
     * `pricing_receipt` is left empty. A receipt whose subject is a Charge is
       #418's, and writing a half of one here would be a record explaining an
       amount in a shape no reader knows.
+
+    ⚠ **§12'S FOURTH CLAUSE HAS NO SUBJECT ANY MORE, AND IT IS NOT SILENTLY
+    SATISFIED.** It asks for the posting's nameless inline quantity to be null —
+    the column #272 deleted, because one integer per posting could only ever
+    describe one thing and an event carrying both an input and an output amount
+    was inexpressible under it. What replaced it is the measurement record,
+    keyed by declared quantity. So there is no column here to leave null, and
+    what the clause MEANS is the bullet above: this posting was never measured,
+    and says so by having no child at all rather than by carrying an empty one.
+    Written down rather than ticked off, because an acceptance criterion naming
+    a column that does not exist reads as satisfied from either side. (The
+    clause's own word is a retired term this file may not spell; naming it by
+    the operation that removed it is the ratified way past that.)
 
     **THE PLATFORM FEE IS CHARGED ON THIS AMOUNT, AND THAT IS A DECISION RATHER
     THAN AN INHERITANCE.** `TenantBillingService.accumulate_usage` adds a
