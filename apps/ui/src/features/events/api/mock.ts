@@ -454,8 +454,10 @@ export async function closeTask(
     status: STATUS_FOR_OUTCOME[outcome],
     outcome,
     replayed: false,
-    // Honestly false on every path: the Charge does not exist yet, and this is
-    // the field's true value under the rules in force rather than a stub.
+    // False because nothing this fixture authors is sold at one agreed price —
+    // its one unit of work is `event_priced` — and only a delivered close on
+    // work sold that way earns a charge (#416). Not a stub: it is what the
+    // route answers for this workspace.
     charge_created: false,
     event_count: taskEvents.length,
     total_billed_cost_micros: billed,

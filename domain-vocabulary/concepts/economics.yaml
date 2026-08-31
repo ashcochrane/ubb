@@ -420,17 +420,32 @@ not_applicable_reason:
     a price does not apply without saying WHY sends a reader looking for a
     number nobody wrote. The two values are mutually exclusive causes, and
     where both are true POSTURE WINS — a metering-only tenant is
-    `tenant_not_billing` whatever the job's pricing regime, because no Charge
-    is created anywhere for that tenant and naming the job's regime would imply
-    revenue sits on a Charge that does not exist.
+    `tenant_not_billing` whatever the work's pricing regime, because this
+    concept answers why no CUSTOMER REVENUE arises and for such a tenant none
+    ever does, for a reason that has nothing to do with how the work was sold.
+    Naming the regime instead would say the customer revenue for this event
+    sits on the Task, which for that tenant names revenue nobody will ever
+    collect.
   values:
     # The event belongs to a Task sold for one agreed price, so the revenue is
     # the Task's and none of it is this event's (#151 §8.2). The tenant DOES
-    # bill through UBB — the Charge exists, at the Task.
+    # bill through UBB — the customer charge exists, at the Task.
     - fixed_task_pricing
-    # The tenant meters and does not bill through UBB at all, so no Charge is
-    # created anywhere and there is no customer price to resolve. Wins the
-    # tie-break against the value above.
+    # The tenant meters and does not bill through UBB at all, so no customer
+    # charge is raised anywhere and there is no customer price to resolve. Wins
+    # the tie-break against the value above.
+    #
+    # ⚠ THE ARGUMENT THIS TIE-BREAK WAS RECORDED WITH EXPIRED IN #416 AND THE
+    # RULING DID NOT. It read *"no Charge is created anywhere for that tenant"*
+    # — true when slice 4 wrote it and false one commit later, because a
+    # metering-only tenant's delivered fixed-price work now DOES produce a
+    # `pricing.Charge`, deliberately, as a recorded revenue and margin fact
+    # rather than a collection. So a reader can go and look at a row; what
+    # survives is the narrower argument in the summary above, which is about
+    # CUSTOMER REVENUE rather than about the existence of a record. The ticket
+    # that wires the rule up should apply it against that fact rather than
+    # against the sentence it replaced, because the tie-break is closer than it
+    # was.
     - tenant_not_billing
   label_key_prefix: not_applicable_reason
   consumers:

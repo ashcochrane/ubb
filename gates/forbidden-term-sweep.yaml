@@ -257,7 +257,16 @@ exclusions:
     # 87 sites, in both directions — and this ticket pays no ledger entry at
     # all, so the two numbers that usually move in opposite directions here did
     # not move at all.
-    files: 243
+    # 243 → 245 in #416: TWO migrations, one per app — the Charge a delivered
+    # piece of work sold at one agreed price earns, with the rule that freezes
+    # every economic column of it, and the book version a unit of work now pins
+    # beside the price and the line that produced it. ⚠ NEITHER NAMES A RETIRED
+    # TERM. Third entry in the run to move by two, for #412's reason again: a
+    # migration belongs to its own app. The sweep's retired-term totals were
+    # UNCHANGED across the same commit — 26 terms in 87 sites, in both
+    # directions — and the ledger did not move either, this ticket paying no
+    # entry and coining no concept.
+    files: 245
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

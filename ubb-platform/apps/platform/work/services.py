@@ -170,7 +170,7 @@ class KindOfWorkDeclaration:
 # WHAT THE CALLER DECLARED, AND THE STATE THAT DECLARATION ENTERS (#409).
 #
 # ONE call, ONE mandatory field, ONE code path — and the winning transition is
-# the exactly-once trigger a charge will later key on. Two endpoints was
+# the exactly-once trigger the charge keys on (#416). Two endpoints was
 # rejected as two of everything, and optional-with-a-delivered-default was
 # rejected on the strongest rule available: THE FORGIVING PATH MUST NEVER BE
 # THE MONEY-MOVING ONE. A dropped field, a stale example or an old client would
@@ -659,7 +659,8 @@ class TaskService:
                     parent=None, task_type="", dimension_slots=None,
                     idempotency_key=None,
                     pricing_mode=PRICING_MODE_EVENT_PRICED,
-                    agreed_price_micros=None, agreed_price_line_id=None):
+                    agreed_price_micros=None, agreed_price_line_id=None,
+                    agreed_price_book_version=None):
         """Create a Task, snapshotting limit config and wallet balance.
         Passing ``parent`` registers a SUBTASK under it (#38) — a Task row
         with the self-FK set, one containment level at launch.
@@ -685,19 +686,23 @@ class TaskService:
         TaskService only writes what it is given. ``task_type`` is the whole
         declaration at EITHER altitude; ``parent`` is what says which.
 
-        ``pricing_mode``, ``agreed_price_micros`` and ``agreed_price_line_id``
-        (#415) are what a unit of work snapshots about HOW IT IS SOLD, and they
-        are pass-through in the same sense: the caller has read the declaration
-        and, where it names one agreed price, resolved that price out of the
-        customer's own policy book. The regime defaults to per-event because
+        ``pricing_mode``, ``agreed_price_micros``, ``agreed_price_line_id``
+        (#415) and ``agreed_price_book_version`` (#416) are what a unit of work
+        snapshots about HOW IT IS SOLD, and they are pass-through in the same
+        sense: the caller has read the declaration and, where it names one
+        agreed price, resolved that price out of the customer's own policy
+        book and noted which published version of that book answered.
+
+        The regime defaults to per-event because
         every caller that is not a start gate — the reapers, the cascades,
         every fixture that stands a unit of work up directly — is registering
         work no declaration was consulted for, and per-event is what such a
         unit of work has always meant. The price and its line default to `None`
         for the stronger reason that there is nothing to invent: an agreed
         price comes from a line a tenant wrote, and a synthesised one would be
-        a fabricated declaration. The two travel together and the table refuses
-        one without the other.
+        a fabricated declaration. The THREE travel together and the table
+        refuses any one of them without the other two — they are one record of
+        one resolution rather than three facts that can come apart.
 
         ⚠ **ONE THING HERE IS NOT PASS-THROUGH, AND IT IS DELIBERATE.**
         Contained work is sold the way the work containing it is sold, and that
@@ -728,6 +733,7 @@ class TaskService:
             pricing_mode=pricing_mode,
             agreed_price_micros=agreed_price_micros,
             agreed_price_line_id=agreed_price_line_id,
+            agreed_price_book_version=agreed_price_book_version,
             **(dimension_slots or {}),
         )
 

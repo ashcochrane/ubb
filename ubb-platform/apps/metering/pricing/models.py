@@ -855,6 +855,273 @@ class TaskPrice(BaseModel):
         return f"TaskPrice({self.kind}:{self.task_type}: {self.amount_micros})"
 
 
+class Charge(BaseModel):
+    """WHAT ONE DELIVERED PIECE OF WORK SOLD AT ONE AGREED PRICE IS OWED FOR,
+    once and immutably (#416, #139 §2.3, spec §11).
+
+    **ONLY AN EXPLICIT CLOSE DECLARING DELIVERY EARNS ONE.** Non-delivery never
+    charges — failed, cancelled, killed and expired all produce nothing — and
+    exposure on work that did not deliver is bounded by the COGS ceiling the
+    tenant chose rather than recovered by charging for it anyway.
+
+    ⚠ **THE PINNED PRICE ON THE WORK ITSELF COULD NOT BE THIS RECORD**, and the
+    three reasons are the three things this table adds. `work.Task
+    .agreed_price_micros` is the DETERMINATION — which price applies — and a
+    determination must be able to exist and never become a charge, which is the
+    failed case and is ordinary. Beyond that: a unit of work's row is mutable
+    and this one is not, and a unit of work carries no currency at all, while a
+    movement of money is a fact about one. So the two are one-to-zero-or-one
+    with different lifetimes rather than one row wearing two hats.
+
+    ⚠ **A SYSTEM-GENERATED POSTING AS THE CANONICAL RECORD WAS REJECTED.** It
+    would have bought every money path for free, but a posting is immutable AND
+    undeletable, so a wrong projection could never be corrected — permanent, by
+    construction. The projection is #417's and it is a projection OF this row
+    precisely so that a wrong one can be rebuilt from a right one.
+
+    **ITS KEY IS DERIVED FROM THE WORK, NEVER SUPPLIED BY A CALLER.** The
+    identity of a piece of work is already unique within its tenant and
+    customer, and this repository's stance is explicit one table over: a caller
+    does not supply amounts or keys the system can derive. Belt and braces
+    beside that, and each holds a different failure: the write fires only on the
+    WINNING transition into the delivered state (`TaskService._flip` returns
+    which call won), the partial uniqueness below makes a second primary charge
+    a database error rather than a double charge, and #417's projected posting
+    carries a unique money key of its own.
+
+    ⚠ **CORRECTIONS ARE COMPENSATING RECORDS, NEVER EDITS.** Every economic
+    column is declared `FROZEN` — ADR-0007 §2's *none after insert* — and
+    `pricing/0031` holds the declaration at the database across `save()`,
+    `QuerySet.update()` and raw SQL alike. A wrong charge therefore leaves a
+    trail: the original stands, and what corrects it is another row of this
+    table naming it. See `compensates` below.
+
+    **UBB'S OWN PLATFORM FEE APPLIES TO IT**, which #417 makes an explicit
+    property of the projection rather than something the projection inherits by
+    accident.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="charges")
+    #: THE PIECE OF WORK THIS IS THE CHARGE FOR.
+    #:
+    #: `CASCADE`, which is `usage.Posting.task` verbatim and for its reason: a
+    #: unit of work's records are records OF it and have no meaning once it is
+    #: gone. `PROTECT` was considered and refused — it would make an immutable
+    #: money record able to block an ordinary tenant wipe, and it would put this
+    #: table into the sandbox reset's pre-sweep ordering problem that #354, #358,
+    #: #362 and #415 have each paid for once already.
+    task = models.ForeignKey("work.Task", on_delete=models.CASCADE,
+                             related_name="charges")
+    #: WHAT IS OWED, IN MICROS OF THE CURRENCY BELOW.
+    #:
+    #: A COPY OF THE PINNED NUMBER RATHER THAN A READ THROUGH IT. The work's row
+    #: is mutable; this one is frozen, and a charge that could change because
+    #: something else changed would not be a record of a money movement.
+    #:
+    #: ⚠ SIGNED, AND ONLY BECAUSE A COMPENSATING RECORD MUST BE. The check below
+    #: refuses a negative primary charge — a charge that pays the customer is a
+    #: sign error, and zero is a real answer for work a tenant agreed to deliver
+    #: for nothing (`TaskPrice.amount_micros` argues the same admission).
+    amount_micros = models.BigIntegerField()
+    #: THE CURRENCY THIS MONEY MOVED IN.
+    #:
+    #: ⚠ **ITS PRESENCE HERE IS ONE OF THE THREE REASONS THE PINNED PRICE COULD
+    #: NOT BE CANONICAL.** A price LIST needs none — `PricingBook` argues that a
+    #: tenant has exactly one currency (CUR-1) and a column repeating it would
+    #: copy a choice made elsewhere — but a charge is not a price list entry, it
+    #: is a fact about money, and a fact about money names its currency.
+    #: Lowercase, matching every other currency column in the tree.
+    currency = models.CharField(max_length=3)
+    #: WHICH LINE ANSWERED, AND WHICH PUBLISHED VERSION OF THE BOOK HELD IT.
+    #:
+    #: Both are COPIED off the piece of work, which pinned them at the one
+    #: instant they were known (#415). Neither is re-derived here and neither
+    #: could be: #139 §2.3 requires the amount to be reproducible from the record
+    #: *"rather than by re-resolving today's config"*, and re-resolution is not
+    #: available later on any terms, because which books are even in play depends
+    #: on the customer's plan, which moves.
+    #:
+    #: A PLAIN UUID AND NOT A FOREIGN KEY, which is `work.Task
+    #: .agreed_price_line_id` doing the same thing beside it. Here the reason is
+    #: not ADR-001 — this table is in the same app as the line — it is that this
+    #: is a RECORD of what answered rather than a live reference to configuration:
+    #: the receipt's own `provenance` section carries cross-reference ids as data
+    #: for the identical reason. A `PROTECT` key would additionally make an
+    #: immutable money record able to refuse a tenant the withdrawal of a book,
+    #: forever, and put this table in the pre-sweep ordering the `task` pointer
+    #: above declines.
+    agreed_price_line_id = models.UUIDField()
+    book_version = models.PositiveIntegerField()
+    #: WHEN THE PRICE WAS RESOLVED, WHICH IS WHEN THE WORK STARTED.
+    #:
+    #: ⚠ **IT IS WHAT KEEPS MARGIN EXACT ACROSS A PERIOD BOUNDARY.** The charge
+    #: is dated at DELIVERY (see below), so work that starts in one month and
+    #: delivers in the next has its cost in the earlier period and its revenue in
+    #: the later one. Carrying the start instant here means a reader netting this
+    #: revenue against this piece of work's own COGS has both halves on one row
+    #: and never has to decide which period the work belonged to.
+    resolved_at = models.DateTimeField()
+    #: WHEN DELIVERY WAS DECLARED — the instant the winning transition wrote.
+    #:
+    #: ⚠ **DATED AT DELIVERY, SO DELIVERED WORK IS ALWAYS BILLABLE.** Dating back
+    #: to the start would keep cost and revenue in one period, and was rejected on
+    #: the DIRECTION of its failure rather than on taste: work starting at 23:58
+    #: on the 31st and closing after the month's push had already claimed that
+    #: period would become unbillable for work that was delivered, which is a
+    #: failure in the worst direction. The accepted consequence is the opposite
+    #: skew, and it is tightly bounded by the absolute deadline a kind of work
+    #: declares (#412).
+    charged_at = models.DateTimeField()
+    #: THE EXACTLY-ONCE KEY, DERIVED FROM THE WORK — see the class docstring.
+    idempotency_key = models.CharField(max_length=128)
+    #: WHICH CHARGE THIS ONE CORRECTS, OR NULL FOR AN ORIGINAL.
+    #:
+    #: ⚠ **THIS IS THE WHOLE OF WHAT "CORRECTIONS ARE COMPENSATING RECORDS"
+    #: MEANS IN COLUMNS.** Every economic field of this table is frozen, so a
+    #: wrong charge cannot be rewritten; what can happen is that another row
+    #: arrives naming it, and the pair reads as a trail. A reversal carries the
+    #: negation of the original and nets it to nothing; a re-statement at a
+    #: different number is a second compensating row beside the first. Either way
+    #: the original still says what UBB originally charged, which is the property
+    #: an edit destroys.
+    #:
+    #: `PROTECT`, because a trail with its head removed is not a trail.
+    #:
+    #: ⚠ IT IS ALSO WHAT MAKES "EXACTLY ONE CHARGE, EVER" EXPRESSIBLE. The
+    #: uniqueness below is PARTIAL on this column being null, so one piece of
+    #: work has at most one ORIGINAL charge for all time while carrying as many
+    #: corrections as it turns out to need.
+    compensates = models.ForeignKey("self", on_delete=models.PROTECT,
+                                    null=True, blank=True,
+                                    related_name="compensations")
+    #: WHY A CORRECTION WAS MADE — free text, and "" on an original.
+    #:
+    #: FREE TEXT AND NEVER A VOCABULARY, which is `work.Task.reason_detail`'s
+    #: own reasoning: the population of reasons a charge turns out to be wrong is
+    #: not knowable in advance, and a closed set would either refuse the real
+    #: reason or grow a value per incident.
+    correction_note = models.TextField(blank=True, default="")
+
+    # THE GROUPING FIELD SNAPSHOT — the ten slots the work carried, copied.
+    #
+    # ⚠ A COPY RATHER THAN A READ THROUGH THE WORK, for this table's whole
+    # reason: those columns live on a mutable row and this one is frozen. It is
+    # also what lets #417's projection inherit them onto the posting from the
+    # Charge, so *margin by region* nets this revenue against that same piece of
+    # work's COGS in the same bucket with no new code — the inheritance the
+    # posting rail already performs, reading one more row.
+    grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_3 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_4 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_5 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_6 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_7 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_8 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_9 = models.CharField(max_length=100, blank=True, default="")
+    grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
+
+    #: EVERY ECONOMIC COLUMN IS `FROZEN`, AND THE DATABASE HOLDS IT
+    #: (`pricing/0031`). ADR-0007 §2 is explicit that a model-level guard alone
+    #: is not enforcement, so the declaration here is a statement and the trigger
+    #: is the enforcement — G19 walks this mapping and fails on any column no
+    #: rule on this table names.
+    #:
+    #: ⚠ THE THREE POINTERS ARE SPELLED AS THEIR COLUMNS (`tenant_id`,
+    #: `task_id`, `compensates_id`) RATHER THAN AS THEIR FIELDS. This vocabulary
+    #: is about COLUMNS — the gate searches a trigger body, and a trigger says
+    #: `NEW.task_id` — so declaring `task` would name something no rule can
+    #: spell and would be satisfied only by a comment, which is the vacuous shape
+    #: #325 paid for.
+    #:
+    #: ⚠ `tenant_id` IS HERE FOR `task_id`'S OWN REASON, ONE LEVEL UP, and it was
+    #: missing from the first draft. Re-pointing the work a charge is for bills
+    #: somebody else's customer; re-pointing the TENANT moves the whole record
+    #: into another tenant's books with every amount still correct, which is the
+    #: same defect at the scope where it is worse. Freezing one and leaving the
+    #: other writable was not a decision — it was an omission, found by
+    #: `/code-review`'s SPEC axis and by no gate, because G19 only asks whether
+    #: DECLARED columns are defended and never which columns should have been
+    #: declared.
+    #:
+    #: `correction_note` is deliberately NOT here and its absence is the
+    #: statement: it is display text beside a correction, not an economic fact,
+    #: and freezing prose would refuse an operator the ability to finish a
+    #: sentence. Nothing reads it for a number.
+    transition_classes = {
+        "tenant_id": FROZEN,
+        "task_id": FROZEN,
+        "amount_micros": FROZEN,
+        "currency": FROZEN,
+        "agreed_price_line_id": FROZEN,
+        "book_version": FROZEN,
+        "resolved_at": FROZEN,
+        "charged_at": FROZEN,
+        "idempotency_key": FROZEN,
+        "compensates_id": FROZEN,
+        **{f"grouping_field_{slot}": FROZEN for slot in range(1, 11)},
+    }
+
+    class Meta:
+        db_table = "ubb_charge"
+        constraints = [
+            # EXACTLY ONE ORIGINAL CHARGE PER PIECE OF WORK, FOR ALL TIME.
+            #
+            # This is the acceptance criterion as a database rule rather than as
+            # a code path: the winning-transition guard is what normally stops a
+            # second one, and this is what holds when two closes race and both
+            # win their own read. It is PARTIAL on `compensates` being null so
+            # that a correction — which is a row of this table naming another —
+            # is not refused by the rule that stops a double charge.
+            models.UniqueConstraint(
+                fields=["task"],
+                condition=models.Q(compensates__isnull=True),
+                name="uq_charge_one_original_per_unit_of_work"),
+            # THE DERIVED KEY IS UNIQUE WITHIN THE TENANT.
+            #
+            # Scoped to the tenant and not globally, matching every other key in
+            # this tree: two tenants' records never collide by construction and a
+            # global rule would say they might.
+            models.UniqueConstraint(
+                fields=["tenant", "idempotency_key"],
+                name="uq_charge_idempotency_key"),
+            # AN ORIGINAL CHARGE IS NOT NEGATIVE, AND A CORRECTION MAY BE.
+            #
+            # A charge that pays the customer to be delivered to is a sign error
+            # rather than a deal, which is `TaskPrice.amount_micros`' own
+            # sentence; zero is admitted there and admitted here for the same
+            # reason. A COMPENSATING row is exempt because reversing a charge is
+            # exactly a negative one, and refusing that would leave a wrong
+            # charge with nothing able to correct it.
+            models.CheckConstraint(
+                condition=(models.Q(compensates__isnull=False)
+                           | models.Q(amount_micros__gte=0)),
+                name="ck_charge_an_original_is_not_negative"),
+            # A CORRECTION SAYS WHY, AND AN ORIGINAL HAS NOTHING TO SAY.
+            #
+            # The trail is only readable if each correction carries its own
+            # reason; an original carrying one would be a charge apologising for
+            # itself.
+            models.CheckConstraint(
+                condition=(models.Q(compensates__isnull=True,
+                                    correction_note="")
+                           | models.Q(compensates__isnull=False)
+                           & ~models.Q(correction_note="")),
+                name="ck_charge_a_correction_says_why"),
+        ]
+        indexes = [
+            # THE ROLLUP: what a tenant was owed over a window, by customer and
+            # by kind, is read through the work — so the useful order here is the
+            # one a period close and a margin report both scan.
+            models.Index(fields=["tenant", "charged_at"],
+                         name="idx_charge_tenant_charged"),
+        ]
+
+    def __str__(self):
+        return f"Charge({self.amount_micros} {self.currency} for {self.task_id})"
+
+
 class CostBook(BaseModel):
     """WHAT A SUPPLIER CHARGES UBB'S TENANT, PINNED TO THAT SUPPLIER AND TO
     THE CURRENCY THEY BILL IN (#368, spec §1).

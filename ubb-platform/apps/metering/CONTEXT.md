@@ -161,8 +161,12 @@ sends a reader looking for a number nobody wrote. Two mutually exclusive causes:
 `fixed_task_pricing`, where the event belongs to a Task sold for one agreed price so the revenue is
 the Task's; and `tenant_not_billing`, where the tenant meters and does not bill through UBB at all.
 **Where both are true, POSTURE WINS** — a metering-only tenant is `tenant_not_billing` whatever the
-job's regime, because no Charge exists anywhere for that tenant and naming the job's regime would
-imply revenue sitting on a Charge that does not exist.
+work's regime, because the concept answers *why no CUSTOMER REVENUE arises* and for that tenant none
+ever does, for a reason unrelated to how the work was sold. ⚠ The argument slice 4 recorded was that
+*no Charge exists anywhere* for such a tenant; #416 made that false — a metering-only tenant's
+delivered fixed-price work does produce a Charge, as a recorded revenue and margin fact rather than
+a collection — so the ruling stands on the narrower ground stated here and the ticket that wires the
+rule up should re-read it.
 Coined and declared by slice 4 (#151 §17 owed it and nothing had ratified it). Its console consumer
 is `apps/ui/src/lib/customer-price.ts`, not the legacy label adapter its four neighbours live in.
 (`apps/metering/usage/models.py`; `apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`)
@@ -252,6 +256,27 @@ _Avoid_: expecting a route to write one — prices are edited through the book's
 act and nothing writes this table yet, which the model records as a named residual rather than an
 oversight; and reading it as a floor or a fee on top — an agreed price REPLACES metered revenue for
 that unit of work.
+
+**Charge**:
+What one delivered piece of work sold at one agreed price is owed for, once and immutably (#416).
+Only an explicit close DECLARING DELIVERY earns one; failed, cancelled, killed and expired earn
+nothing, so exposure on work that did not deliver is bounded by the COGS ceiling the tenant chose.
+It carries the work, the amount, **its own currency**, the line that answered and the book version
+that held it, the resolution instant and the charge instant, a key DERIVED from the work rather than
+supplied by a caller, and the ten Grouping Field values the work carried.
+**It is offered to both postures and means something different in each**: for a tenant that bills
+through UBB it is a real billable record, and for one that meters only it is a recorded revenue and
+margin fact. No gate in the tree can tell those apart, which is why the second has its own test.
+**Dated at delivery**, so delivered work is always billable — the accepted consequence being that
+work crossing a month boundary has its cost in the earlier period and its revenue in the later one,
+which the resolution instant on the row is what keeps margin exact through.
+Every economic column is `FROZEN` and a trigger holds it, so **a correction is a compensating record
+naming the one it corrects, never an edit** — the original still says what UBB originally charged.
+(`apps/metering/pricing/models.py:Charge`;
+`pricing/services/charge_service.py`; `pricing/migrations/0031`)
+_Avoid_: reading the price pinned on the work as this record — that is the DETERMINATION, which is
+mutable, carries no currency, and may exist and never become a charge; and expecting a posting —
+the projection onto the rails is a later ticket's and is a projection OF this row.
 
 **Cost book**:
 The versioned container of what **one supplier charges this tenant** — pinned to that supplier and

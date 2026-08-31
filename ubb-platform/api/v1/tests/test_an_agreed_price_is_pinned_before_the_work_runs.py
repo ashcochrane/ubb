@@ -164,16 +164,24 @@ class TestTheAgreedPriceIsResolvedAndPinned(AgreedPriceTestBase):
             id=self._start(task_type=SOLD_WHOLE).json()["task_id"])
         assert registered.agreed_price_line_id == line.id
 
-    def test_the_number_and_its_line_cannot_come_apart(self):
-        """The pair, at the database. A number with no line cannot be
+    def test_the_number_and_its_provenance_cannot_come_apart(self):
+        """The group, at the database. A number with no line cannot be
         reproduced from the record; a line with no number would say a price was
-        resolved and record none of it."""
+        resolved and record none of it.
+
+        ⚠ IT IS THREE COLUMNS RATHER THAN TWO SINCE #416, which widened this
+        rule in place rather than adding a fourth beside it: the version of the
+        book that answered joins the amount and the line, because they are one
+        record of one resolution. Every shape of that group lives with the other
+        refusals on this table, in
+        `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`.
+        """
         with pytest.raises(IntegrityError) as refused:
             Task.objects.create(
                 tenant=self.tenant, customer=self.customer,
                 balance_snapshot_micros=0, pricing_mode=PRICING_MODE_FIXED,
                 agreed_price_micros=THE_AGREED_PRICE)
-        assert "ck_task_agreed_price_and_its_line_move_together" in str(
+        assert "ck_task_agreed_price_and_its_provenance_move_together" in str(
             refused.value)
 
     def test_a_later_edit_to_the_book_does_not_move_the_pinned_number(self):

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,704 of 2,114 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,707 of 2,119 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1721,6 +1721,31 @@ measurement_key:
     # recording as a non-event rather than passed over: the four notes above
     # this one are about a word arriving through ordinary English, and a window
     # where it did not is evidence about the habit rather than about the gate.
+    # ⚠ That held for the build commit and NOT for the review pass, which put a
+    # forty-sixth file back and had to be repaired — so the run of five is
+    # broken by a first measurement and not by a window.
+    #
+    # #416 MOVED BOTH DENOMINATORS BY THREE AND FIVE AND LEFT THE NUMERATOR
+    # WHERE IT WAS (1,704 -> 1,707 swept, 2,114 -> 2,119 tracked, `units`
+    # UNMOVED at 45 files and 123 occurrences). Five tracked files arrived and
+    # only three are swept: the other two are migrations, and
+    # `historical-migrations` is a wholesale directory exclusion, so they lift
+    # `tracked` alone and its own rule count 243 -> 245 — the THIRD entry in
+    # this run to move by two, for #412's reason each time, because a migration
+    # belongs to its own app and this ticket touched two. The three swept files
+    # are the service that writes a Charge and the two modules that prove it:
+    # one at the route a tenant calls and one at the database. NOTHING
+    # GENERATED MOVED for the same reason #415's did not — this commit
+    # publishes an amount and two instants rather than a closed value set, so no
+    # enum module was minted.
+    #
+    # ⚠ THE NUMERATOR HELD ON THE FIRST MEASUREMENT AGAIN, IN THE COMMIT WITH
+    # THE STRONGEST PULL TOWARD THE WORD YET. Its whole subject is what a
+    # delivered piece of work is charged for, and three of the five new files
+    # are prose about work and money at once. Recorded as a non-event for the
+    # reason the note above gives, and with the same caveat: the number that
+    # matters is the one taken after the REVIEW pass, because a review pass
+    # writes prose and prose is what has tripped this every time.
 
     - term: units
       retired_as: >-

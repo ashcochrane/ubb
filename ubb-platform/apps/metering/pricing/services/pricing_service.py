@@ -667,9 +667,9 @@ class PricingService:
         timestamp, is argued at `work.Task.agreed_price_micros`.
 
         Returns the LINE and not the amount, so the caller can record which
-        line answered and out of which book — which is what #416's Charge is
-        required to carry, and what makes a resolved price reproducible from
-        the record rather than by re-resolving today's configuration.
+        line answered and out of which book — which is what a Charge carries
+        (#416), and what makes a resolved price reproducible from the record
+        rather than by re-resolving today's configuration.
         """
         if books is None:
             books = PricingService._selected_pricing_books(tenant, customer)

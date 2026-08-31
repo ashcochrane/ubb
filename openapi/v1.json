@@ -16634,7 +16634,7 @@
     },
     "/api/v1/tasks/{task_id}/close": {
       "post": {
-        "description": "Close a unit of work, DECLARING HOW IT ENDED.\n\nThe outcome is required and the winning transition is the exactly-once\ntrigger a charge will later key on. Closing a parent withdraws its\nstill-running contained work in the same transaction \u2014 cleanup is one call\n\u2014 and closing contained work closes it alone.\n\n\u26a0 THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer\ncharge; it never rejects, deletes or zeroes genuine operational usage,\nincluding usage that arrives after termination. A late report on a closed\nunit still lands, costs and rolls up.",
+        "description": "Close a unit of work, DECLARING HOW IT ENDED.\n\nThe outcome is required. Declaring delivery on work sold at one agreed\nprice creates its charge, exactly once \u2014 `charge_created` says whether this\ncall created one. No other ending creates one. Closing a parent withdraws\nits still-running contained work in the same transaction \u2014 cleanup is one\ncall \u2014 and closing contained work closes it alone.\n\n\u26a0 THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer\ncharge; it never rejects, deletes or zeroes genuine operational usage,\nincluding usage that arrives after termination. A late report on a closed\nunit still lands, costs and rolls up.",
         "operationId": "api_v1_task_endpoints_close_task",
         "parameters": [
           {

@@ -461,6 +461,27 @@ class Task(BaseModel):
     # two are written together or not at all, which is what makes the pair a
     # record rather than two facts that can come apart.
     agreed_price_line_id = models.UUIDField(null=True, blank=True)
+    # WHICH VERSION OF THE BOOK ANSWERED, PINNED IN THE SAME WRITE (#416, #139
+    # §2.3).
+    #
+    # ⚠ **IT IS THE VERSION AT RESOLUTION, AND THAT IS THE WHOLE REASON IT IS A
+    # COLUMN.** A Pricing Book's version counter steps on every publish
+    # (`BookService.publish_declared`), so asking the book for it any later
+    # answers *the version this book is at now* — a number with nothing to do
+    # with the resolution it would be recording. The line's own
+    # `Rate.book_version_from` is the nearest thing one table over and it does
+    # not answer this either: it says which version OPENED that row, not which
+    # version the customer's book stood at when the start gate read it.
+    #
+    # #416's Charge is required to carry *the resolved book version*, and this
+    # is the one instant it is knowable. #415 pinned the amount and the line and
+    # left this to the ticket that had a reader for it, which is that one.
+    #
+    # NULL WHEREVER THE OTHER TWO ARE NULL, and never independently — the
+    # amount, the line and the version are ONE record of a resolution, which is
+    # why the check below widened to three rather than a fourth rule joining the
+    # table.
+    agreed_price_book_version = models.PositiveIntegerField(null=True, blank=True)
 
     # Tier-2 (D4/I6): the billing owner PINNED at task creation
     # (resolve_billing_owner), exactly like Posting.billing_owner_id. The
@@ -648,18 +669,29 @@ class Task(BaseModel):
                            | models.Q(agreed_price_micros__gte=0)),
                 name="ck_task_agreed_price_not_negative",
             ),
-            # AN AMOUNT AND THE LINE THAT PRODUCED IT MOVE TOGETHER OR NOT AT
-            # ALL — the amount/status-pair shape `core.amount_status_pairs`
-            # names for the posting, one concept along. A number with no line
-            # cannot be reproduced from the record, which is the whole of what
-            # #139 §2.3 asks the pair for; a line with no number would say a
-            # price was resolved and record none of it.
+            # AN AMOUNT, THE LINE THAT PRODUCED IT AND THE BOOK VERSION THAT
+            # HELD THAT LINE MOVE TOGETHER OR NOT AT ALL — the amount/status-pair
+            # shape `core.amount_status_pairs` names for the posting, one
+            # concept along, at three columns rather than two. A number with no
+            # line cannot be reproduced from the record, which is the whole of
+            # what #139 §2.3 asks for; a line with no number would say a price
+            # was resolved and record none of it; and a resolution with no
+            # version cannot say which published state of the book answered.
+            #
+            # ⚠ IT WIDENED RATHER THAN GAINING A NEIGHBOUR (#416). A fourth
+            # rule on this table would let one row break two at once and make
+            # every existing refusal assertion here suspect — which is exactly
+            # what the THIRD one cost #415, four cases at a stroke. These three
+            # columns are one record of one resolution, so one rule is also the
+            # truer statement.
             models.CheckConstraint(
                 condition=(models.Q(agreed_price_micros__isnull=True,
-                                    agreed_price_line_id__isnull=True)
+                                    agreed_price_line_id__isnull=True,
+                                    agreed_price_book_version__isnull=True)
                            | models.Q(agreed_price_micros__isnull=False,
-                                      agreed_price_line_id__isnull=False)),
-                name="ck_task_agreed_price_and_its_line_move_together",
+                                      agreed_price_line_id__isnull=False,
+                                      agreed_price_book_version__isnull=False)),
+                name="ck_task_agreed_price_and_its_provenance_move_together",
             ),
         ]
         indexes = [

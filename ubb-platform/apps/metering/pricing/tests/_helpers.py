@@ -775,13 +775,24 @@ class RefusalThroughEveryDoorMixin:
     #: The constraint a subclass's refusals must name. Set per class.
     REFUSAL_NAME = None
 
-    def assert_every_door_refuses(self, record, **columns):
+    def assert_every_door_refuses(self, record, refusal=None, **columns):
+        """``refusal`` overrides `REFUSAL_NAME` for one call (#416).
+
+        A rule whose message names the CONSTRAINT is the same message every
+        time, which is what a per-class name expresses. A rule holding many
+        columns at once names the COLUMN THAT MOVED instead — so the
+        discriminating assertion differs per call, and a per-class name would
+        be satisfied by the rule refusing some other column of the same record.
+        That is #352's defect exactly, at the granularity below the one this
+        mixin was written for.
+        """
+        expected = refusal or self.REFUSAL_NAME
         self.assertIsNotNone(
-            self.REFUSAL_NAME,
+            expected,
             "this class has not said which mechanism its refusals belong to")
         for name, door in DOORS:
             with self.subTest(door=name):
-                with self.assertRaisesRegex(IntegrityError, self.REFUSAL_NAME):
+                with self.assertRaisesRegex(IntegrityError, expected):
                     with transaction.atomic():
                         door(record, **columns)
                 record.refresh_from_db()
