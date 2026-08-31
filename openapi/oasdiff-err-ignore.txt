@@ -367,8 +367,10 @@ GET /api/v1/me/usage-summary removed the required property `total_units` from th
 # WHY THE NAME. "Grouping Field" is the registry's canonical noun (ADR-0006):
 # the retired word named *price selection* at a competing product, which is the
 # one job a grouping axis in UBB will never do. The path segment is kebab-cased
-# to match its neighbour `/metering/task-types`, and the breakdown route stays
-# singular because it groups by one field at a time.
+# to match its neighbour, the `task-types` registry — which sat at
+# `/metering/task-types` when this was written and moved to the root in #414;
+# the segment's spelling, which is what this sentence is about, is unchanged.
+# The breakdown route stays singular because it groups by one field at a time.
 #
 # WHY THE BREAK IS TAKEN NOW. The pre-live window is still open (ADR-0007 §5 —
 # the launch tag is not what binds), so the cost is a one-line path edit in a

@@ -1,6 +1,6 @@
 """The one versioned NinjaAPI (#77, ADR-002 Stage 1).
 
-Sixteen routers — twelve composition-layer, four product-owned — mounted on a
+Seventeen routers — thirteen composition-layer, four product-owned — mounted on a
 single API served at ``/api/v1/``. Products expose ``Router`` objects; this
 module (the composition layer) mounts them, so ADR-001's import matrix is
 respected, not amended. Per-router ``auth=`` preserves the pre-restructure
@@ -26,6 +26,7 @@ from api.v1.plan_endpoints import plan_router
 from api.v1.platform_endpoints import platform_router
 from api.v1.sandbox_endpoints import sandbox_router
 from api.v1.task_endpoints import task_router
+from api.v1.task_type_endpoints import task_type_router
 from api.v1.tenant_endpoints import tenant_router
 from apps.platform.events.api.webhook_endpoints import webhook_router
 from apps.platform.events.openapi import build_webhooks_section
@@ -114,7 +115,16 @@ api.add_router("audit/", audit_router)
 # from both in ONE respect, argued in api/v1/task_endpoints.py: it is UNGATED,
 # because a unit of work is not a vocabulary a product declares but the thing
 # every product's answer is about.
+#
+# The kind-of-work registry is the second of that pair of neighbours to move
+# (#414), and it moves as a GATED root mount — the shape /event-types and
+# /plans already have. It is a vocabulary a product declares, so `metering`
+# still gates it; what makes the root right is that the declaration now decides
+# how the work is SOLD as well as what it may spend, which billing realizes and
+# metering realizes and neither owns. api/v1/task_type_endpoints.py carries the
+# argument and the departure from #141 §3 it rests on.
 api.add_router("", plan_router)
 api.add_router("", event_type_router)
 api.add_router("", task_router)
+api.add_router("", task_type_router)
 api.add_router("", root_router)

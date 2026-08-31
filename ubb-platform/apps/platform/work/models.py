@@ -1,6 +1,7 @@
 from django.db import models
 
 from core.models import BaseModel
+from core.transitions import FROZEN
 from core.vocabulary import (
     OUTCOME_REASON_CUSTOMER_CANCELLED,
     OUTCOME_REASON_EXECUTION_FAILED,
@@ -11,6 +12,8 @@ from core.vocabulary import (
     OUTCOME_REASON_TIMEOUT,
     OUTCOME_REASON_UNSPECIFIED,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+    PRICING_MODE_EVENT_PRICED,
+    PRICING_MODE_FIXED,
     TASK_STATUS_ACTIVE,
     TASK_STATUS_CANCELLED,
     TASK_STATUS_COMPLETED,
@@ -72,6 +75,25 @@ TASK_TYPE_KIND_CHOICES = [
     (TASK_TYPE_KIND_SUBTASK, "Subtask"),
 ]
 
+# HOW A KIND OF WORK IS SOLD (#414), held by reference under the same rule as
+# the sets above — identities from the registry, wording here.
+#
+#   event_priced  every event is priced as it arrives, against the customer's
+#                 resolved rules. This is what every revenue path in UBB has
+#                 always done and it is the default below.
+#   fixed         one agreed price for the whole delivered piece of work,
+#                 REPLACING metered revenue for it. Not a fee on top and not a
+#                 floor; the cost side is entirely unchanged (#139 §2).
+#
+# It is declared on the KIND of work rather than per unit because a price is
+# quoted for a kind of thing, not negotiated per call — and a unit of work
+# snapshots the answer at start, so no unit in flight can have its regime
+# change underneath it.
+PRICING_MODE_CHOICES = [
+    (PRICING_MODE_EVENT_PRICED, "Event priced"),
+    (PRICING_MODE_FIXED, "Fixed price"),
+]
+
 # WHY THE CALLER SAID IT DID NOT DELIVER (#409), held by reference under the
 # same rule as the two sets above — identities from the registry, wording here.
 #
@@ -117,6 +139,12 @@ class TaskType(BaseModel):
     you to either cap both at the large number or let the client declare its own
     spending limit. The ceiling now belongs to the KIND of work, server-side: a
     start call may request lower, never higher.
+
+    IT CARRIES HOW THE WORK IS SOLD AS WELL AS WHAT IT MAY SPEND (#414). Those
+    are two different questions about the same declaration — one bounds COGS,
+    the other decides whether the tenant's own customer is charged per event or
+    one agreed number — and only the second one is frozen. See `pricing_mode`
+    below and `transition_classes` beneath the fields.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="task_types")
@@ -164,9 +192,54 @@ class TaskType(BaseModel):
     # one are the two readings a reader would have to choose between and only
     # one of them is a window.
     absolute_deadline_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # HOW THIS KIND OF WORK IS SOLD (#414), and the only column on this model
+    # that never moves. See `PRICING_MODE_CHOICES` above for what the two words
+    # mean; what follows is why the column is shaped this way.
+    #
+    # NOT NULL WITH A DEFAULT, because every declaration made before this column
+    # existed was made when per-event was the only regime there was. NULL would
+    # invent a third state — *nobody said* — for a question every existing row
+    # has already answered, and a start would then have to guess which regime a
+    # null meant at the moment it resolves a price.
+    #
+    # ⚠ DECLARED FROZEN, WHICH IS A DELIBERATE COST RATHER THAN A CONVENIENCE
+    # (spec §10). Changing how a kind of work is sold means RETIRING it and
+    # declaring a replacement, which leaves two rows each carrying its own
+    # retirement instant — exactly the *when did this change, and to what* a
+    # publish record answers, for free and without minting a third publish
+    # mechanism beside the Pricing Book's and the Event Type's. Whether those
+    # two are one mechanism generalised or genuinely two is still open (#156
+    # §14.2), and shipping a third here would answer it by fiat.
+    #
+    # The accepted cost is stated rather than hidden: a tenant who mis-declares
+    # has to create a new key, and a key change is an integration change for
+    # them. The console says so beside the control at declaration time rather
+    # than leaving them to discover it when a re-declaration is refused.
+    pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES,
+                                    default=PRICING_MODE_EVENT_PRICED)
     # Declared grouping field keys a start call MUST supply for this kind of work.
     required_dimensions = models.JSONField(default=_empty_list, blank=True)
+    # WHEN THIS KIND OF WORK STOPPED BEING OFFERED, or null while it is live.
+    # Retire-never-delete (#138): a start naming a retired kind is refused, and
+    # the row stays readable forever because the work already done under it
+    # keeps referring to it. It is also the record the frozen column above
+    # leans on — a regime change is a retirement plus a redeclaration, and this
+    # is the half that says when.
     retired_at = models.DateTimeField(null=True, blank=True)
+
+    #: WHAT MAY HAPPEN TO EACH DECLARED COLUMN (ADR-0007 §2). The rule that
+    #: keeps it is a `BEFORE UPDATE` trigger on this table, installed by
+    #: `work/migrations/0021`, because declaring is not enforcing and a
+    #: model-level guard is the instrument this repository has already watched a
+    #: production writer bypass by design.
+    #:
+    #: The three bounds beside it are deliberately NOT here. A ceiling, a
+    #: silence window and an absolute deadline are operational settings a tenant
+    #: revises as it learns what its work costs and how long it takes; freezing
+    #: them would make the registry unusable and would say something false about
+    #: how they are actually used. `Task`'s own columns are a separate piece of
+    #: work with its own migration, recorded at `Task.outcome_reason`.
+    transition_classes = {"pricing_mode": FROZEN}
 
     class Meta:
         db_table = "ubb_task_type"
@@ -373,21 +446,23 @@ class Task(BaseModel):
     # second transition, and the cascade beside it selects only work still
     # running, so a row it can reach is by construction one never written.
     # `docs/conventions/django-patterns.md` asks a model holding economic
-    # facts to say that per column in a `transition_classes` mapping, and this
+    # facts to say that per column in a `transition_classes` mapping, and THIS
     # model has never had one: `status`, `parent` and `task_type` all carry
     # their rule in prose here too, and #407 and #408 each shipped a column
-    # under the same gap.
+    # under the same gap. `TaskType` above now declares one, which narrows the
+    # gap to this model rather than closing it.
     #
     # It is NOT declared here, and the reason is that declaring is not
     # enforcing. A column named into a database-defended class owes a trigger
     # on `ubb_task` and a behavioural test per class through all three doors —
-    # `save()`, `QuerySet.update()` and raw SQL — which is the shape #318 had
-    # to build for the posting. Declaring these two without it would put a
-    # false statement into the module whose whole subject is that declarations
-    # are true, and declaring the model's OTHER columns is a separate piece of
-    # work with its own migration. Whichever ticket installs that trigger
-    # should take all of them together; this comment is here so the next reader
-    # finds a decision rather than an omission.
+    # `save()`, `QuerySet.update()` and raw SQL — which is the shape #318 built
+    # for the posting and #414 built one table over, on `ubb_task_type`, in this
+    # same app. Declaring these two without it would put a false statement into
+    # the module whose whole subject is that declarations are true, and
+    # declaring the model's OTHER columns is a separate piece of work with its
+    # own migration. Whichever ticket installs that trigger should take all of
+    # them together; this comment is here so the next reader finds a decision
+    # rather than an omission.
     outcome_reason = models.CharField(max_length=32, blank=True, default="",
                                       choices=OUTCOME_REASON_CHOICES)
     reason_detail = models.TextField(blank=True, default="")

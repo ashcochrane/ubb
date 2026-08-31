@@ -57,7 +57,8 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # a tenant's slicing vocabulary is
 # governance/config, not telemetry. +1 (task 7) PUT /metering/task-types
 # records task_type.declared — a task type's COGS ceiling is a pricing-rule
-# change, not telemetry. 62 + 2 = 64.
+# change, not telemetry. (That route is at /task-types since #414; see the last
+# paragraph of this block.) 62 + 2 = 64.
 #
 # one published way to report usage (slice 1): -1, POST /metering/usage/ingest
 # is deleted as this slice's one reviewed contract break. 64 - 1 = 63. The
@@ -153,6 +154,17 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # only READ a wallet — while what it does author is the row every metered event
 # then hangs off, which is the firehose ADR-004 excludes by name. The RECORDING
 # count is therefore unmoved at 73: 79 - 6 = 73, where it was 78 - 5 = 73.
+#
+# ⚠ 79 -> 79 WITH #414's MOVE, AND THE ACT IT RECORDS IS UNCHANGED. PUT
+# /metering/task-types became PUT /task-types: one mutating route out, one in,
+# still recording `task_type.declared`, still governance rather than telemetry.
+# ⚠ The DECLARATION now carries how the kind of work is sold and a retirement
+# switch, which makes what that act decides broader than the ceiling this
+# accounting cited for it in 2026 — and it does NOT add a second action.
+# `provider.retired` sits beside `provider.declared` because that route revises
+# ONE supplier; this one declares a whole vocabulary, so a request can declare
+# three kinds of work and retire a fourth, and an action naming the retirement
+# would be wrong about the other three. 79 + 0 = 79, recording 73.
 _EXPECTED_MUTATING = 79
 _EXPECTED_EXEMPT = 6
 

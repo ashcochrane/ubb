@@ -200,10 +200,6 @@ API_V1_METERING_ENDPOINTS_DECLARE_PRICING_BOOK = Operation(
     'api_v1_metering_endpoints_declare_pricing_book',
     'post',
     '/api/v1/metering/pricing/pricing-books')
-API_V1_METERING_ENDPOINTS_DECLARE_TASK_TYPES = Operation(
-    'api_v1_metering_endpoints_declare_task_types',
-    'put',
-    '/api/v1/metering/task-types')
 API_V1_METERING_ENDPOINTS_DECLARE_TENANT_DEFAULT_MARKUP = Operation(
     'api_v1_metering_endpoints_declare_tenant_default_markup',
     'put',
@@ -272,8 +268,6 @@ API_V1_METERING_ENDPOINTS_LIST_PRICING_BOOKS = Operation(
     'api_v1_metering_endpoints_list_pricing_books',
     'get',
     '/api/v1/metering/pricing/pricing-books')
-API_V1_METERING_ENDPOINTS_LIST_TASK_TYPES = Operation(
-    'api_v1_metering_endpoints_list_task_types', 'get', '/api/v1/metering/task-types')
 API_V1_METERING_ENDPOINTS_PUBLISH_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_publish_book_publish',
     'post',
@@ -360,6 +354,10 @@ API_V1_TASK_ENDPOINTS_LIST_TASKS = Operation(
     'api_v1_task_endpoints_list_tasks', 'get', '/api/v1/tasks')
 API_V1_TASK_ENDPOINTS_START_TASK = Operation(
     'api_v1_task_endpoints_start_task', 'post', '/api/v1/tasks')
+API_V1_TASK_TYPE_ENDPOINTS_DECLARE_TASK_TYPES = Operation(
+    'api_v1_task_type_endpoints_declare_task_types', 'put', '/api/v1/task-types')
+API_V1_TASK_TYPE_ENDPOINTS_LIST_TASK_TYPES = Operation(
+    'api_v1_task_type_endpoints_list_task_types', 'get', '/api/v1/task-types')
 API_V1_TENANT_ENDPOINTS_CREATE_API_KEY = Operation(
     'api_v1_tenant_endpoints_create_api_key', 'post', '/api/v1/tenant/api-keys')
 API_V1_TENANT_ENDPOINTS_CREATE_INVITATION = Operation(

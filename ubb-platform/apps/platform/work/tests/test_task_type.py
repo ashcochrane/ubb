@@ -3,6 +3,7 @@ from django.db import IntegrityError
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import TaskType
 from apps.platform.work.queries import task_type_policy
+from core.vocabulary import PRICING_MODE_EVENT_PRICED
 
 
 @pytest.mark.django_db
@@ -26,8 +27,9 @@ class TestTaskType:
         """The WHOLE dict, so a key arriving or leaving is read by a person.
 
         A per-key assertion would pass while a policy field rode along beside
-        the ones it named — and every field here is a bound something else
-        resolves a ladder against, so one appearing unannounced is exactly the
+        the ones it named — and every field here is either a bound something
+        else resolves a ladder against or, since #414, the regime a start gate
+        resolves a price under, so one appearing unannounced is exactly the
         change worth seeing.
         """
         t = self._t()
@@ -38,6 +40,7 @@ class TestTaskType:
                                 required_dimensions=["region"])
         assert task_type_policy(t.id, "invoice_batch", "task") == {
             "key": "invoice_batch",
+            "pricing_mode": PRICING_MODE_EVENT_PRICED,
             "default_provider_cost_limit_micros": 5_000_000,
             "silence_window_seconds": 1200,
             "absolute_deadline_seconds": 7200,

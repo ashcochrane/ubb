@@ -96,6 +96,10 @@
       "status": 404,
       "title": "Not found"
     },
+    "pricing_mode_frozen": {
+      "status": 409,
+      "title": "How a kind of work is sold cannot change"
+    },
     "rate_limit_exceeded": {
       "status": 429,
       "title": "Rate limit exceeded"

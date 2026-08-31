@@ -30,17 +30,25 @@ def task_type_policy(tenant_id, key, kind) -> dict | None:
     """One task type's policy, or None when the key is not declared."""
     row = TaskType.objects.filter(
         tenant_id=tenant_id, key=key, kind=kind
-    ).values("key", "default_provider_cost_limit_micros",
+    ).values("key", "pricing_mode", "default_provider_cost_limit_micros",
              "silence_window_seconds", "absolute_deadline_seconds",
              "required_dimensions", "retired_at").first()
     if row is None:
         return None
     return {"key": row["key"],
+            # HOW THIS KIND OF WORK IS SOLD (#414). Billing's start gate reads
+            # it through here to decide whether a unit of work resolves one
+            # agreed price at start or prices each event as it arrives.
+            "pricing_mode": row["pricing_mode"],
             "default_provider_cost_limit_micros":
                 row["default_provider_cost_limit_micros"],
             "silence_window_seconds": row["silence_window_seconds"],
             "absolute_deadline_seconds": row["absolute_deadline_seconds"],
             "required_dimensions": row["required_dimensions"] or [],
+            # WHETHER, AND NOT WHEN. A start gate asks only whether this kind of
+            # work may still be started; the instant is a fact for a reader
+            # reconciling what changed, and it is carried by the registry read
+            # below, which is the one a person looks at.
             "retired": row["retired_at"] is not None}
 
 
@@ -48,15 +56,26 @@ def declared_task_types(tenant_id) -> list[dict]:
     """The tenant's whole work vocabulary, ordered by kind then key."""
     return [
         {"key": r["key"], "kind": r["kind"],
+         "pricing_mode": r["pricing_mode"],
          "default_provider_cost_limit_micros":
              r["default_provider_cost_limit_micros"],
          "silence_window_seconds": r["silence_window_seconds"],
          "absolute_deadline_seconds": r["absolute_deadline_seconds"],
          "required_dimensions": r["required_dimensions"] or [],
-         "retired": r["retired_at"] is not None}
+         # BOTH, AND THEY ARE ONE COLUMN READ TWICE. `retired` is the predicate
+         # a caller branches on; `retired_at` is WHEN, which a boolean throws
+         # away — and when is what the frozen regime leans on, because
+         # retire-plus-redeclare is only a record of a change if the instants
+         # are readable. Derived from one value in one pass, so the two cannot
+         # disagree; rendered here rather than by a serializer beside the Out
+         # schema because this function IS this surface's row serializer.
+         "retired": r["retired_at"] is not None,
+         "retired_at": (r["retired_at"].isoformat()
+                        if r["retired_at"] else None)}
         for r in TaskType.objects.filter(tenant_id=tenant_id)
         .order_by("kind", "key")
-        .values("key", "kind", "default_provider_cost_limit_micros",
+        .values("key", "kind", "pricing_mode",
+                "default_provider_cost_limit_micros",
                 "silence_window_seconds", "absolute_deadline_seconds",
                 "required_dimensions", "retired_at")
     ]

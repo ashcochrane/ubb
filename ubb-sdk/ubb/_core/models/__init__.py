@@ -230,8 +230,10 @@ from .task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from .task_out_status import TaskOutStatus
 from .task_type_in import TaskTypeIn
 from .task_type_in_kind import TaskTypeInKind
+from .task_type_in_pricing_mode_type_0 import TaskTypeInPricingModeType0
 from .task_type_out import TaskTypeOut
 from .task_type_out_kind import TaskTypeOutKind
+from .task_type_out_pricing_mode import TaskTypeOutPricingMode
 from .task_type_registry_in import TaskTypeRegistryIn
 from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
@@ -535,8 +537,10 @@ __all__ = (
     "TaskOutStatus",
     "TaskTypeIn",
     "TaskTypeInKind",
+    "TaskTypeInPricingModeType0",
     "TaskTypeOut",
     "TaskTypeOutKind",
+    "TaskTypeOutPricingMode",
     "TaskTypeRegistryIn",
     "TaskTypeRegistryOut",
     "TenantBillingPeriodListResponse",

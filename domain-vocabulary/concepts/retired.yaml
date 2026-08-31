@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,698 of 2,105 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,702 of 2,110 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1675,6 +1675,31 @@ measurement_key:
     # and once before that — and it says "contained work", "the whole unit of
     # work" and "each piece" throughout. The word was not written, so there
     # was nothing to put back.
+
+    # #414 MOVED BOTH DENOMINATORS BY FOUR AND FIVE AND LEFT THE NUMERATOR
+    # WHERE IT WAS (1,698 -> 1,702 swept, 2,105 -> 2,110 tracked, `units`
+    # UNMOVED at 45 files and 123 occurrences). Five tracked files arrived and
+    # only four are swept: the fifth is a migration, and `historical-migrations`
+    # is a wholesale directory exclusion, so it lifts `tracked` alone and its
+    # own rule count 240 -> 241. Of the four swept, TWO ARE GENERATED — a
+    # closed concept reaching the contract mints one enum module per schema
+    # carrying it, and this one is carried by the declaration going in and the
+    # declaration coming back. The other two are the registry's new root-mounted
+    # module and the test module for the frozen rule.
+    #
+    # ⚠ THE NUMERATOR HELD, BUT ONLY AFTER A REPAIR — FIFTH CONSECUTIVE WINDOW,
+    # AND AGAIN THROUGH PROSE ABOUT WORK. The first draft measured 46 files and
+    # 124 occurrences: `ubb-sdk/coverage-authorisations.yaml`, a file that had
+    # never carried the word, said the SDK "opens and closes units of work" in a
+    # paragraph explaining why a registry route ships unwrapped. Ordinary
+    # English, nowhere near currency minor units, rate arithmetic or generated
+    # vocabulary text — which is the whole point of the four notes above this
+    # one: the sense that keeps arriving is none of the three, so care about the
+    # survivors does not help. The sentence now says "a unit of work". THIS GATE
+    # FOUND IT, and nothing else could have: the sweep does not take this word
+    # as input, and it is the same shape as #412's, one window later, in a
+    # commit whose subject is money-shaped prose about work — both halves of
+    # what has reached for the plural every time since #328.
 
     - term: units
       retired_as: >-

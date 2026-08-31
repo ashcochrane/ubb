@@ -878,6 +878,21 @@ CONCEPTS_IN_THE_CONTRACT = {
     # adding a value, changing a value or touching what any caller may send —
     # the #317 mechanism with nothing to write.
     "task_type_kind": Published(2, ENUM),
+    # HOW A KIND OF WORK IS SOLD (#414) — the same two nodes as the altitude
+    # above, and for the same reason: the declaration going in and the
+    # declaration coming back are the whole surface this concept has. A unit of
+    # work will carry the regime it was started under, and when it does the
+    # marker rides that field too; it does not exist yet, and inventing a place
+    # for it here would advertise a field no response returns.
+    #
+    # ⚠ ITS BACKEND HALF WAS NEITHER OF §27's FIRST TWO SHAPES — IT WAS THE
+    # THIRD. The entry read `0 of 2 values` like `task_type_kind`'s did, and the
+    # two mean completely different things: that one had both correct values
+    # written as literals and needed re-sourcing, this one had NOTHING. No
+    # column on the model, no map in the console's label layer, no occurrence in
+    # the contract. Paying it was creation, and the number is identical either
+    # way, which is exactly what §27 warns costs a window.
+    "pricing_mode": Published(2, ENUM),
     # THE DURABLE STATE A UNIT OF WORK IS IN (#408) — three nodes: the close
     # response, the listing row, and the detail view that extends it. Every
     # published shape that carries a state carries the marker, and there is no
@@ -1223,6 +1238,13 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # off. The declaration is where the altitude is a decision somebody makes;
     # on a unit it is a consequence of the parent link.
     placed("task_type_kind", {"TaskTypeIn", "TaskTypeOut"})
+    # HOW A KIND OF WORK IS SOLD (#414), on the same two schemas and for the
+    # same reason: the declaration is the whole surface this concept has today.
+    # It is the field on that declaration which cannot be revised — the column
+    # is FROZEN and a trigger on `ubb_task_type` keeps it — so a caller reading
+    # this enum is reading a choice made once, and a set that grew would be a
+    # third regime rather than a widening of these two.
+    placed("pricing_mode", {"TaskTypeIn", "TaskTypeOut"})
     # THE DURABLE STATE A UNIT OF WORK IS IN (#408), on every published shape
     # that carries one: the answer to a close, a row in a listing, and the
     # detail view that extends that row.
@@ -1921,7 +1943,20 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     21 → 20 in #370, which advertised `pricing_receipt_subject_type`,
     20 → 19 in #407, which advertised `task_type_kind`, 19 → 18 in #408,
     which advertised `task_status`, 18 → 17 in #409, which advertised
-    `task_outcome`, and 17 → 16 in #412, which advertised `trigger_source`.
+    `task_outcome`, 17 → 16 in #412, which advertised `trigger_source`, and
+    16 → 15 in #414, which advertised `pricing_mode`.
+
+    ⚠ #414 IS THE FIRST WHOSE G2 HALF WAS §27's THIRD SHAPE — NEITHER
+    RE-SOURCING NOR ADDING VALUES TO A LIST, BUT BUILDING THE CONSUMER FROM
+    ZERO. Its entry read `0 of 2 values`, character for character the number
+    #407's read, and the two could not have been less alike: #407's consumer
+    held both correct values as literals, and this one held nothing at all —
+    no column on the model, no map in the console's label layer, no occurrence
+    in the contract. A reader taking the number as *this list is spelled
+    locally* would go looking for a list that did not exist. The pairing is the
+    usual one and holds for the usual reason: `advertised` is derived from the
+    backend census alone, so the commit that made the column hold both values
+    made the G4 excuse false in the same breath.
 
     ⚠ #412 IS THE FIRST TO ADVERTISE AN **OPEN** CONCEPT, AND THE STEP IS THE
     SAME SIZE FOR A DIFFERENT REASON. Every concept above is `closed`, so
@@ -2010,6 +2045,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 16, (
+    assert len(_entries(programme)) >= 15, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

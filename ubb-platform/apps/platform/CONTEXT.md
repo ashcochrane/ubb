@@ -216,17 +216,50 @@ rows disagree about where a value came from. (ADR-0005)
 
 **Task type**:
 A tenant's declared kind of work, carrying server-side policy (a COGS ceiling, a **Silence
-window**, an **Absolute deadline**, `required_dimensions`) rather than being a bare label;
-immutable on a `Task` once created. **One
+window**, an **Absolute deadline**, `required_dimensions`, and a **Pricing mode**) rather than
+being a bare label; immutable on a `Task` once created. **One
 column carries it at either altitude** — a `Task` and a `Subtask` declare their kind in the same
 place and `Task.parent` is the only thing that says which altitude a row is at.
 Each of its three bounds is the top rung of its own ladder: the declaration, then the tenant's
-default, then UBB's backstop — so one kind of job that legitimately costs or runs far more than its
-sibling never forces the rule open on both.
+default, then UBB's backstop — so one kind of work that legitimately costs or runs far more than
+its sibling never forces the rule open on both. The pricing mode is not a bound and has no ladder:
+it is one answer, fixed at the first declaration.
+Declared and read at `/api/v1/task-types`, mounted at the ROOT beside `/event-types` and `/plans`
+since #414 and gated on `metering` from there — the mount and the product gate are separate
+questions, and a declaration realized by billing and by metering and owned by neither is the kernel
+test. Retired, never deleted: `retired_at` records when a kind of work stopped being offered and
+the row stays readable, because work already done under it still refers to it.
 (ADR-0005, whose Decision clause on what a `Task` carries is superseded on exactly this point;
 `apps/platform/work/models.py:TaskType`)
 _Avoid_: a second name for the contained case. The column that carried one was collapsed into this
 one; a Subtask is the same record with a parent, never a second pricing entity.
+
+**Pricing mode**:
+`event_priced | fixed` on the declaration — whether the tenant's own customer is charged per event
+as it arrives, or one agreed price for the whole delivered piece of work. `fixed` REPLACES metered
+revenue for that work rather than sitting on top of it; the cost side is unchanged either way, and
+markup never applies to an agreed price. **Declared FROZEN under ADR-0007 §2 — no transition after
+insert, enforced by a trigger on `ubb_task_type` rather than asserted anywhere.** Changing how a
+kind of work is sold means retiring it and declaring a replacement, which leaves two rows each
+carrying its own retirement instant — the *when did this change, and to what* a publish record
+answers, without minting a third publish mechanism beside the Pricing Book's and the Event Type's.
+Whether those two are one mechanism generalised or genuinely two stays open (#156 §14.2) and this
+registry does not answer it. The accepted cost is that a tenant who mis-declares must create a new
+key, and a key change is an integration change for them.
+**Contained work inherits its parent's regime and a start naming a kind of work that disagrees is
+refused.** That invariant compares TWO ROWS, so no column constraint can express it and it is not
+enforced by the rule above; it lives in the creation service, where the start gate resolves a price.
+The uniqueness key is `(tenant, kind, key)`, so one word genuinely can name a `task` sold one way
+and a `subtask` sold the other — which is what makes the comparison necessary rather than
+theoretical. **Declared here, enforced by the ticket that resolves a fixed price at start.**
+On the wire the declaration is `pricing_mode`, defaulted only for a kind of work that does not exist
+yet: omitting it on one that does leaves the regime alone, because a client that has never heard of
+the field must not re-sell every `fixed` kind of work per event on its next idempotent PUT.
+(`apps/platform/work/models.py:TaskType.pricing_mode`;
+`work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py`; registry concept `pricing_mode`)
+_Avoid_: reading this as a third `pricing_method` (`apps/metering/CONTEXT.md`). That column says
+how a price is DERIVED and has exactly two values; an agreed price is not derived at all, so work
+sold that way records no method rather than a third one.
 
 **Task type kind**:
 `task | subtask` on the declaration, saying which altitude a declared kind of work is MEANT for —
