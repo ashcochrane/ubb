@@ -240,9 +240,10 @@ def start_task(request, payload: StartTaskRequest):
         # THE AGREED PRICE, WHERE THE KIND OF WORK IS SOLD AT ONE (#415).
         #
         # It is resolved ONCE, here, and pinned onto the row below in the same
-        # transaction — so a reprice cannot move a number this unit of work was
-        # already quoted, while its supplier costs go on resolving at each
-        # posting's own timestamp. The price was promised; the cost is observed.
+        # transaction, so a reprice cannot move a number this unit of work was
+        # already quoted. The asymmetry that buys — revenue pinned at start
+        # while cost floats — is argued at `Task.agreed_price_micros` and again
+        # at `pricing/receipts.py`, where a reader of one receipt meets it.
         #
         # ⚠ IT IS THE LAST THING BEFORE THE WRITE AND EVERYTHING IT REFUSES IS
         # RAISED, which is what makes an unpriceable start cost nothing: no row,
@@ -259,10 +260,10 @@ def start_task(request, payload: StartTaskRequest):
         # bill is not refused for a pricing gap on revenue nobody collects,
         # and a price that does resolve is pinned for them regardless, because
         # their margin reporting is what the declaration was recorded for.
-        agreed_price_micros = None
+        agreed_price = None
         if policy.pricing_mode == PRICING_MODE_FIXED:
             try:
-                agreed_price_micros = determine_the_agreed_price(
+                agreed_price = determine_the_agreed_price(
                     tenant=tenant, customer=customer,
                     task_type=policy.task_type,
                     contained=parent is not None,
@@ -287,7 +288,12 @@ def start_task(request, payload: StartTaskRequest):
                 task_type=policy.task_type,
                 dimension_slots=policy.grouping_slots,
                 pricing_mode=policy.pricing_mode,
-                agreed_price_micros=agreed_price_micros,
+                # BOTH HALVES OR NEITHER — the number and the line that
+                # produced it are one record, and the database says so.
+                agreed_price_micros=(agreed_price.amount_micros
+                                     if agreed_price else None),
+                agreed_price_line_id=(agreed_price.id
+                                      if agreed_price else None),
             )
         except ContainmentRegimeRefused as refused:
             # THE TWO-ROW INVARIANT, RENDERED. The rule is the product's and is

@@ -234,6 +234,25 @@ _Avoid_: "rate card" or "price card" — the container is a Pricing Book; expect
 provider — a rule that should price one supplier's work differently pins `provider` as a selector,
 which is where that distinction belongs.
 
+**Work-level price line**:
+The SECOND kind of line a Pricing Book holds (#415): what one whole delivered unit of work of a
+named kind sells for, as one agreed number. A Rate prices a measured QUANTITY; this prices a whole
+piece of work, and the two are lines in the same book so a tenant has one place to look and one
+place to change. It names a DECLARATION — `(kind, task_type)`, the identity `work.TaskType` gives
+itself — rather than a bare word, which is what lets a line written against contained work be
+refused at start while leaving a priced kind of work free to run as a step of ITSELF.
+**The ladder inside a book is one step, not three**: a Rate's exact-then-broader-then-default ladder
+is about events, and there is no narrower work-level line to out-rank a broader one and no book-wide
+fallback beneath either. What ranks is which BOOK the line came from — the customer's own beats one
+merely selected for them — and `valid_from` breaks the remaining tie.
+It carries **no currency**, on the Pricing Book's own argument one line up.
+(`apps/metering/pricing/models.py:TaskPrice`;
+`pricing/services/pricing_service.py:resolve_the_agreed_price`)
+_Avoid_: expecting a route to write one — prices are edited through the book's declare-then-publish
+act and nothing writes this table yet, which the model records as a named residual rather than an
+oversight; and reading it as a floor or a fee on top — an agreed price REPLACES metered revenue for
+that unit of work.
+
 **Cost book**:
 The versioned container of what **one supplier charges this tenant** — pinned to that supplier and
 to the currency they bill in, the currency being a DECLARED value the database refuses to leave

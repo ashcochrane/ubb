@@ -4,6 +4,12 @@ from django.db import models
 from django.utils import timezone
 
 from apps.platform.grouping_fields.models import SLOT_CHOICES
+# THE ALTITUDE VOCABULARY, BY REFERENCE FROM THE MODEL THAT OWNS THE
+# DECLARATION (#415). A work-level price line names the same two altitudes a
+# `TaskType` does and must never hold a second copy of that wording — the
+# import is the `SLOT_CHOICES` line above doing the same job for the same
+# reason, and ADR-001 permits a product reading the kernel.
+from apps.platform.work.models import TASK_TYPE_KIND_CHOICES
 from core.models import BaseModel
 from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE, SET_ONCE
 from core.vocabulary import (
@@ -15,6 +21,7 @@ from core.vocabulary import (
     RATE_STRUCTURE_FIXED_COMPONENT,
     RATE_STRUCTURE_PER_UNIT,
     RATE_STRUCTURE_VALUES,
+    TASK_TYPE_KIND_TASK,
 )
 
 
@@ -734,6 +741,29 @@ class TaskPrice(BaseModel):
     pricing_book = models.ForeignKey("pricing.PricingBook",
                                      on_delete=models.PROTECT,
                                      related_name="task_prices")
+    #: WHICH ALTITUDE THE DECLARATION THIS LINE PRICES IS FOR.
+    #:
+    #: ⚠ **WITHOUT IT THIS TABLE COULD NOT SAY WHAT #139 §3.3 REFUSES.** That
+    #: ruling is *"a fixed-price line on a SUBTASK TYPE is refused at start,
+    #: loudly"* — a line written against a declaration meant for contained
+    #: work. A `TaskType`'s uniqueness is `(tenant, kind, key)` precisely so
+    #: one word can name a kind of work at either altitude and the two are
+    #: different declarations; a line keyed on the bare word cannot express
+    #: what the declaration it prices already can, so the refusal would have to
+    #: fire on *any* line for that word and a tenant could then never run a
+    #: priced kind of work as a step of itself. A render job containing render
+    #: steps is an ordinary shape, and it would have been told to *price the
+    #: kind of work that contains this one* — which it had.
+    #:
+    #: So a line names the altitude the same way the declaration does, the
+    #: resolver asks for the altitude the start is at, and the refusal fires on
+    #: exactly the row #139 §3.3 names. A line at the contained altitude is
+    #: unreachable by any other path — a start naming a contained declaration
+    #: at the top level is refused earlier, as undeclared — so its whole effect
+    #: is that loud refusal, which is the point of refusing rather than
+    #: ignoring it.
+    kind = models.CharField(max_length=8, choices=TASK_TYPE_KIND_CHOICES,
+                            default=TASK_TYPE_KIND_TASK)
     #: THE DECLARED KIND OF WORK THIS LINE PRICES, BY KEY — never "" here.
     #:
     #: ⚠ A KEY AND NOT A REFERENCE, WHICH IS THE OPPOSITE OF WHAT #326 DID TO
@@ -770,12 +800,10 @@ class TaskPrice(BaseModel):
     #: (`valid_from <= t < valid_to`).
     #:
     #: ⚠ THEY ARE WHAT MAKES *RESOLVED AT THE START INSTANT* A CLAIM RATHER
-    #: THAN A FIGURE OF SPEECH. A unit of work's revenue is resolved once, at
-    #: the moment it starts, while its supplier costs resolve at each posting's
-    #: own timestamp — the price was promised, the cost is observed — and
-    #: without a line that can be in force at one instant and not another there
-    #: would be only ever one answer for the price half and the asymmetry could
-    #: not be stated, let alone tested.
+    #: THAN A FIGURE OF SPEECH. Without a line that can be in force at one
+    #: instant and not another there would only ever be one answer for the
+    #: price half, and the cost/revenue asymmetry `work.Task
+    #: .agreed_price_micros` argues could not be stated, let alone tested.
     #:
     #: ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THIS TABLE DECLARES NONE.
     #: The rate table declares these two exact columns and this one deliberately
@@ -793,14 +821,20 @@ class TaskPrice(BaseModel):
     class Meta:
         db_table = "ubb_task_price"
         constraints = [
-            # ONE LINE IN FORCE PER KIND OF WORK PER BOOK. There is no
+            # ONE LINE IN FORCE PER DECLARATION PER BOOK. There is no
             # specificity ladder inside a book here — see the class docstring —
-            # so two open lines for one kind of work in one book would be two
+            # so two open lines for one declaration in one book would be two
             # answers with nothing to choose between them, which is a
             # configuration a tenant cannot have meant and the resolver would
             # settle by whichever row came back first.
+            #
+            # IT CARRIES `kind` FOR THE REASON THE DECLARATION'S OWN KEY DOES
+            # (`work.TaskType`: `(tenant, kind, key)`): one word names a kind of
+            # work at either altitude and the two are different declarations, so
+            # a key without the altitude would refuse a tenant the second line
+            # while telling them nothing about why.
             models.UniqueConstraint(
-                fields=["pricing_book", "task_type"],
+                fields=["pricing_book", "kind", "task_type"],
                 condition=models.Q(valid_to__isnull=True),
                 name="uq_task_price_active_in_pricing_book"),
             # A PRICE IS NOT NEGATIVE. Zero is admitted and is a real answer;
@@ -810,15 +844,15 @@ class TaskPrice(BaseModel):
                 name="ck_task_price_amount_not_negative"),
         ]
         indexes = [
-            # THE RESOLUTION LOOKUP: every book in play at once, one kind of
-            # work, as of one instant — the shape `_selected_pricing_books`
-            # hands the resolver.
-            models.Index(fields=["task_type", "valid_from"],
+            # THE RESOLUTION LOOKUP: every book in play at once, one
+            # declaration at one altitude, as of one instant — the shape
+            # `_selected_pricing_books` hands the resolver.
+            models.Index(fields=["kind", "task_type", "valid_from"],
                          name="idx_task_price_lookup"),
         ]
 
     def __str__(self):
-        return f"TaskPrice({self.task_type}: {self.amount_micros})"
+        return f"TaskPrice({self.kind}:{self.task_type}: {self.amount_micros})"
 
 
 class CostBook(BaseModel):

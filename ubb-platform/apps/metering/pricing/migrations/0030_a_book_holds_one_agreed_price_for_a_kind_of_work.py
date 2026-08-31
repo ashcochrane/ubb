@@ -15,9 +15,18 @@ pricing, book selection and the tenant's existing publishing model come with it,
 and a tenant has one place to look and one place to change. A second
 configuration surface for money would have none of that.
 
+**A LINE NAMES A DECLARATION, NOT A WORD.** `kind` plus `task_type` is exactly
+the identity `work.TaskType` gives itself (`(tenant, kind, key)`), and carrying
+both is what lets #139 §3.3's refusal — *"a fixed-price line on a SUBTASK TYPE
+is refused at start, loudly"* — fire on the row it actually names. A line keyed
+on the bare word could not tell a line written against contained work from one
+written against a whole unit of work, so the refusal would have had to fire on
+any line for that word, and a tenant could then never run a priced kind of work
+as a step of itself. A render job containing render steps is an ordinary shape.
+
 **THE LADDER INSIDE A BOOK IS ONE STEP.** A rate's ladder — the exact Event
 Type, then a broader rule, then the book's own default — is about events. This
-keys on the kind of work and on nothing else, so there is no narrower line to
+keys on the declaration and on nothing else, so there is no narrower line to
 out-rank a broader one and no book-wide fallback beneath either: *a default
 agreed price for all work regardless of kind* is not something a tenant could
 mean. What ranks is which BOOK the line came from, which is the ladder the
@@ -28,7 +37,7 @@ reads this table; the reverse drops it. `ck_task_price_amount_not_negative`
 admits zero deliberately — a tenant may agree to deliver a kind of work for
 nothing, and only a number below zero is a sign error rather than a deal.
 `uq_task_price_active_in_pricing_book` is what stops one book holding two open
-lines for one kind of work, which would be two answers with nothing to choose
+lines for one declaration, which would be two answers with nothing to choose
 between them.
 """
 
@@ -54,6 +63,9 @@ class Migration(migrations.Migration):
                                         primary_key=True, serialize=False)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
+                ('kind', models.CharField(
+                    choices=[('task', 'Task'), ('subtask', 'Subtask')],
+                    default='task', max_length=8)),
                 ('task_type', models.CharField(max_length=64)),
                 ('amount_micros', models.BigIntegerField()),
                 ('valid_from', models.DateTimeField(
@@ -68,12 +80,13 @@ class Migration(migrations.Migration):
             ],
             options={
                 'db_table': 'ubb_task_price',
-                'indexes': [models.Index(fields=['task_type', 'valid_from'],
-                                         name='idx_task_price_lookup')],
+                'indexes': [models.Index(
+                    fields=['kind', 'task_type', 'valid_from'],
+                    name='idx_task_price_lookup')],
                 'constraints': [
                     models.UniqueConstraint(
                         condition=models.Q(('valid_to__isnull', True)),
-                        fields=('pricing_book', 'task_type'),
+                        fields=('pricing_book', 'kind', 'task_type'),
                         name='uq_task_price_active_in_pricing_book'),
                     models.CheckConstraint(
                         condition=models.Q(('amount_micros__gte', 0)),

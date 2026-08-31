@@ -440,6 +440,27 @@ class Task(BaseModel):
     # is `fixed`, because a start that could not resolve one is refused before
     # the row is written.
     agreed_price_micros = models.BigIntegerField(null=True, blank=True)
+    # WHICH LINE ANSWERED, PINNED BESIDE THE NUMBER IT PRODUCED (#415, #139
+    # §2.3).
+    #
+    # ⚠ **THE AMOUNT ALONE IS NOT A REPRODUCIBLE RECORD.** #139 §2.3 requires a
+    # charge to name the matched line so that the amount is "reproducible from
+    # the record rather than by re-resolving today's config", and re-resolving
+    # is not a fallback available later: which books are even in play depends on
+    # the customer's plan, which moves. So the identity of the line is captured
+    # in the same write as the number, at the one instant both are known.
+    #
+    # A PLAIN UUID AND NOT A FOREIGN KEY, which is `billing_owner_id` and
+    # `announce_outbox_id` above doing the same thing for the same reason. The
+    # line is `apps.metering.pricing.TaskPrice` — a PRODUCT's table — and this
+    # model is the KERNEL's; ADR-001 lets a product read the kernel and not the
+    # other way round, so a database-level reference here would invert the one
+    # dependency the golden rule is about. A reader joins from the product side.
+    #
+    # NULL wherever `agreed_price_micros` is null, and never independently: the
+    # two are written together or not at all, which is what makes the pair a
+    # record rather than two facts that can come apart.
+    agreed_price_line_id = models.UUIDField(null=True, blank=True)
 
     # Tier-2 (D4/I6): the billing owner PINNED at task creation
     # (resolve_billing_owner), exactly like Posting.billing_owner_id. The
@@ -626,6 +647,19 @@ class Task(BaseModel):
                 condition=(models.Q(agreed_price_micros__isnull=True)
                            | models.Q(agreed_price_micros__gte=0)),
                 name="ck_task_agreed_price_not_negative",
+            ),
+            # AN AMOUNT AND THE LINE THAT PRODUCED IT MOVE TOGETHER OR NOT AT
+            # ALL — the amount/status-pair shape `core.amount_status_pairs`
+            # names for the posting, one concept along. A number with no line
+            # cannot be reproduced from the record, which is the whole of what
+            # #139 §2.3 asks the pair for; a line with no number would say a
+            # price was resolved and record none of it.
+            models.CheckConstraint(
+                condition=(models.Q(agreed_price_micros__isnull=True,
+                                    agreed_price_line_id__isnull=True)
+                           | models.Q(agreed_price_micros__isnull=False,
+                                      agreed_price_line_id__isnull=False)),
+                name="ck_task_agreed_price_and_its_line_move_together",
             ),
         ]
         indexes = [

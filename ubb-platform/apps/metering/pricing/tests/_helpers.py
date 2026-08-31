@@ -207,7 +207,14 @@ def a_price_for_whole_work(tenant, *, task_type, amount_micros,
     `customer=` puts the line in that customer's own override book, `plan_key=`
     puts it in the book their plan prices from, and neither puts it in the
     tenant's default. Three near-identical functions would have said the same
-    thing three times over a table with four columns.
+    thing three times over a table with five columns.
+
+    ⚠ **THE ALTITUDE IS THE COLUMN'S OWN DEFAULT AND A CALLER SAYS NOTHING**,
+    because a line for a WHOLE unit of work is what almost every caller means
+    and spelling it each time would bury the one case that is interesting. A
+    test whose subject is #139 §3.3's refusal passes `kind=` explicitly, which
+    is what makes that call site read as the deliberate misconfiguration it is
+    describing.
 
     ⚠ **THE PLAN'S BOOK COMES FROM THE PRODUCTION DOORS**, exactly as
     `rate_in_a_plans_book` takes it: `a_plan` creates the book and the plan and

@@ -109,7 +109,17 @@ VALUE_SETS = {
     # word to live on and no value set to declare: which kind a book is, is
     # which TABLE it sits on. Re-taken from the census rather than decremented,
     # for the reason the paragraph above gives.
-    "ubb-platform/apps/metering/pricing/models.py": 2,
+    #
+    # 2 -> 3 in #415: the work-level price line names the ALTITUDE of the
+    # declaration it prices, and the set is `TASK_TYPE_KIND_CHOICES` IMPORTED
+    # from `work/models.py` rather than a second copy written here -- the
+    # `SLOT_CHOICES` import at the top of that module doing the same job for
+    # the same reason. So this inventory counts a value set that is one object
+    # shared with the row above it, which is the shape it should count: it
+    # counts declarations of a set on a COLUMN, and a column declaring one is
+    # what a reviewer needs to see whether or not the members were written
+    # locally.
+    "ubb-platform/apps/metering/pricing/models.py": 3,
     # 2 → 4 in #351: the price status and its reason, both DERIVED from the
     # registry frozensets exactly as the cost pair beside them. The count rises
     # because this inventory counts the shape and not the provenance — which is

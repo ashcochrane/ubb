@@ -248,10 +248,12 @@ registry does not answer it. The accepted cost is that a tenant who mis-declares
 key, and a key change is an integration change for them.
 **Contained work inherits its parent's regime and a start naming a kind of work that disagrees is
 refused.** That invariant compares TWO ROWS, so no column constraint can express it and it is not
-enforced by the rule above; it lives in the creation service, where the start gate resolves a price.
-The uniqueness key is `(tenant, kind, key)`, so one word genuinely can name a `task` sold one way
-and a `subtask` sold the other — which is what makes the comparison necessary rather than
-theoretical. **Declared here, enforced by the ticket that resolves a fixed price at start.**
+enforced by the rule above. **It is enforced now (#415), by a `BEFORE INSERT` trigger on `ubb_task`
+— a rule about who may be BORN, which is the only shape that can read the parent — with
+`TaskService.create_task` holding the same rule so a caller gets a sentence naming both regimes
+instead of an `IntegrityError`.** The uniqueness key is `(tenant, kind, key)`, so one word genuinely
+can name a `task` sold one way and a `subtask` sold the other — which is what makes the comparison
+necessary rather than theoretical.
 On the wire the declaration is `pricing_mode`, defaulted only for a kind of work that does not exist
 yet: omitting it on one that does leaves the regime alone, because a client that has never heard of
 the field must not re-sell every `fixed` kind of work per event on its next idempotent PUT.
@@ -260,6 +262,27 @@ the field must not re-sell every `fixed` kind of work per event on its next idem
 _Avoid_: reading this as a third `pricing_method` (`apps/metering/CONTEXT.md`). That column says
 how a price is DERIVED and has exactly two values; an agreed price is not derived at all, so work
 sold that way records no method rather than a third one.
+
+**Agreed price**:
+What one whole delivered unit of work was sold for, resolved at START from a work-level line in the
+customer's own policy book (`apps/metering/CONTEXT.md`: *Work-level price line*) and PINNED onto the
+unit of work with the identity of the line that answered. Two columns that move together or not at
+all — a number with no line cannot be reproduced from the record, and the database refuses either
+alone. **Determination, not charge**: it says which price applies, while whether it is owed at all
+depends on how the work ended, so a unit of work that failed carries this number and is charged
+nothing. **Markup never applies to it** and no `pricing_method` is recorded, because the price was
+agreed rather than derived.
+**Revenue and COGS resolve against DIFFERENT INSTANTS, deliberately** — the price is pinned at
+start, every supplier cost resolves at its own posting's timestamp. *The price was promised; the
+cost is observed.* Without that sentence a single receipt reads like a defect, which is why it is
+also stated at `apps/metering/pricing/receipts.py`.
+**A whole unit of work only**: contained work never carries one, and a line written against a
+declaration meant for contained work refuses the start loudly rather than being ignored.
+(`apps/platform/work/models.py:Task.agreed_price_micros` and `.agreed_price_line_id`;
+`work/migrations/0022_an_agreed_price_is_pinned_before_the_work_runs.py`)
+_Avoid_: reading a null as *not yet resolved*. It means the unit of work is priced per event, or is
+contained work — `parent` beside it tells those two apart — and a start that could not resolve a
+price it needed was refused rather than registered.
 
 **Task type kind**:
 `task | subtask` on the declaration, saying which altitude a declared kind of work is MEANT for —

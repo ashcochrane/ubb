@@ -348,12 +348,27 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
     either, because contained work under an agreed-price parent is sold that way
     too and carries no price of its own. What makes a whole one carry a price is
     the start gate refusing to register it otherwise.
+
+    ⚠ **EVERY CASE HERE SUPPLIES A LINE ID, AND THAT IS NOT DECORATION.** Three
+    checks now guard these two columns and a row may violate more than one at a
+    time; the pair rule fires first and its message names ITSELF, so a case that
+    left the line out would assert a refusal it did not drive. Each case below
+    breaks exactly one rule and names the rule it broke — which is what stops
+    *something refused this* being the whole of the evidence on a table that has
+    acquired several mechanisms (#352).
     """
+
+    #: A line id that resolves to nothing, because what is under test here is
+    #: the SHAPE of the row and not what the id points at. Nothing on this table
+    #: dereferences it — ADR-001 forbids the kernel a foreign key into a
+    #: product's table, and `Task.agreed_price_line_id` says so at the column.
+    A_LINE = "11111111-1111-4111-8111-111111111111"
 
     def test_per_event_work_cannot_carry_an_agreed_price(self):
         with self.assertRaises(IntegrityError) as refused:
             self._whole_unit(PRICING_MODE_EVENT_PRICED,
-                             agreed_price_micros=5_000_000)
+                             agreed_price_micros=5_000_000,
+                             agreed_price_line_id=self.A_LINE)
         self.assertIn("ck_task_agreed_price_only_on_a_whole_fixed_unit",
                       str(refused.exception))
 
@@ -364,7 +379,8 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
                 tenant=self.tenant, customer=self.customer,
                 balance_snapshot_micros=0, parent=parent,
                 pricing_mode=PRICING_MODE_FIXED,
-                agreed_price_micros=5_000_000)
+                agreed_price_micros=5_000_000,
+                agreed_price_line_id=self.A_LINE)
         self.assertIn("ck_task_agreed_price_only_on_a_whole_fixed_unit",
                       str(refused.exception))
 
@@ -372,10 +388,26 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
         """Zero is a price — a tenant may agree to deliver a kind of work for
         nothing — and a number below it is a sign error rather than a deal."""
         with self.assertRaises(IntegrityError) as refused:
-            self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=-1)
+            self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=-1,
+                             agreed_price_line_id=self.A_LINE)
         self.assertIn("ck_task_agreed_price_not_negative",
                       str(refused.exception))
 
     def test_zero_is_admitted(self):
-        priced = self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=0)
+        priced = self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=0,
+                                  agreed_price_line_id=self.A_LINE)
         self.assertEqual(Task.objects.get(id=priced.id).agreed_price_micros, 0)
+
+    def test_a_number_without_its_line_is_refused(self):
+        with self.assertRaises(IntegrityError) as refused:
+            self._whole_unit(PRICING_MODE_FIXED,
+                             agreed_price_micros=5_000_000)
+        self.assertIn("ck_task_agreed_price_and_its_line_move_together",
+                      str(refused.exception))
+
+    def test_a_line_without_its_number_is_refused(self):
+        with self.assertRaises(IntegrityError) as refused:
+            self._whole_unit(PRICING_MODE_FIXED,
+                             agreed_price_line_id=self.A_LINE)
+        self.assertIn("ck_task_agreed_price_and_its_line_move_together",
+                      str(refused.exception))

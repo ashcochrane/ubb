@@ -1,7 +1,8 @@
 """A unit of work snapshots HOW IT IS SOLD and, where that is one agreed price,
-WHAT that price is — both at start, and neither ever moves (#415, spec §9).
+WHAT that price is and WHICH LINE said so — all at start, and none of it ever
+moves (#415, spec §9).
 
-Two columns and one rule.
+Three columns and one rule.
 
 **`pricing_mode` IS A COPY, AND THAT IS WHY THE DECLARATION NEEDED NO PUBLISH
 RECORD.** `TaskType.pricing_mode` is frozen (`0021`) on an argument that leans
@@ -24,6 +25,17 @@ of work spanning a reprice keeps the number it was quoted, while its supplier
 costs float and resolve at each posting's own timestamp — *the price was
 promised, the cost is observed.*
 
+**`agreed_price_line_id` IS WHAT MAKES THAT NUMBER REPRODUCIBLE.** #139 §2.3
+requires a charge to name the matched line so the amount can be read back "from
+the record rather than by re-resolving today's config", and re-resolving is not
+available later on any terms: which books are even in play depends on the
+customer's plan, which moves. So the line's identity is captured in the same
+write as its number, and `ck_task_agreed_price_and_its_line_move_together`
+refuses one without the other. It is a plain UUID and NOT a foreign key — the
+line is a PRODUCT's table and this is the KERNEL's, so a database-level
+reference would invert the one dependency ADR-001 is about. `billing_owner_id`
+and `announce_outbox_id` on this table are the same shape for related reasons.
+
 **THE RULE COMPARES TWO ROWS, WHICH IS WHY IT IS A TRIGGER AND NOT A CHECK
 (#151 §18, spec §9).** Contained work and the unit that contains it must be sold
 the same way. A mixed tree produces a number nobody can explain: the parent's
@@ -34,18 +46,19 @@ level nothing reports at. A `CHECK` is evaluated against ONE row and cannot see
 the parent at all, so the invariant is not expressible as a column constraint —
 which #151 §18 records as *"the weakest enforcement in the document, and it
 guards a money-shaped rule"*. A `BEFORE INSERT ... FOR EACH ROW` trigger can
-read the parent, refuses before the write rather than unwinding one, and holds
-through every door: `save()`, `QuerySet.update()`, a data migration, `psql`.
+read the parent and refuses before the write rather than unwinding one.
 
-**WHY INSERT AND NOT UPDATE.** This is a rule about who may be BORN, which is
-exactly the shape `pricing/0020` answers on the rate table and the shape a
-`CHECK` cannot take. A unit of work is never re-parented and its regime is never
-rewritten — `Task.parent` and the pinned facts beside it say so in prose, under
-the model-wide gap `Task.outcome_reason` records — so there is no second
-statement for this rule to have an opinion about. Declaring `Task`'s columns
-into mutability classes is a separate piece of work with its own migration, and
-this trigger does not discharge it: it is a cross-row birth rule, not a
-transition class, and it is declared into none.
+**WHICH DOORS IT HOLDS, STATED EXACTLY.** It fires on every INSERT into
+`ubb_task` whatever issued it — `objects.create()`, a bare `save()`, a data
+migration, `psql`. It does NOT fire on `QuerySet.update()`, and that is the
+point rather than a gap: this is a rule about who may be BORN, which is the
+shape `pricing/0020` answers the same question with and the shape a `CHECK`
+cannot take. An update cannot create contained work, and a unit of work is
+never re-parented — `Task.parent` and the pinned facts beside it say so in
+prose, under the model-wide gap `Task.outcome_reason` records. Declaring
+`Task`'s columns into mutability classes is a separate piece of work with its
+own migration, and this trigger does not discharge it: it is a cross-row birth
+rule, not a transition class, and it is declared into none.
 
 **IT REFUSES ONLY WHAT IT CAN SEE.** Django creates every foreign key on
 PostgreSQL as `DEFERRABLE INITIALLY DEFERRED`, so a `parent_id` naming no row at
@@ -57,17 +70,17 @@ a pricing rule, so a missing parent leaves this trigger silent.
 the class Django maps to `IntegrityError` — the same exception this table's
 uniqueness key already raises, because a caller has no business caring which
 mechanism held the line. The message names both regimes, and every test of it
-asserts them rather than merely that something refused: a table with two
+asserts them rather than merely that something refused: a table with several
 mechanisms on it makes *"something refused this"* stop being evidence.
 
-**THE TWO CHECKS ARE ONE-DIRECTIONAL AND SAY SO.** *A price implies a whole
+**THE FIRST CHECK IS ONE-DIRECTIONAL AND SAYS SO.** *A price implies a whole
 unit of work sold that way* is a property of one row and a check holds it. The
 converse — *every whole fixed unit of work carries a price* — is not expressible
 against one row and is not true either, because contained work under an
 agreed-price parent is `fixed` too and carries no price of its own. What makes a
 whole one carry a price is the start gate refusing to register it otherwise.
 
-**THE REVERSE IS EXACT**: drop the rule, drop the two checks, drop the two
+**THE REVERSE IS EXACT**: drop the rule, drop the three checks, drop the three
 columns. Nothing is unpicked because nothing was moved.
 """
 
@@ -141,6 +154,11 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='task',
+            name='agreed_price_line_id',
+            field=models.UUIDField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='task',
             name='agreed_price_micros',
             field=models.BigIntegerField(blank=True, null=True),
         ),
@@ -167,6 +185,17 @@ class Migration(migrations.Migration):
                                    ('agreed_price_micros__gte', 0),
                                    _connector='OR'),
                 name='ck_task_agreed_price_not_negative'),
+        ),
+        migrations.AddConstraint(
+            model_name='task',
+            constraint=models.CheckConstraint(
+                condition=models.Q(
+                    models.Q(('agreed_price_line_id__isnull', True),
+                             ('agreed_price_micros__isnull', True)),
+                    models.Q(('agreed_price_line_id__isnull', False),
+                             ('agreed_price_micros__isnull', False)),
+                    _connector='OR'),
+                name='ck_task_agreed_price_and_its_line_move_together'),
         ),
         migrations.RunPython(install, uninstall),
     ]

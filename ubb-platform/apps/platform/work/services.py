@@ -659,7 +659,7 @@ class TaskService:
                     parent=None, task_type="", dimension_slots=None,
                     idempotency_key=None,
                     pricing_mode=PRICING_MODE_EVENT_PRICED,
-                    agreed_price_micros=None):
+                    agreed_price_micros=None, agreed_price_line_id=None):
         """Create a Task, snapshotting limit config and wallet balance.
         Passing ``parent`` registers a SUBTASK under it (#38) — a Task row
         with the self-FK set, one containment level at launch.
@@ -685,17 +685,19 @@ class TaskService:
         TaskService only writes what it is given. ``task_type`` is the whole
         declaration at EITHER altitude; ``parent`` is what says which.
 
-        ``pricing_mode`` and ``agreed_price_micros`` (#415) are the two facts a
-        unit of work snapshots about HOW IT IS SOLD, and they are pass-through
-        in the same sense: the caller has read the declaration and, where it
-        names one agreed price, resolved that price out of the customer's own
-        policy book. The regime defaults to per-event because every caller that
-        is not a start gate — the reapers, the cascades, every fixture that
-        stands a unit of work up directly — is registering work no declaration
-        was consulted for, and per-event is what such a unit of work has always
-        meant. The price defaults to `None` for the stronger reason that there
-        is no number to invent: an agreed price comes from a line a tenant
-        wrote, and a synthesised one would be a fabricated declaration.
+        ``pricing_mode``, ``agreed_price_micros`` and ``agreed_price_line_id``
+        (#415) are what a unit of work snapshots about HOW IT IS SOLD, and they
+        are pass-through in the same sense: the caller has read the declaration
+        and, where it names one agreed price, resolved that price out of the
+        customer's own policy book. The regime defaults to per-event because
+        every caller that is not a start gate — the reapers, the cascades,
+        every fixture that stands a unit of work up directly — is registering
+        work no declaration was consulted for, and per-event is what such a
+        unit of work has always meant. The price and its line default to `None`
+        for the stronger reason that there is nothing to invent: an agreed
+        price comes from a line a tenant wrote, and a synthesised one would be
+        a fabricated declaration. The two travel together and the table refuses
+        one without the other.
 
         ⚠ **ONE THING HERE IS NOT PASS-THROUGH, AND IT IS DELIBERATE.**
         Contained work is sold the way the work containing it is sold, and that
@@ -725,6 +727,7 @@ class TaskService:
             task_type=task_type,
             pricing_mode=pricing_mode,
             agreed_price_micros=agreed_price_micros,
+            agreed_price_line_id=agreed_price_line_id,
             **(dimension_slots or {}),
         )
 

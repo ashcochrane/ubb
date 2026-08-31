@@ -44,6 +44,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.db import IntegrityError
 from django.test import Client
 from django.utils import timezone
 
@@ -150,6 +151,31 @@ class TestTheAgreedPriceIsResolvedAndPinned(AgreedPriceTestBase):
         assert registered.agreed_price_micros == THE_AGREED_PRICE
         assert registered.pricing_mode == PRICING_MODE_FIXED
 
+    def test_the_line_that_answered_is_pinned_beside_the_number(self):
+        """#139 §2.3 — the amount must be *"reproducible from the record rather
+        than by re-resolving today's config"*, and re-resolving is not
+        available later on any terms: which books are even in play depends on
+        the customer's plan, which moves. So the line's identity is captured in
+        the same write as its number, and #416's Charge reads it rather than
+        asking the book again.
+        """
+        line = self._price_is(THE_AGREED_PRICE)
+        registered = Task.objects.get(
+            id=self._start(task_type=SOLD_WHOLE).json()["task_id"])
+        assert registered.agreed_price_line_id == line.id
+
+    def test_the_number_and_its_line_cannot_come_apart(self):
+        """The pair, at the database. A number with no line cannot be
+        reproduced from the record; a line with no number would say a price was
+        resolved and record none of it."""
+        with pytest.raises(IntegrityError) as refused:
+            Task.objects.create(
+                tenant=self.tenant, customer=self.customer,
+                balance_snapshot_micros=0, pricing_mode=PRICING_MODE_FIXED,
+                agreed_price_micros=THE_AGREED_PRICE)
+        assert "ck_task_agreed_price_and_its_line_move_together" in str(
+            refused.value)
+
     def test_a_later_edit_to_the_book_does_not_move_the_pinned_number(self):
         """AC 1's second half, and the whole reason the number is a column
         rather than a lookup. A unit of work spanning a reprice keeps what it
@@ -243,28 +269,48 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
         assert response.json()["code"] == AGREED_PRICE_UNRESOLVED
 
     def test_the_refusal_lands_before_the_work_runs_and_spends_nothing(self):
-        """AC 4's second half. Everything money-shaped that exists is asserted
-        absent — see this module's header for the one thing that does not exist
-        yet and what owes it an assertion when it does.
+        """AC 4's second half, asserted only where an assertion discriminates.
 
-        The grouping value is the sharp one: admitting a start's declared
+        ⚠ **A WALLET ASSERTION WOULD BE VACUOUS HERE AND IS DELIBERATELY
+        ABSENT.** A start never debits a wallet — the prepaid reservation that
+        would is §16's first obligation and is not built (see this module's
+        header) — so *the balance did not move* holds identically on the
+        SUCCESS path and would be satisfied by a refusal that never fired. The
+        first draft asserted it; it is the shape #410 paid for, where a case
+        was green against the exact mutation it existed for. What owes an
+        assertion here is the reservation, on the day it exists.
+
+        The grouping value is the one that bites: admitting a start's declared
         values is a WRITE against a key's cardinality cap and it runs ABOVE this
         refusal, so a refusal that returned instead of raising would burn
-        keyspace permanently for work that never began (#324).
+        keyspace permanently for work that never began (#324). The paired
+        control below is what makes it evidence — the same value IS recorded
+        when the start succeeds, so the absence is this refusal's doing rather
+        than a bag that never reached the registry.
         """
         DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
                                  slot="grouping_field_1", scope="task")
-        wallet = Wallet.objects.get(customer=self.customer)
-        before = wallet.balance_micros
 
         refused = self._start(task_type=SOLD_WHOLE,
                               **declared_grouping_values({A_GROUPING_KEY: "eu"}))
 
         assert refused.status_code == 422
         assert Task.objects.count() == 0
-        wallet.refresh_from_db()
-        assert wallet.balance_micros == before
         assert not GroupingFieldValue.objects.filter(value="eu").exists()
+
+    def test_a_start_that_succeeds_does_record_that_grouping_value(self):
+        """THE PAIRED CONTROL for the case above, and without it the assertion
+        that nothing was recorded is a claim about a code path nobody proved
+        runs at all."""
+        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
+                                 slot="grouping_field_1", scope="task")
+        self._price_is(THE_AGREED_PRICE)
+
+        allowed = self._start(task_type=SOLD_WHOLE,
+                              **declared_grouping_values({A_GROUPING_KEY: "eu"}))
+
+        assert allowed.status_code == 200
+        assert GroupingFieldValue.objects.filter(value="eu").exists()
 
     def test_a_price_that_resolves_is_not_refused(self):
         """THE CONTROL: a refusal that fired whatever the book held would
@@ -328,29 +374,67 @@ class TestAMeteringOnlyTenantsDeclarationIsRecordedAndInert(
         assert refused.status_code == 422
         assert refused.json()["code"] == AGREED_PRICE_UNRESOLVED
 
+    def test_the_contained_work_refusal_is_live_for_them_all_the_same(self):
+        """⚠ THE OTHER HALF OF THE POSTURE SPLIT, AND WITHOUT THIS CASE
+        POSTURE-CONDITIONING IT WOULD REDDEN NOTHING.
+
+        Only the UNRESOLVED refusal is inert for a tenant that does not bill.
+        A line written against contained work is a mistake in the tenant's own
+        book whatever they bill, and #139 §3.3's whole objection to ignoring it
+        is that the tenant is left with configuration that does nothing and
+        springs to life later. So this refusal is unconditional, and the class
+        above would go on passing if somebody made it conditional — which is
+        what makes this case the one that holds the split.
+        """
+        self._price_is(THE_AGREED_PRICE)
+        parent = self._start(task_type=SOLD_WHOLE).json()["task_id"]
+        a_price_for_whole_work(self.tenant, task_type=ALSO_SOLD_WHOLE,
+                               kind=TASK_TYPE_KIND_SUBTASK,
+                               amount_micros=THE_OTHER_AGREED_PRICE)
+
+        refused = self._start(parent_task_id=parent,
+                              task_type=ALSO_SOLD_WHOLE)
+
+        assert refused.status_code == 422
+        assert refused.json()["code"] == AGREED_PRICE_ON_CONTAINED_WORK
+
 
 @pytest.mark.django_db
 class TestOneAgreedPriceBuysAWholeUnitOfWork(AgreedPriceTestBase):
     """AC 5 — a price on contained work is refused at start, loudly."""
 
-    def _a_whole_unit(self, task_type=SOLD_PER_EVENT):
-        return self._start(task_type=task_type).json()["task_id"]
+    def _a_priced_parent(self):
+        self._price_is(THE_AGREED_PRICE)
+        return self._start(task_type=SOLD_WHOLE).json()["task_id"]
 
     def test_a_line_against_a_contained_kind_of_work_is_refused(self):
-        self._price_is(THE_AGREED_PRICE)
-        parent = self._start(task_type=SOLD_WHOLE).json()["task_id"]
+        """#139 §3.3 verbatim: *a fixed-price line on a SUBTASK TYPE is refused
+        at start, loudly* — not ignored.
 
-        refused = self._start(parent_task_id=parent, task_type=SOLD_WHOLE)
+        The line here is written against the declaration meant for contained
+        work, which is the deliberate misconfiguration the ruling names. Its
+        rejected alternative was *allowed on both, parent wins*: the tenant
+        would have configured something that silently does nothing, and
+        removing the parent's own price later would spring the step price to
+        life — a pricing change nobody made.
+        """
+        parent = self._a_priced_parent()
+        a_price_for_whole_work(self.tenant, task_type=ALSO_SOLD_WHOLE,
+                               kind=TASK_TYPE_KIND_SUBTASK,
+                               amount_micros=THE_OTHER_AGREED_PRICE)
+
+        refused = self._start(parent_task_id=parent,
+                              task_type=ALSO_SOLD_WHOLE)
 
         assert refused.status_code == 422
         assert refused.json()["code"] == AGREED_PRICE_ON_CONTAINED_WORK
+        assert Task.objects.filter(parent_id=parent).count() == 0
 
     def test_contained_work_under_a_priced_parent_pins_nothing(self):
         """THE CONTROL, and it is the case the refusal above must not eat. The
         parent is already the whole-work altitude and its rollup is
         unconditional, so contained work carries the regime and no price."""
-        self._price_is(THE_AGREED_PRICE)
-        parent = self._start(task_type=SOLD_WHOLE).json()["task_id"]
+        parent = self._a_priced_parent()
 
         contained = self._start(parent_task_id=parent,
                                 task_type=ALSO_SOLD_WHOLE)
@@ -360,6 +444,26 @@ class TestOneAgreedPriceBuysAWholeUnitOfWork(AgreedPriceTestBase):
         registered = Task.objects.get(id=contained.json()["task_id"])
         assert registered.pricing_mode == PRICING_MODE_FIXED
         assert registered.agreed_price_micros is None
+        assert registered.agreed_price_line_id is None
+
+    def test_a_priced_kind_of_work_can_run_as_a_step_of_itself(self):
+        """THE SECOND CONTROL, and it is why the line names an ALTITUDE rather
+        than a word.
+
+        A render job containing render steps is an ordinary shape. If a line
+        were keyed on the bare word, the refusal above would have to fire on
+        any line naming it — so this call would be refused and the tenant told
+        to *price the kind of work that contains this one*, which is exactly
+        what they had done. The priced parent's own line is at the whole-work
+        altitude and nothing prices the contained one, so the step is admitted
+        and carries no price.
+        """
+        parent = self._a_priced_parent()
+
+        contained = self._start(parent_task_id=parent, task_type=SOLD_WHOLE)
+
+        assert contained.status_code == 200
+        assert contained.json()["agreed_price_micros"] is None
 
 
 @pytest.mark.django_db

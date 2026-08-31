@@ -33,20 +33,30 @@ decided" the totality proof exists to prevent. So the rule lives here, returns
 `None` for the case that has no reason, and says so in the type.
 
 **It still has no production caller, and the price resolver is not it (#356).**
+⚠ **ONE HALF OF THE REASON BELOW HAS EXPIRED (#415).**
 The resolver reaches three of the four price statuses — `known` where a rung
 priced the event, `waived` where a margin was taken over a supplier cost UBB
 never learned, and `unknown` where no rung answered — and it cannot reach the
 fourth, because `not_applicable` is not a fact about resolution. Both of this
 rule's inputs are facts about the SUBJECT: the tenant's posture, and whether the
-unit of work is sold for one agreed price. The second has no column anywhere and
-the regime's whole vocabulary belongs to the slice that rebuilds the unit of
-work, so a caller here would have to invent one of its two arguments.
+unit of work is sold for one agreed price.
 
-That is why the rule sits written and waiting rather than wired: it is the same
-way `PRICING_MODE_EVENT_PRICED` is named out loud in
-`services/pricing_service.py` before the column it will be read from exists —
-the rule that is already decided is written down where its caller will find it,
-rather than re-derived from a decision document by whoever gets there first.
+**THE SECOND INPUT HAS A COLUMN NOW, AND SAYING SO IS THE POINT OF THIS
+PARAGRAPH.** It used to have none — that was the whole reason a caller here
+would have had to invent one of its two arguments — and #415 pinned it:
+`work.Task.pricing_mode` says how a unit of work was sold and
+`work.Task.agreed_price_micros` carries what for. So the argument this module
+was waiting on is now readable, and what is still missing is the WIRING: the
+pricing engine is handed a `PricingSubject` that does not carry the unit of work
+at all, so nothing on the recording path can answer either input without
+threading it through every construction of that value. That is the ticket which
+makes a fixed-price unit of work's postings `not_applicable` rather than zero,
+and it is where this rule acquires its first caller.
+
+So the rule still sits written and waiting rather than wired, on a reason that
+has become smaller and more specific rather than going away — which is worth
+more than deleting the paragraph, because the next reader's first question is
+why a decided rule is not called.
 """
 from core.vocabulary import (
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,

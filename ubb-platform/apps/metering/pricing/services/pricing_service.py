@@ -22,6 +22,8 @@ from core.vocabulary import (
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
+    TASK_TYPE_KIND_SUBTASK,
+    TASK_TYPE_KIND_TASK,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
@@ -617,7 +619,7 @@ class PricingService:
             currency, as_of)
 
     @staticmethod
-    def resolve_the_agreed_price(tenant, customer, task_type, as_of,
+    def resolve_the_agreed_price(tenant, customer, task_type, kind, as_of,
                                  books=None):
         """The line that says what one delivered unit of work of this kind
         SELLS FOR, or `None` (#415, #139 §2.4).
@@ -628,13 +630,21 @@ class PricingService:
         switches the event-level ladder OFF for that unit of work rather than
         competing with it inside one ranking.
 
+        `kind` is the ALTITUDE the start is at, and it is a lookup key rather
+        than a ranking one: a line names the declaration it prices, and a
+        declaration's identity is `(kind, key)`. Asking for the altitude is what
+        lets #139 §3.3's refusal fire on the row it actually names — a line
+        written against a declaration meant for contained work — instead of on
+        any line for that word, which would stop a priced kind of work ever
+        running as a step of itself. See `TaskPrice.kind`.
+
         **THE RANKING HAS ONE KEY WHERE THE RATE SIDE HAS THREE, AND THE TWO
         THAT ARE MISSING ARE MISSING FOR A REASON.** `ladder_rank` ranks a rate
         on how specifically it names the event, then on where it came from,
         then on when it opened. A work-level line pins exactly one thing — the
-        kind of work — so every candidate is equally specific and there is
-        nothing for the major key to say; #139 §2.4 states it directly as *the
-        work ladder is one step, not three.* What is left is SOURCE: the
+        declaration it prices — so every candidate is equally specific and
+        there is nothing for the major key to say; #139 §2.4 states it directly
+        as *the work ladder is one step, not three.* What is left is SOURCE: the
         customer's own book beats a book merely selected for them, which is
         what makes a negotiated price a negotiated price. `valid_from` stays as
         the last key for the same reason it is the rate side's last key — two
@@ -652,10 +662,9 @@ class PricingService:
 
         **`as_of` IS THE INSTANT THE UNIT OF WORK STARTS, AND IT IS THE ONLY
         TIME THIS QUESTION IS ASKED.** The answer is pinned onto the unit of
-        work in the same transaction, so a later reprice cannot move it — while
-        that unit's supplier costs go on resolving at each posting's own
-        timestamp. The asymmetry is principled: the price was promised, the
-        cost is observed.
+        work in the same transaction, so a later reprice cannot move it. Why
+        that differs from the cost side, which resolves at each posting's own
+        timestamp, is argued at `work.Task.agreed_price_micros`.
 
         Returns the LINE and not the amount, so the caller can record which
         line answered and out of which book — which is what #416's Charge is
@@ -670,8 +679,8 @@ class PricingService:
         position_of = {book.id: index for index, (_, book) in enumerate(books)}
         candidates = sorted(
             TaskPrice.objects.filter(
-                tenant=tenant, task_type=task_type, valid_from__lte=as_of,
-                pricing_book__in=list(source_of),
+                tenant=tenant, kind=kind, task_type=task_type,
+                valid_from__lte=as_of, pricing_book__in=list(source_of),
             ).filter(Q(valid_to__isnull=True) | Q(valid_to__gt=as_of)),
             key=lambda line: position_of[line.pricing_book_id])
         if not candidates:
@@ -1034,18 +1043,25 @@ class PricingService:
                     # rather than being looked up live against configuration
                     # that can have moved since.
                     #
-                    # ⚠ EVERY UNIT OF WORK IN THIS SYSTEM IS EVENT-PRICED
-                    # TODAY, AND THAT IS A STATEMENT WITH AN EXPIRY DATE. The
-                    # concept is declared and its value set is closed, and
-                    # there is no column anywhere to read it from: the slice
-                    # that rebuilds the unit of work owns that column and the
-                    # regime's whole vocabulary, and none of it is coined here.
-                    # This is the one value the system can produce, said out
-                    # loud rather than left out, so a receipt written today is
-                    # still explicit about the axis six years from now. When
-                    # the column lands this is the line that reads it — the
-                    # same shape `usage/measurements.py` uses for the posting
-                    # kind it is waiting on.
+                    # ⚠ THE COLUMN HAS LANDED AND THIS LINE STILL DOES NOT
+                    # READ IT (#415), WHICH IS A NARROWER CLAIM THAN THE ONE
+                    # THAT USED TO BE HERE. This comment said there was "no
+                    # column anywhere to read it from" and that this was the
+                    # line that would read it when one arrived; `Task
+                    # .pricing_mode` now exists and a unit of work really can
+                    # be sold at one agreed price.
+                    #
+                    # What is written here is still ACCURATE, because it
+                    # records what the engine DID rather than what the unit of
+                    # work is: metered revenue is not yet replaced for a
+                    # fixed-price unit of work, so every event this function
+                    # prices really was priced event by event. The ticket that
+                    # makes those postings `not_applicable` is the one that
+                    # changes both — and it needs the unit of work threaded
+                    # into `PricingSubject`, which does not carry it, so this
+                    # is a wiring change rather than a one-line read. Same
+                    # shape as `usage/measurements.py` and the posting kind it
+                    # is waiting on.
                     "pricing_mode": PRICING_MODE_EVENT_PRICED,
                     **price_detail}),
             provenance={"cost_rate_ids": cost_rate_ids,
@@ -1089,7 +1105,7 @@ class PricingService:
 #: (#415, #151 §17, #139 §3.3).
 #:
 #: Named here rather than spelled at the composition layer for the reason
-#: `RiskService.CONCURRENCY_LIMIT` and `reasons.TASK_LIMIT` are named where
+#: `risk_service.CONCURRENCY_LIMIT` and `reasons.TASK_LIMIT` are named where
 #: they are produced: a test comparing against its own copy of a string passes
 #: whatever this module decides to answer, while one importing the symbol goes
 #: red the day the answer moves. The words are the problem codes the tenant
@@ -1115,20 +1131,29 @@ class AgreedPriceRefused(ValueError):
 
 def determine_the_agreed_price(*, tenant, customer, task_type, contained,
                                as_of, tenant_bills_through_ubb):
-    """THE PRICE A UNIT OF WORK PINS AT START, or `None`, or a refusal (#415).
+    """THE LINE A UNIT OF WORK PINS AT START, or `None`, or a refusal (#415).
 
     Called only where the declared kind of work is sold at one agreed price;
     a per-event kind of work has no question to ask here.
 
+    ⚠ **IT ANSWERS WITH THE LINE AND NOT THE AMOUNT**, so the caller pins both
+    the number and WHICH line produced it. #139 §2.3 requires a charge to name
+    the matched line so the amount is *"reproducible from the record rather
+    than by re-resolving today's config"*, and re-resolving is not available
+    later on any terms: which books are even in play depends on the customer's
+    plan, which moves. The identity has to be captured at the one instant both
+    it and the number are known, which is this one.
+
     ⚠ **MARKUP NEVER APPLIES, AND THE PROOF IS THAT NOTHING BELOW CALLS IT**
-    (#139 §2.5). `MarkupService.apply` computes `provider_cost + markup(provider
-    cost)` and is a function of provider cost ALONE — so applying it to an
-    agreed price would yield *the price, plus a percentage of this unit's
-    COGS*, a number that moves with cost and destroys the premise the tenant
-    sold on. All four rungs are bypassed: the customer's own, their plan's, the
-    tenant default, and none. A customer on a plan with markup therefore runs
-    two regimes at once, deliberately — their loose metered events get the
-    plan's markup and their agreed-price work gets the flat number.
+    (#139 §2.5). The markup rung resolves to a `ResolvedMarkup`, whose
+    `applied_to(provider_cost_micros)` is a function of provider cost ALONE —
+    so applying it to an agreed price would yield *the price, plus a percentage
+    of this unit's COGS*, a number that moves with cost and destroys the
+    premise the tenant sold on. All four rungs are bypassed: the customer's
+    own, their plan's, the tenant default, and none. A customer on a plan with
+    markup therefore runs two regimes at once, deliberately — their loose
+    metered events get the plan's markup and their agreed-price work gets the
+    flat number.
 
     ⚠ **AND NO PRICING METHOD IS RECORDED, BECAUSE THE PRICE WAS AGREED AND NOT
     DERIVED** (spec §9). `Rate.pricing_method` is nullable with exactly two
@@ -1160,18 +1185,19 @@ def determine_the_agreed_price(*, tenant, customer, task_type, contained,
     bill, and #139 §3.3's whole objection to ignoring it is that the tenant
     ends up with configuration that does nothing.
 
-    Returns the amount in micros, or `None` where nothing is pinned.
+    Returns the `TaskPrice`, or `None` where nothing is pinned.
     """
+    kind = TASK_TYPE_KIND_SUBTASK if contained else TASK_TYPE_KIND_TASK
     line = PricingService.resolve_the_agreed_price(
-        tenant, customer, task_type, as_of)
+        tenant, customer, task_type, kind, as_of)
     if contained:
         if line is not None:
             raise AgreedPriceRefused(
                 AGREED_PRICE_ON_CONTAINED_WORK,
-                f"{task_type!r} has an agreed price in this customer's book "
-                f"and is being started as contained work; one agreed price "
-                f"buys a whole unit of work, so price the kind of work that "
-                f"contains this one instead")
+                f"this customer's book prices {task_type!r} as CONTAINED work, "
+                f"and one agreed price buys a whole unit of work; withdraw "
+                f"that line and price the kind of work that contains this one "
+                f"instead")
         return None
     if line is None:
         if tenant_bills_through_ubb:
@@ -1181,7 +1207,7 @@ def determine_the_agreed_price(*, tenant, customer, task_type, contained,
                 f"customer's book has no line for it, so there is no price to "
                 f"pin; add one before starting work of this kind")
         return None
-    return line.amount_micros
+    return line
 
 
 @dataclass(frozen=True)
