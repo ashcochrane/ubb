@@ -91,10 +91,11 @@ def sync_detailed(
 
      Close a unit of work, DECLARING HOW IT ENDED.
 
-    The outcome is required and the winning transition is the exactly-once
-    trigger a charge will later key on. Closing a parent withdraws its
-    still-running contained work in the same transaction — cleanup is one call
-    — and closing contained work closes it alone.
+    The outcome is required. Declaring delivery on work sold at one agreed
+    price creates its charge, exactly once — `charge_created` says whether this
+    call created one. No other ending creates one. Closing a parent withdraws
+    its still-running contained work in the same transaction — cleanup is one
+    call — and closing contained work closes it alone.
 
     ⚠ THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer
     charge; it never rejects, deletes or zeroes genuine operational usage,
@@ -143,10 +144,11 @@ def sync(
 
      Close a unit of work, DECLARING HOW IT ENDED.
 
-    The outcome is required and the winning transition is the exactly-once
-    trigger a charge will later key on. Closing a parent withdraws its
-    still-running contained work in the same transaction — cleanup is one call
-    — and closing contained work closes it alone.
+    The outcome is required. Declaring delivery on work sold at one agreed
+    price creates its charge, exactly once — `charge_created` says whether this
+    call created one. No other ending creates one. Closing a parent withdraws
+    its still-running contained work in the same transaction — cleanup is one
+    call — and closing contained work closes it alone.
 
     ⚠ THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer
     charge; it never rejects, deletes or zeroes genuine operational usage,
@@ -190,10 +192,11 @@ async def asyncio_detailed(
 
      Close a unit of work, DECLARING HOW IT ENDED.
 
-    The outcome is required and the winning transition is the exactly-once
-    trigger a charge will later key on. Closing a parent withdraws its
-    still-running contained work in the same transaction — cleanup is one call
-    — and closing contained work closes it alone.
+    The outcome is required. Declaring delivery on work sold at one agreed
+    price creates its charge, exactly once — `charge_created` says whether this
+    call created one. No other ending creates one. Closing a parent withdraws
+    its still-running contained work in the same transaction — cleanup is one
+    call — and closing contained work closes it alone.
 
     ⚠ THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer
     charge; it never rejects, deletes or zeroes genuine operational usage,
@@ -242,10 +245,11 @@ async def asyncio(
 
      Close a unit of work, DECLARING HOW IT ENDED.
 
-    The outcome is required and the winning transition is the exactly-once
-    trigger a charge will later key on. Closing a parent withdraws its
-    still-running contained work in the same transaction — cleanup is one call
-    — and closing contained work closes it alone.
+    The outcome is required. Declaring delivery on work sold at one agreed
+    price creates its charge, exactly once — `charge_created` says whether this
+    call created one. No other ending creates one. Closing a parent withdraws
+    its still-running contained work in the same transaction — cleanup is one
+    call — and closing contained work closes it alone.
 
     ⚠ THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer
     charge; it never rejects, deletes or zeroes genuine operational usage,

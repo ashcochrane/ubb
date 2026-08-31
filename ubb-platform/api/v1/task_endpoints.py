@@ -71,6 +71,9 @@ from api.v1.schemas import (
     start_task_out, task_out,
 )
 from apps.billing.gating.services.risk_service import RiskService
+from apps.metering.pricing.services.charge_service import (
+    charge_for_delivered_work, the_work_was_charged,
+)
 from apps.metering.pricing.services.pricing_service import (
     AgreedPriceRefused, determine_the_agreed_price,
 )
@@ -288,12 +291,21 @@ def start_task(request, payload: StartTaskRequest):
                 task_type=policy.task_type,
                 dimension_slots=policy.grouping_slots,
                 pricing_mode=policy.pricing_mode,
-                # BOTH HALVES OR NEITHER — the number and the line that
-                # produced it are one record, and the database says so.
+                # ALL THREE OR NONE — the number, the line that produced it and
+                # the version of the book that held that line are one record of
+                # one resolution, and the database says so.
+                #
+                # ⚠ THE VERSION IS READ HERE BECAUSE HERE IS THE ONLY PLACE IT
+                # IS TRUE (#416). A book's counter steps on every publish, so
+                # asking it at close time would record the version the book has
+                # reached since — a number with nothing to do with the
+                # resolution the Charge exists to explain.
                 agreed_price_micros=(agreed_price.amount_micros
                                      if agreed_price else None),
                 agreed_price_line_id=(agreed_price.id
                                       if agreed_price else None),
+                agreed_price_book_version=(agreed_price.pricing_book.version
+                                           if agreed_price else None),
             )
         except ContainmentRegimeRefused as refused:
             # THE TWO-ROW INVARIANT, RENDERED. The rule is the product's and is
@@ -396,10 +408,11 @@ def list_subtasks(request, task_id: UUID, cursor: str = None, limit: int = 50):
 def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     """Close a unit of work, DECLARING HOW IT ENDED.
 
-    The outcome is required and the winning transition is the exactly-once
-    trigger a charge will later key on. Closing a parent withdraws its
-    still-running contained work in the same transaction — cleanup is one call
-    — and closing contained work closes it alone.
+    The outcome is required. Declaring delivery on work sold at one agreed
+    price creates its charge, exactly once — `charge_created` says whether this
+    call created one. No other ending creates one. Closing a parent withdraws
+    its still-running contained work in the same transaction — cleanup is one
+    call — and closing contained work closes it alone.
 
     ⚠ THIS DOES NOT TOUCH THE USAGE RAIL. A terminal state prevents a customer
     charge; it never rejects, deletes or zeroes genuine operational usage,
@@ -420,6 +433,26 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
     with transaction.atomic():
         closed, transitioned = TaskService.close_task(task.id, declaration)
+        # THE CHARGE RIDES THE WINNING TRANSITION, IN ITS OWN TRANSACTION
+        # (#416, spec §11). `transitioned` is true for exactly the call that
+        # performed the flip out of `active`, so the losing lane of a race
+        # reaches this line with `False` and writes nothing — which is what
+        # makes "exactly one Charge, ever" a property of the code path and not
+        # only of the database rule underneath it.
+        #
+        # ⚠ IT IS INSIDE THE SAME `atomic` AS THE TRANSITION AND NOT AFTER IT.
+        # A crash between the two would leave delivered work permanently
+        # terminal and permanently uncharged, with nothing left to replay from
+        # — the state that earns the charge is the same state that makes a
+        # retry a no-op.
+        #
+        # ⚠ AND THE RULE IS THE PRODUCT'S. Which closes earn a charge and what
+        # it carries are facts about the concept and are decided in
+        # `pricing.charge_service`; what this layer adds is the ORDER — the
+        # kernel owns the close and may not import a product, so the two are put
+        # together here, exactly as the start gate above resolves a price out of
+        # that same app and hands it to the kernel's own writer.
+        charge = charge_for_delivered_work(closed) if transitioned else None
 
     # A CLOSE THAT DID NOT WIN THE TRANSITION IS ONE OF EXACTLY TWO THINGS, and
     # telling them apart is the point of this endpoint (spec §5). The unit was
@@ -452,10 +485,21 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
         "status": closed.status,
         "outcome": payload.outcome,
         "replayed": replayed,
-        # HONESTLY FALSE ON EVERY PATH, because the Charge does not exist yet.
-        # This is the field's true value under the rules in force on this
-        # commit rather than a placeholder to be filled in later.
-        "charge_created": False,
+        # WHETHER THIS CLOSE BILLED THE CUSTOMER (#416).
+        #
+        # True on the transition that created a Charge; false for every other
+        # ending, for work not sold at one agreed price, and on the 409 above.
+        #
+        # ⚠ ON A REPLAY IT IS THE ORIGINAL'S ANSWER RATHER THAN `false`, and
+        # that is the same rule the rest of this contract already follows: a
+        # replayed start hands back the ORIGINAL piece of work, not a second
+        # one. A caller retrying after a lost response is asking *did my close
+        # bill this?*, and answering `false` for work that HAD been charged
+        # would be a false statement about money — the same class of silent
+        # misinformation the 409 exists to remove, pointing the other way.
+        # `replayed: true` beside it is what says nothing new happened.
+        "charge_created": (charge is not None if transitioned
+                           else the_work_was_charged(closed)),
         "total_billed_cost_micros": closed.total_billed_cost_micros,
         "total_provider_cost_micros": closed.total_provider_cost_micros,
         "unresolved_event_count": closed.unresolved_event_count,

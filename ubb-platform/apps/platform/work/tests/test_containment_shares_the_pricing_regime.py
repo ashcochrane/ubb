@@ -349,13 +349,21 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
     too and carries no price of its own. What makes a whole one carry a price is
     the start gate refusing to register it otherwise.
 
-    ⚠ **EVERY CASE HERE SUPPLIES A LINE ID, AND THAT IS NOT DECORATION.** Three
-    checks now guard these two columns and a row may violate more than one at a
-    time; the pair rule fires first and its message names ITSELF, so a case that
-    left the line out would assert a refusal it did not drive. Each case below
-    breaks exactly one rule and names the rule it broke — which is what stops
-    *something refused this* being the whole of the evidence on a table that has
-    acquired several mechanisms (#352).
+    ⚠ **EVERY CASE HERE SUPPLIES A LINE ID AND A BOOK VERSION, AND THAT IS NOT
+    DECORATION.** Three checks guard these columns and a row may violate more
+    than one at a time; the provenance rule fires first and its message names
+    ITSELF, so a case leaving either of the other two columns out would assert a
+    refusal it did not drive. Each case below breaks exactly one rule and names
+    the rule it broke — which is what stops *something refused this* being the
+    whole of the evidence on a table that has acquired several mechanisms
+    (#352).
+
+    ⚠ **AND THE COLUMN SET GREW UNDER THIS CLASS ONCE ALREADY.** #415 added the
+    line beside the amount and four cases here went red naming a rule they had
+    not driven; #416 added the book version and the same four went red again, in
+    the same way, for the same reason. The lesson is not about either column —
+    it is that a group rule on a table makes every refusal assertion on that
+    table suspect the moment the group grows.
     """
 
     #: A line id that resolves to nothing, because what is under test here is
@@ -363,12 +371,17 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
     #: dereferences it — ADR-001 forbids the kernel a foreign key into a
     #: product's table, and `Task.agreed_price_line_id` says so at the column.
     A_LINE = "11111111-1111-4111-8111-111111111111"
+    #: The version of the book that answered, which travels with the pair above
+    #: (#416). Any version at all: what these cases are about is the shape of
+    #: the row, and this column's own rule is the one they must NOT trip.
+    A_BOOK_VERSION = 1
 
     def test_per_event_work_cannot_carry_an_agreed_price(self):
         with self.assertRaises(IntegrityError) as refused:
             self._whole_unit(PRICING_MODE_EVENT_PRICED,
                              agreed_price_micros=5_000_000,
-                             agreed_price_line_id=self.A_LINE)
+                             agreed_price_line_id=self.A_LINE,
+                             agreed_price_book_version=self.A_BOOK_VERSION)
         self.assertIn("ck_task_agreed_price_only_on_a_whole_fixed_unit",
                       str(refused.exception))
 
@@ -380,7 +393,8 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
                 balance_snapshot_micros=0, parent=parent,
                 pricing_mode=PRICING_MODE_FIXED,
                 agreed_price_micros=5_000_000,
-                agreed_price_line_id=self.A_LINE)
+                agreed_price_line_id=self.A_LINE,
+                agreed_price_book_version=self.A_BOOK_VERSION)
         self.assertIn("ck_task_agreed_price_only_on_a_whole_fixed_unit",
                       str(refused.exception))
 
@@ -389,25 +403,46 @@ class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):
         nothing — and a number below it is a sign error rather than a deal."""
         with self.assertRaises(IntegrityError) as refused:
             self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=-1,
-                             agreed_price_line_id=self.A_LINE)
+                             agreed_price_line_id=self.A_LINE,
+                             agreed_price_book_version=self.A_BOOK_VERSION)
         self.assertIn("ck_task_agreed_price_not_negative",
                       str(refused.exception))
 
     def test_zero_is_admitted(self):
-        priced = self._whole_unit(PRICING_MODE_FIXED, agreed_price_micros=0,
-                                  agreed_price_line_id=self.A_LINE)
+        priced = self._whole_unit(
+            PRICING_MODE_FIXED, agreed_price_micros=0,
+            agreed_price_line_id=self.A_LINE,
+            agreed_price_book_version=self.A_BOOK_VERSION)
         self.assertEqual(Task.objects.get(id=priced.id).agreed_price_micros, 0)
 
     def test_a_number_without_its_line_is_refused(self):
         with self.assertRaises(IntegrityError) as refused:
             self._whole_unit(PRICING_MODE_FIXED,
-                             agreed_price_micros=5_000_000)
-        self.assertIn("ck_task_agreed_price_and_its_line_move_together",
+                             agreed_price_micros=5_000_000,
+                             agreed_price_book_version=self.A_BOOK_VERSION)
+        self.assertIn("ck_task_agreed_price_and_its_provenance_move_together",
                       str(refused.exception))
 
     def test_a_line_without_its_number_is_refused(self):
         with self.assertRaises(IntegrityError) as refused:
             self._whole_unit(PRICING_MODE_FIXED,
+                             agreed_price_line_id=self.A_LINE,
+                             agreed_price_book_version=self.A_BOOK_VERSION)
+        self.assertIn("ck_task_agreed_price_and_its_provenance_move_together",
+                      str(refused.exception))
+
+    def test_a_resolution_without_the_version_that_answered_is_refused(self):
+        """THE THIRD MEMBER, and it is the one #416 added (#139 §2.3).
+
+        An amount and a line with no book version records a resolution that
+        cannot say which published state of the customer's book produced it —
+        and a book's version counter moves, so it can never be recovered
+        afterwards. The rule is one rule over three columns rather than a pair
+        plus a straggler, because they are one record of one resolution.
+        """
+        with self.assertRaises(IntegrityError) as refused:
+            self._whole_unit(PRICING_MODE_FIXED,
+                             agreed_price_micros=5_000_000,
                              agreed_price_line_id=self.A_LINE)
-        self.assertIn("ck_task_agreed_price_and_its_line_move_together",
+        self.assertIn("ck_task_agreed_price_and_its_provenance_move_together",
                       str(refused.exception))

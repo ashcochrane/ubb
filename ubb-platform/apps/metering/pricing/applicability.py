@@ -3,9 +3,9 @@
 `pricing_status = not_applicable` says a posting genuinely has no customer price
 and that this is correct rather than a gap. It does not say WHICH of two
 mutually exclusive causes produced it, and the two send a reader to different
-places: one to a Charge that exists at the Task, the other to no Charge at all.
-`not_applicable_reason` carries that, and this module is the rule that decides
-it.
+places: one to the customer charge that exists at the Task, the other to no
+customer charge at all. `not_applicable_reason` carries that, and this module is
+the rule that decides it.
 
 **A reason and not a fifth status** (#151 §8.3). The status is already right;
 what was missing is the cause. This extends the four the way `not_applicable`
@@ -15,12 +15,25 @@ one.
 **POSTURE WINS THE TIE-BREAK, AND THE ARGUMENT IS WORTH STATING BECAUSE A
 CALLER WILL BE TEMPTED TO PREFER THE MORE SPECIFIC ONE.** Both facts can be true
 at once: a metering-only tenant can run a Task sold for one agreed price. The
-answer there is `tenant_not_billing`, not `fixed_task_pricing`. For a
-metering-only tenant **no Charge is created anywhere**, so naming the job's
-pricing regime would imply revenue sits on a Charge that does not exist —
-sending a reader to look for a number nobody wrote. `fixed_task_pricing` is only
-ever true of a tenant that does bill through UBB, where the Charge really is at
-the Task and really can be looked up.
+answer there is `tenant_not_billing`, not `fixed_task_pricing`. `not_applicable_
+reason` answers *why this posting produces no CUSTOMER REVENUE*, and for a
+metering-only tenant nothing on any work produces any, for a reason that has
+nothing to do with how the work was sold: UBB does not bill their customers at
+all. `fixed_task_pricing` says *the customer revenue for this event sits on the
+Task instead* — which for that tenant names revenue nobody will ever collect and
+sends a reader to look for a bill that will never be raised.
+
+⚠ **THE ARGUMENT THIS PARAGRAPH USED TO MAKE EXPIRED IN #416, AND THE RULING DID
+NOT.** It read *"for a metering-only tenant no Charge is created anywhere, so
+naming the job's pricing regime would imply revenue sits on a Charge that does
+not exist"* — true when slice 4 wrote it and false one commit later. A Charge IS
+created for a metering-only tenant's delivered fixed-price work, deliberately
+and as that ticket's hardest-to-see acceptance criterion: for that posture it is
+a recorded revenue and margin fact rather than a collection. So the reader CAN
+now go and look at a row, and what survives is the narrower argument above —
+`fixed_task_pricing` is about customer revenue, and there is none. **The ticket
+that wires this rule up should apply it against that fact rather than against
+the sentence it replaced**, because the tie-break is closer than it was.
 
 **Why this is a function and not a registry `value_semantics` block.** The
 registry can carry a decision rule as data, and the compiler proves such a rule

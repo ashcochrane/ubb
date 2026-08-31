@@ -288,7 +288,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # the run to move by two, for #412's reason. The retired-term totals
         # were unchanged in both directions, 26 terms in 87 sites, and the
         # ledger did not move either -- this ticket pays no entry.
-        "historical-migrations": (UNTIL_SLICE_8, 243, 19),
+        # 243 -> 245 in #416: TWO migrations, one per app -- the Charge a
+        # delivered piece of work sold at one agreed price earns, with the rule
+        # freezing every economic column of it, and the book version a unit of
+        # work pins beside the price and the line that produced it. Neither
+        # names a retired term; third entry in the run to move by two, for
+        # #412's reason. The retired-term totals were unchanged in both
+        # directions, 26 terms in 87 sites, and the ledger did not move either.
+        "historical-migrations": (UNTIL_SLICE_8, 245, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

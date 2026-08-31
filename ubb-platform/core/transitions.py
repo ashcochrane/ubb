@@ -30,6 +30,21 @@ over its own table. That the first three declarers were all in ``apps/metering``
 was an accident of which slices came first, not a property of this vocabulary:
 the kernel holds economic facts too.
 
+**And #416 is the first WHOLE-RECORD declarer**, which is a difference of scale
+rather than of kind and is worth saying because of what it does to the
+assertions. ``pricing.Charge`` — what one delivered piece of work sold at one
+agreed price is owed for — declares NINETEEN columns ``FROZEN``, held by a
+fourth trigger in
+``apps/metering/pricing/migrations/0031_a_delivered_piece_of_work_is_charged_once.py``.
+Every earlier declarer holds one column or a pair, so *something refused this*
+was nearly unambiguous; one rule answering for nineteen columns with one class
+word is not, so that rule names the COLUMNS THAT MOVED and every assertion about
+it names one too. ⚠ Its two pointers are declared as their COLUMNS (``task_id``,
+``compensates_id``) rather than as their fields, because the walk below searches
+a trigger body and a trigger says ``NEW.task_id`` — declaring the field name
+would name something no rule can spell, and would then be satisfiable only by a
+comment, which is the vacuous shape #325 paid for.
+
 **⚠ And the walk that reads these declarations cannot tell you a rule holds.**
 It asks whether each declared column is *named* by a rule on its table — a
 word-boundary search over the trigger bodies — which is exactly what lets it

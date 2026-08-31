@@ -1115,7 +1115,7 @@ TaskStatus = Annotated[
 #: enters follows from it — `apps.platform.work.services.STATUS_FOR_OUTCOME` is
 #: the map, and it is the backend consumer that lets this field be advertised
 #: at all. Three values, and a close must pick one: the winning transition is
-#: what a charge will later key on, so there is no default here and no default
+#: what the charge keys on (#416), so there is no default here and no default
 #: below it.
 #:
 #: NO HAND-WRITTEN `description`, on the same footing as `TaskStatus` above:
@@ -1178,11 +1178,14 @@ class CloseTaskResponse(Schema):
     #: nothing. A retry after a lost response is not an error and must not read
     #: as a second close — the symmetry with the start gate is deliberate.
     replayed: bool
-    #: WHETHER A CUSTOMER CHARGE WAS CREATED BY THIS CALL. Honestly `false` on
-    #: every path today, because the Charge does not exist yet — that is this
-    #: field's true value under the rules in force, not a placeholder. It is
-    #: here now because the close is breaking anyway and a client that must
-    #: learn *did this bill?* should not have to learn it twice.
+    #: WHETHER A CUSTOMER CHARGE WAS CREATED BY THIS CALL (#416). True on the
+    #: transition that created one, and false for every other ending, for work
+    #: not sold at one agreed price, and on the 409.
+    #:
+    #: ⚠ ON A REPLAY IT IS THE ORIGINAL'S ANSWER rather than `false`, which is
+    #: the rule the rest of this contract already follows — a replayed start
+    #: hands back the ORIGINAL unit of work, not a second one. `replayed` beside
+    #: it is what says nothing new happened.
     charge_created: bool
     total_billed_cost_micros: int
     total_provider_cost_micros: int

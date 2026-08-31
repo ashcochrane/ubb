@@ -192,9 +192,16 @@ class TestTheCloseDeclaresAnOutcome(LifecycleEndpointTestBase):
         assert self._close(self._unit(),
                            outcome=NOT_A_DECLARED_REASON).status_code == 422
 
-    def test_the_response_says_a_charge_was_not_created(self):
-        """Honestly false on every path — the Charge does not exist yet, and
-        this is the field's true value rather than a placeholder."""
+    def test_work_not_sold_at_one_agreed_price_reports_no_charge(self):
+        """The field was honestly `false` on every path until #416 built the
+        Charge; it is `false` here for a narrower and more useful reason.
+
+        Every unit of work in this module is sold PER EVENT — nothing here
+        configures a work-level price line — so a delivered close earns no
+        charge, and the field says so. What #416 added is the other half, which
+        lives with its own fixtures in
+        `test_a_delivered_unit_of_work_is_charged_once.py`.
+        """
         body = self._close(self._unit(),
                            outcome=TASK_OUTCOME_DELIVERED).json()
         assert body["charge_created"] is False
