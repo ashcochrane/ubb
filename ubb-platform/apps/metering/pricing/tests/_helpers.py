@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.metering.pricing.models import (
     CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook, Rate,
-    TenantDefaultMarkup)
+    TaskPrice, TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import (
@@ -195,6 +195,37 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     return Rate.objects.create(
         tenant=tenant, pricing_book=book,
         book_version_from=book.version, **fields)
+
+
+def a_price_for_whole_work(tenant, *, task_type, amount_micros,
+                           customer=None, plan_key=None, **fields):
+    """A WORK-LEVEL LINE — what one whole delivered unit of work of this kind
+    sells for (#415), in whichever of the three books a caller means.
+
+    The rate side's three fixtures above are one here, because the axis a
+    caller varies is the same in all three cases and only the BOOK differs:
+    `customer=` puts the line in that customer's own override book, `plan_key=`
+    puts it in the book their plan prices from, and neither puts it in the
+    tenant's default. Three near-identical functions would have said the same
+    thing three times over a table with four columns.
+
+    ⚠ **THE PLAN'S BOOK COMES FROM THE PRODUCTION DOORS**, exactly as
+    `rate_in_a_plans_book` takes it: `a_plan` creates the book and the plan and
+    `PlanService.assign` puts the customer on it, so what a test exercises is
+    the route a tenant actually has rather than a second construction of it.
+    """
+    if plan_key is not None:
+        plan = a_plan(tenant=tenant, key=plan_key)
+        PlanService.assign(tenant, customer, plan)
+        book = plan.pricing_book
+    elif customer is not None:
+        book = BookService.the_customers_own_book(tenant, customer)
+    else:
+        book, _ = PricingBook.objects.get_or_create(
+            tenant=tenant, is_default=True, defaults={"key": "default"})
+    return TaskPrice.objects.create(
+        tenant=tenant, pricing_book=book, task_type=task_type,
+        amount_micros=amount_micros, **fields)
 
 
 def cost_book(tenant, *, key="default", provider="", currency="usd"):

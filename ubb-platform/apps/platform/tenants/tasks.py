@@ -77,6 +77,19 @@ CONFIG_MODEL_LABELS = frozenset({
     "pricing.PricingBook",
     "pricing.CostBook",
     "pricing.PricingBookPublish",
+    # THE OTHER KIND OF LINE A PRICING BOOK HOLDS (#415): what one whole
+    # delivered unit of work of a named kind sells for. It is configuration on
+    # the identical reading as the rate above it — a tenant's declared price,
+    # written into the book beside their per-event rules — and leaving it out
+    # would wipe a tenant's agreed prices in a reset that says it is KEEPING
+    # their prices, which is #357's defect exactly.
+    #
+    # ⚠ IT ALSO HOLDS ITS BOOK WITH `PROTECT`, so the label is load-bearing in
+    # the second direction the rate above paid for: a reset told to keep the
+    # book while wiping the lines inside it is fine, but one keeping the LINES
+    # and wiping the book is refused by the database and the WHOLE reset fails.
+    # Both are in this set, so a keep-config reset keeps the pair.
+    "pricing.TaskPrice",
     # THE EVENT TYPE CATALOGUE — configuration, and the four arrive together
     # rather than one at a time (#326). A rate is already kept here, and a rate
     # names the declared quantity it prices, so keeping the rate while wiping
@@ -201,8 +214,18 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    covered — `plans/tests/test_a_plan_names_the_book_it_prices_from.py`
     #    proves the book cannot be deleted while a plan names it — and what is
     #    uncovered is only which statement gets there first.
+    #
+    #    ⚠ AND THE WORK-LEVEL PRICE LINE BEFORE ITS BOOK, FOR THE RATE'S OWN
+    #    REASON (#415): `TaskPrice.pricing_book` is `PROTECT` too, so a sweep
+    #    reaching the book first is refused and the whole reset fails. This is
+    #    the same INSURANCE the plan above is — the model is defined ahead of
+    #    the Pricing Book in `pricing/models.py`, so the generic sweep's
+    #    definition order happens to reach it first today, and dropping this
+    #    entry would leave the module green. An ordering that happens to hold
+    #    is an ordering nobody chose, and moving a class in a models file is
+    #    not a change anyone would expect to break a tenant wipe.
     if not keep_config:
-        for label in ("pricing.Rate", "plans.Plan"):
+        for label in ("pricing.TaskPrice", "pricing.Rate", "plans.Plan"):
             model = django_apps.get_model(*label.split("."))
             manager = _wipe_manager(model)
             _wipe(label, lambda m=manager: m.filter(tenant=tenant).delete())

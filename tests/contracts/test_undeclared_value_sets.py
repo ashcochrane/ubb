@@ -136,7 +136,15 @@ VALUE_SETS = {
     # it is worth one line that this one is also the module's first column
     # declared into a transition class, so what the reviewer is being shown is a
     # value set whose members can never change ON A ROW either.
-    "ubb-platform/apps/platform/work/models.py": 4,
+    # 4 -> 5 in #415: the SAME value set a second time, on the unit of work
+    # itself. It is one concept at two scopes and the registry says the
+    # repetition is deliberate — the declaration says how a KIND of work is
+    # sold, the unit of work says how IT was sold, and the second is a snapshot
+    # of the first taken at start so that a configuration change can never reach
+    # work already running. This inventory counts shapes rather than concepts,
+    # so a set reused deliberately still comes past a reviewer, which is exactly
+    # what it is for.
+    "ubb-platform/apps/platform/work/models.py": 5,
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,

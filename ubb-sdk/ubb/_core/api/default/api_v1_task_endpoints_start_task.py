@@ -115,6 +115,17 @@ def sync_detailed(
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
 
+    Where the declared kind of work is sold at one agreed price, that price is
+    resolved from this customer's pricing book and pinned to the unit of work
+    now; a later change to the book does not move it, and no markup is applied
+    to it. `422 fixed_task_price_unresolved` answers a kind of work sold that
+    way with no line in this customer's book. `422
+    fixed_task_price_on_contained_work` answers a start naming
+    `parent_task_id` whose kind of work has such a line — one agreed price buys
+    a whole unit of work, so price the kind of work that contains this one. `422
+    task_pricing_mode_conflicts_with_parent` answers contained work whose kind
+    of work is sold differently from the unit of work containing it.
+
     Args:
         body (StartTaskRequest): The declaration that REGISTERS a unit of work (#410).
 
@@ -173,6 +184,17 @@ def sync(
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
 
+    Where the declared kind of work is sold at one agreed price, that price is
+    resolved from this customer's pricing book and pinned to the unit of work
+    now; a later change to the book does not move it, and no markup is applied
+    to it. `422 fixed_task_price_unresolved` answers a kind of work sold that
+    way with no line in this customer's book. `422
+    fixed_task_price_on_contained_work` answers a start naming
+    `parent_task_id` whose kind of work has such a line — one agreed price buys
+    a whole unit of work, so price the kind of work that contains this one. `422
+    task_pricing_mode_conflicts_with_parent` answers contained work whose kind
+    of work is sold differently from the unit of work containing it.
+
     Args:
         body (StartTaskRequest): The declaration that REGISTERS a unit of work (#410).
 
@@ -225,6 +247,17 @@ async def asyncio_detailed(
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
+
+    Where the declared kind of work is sold at one agreed price, that price is
+    resolved from this customer's pricing book and pinned to the unit of work
+    now; a later change to the book does not move it, and no markup is applied
+    to it. `422 fixed_task_price_unresolved` answers a kind of work sold that
+    way with no line in this customer's book. `422
+    fixed_task_price_on_contained_work` answers a start naming
+    `parent_task_id` whose kind of work has such a line — one agreed price buys
+    a whole unit of work, so price the kind of work that contains this one. `422
+    task_pricing_mode_conflicts_with_parent` answers contained work whose kind
+    of work is sold differently from the unit of work containing it.
 
     Args:
         body (StartTaskRequest): The declaration that REGISTERS a unit of work (#410).
@@ -283,6 +316,17 @@ async def asyncio(
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
+
+    Where the declared kind of work is sold at one agreed price, that price is
+    resolved from this customer's pricing book and pinned to the unit of work
+    now; a later change to the book does not move it, and no markup is applied
+    to it. `422 fixed_task_price_unresolved` answers a kind of work sold that
+    way with no line in this customer's book. `422
+    fixed_task_price_on_contained_work` answers a start naming
+    `parent_task_id` whose kind of work has such a line — one agreed price buys
+    a whole unit of work, so price the kind of work that contains this one. `422
+    task_pricing_mode_conflicts_with_parent` answers contained work whose kind
+    of work is sold differently from the unit of work containing it.
 
     Args:
         body (StartTaskRequest): The declaration that REGISTERS a unit of work (#410).

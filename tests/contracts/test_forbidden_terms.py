@@ -281,7 +281,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # names no retired term, and the retired-term totals were again
         # unchanged in both directions, 26 terms in 87 sites, while the ledger
         # fell 181 -> 179 on that concept's two paid entries.
-        "historical-migrations": (UNTIL_SLICE_8, 241, 19),
+        # 241 -> 243 in #415: TWO migrations, one per app -- the work-level
+        # price line a Pricing Book now holds, and the two columns a unit of
+        # work pins about how it is sold plus the rule that keeps contained
+        # work sold the same way. Neither names a retired term; second entry in
+        # the run to move by two, for #412's reason. The retired-term totals
+        # were unchanged in both directions, 26 terms in 87 sites, and the
+        # ledger did not move either -- this ticket pays no entry.
+        "historical-migrations": (UNTIL_SLICE_8, 243, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

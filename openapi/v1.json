@@ -6504,8 +6504,19 @@
         "type": "object"
       },
       "StartTaskResponse": {
-        "description": "What a start registered, or what its key already claimed.\n\n\u26a0 THE REGISTRATION, NOT THE READ. A start answers *which unit of work is\nthis, and did I just create it* \u2014 the identity, the altitude, and the five\nfacts the unit pinned. What it deliberately does NOT carry is the cost\nrollups: they are a read's answer, they are all zero on the call that\ncreates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a\ncaller replaying an attempt that has since run up cost.\n\n\u26a0 AND THE DECLARED GROUPING VALUES ARE NOT ECHOED, for two reasons that\npoint the same way. The caller just sent them, and a start that pinned\nsomething else would say so by refusing rather than by handing back a\ncorrected bag. The second is a constraint rather than a preference and is\nrecorded because it decided a published surface: that bag's wire key is\nretired vocabulary under a spread ceiling another slice owns, and every\nschema publishing it mints one more generated SDK module that counts\nagainst the ceiling \u2014 so a third copy of the property would fail the sweep\nfor a debt this commit does not own. #358 is the precedent, in the same\ndirection.",
+        "description": "What a start registered, or what its key already claimed.\n\n\u26a0 THE REGISTRATION, NOT THE READ. A start answers *which unit of work is\nthis, and did I just create it* \u2014 the identity, the altitude, and the facts\nthe unit pinned. What it deliberately does NOT carry is the cost\nrollups: they are a read's answer, they are all zero on the call that\ncreates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a\ncaller replaying an attempt that has since run up cost.\n\n\u26a0 AND THE DECLARED GROUPING VALUES ARE NOT ECHOED, for two reasons that\npoint the same way. The caller just sent them, and a start that pinned\nsomething else would say so by refusing rather than by handing back a\ncorrected bag. The second is a constraint rather than a preference and is\nrecorded because it decided a published surface: that bag's wire key is\nretired vocabulary under a spread ceiling another slice owns, and every\nschema publishing it mints one more generated SDK module that counts\nagainst the ceiling \u2014 so a third copy of the property would fail the sweep\nfor a debt this commit does not own. #358 is the precedent, in the same\ndirection.",
         "properties": {
+          "agreed_price_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Price Micros"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -6819,6 +6830,17 @@
       },
       "TaskDetailOut": {
         "properties": {
+          "agreed_price_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Price Micros"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -6960,6 +6982,17 @@
       },
       "TaskOut": {
         "properties": {
+          "agreed_price_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Price Micros"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -16490,7 +16523,7 @@
         "summary": "List Tasks"
       },
       "post": {
-        "description": "Register a unit of work, and hand back the same one on a retry.\n\n`idempotency_key` is REQUIRED and is unique per customer. Send the same key\nagain and you get the unit of work you already started, with\n`replayed: true` and nothing created a second time \u2014 no second ceiling, no\nsecond set of totals. Send the same key describing a DIFFERENT unit and the\ncall answers `409 idempotency_key_conflict`, naming the request field that\ndiffers. A unit of work is pinned by its customer, its parent, its declared\nkind of work, the ceiling it resolved and the grouping values declared on\nit. `external_task_id` and `metadata` are not pinned \u2014 a replay carrying\ndifferent values is still a replay, and the original's values stand.\n\nNaming `parent_task_id` registers contained work under a running unit.\nThere is one start shape, not two.\n\n`409 task_start_refused` names, in `reason`, why the customer may not begin\nnew work \u2014 a wallet below its floor, a stop in force, the concurrency cap,\nor a parent that is not a running top-level unit. `422 validation_error`\nanswers a request that is wrong in itself: an undeclared or retired kind of\nwork, a missing required grouping field, an undeclared grouping key, or a\nceiling above the one the kind of work carries.",
+        "description": "Register a unit of work, and hand back the same one on a retry.\n\n`idempotency_key` is REQUIRED and is unique per customer. Send the same key\nagain and you get the unit of work you already started, with\n`replayed: true` and nothing created a second time \u2014 no second ceiling, no\nsecond set of totals. Send the same key describing a DIFFERENT unit and the\ncall answers `409 idempotency_key_conflict`, naming the request field that\ndiffers. A unit of work is pinned by its customer, its parent, its declared\nkind of work, the ceiling it resolved and the grouping values declared on\nit. `external_task_id` and `metadata` are not pinned \u2014 a replay carrying\ndifferent values is still a replay, and the original's values stand.\n\nNaming `parent_task_id` registers contained work under a running unit.\nThere is one start shape, not two.\n\n`409 task_start_refused` names, in `reason`, why the customer may not begin\nnew work \u2014 a wallet below its floor, a stop in force, the concurrency cap,\nor a parent that is not a running top-level unit. `422 validation_error`\nanswers a request that is wrong in itself: an undeclared or retired kind of\nwork, a missing required grouping field, an undeclared grouping key, or a\nceiling above the one the kind of work carries.\n\nWhere the declared kind of work is sold at one agreed price, that price is\nresolved from this customer's pricing book and pinned to the unit of work\nnow; a later change to the book does not move it, and no markup is applied\nto it. `422 fixed_task_price_unresolved` answers a kind of work sold that\nway with no line in this customer's book. `422\nfixed_task_price_on_contained_work` answers a start naming\n`parent_task_id` whose kind of work has such a line \u2014 one agreed price buys\na whole unit of work, so price the kind of work that contains this one. `422\ntask_pricing_mode_conflicts_with_parent` answers contained work whose kind\nof work is sold differently from the unit of work containing it.",
         "operationId": "api_v1_task_endpoints_start_task",
         "parameters": [],
         "requestBody": {

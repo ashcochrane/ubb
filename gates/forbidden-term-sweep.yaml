@@ -247,7 +247,17 @@ exclusions:
     # ledger fell 181 → 179 on the concept's two paid entries. That is the
     # ordinary shape of this run: the exclusion counts files, the ledger counts
     # debts, and the two move for unrelated reasons.
-    files: 241
+    # 241 → 243 in #415: TWO migrations, one per app — the work-level price line
+    # a Pricing Book now holds, and the two columns a unit of work pins about
+    # how it is sold plus the rule that keeps contained work sold the same way.
+    # ⚠ NEITHER NAMES A RETIRED TERM, and this is the second entry in the run
+    # to move by two, for #412's reason exactly: a migration belongs to its own
+    # app, so a ticket touching two models writes two files. The sweep's own
+    # retired-term totals were UNCHANGED across the same commit — 26 terms in
+    # 87 sites, in both directions — and this ticket pays no ledger entry at
+    # all, so the two numbers that usually move in opposite directions here did
+    # not move at all.
+    files: 243
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

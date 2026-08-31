@@ -655,6 +655,172 @@ class Rate(BaseModel):
         return (units * self.rate_per_unit_micros + self.unit_quantity // 2) // self.unit_quantity + self.fixed_micros
 
 
+class TaskPrice(BaseModel):
+    """WHAT A WHOLE UNIT OF WORK OF ONE DECLARED KIND IS SOLD FOR (#415, #139
+    §2.4) — the second kind of line a Pricing Book holds.
+
+    A `Rate` above prices a measured QUANTITY: so much per thousand tokens, so
+    much per rendered second. This prices a whole delivered piece of work at
+    one agreed number, and the two are lines in the same book on purpose — a
+    tenant has one place to look and one place to change (#187 story 30).
+
+    **THE KIND OF WORK DECLARES ONLY *THAT* IT IS SOLD THIS WAY; THE AMOUNT IS
+    HERE.** `TaskType.pricing_mode` says `fixed`, and that declaration carries
+    no number at all — the same rule #138 established for the Event Type, and
+    re-opening it for work would undo what that decision bought. Putting the
+    amount in the customer's own policy book is what brings per-customer
+    pricing, book selection and the tenant's existing publishing model with it
+    rather than inventing a second configuration surface for money.
+
+    ⚠ **THE WORK LADDER IS ONE STEP, NOT THREE** (#139 §2.4). The rate side's
+    ladder — the exact Event Type, then a broader rule, then the book's default
+    — is about EVENTS. A whole-job price keys on the kind of work and on
+    nothing else, so there is no *more specific* line to out-rank a *less
+    specific* one and no book-wide fallback beneath either: "a default fixed
+    price for all work regardless of kind" is not a thing a tenant could mean.
+    What still ranks is WHICH BOOK the line came from, which is
+    `pricing_service.FROM_THE_CUSTOMERS_OWN_RULES` over
+    `FROM_THE_SELECTED_BOOK`, and that is the whole of the ranking.
+
+    ⚠ **AND A MATCHED LINE SWITCHES THE EVENT-LEVEL LADDER OFF FOR THAT UNIT
+    OF WORK** rather than competing with it. The two never rank against each
+    other because they answer different questions, and the regime — not the
+    presence of a line — is what decides which question is asked.
+
+    ⚠ **NO CURRENCY COLUMN, AND THE ABSENCE IS `PricingBook`'S OWN ARGUMENT
+    ONE LINE DOWN.** A tenant has exactly one currency (CUR-1: per-tenant
+    single currency, no FX) and the book this line sits in carries none for
+    precisely that reason — a column repeating it would be a copy of a choice
+    made elsewhere. A rate carries one because the cost half of that table
+    prices what a SUPPLIER charged, in the supplier's currency; nothing on this
+    table is ever a supplier's number. Which currency a delivered unit of work
+    is charged in is the Charge's to record (#416), where it is a fact about a
+    money movement rather than about a price list.
+
+    ⚠ **NOTHING WRITES THIS TABLE YET, AND THAT IS A NAMED RESIDUAL RATHER
+    THAN AN OVERSIGHT.** Prices are edited in ONE place — the book's
+    declare-then-publish act (`services/book_service.py`) — and slice 4 spent
+    #367 and #368 deleting every immediate-effect mutation path so that a rule
+    could not move without a publish record saying who moved it and when. So
+    the surface that opens and closes a work-level line is the publish act's to
+    grow, and it is not a small edit: that act's change body REQUIRES the
+    quantity a line prices (`BookChangeIn.measurement_key`), which a whole-work
+    line does not have, and relaxing it reshapes the planner, the rendered diff
+    and the published request together.
+
+    A second write path in the meantime — an admin registration, or a `PUT` of
+    its own — was considered and rejected on exactly what those two tickets
+    bought: it would put a money-shaped configuration change back outside the
+    publish record, one table over from where that hole was closed, and #187
+    §25 Q1 rules that *price is a read-only link into the book* precisely
+    because there is one place prices are edited. This ticket builds the half
+    that decides money — the resolution, the pinning and the refusals — and
+    the line's own surface arrives with the act that already owns every other
+    line in this book.
+    """
+
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
+                               related_name="task_prices")
+    #: WHICH BOOK THIS LINE IS IN — a Pricing Book and never a cost book, which
+    #: is why there is one pointer here where `Rate` has two. A cost book holds
+    #: what a supplier charged; a unit of work is not something UBB's tenant
+    #: buys, so there is no cost-side reading of this line for a second column
+    #: to express.
+    #:
+    #: `PROTECT`, for the reason the rate side gives: a book holding lines
+    #: cannot be deleted out from under them, which is what makes withdrawing a
+    #: book an act with a meaning rather than a silent cascade over a tenant's
+    #: price history.
+    pricing_book = models.ForeignKey("pricing.PricingBook",
+                                     on_delete=models.PROTECT,
+                                     related_name="task_prices")
+    #: THE DECLARED KIND OF WORK THIS LINE PRICES, BY KEY — never "" here.
+    #:
+    #: ⚠ A KEY AND NOT A REFERENCE, WHICH IS THE OPPOSITE OF WHAT #326 DID TO
+    #: THE RATE'S QUANTITY, so the difference is worth saying. It is the same
+    #: spelling `Rate.task_type` and `Task.task_type` already carry, and the
+    #: start gate has resolved the declaration by `(tenant, kind, key)` before
+    #: it ever reaches this table — so a reference would re-answer a question
+    #: already answered rather than close a gap. It would also import the
+    #: declaration's ALTITUDE into this row, which is precisely the refusal
+    #: #139 §3.3 puts at the start gate and requires to be loud: a line written
+    #: against contained work is a configuration mistake a tenant must be TOLD
+    #: about, and a foreign key would make it unwritable and the refusal
+    #: unreachable. It further makes a kernel model `PROTECT`-ed by a product
+    #: table, which is the sandbox-reset ordering trap three tickets have
+    #: already paid for (#354, #358, #362).
+    #:
+    #: A line naming a kind of work nobody declared resolves for no start,
+    #: because a start naming an undeclared kind is refused above this.
+    task_type = models.CharField(max_length=64)
+    #: THE AGREED PRICE FOR ONE DELIVERED UNIT OF WORK OF THAT KIND.
+    #:
+    #: ⚠ IT REPLACES METERED REVENUE FOR THAT UNIT — not a fee on top of it and
+    #: not a floor under it (#139 §2.1). "Charge the higher of metered or
+    #: fixed" already has a home as its own policy-line content (#138), and a
+    #: per-unit fee PLUS metered usage is a different product.
+    #:
+    #: ZERO IS A PRICE. A tenant who agrees to deliver a kind of work for
+    #: nothing has said something, and the constraint below admits it while
+    #: refusing a negative one: a line that pays the customer to be delivered
+    #: to is not a price, it is a sign error.
+    amount_micros = models.BigIntegerField()
+    #: WHEN THIS LINE TAKES EFFECT, and when it stops — the rate side's two
+    #: instants, with the same meanings and the same half-open window
+    #: (`valid_from <= t < valid_to`).
+    #:
+    #: ⚠ THEY ARE WHAT MAKES *RESOLVED AT THE START INSTANT* A CLAIM RATHER
+    #: THAN A FIGURE OF SPEECH. A unit of work's revenue is resolved once, at
+    #: the moment it starts, while its supplier costs resolve at each posting's
+    #: own timestamp — the price was promised, the cost is observed — and
+    #: without a line that can be in force at one instant and not another there
+    #: would be only ever one answer for the price half and the asymmetry could
+    #: not be stated, let alone tested.
+    #:
+    #: ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THIS TABLE DECLARES NONE.
+    #: The rate table declares these two exact columns and this one deliberately
+    #: does not, which is a difference worth stating rather than leaving silent:
+    #: a rate's window is read by every recording forever, so moving it re-costs
+    #: work that has already reported, whereas a work-level line is read ONCE
+    #: per unit of work and the answer is pinned onto the row that same instant
+    #: (`Task.agreed_price_micros`). What protects history here is that pinning,
+    #: which holds a VALUE — editing this line cannot move a number a unit of
+    #: work already carries. The ticket that gives this table a publish path is
+    #: the one that should ask whether its windows want a rule of their own.
+    valid_from = models.DateTimeField(default=timezone.now, db_index=True)
+    valid_to = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ubb_task_price"
+        constraints = [
+            # ONE LINE IN FORCE PER KIND OF WORK PER BOOK. There is no
+            # specificity ladder inside a book here — see the class docstring —
+            # so two open lines for one kind of work in one book would be two
+            # answers with nothing to choose between them, which is a
+            # configuration a tenant cannot have meant and the resolver would
+            # settle by whichever row came back first.
+            models.UniqueConstraint(
+                fields=["pricing_book", "task_type"],
+                condition=models.Q(valid_to__isnull=True),
+                name="uq_task_price_active_in_pricing_book"),
+            # A PRICE IS NOT NEGATIVE. Zero is admitted and is a real answer;
+            # see `amount_micros`.
+            models.CheckConstraint(
+                condition=models.Q(amount_micros__gte=0),
+                name="ck_task_price_amount_not_negative"),
+        ]
+        indexes = [
+            # THE RESOLUTION LOOKUP: every book in play at once, one kind of
+            # work, as of one instant — the shape `_selected_pricing_books`
+            # hands the resolver.
+            models.Index(fields=["task_type", "valid_from"],
+                         name="idx_task_price_lookup"),
+        ]
+
+    def __str__(self):
+        return f"TaskPrice({self.task_type}: {self.amount_micros})"
+
+
 class CostBook(BaseModel):
     """WHAT A SUPPLIER CHARGES UBB'S TENANT, PINNED TO THAT SUPPLIER AND TO
     THE CURRENCY THEY BILL IN (#368, spec §1).

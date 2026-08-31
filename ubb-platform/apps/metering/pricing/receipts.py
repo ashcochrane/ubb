@@ -35,6 +35,18 @@ functions at the foot of this module therefore dispatch on the version **the
 record declares**, never on :data:`RECEIPT_SCHEMA_VERSION`, which is what makes a
 receipt written today still readable when the code has moved on.
 
+**⚠ FOR A UNIT OF WORK SOLD AT ONE AGREED PRICE, ITS REVENUE AND ITS COGS
+RESOLVE AGAINST DIFFERENT INSTANTS, AND THAT IS THE DESIGN RATHER THAN A BUG
+(#415, #139 §2.3).** The agreed price is determined ONCE, at the moment the work
+starts, and pinned to it — so a unit of work spanning a reprice keeps the number
+it was quoted. Its supplier costs are not pinned at all: each one resolves at
+its own posting's timestamp, exactly as it does under every other regime. **The
+price was promised; the cost is observed.** A reader holding one receipt from
+such a unit of work sees a cost resolved against a rule that was not in force
+when the work began, and without this sentence that reads like a defect. The
+same sentence is at `apps/platform/work/models.py`, on the column that holds the
+pinned number.
+
 **THE SUBJECT IS TYPED.** A receipt explains either one usage row or one Charge,
 and which one it is is a declared value rather than an inference from whichever
 foreign key happens to be populated. The two values are the registry's

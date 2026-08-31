@@ -120,6 +120,16 @@ class FeatureNotEnabledError(ForbiddenError):
     CODE = 'feature_not_enabled'
 
 
+class FixedTaskPriceOnContainedWorkError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'fixed_task_price_on_contained_work'
+
+
+class FixedTaskPriceUnresolvedError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'fixed_task_price_unresolved'
+
+
 class IdempotencyKeyConflictError(ConflictError):
     STATUS = 409
     CODE = 'idempotency_key_conflict'
@@ -185,6 +195,11 @@ class TaskAlreadyTerminalError(ConflictError):
     CODE = 'task_already_terminal'
 
 
+class TaskPricingModeConflictsWithParentError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'task_pricing_mode_conflicts_with_parent'
+
+
 class TaskStartRefusedError(ConflictError):
     STATUS = 409
     CODE = 'task_start_refused'
@@ -230,6 +245,8 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'effective_at_too_far_ahead': EffectiveAtTooFarAheadError,
     'effective_at_too_old': EffectiveAtTooOldError,
     'feature_not_enabled': FeatureNotEnabledError,
+    'fixed_task_price_on_contained_work': FixedTaskPriceOnContainedWorkError,
+    'fixed_task_price_unresolved': FixedTaskPriceUnresolvedError,
     'forbidden': ForbiddenError,
     'gone': GoneError,
     'idempotency_key_conflict': IdempotencyKeyConflictError,
@@ -248,6 +265,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
     'task_already_terminal': TaskAlreadyTerminalError,
+    'task_pricing_mode_conflicts_with_parent': TaskPricingModeConflictsWithParentError,
     'task_start_refused': TaskStartRefusedError,
     'unsupported_currency': UnsupportedCurrencyError,
     'validation_error': ValidationError,
@@ -288,6 +306,8 @@ __all__ = [
     'EffectiveAtTooFarAheadError',
     'EffectiveAtTooOldError',
     'FeatureNotEnabledError',
+    'FixedTaskPriceOnContainedWorkError',
+    'FixedTaskPriceUnresolvedError',
     'IdempotencyKeyConflictError',
     'InsufficientBalanceError',
     'InternalError',
@@ -301,6 +321,7 @@ __all__ = [
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'TaskAlreadyTerminalError',
+    'TaskPricingModeConflictsWithParentError',
     'TaskStartRefusedError',
     'UnsupportedCurrencyError',
     'ValidationError',
