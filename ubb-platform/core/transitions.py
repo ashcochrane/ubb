@@ -30,20 +30,30 @@ over its own table. That the first three declarers were all in ``apps/metering``
 was an accident of which slices came first, not a property of this vocabulary:
 the kernel holds economic facts too.
 
-**And #416 is the first WHOLE-RECORD declarer**, which is a difference of scale
-rather than of kind and is worth saying because of what it does to the
-assertions. ``pricing.Charge`` — what one delivered piece of work sold at one
-agreed price is owed for — declares NINETEEN columns ``FROZEN``, held by a
-fourth trigger in
+**And #416 (``pricing.Charge``) is the largest declaration in the tree by some
+way**, which is a difference of scale rather than of kind and is worth saying
+because of what scale does to the assertions. What one delivered piece of work
+sold at one agreed price is owed for declares **TWENTY** columns ``FROZEN``,
+held by its own trigger in
 ``apps/metering/pricing/migrations/0031_a_delivered_piece_of_work_is_charged_once.py``.
-Every earlier declarer holds one column or a pair, so *something refused this*
-was nearly unambiguous; one rule answering for nineteen columns with one class
-word is not, so that rule names the COLUMNS THAT MOVED and every assertion about
-it names one too. ⚠ Its two pointers are declared as their COLUMNS (``task_id``,
-``compensates_id``) rather than as their fields, because the walk below searches
-a trigger body and a trigger says ``NEW.task_id`` — declaring the field name
-would name something no rule can spell, and would then be satisfiable only by a
-comment, which is the vacuous shape #325 paid for.
+Every other declarer is between one column and about eight, and their defended
+columns are split across several rules over disjoint sets — so *something
+refused this* narrowed to nearly one thing. Twenty columns under ONE rule
+answering with one class word narrows to nothing at all, so that rule names the
+COLUMNS THAT MOVED and every assertion about it names one too.
+
+⚠ **The paragraphs above narrate the slices, not the tree, and neither counts
+the rules.** "the first columns", "a second trigger", "a third trigger" are this
+module's account of the declarations it was written to explain; six models in
+the tree declare something today and more than three triggers hold them, so a
+reader wanting the set should walk ``transition_classes`` rather than count the
+ordinals here.
+
+⚠ The Charge's three pointers are declared as their COLUMNS (``tenant_id``,
+``task_id``, ``compensates_id``) rather than as their fields, because the walk
+below searches a trigger body and a trigger says ``NEW.task_id`` — declaring the
+field name would name something no rule can spell, and would then be satisfiable
+only by a comment, which is the vacuous shape #325 paid for.
 
 **⚠ And the walk that reads these declarations cannot tell you a rule holds.**
 It asks whether each declared column is *named* by a rule on its table — a

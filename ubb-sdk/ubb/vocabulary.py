@@ -758,9 +758,11 @@ MEASUREMENTS_STATUS_VALUES = frozenset({
 # price does not apply without saying WHY sends a reader looking for a number
 # nobody wrote. The two values are mutually exclusive causes, and where both
 # are true POSTURE WINS — a metering-only tenant is `tenant_not_billing`
-# whatever the job's pricing regime, because no Charge is created anywhere for
-# that tenant and naming the job's regime would imply revenue sits on a Charge
-# that does not exist.
+# whatever the work's pricing regime, because this concept answers why no
+# CUSTOMER REVENUE arises and for such a tenant none ever does, for a reason
+# that has nothing to do with how the work was sold. Naming the regime instead
+# would say the customer revenue for this event sits on the Task, which for
+# that tenant names revenue nobody will ever collect.
 #
 # Declared in concepts/economics.yaml.
 

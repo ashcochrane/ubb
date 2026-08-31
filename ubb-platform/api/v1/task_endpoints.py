@@ -433,7 +433,7 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
     with transaction.atomic():
         closed, transitioned = TaskService.close_task(task.id, declaration)
-        # THE CHARGE RIDES THE WINNING TRANSITION, IN ITS OWN TRANSACTION
+        # THE CHARGE RIDES THE WINNING TRANSITION, IN THE SAME TRANSACTION
         # (#416, spec §11). `transitioned` is true for exactly the call that
         # performed the flip out of `active`, so the losing lane of a race
         # reaches this line with `False` and writes nothing — which is what
@@ -448,10 +448,11 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
         #
         # ⚠ AND THE RULE IS THE PRODUCT'S. Which closes earn a charge and what
         # it carries are facts about the concept and are decided in
-        # `pricing.charge_service`; what this layer adds is the ORDER — the
-        # kernel owns the close and may not import a product, so the two are put
-        # together here, exactly as the start gate above resolves a price out of
-        # that same app and hands it to the kernel's own writer.
+        # `apps.metering.pricing.services.charge_service`; what this layer adds
+        # is the ORDER — the kernel owns the close and may not import a product,
+        # so the two are put together here, exactly as the start gate above
+        # resolves a price out of that same app and hands it to the kernel's own
+        # writer.
         charge = charge_for_delivered_work(closed) if transitioned else None
 
     # A CLOSE THAT DID NOT WIN THE TRANSITION IS ONE OF EXACTLY TWO THINGS, and

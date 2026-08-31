@@ -1028,18 +1028,29 @@ class Charge(BaseModel):
     #: is the enforcement — G19 walks this mapping and fails on any column no
     #: rule on this table names.
     #:
-    #: ⚠ THE TWO POINTERS ARE SPELLED AS THEIR COLUMNS (`task_id`,
-    #: `compensates_id`) RATHER THAN AS THEIR FIELDS. This vocabulary is about
-    #: COLUMNS — the gate searches a trigger body, and a trigger says
+    #: ⚠ THE THREE POINTERS ARE SPELLED AS THEIR COLUMNS (`tenant_id`,
+    #: `task_id`, `compensates_id`) RATHER THAN AS THEIR FIELDS. This vocabulary
+    #: is about COLUMNS — the gate searches a trigger body, and a trigger says
     #: `NEW.task_id` — so declaring `task` would name something no rule can
     #: spell and would be satisfied only by a comment, which is the vacuous shape
     #: #325 paid for.
+    #:
+    #: ⚠ `tenant_id` IS HERE FOR `task_id`'S OWN REASON, ONE LEVEL UP, and it was
+    #: missing from the first draft. Re-pointing the work a charge is for bills
+    #: somebody else's customer; re-pointing the TENANT moves the whole record
+    #: into another tenant's books with every amount still correct, which is the
+    #: same defect at the scope where it is worse. Freezing one and leaving the
+    #: other writable was not a decision — it was an omission, found by
+    #: `/code-review`'s SPEC axis and by no gate, because G19 only asks whether
+    #: DECLARED columns are defended and never which columns should have been
+    #: declared.
     #:
     #: `correction_note` is deliberately NOT here and its absence is the
     #: statement: it is display text beside a correction, not an economic fact,
     #: and freezing prose would refuse an operator the ability to finish a
     #: sentence. Nothing reads it for a number.
     transition_classes = {
+        "tenant_id": FROZEN,
         "task_id": FROZEN,
         "amount_micros": FROZEN,
         "currency": FROZEN,

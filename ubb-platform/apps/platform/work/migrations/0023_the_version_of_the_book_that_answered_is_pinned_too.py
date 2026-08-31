@@ -8,10 +8,10 @@ is added here because #416's Charge is required to carry it and this is the
 only moment it is knowable.
 
 **A BOOK'S VERSION COUNTER MOVES, WHICH IS THE WHOLE REASON THIS IS A COLUMN.**
-`book_service.publish` steps `PricingBook.version` on every publish, so reading
-it at any later moment — when the work closes, when a charge is written, when a
-report is run — answers *the version this book is at now*. That is a number with
-nothing to do with the resolution it would be recording. The line's own
+`BookService.publish_declared` steps `PricingBook.version` on every publish, so
+reading it at any later moment — when the work closes, when a charge is written,
+when a report is run — answers *the version this book is at now*. That is a
+number with nothing to do with the resolution it would be recording. The line's own
 `Rate.book_version_from` one table over does not answer it either: that says
 which version OPENED a row, not which version the customer's book stood at when
 the start gate read it.

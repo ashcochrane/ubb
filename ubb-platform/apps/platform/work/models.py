@@ -466,7 +466,7 @@ class Task(BaseModel):
     #
     # ⚠ **IT IS THE VERSION AT RESOLUTION, AND THAT IS THE WHOLE REASON IT IS A
     # COLUMN.** A Pricing Book's version counter steps on every publish
-    # (`book_service.publish`), so asking the book for it at any later moment
+    # (`BookService.publish_declared`), so asking the book for it any later
     # answers *the version this book is at now* — a number with nothing to do
     # with the resolution it would be recording. The line's own
     # `Rate.book_version_from` is the nearest thing one table over and it does

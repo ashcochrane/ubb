@@ -31,21 +31,28 @@ it corrects — never edits, so a wrong charge leaves a trail rather than being
 rewritten.
 
 **THE RULE NAMES THE COLUMNS THAT MOVED, NOT MERELY THAT SOMETHING DID.** A
-message reading *this record is frozen* would be satisfiable by any of nineteen
+message reading *this record is frozen* would be satisfiable by any of twenty
 columns and would leave every assertion about it unable to discriminate — which
 is #352's lesson exactly, paid for on a table that acquired a second rule. The
 body diffs `to_jsonb(OLD)` against `to_jsonb(NEW)` over a named set, so the
 exception carries the offending columns and the set is load-bearing rather than
-decorative: deleting a name from it stops that column being defended, and G19
-then reports it undefended.
+decorative — see the measurement two paragraphs down.
 
 **WHY NO `WHEN` CLAUSE**, which `work/0021` and `pricing/0018` both carry. Those
 guard ONE scalar on a table an idempotent PUT rewrites in full, where a rule
 firing on equal values would refuse a caller re-sending what it already sent.
 Nothing updates this table at all — a correction is an INSERT — so there is no
-re-send to admit and no hot path to keep out of. A nineteen-column `WHEN` would
+re-send to admit and no hot path to keep out of. A twenty-column `WHEN` would
 restate the function's own condition in a second place where the two could
 disagree.
+
+**THE SET IS LOAD-BEARING AND THAT IS MEASURED RATHER THAN ASSERTED.** Deleting
+one name from it — `amount_micros` — leaves this migration running, the table
+built and the trigger installed, and turns G19 red with
+`[('Charge', 'amount_micros', 'frozen')]`: the column stays DECLARED on the model
+and stops being DEFENDED by the rule, which is exactly the state
+`test_transition_class_declarations.py` exists to catch. Nine cases of this
+table's own module go red with it.
 
 **The refusal is raised as SQLSTATE 23000**, `integrity_constraint_violation`,
 the class Django maps to `IntegrityError` — the same exception this table's two
@@ -68,6 +75,7 @@ FUNCTION = "ubb_charge_declared_transitions"
 #: and `updated_at` are deliberately absent: the first is display text beside a
 #: correction rather than an economic fact, and the second is bookkeeping.
 FROZEN_COLUMNS = (
+    "tenant_id",
     "task_id",
     "amount_micros",
     "currency",

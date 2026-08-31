@@ -12,11 +12,11 @@ with a customer on the phone.
 
 Three claims:
 
-* **EVERY ECONOMIC COLUMN IS FROZEN.** What UBB charged, in which currency,
-  against which line of which version of which book, and at which two instants,
-  are facts about money that already moved. Nineteen columns, all three doors,
-  and each refusal names the column that moved rather than merely that
-  something did.
+* **EVERY ECONOMIC COLUMN IS FROZEN.** Whose money it is, what UBB charged, in
+  which currency, against which line of which version of which book, and at
+  which two instants, are facts about money that already moved. Twenty columns,
+  all three doors, and each refusal names the column that moved rather than
+  merely that something did.
 * **A CORRECTION IS A COMPENSATING RECORD AND THE TRAIL IS READABLE.** The only
   correction there is, because the columns above cannot be rewritten: another
   row of this table naming the one it corrects, carrying the negation and its
@@ -33,7 +33,7 @@ than something an index silently starts pointing at (#352).
 """
 from importlib import import_module
 
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -41,6 +41,7 @@ from apps.metering.pricing.models import Charge
 from apps.metering.pricing.services.charge_service import compensate, derived_key
 from apps.metering.pricing.tests._helpers import (
     DOORS, RefusalThroughEveryDoorMixin, a_price_for_whole_work,
+    database_rules_guarding,
 )
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -121,7 +122,7 @@ class EveryEconomicColumnOfAChargeIsFrozenTest(RefusalThroughEveryDoorMixin,
 
     ⚠ EVERY CASE ASSERTS THE COLUMN AS WELL AS THE CLASS, and here that is not
     the precaution it is on a single-column rule — it is the only thing making
-    the assertions distinguishable at all. One rule holds nineteen columns and
+    the assertions distinguishable at all. One rule holds twenty columns and
     answers with one class word for every one of them, so *the record is frozen*
     would be satisfied by the rule refusing any OTHER column of the same row.
     """
@@ -147,6 +148,21 @@ class EveryEconomicColumnOfAChargeIsFrozenTest(RefusalThroughEveryDoorMixin,
         else's work with every amount still correct."""
         other = self._delivered_work()
         self._refuses(self._charge(), task_id=other.id)
+
+    def test_the_tenant_whose_money_it_is_cannot_be_rewritten(self):
+        """THE SAME DEFECT ONE LEVEL UP, and the first draft of this table froze
+        the work and left this writable.
+
+        Re-pointing the unit of work bills the wrong customer; re-pointing the
+        TENANT moves the whole record into somebody else's books with every
+        amount still correct, which is worse for the same reason it is harder to
+        notice. ⚠ No gate could have found the omission: G19 asks whether every
+        DECLARED column is defended and has nothing to say about a column that
+        should have been declared and was not.
+        """
+        elsewhere = Tenant.objects.create(name="Elsewhere",
+                                          products=["metering"])
+        self._refuses(self._charge(), tenant_id=elsewhere.id)
 
     def test_the_line_that_answered_cannot_be_rewritten(self):
         self._refuses(self._charge(), agreed_price_line_id=self.tenant.id)
@@ -417,11 +433,35 @@ class TheDeclarationIsWhatTheDatabaseDefendsTest(ChargeTestBase):
         assumed: a migration that ran is evidence a file executed, not that a
         rule is on the table. An exact SET rather than a membership test, so a
         second rule arriving is read by a person before the by-name addressing
-        above quietly starts mattering."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            self.assertEqual({row[0] for row in cursor.fetchall()},
-                             {TRANSITION_TRIGGER})
+        above quietly starts mattering.
+
+        The catalogue query is `_helpers.database_rules_guarding`, which two
+        modules on the rate's table already share -- a second copy of one
+        catalogue query is two things that can drift apart while agreeing with
+        each other, which is what `docs/conventions/testing.md:22` puts that
+        module there to prevent.
+        """
+        self.assertEqual({name for name, _, _ in database_rules_guarding(TABLE)},
+                         {TRANSITION_TRIGGER})
+
+    def test_the_rule_never_enters_on_an_insert(self):
+        """THE STATEMENT MASK, out of `pg_trigger` rather than out of the SQL
+        this module could just as well re-read (`django-patterns.md`).
+
+        Row-level and BEFORE the write: an `AFTER` trigger would refuse by
+        rolling back work already done, and a statement-level one cannot see the
+        old row at all, which is the only thing this rule is about.
+
+        ⚠ AND THE `INSERT` BIT BEING OFF IS THE MIGRATION'S OWN COST ARGUMENT,
+        ASSERTED RATHER THAN CLAIMED. That file says this rule carries no `WHEN`
+        clause because nothing updates this table at all -- writing a charge is
+        an INSERT and so is correcting one -- so every write this table actually
+        takes must not enter the function. Without this case that is a sentence;
+        with it, it is a fact about the catalogue.
+        """
+        (_, tgtype, _), = database_rules_guarding(TABLE)
+        self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")
+        self.assertTrue(tgtype & (1 << 1), "not BEFORE")
+        self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
+        self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
+        self.assertFalse(tgtype & (1 << 3), "fires on DELETE")

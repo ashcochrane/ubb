@@ -690,8 +690,10 @@ class TaskService:
         (#415) and ``agreed_price_book_version`` (#416) are what a unit of work
         snapshots about HOW IT IS SOLD, and they are pass-through in the same
         sense: the caller has read the declaration and, where it names one
-        agreed price, resolved that price out of the customer's own policy book
-        and noted which published version of that book answered. The regime defaults to per-event because
+        agreed price, resolved that price out of the customer's own policy
+        book and noted which published version of that book answered.
+
+        The regime defaults to per-event because
         every caller that is not a start gate — the reapers, the cascades,
         every fixture that stands a unit of work up directly — is registering
         work no declaration was consulted for, and per-event is what such a
