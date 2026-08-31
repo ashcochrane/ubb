@@ -453,6 +453,10 @@ def get_usage_event(request, event_id: UUID):
         id=event_id, tenant=request.auth.tenant)
     return 200, {
         "id": e.id,
+        # Stored, and read straight off the row (#417): a posting is born one
+        # kind or the other and the column is frozen, so there is nothing here
+        # a serialiser could usefully re-derive or get wrong.
+        "kind": e.kind,
         "idempotency_key": e.idempotency_key,
         "event_type": e.event_type,
         "provider": e.provider,

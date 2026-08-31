@@ -295,7 +295,15 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # names a retired term; third entry in the run to move by two, for
         # #412's reason. The retired-term totals were unchanged in both
         # directions, 26 terms in 87 sites, and the ledger did not move either.
-        "historical-migrations": (UNTIL_SLICE_8, 245, 19),
+        # 245 -> 246 in #417: ONE migration -- the posting's `kind`
+        # discriminator, its closed-set check and the rule that freezes it,
+        # all in the one app that owns the table. It does not name a retired
+        # term. ONE and not two, unlike the three above it, for #412's reason
+        # read the other way: a migration belongs to its own app, and this
+        # ticket's whole schema change is a column on one table. The
+        # retired-term totals were unchanged in both directions, 26 terms in
+        # 87 sites, while the ledger fell by two.
+        "historical-migrations": (UNTIL_SLICE_8, 246, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

@@ -30,6 +30,7 @@ to replay from.
 from django.utils import timezone
 
 from apps.metering.pricing.models import Charge
+from apps.metering.pricing.services.charge_projection import project_the_charge
 from core.money import DEFAULT_CURRENCY
 from core.vocabulary import TASK_STATUS_COMPLETED
 
@@ -85,6 +86,17 @@ def charge_for_delivered_work(task):
     be the defect the ticket names — building the billing half only — and it
     would leave every gate green.
 
+    ⚠ **IT ALSO PUTS THE CHARGE ON THE MONEY RAILS, AND THAT IS ONE FUNCTION
+    RATHER THAN TWO ON PURPOSE (#417).** A Charge that reached no posting is
+    revenue nothing draws down, nothing accumulates and UBB's own fee never
+    sees — and if projecting were the caller's second call, the invariant
+    *every original charge reached the rails* would be a habit rather than a
+    property. There is one writer of an original charge and it is this
+    function, so the projection lives inside it and the invariant is structural.
+    The two writes share this function's caller's transaction for the reason
+    the charge shares it with the transition: a crash between any two of the
+    three loses money for delivered work with nothing to replay from.
+
     Must be called inside @transaction.atomic, with the transition it belongs
     to.
     """
@@ -92,7 +104,7 @@ def charge_for_delivered_work(task):
         return None
     if task.agreed_price_micros is None:
         return None
-    return Charge.objects.create(
+    charge = Charge.objects.create(
         tenant_id=task.tenant_id,
         task=task,
         amount_micros=task.agreed_price_micros,
@@ -109,6 +121,8 @@ def charge_for_delivered_work(task):
         charged_at=task.completed_at,
         idempotency_key=derived_key(task.id),
         **_the_grouping_values_on(task))
+    project_the_charge(charge)
+    return charge
 
 
 def compensate(charge, *, note):

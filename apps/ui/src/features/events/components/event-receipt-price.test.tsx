@@ -71,6 +71,11 @@ const METERING_ONLY_EVENT_ID = "0b4d7e21-5c68-4a39-9d02-8e1f3a6c7b50";
  */
 const METERING_ONLY_DETAIL: UsageEventDetail = {
   id: METERING_ONLY_EVENT_ID,
+  // A real metered call, which is what this case is about: a workspace that
+  // meters and does not bill still records every event it is sent, and the
+  // price is the only thing that does not apply. A `task_charge` here would
+  // change the subject to a projection nobody reported (#417).
+  kind: "metered_usage",
   // The correlation id, from the events feature's own helper rather than
   // spelled here. There were TWO until #411, and the helper was plural: one of
   // them was a retired term whose console ledger entry capped the files naming

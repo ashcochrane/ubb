@@ -125,7 +125,13 @@ VALUE_SETS = {
     # because this inventory counts the shape and not the provenance — which is
     # the point of it, and the reason a derived list still has to come past a
     # reviewer.
-    "ubb-platform/apps/metering/usage/models.py": 4,
+    # 4 → 5 in #417: the posting's own `kind` discriminator, derived from the
+    # registry frozenset like the four beside it. This one is the FIRST on this
+    # model whose column arrived in the same commit as its value set — the four
+    # above each re-sourced a list that was already there — so it is also the
+    # first entry here that would have been a NEW undeclared set if the concept
+    # had not been declared first.
+    "ubb-platform/apps/metering/usage/models.py": 5,
     "ubb-platform/apps/platform/customers/models.py": 3,
     "ubb-platform/apps/platform/event_types/models.py": 3,
     "ubb-platform/apps/platform/events/models.py": 1,

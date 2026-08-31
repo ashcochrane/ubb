@@ -109,7 +109,7 @@ gates:
       forbids. But invisible must not mean unaccounted, so the gap is COUNTED
       rather than merely admitted:
       tests/contracts/test_undeclared_value_sets.py pins every `choices=` in
-      living backend code by file — 46 across 19 files — so a value set the
+      living backend code by file — 47 across 19 files — so a value set the
       agreed model says nothing about cannot arrive in silence. It is
       deliberately an inventory and not a ledger, because a ledger entry names
       a canonical term and a removal slice and neither exists for a concept
@@ -599,20 +599,35 @@ gates:
         node: ubb-platform/apps/platform/tests/test_celery_import_discipline.py::test_celery_does_not_bind_the_domain_noun
 
   G14:
-    statement: The four `kind` discriminator pins.
-    oracle: "#154 §3.8"
-    source: "#154 §3.8, #154 §12"
-    status: owned_by_slice_5
+    statement: >-
+      The two `kind` discriminator pins that outlive slice 5 — `recorded_events`
+      counting `metered_usage` only, and the provider and measurement analytics
+      excluding `task_charge`.
+    oracle: "#154 §3.8, pins 1 and 3"
+    source: "#154 §3.8, #154 §12, #187 §28"
+    status: owned_by_slice_7
     blocked_on: >-
-      `UsageEvent.kind` does not exist. Slice 5 introduces the column with the
-      `Charge` entity and its 1:1 posting projection, which is what produces a
-      `task_charge` row at all. A gate whose subject does not exist is a test
-      that passes on nothing.
+      Neither remaining pin has a subject to gate. Pin 1's measure,
+      `recorded_events`, exists only as vocabulary — a registry value and a
+      generated constant — and no query computes it; slice 7 (#189) builds the
+      one economic query that does. Pin 3's exclusion has surfaces today, but
+      slice 7 collapses five analytics endpoints into one, so a gate written
+      against the five would be rewritten rather than kept. A gate whose
+      subject does not exist is a test that passes on nothing.
     notes: >-
       Two of the four pins — `recorded_events` counting `metered_usage` only,
       and analytics excluding `task_charge` — reach their final form in slice 7
       (#189). If slice 5 finds it can only pin two, it re-owns this row to
       slice 7 rather than installing half a gate.
+      #417 found exactly that and took the escape: `Posting.kind` landed with
+      the Charge's 1:1 projection, and pins 2 and 4 — a charge posting not
+      inflating `Task.event_count`, and revenue and monetary totals including
+      both kinds per their economic fields — are live tests in one module named
+      for this row,
+      `ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`.
+      They guard this slice's own new column and are not half a
+      gate while the row stays owed; what is still owed is the two above, which
+      is what the statement now claims and what slice 7 will install.
 
   G15:
     statement: >-

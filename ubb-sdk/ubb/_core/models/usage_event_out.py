@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.usage_event_out_costing_status import UsageEventOutCostingStatus
+from ..models.usage_event_out_kind import UsageEventOutKind
 from ..models.usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
 from ..models.usage_event_out_pricing_status import UsageEventOutPricingStatus
 from ..models.usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
@@ -34,6 +35,7 @@ class UsageEventOut:
             costing_status (UsageEventOutCostingStatus):
             effective_at (str):
             id (UUID):
+            kind (UsageEventOutKind):
             metadata (UsageEventOutMetadata):
             pricing_status (UsageEventOutPricingStatus):
             billed_cost_micros (int | None | Unset):
@@ -52,6 +54,7 @@ class UsageEventOut:
     costing_status: UsageEventOutCostingStatus
     effective_at: str
     id: UUID
+    kind: UsageEventOutKind
     metadata: UsageEventOutMetadata
     pricing_status: UsageEventOutPricingStatus
     billed_cost_micros: int | None | Unset = UNSET
@@ -75,6 +78,8 @@ class UsageEventOut:
         effective_at = self.effective_at
 
         id = str(self.id)
+
+        kind = self.kind.value
 
         metadata = self.metadata.to_dict()
 
@@ -135,6 +140,7 @@ class UsageEventOut:
             "costing_status": costing_status,
             "effective_at": effective_at,
             "id": id,
+            "kind": kind,
             "metadata": metadata,
             "pricing_status": pricing_status,
         })
@@ -171,6 +177,11 @@ class UsageEventOut:
         effective_at = d.pop("effective_at")
 
         id = UUID(d.pop("id"))
+
+
+
+
+        kind = UsageEventOutKind(d.pop("kind"))
 
 
 
@@ -281,6 +292,7 @@ class UsageEventOut:
             costing_status=costing_status,
             effective_at=effective_at,
             id=id,
+            kind=kind,
             metadata=metadata,
             pricing_status=pricing_status,
             billed_cost_micros=billed_cost_micros,

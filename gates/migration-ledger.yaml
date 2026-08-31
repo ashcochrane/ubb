@@ -1855,17 +1855,15 @@ entries:
       today. It becomes real when the billing mode it is derived from is
       rebuilt, alongside `customer_billing_mode` at the cutover.
 
-  - id: g2-backend-usage_event_kind
-    gate: G2
-    site: ubb-platform/apps/metering/usage/models.py::usage_event_kind
-    expected: usage_event_kind
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #139 projects a Charge onto
-      one marked posting, and the discriminator is what seven consumers of
-      `billed_cost_micros` must filter on. Slice 5 builds the Charge.
+  # `g2-backend-usage_event_kind` DIED IN #417, and it was §27's THIRD SHAPE:
+  # `0 of 2 values` over a consumer that held NOTHING — no column on the model,
+  # no map in the console's label layer, no occurrence in the contract. Paying
+  # it was CREATION rather than re-sourcing. `Posting.kind` is the column, its
+  # `choices=` is built from the imported `USAGE_EVENT_KIND_VALUES`, and the
+  # projection that produces a row holding anything but the default arrived in
+  # the same commit — a discriminator with nothing to discriminate would have
+  # been the vacuous form of paying this. Its G4 twin died with it, after the
+  # regeneration: the two were one debt read from two sides.
 
   - id: g2-backend-webhook_event_type
     gate: G2
@@ -2459,18 +2457,16 @@ entries:
   # slice 6 to come back and re-edit. Its G3 twin died in the same commit:
   # the two are one debt read from two sides.
 
-  - id: g4-openapi-usage_event_kind
-    gate: G4
-    site: openapi/v1.json::usage_event_kind
-    expected: usage_event_kind
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 5 rebuilds Work, which is where #139's work-charge posting is
-      marked. The metadata appears in that slice.
+  # `g4-openapi-usage_event_kind` DIED IN #417, in the same commit as its G2
+  # backend twin and AFTER the regeneration, because `advertised` is derived
+  # from the backend census alone: the commit that made `Posting.kind` hold both
+  # values by reference made this excuse false in the same breath, and
+  # `test_every_advertised_concept_reaches_the_contract` then refused a document
+  # naming no field for it. Two schema nodes carry the marker — the usage list
+  # row and the detail — because those are the two responses that serve a stored
+  # posting back to a reader who did not create it. The recording ack does not,
+  # and that is argued at `api/v1/schemas.py::UsageEventKind`: the recording
+  # route cannot produce a `task_charge` row at all.
 
   - id: g4-openapi-webhook_event_type
     gate: G4

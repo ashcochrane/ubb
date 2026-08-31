@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,707 of 2,119 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,713 of 2,126 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1746,6 +1746,25 @@ measurement_key:
     # reason the note above gives, and with the same caveat: the number that
     # matters is the one taken after the REVIEW pass, because a review pass
     # writes prose and prose is what has tripped this every time.
+    #
+    # #417 MOVED BOTH DENOMINATORS BY SIX AND SEVEN AND LEFT THE NUMERATOR
+    # WHERE IT WAS (1,707 -> 1,713 swept, 2,119 -> 2,126 tracked, `units`
+    # UNMOVED at 45 files and 123 occurrences). Seven tracked files arrived
+    # and six are swept: the seventh is a migration, and
+    # `historical-migrations` is a wholesale directory exclusion, so it lifts
+    # `tracked` alone and its own rule count 245 -> 246 — ONE this time
+    # rather than two, because this ticket's whole schema change is a column
+    # on one table. The six swept files are the service that projects a
+    # Charge onto its posting, three modules that prove it (one at the
+    # database, two at the route a tenant calls), and ⚠ TWO GENERATED SDK
+    # ENUM MODULES — one per schema node carrying the new discriminator,
+    # which is what advertising a CLOSED concept costs and what #415's and
+    # #416's commits did not pay because neither published a value set.
+    #
+    # ⚠ THE NUMERATOR HELD ON THE FIRST MEASUREMENT FOR A SECOND
+    # CONSECUTIVE WINDOW, in a commit whose subject is again work and money
+    # at once. Recorded as a non-event with the same caveat the note above
+    # gives: the number that matters is the one taken after the REVIEW pass.
 
     - term: units
       retired_as: >-

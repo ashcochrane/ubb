@@ -965,6 +965,40 @@ CONCEPTS_IN_THE_CONTRACT = {
     # the enforcement patrol, and the sweeper. The other two arrive with the
     # mechanisms that produce them.
     "trigger_source": Published(2, KNOWN_VALUES),
+    # WHICH KIND OF POSTING A ROW IS (#417) — two nodes, the usage list row and
+    # the detail, which are the two responses that serve a STORED posting back
+    # to a reader who did not create it. That is the rule rather than the count:
+    # a charge projection carries customer revenue against a zero supplier cost,
+    # so a reader totalling a page of rows gets a different answer depending on
+    # whether it can separate the two populations, and until this field existed
+    # it could not.
+    #
+    # ⚠ THE RECORDING ACK IS NOT A THIRD NODE, and unlike most placement
+    # arguments this one is CHECKABLE rather than a judgement about need. The
+    # only writer of a `task_charge` row is
+    # `pricing/services/charge_projection.py`, which the close path calls and
+    # the recording path does not, so `POST /usage` cannot produce one — the
+    # field would answer `metered_usage` on every response that route will ever
+    # send. ADR-0007 §3 makes a name added to this document final, and a
+    # permanent field restating what the operation already guarantees is a worse
+    # contract than no field.
+    #
+    # ⚠ NOR THE `usage.recorded` PAYLOAD, on the payload's own stated rule
+    # rather than by extension of the one above: `costing_status` joined that
+    # event because two products count their exclusions off it, and the field
+    # beside it records that a fact "joins the payload the day a subscriber
+    # needs it". No subscriber filters on the kind. The measure that will is
+    # `recorded_events`, which exists as vocabulary and as nothing else, and
+    # G14's manifest row is now owned by the slice that builds it.
+    #
+    # ⚠ ITS BACKEND HALF WAS §27's THIRD SHAPE — CREATION, not re-sourcing. The
+    # entry read `0 of 2 values`, character for character what `task_type_kind`'s
+    # read, and the consumer held NOTHING: no column on the model, no console
+    # map, no occurrence here. The column, its `choices=` built from the
+    # generated constants, and the projection that produces a row holding
+    # anything but the default all arrived together, because a discriminator
+    # with nothing to discriminate is the vacuous form of paying this.
+    "usage_event_kind": Published(2, ENUM),
 }
 
 
@@ -1306,6 +1340,23 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # makes this line hold the published document to the producer rather than
     # to a literal that would agree with both until one moved.
     placed("trigger_source", events_whose_payload_declares("trigger_source"))
+
+    # OUT ONLY, AND ON THE TWO RESPONSES THAT SERVE A STORED POSTING BACK
+    # (#417). The rule is *where a reader meets a row it did not create* — the
+    # lean list row, where a column is totalled by eye, and the detail, where
+    # the receipt raises the question of which explanation to expect. A charge
+    # projection carries revenue against a zero supplier cost, so a reader that
+    # cannot separate the two populations nets a different margin.
+    #
+    # ⚠ THE ABSENCE FROM `RecordUsageResponse` IS THE LOAD-BEARING HALF OF THIS
+    # LINE, and it is why the set is stated rather than a count. Every other
+    # marker on a posting field sits on the ack too, because the ack can carry
+    # the value; this one cannot. `POST /usage` has no path to the projection —
+    # `pricing/services/charge_projection.py` is the sole writer of a
+    # `task_charge` row and only the close reaches it — so the field would be a
+    # permanent constant on that response. Making the ack able to produce one
+    # would have to move THIS line, which is the point of stating it.
+    placed("usage_event_kind", {"UsageEventOut", "UsageEventDetailOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1943,8 +1994,22 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     21 → 20 in #370, which advertised `pricing_receipt_subject_type`,
     20 → 19 in #407, which advertised `task_type_kind`, 19 → 18 in #408,
     which advertised `task_status`, 18 → 17 in #409, which advertised
-    `task_outcome`, 17 → 16 in #412, which advertised `trigger_source`, and
-    16 → 15 in #414, which advertised `pricing_mode`.
+    `task_outcome`, 17 → 16 in #412, which advertised `trigger_source`,
+    16 → 15 in #414, which advertised `pricing_mode`, and 15 → 14 in #417,
+    which advertised `usage_event_kind`.
+
+    ⚠ #417 IS #414's SHAPE AGAIN — §27's THIRD, CREATION — AND IT IS THE FIRST
+    WHERE PAYING IT REQUIRED A ROW TO EXIST BEFORE THE COLUMN MEANT ANYTHING.
+    Its entry read `0 of 2 values`, character for character what #407's and
+    #414's read, and the consumer held nothing at all. Adding a column with a
+    `choices=` built from the generated constants would have moved the census to
+    `2 of 2` on its own — and would have advertised a discriminator no row in
+    the repository could ever hold a second value of. The commit that paid it
+    therefore also built the projection that writes one, which is what makes
+    `advertised: true` a statement about what UBB serves rather than about what
+    a model declares. The pairing is otherwise the usual one: the G4 entry and
+    its backend G2 twin were one debt read from two sides, only the G4 entry is
+    in this seeding, and one comes out of it.
 
     ⚠ #414 IS THE FIRST WHOSE G2 HALF WAS §27's THIRD SHAPE — NEITHER
     RE-SOURCING NOR ADDING VALUES TO A LIST, BUT BUILDING THE CONSUMER FROM
@@ -2045,6 +2110,6 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 15, (
+    assert len(_entries(programme)) >= 14, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

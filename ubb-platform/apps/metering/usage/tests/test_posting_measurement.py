@@ -282,23 +282,30 @@ class TheDerivedMeasurementsStatusTest(TestCase):
     def test_a_synthetic_charge_posting_is_not_applicable(self):
         """A Task sold at one agreed price was never measured.
 
-        A REAL posting stands in for the charge — the same stand-in
-        `AbsenceIsExpressedByAbsenceTest` builds — and the rule is driven with
-        that row's own record state rather than with a hand-typed `False`, so
-        what is asserted is a fact about a posting rather than about two
-        literals.
+        A REAL row shaped exactly as the projection writes one, and the rule is
+        driven with that row's own record state rather than with a hand-typed
+        `False`, so what is asserted is a fact about a posting rather than about
+        two literals. The projection's own end-to-end assertions live in
+        `api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting
+        .py`; what this module owns is the reading.
 
-        The kind is passed rather than read off a column because there is no
-        column: `usage_event_kind`'s backend consumer is a G2 debt whose ledger
-        entry names slice 5, the slice that builds the Charge such a posting is
-        projected from. So the second assertion below records what this row
-        reads as TODAY, which is not `not_applicable` — and that is not a
-        defect, because nothing projects a Charge and no such row exists
-        outside this test. It is the seam, stated where slice 5 will meet it.
+        **⚠ THIS IS THE ASSERTION THE SEAM WAS STATED AT, AND #417 IS WHERE IT
+        MOVED.** Until the discriminator landed, the kind had to be PASSED
+        because there was no column to read it from — `usage_event_kind`'s
+        backend consumer was a G2 debt owned by the slice that builds the
+        Charge such a posting is projected from — so the second assertion below
+        recorded what an unmarked charge-shaped row read as instead:
+        `pruned`, the metered reading of a missing record. The column arrived
+        with the projection, the row below carries it, and the second assertion
+        now records the answer the rule was always declared to give. It was
+        UPDATED rather than deleted: it is the one that announces the change,
+        and deleting it would have removed the only place the change is
+        visible as a change.
         """
         charge = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="chg_1",
+            kind=USAGE_EVENT_KIND_TASK_CHARGE,
             billed_cost_micros=250_000)
         measured = PostingMeasurement.objects.filter(posting=charge).exists()
         self.assertFalse(measured, "§E4: absent by construction")
@@ -308,12 +315,13 @@ class TheDerivedMeasurementsStatusTest(TestCase):
                                 measured=measured),
             MEASUREMENTS_STATUS_NOT_APPLICABLE)
 
-        # Today, unmarked, the same row reads as a metered posting that has
-        # lost its record. Pinned rather than hidden: it is the one reading the
-        # missing discriminator costs, and it is confined to a row this
-        # repository never creates.
+        # And the same answer through the serialiser's own path, which is what
+        # the rule above is only half of: the first assertion says the rule
+        # answers `not_applicable` when handed the kind, and this one says the
+        # row is what hands it over. Passing the first while failing this one
+        # is exactly the state that stood here before the column existed.
         self.assertEqual(measurements_status_for(charge),
-                         MEASUREMENTS_STATUS_PRUNED)
+                         MEASUREMENTS_STATUS_NOT_APPLICABLE)
 
     def test_a_charge_is_not_applicable_even_if_a_record_somehow_exists(self):
         """The kind is read first, and the record's presence is not consulted.

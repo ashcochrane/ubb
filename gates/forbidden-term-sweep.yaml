@@ -266,7 +266,16 @@ exclusions:
     # UNCHANGED across the same commit — 26 terms in 87 sites, in both
     # directions — and the ledger did not move either, this ticket paying no
     # entry and coining no concept.
-    files: 245
+    # 245 → 246 in #417: ONE migration — the posting's `kind`
+    # discriminator, its closed-set check and the rule that freezes it, all in
+    # the one app that owns the table. It does NOT name a retired term.
+    # ONE and not two, unlike the three commits above it, and the reason is
+    # #412's read the other way: a migration belongs to its own app, and this
+    # ticket's whole schema change is a column on `ubb_posting`. The sweep's
+    # retired-term totals were UNCHANGED across the same commit — 26 terms in
+    # 87 sites, in both directions — while the ledger fell by two, this
+    # ticket paying `g2-backend-usage_event_kind` and its G4 twin.
+    files: 246
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

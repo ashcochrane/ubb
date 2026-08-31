@@ -876,8 +876,9 @@ class Charge(BaseModel):
     ⚠ **A SYSTEM-GENERATED POSTING AS THE CANONICAL RECORD WAS REJECTED.** It
     would have bought every money path for free, but a posting is immutable AND
     undeletable, so a wrong projection could never be corrected — permanent, by
-    construction. The projection is #417's and it is a projection OF this row
-    precisely so that a wrong one can be rebuilt from a right one.
+    construction. #417 built the projection instead, and it is a projection OF
+    this row precisely so that a wrong one can be rebuilt from a right one —
+    `pricing/services/charge_projection.py`.
 
     **ITS KEY IS DERIVED FROM THE WORK, NEVER SUPPLIED BY A CALLER.** The
     identity of a piece of work is already unique within its tenant and
@@ -886,8 +887,9 @@ class Charge(BaseModel):
     beside that, and each holds a different failure: the write fires only on the
     WINNING transition into the delivered state (`TaskService._flip` returns
     which call won), the partial uniqueness below makes a second primary charge
-    a database error rather than a double charge, and #417's projected posting
-    carries a unique money key of its own.
+    a database error rather than a double charge, and the projected posting
+    takes THIS row's key so `uq_usage_event_idempotency_v2` refuses a second
+    projection of one charge.
 
     ⚠ **CORRECTIONS ARE COMPENSATING RECORDS, NEVER EDITS.** Every economic
     column is declared `FROZEN` — ADR-0007 §2's *none after insert* — and
@@ -896,9 +898,11 @@ class Charge(BaseModel):
     trail: the original stands, and what corrects it is another row of this
     table naming it. See `compensates` below.
 
-    **UBB'S OWN PLATFORM FEE APPLIES TO IT**, which #417 makes an explicit
+    **UBB'S OWN PLATFORM FEE APPLIES TO IT**, and #417 made that an explicit
     property of the projection rather than something the projection inherits by
-    accident.
+    accident: the posting reaches `TenantBillingService.accumulate_usage` by
+    the same route every metered posting does, so the fee is a percentage of a
+    period total this amount is inside.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -1007,10 +1011,10 @@ class Charge(BaseModel):
     #
     # ⚠ A COPY RATHER THAN A READ THROUGH THE WORK, for this table's whole
     # reason: those columns live on a mutable row and this one is frozen. It is
-    # also what lets #417's projection inherit them onto the posting from the
-    # Charge, so *margin by region* nets this revenue against that same piece of
-    # work's COGS in the same bucket with no new code — the inheritance the
-    # posting rail already performs, reading one more row.
+    # also what the projection inherits onto the posting (#417), so *margin by
+    # region* nets this revenue against that same piece of work's COGS in the
+    # same bucket with no new code — the inheritance the posting rail already
+    # performs, reading one more row.
     grouping_field_1 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_2 = models.CharField(max_length=100, blank=True, default="")
     grouping_field_3 = models.CharField(max_length=100, blank=True, default="")

@@ -23,22 +23,22 @@ comment into `core/vocabulary.py` rather than as data, deliberately, so that a
 consumer wanting to evaluate it reads the registry: what is below is the one
 evaluation, in the one place the serialiser calls.
 
-**The kind is the seam slice 5 replaces.** `not_applicable` belongs to a
-synthetic charge posting — a Task sold for one agreed price, projected as a
-posting with revenue and no supplier work behind it. There is no `kind` column
-to read it from and there must not be one here: `usage_event_kind`'s backend
-consumer is a G2 debt whose ledger entry names slice 5 as its owner, and slice 5
-is the slice that builds the Charge such a posting is projected from. Until
-then nothing in this repository projects one, so :func:`posting_kind` answers
-`metered_usage` for every row — from one place, so that the day the column
-arrives there is one line to change and one test that fails if it is missed.
+**THE SEAM CLOSED IN #417, AND THIS IS WHAT IT COST: ONE LINE.**
+`not_applicable` belongs to a synthetic charge posting — a unit of work sold at
+one agreed price, projected as a posting with revenue and no supplier work
+behind it. Until #417 there was no `kind` column to read it from, so
+:func:`posting_kind` answered `metered_usage` for every row, from one place,
+*"so that the day the column arrives there is one line to change and one test
+that fails if it is missed"*. The column arrived with the projection that
+produces such a row at all, the line changed, and the assertion that pinned the
+old reading is updated at its own address in `tests/test_posting_measurement.py`
+rather than deleted — it is the one that names the change.
 """
 
 from core.vocabulary import (
     MEASUREMENTS_STATUS_AVAILABLE,
     MEASUREMENTS_STATUS_NOT_APPLICABLE,
     MEASUREMENTS_STATUS_PRUNED,
-    USAGE_EVENT_KIND_METERED_USAGE,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
 
@@ -46,14 +46,14 @@ from .models import PostingMeasurement
 
 
 def posting_kind(posting):
-    """Which kind of posting this is — `metered_usage` for every row today.
+    """Which kind of posting this is, read off the row's own discriminator.
 
-    Not a column read, and deliberately not one: see the module note above for
-    why the discriminator belongs to slice 5. This is where that read lands
-    when it exists, and the argument is taken now so that every caller is
-    already written against the shape it will have.
+    A function rather than an attribute access spelled at each caller, and it
+    stays one now that there is a column behind it: what a reader of this
+    module needs is one place that answers *which kind is this*, and the
+    argument for that did not depend on the answer being a constant.
     """
-    return USAGE_EVENT_KIND_METERED_USAGE
+    return posting.kind
 
 
 def measurements_status(kind, *, measured):

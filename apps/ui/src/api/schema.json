@@ -8316,6 +8316,15 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "kind": {
+            "enum": [
+              "metered_usage",
+              "task_charge"
+            ],
+            "title": "Kind",
+            "type": "string",
+            "x-ubb-concept": "usage_event_kind"
+          },
           "measurements": {
             "additionalProperties": true,
             "default": {},
@@ -8463,6 +8472,7 @@
         },
         "required": [
           "id",
+          "kind",
           "idempotency_key",
           "costing_status",
           "pricing_status",
@@ -8521,6 +8531,15 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "metered_usage",
+              "task_charge"
+            ],
+            "title": "Kind",
+            "type": "string",
+            "x-ubb-concept": "usage_event_kind"
           },
           "metadata": {
             "additionalProperties": true,
@@ -8602,6 +8621,7 @@
         },
         "required": [
           "id",
+          "kind",
           "costing_status",
           "pricing_status",
           "metadata",

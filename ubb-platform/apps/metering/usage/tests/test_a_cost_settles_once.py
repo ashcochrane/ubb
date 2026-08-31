@@ -369,11 +369,17 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         """One rule per declared subject, and the set says which.
 
         The price pair's rule is a SECOND trigger rather than a second branch
-        inside this one, and the receipt's is a THIRD; all three are
-        deliberately the same mechanism. They govern disjoint columns, each
-        `WHEN` clause names only its own, and dropping any one leaves the others
-        standing. What would have been wrong is a second *kind* of mechanism —
-        a `CHECK` or a `RULE` holding one subject while a trigger holds another.
+        inside this one, the receipt's is a THIRD and the kind discriminator's
+        is a FOURTH; all four are deliberately the same mechanism. They govern
+        disjoint columns, each `WHEN` clause names only its own, and dropping
+        any one leaves the others standing. What would have been wrong is a
+        second *kind* of mechanism — a `CHECK` or a `RULE` holding one subject
+        while a trigger holds another.
+
+        ⚠ The fourth (#417) is the first on this table that admits NO move at
+        all: a posting is born one kind or the other and is never converted,
+        which is `FROZEN` rather than `RESOLVE_ONCE`. Its own trio is
+        `test_a_postings_kind_is_settled_at_birth.py`.
 
         The set is spelled out here rather than imported from a shared constant,
         for the reason the declaration set is: an assertion every module took
@@ -383,7 +389,8 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         """
         self.assertEqual(self._triggers_on_the_table(),
                          {TRIGGER, "trg_posting_price_transitions",
-                          "trg_posting_receipt_sealing"})
+                          "trg_posting_receipt_sealing",
+                          "trg_posting_kind_frozen"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -433,7 +440,8 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         self.assertIsNone(self._trigger_row())
         self.assertEqual(self._triggers_on_the_table(),
                          {"trg_posting_price_transitions",
-                          "trg_posting_receipt_sealing"})
+                          "trg_posting_receipt_sealing",
+                          "trg_posting_kind_frozen"})
         _through_the_queryset(settled, **{COST: 999})
         settled.refresh_from_db()
         self.assertEqual(getattr(settled, COST), 999)

@@ -139,6 +139,7 @@ class UBBClientTest(unittest.TestCase):
         expected = PaginatedResponse(
             data=[from_wire(UsageEventOut, {
                 "id": "00000000-0000-0000-0000-0000000000e1",
+                "kind": "metered_usage",
                 "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known",
                 "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,
