@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,702 of 2,110 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,704 of 2,114 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1700,6 +1700,27 @@ measurement_key:
     # as input, and it is the same shape as #412's, one window later, in a
     # commit whose subject is money-shaped prose about work — both halves of
     # what has reached for the plural every time since #328.
+    #
+    # #415 MOVED BOTH DENOMINATORS BY TWO AND FOUR AND LEFT THE NUMERATOR WHERE
+    # IT WAS (1,702 -> 1,704 swept, 2,110 -> 2,114 tracked, `units` UNMOVED at
+    # 45 files and 123 occurrences). Four tracked files arrived and only two are
+    # swept: the other two are migrations, and `historical-migrations` is a
+    # wholesale directory exclusion, so they lift `tracked` alone and its own
+    # rule count 241 -> 243. The two swept files are both test modules — the
+    # start gate's agreed-price cases and the database rule that holds contained
+    # work to the regime of the work containing it. NOTHING GENERATED MOVED:
+    # this commit publishes an amount rather than a closed value set, so no enum
+    # module was minted, which is the difference between an ordinary field and
+    # the one #414 shipped.
+    #
+    # ⚠ AND THE NUMERATOR HELD ON THE FIRST MEASUREMENT, WHICH BREAKS A RUN OF
+    # FIVE. Both new modules are prose about work, in a commit whose subject is
+    # money-shaped prose about work — the exact pair that has reached for the
+    # plural every window since #328 — and the sentences say "a whole unit of
+    # work", "contained work" and "one unit of work" throughout. It is worth
+    # recording as a non-event rather than passed over: the four notes above
+    # this one are about a word arriving through ordinary English, and a window
+    # where it did not is evidence about the habit rather than about the gate.
 
     - term: units
       retired_as: >-

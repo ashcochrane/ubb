@@ -1,7 +1,10 @@
+from typing import NamedTuple
+
 from django.core.cache import cache
 
 from core.vocabulary import (
-    TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+    PRICING_MODE_EVENT_PRICED, TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK,
+    TASK_TYPE_KIND_TASK)
 
 from apps.billing.gating.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
@@ -20,6 +23,35 @@ from apps.billing.gating.models import RiskConfig
 CONCURRENCY_LIMIT = "concurrency_limit"
 
 
+class StartPolicy(NamedTuple):
+    """EVERYTHING A START PINS OFF THE DECLARED KIND OF WORK, as one answer.
+
+    A NamedTuple rather than a bare tuple because the four are not
+    interchangeable and `[0]` / `[3]` at the call site says nothing about which
+    is which — two of them are strings, so a mis-ordered unpack would put a
+    kind of work where a regime belongs and be caught by nothing.
+    `work/queries.ExpiryWindows` is the house precedent and makes the argument
+    at length.
+
+    It is still a tuple, which is what keeps this a plain-data answer rather
+    than an object the caller has to know how to drive.
+    """
+
+    #: The declared kind of work, validated and unretired — "" for a tenant who
+    #: declared no vocabulary at all.
+    task_type: str
+    #: The grouping values ADMITTED for this start, already bound to slots.
+    grouping_slots: dict
+    #: The COGS ceiling, after the whole ladder. `None` is uncapped.
+    provider_cost_limit_micros: int | None
+    #: HOW THIS KIND OF WORK IS SOLD (#414, #415), which a start snapshots onto
+    #: the unit of work and, where it is one agreed price, resolves an amount
+    #: for. `event_priced` for a tenant who declared no vocabulary: an untyped
+    #: unit of work has no declaration to have said otherwise, and that is what
+    #: every unit of work in the system meant before the column existed.
+    pricing_mode: str
+
+
 class RiskService:
     @staticmethod
     def resolve_type_policy(tenant, *, task_type, dimensions,
@@ -35,7 +67,7 @@ class RiskService:
 
         Precedence (design D7): caller request (only if <= the declared
         default) -> the declared default -> RiskConfig tenant default ->
-        uncapped. Returns (key, slot_values, limit_micros); a None limit means
+        uncapped. Returns a `StartPolicy` whose limit is None where there is
         "no type-level opinion", and `resolve_start_policy` below applies the
         RiskConfig rung. Start gates call THAT one — this is the top of the
         ladder rather than the whole of it.
@@ -94,7 +126,15 @@ class RiskService:
             limit = type_default
         else:
             limit = None  # the existing RiskConfig fallback applies downstream
-        return key, slot_values, limit
+        # HOW THIS KIND OF WORK IS SOLD, READ OFF THE SAME DECLARATION THAT
+        # SUPPLIED THE CEILING (#415). A tenant with no declared vocabulary
+        # gets `event_priced` — not because nobody said, but because an untyped
+        # unit of work has no declaration that could have said otherwise, and
+        # per-event is what every unit of work in this system meant before the
+        # column existed. It is the same default the column itself carries, for
+        # the same reason.
+        regime = policy["pricing_mode"] if policy else PRICING_MODE_EVENT_PRICED
+        return StartPolicy(key, slot_values, limit, regime)
 
     @staticmethod
     def resolve_start_policy(tenant, *, task_type, dimensions,
@@ -116,17 +156,18 @@ class RiskService:
         for every start, whatever the tenant's posture, and asks the
         money-shaped questions below separately.
         """
-        key, slot_values, limit = RiskService.resolve_type_policy(
+        policy = RiskService.resolve_type_policy(
             tenant, task_type=task_type, dimensions=dimensions,
             requested_limit_micros=requested_limit_micros,
             is_subtask=is_subtask)
+        limit = policy.provider_cost_limit_micros
         if limit is None:
             config = RiskService._config(tenant)
             if config is not None:
                 limit = (config.default_subtask_provider_cost_limit_micros
                          if is_subtask
                          else config.default_task_provider_cost_limit_micros)
-        return key, slot_values, limit
+        return policy._replace(provider_cost_limit_micros=limit)
 
     @staticmethod
     def _config(tenant):

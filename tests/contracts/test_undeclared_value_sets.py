@@ -109,7 +109,17 @@ VALUE_SETS = {
     # word to live on and no value set to declare: which kind a book is, is
     # which TABLE it sits on. Re-taken from the census rather than decremented,
     # for the reason the paragraph above gives.
-    "ubb-platform/apps/metering/pricing/models.py": 2,
+    #
+    # 2 -> 3 in #415: the work-level price line names the ALTITUDE of the
+    # declaration it prices, and the set is `TASK_TYPE_KIND_CHOICES` IMPORTED
+    # from `work/models.py` rather than a second copy written here -- the
+    # `SLOT_CHOICES` import at the top of that module doing the same job for
+    # the same reason. So this inventory counts a value set that is one object
+    # shared with the row above it, which is the shape it should count: it
+    # counts declarations of a set on a COLUMN, and a column declaring one is
+    # what a reviewer needs to see whether or not the members were written
+    # locally.
+    "ubb-platform/apps/metering/pricing/models.py": 3,
     # 2 → 4 in #351: the price status and its reason, both DERIVED from the
     # registry frozensets exactly as the cost pair beside them. The count rises
     # because this inventory counts the shape and not the provenance — which is
@@ -136,7 +146,15 @@ VALUE_SETS = {
     # it is worth one line that this one is also the module's first column
     # declared into a transition class, so what the reviewer is being shown is a
     # value set whose members can never change ON A ROW either.
-    "ubb-platform/apps/platform/work/models.py": 4,
+    # 4 -> 5 in #415: the SAME value set a second time, on the unit of work
+    # itself. It is one concept at two scopes and the registry says the
+    # repetition is deliberate — the declaration says how a KIND of work is
+    # sold, the unit of work says how IT was sold, and the second is a snapshot
+    # of the first taken at start so that a configuration change can never reach
+    # work already running. This inventory counts shapes rather than concepts,
+    # so a set reused deliberately still comes past a reviewer, which is exactly
+    # what it is for.
+    "ubb-platform/apps/platform/work/models.py": 5,
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,

@@ -26,8 +26,8 @@ class StartTaskResponse:
     """ What a start registered, or what its key already claimed.
 
     ⚠ THE REGISTRATION, NOT THE READ. A start answers *which unit of work is
-    this, and did I just create it* — the identity, the altitude, and the five
-    facts the unit pinned. What it deliberately does NOT carry is the cost
+    this, and did I just create it* — the identity, the altitude, and the facts
+    the unit pinned. What it deliberately does NOT carry is the cost
     rollups: they are a read's answer, they are all zero on the call that
     creates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a
     caller replaying an attempt that has since run up cost.
@@ -48,6 +48,7 @@ class StartTaskResponse:
             replayed (bool):
             status (StartTaskResponseStatus):
             task_id (str):
+            agreed_price_micros (int | None | Unset):
             external_task_id (str | Unset):  Default: ''.
             parent_task_id (None | str | Unset):
             provider_cost_limit_micros (int | None | Unset):
@@ -58,6 +59,7 @@ class StartTaskResponse:
     replayed: bool
     status: StartTaskResponseStatus
     task_id: str
+    agreed_price_micros: int | None | Unset = UNSET
     external_task_id: str | Unset = ''
     parent_task_id: None | str | Unset = UNSET
     provider_cost_limit_micros: int | None | Unset = UNSET
@@ -76,6 +78,12 @@ class StartTaskResponse:
         status = self.status.value
 
         task_id = self.task_id
+
+        agreed_price_micros: int | None | Unset
+        if isinstance(self.agreed_price_micros, Unset):
+            agreed_price_micros = UNSET
+        else:
+            agreed_price_micros = self.agreed_price_micros
 
         external_task_id = self.external_task_id
 
@@ -102,6 +110,8 @@ class StartTaskResponse:
             "status": status,
             "task_id": task_id,
         })
+        if agreed_price_micros is not UNSET:
+            field_dict["agreed_price_micros"] = agreed_price_micros
         if external_task_id is not UNSET:
             field_dict["external_task_id"] = external_task_id
         if parent_task_id is not UNSET:
@@ -128,6 +138,16 @@ class StartTaskResponse:
 
 
         task_id = d.pop("task_id")
+
+        def _parse_agreed_price_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        agreed_price_micros = _parse_agreed_price_micros(d.pop("agreed_price_micros", UNSET))
+
 
         external_task_id = d.pop("external_task_id", UNSET)
 
@@ -158,6 +178,7 @@ class StartTaskResponse:
             replayed=replayed,
             status=status,
             task_id=task_id,
+            agreed_price_micros=agreed_price_micros,
             external_task_id=external_task_id,
             parent_task_id=parent_task_id,
             provider_cost_limit_micros=provider_cost_limit_micros,

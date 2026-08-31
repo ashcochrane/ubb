@@ -387,6 +387,81 @@ class Task(BaseModel):
     # never the tenant's markup policy.
     provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
 
+    # HOW THIS UNIT OF WORK IS SOLD, SNAPSHOTTED AT START (#415, spec §9).
+    #
+    # The same word `TaskType.pricing_mode` carries, at the other scope, and
+    # the registry says the repetition is deliberate: they are one concept at
+    # two scopes and the model name already supplies the scope. The
+    # DECLARATION says how a kind of work is sold; this says how THIS unit was
+    # sold, and it is a copy rather than a read for the reason
+    # `balance_snapshot_micros` and `provider_cost_limit_micros` above are
+    # copies — a configuration change must never reach work already running.
+    #
+    # It is why the frozen column one table over does not need a publish
+    # record (spec §10): nothing in flight or historical can move, because the
+    # answer is written down here at start.
+    #
+    # NOT NULL WITH A DEFAULT, matching the declaration's own column and for
+    # the same reason: every unit of work registered before this existed was
+    # registered when per-event was the only regime there was, so
+    # `event_priced` is what those rows have always meant. A null would invent
+    # a third state — *nobody said* — for a question every existing row has
+    # already answered.
+    pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES,
+                                    default=PRICING_MODE_EVENT_PRICED)
+    # THE AGREED PRICE THIS UNIT OF WORK WAS QUOTED, PINNED AT START (#415,
+    # #139 §2.3), resolved from a work-level line in the customer's own policy
+    # book (`pricing.TaskPrice`).
+    #
+    # ⚠ **PINNED, WHICH IS WHY A PRICE CHANGE MID-JOB CANNOT MOVE IT.** A unit
+    # of work spanning a reprice keeps the number it was quoted, while its
+    # supplier costs float and resolve at each posting's own timestamp — *the
+    # price was promised, the cost is observed.* So one unit of work's revenue
+    # and its COGS resolve against DIFFERENT INSTANTS, which looks like a
+    # defect to anyone reading a single receipt without this sentence. It is
+    # said again at `apps/metering/pricing/receipts.py`, which is where a
+    # reader of one receipt will actually be.
+    #
+    # ⚠ **DETERMINATION, NOT CHARGE.** This says which price applies; whether
+    # it is owed at all is decided by how the work ends, and the canonical
+    # record of a charge that really arose is the Charge (#416) — a different
+    # lifetime, its own currency, and one-to-zero-or-one with this. A unit of
+    # work that fails carries this number and is charged nothing.
+    #
+    # ⚠ **MARKUP NEVER APPLIES TO IT** (#139 §2.5). Markup is a function of
+    # provider cost, so applying it here would yield "the agreed price plus a
+    # percentage of this unit's COGS" — a price that moves with cost, which
+    # destroys the premise. All four markup rungs are bypassed; the number
+    # here is the line's own.
+    #
+    # NULL FOR EVERY UNIT OF WORK PRICED PER EVENT, which is the honest reading
+    # rather than a gap: there is no agreed price for such a unit and a zero
+    # would be a price of nothing. Non-null exactly where `pricing_mode` above
+    # is `fixed`, because a start that could not resolve one is refused before
+    # the row is written.
+    agreed_price_micros = models.BigIntegerField(null=True, blank=True)
+    # WHICH LINE ANSWERED, PINNED BESIDE THE NUMBER IT PRODUCED (#415, #139
+    # §2.3).
+    #
+    # ⚠ **THE AMOUNT ALONE IS NOT A REPRODUCIBLE RECORD.** #139 §2.3 requires a
+    # charge to name the matched line so that the amount is "reproducible from
+    # the record rather than by re-resolving today's config", and re-resolving
+    # is not a fallback available later: which books are even in play depends on
+    # the customer's plan, which moves. So the identity of the line is captured
+    # in the same write as the number, at the one instant both are known.
+    #
+    # A PLAIN UUID AND NOT A FOREIGN KEY, which is `billing_owner_id` and
+    # `announce_outbox_id` above doing the same thing for the same reason. The
+    # line is `apps.metering.pricing.TaskPrice` — a PRODUCT's table — and this
+    # model is the KERNEL's; ADR-001 lets a product read the kernel and not the
+    # other way round, so a database-level reference here would invert the one
+    # dependency the golden rule is about. A reader joins from the product side.
+    #
+    # NULL wherever `agreed_price_micros` is null, and never independently: the
+    # two are written together or not at all, which is what makes the pair a
+    # record rather than two facts that can come apart.
+    agreed_price_line_id = models.UUIDField(null=True, blank=True)
+
     # Tier-2 (D4/I6): the billing owner PINNED at task creation
     # (resolve_billing_owner), exactly like Posting.billing_owner_id. The
     # concurrency-slot acquire/release and both reapers read this — they MUST
@@ -463,6 +538,19 @@ class Task(BaseModel):
     # own migration. Whichever ticket installs that trigger should take all of
     # them together; this comment is here so the next reader finds a decision
     # rather than an omission.
+    #
+    # ⚠ THIS TABLE DOES CARRY A RULE NOW (#415), AND IT IS NOT ONE OF THESE.
+    # `work/migrations/0022` installs a `BEFORE INSERT` trigger holding
+    # contained work to the pricing regime of the work containing it — a
+    # cross-row rule about who may be BORN, which no `CHECK` can express
+    # because it reads two rows. It is declared into no transition class and
+    # discharges none of the gap above: a mutability class is a statement
+    # about what may happen to a column AFTER insert, and that trigger never
+    # fires on one. What it does change is the cost of paying this debt — the
+    # `ubb_task` trigger the paragraph above asks for now has a sibling on the
+    # same table, so whoever writes it must address triggers BY NAME and
+    # assert the table's rules as an exact SET rather than indexing into
+    # `pg_trigger`, which promises no order.
     outcome_reason = models.CharField(max_length=32, blank=True, default="",
                                       choices=OUTCOME_REASON_CHOICES)
     reason_detail = models.TextField(blank=True, default="")
@@ -522,6 +610,56 @@ class Task(BaseModel):
                 fields=["tenant", "customer", "idempotency_key"],
                 condition=models.Q(idempotency_key__isnull=False),
                 name="uq_task_idempotency_key",
+            ),
+            # WHOLE UNITS OF WORK ONLY, AT THE TABLE (#415, #139 §3.3).
+            #
+            # An agreed price belongs to a whole unit of work sold that way and
+            # to nothing else. Two rows could otherwise carry one: a unit
+            # priced per event, where the number would contradict its own
+            # regime; and CONTAINED work, where a fan of prices nobody asserted
+            # would be born every time a parent's close cascades over its
+            # children — the auto-charge failure #139 §3.1 exists to refuse.
+            # The parent is already the whole-job altitude and rollup is
+            # unconditional, so a step's price would be revenue counted at a
+            # level nothing reports at.
+            #
+            # ⚠ IT IS ONE DIRECTION AND ONLY ONE, which is the difference
+            # between a rule and a claim. *A price implies a whole fixed unit*
+            # is a property of one row and a check can hold it. The converse —
+            # *every whole fixed unit carries a price* — is NOT expressible
+            # here and is not true either: contained work under a fixed parent
+            # is `fixed` too, by the equality rule the insert trigger holds,
+            # and carries no price of its own. What makes a whole fixed unit
+            # of work carry one is the start gate refusing to register it
+            # otherwise, which is a rule about who may be born and lives in
+            # `work/migrations/0022`'s trigger and in the start gate above it.
+            models.CheckConstraint(
+                condition=(models.Q(agreed_price_micros__isnull=True)
+                           | models.Q(pricing_mode=PRICING_MODE_FIXED,
+                                      parent__isnull=True)),
+                name="ck_task_agreed_price_only_on_a_whole_fixed_unit",
+            ),
+            # A PRICE IS NOT NEGATIVE, the twin of the line's own check
+            # (`pricing.TaskPrice`). Zero is a price — a tenant may agree to
+            # deliver a kind of work for nothing — and a number below it is a
+            # sign error rather than a deal.
+            models.CheckConstraint(
+                condition=(models.Q(agreed_price_micros__isnull=True)
+                           | models.Q(agreed_price_micros__gte=0)),
+                name="ck_task_agreed_price_not_negative",
+            ),
+            # AN AMOUNT AND THE LINE THAT PRODUCED IT MOVE TOGETHER OR NOT AT
+            # ALL — the amount/status-pair shape `core.amount_status_pairs`
+            # names for the posting, one concept along. A number with no line
+            # cannot be reproduced from the record, which is the whole of what
+            # #139 §2.3 asks the pair for; a line with no number would say a
+            # price was resolved and record none of it.
+            models.CheckConstraint(
+                condition=(models.Q(agreed_price_micros__isnull=True,
+                                    agreed_price_line_id__isnull=True)
+                           | models.Q(agreed_price_micros__isnull=False,
+                                      agreed_price_line_id__isnull=False)),
+                name="ck_task_agreed_price_and_its_line_move_together",
             ),
         ]
         indexes = [

@@ -1246,6 +1246,19 @@ class TaskOut(Schema):
     unpriced_event_count: int
     event_count: int
     provider_cost_limit_micros: Optional[int] = None
+    #: THE AGREED PRICE THIS UNIT OF WORK PINNED WHEN IT STARTED, where its
+    #: kind of work is sold at one agreed price rather than per event (#415).
+    #:
+    #: It is the number the unit was QUOTED and it does not move: a later
+    #: change to the book cannot reach it, and no markup is applied on top of
+    #: it. It is not a charge — whether it is owed at all depends on how the
+    #: work ends.
+    #:
+    #: Null where nothing was pinned, which is two readings a caller tells
+    #: apart by `parent_task_id` beside it: a unit of work priced per event,
+    #: and contained work, which never pins a price of its own because one
+    #: agreed price buys a whole unit of work.
+    agreed_price_micros: Optional[int] = None
     dimensions: dict = Field(default_factory=dict)
     created_at: str
     completed_at: Optional[str] = None
@@ -1270,6 +1283,7 @@ def task_out(t):
         "unpriced_event_count": t.unpriced_event_count,
         "event_count": t.event_count,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "agreed_price_micros": t.agreed_price_micros,
         # A FREE-FORM OBJECT, so its keys are data and not contract: the
         # published document types this as an object and names no property, and
         # #276 renaming the columns therefore renames the keys here without
@@ -1363,8 +1377,8 @@ class StartTaskResponse(Schema):
     """What a start registered, or what its key already claimed.
 
     ⚠ THE REGISTRATION, NOT THE READ. A start answers *which unit of work is
-    this, and did I just create it* — the identity, the altitude, and the five
-    facts the unit pinned. What it deliberately does NOT carry is the cost
+    this, and did I just create it* — the identity, the altitude, and the facts
+    the unit pinned. What it deliberately does NOT carry is the cost
     rollups: they are a read's answer, they are all zero on the call that
     creates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a
     caller replaying an attempt that has since run up cost.
@@ -1396,6 +1410,20 @@ class StartTaskResponse(Schema):
     #: the tenant default for this altitude. Null means uncapped, and no stop
     #: signal will ever fire for spend on this unit.
     provider_cost_limit_micros: Optional[int] = None
+    #: THE AGREED PRICE THIS UNIT OF WORK PINNED, where its kind of work is
+    #: sold at one agreed price rather than per event (#415). It is resolved
+    #: from this customer's pricing book at this moment and does not move
+    #: afterwards; no markup applies to it, and it is not a charge — whether it
+    #: is owed at all depends on how the work ends.
+    #:
+    #: On a REPLAY this is the original attempt's number, like everything else
+    #: here. A repeat naming a different kind of work is refused rather than
+    #: replayed, because a different kind of work is a different price.
+    #:
+    #: Null where nothing was pinned: a unit of work priced per event, or
+    #: contained work, which never pins a price of its own — `parent_task_id`
+    #: above is what tells those two apart.
+    agreed_price_micros: Optional[int] = None
     #: The caller's own label for the work, echoed back — reusable across
     #: attempts and never an identity. On a replay this is the ORIGINAL
     #: attempt's label, which is the point: a differing label does not conflict
@@ -1419,6 +1447,7 @@ def start_task_out(t, *, replayed):
         "task_type": t.task_type,
         "status": t.status,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "agreed_price_micros": t.agreed_price_micros,
         "external_task_id": t.external_task_id,
         "created_at": t.created_at.isoformat(),
         "replayed": replayed,

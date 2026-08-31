@@ -36,6 +36,7 @@ class TaskOut:
             total_provider_cost_micros (int):
             unpriced_event_count (int):
             unresolved_event_count (int):
+            agreed_price_micros (int | None | Unset):
             completed_at (None | str | Unset):
             dimensions (TaskOutDimensions | Unset):
             outcome_reason (None | TaskOutOutcomeReasonType0 | Unset):
@@ -53,6 +54,7 @@ class TaskOut:
     total_provider_cost_micros: int
     unpriced_event_count: int
     unresolved_event_count: int
+    agreed_price_micros: int | None | Unset = UNSET
     completed_at: None | str | Unset = UNSET
     dimensions: TaskOutDimensions | Unset = UNSET
     outcome_reason: None | TaskOutOutcomeReasonType0 | Unset = UNSET
@@ -83,6 +85,12 @@ class TaskOut:
         unpriced_event_count = self.unpriced_event_count
 
         unresolved_event_count = self.unresolved_event_count
+
+        agreed_price_micros: int | None | Unset
+        if isinstance(self.agreed_price_micros, Unset):
+            agreed_price_micros = UNSET
+        else:
+            agreed_price_micros = self.agreed_price_micros
 
         completed_at: None | str | Unset
         if isinstance(self.completed_at, Unset):
@@ -135,6 +143,8 @@ class TaskOut:
             "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
+        if agreed_price_micros is not UNSET:
+            field_dict["agreed_price_micros"] = agreed_price_micros
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
         if dimensions is not UNSET:
@@ -176,6 +186,16 @@ class TaskOut:
         unpriced_event_count = d.pop("unpriced_event_count")
 
         unresolved_event_count = d.pop("unresolved_event_count")
+
+        def _parse_agreed_price_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        agreed_price_micros = _parse_agreed_price_micros(d.pop("agreed_price_micros", UNSET))
+
 
         def _parse_completed_at(data: object) -> None | str | Unset:
             if data is None:
@@ -258,6 +278,7 @@ class TaskOut:
             total_provider_cost_micros=total_provider_cost_micros,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
+            agreed_price_micros=agreed_price_micros,
             completed_at=completed_at,
             dimensions=dimensions,
             outcome_reason=outcome_reason,

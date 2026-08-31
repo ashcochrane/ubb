@@ -9,6 +9,7 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     OUTCOME_REASON_PARENT_CLOSED,
     OUTCOME_REASON_VALUES,
+    PRICING_MODE_EVENT_PRICED,
     PRICING_STATUS_KNOWN,
     TASK_OUTCOME_CANCELLED,
     TASK_OUTCOME_DELIVERED,
@@ -50,6 +51,42 @@ class RegimeChangeRefused(ValueError):
             f"{kind} type {key!r} is declared {standing_regime!r} and how a "
             f"kind of work is sold cannot change; retire it and declare a "
             f"replacement")
+
+
+class ContainmentRegimeRefused(ValueError):
+    """Contained work is sold the way the work containing it is sold (#415).
+
+    A ``ValueError`` subclass for the reason its neighbour above is one: the
+    rule is the product's and the dialect is the composition layer's
+    (ADR-001).
+
+    ⚠ **THE INVARIANT COMPARES TWO ROWS, WHICH IS WHY IT IS HERE AND NOT ON THE
+    MODEL** (#151 §18, recorded there as *"the weakest enforcement in the
+    document, and it guards a money-shaped rule"*). No column constraint can
+    express it — a `CHECK` is evaluated against one row and cannot see the
+    parent — so it is stated once in the one service every writer passes
+    through, and enforced at the database by the `BEFORE INSERT` trigger
+    `work/migrations/0022` installs. This class is what turns that refusal into
+    a sentence naming both regimes; without it the tenant would meet the
+    trigger's `IntegrityError` and be told nothing actionable.
+
+    A mixed tree produces a number nobody can explain. The rollup is
+    unconditional, so a per-event step under an agreed-price parent adds
+    metered revenue to a unit of work whose revenue that price was supposed to
+    replace; an agreed-price step under a per-event parent puts revenue at a
+    level nothing reports at.
+
+    It carries both regimes because the caller needs to know which one it
+    contradicted, not merely that it did.
+    """
+
+    def __init__(self, containing_regime, declared_regime):
+        self.containing_regime = containing_regime
+        self.declared_regime = declared_regime
+        super().__init__(
+            f"the unit of work containing this one is sold "
+            f"{containing_regime!r} and this one declares {declared_regime!r}; "
+            f"contained work is sold the way the work containing it is sold")
 
 
 class KindOfWorkDeclaration:
@@ -511,6 +548,20 @@ class StartDeclaration:
         second, legitimate unit of work. That is the uniqueness rule doing the
         pinning; there is no row to contradict.
 
+        ⚠ **AND THE RESOLVED AGREED PRICE IS PINNED THE SAME WAY, WHICH IS WHY
+        IT IS NOT COMPARED EITHER (#415).** A caller never states a price — it
+        is resolved out of the customer's own book — so there is no claim about
+        it for a repeat to contradict directly. The only way a repeat can mean
+        a different price is by naming a different kind of work, and that is
+        the comparison two lines up: a different kind of work IS a different
+        price, which is exactly why a silent replay across it would charge the
+        render price for a transcode. Re-resolving the price here to compare it
+        would be the re-derivation the ⚠ above forbids, and it would be the
+        worst instance of it — a tenant repricing their book would turn every
+        in-flight retry into a conflict about a number the caller never sent.
+        What the retry gets back is the ORIGINAL's pinned price, off the row,
+        which is what pinning means.
+
         ⚠ THE NAMES RETURNED ARE THIS MODULE'S, NOT THE WIRE'S, and the
         composition layer translates — the same split `DeclarationRefused`
         takes one class up, where the rule is the product's and the dialect is
@@ -606,7 +657,9 @@ class TaskService:
                     provider_cost_limit_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
                     parent=None, task_type="", dimension_slots=None,
-                    idempotency_key=None):
+                    idempotency_key=None,
+                    pricing_mode=PRICING_MODE_EVENT_PRICED,
+                    agreed_price_micros=None, agreed_price_line_id=None):
         """Create a Task, snapshotting limit config and wallet balance.
         Passing ``parent`` registers a SUBTASK under it (#38) — a Task row
         with the self-FK set, one containment level at launch.
@@ -631,11 +684,36 @@ class TaskService:
         declared kind of work and admitted the grouping field values —
         TaskService only writes what it is given. ``task_type`` is the whole
         declaration at EITHER altitude; ``parent`` is what says which.
+
+        ``pricing_mode``, ``agreed_price_micros`` and ``agreed_price_line_id``
+        (#415) are what a unit of work snapshots about HOW IT IS SOLD, and they
+        are pass-through in the same sense: the caller has read the declaration
+        and, where it names one agreed price, resolved that price out of the
+        customer's own policy book. The regime defaults to per-event because
+        every caller that is not a start gate — the reapers, the cascades,
+        every fixture that stands a unit of work up directly — is registering
+        work no declaration was consulted for, and per-event is what such a
+        unit of work has always meant. The price and its line default to `None`
+        for the stronger reason that there is nothing to invent: an agreed
+        price comes from a line a tenant wrote, and a synthesised one would be
+        a fabricated declaration. The two travel together and the table refuses
+        one without the other.
+
+        ⚠ **ONE THING HERE IS NOT PASS-THROUGH, AND IT IS DELIBERATE.**
+        Contained work is sold the way the work containing it is sold, and that
+        invariant compares TWO ROWS — so no column constraint can express it
+        and it cannot be left to the caller. It is checked here, in the one
+        service every writer of this table passes through, and enforced at the
+        database by `work/migrations/0022`'s `BEFORE INSERT` trigger. What this
+        adds over the trigger is the sentence: a caller meeting the trigger
+        alone gets an `IntegrityError` and no idea which regime it contradicted.
         """
         if parent is not None and parent.parent_id is not None:
             raise ValueError(
                 "subtask depth exceeded: a subtask cannot parent another "
                 "task (one containment level at launch)")
+        if parent is not None and parent.pricing_mode != pricing_mode:
+            raise ContainmentRegimeRefused(parent.pricing_mode, pricing_mode)
         return Task.objects.create(
             tenant=tenant,
             customer=customer,
@@ -647,6 +725,9 @@ class TaskService:
             idempotency_key=idempotency_key,
             billing_owner_id=billing_owner_id,
             task_type=task_type,
+            pricing_mode=pricing_mode,
+            agreed_price_micros=agreed_price_micros,
+            agreed_price_line_id=agreed_price_line_id,
             **(dimension_slots or {}),
         )
 

@@ -61,6 +61,7 @@ from uuid import UUID
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from ninja import Router
 
 from api.v1.pagination import page
@@ -70,17 +71,20 @@ from api.v1.schemas import (
     start_task_out, task_out,
 )
 from apps.billing.gating.services.risk_service import RiskService
+from apps.metering.pricing.services.pricing_service import (
+    AgreedPriceRefused, determine_the_agreed_price,
+)
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.services import DimensionError
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
-    CloseDeclaration, DeclarationRefused, StartDeclaration, StartRefused,
-    TaskService,
+    CloseDeclaration, ContainmentRegimeRefused, DeclarationRefused,
+    StartDeclaration, StartRefused, TaskService,
 )
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
-from core.vocabulary import TENANT_PRODUCT_BILLING
+from core.vocabulary import PRICING_MODE_FIXED, TENANT_PRODUCT_BILLING
 
 task_router = Router(auth=ApiKeyAuth())
 
@@ -131,6 +135,17 @@ def start_task(request, payload: StartTaskRequest):
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
+
+    Where the declared kind of work is sold at one agreed price, that price is
+    resolved from this customer's pricing book and pinned to the unit of work
+    now; a later change to the book does not move it, and no markup is applied
+    to it. `422 fixed_task_price_unresolved` answers a kind of work sold that
+    way with no line in this customer's book. `422
+    fixed_task_price_on_contained_work` answers a start naming
+    `parent_task_id` whose kind of work has such a line — one agreed price buys
+    a whole unit of work, so price the kind of work that contains this one. `422
+    task_pricing_mode_conflicts_with_parent` answers contained work whose kind
+    of work is sold differently from the unit of work containing it.
     """
     tenant = request.auth.tenant
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
@@ -214,30 +229,81 @@ def start_task(request, payload: StartTaskRequest):
         # work allows, never higher, then the kind of work's own default, then
         # the tenant default for this altitude, then uncapped.
         try:
-            declared_kind, slot_values, ceiling = (
-                RiskService.resolve_start_policy(
-                    tenant, task_type=payload.task_type,
-                    dimensions=payload.dimensions,
-                    requested_limit_micros=payload.provider_cost_limit_micros,
-                    is_subtask=parent is not None))
+            policy = RiskService.resolve_start_policy(
+                tenant, task_type=payload.task_type,
+                dimensions=payload.dimensions,
+                requested_limit_micros=payload.provider_cost_limit_micros,
+                is_subtask=parent is not None)
         except ValueError as exc:
             raise Problem("validation_error", str(exc))
 
-        task = TaskService.create_task(
-            tenant=tenant,
-            customer=customer,
-            parent=parent,
-            balance_snapshot_micros=balance,
-            provider_cost_limit_micros=ceiling,
-            metadata=payload.metadata or {},
-            external_task_id=payload.external_task_id,
-            idempotency_key=payload.idempotency_key,
-            # Tier-2 (D4/I6): pin the resolved billing owner so the concurrency
-            # slot and both reapers never re-resolve it.
-            billing_owner_id=customer.resolve_billing_owner().id,
-            task_type=declared_kind,
-            dimension_slots=slot_values,
-        )
+        # THE AGREED PRICE, WHERE THE KIND OF WORK IS SOLD AT ONE (#415).
+        #
+        # It is resolved ONCE, here, and pinned onto the row below in the same
+        # transaction, so a reprice cannot move a number this unit of work was
+        # already quoted. The asymmetry that buys — revenue pinned at start
+        # while cost floats — is argued at `Task.agreed_price_micros` and again
+        # at `pricing/receipts.py`, where a reader of one receipt meets it.
+        #
+        # ⚠ IT IS THE LAST THING BEFORE THE WRITE AND EVERYTHING IT REFUSES IS
+        # RAISED, which is what makes an unpriceable start cost nothing: no row,
+        # no ceiling, no concurrency slot, and the grouping values admitted just
+        # above are rolled back with the transaction. A refusal AFTER the work
+        # ran would be the expensive one, and this is the cheapest moment it can
+        # land.
+        #
+        # `has_a_wallet` is passed as the posture, and deliberately not
+        # duplicated into a second constant: whether the money-shaped checks
+        # apply and whether this tenant bills through UBB at all are one
+        # question about one product flag, asked twice. What it decides here is
+        # narrow — see `determine_the_agreed_price` — a tenant that does not
+        # bill is not refused for a pricing gap on revenue nobody collects,
+        # and a price that does resolve is pinned for them regardless, because
+        # their margin reporting is what the declaration was recorded for.
+        agreed_price = None
+        if policy.pricing_mode == PRICING_MODE_FIXED:
+            try:
+                agreed_price = determine_the_agreed_price(
+                    tenant=tenant, customer=customer,
+                    task_type=policy.task_type,
+                    contained=parent is not None,
+                    as_of=timezone.now(),
+                    tenant_bills_through_ubb=has_a_wallet)
+            except AgreedPriceRefused as refused:
+                raise Problem(refused.reason, str(refused))
+
+        try:
+            task = TaskService.create_task(
+                tenant=tenant,
+                customer=customer,
+                parent=parent,
+                balance_snapshot_micros=balance,
+                provider_cost_limit_micros=policy.provider_cost_limit_micros,
+                metadata=payload.metadata or {},
+                external_task_id=payload.external_task_id,
+                idempotency_key=payload.idempotency_key,
+                # Tier-2 (D4/I6): pin the resolved billing owner so the
+                # concurrency slot and both reapers never re-resolve it.
+                billing_owner_id=customer.resolve_billing_owner().id,
+                task_type=policy.task_type,
+                dimension_slots=policy.grouping_slots,
+                pricing_mode=policy.pricing_mode,
+                # BOTH HALVES OR NEITHER — the number and the line that
+                # produced it are one record, and the database says so.
+                agreed_price_micros=(agreed_price.amount_micros
+                                     if agreed_price else None),
+                agreed_price_line_id=(agreed_price.id
+                                      if agreed_price else None),
+            )
+        except ContainmentRegimeRefused as refused:
+            # THE TWO-ROW INVARIANT, RENDERED. The rule is the product's and is
+            # held at the database as well; what the composition layer adds is
+            # the code and the sentence, because a caller meeting the trigger
+            # alone gets an `IntegrityError` and no idea what to change.
+            raise Problem(
+                "task_pricing_mode_conflicts_with_parent", str(refused),
+                extensions={"parent_pricing_mode": refused.containing_regime,
+                            "pricing_mode": refused.declared_regime})
     return 200, start_task_out(task, replayed=False)
 
 
