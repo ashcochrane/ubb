@@ -32,7 +32,11 @@ module proves the `measurements_status` half — a charge posting reads as *not
 applicable* rather than as a pruned metered one — because that state becomes
 reachable the moment the discriminator lands and the derivation does the rest.
 The metered postings UNDER a fixed-price unit of work reading `not_applicable`
-rather than zero is #418's, and so is the receipt whose subject is a Charge.
+rather than zero, and the receipt whose subject is a Charge, were #418's and
+landed there:
+`api/v1/tests/test_the_postings_under_an_agreed_price_are_not_applicable.py` is
+where both are asserted. This module still asserts neither, which is why the
+sentence stays rather than being deleted.
 
 ⚠ **THE FIXTURE IS #416's, IMPORTED.** `docs/conventions/testing.md` wants
 shared setup in one place, and the shape needed here is exactly the one that
@@ -134,6 +138,19 @@ class ProjectionTestBase(ChargeTestBase):
             event_type=SOLD_PER_EVENT, task_id=task_id,
             measurements=priced_at(A_METERED_SALE))
         return Posting.objects.get(id=recorded["event_id"])
+
+    def _a_second_sale_that_really_bills(self):
+        """A metered posting carrying REVENUE, under its own piece of work.
+
+        ⚠ **SAID ONCE BECAUSE FOUR CASES NEED IT AND THE REASON IS ONE REASON
+        (#418).** A metered posting under a piece of work sold at ONE AGREED
+        PRICE bills nothing — its price is `not_applicable`, because the revenue
+        for it is the agreed price — so every case that needs a SECOND revenue
+        beside a projection has to put its metered sale under work priced per
+        event. Passing the fixed-price piece instead makes the two amounts one
+        amount counted twice, and every total below it arithmetic about nothing.
+        """
+        return self._a_metered_sale(self._start(task_type=SOLD_PER_EVENT))
 
 
 @pytest.mark.django_db
@@ -417,15 +434,10 @@ class TestUbbsOwnFeeIsChargedOnTheProjection(ProjectionTestBase):
 
         ⚠ **THE METERED REVENUE HAS TO COME FROM WORK PRICED PER EVENT (#418),
         AND THAT IS THE FIXTURE ADMITTING A REAL CHANGE RATHER THAN ROUTING
-        ROUND ONE.** A metered posting under the fixed-price piece of work bills
-        NOTHING now — its price is `not_applicable`, because the revenue for it
-        is the agreed price this very case is adding up. Leaving it there would
-        have made the two amounts one amount counted twice and the assertion
-        below arithmetic about nothing.
+        ROUND ONE** — `_a_second_sale_that_really_bills` carries the reason.
         """
         started = self._priced_work()
-        priced_per_event = self._start(task_type=SOLD_PER_EVENT)
-        metered = self._a_metered_sale(priced_per_event)
+        metered = self._a_second_sale_that_really_bills()
         self._close(started)
 
         self._drain_the_rails()

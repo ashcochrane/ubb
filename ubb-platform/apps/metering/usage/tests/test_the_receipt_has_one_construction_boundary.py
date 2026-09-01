@@ -2,13 +2,22 @@
 
 Three claims, and they need three different kinds of check.
 
-**There is one construction site and one writer.** That is a claim about the
-tree, so it is a walk over the tree — the shape `test_no_bare_supplier_cost_
-aggregate.py` uses for the same reason: fifteen call sites repaired by hand stop
-nothing from the sixteenth being written next week in the shape that reads
-perfectly. Both expectations are declared as {module: COUNT}, never as a set of
-module names, and that distinction was measured rather than reasoned about — see
-the comment on `BUILDS_A_RECEIPT`, where the set form is the vacuous one.
+**Every construction site and every writer is declared, and nothing else may be
+one.** That is a claim about the tree, so it is a walk over the tree — the shape
+`test_no_bare_supplier_cost_aggregate.py` uses for the same reason: fifteen call
+sites repaired by hand stop nothing from the sixteenth being written next week in
+the shape that reads perfectly. Both expectations are declared as {module:
+COUNT}, never as a set of module names, and that distinction was measured rather
+than reasoned about — see the comment on `BUILDS_A_RECEIPT`, where the set form
+is the vacuous one.
+
+⚠ **THIS HEADLINE SAID "ONE CONSTRUCTION SITE AND ONE WRITER" AND BOTH NUMBERS
+HAVE MOVED (#418).** There are two builders and four writers, and the numbers
+were never the claim: what the walk enforces is that every one of them is
+DECLARED HERE, with its count, so a new call site is a line in this file rather
+than a change nobody reads. A headline carrying a running tally is the defect
+#417 repaired in two test names one commit earlier, and it was sitting on this
+page the whole time.
 
 ⚠ **What the walk does not cover, said out loud.** It reads the name a keyword
 argument or an attribute assignment is written under, plus the one other
@@ -109,11 +118,12 @@ BUILDS_A_RECEIPT = {
 #: completed, so the record and the columns beside it move together and cannot
 #: come to disagree (#363).
 #:
-#: ⚠ THREE WRITERS IS NOT THREE BOUNDARIES. None of them builds a record: the
-#: recording path persists what `build_receipt` returned, and each door persists
-#: what `completed_receipt` returned from the record already on the row. The
-#: claim this pair of expectations makes together is that a receipt is
-#: constructed in one place and only ever persisted from there.
+#: ⚠ A WRITER IS NOT A BOUNDARY, WHICH IS WHY THERE MAY BE MORE OF THEM. Three
+#: of the four build nothing: the recording path persists what `build_receipt`
+#: returned, and each door persists what `completed_receipt` returned from the
+#: record already on the row. The claim this pair of expectations makes together
+#: is that every record persisted here came out of the one construction
+#: function, in a module declared above.
 #:
 #: ⚠ **A FOURTH WRITER ARRIVED IN #418 AND IT IS THE OTHER INSERT.** The
 #: projection creates the one posting a Charge becomes, and it persists the
@@ -121,7 +131,8 @@ BUILDS_A_RECEIPT = {
 #: that reached the money rails with no record explaining its amount is the
 #: shape this pair of expectations exists to refuse. It is the only writer that
 #: is also a builder, which is what a subject with nothing to resolve looks
-#: like.
+#: like — and it is why the note above says *three of the four* rather than
+#: *none of them*, which is what it used to say and what this writer falsified.
 WRITES_THE_RECEIPT = {
     "apps/metering/usage/services/usage_service.py": 1,
     "apps/metering/pricing/services/cost_settlement.py": 1,
@@ -289,23 +300,33 @@ def _walk():
                    _sites(path.read_text(encoding="utf-8")))
 
 
-def test_exactly_one_place_builds_a_receipt():
+def test_every_place_that_builds_a_receipt_is_declared_here():
+    """⚠ THE NAME NO LONGER CARRIES A COUNT, AND THAT IS THE REPAIR (#418).
+
+    It said `exactly_one_place`, which was true until this ticket gave the
+    Charge its own receipt and stopped being true without anything
+    type-checking the sentence — the running-tally-in-a-test-name defect #417
+    repaired twice one commit earlier. The exact-dict assertion is unchanged and
+    is the claim: a builder that is not declared above fails here whether it is
+    the second or the twentieth.
+    """
     found = {path: len(built) for path, (built, _) in _walk() if built}
 
     assert found == BUILDS_A_RECEIPT, (
-        f"A receipt is built in ONE place, and that place is where it is "
-        f"validated — a second call site is a second boundary whether or not "
-        f"it is in a second file. Found: {found}")
+        f"A receipt is built only where {sorted(BUILDS_A_RECEIPT)} says, the "
+        f"stated number of times, and each of those places is where it is "
+        f"validated — an undeclared call site is a boundary nobody reviewed, "
+        f"whether or not it is in a new file. Found: {found}")
 
 
 def test_no_production_path_persists_a_receipt_it_did_not_build():
     found = {path: len(written) for path, (_, written) in _walk() if written}
 
     assert found == WRITES_THE_RECEIPT, (
-        f"The receipt column is written by the recording path alone, from the "
-        f"value {CONSTRUCTOR} returned. A second writer either builds its own "
-        f"record — which the one boundary exists to prevent — or repeats this "
-        f"one. Found: {found}")
+        f"The receipt column is written only by {sorted(WRITES_THE_RECEIPT)}, "
+        f"from a value {CONSTRUCTOR} returned. An undeclared writer either "
+        f"builds its own record — which the one construction function exists "
+        f"to prevent — or repeats one of these. Found: {found}")
 
 
 def _tenant_and_customer():

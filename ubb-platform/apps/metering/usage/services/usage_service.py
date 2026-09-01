@@ -362,9 +362,14 @@ class RecordingInput:
         label-fallback inference and no legacy ``product_id`` wire field: the
         write contract's only path onto a slot is a declared grouping field
         bound to it (DimensionService.admit), same as any other.
-        ``_inherit_dimensions`` resolves the fourteen selector columns per
-        slot: this event's own value wins, else the leaf task's, else its
-        parent's, else ""."""
+        ``_inherit_dimensions`` resolves the TWELVE inheritable selector
+        columns by that precedence — this event's own value wins, else the leaf
+        task's, else its parent's, else "". Twelve of the fourteen: `provider`
+        and `event_type` are the caller's own on every event and are never
+        inherited. ⚠ It answers a THIRTEENTH value that is not a selector and
+        does not follow that precedence — the piece of work's pricing regime
+        (#418), read off the leaf and used by the pricing spine rather than by
+        rule matching."""
         slots = dict(dimension_slots or {})
         dims = _inherit_dimensions(task_id, slots)
         return cls(

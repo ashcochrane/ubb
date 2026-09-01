@@ -1001,6 +1001,14 @@ class PricingService:
             # piece of work's margin is netted against.
             billed, pricing_method = None, None
             pricing_status = PRICING_STATUS_NOT_APPLICABLE
+            # ⚠ THE SECOND ARGUMENT IS A LITERAL BECAUSE THIS BRANCH HAS
+            # ALREADY ESTABLISHED IT, and passing `sold_for_one_agreed_price`
+            # instead would hand the rule a variable that is `True` at every
+            # reachable call. The rule keeps BOTH parameters rather than
+            # collapsing to one: it is stated over all four combinations of the
+            # two facts, its `None` answer is the case that has no reason at
+            # all, and a function taking only the posture could not say that —
+            # see its module docstring on why the totality is written out.
             not_applicable_reason = not_applicable_reason_for(
                 tenant_bills_through_ubb=tenant_bills_through_ubb,
                 sold_for_one_agreed_price=True)

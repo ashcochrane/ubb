@@ -126,6 +126,14 @@ def the_receipt_for(charge):
       from the record *rather than by re-resolving today's config*, and the
       values above are what make that true.
 
+      ⚠ **THE BOOK VERSION IS HALF AN IDENTITY, NOT A FIGURE**, which is why it
+      belongs in a section the boundary refuses numbers from. A book's counter
+      steps on every publish, so `(line, version)` is what names the ONE
+      published record that answered — the receipt's shape has always said
+      provenance carries the id of the publish, and this is that id in the form
+      a Charge carries it. It is stringified because it is an identifier here,
+      not because a number was smuggled past a rule.
+
     ⚠ **THE INSTANT IS `charged_at` AND NOT `resolved_at`.** The receipt records
     a resolution as of an instant, and what this record explains is the money
     that became owed — which happened at delivery. The start instant is on the

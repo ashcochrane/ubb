@@ -3,13 +3,21 @@
 
 **THE SINGLE MOST CONSEQUENTIAL RENDERING RULE IN THE SLICE, DRIVEN RATHER THAN
 DESCRIBED.** The Event Type declaration carries the granularity, so a finer
-declared quantity multiplies the postings a piece of work produces — sixty
-per-minute postings under a fixed-price piece of work are sixty cost-only
+declared quantity multiplies the postings a tenant's own recording produces —
+sixty per-minute postings under a fixed-price piece of work are sixty cost-only
 postings, sixty receipts and sixty six-year retention obligations. Every one of
 them is `not_applicable`, **never a zero**: sixty zeros read as sixty events that
 earned nothing, while sixty `not_applicable`s say the revenue is somewhere else
 and the reason beside each says where to look. For a fine-grained tenant this
 becomes the most common pricing status in the system.
+
+⚠ **NOTHING HERE CLAIMS THE BACKEND GENERATES THOSE ROWS.** The count is the
+tenant's recording cadence under the unit they declared, so what a test can show
+is that the DECLARATION is what each posting's cost rests on and that the rule
+holds for EVERY one of them rather than for the first. A case recording against
+no declaration at all would produce the same rows and prove nothing about a
+declaration — which is exactly what the first draft of the granularity case did,
+and what `/code-review`'s SPEC axis caught.
 
 **AND THE TWO ECONOMIC STATES THIS SLICE MAKES REACHABLE, BOTH PRODUCED HERE.**
 The registry has published `measurements_status.not_applicable` and
@@ -39,7 +47,7 @@ from apps.metering.pricing.receipts import (
     validate_receipt,
 )
 from apps.metering.pricing.tests._helpers import (
-    a_rule_that_prices_what_it_measures, priced_at,
+    a_rule_that_prices_what_it_measures, cost_rate_in_default_book, priced_at,
 )
 from apps.metering.usage.measurements import measurements_status_for
 from apps.metering.usage.models import Posting
@@ -49,6 +57,7 @@ from apps.platform.tests.test_model_naming import (
 )
 from apps.platform.work.models import Task
 from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
     MEASUREMENTS_STATUS_NOT_APPLICABLE,
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
@@ -73,9 +82,23 @@ A_METERED_PRICE = 1_000_000
 
 #: HOW MANY POSTINGS ONE PIECE OF WORK REPORTS under a fine-grained declaration.
 #: Six rather than the spec's sixty: sixty is about what the rule COSTS a
-#: tenant, and what a test can show is that the count is the DECLARATION'S
-#: rather than one — which six proves and sixty only repeats.
+#: tenant, and what a test can show is that the rule holds for EVERY posting
+#: rather than for the first — which six proves and sixty only repeats.
 POSTINGS_UNDER_ONE_PIECE_OF_WORK = 6
+
+#: A QUANTITY DECLARED AT A FINE GRAIN, and what one of them costs the tenant.
+#:
+#: The declaration is what makes the granularity case real: a cost rate names a
+#: DECLARED quantity, so these postings cost what they cost only because the
+#: tenant declared this unit. Recording against nothing would produce the same
+#: six rows and prove nothing about a declaration.
+A_FINELY_DECLARED_QUANTITY = "elapsed_minutes"
+WHAT_ONE_OF_THEM_COSTS = 40_000
+
+#: How many of the declared unit one recorded call reports. More than one so the
+#: cost below is a PRODUCT rather than an echo of the rate — at one, a spine
+#: that returned the rate itself would answer correctly.
+A_FEW_OF_THEM = 3
 
 
 class AgreedPriceTestBase(ChargeTestBase):
@@ -94,6 +117,22 @@ class AgreedPriceTestBase(ChargeTestBase):
             event_type=SOLD_PER_EVENT, task_id=task_id,
             provider_cost_micros=A_SUPPLIER_COST,
             measurements=priced_at(A_METERED_PRICE))
+        return Posting.objects.get(id=recorded["event_id"])
+
+    def _a_finely_measured_posting(self, task_id):
+        """One posting whose supplier cost is RESOLVED from a declared unit.
+
+        No caller-supplied figure here, deliberately: the route admits one only
+        where the Event Type declares a reported cost mapped to the caller
+        (`admits_a_caller_supplied_cost`), so a granularity fixture that stated
+        a cost would exercise a shape `POST /usage` refuses. Costing it through
+        the declaration is both route-faithful and the only way the declaration
+        is load-bearing rather than decorative.
+        """
+        recorded = UsageService.record_usage(
+            self.tenant, self.customer, f"call-{uuid.uuid4()}",
+            event_type=SOLD_PER_EVENT, task_id=task_id,
+            measurements={A_FINELY_DECLARED_QUANTITY: A_FEW_OF_THEM})
         return Posting.objects.get(id=recorded["event_id"])
 
     def _projection_of(self, task_id):
@@ -216,23 +255,50 @@ class TestAnAgreedPricesPostingsAreNotApplicableRatherThanZero(
         assert receipt["provenance"]["price_rate_ids"] == {}
         assert receipt["pricing"]["detail"]["components"] == []
 
-    def test_the_declared_granularity_decides_how_many_such_postings_there_are(
-            self):
-        """§14, driven. A finer declared unit multiplies `not_applicable`
-        postings rather than zero-revenue ones — the count is the tenant's
-        declaration's and the rule holds for every one of them.
+    def test_a_finely_declared_quantity_multiplies_these_and_not_zeroes(self):
+        """§14, driven through a REAL declaration rather than a loop.
+
+        ⚠ **THE DECLARATION HAS TO BE LOAD-BEARING OR THIS CASE SHOWS
+        NOTHING.** A first draft recorded six postings against nothing and
+        asserted six answers — which the rule under test does not produce, since
+        the count came from the `range()` beside it. Here the quantity is
+        DECLARED and rated, so each posting costs what it costs only because the
+        tenant declared that unit; the finer the unit they declare, the more of
+        these their own recording produces. Measured: remove the cost rate and
+        this case goes red on the costs, which is what says the declaration is
+        doing work.
+
+        What §14 says then follows, and it is the consequential half: each one
+        is a COST-ONLY posting — real supplier COGS, no customer revenue,
+        `not_applicable` rather than a zero. Sixty zeros would read as sixty
+        events that earned nothing. For a fine-grained tenant this is the most
+        common pricing status in the system, so the rule holding for EVERY
+        posting rather than for the first is the whole claim.
         """
+        cost_rate_in_default_book(
+            self.tenant, measurement_key=A_FINELY_DECLARED_QUANTITY,
+            rate_per_unit_micros=WHAT_ONE_OF_THEM_COSTS, unit_quantity=1)
         started = self._priced_work()
 
-        postings = [self._a_metered_posting(started)
-                    for _ in range(POSTINGS_UNDER_ONE_PIECE_OF_WORK)]
+        for _ in range(POSTINGS_UNDER_ONE_PIECE_OF_WORK):
+            self._a_finely_measured_posting(started)
 
-        assert len(postings) == POSTINGS_UNDER_ONE_PIECE_OF_WORK
+        # READ BACK OFF THE TABLE rather than out of a list just built: what is
+        # claimed is about the rows a tenant's recording produced, and a
+        # comprehension's length is a fact about the `range()` above it.
+        postings = Posting.objects.filter(task_id=started)
+        assert postings.count() == POSTINGS_UNDER_ONE_PIECE_OF_WORK
         assert {p.pricing_status for p in postings} == {
             PRICING_STATUS_NOT_APPLICABLE}
         assert {p.billed_cost_micros for p in postings} == {None}
         assert {p.not_applicable_reason for p in postings} == {
             NOT_APPLICABLE_REASON_FIXED_TASK_PRICING}
+        # AND EVERY ONE COSTS WHAT THE DECLARED UNIT COSTS, which is what makes
+        # them cost-only rather than empty — and what says the declaration was
+        # consulted rather than decorative.
+        assert {p.provider_cost_micros for p in postings} == {
+            WHAT_ONE_OF_THEM_COSTS * A_FEW_OF_THEM}
+        assert {p.costing_status for p in postings} == {COSTING_STATUS_KNOWN}
 
     def test_the_piece_of_work_counts_none_of_them_as_unpriced(self):
         """⚠ AN UNPRICED EVENT IS ONE UBB COULD NOT PRICE, AND THESE ARE NOT
@@ -264,6 +330,11 @@ class TestAnAgreedPricesPostingsAreNotApplicableRatherThanZero(
 
         posting = self._a_metered_posting(contained)
 
+        # ⚠ THE CONTAINMENT IS ASSERTED, NOT ASSUMED. Without this the case is
+        # satisfied by a second ROOT of the same fixed-price kind — the regime
+        # would be read off the row itself, and nothing about inheriting a
+        # parent's would have been shown.
+        assert str(Task.objects.get(id=contained).parent_id) == str(started)
         assert posting.pricing_status == PRICING_STATUS_NOT_APPLICABLE
         assert (posting.not_applicable_reason
                 == NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)

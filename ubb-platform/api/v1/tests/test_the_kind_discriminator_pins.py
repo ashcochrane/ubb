@@ -162,14 +162,10 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
 
     def test_the_revenue_total_holds_the_agreed_price_and_the_metered_sale(
             self):
-        """⚠ **THE METERED SALE COMES FROM WORK PRICED PER EVENT (#418).** A
-        metered posting under the FIXED-price piece of work bills nothing now —
-        its revenue is the agreed price this case is already adding up — so
-        leaving it there would have made the two amounts one amount counted
-        twice, and the sum below arithmetic about nothing.
-        """
+        """The metered sale comes from work priced per event (#418) —
+        `_a_second_sale_that_really_bills` carries the reason."""
         started = self._priced_work()
-        self._a_metered_sale(self._start(task_type=SOLD_PER_EVENT))
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 
@@ -214,11 +210,11 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
         would put one customer's invoice and the tenant's own margin report in
         disagreement about the same sale.
 
-        The metered sale is under work priced per event, for the reason the
-        revenue case above gives.
+        The metered sale is under work priced per event, for the reason
+        `_a_second_sale_that_really_bills` gives.
         """
         started = self._priced_work()
-        self._a_metered_sale(self._start(task_type=SOLD_PER_EVENT))
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 
@@ -233,14 +229,13 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
         numbers are different: the agreed price and the metered sale are
         distinct amounts, and both are inside the total.
 
-        The metered sale is under work priced per event, for the reason the
-        revenue case above gives — and here it is load-bearing rather than
-        tidy, because a metered posting that billed nothing would leave the
-        total equal to the agreed price alone and this case would be comparing
-        one number against an unrelated constant.
+        The metered sale is under work priced per event, and here that is
+        load-bearing rather than tidy: a metered posting that billed nothing
+        would leave the total equal to the agreed price alone, and this case
+        would be comparing one number against an unrelated constant.
         """
         started = self._priced_work()
-        self._a_metered_sale(self._start(task_type=SOLD_PER_EVENT))
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 

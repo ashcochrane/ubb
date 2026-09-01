@@ -276,9 +276,11 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
     def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
         """AC: null means the price was NOT DERIVED, and the status says why.
 
-        The two travel together by construction — the boundary refuses a record
-        whose method and status disagree — so this asserts the pair a reader
-        actually gets rather than the null alone.
+        The two travel together by construction — for THIS subject the boundary
+        refuses a record whose method and status disagree — so this asserts the
+        pair a reader actually gets rather than the null alone. (Since #418 a
+        Charge's receipt may settle an amount naming no method; that is the
+        other subject, and `DERIVES_ITS_AMOUNTS` is what tells them apart.)
         """
         not_derived = a_receipt(pricing=Resolution(
             method=None, status=PRICING_STATUS_NOT_APPLICABLE,
@@ -722,6 +724,10 @@ class TestAReceiptWhoseSubjectIsAChargeExplainsAnAgreedPrice:
         exactly one rule and the message names the section that broke it —
         #415's lesson, on a boundary rather than on a table.
         """
+        # ⚠ `a_charge_receipt` BUILDS THE CHARGE'S SHAPE, AND THE SUBJECT IS
+        # WHAT THIS CASE MOVES. Reading it as "a charge receipt with the wrong
+        # subject" is the wrong way round: it is the charge SHAPE — a settled
+        # price naming no method — offered under the subject that owes one.
         with pytest.raises(ReceiptShapeError, match="pricing.method"):
             a_charge_receipt(
                 subject=SUBJECT,

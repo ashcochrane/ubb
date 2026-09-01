@@ -25,13 +25,16 @@ sends a reader to look for a bill that will never be raised.
 
 ⚠ **THE ARGUMENT THIS PARAGRAPH USED TO MAKE EXPIRED IN #416, AND #418 RE-TOOK
 THE TIE-BREAK AGAINST WHAT REPLACED IT RATHER THAN AGAINST THE OLD SENTENCE.**
-It read *"for a metering-only tenant no Charge is created anywhere, so naming
-the job's pricing regime would imply revenue sits on a Charge that does not
-exist"* — true when slice 4 wrote it and false one commit later. A Charge IS
-created for a metering-only tenant's delivered fixed-price work, deliberately
-and as that ticket's hardest-to-see acceptance criterion; #417 then projected it
-onto a posting, so there is now a real row, carrying a real amount, reachable
-from the very posting this rule is deciding a reason for.
+It rested on *"for a metering-only tenant no Charge is created anywhere"*, and
+concluded that naming the piece of work's pricing regime would imply revenue
+sitting on a Charge that does not exist — true when slice 4 wrote it and false
+one commit later. (The quotation is trimmed to the clause that carried the
+argument; the rest of that sentence named a unit of work by a word the registry
+has since retired.) A Charge IS created for a metering-only tenant's delivered
+fixed-price work, deliberately and as that ticket's hardest-to-see acceptance
+criterion; #417 then projected it onto a posting, so there is now a real row,
+carrying a real amount, reachable from the very posting this rule is deciding a
+reason for.
 
 **THE RULING SURVIVES THAT, AND ON A NARROWER ARGUMENT THAN THE ONE IT LOST.**
 `fixed_task_pricing` does not say *a Charge exists*; it says *the CUSTOMER
@@ -52,8 +55,8 @@ end through a tenant that has the Charge and not the bill.
 **Why this is a function and not a registry `value_semantics` block.** The
 registry can carry a decision rule as data, and the compiler proves such a rule
 **total** over its declared boolean inputs. This rule is not: of the four
-combinations of the two facts below, the fourth — a billing tenant running an
-event-priced job — has no `not_applicable_reason` at all, because the price
+combinations of the two facts below, the fourth — a billing tenant running
+event-priced work — has no `not_applicable_reason` at all, because the price
 applies and the status is not `not_applicable`. A `value_semantics` block would
 have to invent a value for that case, which is precisely the "answer nobody
 decided" the totality proof exists to prevent. So the rule lives here, returns
@@ -117,7 +120,7 @@ def not_applicable_reason_for(*, tenant_bills_through_ubb: bool,
     work's pricing regime — true where the event belongs to a Task sold for one
     agreed price, so the revenue is the Task's and none of it is this event's.
 
-    Returns `None` for a billing tenant running an event-priced job, which is
+    Returns `None` for a billing tenant running event-priced work, which is
     the case where the price applies: there is no reason because the status is
     not `not_applicable`. A caller that has already decided the status is
     `not_applicable` can treat a `None` here as a contradiction, and the
@@ -126,7 +129,7 @@ def not_applicable_reason_for(*, tenant_bills_through_ubb: bool,
     rejects.
     """
     if not tenant_bills_through_ubb:
-        # Posture wins, whatever the job's regime. See the module docstring.
+        # Posture wins, whatever the work's regime. See the module docstring.
         return NOT_APPLICABLE_REASON_TENANT_NOT_BILLING
     if sold_for_one_agreed_price:
         return NOT_APPLICABLE_REASON_FIXED_TASK_PRICING

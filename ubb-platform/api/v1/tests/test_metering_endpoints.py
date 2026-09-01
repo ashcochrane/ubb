@@ -419,9 +419,10 @@ class UsageEventDetailEndpointTest(TestCase):
         end path is `test_the_postings_under_an_agreed_price_are_not_
         applicable.py`, which drives the same shape through the route.
 
-        The record is still built through `build_receipt` — the one place a
-        receipt is made, and the place that refuses one whose method and status
-        disagree.
+        The record is still built through `build_receipt` — the one function a
+        receipt is made by, and the place that refuses one whose method and
+        status disagree for a subject whose amounts resolution derived, which a
+        usage row's are.
         """
         from apps.metering.pricing.receipts import Resolution, build_receipt
         from apps.metering.pricing.tests._helpers import a_usage_event_subject

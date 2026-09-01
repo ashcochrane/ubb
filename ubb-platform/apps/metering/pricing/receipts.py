@@ -58,8 +58,10 @@ assembled record before anybody can persist it — not a validator called from
 three call sites, one construction function no caller can bypass. A receipt that
 reached the database unvalidated is a record that explains nothing and cannot be
 told from one that does. `apps/metering/usage/tests/
-test_the_receipt_has_one_construction_boundary.py` is what keeps the count at
-one.
+test_the_receipt_has_one_construction_boundary.py` is what keeps every caller of
+it declared — the FUNCTION is one, and since #418 two modules call it: the
+compute spine, and the projection of a Charge, whose amounts were agreed and
+definitional so there is no resolution for the spine to run.
 
 **AN AMOUNT, ITS STATUS AND ITS METHOD MOVE TOGETHER, IN BOTH SECTIONS.** This
 is the amount/status pair `core.amount_status_pairs` names for a table, one
@@ -792,9 +794,9 @@ def _validate_section(name, section, amount, rules, *, derived):
     if derived and settled and method is None:
         raise ReceiptShapeError(
             f"{name}.method is null and {name}.status says {status!r}: this "
-            f"receipt explains amounts resolution DERIVED, so a settled one "
-            f"says how — a subject whose amounts are not derived is named in "
-            f"DERIVES_ITS_AMOUNTS")
+            f"receipt's subject is one of {sorted(DERIVES_ITS_AMOUNTS)}, whose "
+            f"amounts resolution DERIVED, so a settled one says how. A subject "
+            f"whose amounts are not derived is the one left out of that set")
 
     if isinstance(amount, bool) or not isinstance(amount, (int, type(None))):
         raise ReceiptShapeError(

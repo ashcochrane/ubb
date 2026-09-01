@@ -34,7 +34,9 @@ ONE.** §12 makes the Charge reach the money rails as one marked posting carryin
 a `task_charge` discriminator; #417 built it, and what it does on the rails is
 asserted in
 `api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py`. The
-Pricing Receipt whose subject is a Charge is #418's. What is canonical is the
+Pricing Receipt whose subject is a Charge was #418's and is asserted in
+`api/v1/tests/test_the_postings_under_an_agreed_price_are_not_applicable.py`;
+this module still asserts nothing about either. What is canonical is the
 record asserted here, and the two that follow are projections OF it — which is
 the whole reason it is a first-class row rather than a system-generated posting
 nobody could correct.
