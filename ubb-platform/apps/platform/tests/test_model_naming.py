@@ -636,6 +636,22 @@ def test_table_name_is_the_canonical_snake_cased_model_name():
     assert not _failures(RULE_TABLE), "\n" + _failures(RULE_TABLE)
 
 
+def columns_storing_a_derived_fact():
+    """G10's own finding, for a caller outside this module (#418).
+
+    Public for the reason `columns_the_database_does_not_defend` is: a product
+    test whose subject is one derived fact has to be able to ask THE GATE
+    whether that fact is still derived, rather than restate the claim with a
+    walk of its own. Two copies of one search agreeing with each other proves
+    nothing about either, and the copy is the one that goes quiet.
+
+    Returns the gate's message text, empty when nothing is found — the same
+    value the check below asserts on, so a caller and the gate cannot come to
+    disagree about what a failure is.
+    """
+    return _failures(RULE_DERIVED)
+
+
 def test_no_writable_column_stores_a_derived_fact():
     """G10 — ADR-0006 §4.
 

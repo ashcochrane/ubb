@@ -63,7 +63,8 @@ from django.db.models import Q
 from apps.metering.pricing.models import Rate, ResolutionRun
 from apps.metering.pricing.receipts import (
     RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject, Resolution,
-    completed_receipt, recorded_quantities, written_in_the_current_shape)
+    completed_receipt, pricing_mode_of, recorded_quantities,
+    written_in_the_current_shape)
 from apps.metering.pricing.services.cost_settlement import (
     Settlement, settle_provider_cost)
 from apps.metering.pricing.services.price_resolution import (
@@ -77,6 +78,7 @@ from core.cost_totals import cost_total, counts_as_unresolved
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
+    PRICING_MODE_EVENT_PRICED,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
 )
 
@@ -577,6 +579,19 @@ def _subject_of(posting, stored):
     Stating a figure makes the re-resolution's own costing section read
     `reported`, which is discarded: a settled section is never written back, and
     only the section being completed is taken from this answer.
+
+    ⚠ **THE PRICING REGIME COMES OFF THE RECORD AND NEVER OFF THE PIECE OF WORK
+    (#418).** The regime decides whether the event carries a customer price at
+    all, and a run re-resolves what the engine SAW rather than what
+    configuration says today — the same rule the quantities above already
+    follow, and #363's lesson about re-deriving from a record that cannot
+    support it. Reading `Task.pricing_mode` live would re-price a whole
+    backlog's worth of history the day a tenant changed how a kind of work is
+    sold, which is the failure the receipt exists to prevent.
+
+    A receipt written before this field existed answers `None`, and
+    `PricingSubject`'s own default is what that becomes: the regime such a
+    record was resolved under, since nothing else could produce a price then.
     """
     return PricingSubject(
         receipt_subject=ReceiptSubject(
@@ -586,6 +601,7 @@ def _subject_of(posting, stored):
         selectors={name: getattr(posting, name) for name in Rate.SELECTORS},
         measurements=recorded_quantities(stored),
         currency=posting.currency,
+        pricing_mode=(pricing_mode_of(stored) or PRICING_MODE_EVENT_PRICED),
         # A RUN STATES NO PRICE OF ITS OWN, EVER — a recovery inventing one
         # would be the money-moving surface this mechanism exists not to be.
         # It used to say so by passing an explicit `caller_billed=None`; since

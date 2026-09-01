@@ -7,8 +7,20 @@ price** records `tenant_not_billing`, not `fixed_task_pricing`.
 That row is why this file exists. The other three are obvious and would be
 written by anybody; the tempting answer to the fourth is the more specific value,
 and it is wrong — for a metering-only tenant no CUSTOMER CHARGE is raised, so
-naming the job's regime would point a reader at revenue sitting on a Charge that
-does not exist.
+naming the piece of work's regime would send a reader to look for a bill that is
+never raised.
+
+⚠ **THE ORIGINAL WORDING ENDED "revenue sitting on a Charge that does not
+exist", AND #416 MADE THAT FALSE.** Such a tenant's delivered fixed-price work
+DOES produce a `pricing.Charge` — a recorded revenue and margin fact rather than
+a collection — and #417 projected it onto a posting, so the row a reader would
+be sent to is really there. What the ruling rests on now is narrower and does
+not depend on the record existing: `fixed_task_pricing` says the customer
+revenue for this event sits on the piece of work INSTEAD, and for this tenant
+there is no customer revenue anywhere. #418 wired the rule up and re-took the
+tie-break against that row;
+`api/v1/tests/test_the_postings_under_an_agreed_price_are_not_applicable.py`
+drives it end to end through a tenant that has the Charge and not the bill.
 
 **Driven through the real function, table-first.** The rule is two branches, so a
 test per branch would be a test per line of the implementation; what has content

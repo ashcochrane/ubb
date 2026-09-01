@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,713 of 2,126 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,714 of 2,127 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1765,6 +1765,23 @@ measurement_key:
     # CONSECUTIVE WINDOW, in a commit whose subject is again work and money
     # at once. Recorded as a non-event with the same caveat the note above
     # gives: the number that matters is the one taken after the REVIEW pass.
+    #
+    # #418 MOVED BOTH DENOMINATORS BY ONE AND LEFT THE NUMERATOR WHERE IT WAS
+    # (1,713 -> 1,714 swept, 2,126 -> 2,127 tracked, `units` UNMOVED at 45
+    # files and 123 occurrences). ONE tracked file arrived and it is swept: the
+    # test module that drives a piece of work sold at one agreed price through
+    # the recording route. No migration — this ticket changes no schema at all,
+    # so `historical-migrations` holds at 246 — and no generated SDK module,
+    # because it advertises no value set and the contract regenerates
+    # byte-identical.
+    #
+    # ⚠ THE NUMERATOR HELD FOR A THIRD CONSECUTIVE WINDOW, and this one had
+    # two invitations to break it: the spec clause #417 was tripped by is
+    # about exactly this ticket's subject, and the whole commit is prose about
+    # quantities under a piece of work. The technique that held is #272's —
+    # name the column by the operation that deleted it, and say "a whole unit
+    # of work" for the English. Recorded with the same caveat as above: the
+    # number that counts is the one taken after the REVIEW pass.
 
     - term: units
       retired_as: >-

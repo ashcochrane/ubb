@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from core.time_windows import month_bounds
 from core.vocabulary import (
-    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT, TRIGGER_SOURCE_USAGE_INGEST)
+    PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+    TRIGGER_SOURCE_USAGE_INGEST)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
@@ -118,11 +119,26 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
 
 
 def _inherit_dimensions(task_id, dimension_slots):
-    """Resolve the twelve INHERITABLE selector values for one event (design D6).
+    """What one event takes from the unit of work it belongs to (design D6).
 
-    Twelve, not fourteen: `provider` and `event_type` are the caller's own on
-    every event and are never inherited from the unit of work, so they are not
-    resolved here. The other two reserved axes are, and so are the ten slots.
+    Twelve INHERITABLE SELECTOR VALUES — not fourteen: `provider` and
+    `event_type` are the caller's own on every event and are never inherited
+    from the unit of work, so they are not resolved here. The other two reserved
+    axes are, and so are the ten slots.
+
+    ⚠ **AND A THIRTEENTH VALUE THAT IS NOT A SELECTOR: THE PRICING REGIME**
+    (#418). `Task.pricing_mode` says whether the whole unit of work was priced
+    event by event or sold for ONE AGREED PRICE, and the pricing spine needs it
+    to answer whether this event carries a customer price at all. It rides here
+    because it comes off the SAME ROW this function already reads — a second
+    query for one column on the hottest write path in the system would be a
+    query bought to keep a docstring narrow. It is deliberately not in
+    `SELECTORS`: no rule matches on it and nothing wildcards against it.
+
+    THE LEAF'S ANSWER IS THE WHOLE UNIT'S. #415's `BEFORE INSERT` trigger on
+    `ubb_task` refuses contained work whose regime differs from its parent's, so
+    reading the leaf reads both — and where a leaf could not be found at all the
+    default below is what an event with no unit of work is under.
 
     Precedence per slot: the event's own value, then the leaf unit's, then its
     parent's, then "".
@@ -137,17 +153,22 @@ def _inherit_dimensions(task_id, dimension_slots):
     One query for the leaf and one for its parent; containment is a single
     level (`work/models.py:Task.parent`), so this never recurses.
     """
-    out = {"task_type": "", "subtask_type": ""}
+    # AN EVENT WITH NO UNIT OF WORK IS PRICED EVENT BY EVENT, and that is the
+    # regime rather than a stand-in for one: there is no whole piece of work for
+    # its revenue to sit on instead, so the ladder applies to it.
+    out = {"task_type": "", "subtask_type": "",
+           "pricing_mode": PRICING_MODE_EVENT_PRICED}
     out.update({s: (dimension_slots or {}).get(s, "") for s in SLOTS})
     if task_id is None:
         return out
 
     from apps.platform.work.models import Task
-    cols = ("id", "parent_id", "task_type") + SLOTS
+    cols = ("id", "parent_id", "task_type", "pricing_mode") + SLOTS
     leaf = Task.objects.filter(id=task_id).values(*cols).first()
     if leaf is None:
         return out
 
+    out["pricing_mode"] = leaf["pricing_mode"]
     if leaf["parent_id"] is None:
         out["task_type"] = leaf["task_type"]
         chain = (leaf,)
@@ -290,6 +311,12 @@ class RecordingInput:
     measurements: dict
     task_type: str
     subtask_type: str
+    #: HOW THE UNIT OF WORK THIS EVENT BELONGS TO WAS SOLD (#418), resolved by
+    #: `_inherit_dimensions` off the same row the two axes above come from. Not
+    #: a selector and never written to the posting: it decides whether this
+    #: event carries a customer price at all, which the spine answers and the
+    #: `pricing_status` column records.
+    pricing_mode: str
     grouping_field_1: str
     grouping_field_2: str
     grouping_field_3: str
@@ -335,9 +362,14 @@ class RecordingInput:
         label-fallback inference and no legacy ``product_id`` wire field: the
         write contract's only path onto a slot is a declared grouping field
         bound to it (DimensionService.admit), same as any other.
-        ``_inherit_dimensions`` resolves the fourteen selector columns per
-        slot: this event's own value wins, else the leaf task's, else its
-        parent's, else ""."""
+        ``_inherit_dimensions`` resolves the TWELVE inheritable selector
+        columns by that precedence — this event's own value wins, else the leaf
+        task's, else its parent's, else "". Twelve of the fourteen: `provider`
+        and `event_type` are the caller's own on every event and are never
+        inherited. ⚠ It answers a THIRTEENTH value that is not a selector and
+        does not follow that precedence — the piece of work's pricing regime
+        (#418), read off the leaf and used by the pricing spine rather than by
+        rule matching."""
         slots = dict(dimension_slots or {})
         dims = _inherit_dimensions(task_id, slots)
         return cls(
@@ -451,6 +483,13 @@ class UsageService:
                     measurements=inp.measurements,
                     currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
+                    # THE THIRD AXIS (#418, #151 §8.4). Under a unit of work
+                    # sold at one agreed price the ladder is not consulted at
+                    # all: the customer revenue is the whole unit's, so this
+                    # event's price is `not_applicable` rather than zero, and
+                    # the reason beside it says whether that is because of the
+                    # regime or because the tenant does not bill at all.
+                    pricing_mode=inp.pricing_mode,
                     as_of=inp.effective_at)
                 # THE STATUS IS THE SPINE'S ANSWER, CARRIED — NOT RE-DERIVED
                 # (#320). Nothing here re-reads the amount to decide whether it

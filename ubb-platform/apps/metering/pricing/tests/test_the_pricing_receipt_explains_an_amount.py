@@ -18,6 +18,7 @@ from apps.metering.pricing import receipts
 from apps.metering.pricing.receipts import (
     LEGACY_SCHEMA_VERSION,
     MARKUP_TERMS_KEY,
+    PRICING_REGIME_KEY,
     RECEIPT_SCHEMA_VERSION,
     REQUIRED_COMPONENT_KEYS,
     REQUIRED_MARKUP_KEYS,
@@ -28,6 +29,7 @@ from apps.metering.pricing.receipts import (
     Resolution,
     build_receipt,
     pricing_method_of,
+    pricing_mode_of,
     schema_version_of,
     subject_type_of,
     uncosted_quantity_keys,
@@ -40,6 +42,9 @@ from core.vocabulary import (
     COSTING_STATUS_UNRESOLVED,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
+    PRICING_METHOD_VALUES,
+    PRICING_MODE_EVENT_PRICED,
+    PRICING_MODE_FIXED,
     PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_STATUS_KNOWN,
@@ -50,6 +55,16 @@ from core.vocabulary import (
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     subject_id="11111111-1111-1111-1111-111111111111")
+
+#: The other subject a receipt may explain — one canonical Charge (#418).
+A_CHARGE = ReceiptSubject(
+    subject_type=PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
+    subject_id="22222222-2222-2222-2222-222222222222")
+
+#: What one whole delivered piece of work was sold for. Deliberately unlike
+#: every other amount in this module, so a case that picked up the settled
+#: fixture's number instead reads as wrong rather than as equal to something.
+THE_AGREED_PRICE = 7_500_000
 
 #: THE TERMS A MARGIN OVER COST HAS TO CARRY (#357), in the amounts the settled
 #: fixtures below already use: 20% of a 4_000 basis is 800, so the 4_800 those
@@ -92,6 +107,29 @@ def a_receipt(**overrides):
     return build_receipt(**fields)
 
 
+def a_charge_receipt(**overrides):
+    """A receipt for a whole piece of work sold at one agreed price (#418).
+
+    The shape `charge_projection` writes: an agreed price settled with no
+    method, a supplier cost of a settled nothing with no method, and the regime
+    that makes both true carried by value. Shared rather than written out in
+    each class for `docs/conventions/testing.md`'s reason — three classes here
+    now build one, and three copies of a shape is three chances for one of them
+    to stop matching what the writer produces.
+    """
+    fields = {
+        "subject": A_CHARGE,
+        "costing": Resolution(method=None, status=COSTING_STATUS_KNOWN,
+                              amount_micros=0, detail={}),
+        "pricing": Resolution(method=None, status=PRICING_STATUS_KNOWN,
+                              amount_micros=THE_AGREED_PRICE,
+                              detail={PRICING_REGIME_KEY: PRICING_MODE_FIXED}),
+        "provenance": {},
+    }
+    fields.update(overrides)
+    return a_receipt(**fields)
+
+
 class TestTheRecordCarriesWhatExplainsAnAmount:
     def test_it_carries_both_versions_the_typed_subject_and_three_sections(self):
         receipt = a_receipt()
@@ -117,8 +155,15 @@ class TestTheRecordCarriesWhatExplainsAnAmount:
         assert receipt["receipt_schema_version"] == RECEIPT_SCHEMA_VERSION
 
     def test_a_charge_is_the_other_subject_a_receipt_may_explain(self):
-        receipt = a_receipt(subject=ReceiptSubject(
-            subject_type=PRICING_RECEIPT_SUBJECT_TYPE_CHARGE, subject_id="c1"))
+        """⚠ IT IS BUILT IN THE SHAPE A CHARGE'S RECEIPT REALLY HAS (#418).
+
+        This used to hand the settled fixture's own price section a different
+        subject, which was enough while the subject was a value the boundary
+        only range-checked. It is not any more: what a Charge's amounts owe is
+        decided BY the subject, so a case asserting the subject is admitted has
+        to build a record that subject could actually produce.
+        """
+        receipt = a_charge_receipt()
 
         assert receipt["subject_type"] == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE
 
@@ -218,9 +263,8 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
 
         assert (subject_type_of(current)
                 == PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
-        assert (subject_type_of(a_receipt(subject=ReceiptSubject(
-            subject_type=PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
-            subject_id="c1"))) == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE)
+        assert (subject_type_of(a_charge_receipt())
+                == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE)
         assert subject_type_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
         assert "subject_type" not in A_RECEIPT_IN_THE_OLDER_SHAPE
 
@@ -232,9 +276,11 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
     def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
         """AC: null means the price was NOT DERIVED, and the status says why.
 
-        The two travel together by construction — the boundary refuses a record
-        whose method and status disagree — so this asserts the pair a reader
-        actually gets rather than the null alone.
+        The two travel together by construction — for THIS subject the boundary
+        refuses a record whose method and status disagree — so this asserts the
+        pair a reader actually gets rather than the null alone. (Since #418 a
+        Charge's receipt may settle an amount naming no method; that is the
+        other subject, and `DERIVES_ITS_AMOUNTS` is what tells them apart.)
         """
         not_derived = a_receipt(pricing=Resolution(
             method=None, status=PRICING_STATUS_NOT_APPLICABLE,
@@ -637,3 +683,136 @@ class TestAMarginSaysWhatPercentageOverWhat:
             detail={"components": []}))
 
         assert MARKUP_TERMS_KEY not in receipt["pricing"]["detail"]
+
+
+class TestAReceiptWhoseSubjectIsAChargeExplainsAnAgreedPrice:
+    """#418 — the second subject, in the shape a Charge's receipt really has.
+
+    A Charge is a whole delivered piece of work sold at ONE AGREED PRICE. The
+    number was promised before the work ran and pinned to it, so nothing
+    derived it — and the receipt says that by naming no method, which is the
+    reading `pricing_method_of` has always published: *`None` means the price
+    was not derived — it was agreed, or there is none — and which of those it
+    was is read off the price status beside it.* Until this ticket no writer
+    could produce the first of those two, because the boundary refused it.
+
+    ⚠ **THE LICENCE AND ITS JUSTIFICATION ARRIVE TOGETHER.** A record that may
+    settle an amount without naming a method has to say WHY, or the relaxation
+    is a hole every subject could eventually be pushed through. The regime rides
+    in the price section's detail BY VALUE, and the boundary refuses a charge
+    receipt that omits it — so *the price was agreed* is a statement the record
+    makes rather than one a reader infers from a null.
+    """
+
+    def test_a_charges_price_is_settled_and_names_no_method(self):
+        receipt = a_charge_receipt()
+
+        assert receipt["totals"]["billed_cost_micros"] == THE_AGREED_PRICE
+        assert receipt["pricing"]["status"] == PRICING_STATUS_KNOWN
+        assert pricing_method_of(receipt) is None
+
+    def test_a_usage_rows_price_still_owes_one_in_the_same_shape(self):
+        """The discriminating half, and the only difference is the subject.
+
+        `test_a_settled_price_has_to_say_how_it_was_derived` above asserts the
+        same refusal for its own reason; what is asked here is that the
+        relaxation did not reach the subject whose amounts the engine really
+        does derive — a rule keyed on nothing at all would satisfy the case
+        above and be exactly as wrong as no rule.
+
+        The cost side is the settled fixture's own, so the record breaks
+        exactly one rule and the message names the section that broke it —
+        #415's lesson, on a boundary rather than on a table.
+        """
+        # ⚠ `a_charge_receipt` BUILDS THE CHARGE'S SHAPE, AND THE SUBJECT IS
+        # WHAT THIS CASE MOVES. Reading it as "a charge receipt with the wrong
+        # subject" is the wrong way round: it is the charge SHAPE — a settled
+        # price naming no method — offered under the subject that owes one.
+        with pytest.raises(ReceiptShapeError, match="pricing.method"):
+            a_charge_receipt(
+                subject=SUBJECT,
+                costing=Resolution(method=COSTING_METHOD_CALCULATED,
+                                   status=COSTING_STATUS_KNOWN,
+                                   amount_micros=4_000, detail={}))
+
+    def test_a_charges_supplier_cost_is_a_settled_zero_naming_no_method(self):
+        """There is no supplier behind a Charge, and zero is what that is.
+
+        The supplier work a piece of work sold at one agreed price really did
+        burn is on the metered postings beside the projection, never on the
+        projection itself — so this side is settled at nothing rather than
+        unresolved, and nothing derived the nothing.
+        """
+        receipt = a_charge_receipt()
+
+        assert receipt["totals"]["provider_cost_micros"] == 0
+        assert receipt["costing"]["status"] == COSTING_STATUS_KNOWN
+        assert receipt["costing"]["method"] is None
+
+    def test_a_charge_receipt_that_does_not_say_the_price_was_agreed_is_refused(
+            self):
+        """The justification is compulsory, which is what keeps the licence
+        from being a hole."""
+        with pytest.raises(ReceiptShapeError, match=PRICING_REGIME_KEY):
+            a_charge_receipt(pricing=Resolution(
+                method=None, status=PRICING_STATUS_KNOWN,
+                amount_micros=THE_AGREED_PRICE, detail={}))
+
+    def test_a_charge_receipt_claiming_the_other_regime_is_refused(self):
+        """A Charge exists because a WHOLE piece of work was sold at one agreed
+        price; a record saying it was priced event by event contradicts the
+        only thing that could have produced it."""
+        with pytest.raises(ReceiptShapeError, match=PRICING_REGIME_KEY):
+            a_charge_receipt(pricing=Resolution(
+                method=None, status=PRICING_STATUS_KNOWN,
+                amount_micros=THE_AGREED_PRICE,
+                detail={PRICING_REGIME_KEY: PRICING_MODE_EVENT_PRICED}))
+
+    def test_a_method_beside_an_unsettled_status_is_refused_for_a_charge_too(
+            self):
+        """THE DIRECTION THAT NEVER RELAXES. What moved is *a settled amount
+        need not name a method*; *a method with no amount to explain* is refused
+        for every subject there is, because it is a claim about how a number
+        was reached beside no number."""
+        with pytest.raises(ReceiptShapeError, match="pricing.method"):
+            a_charge_receipt(pricing=Resolution(
+                method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+                status=PRICING_STATUS_UNKNOWN, amount_micros=None,
+                detail={PRICING_REGIME_KEY: PRICING_MODE_FIXED}))
+
+    def test_a_charge_may_still_name_a_method_where_one_derived_the_amount(
+            self):
+        """The relaxation is an implication and not an inversion.
+
+        Nothing writes this today — a Charge's price is agreed by construction —
+        and the case is here because the rule has to be the weaker one to be
+        true: refusing a method on this subject would be a second rule about
+        derivation, decided here rather than by whatever produced the amount.
+        """
+        receipt = a_charge_receipt(pricing=Resolution(
+            method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+            status=PRICING_STATUS_KNOWN, amount_micros=THE_AGREED_PRICE,
+            detail={PRICING_REGIME_KEY: PRICING_MODE_FIXED,
+                    "components": []}))
+
+        assert pricing_method_of(receipt) == PRICING_METHOD_DIRECT_EVENT_PRICE
+
+    def test_the_regime_reads_back_off_the_record(self):
+        """By value, so a reader re-resolving from the record never asks
+        configuration that has moved since — which is the whole reason it is on
+        the record rather than looked up."""
+        assert pricing_mode_of(a_charge_receipt()) == PRICING_MODE_FIXED
+
+    def test_a_receipt_in_the_older_shape_names_no_regime(self):
+        """That shape predates the field, so there is nothing in it to read and
+        this does not invent one — the reading every reader in this module
+        gives a record written before its question existed."""
+        assert pricing_mode_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
+
+    def test_the_method_vocabulary_gains_no_third_value_for_this(self):
+        """A method meaning *agreed* would be a second encoding of a fact the
+        status and the regime already carry — the same objection
+        `test_no_fourth_method_value_stands_in_for_none` makes, one ticket
+        later and about the value somebody would coin here."""
+        assert PRICING_METHOD_VALUES == {PRICING_METHOD_MARGIN_OVER_COST,
+                                         PRICING_METHOD_DIRECT_EVENT_PRICE}

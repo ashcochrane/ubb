@@ -125,14 +125,22 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
         calls billed, and the agreed price lives on the Charge and on the
         posting. Pin 4 below is what makes that revenue visible where it is
         supposed to be visible.
+
+        ⚠ **AND UNDER THIS REGIME WHAT ITS METERED CALLS BILLED IS NOTHING
+        (#418).** Every posting under a piece of work sold at one agreed price
+        carries `not_applicable` rather than an amount, because the customer
+        revenue for it is the agreed price. So the total is zero from BOTH
+        directions — the projection does not add to it and the metered calls
+        have nothing to add — and the assertion says so in both, because a bare
+        `== 0` would be satisfied by a fixture that recorded no calls at all.
         """
         started = self._priced_work()
         metered = self._a_metered_sale(started)
 
         self._close(started)
 
-        assert Task.objects.get(
-            id=started).total_billed_cost_micros == metered.billed_cost_micros
+        assert metered.billed_cost_micros is None
+        assert Task.objects.get(id=started).total_billed_cost_micros == 0
 
 
 @pytest.mark.django_db
@@ -154,8 +162,10 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
 
     def test_the_revenue_total_holds_the_agreed_price_and_the_metered_sale(
             self):
+        """The metered sale comes from work priced per event (#418) —
+        `_a_second_sale_that_really_bills` carries the reason."""
         started = self._priced_work()
-        self._a_metered_sale(started)
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 
@@ -198,9 +208,13 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
         """The per-customer read, which is what a bill is reconciled against.
         A revenue figure that appeared in the tenant-wide rollup and not here
         would put one customer's invoice and the tenant's own margin report in
-        disagreement about the same sale."""
+        disagreement about the same sale.
+
+        The metered sale is under work priced per event, for the reason
+        `_a_second_sale_that_really_bills` gives.
+        """
         started = self._priced_work()
-        self._a_metered_sale(started)
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 
@@ -214,9 +228,14 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
         the same thing whichever one is missing. This is the case that says the
         numbers are different: the agreed price and the metered sale are
         distinct amounts, and both are inside the total.
+
+        The metered sale is under work priced per event, and here that is
+        load-bearing rather than tidy: a metered posting that billed nothing
+        would leave the total equal to the agreed price alone, and this case
+        would be comparing one number against an unrelated constant.
         """
         started = self._priced_work()
-        self._a_metered_sale(started)
+        self._a_second_sale_that_really_bills()
 
         self._close(started)
 
@@ -224,3 +243,4 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
         assert self._postings_on(started).filter(
             kind=USAGE_EVENT_KIND_TASK_CHARGE).count() == 1
         assert self._totals()["billed_cost_micros"] > A_METERED_SALE
+        assert self._totals()["billed_cost_micros"] > THE_AGREED_PRICE

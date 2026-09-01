@@ -442,10 +442,17 @@ not_applicable_reason:
     # `pricing.Charge`, deliberately, as a recorded revenue and margin fact
     # rather than a collection. So a reader can go and look at a row; what
     # survives is the narrower argument in the summary above, which is about
-    # CUSTOMER REVENUE rather than about the existence of a record. The ticket
-    # that wires the rule up should apply it against that fact rather than
-    # against the sentence it replaced, because the tie-break is closer than it
-    # was.
+    # CUSTOMER REVENUE rather than about the existence of a record.
+    #
+    # #418 WIRED THE RULE UP AND RE-TOOK THE TIE-BREAK AGAINST THAT ROW. Both
+    # values are written by the recording path now, for every event under a
+    # piece of work sold at one agreed price. The re-examination the note above
+    # asked for was made against the projected posting itself rather than
+    # against the sentence it replaced, and the ruling held: naming the regime
+    # for a tenant UBB does not bill would send a reader to look for a bill
+    # nobody raises, and it would now be HALF TRUE, which is worse than plainly
+    # wrong. What decides is that this concept answers *why no customer revenue
+    # arises*, and for that tenant the answer has nothing to do with the regime.
     - tenant_not_billing
   label_key_prefix: not_applicable_reason
   consumers:
@@ -542,9 +549,15 @@ measurements_status:
   # entry records a violation some slice owes a payment for, and
   # `test_g*_every_seeded_entry_is_still_a_real_violation` deletes one the day
   # it stops being true. Nothing here is owed: the value set is complete, final
-  # and correctly advertised — its backend consumer holds 3 of 3 — and what is
-  # outstanding is the arrival of two mechanisms, each already owned by the
+  # and correctly advertised — its backend consumer holds 3 of 3 — and what was
+  # outstanding was the arrival of two mechanisms, each already owned by the
   # slice that builds it.
+  #
+  # ONE OF THE TWO HAS ARRIVED. #417 gave a posting its own kind and #418 proved
+  # the derivation end to end, so `not_applicable` is producible by the backend
+  # and rendered against a payload it really writes. `pruned` is still waiting on
+  # a clock behind the retention horizon (§E6 ships the column and no sweeper),
+  # which is the remaining half of the sentence above.
   summary: >-
     Whether a posting's measured quantities can still be read. `available`
     says the measurement record is there; `pruned` says it was there and has
