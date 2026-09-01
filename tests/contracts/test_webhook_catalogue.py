@@ -26,12 +26,13 @@ to regress (#155 §3.1). Every one of the twenty was an individually identified
 ledger entry naming the slice that removes it, and section 1 proves each is
 still a real violation — so an entry cannot outlive the debt it records.
 
-**Seven remain.** #222 paid the thirteen whose correction depended on nothing —
+**Five remain.** #222 paid the thirteen whose correction depended on nothing —
 a product owning the wallet's levels, a measure owning the customer's
 profitability, a subject buried inside a transition token, one concept spelled
-two ways. What is left is owed by slices 5 and 6, and none of it is a rename:
-the two Task events become TWO events each (#140 §4.3) and the five control
-events are rewritten under #150's four families.
+two ways. The terminal-event split then paid the two Task debts, which were the
+ones no rename could express: each became TWO events, `killed` and `expired`
+(#140 §4.3). What is left is the five control events slice 6 rewrites under
+#150's four families, and that is not a rename either.
 
 **Why no mock.** Every control below builds a real repository on disk and runs
 the real entry point over it. A control that patched the reader would reproduce
@@ -260,7 +261,12 @@ def test_negative_control_the_cause_may_not_be_in_the_name(tmp_path):
 
 
 def test_negative_control_a_task_event_must_name_a_status(tmp_path):
-    """The live catalogue's `task.limit_exceeded`, in one line.
+    """What `task.limit_exceeded` was, in one line, until it was paid.
+
+    It was the live catalogue's until the terminal-event split replaced it with
+    `task.killed` and `task.expired`; it stays here as a SYNTHETIC control,
+    because a rule about naming an event for a bound is not retired by the one
+    event that broke it being fixed.
 
     Two faults, not one, and both are reported: `limit_exceeded` is neither a
     state this catalogue enters nor a state a Task can be in. A reader fixing
@@ -433,8 +439,13 @@ def test_negative_control_an_expected_name_must_be_an_end_state_one(tmp_path):
 def test_an_expected_name_may_be_a_split_into_two_events(tmp_path):
     """#140 §4.3's split: one overloaded event is replaced by two states.
 
-    The ledger has to be able to say that, or the two Task debts would have to
-    point at half their own payment.
+    The ledger had to be able to say that, or the two Task debts would have
+    pointed at half their own payment — and they were the only entries that
+    ever used it, so with the split landed NOTHING in the shipped ledger
+    exercises this shape any more. That is why the control stays and is worth
+    saying: the affordance is what let a debt be recorded honestly while it
+    stood, the next split will need it again, and a capability with no live
+    user is exactly the one that quietly stops working.
     """
     accepted(tmp_path, events=("task.limit_exceeded",),
              ledger=excusing(("TaskLimitExceeded", "task.limit_exceeded"),

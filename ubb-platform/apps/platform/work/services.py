@@ -1058,10 +1058,9 @@ class TaskService:
                           trigger_source=""):
         """The idempotent kill flow: flip the unit to `killed` (cascading
         downward if it is a parent) and, ONLY on the winning transition, emit
-        ``task.limit_exceeded`` — or, for contained work,
-        ``subtask.limit_exceeded`` scoped to it alone — so racing callers
-        (sync endpoint, batch items, async settle workers, the patrol) can
-        never double-emit.
+        ``task.killed`` — or, for contained work, ``subtask.killed`` scoped to
+        it alone — so racing callers (sync endpoint, batch items, async settle
+        workers, the patrol) can never double-emit.
 
         This is the SPEND lane, and after #408 that is all it is: the callers
         left are the ones holding a crossing.
@@ -1081,16 +1080,16 @@ class TaskService:
     def expire_and_announce(task_id, reason, *, tenant_id, customer_id,
                             trigger_source=""):
         """The same flow for the state at the other end of §2's table: flip the
-        unit to `expired` and announce it exactly once.
+        unit to `expired` and announce it exactly once, as ``task.expired`` or
+        ``subtask.expired``.
 
-        ⚠ THE ANNOUNCEMENT IS UNCHANGED AND THE STATE IS NOT (#408). This lane
-        announced before the six states existed — the reaper's stop is what
-        tells a customer's idle workers to tear down — and taking the signal
-        away would be a regression nothing asked for. So the event still says
-        `limit_exceeded` while the row now says `expired`: an event named for a
-        bound rather than for the state entered, which is an individually
-        ledgered debt the terminal-event split pays by name. Recording the
-        state honestly first is what makes that split expressible at all.
+        ⚠ THE ANNOUNCEMENT AND THE STATE NOW AGREE. #408 made this lane write
+        `expired` while it still announced a bound, because taking the signal
+        away would have been a regression nothing asked for and the honest
+        event did not exist yet; recording the state first is what made the
+        split expressible. This is that split: the state the row carries is
+        what picks the event, so a subscriber told about a spend incident is no
+        longer told about a worker that went quiet.
 
         ``trigger_source`` names the mechanism, on the same terms as the kill
         lane above.
@@ -1104,7 +1103,14 @@ class TaskService:
     def _stop_and_announce(flip, task_id, reason, *, tenant_id, customer_id,
                            trigger_source=""):
         """Flip through ``flip`` and, on the winning transition only, emit the
-        fan-out event and stamp the announcement id.
+        terminal stop event and stamp the announcement id.
+
+        ⚠ THE STATE THE FLIP WROTE CHOOSES THE EVENT, read back off the row.
+        There are four (#140 §4.3) — a spend stop and an expiry, each at both
+        altitudes — and this seam is not told which it just made: it asks the
+        record. That is what keeps *the name says the state entered* true of
+        the record rather than of each caller's memory, and it is the same
+        thing the patrol's re-mint has to do.
 
         Runs in its OWN transaction: the event that tripped the signal is
         already committed (one-rule — the tipping event lands and bills), and
@@ -1117,19 +1123,21 @@ class TaskService:
         """
         from django.db import transaction
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import (
-            SubtaskLimitExceeded, TaskLimitExceeded)
+        from apps.platform.events.schemas import terminal_stop_event
         try:
             with transaction.atomic():
                 stopped, transitioned = flip(
                     task_id, reason=reason,
                     tenant_id=tenant_id, customer_id=customer_id)
                 if transitioned:
+                    announcement = terminal_stop_event(
+                        stopped.status,
+                        is_contained=stopped.parent_id is not None)
                     common = dict(
                         tenant_id=str(tenant_id), customer_id=str(customer_id),
                         billing_owner_id=str(stopped.billing_owner_id or ""),
                         external_task_id=stopped.external_task_id,
-                        reason=reason,
+                        reason_code=reason,
                         # The cause and the mechanism, side by side (#412):
                         # the caller above is the only thing that knows which
                         # lane it is, so it says so rather than being guessed
@@ -1145,18 +1153,31 @@ class TaskService:
                         unresolved_event_count=stopped.unresolved_event_count,
                         provider_cost_limit_micros=stopped.provider_cost_limit_micros or 0)
                     if stopped.parent_id is not None:
-                        outbox = write_event(SubtaskLimitExceeded(
+                        outbox = write_event(announcement(
                             subtask_id=str(stopped.id),
                             parent_task_id=str(stopped.parent_id), **common))
                     else:
-                        outbox = write_event(TaskLimitExceeded(
+                        outbox = write_event(announcement(
                             task_id=str(stopped.id), **common))
                     # Announcement bookkeeping (delivery spec §B, #43):
                     # stamp inside the same transaction as the flip + event —
                     # all three commit or vanish together.
+                    #
+                    # ⚠ AND THE MECHANISM IS RECORDED HERE, which #412 left for
+                    # this ticket in two places. A re-mint repairs the delivery
+                    # of a stop it did not apply, so the only way it can name
+                    # the mechanism is to read what the applying lane wrote —
+                    # and this is the one seam that both knows the mechanism
+                    # and is on every announced stop. A cascade records its own
+                    # (`_cascade`), which is the same fact written where the
+                    # same argument puts it.
                     stopped.announce_outbox_id = outbox.id
-                    stopped.save(update_fields=["announce_outbox_id",
-                                               "updated_at"])
+                    update_fields = ["announce_outbox_id", "updated_at"]
+                    if trigger_source:
+                        stopped.metadata = {**stopped.metadata,
+                                            STOP_MECHANISM_KEY: trigger_source}
+                        update_fields.append("metadata")
+                    stopped.save(update_fields=update_fields)
             return transitioned
         except Exception:
             logger.exception("task.kill_failed", extra={"data": {

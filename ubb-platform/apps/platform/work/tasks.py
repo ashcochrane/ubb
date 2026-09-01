@@ -202,8 +202,8 @@ def reap_stale_tasks():
 
     A unit that emitted events then went quiet for longer than its silence
     window, or any unit past its absolute deadline, is expired and a
-    task.limit_exceeded event (subtask.limit_exceeded for stale contained work,
-    expired alone) is emitted so sibling/idle workers tear down. Reaping a
+    `task.expired` event (`subtask.expired` for contained work, expired alone)
+    is emitted so sibling/idle workers tear down. Reaping a
     parent cascades the expiry to its active contained work (#38) — note a
     parent whose contained work is still emitting is never silent, since
     rollup stamps the parent's heartbeat too.

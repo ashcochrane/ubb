@@ -67,8 +67,10 @@ Back-out is instant (set `off`).
    is an instruction, not an error.
 4. **Handle the webhooks** (catches *idle*/*sibling* workers not currently
    posting): on `customer.suspended` cancel **all** that customer's
-   tasks; on `task.limit_exceeded` cancel the task named by `task_id` (the
-   posting worker already got the stop verdict on its ack).
+   tasks; on `task.killed` **or** `task.expired` cancel the task named by
+   `task_id` (the posting worker already got the stop verdict on its ack).
+   Both mean *stop this task*, and they are two events because they are two
+   different facts — see **The signals** below.
 
 Retries are simple under the one rule: a non-200 was not recorded — retry the
 whole request; per-event idempotency keys make a replay return the original
@@ -79,7 +81,7 @@ event. There is no 429/409 special-casing for usage reports.
 | You skip… | You still get | You lose |
 |---|---|---|
 | (1) start-gate | per-task limit + mid-flight stop | blocking a new task for an already-out-of-money customer, and the task limit itself (no registration → no limit) |
-| (2) `task_id` on events | the customer-wide stop | the per-task COGS limit and `task.limit_exceeded` for that task |
+| (2) `task_id` on events | the customer-wide stop | the per-task COGS limit and `task.killed` for that task |
 | (3) the `stop` check | start-gate + limits + webhooks | mid-flight stop of the task that's *currently posting* (overshoot then bounded only by your event cadence) |
 | (4) webhook handler | everything the posting workers can see | proactive cancellation of *idle/sibling* tasks not currently posting |
 
@@ -99,8 +101,19 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   running totals, denominationally explicit — only the provider total races
   the limit), and `suspended` (the owner's durable status).
 - **Webhooks →** `customer.suspended` (cancel all the customer's
-  tasks), `task.limit_exceeded` (cancel `task_id`; carries both totals and
-  the limit), `stop.fired` (customer-wide stop).
+  tasks), `task.killed` (cancel `task_id`; carries both totals and
+  the limit), `task.expired` (the same, for a task UBB stopped hearing from),
+  `stop.fired` (customer-wide stop). The contained-work pair, `subtask.killed`
+  and `subtask.expired`, carries `subtask_id` and `parent_task_id` and means
+  *stop that step alone* — the parent is still running.
+
+  **Why the terminal pair is two events and not one.** `killed` means UBB
+  stopped the task on a spend signal; `expired` means nobody ever told UBB how
+  it ended — it went quiet for longer than its silence window, or ran past its
+  deadline. Subscribe to both to cancel work, and to `killed` alone to alert on
+  spend: an on-call rotation that took one event for both would be paged every
+  time a worker crashed. The cause and the mechanism travel as `reason_code`
+  and `trigger_source` fields, so you never parse an event name.
 
 ## Cooperative-cancellation recipes (a few lines each)
 

@@ -389,4 +389,6 @@ _Avoid_: importing billing models from another product; go through `queries.py`/
 **Key events**:
 Consumes `usage.recorded` (drawdown); emits `balance_low` (→ auto-top-up), `balance_overage`,
 `customer_suspended`, `credit_grant_expired`, `budget.threshold_reached`, `stop.fired`. (The
-platform kernel emits `task.limit_exceeded` from the verdict-driven kill flow.)
+platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
+either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents
+takes the first without the second.)

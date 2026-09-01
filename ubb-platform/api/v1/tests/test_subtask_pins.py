@@ -31,6 +31,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
     PARENT_NOT_ACTIVE, SUBTASK_DEPTH_EXCEEDED, CloseDeclaration, TaskService)
@@ -151,13 +152,13 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         self.assertEqual(body["task_id"], str(sub.id))
         self.assertEqual(body["parent_task_id"], str(parent.id))
 
-        # Exactly one subtask.limit_exceeded, ids explicit; no task-scoped one.
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
-        self.assertEqual(self._events("task.limit_exceeded").count(), 0)
-        payload = self._events("subtask.limit_exceeded").get().payload
+        # Exactly one `subtask.killed`, ids explicit; no task-scoped one.
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
+        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 0)
+        payload = self._events(SubtaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["subtask_id"], str(sub.id))
         self.assertEqual(payload["parent_task_id"], str(parent.id))
-        self.assertEqual(payload["reason"], "subtask_limit")
+        self.assertEqual(payload["reason_code"], "subtask_limit")
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
 
@@ -183,7 +184,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros, 6_000_000)
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -243,9 +244,9 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(sibling_sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sibling_sub.metadata["kill_reason"], "parent_killed")
         # ... but only the parent announces (the subtasks crossed nothing).
-        self.assertEqual(self._events("task.limit_exceeded").count(), 1)
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 0)
-        payload = self._events("task.limit_exceeded").get().payload
+        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 0)
+        payload = self._events(TaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["task_id"], str(parent.id))
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
 
@@ -262,8 +263,8 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(body["stop_scope"], "task")
         # Both kills happened; both announcements fired — the subtask's own
         # crossing is not swallowed by the parent's cascade.
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
-        self.assertEqual(self._events("task.limit_exceeded").count(), 1)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
+        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
         sub.refresh_from_db()
         self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
 
@@ -316,7 +317,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         self.assertFalse(body["stop"])
         sub.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_ACTIVE)
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 0)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 0)
 
         # Both totals on the record and the response, denominationally explicit.
         self.assertEqual(sub.total_billed_cost_micros, 50_000_000)

@@ -1,10 +1,10 @@
 """Closed vocabulary of task-stop / limit reasons, and the mechanisms that
 apply one.
 
-The single source of truth for the `reason` field on TaskLimitExceeded /
-SubtaskLimitExceeded, on the ack stop-verdict fields (`stop_reason`), and on the
-stop metadata a unit carries. Every producer and consumer imports these
-constants; no stop path may invent a reason string.
+The single source of truth for the `reason_code` field on the four terminal
+stop events, on the ack stop-verdict fields (`stop_reason`), and on the stop
+metadata a unit carries. Every producer and consumer imports these constants;
+no stop path may invent a reason string.
 
 ⚠ WHAT THIS MODULE TAKES FROM THE REGISTRY, AND WHAT IT STILL SPELLS (#412).
 Two registry concepts have their declared backend consumer HERE, and this module
@@ -77,13 +77,15 @@ CUSTOMER_WIDE_STOP = "customer_wide_stop"
 #
 # ⚠ ITS STRING CHANGED WHEN IT BECAME REGISTRY-SOURCED, AND STORED DATA STILL
 # HOLDS THE OLD ONE. Outbox rows and stop metadata written before #412 carry the
-# pre-registry spelling `stale`, so the terminal-event split's row-routing rule
-# — reaper reasons to `*.expired`, everything else to `*.killed` — must match
-# that older value as well as this constant, or a row that predates this commit
-# is routed as a spend stop. Every code consumer names the constant; the two
-# places that hold the VALUE both keep the old spelling beside the new one, on
-# `customer_floor`'s precedent — the published `stop_reasons` list in
-# `openapi/error-codes.json` and the console's display map.
+# pre-registry spelling `stale`. The terminal-event split's row-routing rule —
+# reaper reasons to `*.expired`, everything else to `*.killed` — therefore holds
+# THREE values rather than two, or a row that predates that commit would be
+# routed as a spend stop; `events/migrations/0008`'s `REAPER_REASONS` names the
+# older spelling beside this constant and says why at its own address. Every
+# code consumer names the constant; the two places that hold the VALUE both keep
+# the old spelling beside the new one, on `customer_floor`'s precedent — the
+# published `stop_reasons` list in `openapi/error-codes.json` and the console's
+# display map.
 SILENCE_WINDOW = REASON_CODE_SILENCE_WINDOW
 # Reaped: the unit passed its absolute deadline, whatever it was still doing.
 #
@@ -110,7 +112,7 @@ PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # customer scope) — an owner suspended with no open floor episode
 # (admin/fraud, or a money suspension whose episode already cleared).
 # Deliberately NOT an episode reason and NOT in ALL_REASONS/CROSSING_REASONS:
-# it never rides a TaskLimitExceeded/SubtaskLimitExceeded event or an ack's
+# it never rides a terminal stop event or an ack's
 # stop_reason (those are task/subtask-scoped, never customer-scoped), and
 # the past-limit report has nothing to itemize for a bare suspension.
 SUSPENDED = "suspended"
@@ -151,9 +153,9 @@ CROSSING_REASONS = frozenset({TASK_LIMIT, SUBTASK_LIMIT})
 #
 # The whole five are held here anyway, because the registry names this module as
 # the concept's backend consumer and a consumer holds the vocabulary rather than
-# the subset it happens to drive. That is also what makes the ticket splitting
-# those two events into four an addition to a payload rather than a second place
-# these words get spelled.
+# the subset it happens to drive. That is what let the split into four events
+# ADD a field to a payload rather than open a second place these words are
+# spelled: all four carry the mechanism, and none of them names a value.
 KNOWN_TRIGGER_SOURCES = frozenset({
     TRIGGER_SOURCE_USAGE_INGEST,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL,

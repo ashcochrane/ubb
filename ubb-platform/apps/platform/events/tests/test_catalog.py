@@ -30,6 +30,14 @@ def test_catalog_is_set_equal_to_frozen_payload_schema_registry():
     in the module but absent from the catalog is a red test, not the silent
     drift that hid customer.deleted from subscribers while the delivery path
     emitted it.
+
+    ⚠ NOT EVERY DATACLASS THERE IS A PAYLOAD ANY MORE, and the premise had to
+    be narrowed for it: the four terminal stop events share a private
+    field-only base, which declares no EVENT_TYPE and is nothing a tenant can
+    subscribe to. So the enumeration is of PUBLIC dataclasses — and the
+    narrowing is closed immediately below, by refusing any private one that
+    looks like a payload. Widening the exclusion to hide a real event would
+    have to get past that.
     """
     import dataclasses
     import inspect
@@ -37,13 +45,29 @@ def test_catalog_is_set_equal_to_frozen_payload_schema_registry():
     from apps.platform.events import schemas
     from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 
-    schema_classes = [
+    defined = [
         obj
         for obj in vars(schemas).values()
         if inspect.isclass(obj)
         and obj.__module__ == schemas.__name__  # defined there, not imported in
         and dataclasses.is_dataclass(obj)
     ]
+    schema_classes = [
+        cls for cls in defined if not cls.__name__.startswith("_")]
+    # The other half of the narrowing: a private dataclass may hold FIELDS and
+    # nothing else. One naming an event type, or inheriting the base that
+    # registers one, is a payload wearing an underscore — which would leave it
+    # out of the comparison below and put it back in the #75 shape.
+    pretending = [
+        cls.__name__
+        for cls in defined
+        if cls.__name__.startswith("_")
+        and (getattr(cls, "EVENT_TYPE", None) is not None
+             or issubclass(cls, schemas.EventSchema))
+    ]
+    assert pretending == [], (
+        f"{pretending} are private but look like payload contracts, so the "
+        f"catalog comparison below would not see them")
     # A schema class without an EVENT_TYPE would silently fall out of the
     # registry side of the set comparison — make that a red test too.
     missing_event_type = [

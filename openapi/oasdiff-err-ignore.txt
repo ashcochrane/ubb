@@ -744,3 +744,39 @@ POST /api/v1/metering/tasks/{task_id}/close api path removed without deprecation
 # platform's own tests.
 GET /api/v1/metering/customers/{customer_id}/usage removed the required property `data/items/request_id` from the response with the `200` status
 GET /api/v1/metering/usage/{event_id} removed the required property `request_id` from the response with the `200` status
+# ---------------------------------------------------------------------------
+# The terminal-event split (slice 5) — two overloaded events become four
+# ---------------------------------------------------------------------------
+#
+# `task.limit_exceeded` and `subtask.limit_exceeded` are removed from the
+# published `webhooks` section, and `task.killed`, `task.expired`,
+# `subtask.killed` and `subtask.expired` take their place. ADR-0006 §5 names an
+# event for the STATE ENTERED, and `limit_exceeded` names a bound — a state no
+# unit of work is ever in — so one name had to answer for two different claims:
+# *UBB stopped this on a spend signal* and *nobody ever told UBB how it ended*.
+# An operator subscribed to spend incidents was paged because a worker crashed.
+#
+# ⚠ ONLY THE TWO REMOVALS ARE BREAKS. The four arrivals are additive and
+# oasdiff reports nothing for them, which is the same asymmetry #417 measured
+# for a required response property: a subscriber cannot be broken by an event
+# it never asked for. So this block is two lines and not six.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE EXACTLY — two breaks, the same two,
+# from `--baseline HEAD` (2 error, 0 warning) and from the cumulative gate
+# alike. Both events pre-date the `api-v1-launch` tag, so their removal is
+# visible from the tag as well as from `main` and both lines here are live
+# rather than inert. #407's surface post-dated the tag and reported six
+# authoring breaks against zero cumulative; this is the other case.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and every known consumer moves in
+# this same commit — the console's committed schema snapshot and its
+# hand-held event catalogue, the living spend-control guide that tells an
+# integrator which webhook to handle, and the platform's own emitters and
+# tests. ⚠ AND THE STORED DATA MOVES WITH IT, which is what a removal from a
+# webhook catalogue costs that a removal from a route does not: a subscription
+# naming a removed event would go on existing and match nothing, so
+# `events/migrations/0008` fans every stored subscription out to both
+# successors and routes every pending outbox row to one of them.
+components webhook `subtask.limit_exceeded` removed
+components webhook `task.limit_exceeded` removed

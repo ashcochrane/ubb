@@ -328,7 +328,7 @@ A parent-linked child unit of work — **the same record with a parent**, not a 
 a separate pricing entity: a task registered under an active top-level task, declaring its kind in
 the same column its parent uses, with its own COGS limit and lifecycle. Its spend rolls up into the
 parent's totals (the parent's cap covers everything underneath it); crossing its own limit kills it
-alone (`subtask.limit_exceeded`) while the parent keeps running and counting; a parent's stop
+alone (`subtask.killed`) while the parent keeps running and counting; a parent's stop
 cascades downward to its active subtasks — never upward — and **what the cascade writes is not
 always what the parent got**: a kill cascades `killed` and an expiry cascades `expired`, but a CLOSE
 cascades `cancelled`, because the tenant declared the delivery of the parent and declared nothing
@@ -348,7 +348,7 @@ _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 **Task limit (provider-cost limit)**:
 A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
 passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
-races it; crossing it is a signal point (kill + `task.limit_exceeded`), never a billing wall.
+races it; crossing it is a signal point (kill + `task.killed`), never a billing wall.
 (`apps/platform/work/models.py:Task.provider_cost_limit_micros`)
 _Avoid_: "hard stop" — that vocabulary retired with the 429.
 
@@ -359,7 +359,8 @@ past-limit report, the stop context and the announcement bookkeeping honest and 
 we blow ceilings* answerable without filtering on a reason string first. Late events still land,
 bill, and count into the killed unit's totals (and its parent's, for a subtask); the flip is the
 durable record that the signal fired, not a wall. Killing a parent cascades the flip to its active
-subtasks; killing a subtask kills it alone.
+subtasks; killing a subtask kills it alone. It announces `task.killed`, or `subtask.killed` for
+contained work — see **Terminal stop event**.
 (`apps/platform/work/services.py:TaskService.kill_task`)
 _Avoid_: reading it as "terminated" in general — the reaper's stop is an **Expired (task)**.
 
@@ -372,8 +373,26 @@ reaping, since that sweeper's one-hour floor is its whole subject.
 It replaces a state the model could not honestly give — the safety net used to write `completed`
 with a marker in metadata and the reaper used to write `killed`, so one silence was recorded two
 ways and neither state meant one thing. An expiry can strike a live unit doing long atomic work, and
-that is **not** a failure and must not be counted as one.
+that is **not** a failure and must not be counted as one. The announcing reaper's stop says
+`task.expired`, or `subtask.expired` for contained work — see **Terminal stop event**; the >1h
+safety net announces nothing.
 (`apps/platform/work/services.py:TaskService.expire_task`)
+
+**Terminal stop event**:
+The webhook UBB publishes when it tears a unit of work down, **named for the state entered rather
+than for a bound**. There are four — `task.killed`, `task.expired`, and the same pair on contained
+work — and the pairing is the point: an operator subscribed to spend incidents must stop being paged
+because a worker crashed, and *how often did work stop on a ceiling?* must be answerable without
+parsing a cause out of a payload. The **Stop reason** and the mechanism that applied it travel as
+structured payload fields (`reason_code`, `trigger_source`), so a subscriber classifies by
+SUBSCRIBING and then by reading, never by parsing a name (ADR-0006 §5). Which of the four fires is
+read off the row AFTER the flip, so the claim *the name is the state entered* is a property of the
+record rather than a habit each emitter keeps; the enforcement patrol's re-mint reads the same row
+and therefore repairs a delivery with whatever is true now. A **Cancelled (task)** and the states a
+tenant declares announce nothing at all — the tenant already knows how the work ended.
+(`apps/platform/events/schemas.py:terminal_stop_event`)
+_Avoid_: naming one of these for the ceiling that fired — the cause is a field, and a single
+overloaded event was declined outright (#140 §4.3, ratified by #154 §5.3).
 
 **Cancelled (task)**:
 Deliberately stopped or withdrawn. Two writers, both a close: an explicit close declaring

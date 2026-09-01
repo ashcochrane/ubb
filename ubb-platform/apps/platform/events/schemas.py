@@ -22,7 +22,12 @@ from typing import Annotated, ClassVar
 
 from pydantic import Field
 
-from core.vocabulary import COSTING_STATUS_KNOWN, PRICING_STATUS_KNOWN
+from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
+    PRICING_STATUS_KNOWN,
+    TASK_STATUS_EXPIRED,
+    TASK_STATUS_KILLED,
+)
 
 #: A payload field naming the closed set that says whether a supplier cost is
 #: settled (#328).
@@ -466,88 +471,179 @@ class CreditGrantExpired(EventSchema):
     balance_micros: int = 0
 
 
+# --- The four terminal stops (#140 §4.3, ratified in full by #154 §5.3) -----
+#
+# ⚠ TWO EVENTS BECAME FOUR HERE, AND THE NAME IS THE WHOLE OF THE CHANGE. Every
+# field below travelled on the two events these replace. ADR-0006 §5 names an
+# event for the STATE ENTERED under the owner whose lifecycle moved, and
+# `killed` and `expired` are two different claims about a unit of work: *UBB
+# stopped this on a spend signal* against *nobody ever told UBB how it ended*.
+# One name could not say which — so an operator subscribed to spend incidents
+# was paged because a worker crashed, and *how often did work stop on a
+# ceiling?* could not be answered without parsing a cause out of the payload.
+#
+# WHY TWO AND NOT ONE, SETTLED AND CLOSED (#154 §5.3). A single stopped-event
+# was declined on exactly that paging argument; a ceiling-named one was declined
+# for putting the cause where the outcome belongs; and a spend-pool crossing and
+# the work it stops are separate events, never one overloaded webhook.
+#
+# THE CAUSE AND THE MECHANISM TRAVEL AS FIELDS, which is the other half of the
+# same rule: a subscriber classifies by SUBSCRIBING and then by reading, never
+# by parsing a name. A control's FAMILY and identity are deliberately NOT here
+# — they are a CLOSED set of four, three of whose families do not exist yet, and
+# publishing a closed set only one member of which is producible is precisely
+# what `domain-vocabulary/concepts/economics.yaml` forbids a closed set to do.
+# Adding an optional field to a payload is additive, so declining them now costs
+# a subscriber nothing and shipping them would cost a promise UBB cannot keep.
+
+
 @dataclass(frozen=True)
-class TaskLimitExceeded(EventSchema):
-    """One-rule task-kill fan-out event (#37). The SINGLE canonical class —
-    no other module may redefine it.
+class _TerminalStop:
+    """Everything a terminal stop announcement carries, whichever it is.
 
-    Emitted exactly once per winning transition OUT OF `active` — by the
-    verdict-driven kill flow (sync record, batch items, async settle), by the
-    enforcement patrol, and by either sweeper — so sibling/idle workers tear
-    the task down. The task is a signal point, not a wall: events arriving
-    after this still land, bill, and count into both totals.
+    Deliberately NOT an ``EventSchema``: it declares no ``EVENT_TYPE``, so it is
+    nothing a tenant can subscribe to and nothing the catalogue derives. It
+    exists because the four events below differ in exactly two things — the
+    state entered, which is in the name, and the ids saying which unit — and
+    writing everything else out four times is how four payloads carrying one
+    fact come to carry it differently. The two they replace already asked a
+    reader to keep them identical, in a comment; this asks the language.
 
-    customer_id      = the SEAT that owns the task.
-    billing_owner_id = resolve_billing_owner(seat) — the KILL SCOPE.
-    reason           = one of apps.platform.work.reasons (closed set).
-    trigger_source   = which mechanism applied the stop (open set).
+    customer_id      = the SEAT that owns the work.
+    billing_owner_id = resolve_billing_owner(seat) — the STOP SCOPE.
     Both running totals are carried, denominationally explicit; only the
     provider (COGS) total races provider_cost_limit_micros.
     """
-    EVENT_TYPE = "task.limit_exceeded"
     tenant_id: str
     customer_id: str = ""
     billing_owner_id: str = ""
-    task_id: str = ""
     external_task_id: str = ""
-    reason: str = ""
+    #: WHY THE UNIT STOPPED — one of `apps.platform.work.reasons`, beside the
+    #: mechanism below it. It was a bare `reason` until the split and carries
+    #: the registry's own word for the concept now: two questions with two
+    #: value sets are two fields, and a field named for neither answers a
+    #: reader nothing. The set is `open` and this producer drives part of it,
+    #: which is what an open set is for — a subscriber must accept a cause it
+    #: has not seen rather than reject the event carrying it (ADR-0003).
+    reason_code: str = ""
     #: THE MECHANISM, beside the cause (#412) — see `TriggerSource` above for
     #: why an open set may ship a subset. Every path that APPLIES a stop names
-    #: itself; `""` means UBB is not stating one, which today is true of a
-    #: patrol RE-MINT alone. A re-mint repairs the delivery of a stop some
-    #: other mechanism applied, and the row does not record which — so naming
-    #: the patrol there would answer the wrong question, and the
-    #: `re_announcement` marker below already says what that event is.
+    #: itself, and a patrol re-mint reads back the mechanism the stopped row
+    #: recorded, so `""` means UBB is genuinely not stating one.
     trigger_source: TriggerSource = ""
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     #: How many of this unit's events the provider total could not include
     #: (#328). Non-zero means the crossing was measured against a FLOOR — the
-    #: unit spent at least the total above, so the kill is sound and the figure
+    #: unit spent at least the total above, so the stop is sound and the figure
     #: understates it.
     unresolved_event_count: int = 0
     provider_cost_limit_micros: int = 0
-    # Delivery spec §B (#43): True only on a patrol re-mint — a repaired
-    # delivery of the CURRENT state, never a fresh crossing. Consumers dedup
-    # on the episode/unit id as ever.
+    #: Delivery spec §B (#43): True only on a patrol re-mint — a repaired
+    #: delivery of the CURRENT state, never a fresh crossing. The re-mint reads
+    #: that state off the row, so a unit that was killed re-announces
+    #: `*.killed` and one that expired re-announces `*.expired`. Consumers
+    #: dedup on the unit id as ever.
     re_announcement: bool = False
 
 
 @dataclass(frozen=True)
-class SubtaskLimitExceeded(EventSchema):
-    """Subtask-kill fan-out event (#38) — the subtask sibling of
-    TaskLimitExceeded, emitted exactly once per winning transition out of
-    `active` on a SUBTASK (its own limit/floor crossing, or a sweeper).
-    The subtask is killed ALONE: the parent keeps running and counting, so
-    consumers tear down only the named child. A parent's own crossing emits
-    task.limit_exceeded instead and cascades its kill downward silently —
-    cascaded children never emit this event (they crossed nothing).
+class TaskKilled(_TerminalStop, EventSchema):
+    """UBB STOPPED THIS WHOLE UNIT OF WORK ON A SPEND SIGNAL, and that is all
+    this event ever means — a ceiling crossing, the enforcement patrol, or a
+    customer-wide stop reaching it.
 
-    Ids are explicit (spec §B — the run-era scope field died with the
-    split): subtask_id = the killed child unit, parent_task_id = the parent
-    whose totals its spend rolls up into. Totals and limit are the
-    SUBTASK's own, denominationally explicit; only the provider (COGS)
-    total races the limit.
+    Emitted exactly once per winning transition into `killed`, so racing
+    callers (the sync endpoint, batch items, async settle workers, the patrol)
+    can never double-emit. A stop is a signal point and not a wall: events
+    arriving after it still land, bill, and count into both totals.
     """
-    EVENT_TYPE = "subtask.limit_exceeded"
-    tenant_id: str
-    customer_id: str = ""
-    billing_owner_id: str = ""
+    EVENT_TYPE = "task.killed"
+    task_id: str = ""
+
+
+@dataclass(frozen=True)
+class TaskExpired(_TerminalStop, EventSchema):
+    """NOBODY EVER TOLD UBB HOW THIS WHOLE UNIT OF WORK ENDED — it went quiet
+    for longer than its silence window, or ran past its absolute deadline, and
+    a sweeper wrote the honest answer.
+
+    The same announcement on the same terms as `TaskKilled`, and a SEPARATE
+    event for the reason the split exists: a subscriber paging an on-call
+    engineer about spend wants the one above and not this one, and a
+    subscriber cleaning up after crashed workers wants this one and not that.
+    """
+    EVENT_TYPE = "task.expired"
+    task_id: str = ""
+
+
+@dataclass(frozen=True)
+class SubtaskKilled(_TerminalStop, EventSchema):
+    """The same spend stop on CONTAINED work, which is killed ALONE: the
+    parent keeps running and counting, so a subscriber tears down only the
+    named child (#38).
+
+    A parent's own crossing emits `task.killed` instead and cascades downward
+    silently — cascaded children never emit this event, because they crossed
+    nothing themselves.
+
+    Ids are explicit: subtask_id is the stopped child, parent_task_id the
+    parent whose totals its spend rolls up into. The totals and the limit are
+    the child's own.
+    """
+    EVENT_TYPE = "subtask.killed"
     subtask_id: str = ""
     parent_task_id: str = ""
-    external_task_id: str = ""
-    reason: str = ""
-    #: The mechanism, on the same terms as `TaskLimitExceeded.trigger_source`
-    #: — the two payloads carry one fact, so they carry it identically.
-    trigger_source: TriggerSource = ""
-    total_billed_cost_micros: int = 0
-    total_provider_cost_micros: int = 0
-    #: The SUBTASK's own count, like the totals beside it (#328).
-    unresolved_event_count: int = 0
-    provider_cost_limit_micros: int = 0
-    # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # TaskLimitExceeded.re_announcement).
-    re_announcement: bool = False
+
+
+@dataclass(frozen=True)
+class SubtaskExpired(_TerminalStop, EventSchema):
+    """Nobody ever told UBB how this contained piece of work ended.
+
+    One model and one status set means one rule (#154 §3.1), so contained work
+    splits exactly as the whole unit does — and the ids and the altitude rule
+    are `SubtaskKilled`'s.
+    """
+    EVENT_TYPE = "subtask.expired"
+    subtask_id: str = ""
+    parent_task_id: str = ""
+
+
+#: The four, keyed on the two facts that choose between them. Private because
+#: the reader below is the door: a bare mapping answers a state it does not
+#: know with `KeyError: (False, 'completed')`, which is read exactly when
+#: somebody is already confused, and it offers no place to say WHY the states a
+#: tenant declares are absent.
+_TERMINAL_STOP_EVENTS = {
+    (False, TASK_STATUS_KILLED): TaskKilled,
+    (False, TASK_STATUS_EXPIRED): TaskExpired,
+    (True, TASK_STATUS_KILLED): SubtaskKilled,
+    (True, TASK_STATUS_EXPIRED): SubtaskExpired,
+}
+
+
+def terminal_stop_event(status, *, is_contained):
+    """The event class that announces a unit of work's terminal stop.
+
+    ⚠ PASS THE STATE THE ROW NOW CARRIES, never the one the caller meant to
+    write. The name of these events IS the state entered, so reading it back
+    off the record is what makes that a property of the record rather than a
+    habit each emitter has to keep — and it is the only thing the patrol's
+    re-mint can do, since it announces a stop it did not apply.
+    ``is_contained`` chooses the altitude.
+
+    Refuses any other state, and that is the right answer rather than a
+    fallback: the three states a TENANT declares announce nothing at all (the
+    tenant already knows how the work ended), and a further state arriving here
+    is a lane that has not said which of these two claims it makes.
+    """
+    try:
+        return _TERMINAL_STOP_EVENTS[(is_contained, status)]
+    except KeyError:
+        announced = sorted({state for _, state in _TERMINAL_STOP_EVENTS})
+        raise ValueError(
+            f"{status!r} is not a state UBB announces a stop for — "
+            f"the announced states are {announced}") from None
 
 
 @dataclass(frozen=True)

@@ -207,7 +207,7 @@ class TestTheWorkUnitTotalIsAFloor:
         """
         from apps.billing.gating.patrol import _remint_kill
         from apps.platform.events.models import OutboxEvent
-        from apps.platform.events.schemas import TaskLimitExceeded
+        from apps.platform.events.schemas import TaskKilled
 
         unit = self._unit(provider_cost_limit_micros=1)
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
@@ -222,7 +222,7 @@ class TestTheWorkUnitTotalIsAFloor:
         unit.save()
         _remint_kill(unit, self.tenant)
         payload = OutboxEvent.objects.filter(
-            event_type=TaskLimitExceeded.EVENT_TYPE).latest("created_at").payload
+            event_type=TaskKilled.EVENT_TYPE).latest("created_at").payload
         assert payload["re_announcement"] is True
         assert payload["total_provider_cost_micros"] == KNOWN_COST_MICROS
         assert payload[UNRESOLVED_EVENT_COUNT_KEY] == 1
@@ -275,7 +275,7 @@ class TestTheWorkUnitTotalIsAFloor:
         as the spend that triggered it is reading a lower bound.
         """
         from apps.platform.events.models import OutboxEvent
-        from apps.platform.events.schemas import TaskLimitExceeded
+        from apps.platform.events.schemas import TaskKilled
 
         unit = self._unit(provider_cost_limit_micros=1)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
@@ -284,10 +284,12 @@ class TestTheWorkUnitTotalIsAFloor:
                                       tenant_id=self.tenant.id,
                                       customer_id=self.customer.id)
         # Addressed through the schema's own constant rather than by spelling
-        # the catalog name: the announcement's type is a retired word whose
-        # ledger this file must not widen (the module note).
+        # the catalog name. That was originally because the announcement's type
+        # was a retired word this file must not widen; the split paid that debt
+        # and the constant stays, because it is the stricter assertion — it
+        # goes red if the kill lane ever starts announcing a different state.
         payload = OutboxEvent.objects.get(
-            event_type=TaskLimitExceeded.EVENT_TYPE).payload
+            event_type=TaskKilled.EVENT_TYPE).payload
         assert payload["total_provider_cost_micros"] == KNOWN_COST_MICROS
         assert payload[UNRESOLVED_EVENT_COUNT_KEY] == 1
 

@@ -1,12 +1,17 @@
-"""P6a: task.limit_exceeded fan-out from the endpoint/settle kill flow, and
-the start-gate honoring the customer-wide stop flag.
+"""P6a: `task.killed` fan-out from the endpoint/settle kill flow, and the
+start-gate honoring the customer-wide stop flag.
 
 One-rule (#37): a per-task limit crossing never rejects the usage report —
 the tipping event answers HTTP 200, lands, and bills; the server runs the
-idempotent kill flow (TaskService.kill_and_announce) which emits
-task.limit_exceeded exactly once on the winning active->killed transition so
-sibling/idle workers tear down. The start-gate (RiskService) still blocks NEW
-tasks for a flag-stopped owner in enforcing mode.
+idempotent kill flow (TaskService.kill_and_announce) which emits `task.killed`
+exactly once on the winning active->killed transition so sibling/idle workers
+tear down. The start-gate (RiskService) still blocks NEW tasks for a
+flag-stopped owner in enforcing mode.
+
+⚠ THIS LANE ANNOUNCES THE SPEND STOP AND NEVER THE EXPIRY, which is what the
+terminal-event split bought (#140 §4.3): it holds a crossing, so the state it
+writes is `killed` and the event is named for that state. The expiry half is
+the sweepers', in `test_concurrency_reaper.py`.
 """
 import json
 from unittest import mock
@@ -22,6 +27,7 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.services import TaskService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
@@ -34,9 +40,9 @@ def _tenant(mode="prepaid", enf="enforcing"):
                                  billing_mode=mode, enforcement_mode=enf)
 
 
-def _limit_events(task_id):
+def _stop_events(task_id):
     return OutboxEvent.objects.filter(
-        event_type="task.limit_exceeded", payload__task_id=str(task_id))
+        event_type=TaskKilled.EVENT_TYPE, payload__task_id=str(task_id))
 
 
 @pytest.mark.django_db
@@ -86,9 +92,9 @@ class TestTaskLimitFanout:
         assert body["stop_scope"] == "task"
         task.refresh_from_db()
         assert task.status == "killed"
-        assert _limit_events(task.id).count() == 1
-        payload = _limit_events(task.id).get().payload
-        assert payload["reason"] == "task_limit"
+        assert _stop_events(task.id).count() == 1
+        payload = _stop_events(task.id).get().payload
+        assert payload["reason_code"] == "task_limit"
         assert "scope" not in payload
 
         # A late event on the killed task still lands (200) but never
@@ -96,13 +102,21 @@ class TestTaskLimitFanout:
         resp = record("k2", 1_000_000)
         assert resp.status_code == 200
         assert resp.json()["stop_reason"] == "task_not_active"
-        assert _limit_events(task.id).count() == 1
+        assert _stop_events(task.id).count() == 1
 
-    def test_task_limit_exceeded_is_registered_for_delivery(self):
+    def test_every_terminal_stop_event_is_registered_for_delivery(self):
         from apps.platform.events.registry import handler_registry
-        # Without registration the event is written but never dispatched to
-        # webhooks; the run-era event type is gone from the registry.
-        assert handler_registry.get_handlers("task.limit_exceeded")
+        from apps.platform.events.schemas import (
+            SubtaskExpired, SubtaskKilled, TaskExpired)
+        # Without registration an event is written but never dispatched to
+        # webhooks — the #75 defect, one table over. All four are asserted
+        # rather than the one this module drives: the registration derives
+        # from the payload classes, so a successor added without its
+        # registration is exactly the shape this case exists to refuse.
+        for event in (TaskKilled, TaskExpired, SubtaskKilled, SubtaskExpired):
+            assert handler_registry.get_handlers(event.EVENT_TYPE), \
+                event.EVENT_TYPE
+        # ...and the run-era event type is gone from the registry.
         assert handler_registry.get_handlers("run.limit_exceeded") == []
 
 

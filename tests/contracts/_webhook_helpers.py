@@ -12,8 +12,11 @@ stale copy of the rules.
 
 The synthetic catalogues are small — three or four events — because the rules
 under test are about shape, not about scale. What checks the gate against the
-real thirty-five is ``test_webhook_catalogue.py``'s shipped-tree section, which
-asserts on the tree itself rather than on a copy of it.
+real one is ``test_webhook_catalogue.py``'s shipped-tree section, which asserts
+on the tree itself rather than on a copy of it. Its SIZE is deliberately not
+stated here: it moved from thirty-five to thirty-seven when the two terminal
+Task events became four, and a count in prose that no gate reads is a tally
+waiting to go stale.
 """
 
 import yaml

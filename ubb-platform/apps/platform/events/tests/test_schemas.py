@@ -263,10 +263,16 @@ class TestUuidOrStrIds:
 
 
 class TestPayloadSchemaRegistry:
-    def test_registry_holds_every_dataclass_defined_in_the_module(self):
+    def test_registry_holds_every_public_dataclass_defined_in_the_module(self):
         # Independent enumeration (defense in depth for the catalog
-        # derivation): every frozen dataclass defined in schemas.py must have
-        # registered itself via the base class.
+        # derivation): every public frozen dataclass defined in schemas.py must
+        # have registered itself via the base class.
+        #
+        # ⚠ PUBLIC, because the four terminal stop events share a private
+        # field-only base that is not a payload contract and registers nothing.
+        # `test_catalog.py` holds the other half — that no private dataclass
+        # there declares an event type or inherits the registering base — so
+        # the exclusion cannot be widened to hide a real event.
         import dataclasses
         import inspect
         from apps.platform.events import schemas
@@ -278,6 +284,7 @@ class TestPayloadSchemaRegistry:
             if inspect.isclass(obj)
             and obj.__module__ == schemas.__name__
             and dataclasses.is_dataclass(obj)
+            and not obj.__name__.startswith("_")
         }
         assert defined == set(payload_schema_classes())
 
