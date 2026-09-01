@@ -59,6 +59,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
+    PRICING_MODE_EVENT_PRICED,
     RATE_STRUCTURE_FIXED_COMPONENT,
     RATE_STRUCTURE_PER_UNIT,
     RATE_STRUCTURE_VALUES,
@@ -338,6 +339,11 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
             effective_at="2026-01-01T00:00:00+00:00",
             measurements={"api_calls": 9},
             caller_provider_cost=None,
+            # The ordinary regime and the ordinary posture (#418): this case is
+            # about a COST component's arithmetic, and both facts decide only
+            # whether a CUSTOMER price applies at all.
+            pricing_mode=PRICING_MODE_EVENT_PRICED,
+            tenant_bills_through_ubb=True,
             resolve_declaration=lambda: None,
             resolve_the_cost_rule=lambda key: rate,
             resolve_the_price_rule=lambda key: None,

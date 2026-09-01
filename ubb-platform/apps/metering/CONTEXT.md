@@ -29,7 +29,10 @@ never stored**. It exists because a pruned posting otherwise reads exactly like 
 any: both answer an empty bag, so a consumer defaulting on emptiness renders a payload that expired
 on schedule as a confident "no usage". The rule is the registry's, declared as `value_semantics` in
 `domain-vocabulary/concepts/economics.yaml`; that no writable column of this name exists is gate
-G10. (`apps/metering/usage/measurements.py:measurements_status_for`)
+G10. **All three values are producible now**: `not_applicable` is what a posting's own kind answers
+for the projection of a Charge, which #417 made writable and #418 is where the derivation is proved
+end to end against a row the backend really produces.
+(`apps/metering/usage/measurements.py:measurements_status_for`)
 _Avoid_: reading it as analytics' `measure_status`. The near miss is accepted, not overlooked
 (`economics.yaml` argues it against ADR-0006 §§2–3): `measure_status` says whether a NUMBER is
 knowable at the grain asked for, this one whether the RECORD of what was measured is still there to
@@ -149,6 +152,13 @@ information UBB does not have** — nothing matched and there is no markup rung.
 subject that generates no customer revenue at this level at all. The distinction between the middle
 two is what a Resolution Run is built on: it repairs what UBB is missing and never touches what
 somebody decided.
+**What produces `not_applicable` is the whole-work pricing regime** (#418): every posting under a
+piece of work sold at ONE AGREED PRICE carries it, because the customer revenue for those events is
+the agreed price and none of it is theirs. The price ladder is not consulted for such an event at
+all — it is a fact about the subject, settled before configuration is read — while the COST side
+resolves exactly as it does under any other regime. **A finer declared granularity multiplies these
+postings rather than zero-revenue ones**, so for a fine-grained tenant this becomes the most common
+pricing status in the system.
 (`apps/metering/usage/models.py:Posting.pricing_status`; the cost half is `costing_status`, whose
 `unresolved` value is the pair's equivalent)
 _Avoid_: rendering any of the three non-`known` values as an amount — `unknown` must never render as
@@ -165,8 +175,15 @@ work's regime, because the concept answers *why no CUSTOMER REVENUE arises* and 
 ever does, for a reason unrelated to how the work was sold. ⚠ The argument slice 4 recorded was that
 *no Charge exists anywhere* for such a tenant; #416 made that false — a metering-only tenant's
 delivered fixed-price work does produce a Charge, as a recorded revenue and margin fact rather than
-a collection — so the ruling stands on the narrower ground stated here and the ticket that wires the
-rule up should re-read it.
+a collection — and #417 projected it onto a posting, so the counter-example is a row a reader can
+open. **#418 re-took the tie-break against that row and kept it**: `fixed_task_pricing` does not
+claim a Charge exists, it says *the customer revenue for this event sits on the piece of work
+instead*, and for a tenant UBB does not bill there is no customer revenue anywhere — so the more
+specific value would still send a reader to look for a bill nobody raises, while now being half
+true, which is worse than plainly wrong.
+**The regime decides the STATUS and the posture only decides the REASON.** A metering-only tenant's
+event-priced work is priced exactly as it always was; widening `not_applicable` to every posting of
+such a tenant is a different ruling about a different subject and is not this rule's.
 Coined and declared by slice 4 (#151 §17 owed it and nothing had ratified it). Its console consumer
 is `apps/ui/src/lib/customer-price.ts`, not the legacy label adapter its four neighbours live in.
 (`apps/metering/usage/models.py`; `apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`)
@@ -396,6 +413,19 @@ pricing sections carry their method, status and detail BY VALUE, and the `proven
 carries cross-reference ids that nothing reads to reconstruct an amount. It is **not** a guarantee
 that customer revenue exists and not evidence a customer was charged — a metering-only tenant has a
 receipt for every event it records and bills nobody through UBB.
+**The subject decides what its amounts owe** (#418). A receipt explains one usage row or one
+Charge, and only the first has amounts resolution DERIVED: a Charge's price was AGREED before the
+work ran and pinned to it, and its supplier cost is zero because there is no supplier behind a
+Charge. So a Charge's receipt settles both amounts and names NO METHOD on either — the reading a
+null has always published — and in exchange it must carry the whole-work pricing regime by value,
+which is what lets a reader tell *the price was agreed* from *somebody forgot to record how it was
+derived*. **A method beside an unsettled status stays refused for every subject.** No third
+`pricing_method` value is coined for "agreed": that would be a second encoding of what the status
+and the regime already say.
+**The regime rides on every receipt, not only a Charge's**, under the price section's `detail`. It
+is what explains a `not_applicable` price, and it is what a Resolution Run re-resolves against — by
+value, as it was on the day, never re-read from the piece of work's own row, because a tenant
+changing how a kind of work is sold must not reprice a backlog of history.
 The record had three names and #370 settled them. This one is what the registry ratified, as
 `pricing_receipt_subject_type`; the stored column's older spelling is a retired alias on that
 concept and is not written here; and so is "audit trail", which is the name **this entry itself

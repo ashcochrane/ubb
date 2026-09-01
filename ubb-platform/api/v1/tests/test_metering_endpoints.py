@@ -406,15 +406,18 @@ class UsageEventDetailEndpointTest(TestCase):
         The two are published together precisely so neither has to answer the
         other's question.
 
-        Assembled rather than recorded, and deliberately — but the reason has
-        narrowed (#356). The resolver now reaches three of the four price
-        statuses through the spine, and two of them null the method: a margin
-        over a cost UBB never learned is `waived`, and a subject no rung priced
-        is `unknown`. The status this case uses is the fourth, `not_applicable`,
-        which nothing produces because it is a fact about the tenant's posture
-        and the job's pricing regime rather than about resolution — so this is
-        still the shape reachable only at the construction boundary, and it is
-        the one that carries a reason beside it.
+        Assembled rather than recorded, and the reason has narrowed twice.
+        (#356) The resolver reaches three of the four price statuses by
+        resolving, and two of them null the method: a margin over a cost UBB
+        never learned is `waived`, and a subject no rung priced is `unknown`.
+        (#418) The fourth, `not_applicable`, is produced by the spine now too —
+        for every event under a piece of work sold at one agreed price — so
+        what makes this case assembled is no longer that nothing can write the
+        status. It is that this test's subject is the SERIALISER: what a reader
+        gets beside a null method, over a row it can stand up in one statement
+        rather than through a start, a price line and a recording. The end-to-
+        end path is `test_the_postings_under_an_agreed_price_are_not_
+        applicable.py`, which drives the same shape through the route.
 
         The record is still built through `build_receipt` — the one place a
         receipt is made, and the place that refuses one whose method and status

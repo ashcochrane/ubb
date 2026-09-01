@@ -65,6 +65,7 @@ from apps.platform.event_types.models import Measurement
 from apps.platform.event_types.quantities import declaration_named
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import PRICING_MODE_EVENT_PRICED
 
 APP_LABEL = "pricing"
 RENAME_MIGRATION = "0016_the_rates_quantity_name_takes_the_canonical_name"
@@ -357,6 +358,11 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             effective_at="2026-01-01T00:00:00+00:00",
             measurements={"input_tokens": 3},
             caller_provider_cost=None,
+            # The ordinary regime and the ordinary posture (#418): this case is
+            # about what a component's quantity key is CALLED, and both facts
+            # decide only whether a CUSTOMER price applies at all.
+            pricing_mode=PRICING_MODE_EVENT_PRICED,
+            tenant_bills_through_ubb=True,
             resolve_declaration=lambda: None,
             resolve_the_cost_rule=lambda key: rate,
             resolve_the_price_rule=lambda key: None,

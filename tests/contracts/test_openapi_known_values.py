@@ -854,12 +854,18 @@ CONCEPTS_IN_THE_CONTRACT = {
     # be included, and none of them asks what the receipt was about. The same
     # ruling #328, #351 and #355 each made for the same payload.
     #
-    # THE WHOLE SET SHIPS THOUGH ONE VALUE IS UNREACHABLE TODAY, which is the
+    # THE WHOLE SET SHIPPED THOUGH ONE VALUE WAS UNREACHABLE, which is the
     # posture `measurements_status` states in the registry and the only one a
-    # CLOSED set may take: `charge` becomes reachable when slice 5 writes a
-    # receipt for a Task sold at one agreed price, and publishing one value now
-    # and the second later would make that slice a breaking change to a client
-    # that had switched exhaustively over a single-member enum.
+    # CLOSED set may take: publishing one value now and the second later would
+    # have made the slice that reached it a breaking change to a client that had
+    # switched exhaustively over a single-member enum.
+    #
+    # ⚠ BOTH ARE REACHABLE NOW. `charge` became so in #418, exactly as this note
+    # predicted — the projection of a Charge carries a receipt whose subject is
+    # that Charge, validated at the one construction boundary, which is the
+    # backend consumer this concept declares. The posture is recorded rather
+    # than deleted because it is the argument for shipping a complete set, not a
+    # note about an outstanding task.
     "pricing_receipt_subject_type": Published(2, ENUM),
     # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407) — two nodes,
     # the declaration going in and the declaration coming back, which is the

@@ -4,9 +4,13 @@ from typing import Any, NamedTuple, Optional
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.metering.pricing.applicability import (
+    bills_through_ubb, not_applicable_reason_for,
+)
 from apps.metering.pricing.models import CostBook, PricingBook, Rate, TaskPrice
 from apps.metering.pricing.receipts import (
-    MARKUP_TERMS_KEY, ReceiptSubject, Resolution, build_receipt,
+    MARKUP_TERMS_KEY, PRICING_REGIME_KEY, ReceiptSubject, Resolution,
+    build_receipt,
 )
 from apps.platform.event_types.costing import cost_declaration
 from apps.platform.plans.queries import get_pricing_book_for_customer
@@ -19,7 +23,9 @@ from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_MODE_EVENT_PRICED,
+    PRICING_MODE_FIXED,
     PRICING_STATUS_KNOWN,
+    PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
     TASK_TYPE_KIND_SUBTASK,
@@ -298,18 +304,19 @@ class Costing(NamedTuple):
     #: `core.vocabulary` (#351), and read off the receipt's price section rather
     #: than decided again here.
     #:
-    #: THREE OF THE FOUR ARE NOW REACHED (#356). The ladder answers `known`
-    #: where a rung priced the event, `waived` where a margin was taken over a
+    #: ALL FOUR ARE REACHED NOW (#356, #418). The ladder answers `known` where
+    #: a rung priced the event, `waived` where a margin was taken over a
     #: supplier cost UBB never learned, and `unknown` where no rung answered at
-    #: all. `not_applicable` is the fourth and nothing produces it: it is a fact
-    #: about the tenant's posture and the job's pricing regime rather than about
-    #: resolution, the regime's whole vocabulary belongs to the slice that
-    #: rebuilds the unit of work, and the rule that decides its REASON is
-    #: written and waiting in `pricing/applicability.py`.
+    #: all. The fourth is still not a fact about resolution: `not_applicable`
+    #: says the ladder was not consulted, because the event belongs to a piece
+    #: of work sold for ONE AGREED PRICE and the customer revenue is that whole
+    #: piece's. `pricing/applicability.py` decides which of its two REASONS.
     pricing_status: str
     #: Which of two mutually exclusive causes produced `not_applicable`, and
     #: `None` for every other status. The rule is
-    #: `apps.metering.pricing.applicability.not_applicable_reason_for`.
+    #: `apps.metering.pricing.applicability.not_applicable_reason_for`, and this
+    #: is read back off the receipt's price section rather than decided again
+    #: here — the same terms `unresolved_reason` above is read on.
     not_applicable_reason: Optional[str] = None
 
 
@@ -736,7 +743,7 @@ class PricingService:
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
-                 caller_provider_cost,
+                 caller_provider_cost, pricing_mode, tenant_bills_through_ubb,
                  resolve_declaration, resolve_the_cost_rule,
                  resolve_the_price_rule, resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
@@ -794,12 +801,37 @@ class PricingService:
         configuration-dependent arrives through the two rule resolvers and
         `resolve_declaration`.
 
+        ⚠ **`pricing_mode` AND `tenant_bills_through_ubb` ARE PLAIN FACTS AND
+        NOT RESOLVERS, WHICH IS WHAT THEY ARE (#418).** The four resolvers above
+        are lazy because each may cost a query and several branches never need
+        one; these two are already in hand at every call site — one is a column
+        on the piece of work the event belongs to, the other a product flag on
+        the tenant — and a resolver over a value already read would be a closure
+        pretending there was a question left. They arrive as arguments rather
+        than being read off `subject` because this method takes the receipt's
+        SUBJECT, which is a typed identity and carries neither.
+
+        ⚠ **AND THE REGIME DECIDES WHETHER A PRICE APPLIES AT ALL, WHICH IS NOT
+        A RUNG.** Where the piece of work was sold for one agreed price the
+        ladder is not consulted: the customer revenue is the whole piece's, so
+        every event under it is `not_applicable` and carries the reason
+        `pricing/applicability.py` decides. That is a fact about the SUBJECT
+        settled before any configuration is read, which is why it sits above
+        the ladder rather than as a fifth rung on it — a rung is something a
+        price can come FROM, and this is the statement that no price comes from
+        anywhere.
+
         Always returns a Pricing Receipt — the whole record, validated at the
         one construction boundary at the foot of this method. It is what the
         recording path reads every column it writes back off (:class:`Costing`),
         so there is one statement of what the engine concluded rather than two
         that can drift."""
         measurements = measurements or {}
+        # THE GATE, READ ONCE AND NAMED. Spelled here rather than compared
+        # inline at the branch below because it is the condition the whole price
+        # side turns on, and `pricing_mode == PRICING_MODE_FIXED` at the branch
+        # would read as a comparison rather than as the fact it is.
+        sold_for_one_agreed_price = pricing_mode == PRICING_MODE_FIXED
         # THE RECEIPT'S PER-LINE NAME KEY MOVED WITH THE COLUMN (#275), and
         # receipts already written are NOT rewritten. A receipt records what the
         # engine did on a day, so back-dating one to a vocabulary that did not
@@ -943,32 +975,63 @@ class PricingService:
         # function can be handed rather than of which branch it happens to take.
         resolved_markup, markup_basis = None, None
         price_total, matched = 0, []
-        for measurement_key, units_val in sorted(measurements.items()):
-            card = resolve_the_price_rule(measurement_key)
-            if card is None:
-                continue
-            matched.append(card)
-            component = _component(measurement_key, units_val, card)
-            price_total += component["micros"]
-            price_components.append(component)
-            price_rate_ids[measurement_key] = str(card.id)
-        if matched:
-            billed, pricing_method, pricing_status = _priced_by_rules(
-                matched, price_total, costing_status)
-        else:
-            # THE MARKUP RUNG — REACHED ONLY BECAUSE NO RULE WAS (#356).
+        not_applicable_reason = None
+        if sold_for_one_agreed_price:
+            # ⚠ THE LADDER IS NOT CONSULTED AT ALL, WHICH IS THE WHOLE OF THE
+            # RULE (#418, spec §14). This event belongs to a piece of work sold
+            # for ONE AGREED PRICE, so the customer revenue is the whole
+            # piece's and none of it is this event's — a fact about the SUBJECT,
+            # decided before any configuration is read. Walking the rules first
+            # and discarding what they answered would put price rule ids in the
+            # record for rules that priced nothing, which says the tenant's
+            # configuration produced this outcome when the regime did.
             #
-            # This is the else-branch of rule resolution and it stays one.
-            # "Base cost -> markup -> final charge" is false for any tenant
-            # with pricing rules, and a pipeline that marked up a rule's
-            # answer would silently re-price every catalogue in the system.
-            # What the rung supplies is a percentage AND its source, which
-            # is why it resolves a value here rather than being handed a
-            # number to multiply — `_priced_by_markup` says what it does
-            # with the three answers it can reach.
-            resolved_markup, markup_basis = resolve_markup(), computed_micros
-            billed, pricing_method, pricing_status = _priced_by_markup(
-                resolved_markup, markup_basis, costing_status)
+            # ⚠ AND `not_applicable` RATHER THAN A ZERO, WHICH IS THE MOST
+            # CONSEQUENTIAL RENDERING RULE IN THE SLICE. The Event Type's
+            # declared granularity decides how many postings a piece of work
+            # produces, so a finer declaration multiplies THESE — sixty
+            # per-minute postings under a fixed-price piece of work are sixty
+            # cost-only postings, and for a fine-grained tenant this becomes the
+            # most common pricing status in the system. Sixty zeros would read
+            # as sixty events that earned nothing; sixty `not_applicable`s say
+            # the revenue is somewhere else and where to look for it.
+            #
+            # THE COST SIDE ABOVE IS UNTOUCHED. The supplier work was really
+            # burned and is really UBB's tenant's COGS, and it is what the whole
+            # piece of work's margin is netted against.
+            billed, pricing_method = None, None
+            pricing_status = PRICING_STATUS_NOT_APPLICABLE
+            not_applicable_reason = not_applicable_reason_for(
+                tenant_bills_through_ubb=tenant_bills_through_ubb,
+                sold_for_one_agreed_price=True)
+        else:
+            for measurement_key, units_val in sorted(measurements.items()):
+                card = resolve_the_price_rule(measurement_key)
+                if card is None:
+                    continue
+                matched.append(card)
+                component = _component(measurement_key, units_val, card)
+                price_total += component["micros"]
+                price_components.append(component)
+                price_rate_ids[measurement_key] = str(card.id)
+            if matched:
+                billed, pricing_method, pricing_status = _priced_by_rules(
+                    matched, price_total, costing_status)
+            else:
+                # THE MARKUP RUNG — REACHED ONLY BECAUSE NO RULE WAS (#356).
+                #
+                # This is the else-branch of rule resolution and it stays one.
+                # "Base cost -> markup -> final charge" is false for any tenant
+                # with pricing rules, and a pipeline that marked up a rule's
+                # answer would silently re-price every catalogue in the system.
+                # What the rung supplies is a percentage AND its source, which
+                # is why it resolves a value here rather than being handed a
+                # number to multiply — `_priced_by_markup` says what it does
+                # with the three answers it can reach.
+                resolved_markup, markup_basis = (resolve_markup(),
+                                                 computed_micros)
+                billed, pricing_method, pricing_status = _priced_by_markup(
+                    resolved_markup, markup_basis, costing_status)
 
         # WHAT THE MARKUP RUNG PUT ON THE RECORD, AND THE TWO PLACES IT GOES
         # (#357). The percentage and the basis are TERMS and ride in the price
@@ -1043,26 +1106,31 @@ class PricingService:
                     # rather than being looked up live against configuration
                     # that can have moved since.
                     #
-                    # ⚠ THE COLUMN HAS LANDED AND THIS LINE STILL DOES NOT
-                    # READ IT (#415), WHICH IS A NARROWER CLAIM THAN THE ONE
-                    # THAT USED TO BE HERE. This comment said there was "no
-                    # column anywhere to read it from" and that this was the
-                    # line that would read it when one arrived; `Task
-                    # .pricing_mode` now exists and a unit of work really can
-                    # be sold at one agreed price.
+                    # ⚠ THE COLUMN LANDED IN #415 AND THIS LINE READS IT NOW
+                    # (#418). It used to be the literal `event_priced`, which
+                    # was accurate while metered revenue was not yet replaced
+                    # for a piece of work sold at one agreed price — every
+                    # event this function priced really had been priced event
+                    # by event. That stopped being true in the commit that
+                    # threaded `PricingSubject.pricing_mode` down to here, and
+                    # the value is now the regime the subject was actually
+                    # under.
                     #
-                    # What is written here is still ACCURATE, because it
-                    # records what the engine DID rather than what the unit of
-                    # work is: metered revenue is not yet replaced for a
-                    # fixed-price unit of work, so every event this function
-                    # prices really was priced event by event. The ticket that
-                    # makes those postings `not_applicable` is the one that
-                    # changes both — and it needs the unit of work threaded
-                    # into `PricingSubject`, which does not carry it, so this
-                    # is a wiring change rather than a one-line read. Same
-                    # shape as `usage/measurements.py` and the posting kind it
-                    # is waiting on.
-                    "pricing_mode": PRICING_MODE_EVENT_PRICED,
+                    # It is what a recovery run re-resolves against
+                    # (`pricing_mode_of`), what explains a `not_applicable`
+                    # price section, and what licenses a Charge's receipt to
+                    # settle an amount naming no method — three readers of one
+                    # by-value fact, which is why the key is named at the
+                    # boundary rather than spelled at each of them.
+                    PRICING_REGIME_KEY: pricing_mode,
+                    # WHICH OF THE TWO CAUSES, ON THE RECORD BESIDE THE STATUS
+                    # THAT NEEDS IT — and `None` for every other status, which
+                    # is the same shape the cost side's `unresolved_reason`
+                    # already has one section over. The recording path reads
+                    # the posting's own column back off this key, so the record
+                    # and the column cannot come to disagree, because there is
+                    # one of them.
+                    "not_applicable_reason": not_applicable_reason,
                     **price_detail}),
             provenance={"cost_rate_ids": cost_rate_ids,
                         "price_rate_ids": price_rate_ids,
@@ -1071,7 +1139,8 @@ class PricingService:
 
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,
-              caller_provider_cost, as_of=None):
+              caller_provider_cost, pricing_mode=PRICING_MODE_EVENT_PRICED,
+              as_of=None):
         """The recording path's adapter over :func:`resolve_price`.
 
         It does two things the seam deliberately does not. It assembles the
@@ -1091,13 +1160,21 @@ class PricingService:
         subject's answer — the same defect a default column name is, one level
         up. It is an input rather than a stamp applied afterwards, which is why
         the caller generates the row's id before it records the row.
+
+        ``pricing_mode`` is how the whole piece of work this event belongs to
+        was sold, and it DOES take a default, on the opposite reasoning: unlike
+        a subject it has a right answer for a caller with nothing to say, and
+        that answer is a fact rather than an assumption — an event under no
+        piece of work has no whole-work price for its revenue to sit on, so it
+        is priced event by event. See :class:`PricingSubject`'s own field.
         """
         return costing_of(resolve_price(
             PricingSubject(
                 receipt_subject=subject, tenant=tenant, customer=customer,
                 selectors=selectors, measurements=measurements or {},
                 currency=currency,
-                caller_provider_cost=caller_provider_cost),
+                caller_provider_cost=caller_provider_cost,
+                pricing_mode=pricing_mode),
             as_of or timezone.now()))
 
 
@@ -1246,6 +1323,22 @@ class PricingSubject:
     #: THE SUPPLIER'S OWN FIGURE, where the caller stated it. Whether it may be
     #: stated at all is decided before resolution and has its own refusal.
     caller_provider_cost: Optional[int] = None
+    #: HOW THE WHOLE PIECE OF WORK THIS EVENT BELONGS TO WAS SOLD (#418) —
+    #: `work.Task.pricing_mode`, which #415 pinned onto the row at start.
+    #:
+    #: It is the third axis (#151 §8.4): whether a whole piece of work is priced
+    #: event by event or sold for ONE AGREED PRICE decides whether this event
+    #: carries a customer price at all, and that is a fact about the SUBJECT
+    #: rather than about any rung of the ladder.
+    #:
+    #: ⚠ **THE DEFAULT IS THE REGIME AN EVENT WITH NO PIECE OF WORK IS UNDER,
+    #: NOT A CONVENIENCE.** An unattributed event has no whole piece of work to
+    #: have been sold, so there is nothing for its revenue to sit on instead and
+    #: it is priced event by event — which is what `event_priced` says. Every
+    #: production caller states it: the recording path reads it off the piece of
+    #: work the event names, and a recovery run reads it off the receipt it is
+    #: re-resolving from, by value, as it was on the day.
+    pricing_mode: str = PRICING_MODE_EVENT_PRICED
     # ⚠ THERE IS NO CUSTOMER PRICE ON THIS VALUE, AND THAT IS THE INVARIANT
     # RATHER THAN AN OMISSION (#365). #147 §5.1's ladder arrives closed, with no
     # caller rung on it; the field that used to sit here was not a rung but an
@@ -1349,6 +1442,12 @@ def resolve_price(subject, as_of):
         effective_at=as_of.isoformat(),
         measurements=subject.measurements,
         caller_provider_cost=subject.caller_provider_cost,
+        pricing_mode=subject.pricing_mode,
+        # THE POSTURE IS READ HERE AND NOT INSIDE THE SPINE, because the spine
+        # takes facts and this is the one read of a row it would otherwise have
+        # to make. `bills_through_ubb` lives beside the rule that consumes it,
+        # so the answer and the reason it decides are one module's.
+        tenant_bills_through_ubb=bills_through_ubb(tenant),
         resolve_declaration=resolve_declaration,
         resolve_the_cost_rule=resolve_the_cost_rule,
         resolve_the_price_rule=resolve_the_price_rule,
@@ -1372,4 +1471,8 @@ def costing_of(receipt):
         pricing_receipt=receipt,
         costing_status=costing["status"],
         unresolved_reason=costing["detail"]["unresolved_reason"],
-        pricing_status=pricing["status"])
+        pricing_status=pricing["status"],
+        # THE PRICE HALF OF THE LINE ABOVE (#418). Read off the record on
+        # exactly the terms the cost side's reason is, so the posting's column
+        # and the receipt beside it are one statement rather than two.
+        not_applicable_reason=pricing["detail"]["not_applicable_reason"])

@@ -116,8 +116,17 @@ class ProjectionTestBase(ChargeTestBase):
             dispatch_to_handlers(row)
 
     def _a_metered_sale(self, task_id):
-        """One metered posting under the same unit of work, billing a real
-        amount, and the posting it produced."""
+        """One metered posting under ``task_id``, and the posting it produced.
+
+        ⚠ **WHETHER IT BILLS ANYTHING DEPENDS ON THE PIECE OF WORK IT IS UNDER,
+        AND THAT IS #418'S RULE ARRIVING HERE.** Under work sold at one agreed
+        price this posting's price is `not_applicable`, because the customer
+        revenue is the whole piece's; under work priced per event it bills the
+        amount below. The cases that need a metered posting merely to sit BESIDE
+        a projection pass the fixed-price piece; the one that needs a second
+        REVENUE in the tenant's period builds its own event-priced piece of work
+        and passes that.
+        """
         a_rule_that_prices_what_it_measures(self.tenant,
                                             event_type=SOLD_PER_EVENT)
         recorded = UsageService.record_usage(
@@ -347,8 +356,17 @@ class TestAChargePostingReadsAsOne(ProjectionTestBase):
 
     def test_the_list_row_tells_the_two_populations_apart(self):
         """The list is where a reader totals a column by eye, so it is where
-        being unable to separate the two populations does the damage — one row
-        carrying revenue against no supplier cost and one carrying both."""
+        being unable to separate the two populations does the damage.
+
+        ⚠ **WHAT THE TWO ROWS CARRY IS NOT WHAT IT WAS (#418).** This used to
+        say *one row carrying revenue against no supplier cost and one carrying
+        both*; under a piece of work sold at one agreed price the metered row
+        carries no customer revenue at all — its price is `not_applicable`,
+        because the revenue for it is the agreed price on the row beside it. So
+        the two populations are *the charge, which is all the revenue there is*
+        and *the metered calls, which are all the COGS there is*, which is a
+        sharper reason to be able to tell them apart rather than a softer one.
+        """
         started = self._priced_work()
         metered = self._a_metered_sale(started)
         self._close(started)
@@ -395,9 +413,19 @@ class TestUbbsOwnFeeIsChargedOnTheProjection(ProjectionTestBase):
     def test_the_basis_holds_both_kinds_and_the_projection_is_one_of_them(self):
         """The discriminating fixture: metered revenue AND the charge, at
         different amounts, so a basis that picked up only one of them is
-        visibly short rather than merely equal to something."""
+        visibly short rather than merely equal to something.
+
+        ⚠ **THE METERED REVENUE HAS TO COME FROM WORK PRICED PER EVENT (#418),
+        AND THAT IS THE FIXTURE ADMITTING A REAL CHANGE RATHER THAN ROUTING
+        ROUND ONE.** A metered posting under the fixed-price piece of work bills
+        NOTHING now — its price is `not_applicable`, because the revenue for it
+        is the agreed price this very case is adding up. Leaving it there would
+        have made the two amounts one amount counted twice and the assertion
+        below arithmetic about nothing.
+        """
         started = self._priced_work()
-        metered = self._a_metered_sale(started)
+        priced_per_event = self._start(task_type=SOLD_PER_EVENT)
+        metered = self._a_metered_sale(priced_per_event)
         self._close(started)
 
         self._drain_the_rails()

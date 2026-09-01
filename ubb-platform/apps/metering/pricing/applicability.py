@@ -23,17 +23,31 @@ all. `fixed_task_pricing` says *the customer revenue for this event sits on the
 Task instead* — which for that tenant names revenue nobody will ever collect and
 sends a reader to look for a bill that will never be raised.
 
-⚠ **THE ARGUMENT THIS PARAGRAPH USED TO MAKE EXPIRED IN #416, AND THE RULING DID
-NOT.** It read *"for a metering-only tenant no Charge is created anywhere, so
-naming the job's pricing regime would imply revenue sits on a Charge that does
-not exist"* — true when slice 4 wrote it and false one commit later. A Charge IS
+⚠ **THE ARGUMENT THIS PARAGRAPH USED TO MAKE EXPIRED IN #416, AND #418 RE-TOOK
+THE TIE-BREAK AGAINST WHAT REPLACED IT RATHER THAN AGAINST THE OLD SENTENCE.**
+It read *"for a metering-only tenant no Charge is created anywhere, so naming
+the job's pricing regime would imply revenue sits on a Charge that does not
+exist"* — true when slice 4 wrote it and false one commit later. A Charge IS
 created for a metering-only tenant's delivered fixed-price work, deliberately
-and as that ticket's hardest-to-see acceptance criterion: for that posture it is
-a recorded revenue and margin fact rather than a collection. So the reader CAN
-now go and look at a row, and what survives is the narrower argument above —
-`fixed_task_pricing` is about customer revenue, and there is none. **The ticket
-that wires this rule up should apply it against that fact rather than against
-the sentence it replaced**, because the tie-break is closer than it was.
+and as that ticket's hardest-to-see acceptance criterion; #417 then projected it
+onto a posting, so there is now a real row, carrying a real amount, reachable
+from the very posting this rule is deciding a reason for.
+
+**THE RULING SURVIVES THAT, AND ON A NARROWER ARGUMENT THAN THE ONE IT LOST.**
+`fixed_task_pricing` does not say *a Charge exists*; it says *the CUSTOMER
+REVENUE for this event sits on the piece of work instead* — an instruction to a
+reader about where to find what this event earned. For a tenant that does not
+bill through UBB there is no customer revenue anywhere, on the Charge or off it:
+the Charge is a recorded revenue and margin fact for the tenant's own reporting,
+and nobody's customer is ever asked for the money. So the more specific value
+would still send a reader to look for a bill that is never raised, which is
+exactly the wrong answer the paragraph above refuses — and it would do it while
+being, now, half true, which is worse than being plainly wrong. What changed is
+that the counter-example is REACHABLE rather than hypothetical, and the value
+that names the posture is what stays right for it. `test_why_a_price_does_not_
+apply.py` states the row on its own, and
+`test_the_postings_under_an_agreed_price_are_not_applicable.py` drives it end to
+end through a tenant that has the Charge and not the bill.
 
 **Why this is a function and not a registry `value_semantics` block.** The
 registry can carry a decision rule as data, and the compiler proves such a rule
@@ -45,36 +59,49 @@ have to invent a value for that case, which is precisely the "answer nobody
 decided" the totality proof exists to prevent. So the rule lives here, returns
 `None` for the case that has no reason, and says so in the type.
 
-**It still has no production caller, and the price resolver is not it (#356).**
-⚠ **ONE HALF OF THE REASON BELOW HAS EXPIRED (#415).**
-The resolver reaches three of the four price statuses — `known` where a rung
-priced the event, `waived` where a margin was taken over a supplier cost UBB
-never learned, and `unknown` where no rung answered — and it cannot reach the
-fourth, because `not_applicable` is not a fact about resolution. Both of this
-rule's inputs are facts about the SUBJECT: the tenant's posture, and whether the
-unit of work is sold for one agreed price.
+**THE PRICE RESOLVER IS THE CALLER, AND #418 IS WHERE IT ARRIVED.** The
+resolver reached three of the four price statuses — `known` where a rung priced
+the event, `waived` where a margin was taken over a supplier cost UBB never
+learned, and `unknown` where no rung answered — and could not reach the fourth,
+because `not_applicable` is not a fact about resolution. It still is not: both
+of this rule's inputs are facts about the SUBJECT, so the spine does not resolve
+its way to this answer, it declines to consult the ladder at all. What made the
+wiring possible was `work.Task.pricing_mode` (#415) and the thread that carries
+it — `PricingSubject.pricing_mode` — down to the one function that decides both
+statuses.
 
-**THE SECOND INPUT HAS A COLUMN NOW, AND SAYING SO IS THE POINT OF THIS
-PARAGRAPH.** It used to have none — that was the whole reason a caller here
-would have had to invent one of its two arguments — and #415 pinned it:
-`work.Task.pricing_mode` says how a unit of work was sold and
-`work.Task.agreed_price_micros` carries what for. So the argument this module
-was waiting on is now readable, and what is still missing is the WIRING: the
-pricing engine is handed a `PricingSubject` that does not carry the unit of work
-at all, so nothing on the recording path can answer either input without
-threading it through every construction of that value. That is the ticket which
-makes a fixed-price unit of work's postings `not_applicable` rather than zero,
-and it is where this rule acquires its first caller.
-
-So the rule still sits written and waiting rather than wired, on a reason that
-has become smaller and more specific rather than going away — which is worth
-more than deleting the paragraph, because the next reader's first question is
-why a decided rule is not called.
+⚠ **THE REGIME DECIDES THE STATUS; THE POSTURE ONLY DECIDES THE REASON.** A
+metering-only tenant's EVENT-PRICED work is priced exactly as it always was —
+`known`, `waived` or `unknown`, whichever the ladder answers — because the
+tenant's own margin reporting is what those prices are resolved for. Widening
+`not_applicable` to every posting of such a tenant is a different ruling about
+a different subject and belongs to the slice that owns the posture. So the two
+booleans below are asked in that order for a reason: the second is the gate and
+the first is the tie-break inside it.
 """
 from core.vocabulary import (
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
+    TENANT_PRODUCT_BILLING,
 )
+
+
+def bills_through_ubb(tenant) -> bool:
+    """Whether UBB raises this tenant's customer bills at all.
+
+    **THE PRODUCT IS WHAT THE QUESTION ASKS**, not whether any money record
+    happens to exist — the same reading `api/v1/task_endpoints.py` gives it at
+    the start gate, where a billing tenant's customer who has never been
+    credited has no wallet row and is still a customer UBB bills. Both hold the
+    product by reference from the generated vocabulary rather than spelling it,
+    so a tenant posture stays one value with one spelling.
+
+    Named here, beside the rule that consumes it, because this is the module
+    that owns *why a subject produces no customer revenue* — and a resolver
+    asking the question inline would be a second reading of a product flag with
+    no name to grep for.
+    """
+    return TENANT_PRODUCT_BILLING in (tenant.products or [])
 
 
 def not_applicable_reason_for(*, tenant_bills_through_ubb: bool,

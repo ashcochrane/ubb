@@ -83,7 +83,24 @@ CONSTRUCTOR = "build_receipt"
 #: that added a second construction site inside the permitted file. "One place a
 #: receipt is built" is a claim about call sites, and a set of paths cannot make
 #: it — it says only that no OTHER module builds one, which is the easier half.
-BUILDS_A_RECEIPT = {"apps/metering/pricing/services/pricing_service.py": 1}
+#:
+#: ⚠ **A SECOND CONSTRUCTION SITE ARRIVED IN #418, AND IT IS A SECOND SUBJECT
+#: RATHER THAN A SECOND ENGINE.** `charge_projection` builds the receipt that
+#: explains a CHARGE — a whole piece of work sold at one agreed price, whose
+#: number was agreed before the work ran rather than resolved against anything.
+#: There is no resolution to run for it and so nothing for the spine to do: the
+#: amount, the currency, the line that answered and the version of the book that
+#: held it are all already on the Charge, frozen. Routing it through the spine
+#: would mean handing the compute path an answer and asking it to hand the
+#: answer back, which is the shape #365 deleted from the price ladder.
+#:
+#: What the gate still says with two entries is the claim that matters: a
+#: receipt is built by `build_receipt` and by nothing else, in modules named
+#: here, the stated number of times each.
+BUILDS_A_RECEIPT = {
+    "apps/metering/pricing/services/pricing_service.py": 1,
+    "apps/metering/pricing/services/charge_projection.py": 1,
+}
 
 #: Where one is written to the column, and how many times — same reasoning. The
 #: recording path inserts exactly one receipt per posting, and each of the two
@@ -97,10 +114,19 @@ BUILDS_A_RECEIPT = {"apps/metering/pricing/services/pricing_service.py": 1}
 #: what `completed_receipt` returned from the record already on the row. The
 #: claim this pair of expectations makes together is that a receipt is
 #: constructed in one place and only ever persisted from there.
+#:
+#: ⚠ **A FOURTH WRITER ARRIVED IN #418 AND IT IS THE OTHER INSERT.** The
+#: projection creates the one posting a Charge becomes, and it persists the
+#: receipt in the same statement for the reason the recording path does: a row
+#: that reached the money rails with no record explaining its amount is the
+#: shape this pair of expectations exists to refuse. It is the only writer that
+#: is also a builder, which is what a subject with nothing to resolve looks
+#: like.
 WRITES_THE_RECEIPT = {
     "apps/metering/usage/services/usage_service.py": 1,
     "apps/metering/pricing/services/cost_settlement.py": 1,
     "apps/metering/pricing/services/price_resolution.py": 1,
+    "apps/metering/pricing/services/charge_projection.py": 1,
 }
 
 #: The name of the constant a module addresses the column through. Its NAME and

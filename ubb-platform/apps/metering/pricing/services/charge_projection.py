@@ -48,11 +48,17 @@ reader to notice: the two writers above complete a column on a row the recording
 path created, and this one creates the row. What makes that admissible is that
 the row it creates is the one kind no caller can report.
 """
+from apps.metering.pricing.receipts import (
+    PRICING_REGIME_KEY, ReceiptSubject, Resolution, build_receipt,
+)
+from apps.metering.pricing.services.pricing_service import PRICING_ENGINE_VERSION
 from apps.metering.usage.models import Posting
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
+    PRICING_MODE_FIXED,
+    PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
     PRICING_STATUS_KNOWN,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
@@ -86,6 +92,62 @@ PROVIDER_COST_OF_A_PROJECTION = 0
 _GROUPING_SLOTS = tuple(
     field.name for field in Posting._meta.get_fields()
     if field.name.startswith("grouping_field_"))
+
+
+def the_receipt_for(charge):
+    """THE RECORD THAT EXPLAINS A CHARGE'S AMOUNT (#418, spec §13).
+
+    The second subject a Pricing Receipt may have, produced for the first time.
+    Everything about its shape follows from what a Charge IS:
+
+    * **The price is settled and names no method.** It was AGREED before the
+      work ran and pinned to the piece of work, so nothing derived it — and
+      `pricing_method_of` has always published exactly that reading of a null.
+      The boundary admits it because the subject is a Charge, and demands the
+      regime below in exchange.
+    * **The regime rides by value**, which is what makes the null readable: a
+      reader meeting a settled price with no method can tell *the price was
+      agreed* from *somebody forgot to record how it was derived*.
+    * **The supplier cost is a settled nothing, naming no method either.** There
+      is no supplier behind a Charge; the supplier work the piece of work really
+      burned is on the metered postings beside this one, and those postings are
+      exactly the ones whose own price is `not_applicable`. Zero-and-settled is
+      what the projection's column says, so the record and the column say one
+      thing rather than two.
+    * **No components on either side.** A component explains a priced quantity,
+      and a Charge priced none: it is one whole piece of work at one number.
+      That is why nothing here re-states measurements — there were none to
+      re-state, which is the same absence `measurements_status` reads off the
+      posting's kind.
+    * **`provenance` names the line and the published version of the book that
+      held it**, copied off the Charge, which copied them off the piece of work
+      at the one instant both were known. Ids and nothing else, so no reader can
+      take a figure from them: #139 §2.3 requires the amount to be reproducible
+      from the record *rather than by re-resolving today's config*, and the
+      values above are what make that true.
+
+    ⚠ **THE INSTANT IS `charged_at` AND NOT `resolved_at`.** The receipt records
+    a resolution as of an instant, and what this record explains is the money
+    that became owed — which happened at delivery. The start instant is on the
+    Charge itself for a reader netting revenue against the piece of work's own
+    COGS, and putting it here instead would date the record before the thing it
+    is about.
+    """
+    return build_receipt(
+        subject=ReceiptSubject(
+            subject_type=PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
+            subject_id=str(charge.id)),
+        effective_at=charge.charged_at.isoformat(),
+        currency=charge.currency,
+        pricing_engine_version=PRICING_ENGINE_VERSION,
+        costing=Resolution(method=None, status=COSTING_STATUS_KNOWN,
+                           amount_micros=PROVIDER_COST_OF_A_PROJECTION,
+                           detail={}),
+        pricing=Resolution(method=None, status=PRICING_STATUS_KNOWN,
+                           amount_micros=charge.amount_micros,
+                           detail={PRICING_REGIME_KEY: PRICING_MODE_FIXED}),
+        provenance={"agreed_price_line_id": str(charge.agreed_price_line_id),
+                    "book_version": str(charge.book_version)})
 
 
 def project_the_charge(charge):
@@ -127,9 +189,12 @@ def project_the_charge(charge):
     * `effective_at` is `charged_at` — when delivery was declared. The revenue
       lands in the period the delivery did, which is the whole of §11's
       dated-at-delivery ruling carried onto the rail that reads this column.
-    * `pricing_receipt` is left empty. A receipt whose subject is a Charge is
-      #418's, and writing a half of one here would be a record explaining an
-      amount in a shape no reader knows.
+    * `pricing_receipt` is the record that explains the amount, and its subject
+      is the CHARGE rather than this row — :func:`the_receipt_for` says what
+      every field of it is and why. It is stored on the posting because the
+      posting's column is the only place a receipt is kept, and reading a
+      receipt's subject off the row it is stored on is the inference
+      `subject_type_of` exists to refuse: the record states what it is about.
 
     ⚠ **§12'S FOURTH CLAUSE HAS NO SUBJECT ANY MORE, AND IT IS NOT SILENTLY
     SATISFIED.** It asks for the posting's nameless inline quantity to be null —
@@ -187,6 +252,7 @@ def project_the_charge(charge):
         task_id=charge.task_id,
         task_type=task.task_type,
         effective_at=charge.charged_at,
+        pricing_receipt=the_receipt_for(charge),
         # PINNED ON THE ROW, exactly as the recording path pins it, because the
         # drawdown repair sweep's comment calls the owner "pinned on the event"
         # and only falls back to re-resolving for rows written before the

@@ -65,11 +65,23 @@ one.
 is the amount/status pair `core.amount_status_pairs` names for a table, one
 level up and with the method added: an amount is present exactly when its status
 says it is settled, and the method — *how this amount was arrived at* — is
-present on exactly the same condition. So the price side's method is **nullable**
+present at most on the same condition. So the price side's method is **nullable**
 and it is null exactly when no price was derived, with the status beside it as
 the thing a reader consults. No fourth method value is coined for "none": a
 method value meaning "there wasn't one" is a second encoding of the status, and
 the day the two disagree there is no way to tell which is right.
+
+⚠ **"AT MOST" IS THE WEAKER HALF, AND WHICH HALF APPLIES IS THE SUBJECT'S
+ANSWER (#418).** *A method beside an unsettled status* is refused for every
+subject there is — it is a claim about how a number was reached with no number
+beside it. *A settled amount naming no method* is refused only where the
+subject's amounts were arrived at at all, which is
+:data:`DERIVES_ITS_AMOUNTS`. A Charge's are not: its price was **agreed**
+before the work ran and pinned to it, and its supplier cost is zero because
+there is no supplier behind a Charge. The relaxation is not free — a receipt
+whose subject is a Charge must carry the regime that makes it true, by value,
+under :data:`PRICING_REGIME_KEY` — so a reader meeting a settled price with no
+method can tell *agreed* from *somebody forgot to record the derivation*.
 
 ⚠ **The method is a property of the DERIVATION, not of the rule** — which is
 what the rule above means, and it is a statement about the SHAPE rather than a
@@ -88,15 +100,18 @@ yields a receipt naming none. The rule is configuration and can be edited; the
 receipt is the record and cannot, which is the whole reason values live here and
 pointers ride along in `provenance`.
 
-⚠ **The engine now writes three of the four price statuses** (#356). It reports
+⚠ **The engine writes all four price statuses now** (#356, #418). It reports
 `known` with a method where a rung priced the event, `waived` where a margin was
 taken over a supplier cost UBB never learned — a charge nobody will ever collect
-is a decided loss rather than a queued one — and `unknown` where no rung
-answered at all. `not_applicable` is the fourth and nothing produces it: it is a
-fact about the tenant's posture and the job's pricing regime rather than about
-resolution, and `pricing/applicability.py` holds the rule that decides its
-reason. So the null branch below is reached through the spine as well as at this
-boundary.
+is a decided loss rather than a queued one — `unknown` where no rung answered at
+all, and, since #418, `not_applicable` for every event under a piece of work
+sold at ONE AGREED PRICE. That fourth one is still not a fact about resolution:
+the ladder is not consulted for such an event at all, because the customer
+revenue is the whole piece of work's and none of it is this event's.
+`pricing/applicability.py` holds the rule that decides WHICH of its two reasons,
+and the regime that produced it rides in the price section's detail under
+:data:`PRICING_REGIME_KEY`. So the null branch below is reached through the
+spine as well as at this boundary.
 
 **WHAT IS FIXED AND WHAT IS OPEN.** The top-level keys and the three keys of each
 section are exact — a key that is not in the shape above is refused, so a field
@@ -174,12 +189,15 @@ that comparison would re-create the very shape this record exists to remove.
 ⚠ **`detail` IS THE SECTION'S DETAIL, NOT ONLY ITS METHOD'S.** It holds whatever
 explains that side's method, status and amount by value — which is usually
 method-specific and is not required to be. The case that forces the distinction
-is already known and is now built: the subject's whole-job pricing regime
+is already known and is now built: the subject's whole-work pricing regime
 decides whether an event carries a customer price at all, so it explains the
 PRICING side's outcome and rides in `pricing.detail`, even though it is a fact
 about the subject rather than about a method. Reading `detail` narrowly would
 have left that value no home but a ninth top-level key, and the top-level shape
-is the ratified one.
+is the ratified one. Since #418 that value is load-bearing in three directions
+rather than descriptive in one: it is what a recovery run re-resolves against,
+what a `not_applicable` price section is explained by, and what licenses a
+Charge's receipt to settle an amount naming no method.
 
 **WHY HERE AND NOT IN `core/`.** The engine that resolves an amount is the thing
 that can explain it, and `pricing_engine_version` is the engine's own — passed in
@@ -199,6 +217,9 @@ from core.vocabulary import (
     COSTING_STATUS_VALUES,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_METHOD_VALUES,
+    PRICING_MODE_FIXED,
+    PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
+    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_RECEIPT_SUBJECT_TYPE_VALUES,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_VALUES,
@@ -347,6 +368,45 @@ REQUIRED_MARKUP_KEYS = frozenset({
 #: the writer in `services/pricing_service.py` — and a literal at each is how two
 #: modules come to disagree about one key.
 MARKUP_TERMS_KEY = "markup"
+
+#: WHAT THE SUBJECT'S WHOLE-WORK PRICING REGIME IS CALLED IN THE PRICE
+#: SECTION'S DETAIL (#418, #151 §8.4).
+#:
+#: Whether a whole piece of work is priced event by event or sold for ONE
+#: AGREED PRICE decides whether an event carries a customer price at all, so it
+#: explains the pricing section's outcome and rides there BY VALUE — never
+#: looked up live against configuration that can have moved since the day the
+#: record was written.
+#:
+#: Named rather than spelled, for `MARKUP_TERMS_KEY`'s reason: three modules
+#: address it now — this boundary, the compute spine that writes it, and the
+#: recovery run that re-resolves from it — and a literal at each is how three
+#: modules come to disagree about one key.
+PRICING_REGIME_KEY = "pricing_mode"
+
+#: WHOSE AMOUNTS THIS ENGINE DERIVED, AND WHOSE IT DID NOT (#418).
+#:
+#: The method is *how an amount was arrived at*, so it is present exactly when
+#: an amount was ARRIVED AT — and only one of the two subjects a receipt may
+#: explain has amounts of that kind. Resolution derives a usage row's price and
+#: its cost from configuration in force at an instant; a Charge's price was
+#: **agreed** before the work ran and pinned to it, and its supplier cost is
+#: zero because there is no supplier behind a Charge at all. Neither number was
+#: reached by a method, and coining one that meant *there wasn't a method* would
+#: be the second encoding of the status this module already refuses.
+#:
+#: **WHAT THIS RELAXES IS ONE DIRECTION AND NOT THE RULE.** *A method with no
+#: amount to explain* stays refused for every subject; what a Charge's receipt
+#: may do is settle an amount and name no method. And the licence is not free:
+#: :data:`PRICING_REGIME_KEY` is compulsory on such a record, so *the price was
+#: agreed* is a statement the record MAKES rather than one a reader infers from
+#: a null.
+#:
+#: A SET AND NOT A `!=` AGAINST THE CHARGE, because the question is which
+#: subjects derive rather than which one does not — a third subject arriving
+#: would otherwise be silently admitted into the relaxation by the shape of the
+#: comparison rather than by anybody's decision.
+DERIVES_ITS_AMOUNTS = frozenset({PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT})
 
 
 class ReceiptShapeError(ValueError):
@@ -637,10 +697,43 @@ def validate_receipt(record):
         raise ReceiptShapeError(
             f"totals carries exactly {sorted(TOTALS_KEYS)}; found {totals!r}")
 
+    derived = subject_type in DERIVES_ITS_AMOUNTS
     for name, rules in SECTIONS.items():
-        _validate_section(name, record[name], totals[rules.amount_key], rules)
+        _validate_section(name, record[name], totals[rules.amount_key], rules,
+                          derived=derived)
+
+    if subject_type == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE:
+        _validate_the_agreed_regime(record["pricing"]["detail"])
 
     _validate_provenance(record["provenance"])
+
+
+def _validate_the_agreed_regime(detail):
+    """A CHARGE'S RECEIPT SAYS THE PRICE WAS AGREED, IN THE RECORD ITSELF.
+
+    :data:`DERIVES_ITS_AMOUNTS` lets this subject settle an amount without
+    naming a method; this is what stops that being a hole. A reader meeting a
+    settled price with no method has to be able to tell *the price was agreed
+    before the work ran* from *somebody forgot to record how it was derived*,
+    and a null cannot say which — so the regime that makes the first one true
+    is carried by value and refused when it is missing.
+
+    ⚠ **IT IS THE FIXED REGIME SPECIFICALLY, NOT MERELY THE KEY.** A Charge
+    exists because a whole piece of work was sold at one agreed price:
+    `charge_for_delivered_work` writes one only where a price was pinned, and
+    `ck_task_agreed_price_only_on_a_whole_fixed_unit` admits a pinned price
+    only on such a piece of work. A record claiming the other regime
+    contradicts the only thing that could have produced it, and a ticket that
+    ever makes a Charge out of something else meets this refusal rather than
+    slipping past a presence check.
+    """
+    if detail.get(PRICING_REGIME_KEY) != PRICING_MODE_FIXED:
+        raise ReceiptShapeError(
+            f"a receipt whose subject is a Charge carries "
+            f"pricing.detail.{PRICING_REGIME_KEY} = {PRICING_MODE_FIXED!r}; "
+            f"found {detail.get(PRICING_REGIME_KEY)!r}. The price was agreed "
+            f"before the work ran rather than derived, which is why the "
+            f"section names no method, and the record has to say so")
 
 
 def _require_text(record, key):
@@ -649,13 +742,21 @@ def _require_text(record, key):
         raise ReceiptShapeError(f"{key} must be a non-empty string, not {value!r}")
 
 
-def _validate_section(name, section, amount, rules):
+def _validate_section(name, section, amount, rules, *, derived):
     """THE ONE RULE, ASKED OF ONE SECTION: amount, status and method agree.
 
-    An amount is present exactly when the status says the resolution is settled,
-    and the method is present on exactly the same condition. Stated once here
-    and asked of both sections, so the day somebody repairs it they repair it
-    for the price side as well as the cost side.
+    An amount is present exactly when the status says the resolution is settled.
+    The method is *how that amount was arrived at*, so it is present at most on
+    the same condition — and exactly on it where the subject's amounts were
+    arrived at at all. Stated once here and asked of both sections, so the day
+    somebody repairs it they repair it for the price side as well as the cost
+    side.
+
+    ``derived`` is :data:`DERIVES_ITS_AMOUNTS`, decided once for the whole
+    record by the subject it explains. It is a parameter rather than a second
+    read of the record because the subject is a fact about the RECEIPT and this
+    function's whole scope is one section: a section reading the top-level
+    subject for itself would be the second copy of that question.
     """
     if not isinstance(section, dict) or set(section) != SECTION_KEYS:
         raise ReceiptShapeError(
@@ -676,11 +777,24 @@ def _validate_section(name, section, amount, rules):
         raise ReceiptShapeError(
             f"{name}.method must be null or one of {sorted(rules.methods)}, "
             f"not {method!r}")
-    if settled != (method is not None):
+    # THE DIRECTION THAT NEVER RELAXES: a method beside an unsettled status is
+    # a claim about how a number was reached with no number beside it, and no
+    # subject has a reason to make one.
+    if method is not None and not settled:
         raise ReceiptShapeError(
             f"{name}.method says {method!r} and {name}.status says {status!r}: "
-            f"a method is how an amount was arrived at, so it is present "
-            f"exactly when the status is {rules.settled!r}")
+            f"a method is how an amount was arrived at, so there is none to "
+            f"name unless the status is {rules.settled!r}")
+    # AND THE DIRECTION THE SUBJECT DECIDES. A usage row's amounts are what
+    # resolution derived, so a settled one owes the method that derived it; a
+    # Charge's were agreed and definitional, and the regime the record carries
+    # by value is what says so (`_validate_the_agreed_regime`).
+    if derived and settled and method is None:
+        raise ReceiptShapeError(
+            f"{name}.method is null and {name}.status says {status!r}: this "
+            f"receipt explains amounts resolution DERIVED, so a settled one "
+            f"says how — a subject whose amounts are not derived is named in "
+            f"DERIVES_ITS_AMOUNTS")
 
     if isinstance(amount, bool) or not isinstance(amount, (int, type(None))):
         raise ReceiptShapeError(
@@ -947,6 +1061,29 @@ def pricing_method_of(receipt):
     if version is None or version == LEGACY_SCHEMA_VERSION:
         return None
     return receipt["pricing"]["method"]
+
+
+def pricing_mode_of(receipt):
+    """THE SUBJECT'S WHOLE-WORK PRICING REGIME, out of the record, or `None`.
+
+    Whether the piece of work this belonged to was priced event by event or
+    sold for one agreed price — by value, as it was on the day, which is the
+    whole reason it is on the record. A recovery run re-resolving a posting
+    reads it from here rather than from the piece of work's own row, for
+    `_subject_of`'s stated reason and for #363's: what a recovery may re-derive
+    is what the record can support, never what configuration says today.
+
+    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO REGIME, AND THIS DOES NOT INVENT
+    ONE.** That shape predates the field, so there is nothing in the record to
+    read; answering *this record does not say* is what it is, and it is what
+    the two readers above give a record written before their question existed.
+
+    The three-way dispatch is :func:`_readable_version_of`, shared with them.
+    """
+    version = _readable_version_of(receipt)
+    if version is None or version == LEGACY_SCHEMA_VERSION:
+        return None
+    return receipt["pricing"]["detail"].get(PRICING_REGIME_KEY)
 
 
 def subject_type_of(receipt):
