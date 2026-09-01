@@ -20,6 +20,15 @@ The payload case beside them holds the OTHER half of §20's ruling: the two
 OPEN vocabulary fields ship and the CLOSED control pair does not, because three
 of that set's four families do not exist yet and publishing a closed set with
 one producible member is the one thing a closed set may not do.
+
+⚠ THIS MODULE IS THE FRESH-CROSSING HALF ONLY. The four cases here drive lanes
+that APPLY a stop and therefore know which of the four events it is, so they
+cannot tell an emitter reading the record from one taking the name off its
+caller. The patrol's re-mint is the half that can, having no caller to take a
+name from, and it is proved in
+`apps.billing.gating.tests.test_patrol_pins.TestTheRemintNamesTheStateTheRowCarries`
+(#420) — which is also where the re-announcement marker's TRUE half lives, the
+FALSE half being asserted here on all four.
 """
 import dataclasses
 

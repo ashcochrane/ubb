@@ -28,12 +28,15 @@ that includes WHICH of the four events it is (#140 §4.3). The patrol repairs a
 delivery it did not make, so it is the one emitter with no caller to take the
 name from — which makes it the only place *the name is the state entered* is
 falsifiable. `TestTheRemintNamesTheStateTheRowCarries` below is that claim's
-whole proof (#420): the four states at both altitudes, each stood up on a row
-that disagrees with the name it already sent, and the two pins holding the
+whole proof (#420): both stopped states at both altitudes, each stood up on a
+row that disagrees with the name it already sent, and the pins holding the
 patrol to having no memory of that name. Pin 6 keeps the delivery MECHANICS —
 which rows are candidates, when a stamp is left alone, where a repair reads the
 mechanism from.
 """
+import ast
+import inspect
+
 import pytest
 from unittest.mock import patch
 
@@ -49,6 +52,7 @@ from apps.billing.gating.tasks import reconcile_live_ledgers
 from apps.billing.queries import get_patrol_stats
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
+from apps.platform.events import announcements
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled)
@@ -66,6 +70,14 @@ from core.vocabulary import (
 #: rather than a chosen rival. Both mistakes the split exists to make
 #: impossible are in here: sending the other STATE at this altitude, and
 #: sending this state at the other.
+#:
+#: ⚠ RESTATED HERE RATHER THAN SHARED with the work app's copy, and not
+#: derived from `terminal_stop_event` either. Sharing it would mean a billing
+#: test importing a platform test helper, which is a product boundary
+#: (ADR-001); deriving it from the producer would let the rival set SHRINK
+#: with the map under test, and a rival set that follows the thing it is
+#: checking rules out nothing. Two independent statements of a closed fact is
+#: what is wanted — if they ever disagree, one of them is a bug.
 THE_FOUR = (TaskKilled, TaskExpired, SubtaskKilled, SubtaskExpired)
 
 
@@ -454,11 +466,18 @@ class TestTheRemintNamesTheStateTheRowCarries:
     no transition of its own, so the only thing it can consult is the state
     the row carries now. #140 §4.3's last sentence handed it that obligation.
 
-    ⚠ SO EVERY CASE HERE STANDS THE ROW UP DISAGREEING WITH ITS OWN DEAD
-    STAMP: the row reads `killed` while the failed announcement names the
-    expiry, or the other way about. A case whose two halves agreed would be
+    ⚠ SO EVERY CELL OF THE MATRIX STANDS THE ROW UP DISAGREEING WITH ITS OWN
+    DEAD STAMP: the row reads `killed` while the failed announcement names the
+    expiry, or the other way about. A cell whose two halves agreed would be
     passed by an emitter that echoed the name it found, which is the one
     implementation this class exists to rule out.
+
+    ⚠ ONE CASE DELIBERATELY BREAKS THAT RULE, and it has to.
+    `test_the_name_already_sent_is_not_an_input` runs the same row past the
+    patrol under EVERY name the dead stamp could carry, so one of its four
+    arms necessarily agrees — and that arm is the control. An echoing
+    implementation passes it and fails the other three, which is the whole
+    reason the case is four arms rather than a chosen one.
 
     ⚠ AND THE DISAGREEMENT IS REACHABLE RATHER THAN CONTRIVED. Migration
     `0008` routed each queued row bearing a retired name on the REASON its own
@@ -489,26 +508,46 @@ class TestTheRemintNamesTheStateTheRowCarries:
     """
 
     def _stopped_with_a_dead_announcement(self, t, c, *, status, announced,
-                                          reason, mechanism, parent=None):
+                                          reason, mechanism, parent=None,
+                                          limit=None, total=2_000):
         """A stopped piece of work whose announcement dead-lettered, with the
         row's state and the name that actually went on the wire stood up as
         two separate facts.
 
-        `announced` is what was sent; `status` is what the row says now. Every
-        caller here passes a pair that DISAGREE.
+        `announced` is what was sent; `status` is what the row says now. The
+        four cells pass a pair that DISAGREE; the control arm of
+        `test_the_name_already_sent_is_not_an_input` is the one caller that
+        passes a pair agreeing, on purpose, and says so at its own address.
+
+        The spend-stop callers pass a ceiling their total is past, because a
+        row recording a ceiling reason while carrying no ceiling is a fixture
+        that could not exist; the expiry callers pass none, an expiry being a
+        silence rather than a crossing.
         """
         dead = OutboxEvent.objects.create(
+            # An EMPTY payload, against the typed-payload convention
+            # (`docs/conventions/testing.md`, #114), because nothing reads it:
+            # this row exists only to be a dead stamp, and what the patrol is
+            # held to is that it reads the row's STATUS and its own subject —
+            # the event name — and nothing else off it.
             event_type=announced.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
-        task = _task(t, c, total=2_000, status=status, parent=parent,
-                     stamp=dead.id,
+        task = _task(t, c, limit=limit, total=total, status=status,
+                     parent=parent, stamp=dead.id,
                      meta={STOP_CAUSE_KEY: reason,
                            STOP_MECHANISM_KEY: mechanism})
         return task, dead
 
-    def _assert_reminted(self, task, event, *, dead):
-        """The patrol minted exactly `event`, marked it a repair, and moved
-        the row's stamp onto it.
+    def _assert_reminted(self, task, event, *, dead, status):
+        """The row is in `status`, the patrol minted exactly `event` for it,
+        marked it a repair, and moved the row's stamp onto it.
+
+        ⚠ THE STATE IS ASSERTED BESIDE THE NAME, as it is on the fresh-
+        crossing side, because the two are one claim. Taking the state from
+        the fixture that wrote it would pin the name against what this test
+        asked for rather than against what the row carries when the patrol
+        reads it — and *the name is the state entered* is a statement about
+        the record.
 
         ⚠ THE ABSENCE IS ASSERTED OVER ALL FOUR rather than over a chosen
         rival (#419's lesson): ruling out only the other ALTITUDE proves the
@@ -523,19 +562,26 @@ class TestTheRemintNamesTheStateTheRowCarries:
                  if _events(other.EVENT_TYPE).exclude(id=dead.id).exists()}
         assert fired == {event.EVENT_TYPE}
         task.refresh_from_db()
+        assert task.status == status
         assert task.announce_outbox_id == minted.id
         return minted
 
     def test_a_whole_unit_of_work_that_was_killed_remints_the_kill(self):
+        """A piece of work UBB stopped on a spend signal re-announces the
+        spend stop — never the expiry, which would tell a subscriber nobody
+        had ever said how the work ended when UBB itself ended it.
+        """
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
         task, dead = self._stopped_with_a_dead_announcement(
             t, c, status=TASK_STATUS_KILLED, announced=TaskExpired,
-            reason=reasons.TASK_LIMIT, mechanism=TRIGGER_SOURCE_USAGE_INGEST)
+            reason=reasons.TASK_LIMIT, mechanism=TRIGGER_SOURCE_USAGE_INGEST,
+            limit=1_000, total=2_000)
 
         assert patrol.remint_unannounced_kills(t) == 1
 
-        minted = self._assert_reminted(task, TaskKilled, dead=dead)
+        minted = self._assert_reminted(task, TaskKilled, dead=dead,
+                                       status=TASK_STATUS_KILLED)
         assert minted.payload["task_id"] == str(task.id)
         # The cause and the mechanism are read back off the row too, for the
         # same reason the name is: a repair states what the record holds.
@@ -557,7 +603,8 @@ class TestTheRemintNamesTheStateTheRowCarries:
 
         assert patrol.remint_unannounced_kills(t) == 1
 
-        minted = self._assert_reminted(task, TaskExpired, dead=dead)
+        minted = self._assert_reminted(task, TaskExpired, dead=dead,
+                                       status=TASK_STATUS_EXPIRED)
         assert minted.payload["task_id"] == str(task.id)
         assert minted.payload["reason_code"] == reasons.SILENCE_WINDOW
         assert minted.payload["trigger_source"] == TRIGGER_SOURCE_STALE_REAPER
@@ -569,11 +616,13 @@ class TestTheRemintNamesTheStateTheRowCarries:
         child, dead = self._stopped_with_a_dead_announcement(
             t, c, status=TASK_STATUS_KILLED, announced=SubtaskExpired,
             reason=reasons.SUBTASK_LIMIT,
-            mechanism=TRIGGER_SOURCE_USAGE_INGEST, parent=parent)
+            mechanism=TRIGGER_SOURCE_USAGE_INGEST, parent=parent,
+            limit=2_000, total=3_000)
 
         assert patrol.remint_unannounced_kills(t) == 1
 
-        minted = self._assert_reminted(child, SubtaskKilled, dead=dead)
+        minted = self._assert_reminted(child, SubtaskKilled, dead=dead,
+                                       status=TASK_STATUS_KILLED)
         assert minted.payload["subtask_id"] == str(child.id)
         assert minted.payload["parent_task_id"] == str(parent.id)
         # A repair is not a fan-out: the piece is re-announced alone and the
@@ -593,7 +642,8 @@ class TestTheRemintNamesTheStateTheRowCarries:
 
         assert patrol.remint_unannounced_kills(t) == 1
 
-        minted = self._assert_reminted(child, SubtaskExpired, dead=dead)
+        minted = self._assert_reminted(child, SubtaskExpired, dead=dead,
+                                       status=TASK_STATUS_EXPIRED)
         assert minted.payload["subtask_id"] == str(child.id)
         assert minted.payload["parent_task_id"] == str(parent.id)
         assert minted.payload["trigger_source"] == TRIGGER_SOURCE_STALE_REAPER
@@ -607,11 +657,17 @@ class TestTheRemintNamesTheStateTheRowCarries:
         dead stamp could possibly carry, and the answer never moves.
 
         An implementation that re-delivered the name it found would answer
-        four different ways here and agree with the matrix above in exactly
-        one of them. This is what turns *the patrol does not remember what it
-        sent* into a measurement rather than a reading of the source. The
-        names come from `THE_FOUR` rather than being written out again, so
-        this case cannot drift from the rival set the matrix rules out.
+        four different ways here and agree with the row in exactly one of
+        them. This is what turns *the patrol does not remember what it sent*
+        into a measurement rather than a reading of the source. The names come
+        from `THE_FOUR` rather than being written out again, so this case
+        cannot drift from the rival set the matrix rules out.
+
+        ⚠ THE `task.expired` ARM IS THE CONTROL, and it is the only caller in
+        this class whose stamp AGREES with the row. It passes under an echoing
+        implementation as well as under this one, which is exactly why a case
+        built on a single chosen stamp name would have been worthless: the
+        evidence is the other three arms answering the same as this one.
         """
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
@@ -622,7 +678,8 @@ class TestTheRemintNamesTheStateTheRowCarries:
 
         assert patrol.remint_unannounced_kills(t) == 1
 
-        self._assert_reminted(task, TaskExpired, dead=dead)
+        self._assert_reminted(task, TaskExpired, dead=dead,
+                              status=TASK_STATUS_EXPIRED)
 
     def test_a_remint_records_nothing_about_the_name_it_replaced(self):
         """The *stores* half of the same obligation, and it is checkable:
@@ -652,56 +709,91 @@ class TestTheRemintNamesTheStateTheRowCarries:
         assert moved == {Task._meta.get_field("announce_outbox_id").attname,
                          Task._meta.get_field("updated_at").attname}
 
-    def test_the_remint_path_never_reads_the_name_it_already_sent(self):
+    def test_the_remint_path_never_names_the_event_it_already_sent(self):
         """The *reads* half, and the half no behavioural case can reach:
         there is nothing for the patrol to echo FROM.
 
         The parametrized case above proves the name already sent does not
-        change the answer. This proves the re-mint path never so much as looks
-        at it — the queued row is consulted for its delivery STATUS and for
-        nothing else — which is what keeps that result from being a
-        coincidence of the current code path.
+        change the answer. This proves the re-mint path never mentions it at
+        all, which is what keeps that result from being a coincidence of the
+        arrangement of the current code.
 
-        ⚠ THE FORBIDDEN NAME AND THE GUARD NAMES ARE READ OFF THE MODELS
-        rather than spelled, so a column rename moves this pin instead of
-        quietly emptying it. And the guard is the point: an absence asserted
-        over a walk that had stopped seeing anything would pass forever, so
-        the same walk must still find the two fields this path DOES consult.
+        ⚠ THE PATH IS FOLLOWED, NOT LISTED, and that is the difference between
+        this pin and a vacuous one. A hand-written list of function names goes
+        NARROW rather than RED as the code grows: pull three lines out of
+        `_remint_kill` into a new helper and a listed walk stops reading them
+        while still passing. So the walk starts at the entry point and follows
+        every call it can resolve to a module-level function of these two
+        modules, transitively — a helper extracted tomorrow is walked tomorrow.
+
+        ⚠ AND THE LIVENESS GUARD IS PER FUNCTION, because a guard over the
+        union is satisfied by whichever function happens to meet it first.
+        Asked as one set, this would have passed on `_remint_kill` alone and
+        proved nothing about `announcement_status`, which is the function that
+        actually reads the queued row.
+
+        ⚠ WHAT IT DOES NOT DO is tell whose column a bare name is: `status` on
+        the queued row and `status` on the piece of work are one name to an AST
+        walk. That cuts the safe way — the claim asserted is that the name
+        appears NOWHERE on the path, in any role, which is stronger than *not
+        read* and catches a stored key by the same stroke. It is also why the
+        assertion forbids exactly the one name this ticket is about rather than
+        every column of the queued row: `tenant_id` is on that row and is also
+        an argument the re-mint legitimately passes, so a broader refusal would
+        be red for a reason that is not a defect.
+
+        A rename of the column makes `get_field` raise rather than quietly
+        emptying the pin, which is the property that matters — not that the
+        name goes unspelled here, since naming it is how `get_field` is asked.
         """
-        import ast
-        import inspect
-
-        from apps.platform.events import announcements
-
         the_name_already_sent = OutboxEvent._meta.get_field("event_type").name
-        consulted = {OutboxEvent._meta.get_field("status").name,
-                     Task._meta.get_field("announce_outbox_id").name}
-        the_path = {"remint_unannounced_kills", "_remint_kill",
-                    "announcement_status"}
+        delivery_status = OutboxEvent._meta.get_field("status").name
+        stamp = Task._meta.get_field("announce_outbox_id").name
+        #: What each function on the path must still be seen to mention, or
+        #: the walk has stopped reading that function. Per function, never
+        #: over the union.
+        must_still_mention = {
+            "remint_unannounced_kills": {stamp, delivery_status},
+            "_remint_kill": {stamp},
+            "announcement_status": {delivery_status},
+        }
 
-        walked, names = set(), set()
+        defined = {}
         for module in (patrol, announcements):
-            for node in ast.walk(ast.parse(inspect.getsource(module))):
-                if (not isinstance(node, ast.FunctionDef)
-                        or node.name not in the_path):
-                    continue
-                walked.add(node.name)
-                for inner in ast.walk(node):
-                    # The three ways a column is named in this path: an
-                    # attribute read or write, a queryset keyword (whose
-                    # lookup suffix is not part of the name), and a string
-                    # handed to `values_list` / `OuterRef` / `update_fields`.
-                    if isinstance(inner, ast.Attribute):
-                        names.add(inner.attr)
-                    elif isinstance(inner, ast.keyword) and inner.arg:
-                        names.add(inner.arg.split("__")[0])
-                    elif isinstance(inner, ast.Constant) and isinstance(
-                            inner.value, str):
-                        names.add(inner.value.split("__")[0])
+            for node in ast.parse(inspect.getsource(module)).body:
+                if isinstance(node, ast.FunctionDef):
+                    defined[node.name] = node
 
-        assert walked == the_path      # the walk found the path...
-        assert consulted <= names      # ...and can see a column when there is one
-        assert the_name_already_sent not in names
+        mentioned, frontier = {}, ["remint_unannounced_kills"]
+        while frontier:
+            name = frontier.pop()
+            if name in mentioned or name not in defined:
+                continue
+            mentioned[name] = names = set()
+            for inner in ast.walk(defined[name]):
+                # The three ways a column is named on this path: an attribute
+                # read or write, a queryset keyword (whose lookup suffix is
+                # not part of the name), and a string handed to `values_list`
+                # / `OuterRef` / `update_fields`.
+                if isinstance(inner, ast.Attribute):
+                    names.add(inner.attr)
+                elif isinstance(inner, ast.keyword) and inner.arg:
+                    names.add(inner.arg.split("__")[0])
+                elif isinstance(inner, ast.Constant) and isinstance(
+                        inner.value, str):
+                    names.add(inner.value.split("__")[0])
+                elif isinstance(inner, ast.Call) and isinstance(
+                        inner.func, ast.Name):
+                    frontier.append(inner.func.id)
+
+        # The walk reached the three functions the path is known to run
+        # through: a rename or a moved function goes red here rather than
+        # leaving the refusal below asserted over nothing.
+        assert set(must_still_mention) <= set(mentioned)
+        for name, columns in must_still_mention.items():
+            assert columns <= mentioned[name], name
+        for name, names in mentioned.items():
+            assert the_name_already_sent not in names, name
 
 
 @pytest.mark.django_db
