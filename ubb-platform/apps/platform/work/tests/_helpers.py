@@ -16,11 +16,18 @@ from apps.platform.work.services import TaskService
 
 
 class WorkTestBase(TestCase):
-    """A tenant with both products, one customer, and work on demand."""
+    """A tenant with both products, one customer, and work on demand.
+
+    ⚠ NOT EVERY MODULE IN THIS DIRECTORY CAN USE IT, and the one that cannot
+    says why: `test_the_windows_belong_to_the_kind_of_work` needs a tenant in
+    `enforcing` mode and a factory for declared KINDS of work, so its base is a
+    different fixture rather than a copy of this one. Widening this to take
+    both would be building a seam for a caller nobody is converting.
+    """
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
-            name="Subtasks", products=["metering", "billing"])
+            name="Work", products=["metering", "billing"])
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1")
 

@@ -133,6 +133,19 @@ def module_literal(path, name):
     raise AssertionError(f"{path} declares no module-level `{name}`")
 
 
+def the_webhook_catalogue():
+    """The registry's `webhook_event_type` concept — its values and the names
+    it retired.
+
+    Shared by the two migration modules that hold a stored-data map to it. They
+    make different assertions (one map is one-to-one and the other one-to-two)
+    but they read the same oracle, and two copies of one read are how the two
+    come to disagree about what the registry says.
+    """
+    return load_registry(REPO_ROOT / "domain-vocabulary").concepts[
+        "webhook_event_type"]
+
+
 def names_a_gate_still_owes(gate):
     """The `found` values of every ledger entry recorded against ``gate``.
 

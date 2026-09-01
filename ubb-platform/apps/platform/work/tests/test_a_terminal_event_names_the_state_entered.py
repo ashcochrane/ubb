@@ -12,8 +12,8 @@ SUBSCRIBING rather than by parsing (ADR-0006 §5).
 ⚠ WHAT THESE FOUR CASES ARE FOR is the pairing, not any one name: `killed` and
 `expired` are two different claims, and the whole value of the split is that a
 subscriber can take one without the other. So the two lanes are driven at both
-altitudes and each is asserted to emit its own event AND to emit neither of the
-other altitude's — a single-event assertion would be satisfied by an emitter
+altitudes, and each case asserts the SET of terminal events that fired is
+exactly its own — a single-event assertion would be satisfied by an emitter
 that sent every name it knew.
 
 The payload case beside them holds the OTHER half of §20's ruling: the two
@@ -33,30 +33,34 @@ from core.vocabulary import (
 from apps.platform.work.services import TaskService
 
 
-#: The event a reader would wrongly expect at the other altitude, per case —
-#: named so each assertion says what it is ruling out rather than just counting.
-_THE_OTHER_ALTITUDE = {
-    TaskKilled: SubtaskKilled,
-    TaskExpired: SubtaskExpired,
-    SubtaskKilled: TaskKilled,
-    SubtaskExpired: TaskExpired,
-}
+#: All four, so each case can rule out the other THREE rather than a chosen
+#: one. Both mistakes the split exists to make impossible are in here: sending
+#: the other STATE at this altitude, and sending this state at the other.
+THE_FOUR = (TaskKilled, TaskExpired, SubtaskKilled, SubtaskExpired)
 
 
 class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
     def _assert_announced(self, unit, event, *, status):
-        """`unit` is in `status` and announced `event`, and nothing else fired.
+        """`unit` is in `status`, announced `event`, and announced NOTHING ELSE.
 
         The status is asserted beside the event because the two are one claim:
         the name IS the state entered, so a case that checked only the name
         would pass over an emitter that had stopped agreeing with the record.
+
+        ⚠ THE ABSENCE IS ASSERTED OVER ALL FOUR, not over a chosen rival. A
+        case ruling out only the other altitude would prove the containment
+        rule and say nothing about the split itself — `subtask.killed` against
+        `subtask.expired` is exactly the distinction this ticket exists to
+        make, and it is the pair a subscriber alerting on spend subscribes
+        across.
         """
         unit.refresh_from_db()
         self.assertEqual(unit.status, status)
         announcement = self._events(event.EVENT_TYPE).get()
         self.assertEqual(unit.announce_outbox_id, announcement.id)
-        self.assertEqual(
-            self._events(_THE_OTHER_ALTITUDE[event].EVENT_TYPE).count(), 0)
+        fired = {other.EVENT_TYPE for other in THE_FOUR
+                 if self._events(other.EVENT_TYPE).exists()}
+        self.assertEqual(fired, {event.EVENT_TYPE})
         return announcement
 
     def test_a_whole_unit_stopped_on_a_spend_signal_announces_task_killed(self):
@@ -67,7 +71,6 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
             trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
 
         self._assert_announced(unit, TaskKilled, status=TASK_STATUS_KILLED)
-        self.assertEqual(self._events(TaskExpired.EVENT_TYPE).count(), 0)
 
     def test_a_whole_unit_nobody_ever_closed_announces_task_expired(self):
         unit = self._task()
@@ -77,7 +80,6 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
             trigger_source=TRIGGER_SOURCE_STALE_REAPER)
 
         self._assert_announced(unit, TaskExpired, status=TASK_STATUS_EXPIRED)
-        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 0)
 
     def test_contained_work_stopped_on_a_spend_signal_announces_subtask_killed(
             self):

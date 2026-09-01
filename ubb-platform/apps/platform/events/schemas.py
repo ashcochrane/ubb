@@ -505,8 +505,9 @@ class _TerminalStop:
     nothing a tenant can subscribe to and nothing the catalogue derives. It
     exists because the four events below differ in exactly two things — the
     state entered, which is in the name, and the ids saying which unit — and
-    writing the other ten fields out four times is how four payloads carrying
-    one fact come to carry it differently.
+    writing everything else out four times is how four payloads carrying one
+    fact come to carry it differently. The two they replace already asked a
+    reader to keep them identical, in a comment; this asks the language.
 
     customer_id      = the SEAT that owns the work.
     billing_owner_id = resolve_billing_owner(seat) — the STOP SCOPE.
@@ -608,9 +609,11 @@ class SubtaskExpired(_TerminalStop, EventSchema):
     parent_task_id: str = ""
 
 
-#: The four, keyed on the two facts that choose between them. Private: the
-#: reader below is the door, so a caller cannot index it with the arguments the
-#: wrong way round and get a plausible answer.
+#: The four, keyed on the two facts that choose between them. Private because
+#: the reader below is the door: a bare mapping answers a state it does not
+#: know with `KeyError: (False, 'completed')`, which is read exactly when
+#: somebody is already confused, and it offers no place to say WHY the states a
+#: tenant declares are absent.
 _TERMINAL_STOP_EVENTS = {
     (False, TASK_STATUS_KILLED): TaskKilled,
     (False, TASK_STATUS_EXPIRED): TaskExpired,

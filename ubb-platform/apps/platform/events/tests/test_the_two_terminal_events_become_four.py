@@ -21,6 +21,16 @@ would be this module spelling another slice's word and would go stale silently
 the day that slice renames it — which is precisely what happened to the silence
 window's stop once already (#412), and is why `REAPER_REASONS` has three
 members rather than two.
+
+⚠ WHAT THESE CASES DO NOT COVER, said rather than left to be discovered: they
+call the migration's two functions with the live app registry, exactly as
+`0007`'s own tests do, so nothing here drives `0008` through the migration
+RUNNER. That is sound for THIS migration and would not be for every one — a
+`RunPython` reading a historical model state needs a replay, and one reading
+`apps.get_model` for tables whose models it does not change does not (#366).
+`0008` changes no schema and touches no column, so the live registry IS the
+state it would be handed. The drift check that covers the other half is
+`makemigrations --check --dry-run`, which reports no model-state change.
 """
 import importlib
 
@@ -104,19 +114,29 @@ def test_the_reaper_reasons_are_the_ones_the_expiry_paths_produce():
         f"exactly one — the pre-registry silence window — is expected")
 
 
-def test_the_reverse_map_is_derived_from_the_forward_one():
-    """Every successor collapses back onto exactly the name it came from.
+def test_the_reverse_covers_every_successor_and_strands_none():
+    """The two properties the reverse must have, stated as properties.
+
+    ⚠ NOT `COLLAPSE == <the same comprehension again>`, which was the first
+    draft and is close to a tautology: it re-states the derivation rather than
+    the requirement, so the only thing it could ever catch is somebody
+    replacing the comprehension with a literal. What actually matters is that
+    every successor has a way back — a missing one would strand a rolled-back
+    subscription on a name the reverted code no longer publishes — and that
+    each goes back to a name the forward map knows, rather than to some third
+    thing.
 
     Asserted here rather than in the contract suite because `COLLAPSE` is a
-    comprehension over `SPLIT` — which is what stops the two directions
-    drifting — and that suite reads the migration with `ast` and never imports
-    it. A missing successor here would strand a rolled-back subscription on a
-    name the reverted code no longer publishes.
+    comprehension, and that suite reads the migration with `ast` and never
+    imports it, so it cannot evaluate one.
     """
-    assert MIGRATION.COLLAPSE == {
-        successor: (retired,)
-        for retired, successors in MIGRATION.SPLIT.items()
-        for successor in successors}
+    successors = {name for pair in MIGRATION.SPLIT.values() for name in pair}
+    assert set(MIGRATION.COLLAPSE) == successors
+
+    for successor, (retired,) in MIGRATION.COLLAPSE.items():
+        assert retired in MIGRATION.SPLIT
+        assert successor in MIGRATION.SPLIT[retired], (
+            f"{successor} reverses to {retired}, which does not name it")
 
 
 def test_no_reason_that_is_not_a_reaper_reason_is_named_as_one():

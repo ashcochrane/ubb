@@ -47,7 +47,9 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     SubtaskKilled, TaskExpired, TaskKilled)
+from apps.platform.work import reasons
 from apps.platform.work.models import Task
+from apps.platform.work.services import STOP_MECHANISM_KEY
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     TRIGGER_SOURCE_ENFORCEMENT_PATROL, TRIGGER_SOURCE_STALE_REAPER,
@@ -325,8 +327,12 @@ class TestPin6TaskSweep:
         assert ev.payload["re_announcement"] is False  # a fresh kill signal
         assert task.announce_outbox_id == ev.id
         # ...AND IT IS RECORDED ON THE ROW, which is what lets a later re-mint
-        # of this same unit name the mechanism instead of going silent.
-        assert task.metadata["trigger_source"] == TRIGGER_SOURCE_ENFORCEMENT_PATROL
+        # of this same unit name the mechanism instead of going silent. Keyed
+        # by the constant the writer uses, not by the word: the cases already
+        # here spell `kill_reason` and are left alone, but a key this commit
+        # makes load-bearing is addressed through the module that owns it.
+        assert (task.metadata[STOP_MECHANISM_KEY]
+                == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         # Idempotent: the next pass finds nothing active.
         assert patrol.sweep_over_limit_tasks(t) == 0
         assert _events(TaskKilled.EVENT_TYPE).count() == 1
@@ -402,7 +408,7 @@ class TestPin6TaskSweep:
             status="failed")
         _task(t, c, limit=1_000, total=2_000, status="killed", stamp=dead.id,
               meta={"kill_reason": "task_limit",
-                    "trigger_source": TRIGGER_SOURCE_USAGE_INGEST})
+                    STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST})
 
         assert patrol.remint_unannounced_kills(t) == 1
 
@@ -430,8 +436,8 @@ class TestPin6TaskSweep:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         task = _task(t, c, total=2_000, status="expired", stamp=dead.id,
-                     meta={"kill_reason": "silence_window",
-                           "trigger_source": TRIGGER_SOURCE_STALE_REAPER})
+                     meta={"kill_reason": reasons.SILENCE_WINDOW,
+                           STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER})
 
         assert patrol.remint_unannounced_kills(t) == 1
 

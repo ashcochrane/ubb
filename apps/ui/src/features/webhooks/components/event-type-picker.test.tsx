@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
-import { groupedEventTypes } from "../lib/event-groups";
+import { WEBHOOK_EVENT_TYPE_VALUES } from "@/lib/vocabulary";
+
 import { EventTypePicker } from "./event-type-picker";
 
 function Harness({ initialAll = false }: { initialAll?: boolean }) {
@@ -25,14 +26,21 @@ describe("EventTypePicker", () => {
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("switch", { name: "All events (*)" }));
-    // Narrowing reveals the full grouped catalog — every option of every
-    // group, read off the grouping the picker itself renders rather than
-    // counted here. A literal was 35 until the terminal stop events became
-    // four, which is what a running tally in an assertion does; this asks the
-    // question the case is actually about, which is that the picker offers
-    // ALL of them.
-    const offered = groupedEventTypes().flatMap((group) => group.options);
-    expect(screen.getAllByRole("checkbox").length).toBe(offered.length);
+    // Narrowing reveals the full grouped catalog, held against the REGISTRY's
+    // own generated value set rather than against a literal or against the
+    // console list the picker is built from.
+    //
+    // ⚠ THE SOURCE MATTERS MORE THAN THE COUNT HERE. A literal said 35 until
+    // the terminal stop events became four, which is what a running tally in
+    // an assertion does; but deriving from `@/lib/labels` — which is what the
+    // picker itself reads — would have made both sides one source and pinned
+    // nothing at all. `WEBHOOK_EVENT_TYPE_VALUES` is generated from
+    // `concepts/webhooks.yaml`, so this is the one place the console's
+    // hand-held catalogue is held to the registry's, and it goes red if the
+    // two ever disagree rather than merely if somebody miscounts.
+    expect(screen.getAllByRole("checkbox").length).toBe(
+      WEBHOOK_EVENT_TYPE_VALUES.length,
+    );
   });
 
   it("toggles individual event types on and off", () => {

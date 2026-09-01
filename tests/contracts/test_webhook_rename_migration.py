@@ -31,8 +31,8 @@ two reverse guarantees are two modules; the readers they share are in
 import pytest
 
 from _helpers import (
-    LEDGER_PATH, REPO_ROOT, module_literal, names_a_gate_still_owes)
-from tools.vocabulary import load_registry
+    LEDGER_PATH, module_literal, names_a_gate_still_owes,
+    the_webhook_catalogue)
 
 MIGRATION_PATH = ("ubb-platform/apps/platform/events/migrations/"
                   "0007_rename_thirteen_webhook_event_types.py")
@@ -46,8 +46,7 @@ def renames():
 
 @pytest.fixture(scope="module")
 def events():
-    return load_registry(REPO_ROOT / "domain-vocabulary").concepts[
-        "webhook_event_type"]
+    return the_webhook_catalogue()
 
 
 @pytest.fixture(scope="module")

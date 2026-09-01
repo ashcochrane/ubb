@@ -29,15 +29,15 @@ the split one name delivers half of that. So the retired entry is replaced by
 both successors IN PLACE, keeping the list's order and its untouched entries: a
 subscription is a public contract, and reordering or dropping part of one would
 be a second, silent change to it. A successor already in the list is not added
-twice — see `_migrate_selectors` for the one entry that can disappear and why
-it selects nothing.
+twice — `_migrate_selectors` says what that de-duplication costs in each
+direction, which is not the same thing forwards and backwards.
 
 **(b) Outbox rows ROUTE — each row to exactly ONE successor.** A pending row is
 one past event about one unit of work; sending it to both would double-deliver
 a stop that happened once. So each row is routed by evidence it already
 carries, its own recorded reason:
 
-    the two reaper reasons (by value, see REAPER_REASONS)   ->  *.expired
+    a reaper's reason (every spelling — see REAPER_REASONS)  ->  *.expired
     every other reason — the ceilings, the customer-wide     ->  *.killed
       stop, the parent cascade
     absent or unrecognised                                   ->  *.killed
@@ -61,6 +61,17 @@ Only the NAME is rewritten, because only the name has a failure mode — it is
 what a subscription is matched against and what the handler registry dispatches
 on, and neither can find a name nothing registers. A body key has no such
 failure: it is delivered verbatim either way.
+
+**⚠ AND THE NAME IS REWRITTEN ON EVERY ROW BEARING IT, NOT ONLY A PENDING ONE**,
+which sits in tension with the sentence above and is `0007`'s choice rather than
+a new one. The argument for moving rows is about the PENDING ones — a queued row
+under a name nothing registers drains to no handler — so a delivered row is
+rewritten to a name it was never delivered under. Two reasons that is still
+right: the outbox's dedup index and the handler registry both key on the name,
+so a table holding two names for one event makes every later lookup ask which,
+and `WebhookDeliveryAttempt` is the record of what a subscriber actually
+received and is untouched here. The queue is a work list; the delivery attempts
+are the history.
 
 **The reverse is provided and is a LOSSY COLLAPSE — stated rather than
 pretended.** Both successors map back to the one retired name. For outbox rows
@@ -130,10 +141,23 @@ def _migrate_selectors(selectors, mapping):
     Order is preserved and untouched entries are kept verbatim. A name in
     ``mapping`` is replaced, in place, by every successor it names.
 
-    A name is added at most once, so the only entry this can remove is one the
-    list already held TWICE — which selects nothing the single entry does not,
-    since delivery matches on membership. `"*"` and `[]` are selectors rather
-    than names and so have nothing to map.
+    ⚠ A NAME IS ADDED AT MOST ONCE, AND WHAT THAT COSTS DIFFERS BY DIRECTION —
+    the same de-duplication reads as a safeguard forwards and as the loss
+    backwards, which is why one sentence about it would be wrong half the time.
+
+    FORWARDS (``SPLIT``, one name to two) it removes nothing a subscription
+    meant: the only entry it can drop is one the list already held TWICE, which
+    selects nothing the single entry does not, since delivery matches on
+    membership.
+
+    BACKWARDS (``COLLAPSE``, two names to one) it is where the list actually
+    SHRINKS, and by design: a subscription holding both successors reverses to
+    one entry, because both name the same retired event. That is the lossy
+    reverse this module's docstring names, made concrete — and it is why a
+    subscription written after the split naming only ONE successor does not
+    round-trip.
+
+    `"*"` and `[]` are selectors rather than names and so have nothing to map.
     """
     migrated = []
     for selector in selectors:

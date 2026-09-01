@@ -32,7 +32,7 @@ from core.vocabulary import (
     TRIGGER_SOURCE_PARENT_CASCADE)
 
 
-# The tenant/customer/unit-of-work fixture these nine classes share moved to
+# The tenant/customer/unit-of-work fixture the classes below share moved to
 # `_helpers.WorkTestBase` when a second module needed it
 # (`docs/conventions/testing.md`).
 
