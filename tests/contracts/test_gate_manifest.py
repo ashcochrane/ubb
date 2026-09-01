@@ -117,8 +117,19 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     the database defends and installed a trigger that holds them (#317, #318),
     so its nodes now run against real declarations rather than passing on an
     empty walk. The two that remain are asserted exactly as they were — the
-    `kind` discriminator column and the cutover squash still do not exist, and a
-    gate is removed here only when that stops being true of it.
+    cutover squash still does not exist, and a gate is removed here only when
+    its subject arrives.
+
+    ⚠ **G14'S REASON CHANGED IN #417 AND THE ROW CHANGED OWNER WITH IT.** This
+    docstring used to say the `kind` discriminator column did not exist either,
+    and that stopped being true the moment slice 5 landed it with the Charge's
+    1:1 projection — a sentence this test would have kept passing over, because
+    what it asserts is that the row is OWED and never why. Two of G14's four
+    pins became writable and are written
+    (`ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`); the other
+    two still have no subject, which is what keeps the row owed and what moved
+    it to slice 7. The column exists; the measure that counts it and the single
+    analytics surface that must exclude it do not.
 
     The two halves are asserted together deliberately. Separately, dropping a
     name from the tuple would be indistinguishable from silencing it; paired

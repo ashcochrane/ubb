@@ -548,7 +548,7 @@ class ThePriceIsDeclaredIntoADefendedClassTest(TestCase):
         """
         assert REASON not in Posting.transition_classes
 
-    def test_the_defended_set_is_slice_threes_three_this_pair_and_the_receipt(self):
+    def test_the_defended_set_holds_this_pair_and_everything_beside_it(self):
         """Through the walk's own entry point, and pinned as an exact set.
 
         The same assertion `test_an_unknown_cost_stops_being_zero.py` makes, and
@@ -556,10 +556,15 @@ class ThePriceIsDeclaredIntoADefendedClassTest(TestCase):
         from the supplier side, this one from the price side. A single shared
         assertion could be satisfied by either file being deleted.
 
-        The receipt column joined it in #353, which is the arrival this line was
-        built to make somebody read.
+        The receipt column joined it in #353 and the `kind` discriminator in
+        #417, and each arrival is what this line was built to make somebody
+        read. ⚠ THE NAME NO LONGER COUNTS THEM, and that is the repair rather
+        than laziness: it said *slice three's three, this pair and the receipt*,
+        which was a running tally in a test name — false the moment a seventh
+        column arrived, and false silently, because nothing type-checks a count
+        in a name. The set below is the claim.
         """
         declared = columns_declared_into_defended_classes([Posting])
         assert [column for _, column, _ in declared] == [
-            PRICE, "claimed_provider_cost_micros", "costing_status",
+            PRICE, "claimed_provider_cost_micros", "costing_status", "kind",
             Posting.RECEIPT_COLUMN, STATUS, "provider_cost_micros"]

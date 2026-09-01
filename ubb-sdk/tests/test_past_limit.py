@@ -52,6 +52,7 @@ class UsageFiltersTest(unittest.TestCase):
     def test_get_usage_passes_filters_and_parses_stop_context(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [{"id": "00000000-0000-0000-0000-0000000000e1",
+                      "kind": "metered_usage",
                       "metadata": {}, "effective_at": "2026-06-01T00:00:00Z",
                       "costing_status": "known", "pricing_status": "known", "stop_context": _CTX}],
             "next_cursor": None, "has_more": False})

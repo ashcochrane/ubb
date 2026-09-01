@@ -29,13 +29,15 @@ Five claims, and each is independent of the others:
   carries the start instant beside that so a piece of work spanning a month
   boundary still nets its own revenue against its own cost.
 
-⚠ **THE PROJECTED POSTING IS NOT THIS TICKET'S AND THIS MODULE ASSERTS NOTHING
-ABOUT ONE.** §12 makes the Charge reach the money rails as one marked posting
-carrying a `task_charge` discriminator, and #417 builds it; the Pricing Receipt
-whose subject is a Charge is #418's. What is canonical is the record asserted
-here, and the two that follow are projections OF it — which is the whole reason
-it is a first-class row rather than a system-generated posting nobody could
-correct.
+⚠ **THE PROJECTED POSTING IS NOT THIS MODULE'S AND IT ASSERTS NOTHING ABOUT
+ONE.** §12 makes the Charge reach the money rails as one marked posting carrying
+a `task_charge` discriminator; #417 built it, and what it does on the rails is
+asserted in
+`api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py`. The
+Pricing Receipt whose subject is a Charge is #418's. What is canonical is the
+record asserted here, and the two that follow are projections OF it — which is
+the whole reason it is a first-class row rather than a system-generated posting
+nobody could correct.
 
 ⚠ **THE WIRE KEY FOR THE GROUPING BAG IS NEVER SPELLED HERE**, for the reason
 `test_an_agreed_price_is_pinned_before_the_work_runs.py` gives at length: it is

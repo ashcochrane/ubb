@@ -439,6 +439,40 @@ PricingReceiptSubjectType = Annotated[
     str, Field(json_schema_extra={
         "x-ubb-concept": "pricing_receipt_subject_type"})]
 
+#: WHICH KIND OF POSTING A ROW IS (#417, spec §12). `closed` — UBB owns both
+#: values — so the export writes a real `enum` here and this file spells
+#: neither of them.
+#:
+#: NEVER `Optional` ANYWHERE, so its marker sits on a plain string and the
+#: nullable-union trap the four aliases above document does not arise: every
+#: posting is one kind or the other, the column is NOT NULL with a default, and
+#: a null would be a third state meaning nobody said.
+#:
+#: **WHERE IT SITS IS THE TWO RESPONSES THAT SERVE A STORED POSTING BACK**, and
+#: that is the rule rather than the count: the list row and the detail are where
+#: a reader meets rows it did not create and has to tell a projected charge from
+#: a metered event before totalling anything. A charge posting carries revenue
+#: with a zero supplier cost, so a reader netting margin over a page of rows
+#: gets a different answer depending on whether it can separate them, and until
+#: this field existed it could not.
+#:
+#: ⚠ **THE RECORDING ACK IS DELIBERATELY NOT A THIRD CARRIER**, and the reason
+#: is checkable rather than aesthetic: `POST /usage` cannot produce a
+#: `task_charge` row. The only writer of one is
+#: `pricing/services/charge_projection.py`, which the close path calls and the
+#: recording path does not, so the field would answer `metered_usage` on every
+#: response that route will ever send. ADR-0007 §3 makes a name added to
+#: `openapi/v1.json` final, and a permanent field restating what the operation
+#: already guarantees is a worse contract than no field. The exclusion is
+#: pinned with the placement map in `tests/contracts/test_openapi_known_values
+#: .py`, so making the ack produce one would have to move that line.
+#:
+#: NO HAND-WRITTEN `description`, for the reason `UnresolvedReason` gives: the
+#: registry owns this concept's summary and generates its values, and a sentence
+#: restating either here would be a second copy no gate reads.
+UsageEventKind = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "usage_event_kind"})]
+
 #: WHICH ARITHMETIC A RULE RUNS (#366, #151 §13.2). `closed` — UBB owns both
 #: values — so the export writes a real `enum` here and this file spells
 #: neither of them.
@@ -604,6 +638,13 @@ class BalanceResponse(Schema):
 
 class UsageEventOut(Schema):
     id: UUID
+    # WHICH KIND OF ROW THIS IS (#417). First on the row rather than last,
+    # because it is the field that says what the rest of them mean: a
+    # `task_charge` row is a projection of a Charge and carries revenue with no
+    # supplier work behind it, so a reader summing a page of these has to
+    # separate the two populations before its answer means anything. `""` is
+    # not a value it can hold — see `UsageEventKind`.
+    kind: UsageEventKind
     event_type: str = ""
     provider: str = ""
     provider_cost_micros: Optional[int] = None
@@ -640,6 +681,7 @@ def usage_event_out(e):
     receipt is the detail view's, GET /usage/{event_id})."""
     return {
         "id": e.id,
+        "kind": e.kind,
         "event_type": e.event_type,
         "provider": e.provider,
         "provider_cost_micros": e.provider_cost_micros,
@@ -674,6 +716,12 @@ class UsageEventDetailOut(Schema):
     # versions, the typed subject, the costing and pricing sections by value,
     # the totals and the cross-reference ids (#349).
     id: UUID
+    # WHICH KIND OF ROW THIS IS (#417) — see `UsageEventOut`, which carries it
+    # on the same rule. Here it also answers the question the receipt raises
+    # next: a `task_charge` row's amount comes from an agreed price pinned
+    # before the work ran, not from a rate applied to a measurement, and this
+    # is the field that says which explanation to expect.
+    kind: UsageEventKind
     idempotency_key: str
     event_type: str = ""
     provider: str = ""

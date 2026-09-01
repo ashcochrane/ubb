@@ -389,7 +389,7 @@ the consumers the registry *declares*, so a `choices=` list for a concept
 because attributing an enumeration to a concept means comparing its members
 against a value set, which is the literal scan #191 decision 3 rules out. So
 `tests/contracts/test_undeclared_value_sets.py` pins every `choices=` in living
-backend code by file, all 46 across 19 files, and a new one has to come past a
+backend code by file, all 56 across 20 files, and a new one has to come past a
 reviewer. That is an **inventory, not a ledger**, and the difference is the same
 one that keeps the permanent exceptions in their own file: a ledger entry names
 a canonical term and a removal slice, and for most of these neither exists.

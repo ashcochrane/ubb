@@ -16,10 +16,12 @@ from core.vocabulary import (
     PRICING_STATUS_VALUES,
     PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_VALUES,
+    USAGE_EVENT_KIND_METERED_USAGE,
+    USAGE_EVENT_KIND_VALUES,
 )
 
 
-# The four closed sets this model stores, DERIVED from the registry rather than
+# The five closed sets this model stores, DERIVED from the registry rather than
 # restated beside it. `choices=` is Django's own declaration that a column has a
 # closed value set, and it is worth having — it reaches forms, the admin and
 # `full_clean` — but a hand-typed list is the shape the migration ledger
@@ -37,6 +39,8 @@ UNRESOLVED_REASON_CHOICES = [(value, value)
 PRICING_STATUS_CHOICES = [(value, value) for value in sorted(PRICING_STATUS_VALUES)]
 NOT_APPLICABLE_REASON_CHOICES = [(value, value)
                                  for value in sorted(NOT_APPLICABLE_REASON_VALUES)]
+USAGE_EVENT_KIND_CHOICES = [(value, value)
+                            for value in sorted(USAGE_EVENT_KIND_VALUES)]
 
 
 class Posting(BaseModel):
@@ -70,6 +74,43 @@ class Posting(BaseModel):
         "customers.Customer", on_delete=models.CASCADE, related_name="postings"
     )
     idempotency_key = models.CharField(max_length=500, db_index=True)
+    # WHICH KIND OF POSTING THIS ROW IS, AND NOTHING ELSE (#417, spec §12).
+    #
+    # `metered_usage` is a real event for work that occurred, reported by a
+    # caller through the recording route. `task_charge` is the SYNTHETIC
+    # posting projected from a canonical `pricing.Charge` when a unit of work
+    # sold for one agreed price is delivered — revenue with no supplier work
+    # behind it, and the only row on this table nobody reported.
+    #
+    # ⚠ IT SAYS NOTHING ABOUT THE TENANT, THE COGS METHOD OR HOW THE CUSTOMER
+    # PRICE WAS CALCULATED. The registry's own summary draws that line
+    # (ADR-0006 §3.8) and it is worth repeating at the column, because every
+    # one of those facts already has a column of its own on this row and a
+    # discriminator that quietly took a second meaning is how they stop being
+    # separable.
+    #
+    # ⚠ **THIS IS WHAT MARKS A PROJECTION AS SYSTEM-GENERATED**, and it is the
+    # reason a projection does not impersonate a tenant Event Type instead. A
+    # synthetic row wearing an `event_type` nobody declared is unrecognised at
+    # the catalogue and would be quarantined; a row that names no Event Type at
+    # all and says what it is here is neither. So a charge projection carries
+    # `event_type = ""` and this column carries its answer — see
+    # `apps/metering/pricing/services/charge_projection.py`, the one writer of
+    # a row holding anything but the default.
+    #
+    # ⚠ FROZEN — see `transition_classes` below. Re-pointing a posting's kind
+    # would move revenue between the two populations every kind-filtered read
+    # separates, with every amount on the row still correct, which is exactly
+    # the shape #416 paid for one table over.
+    #
+    # The default is `metered_usage`, which is the reading the migration gives
+    # every row that already existed and the only reading a recording could
+    # have had: until this column arrived, `posting_kind()` answered
+    # `metered_usage` for every row from one place, and this default is that
+    # same answer written down where the rows are.
+    kind = models.CharField(
+        max_length=32, choices=USAGE_EVENT_KIND_CHOICES,
+        default=USAGE_EVENT_KIND_METERED_USAGE)
     balance_after_micros = models.BigIntegerField(null=True, blank=True)
     # THE ONE OPEN BAG. Caller-supplied, free-form, unbounded and undeclared:
     # FILTERABLE AND READABLE, NEVER GROUPABLE. A second bag folded into this
@@ -380,9 +421,29 @@ class Posting(BaseModel):
     #: trigger bodies, so it goes green the moment a rule NAMES a column —
     #: including in a branch that refuses nothing. What proves holding is
     #: behavioural, once per rule: `tests/test_a_cost_settles_once.py`,
-    #: `tests/test_a_price_resolves_once.py` and
-    #: `tests/test_a_receipt_seals_once_it_is_complete.py`, each a refusal per
+    #: `tests/test_a_price_resolves_once.py`,
+    #: `tests/test_a_receipt_seals_once_it_is_complete.py` and
+    #: `tests/test_a_postings_kind_is_settled_at_birth.py`, each a refusal per
     #: declared class plus the one admitted move, through all three doors.
+    #:
+    #: **AND THE DISCRIMINATOR IS `FROZEN`, WHICH IS A FOURTH RULE ON THIS
+    #: TABLE AND THE SECOND COLUMN DECLARED INTO THAT CLASS (#417).** `kind` has
+    #: no lifecycle at all: a row is born a metered event or a charge projection
+    #: and is never converted, so the class is *none after insert* rather than
+    #: *once* — the same class `claimed_provider_cost_micros` above already
+    #: carries, which is exactly why its refusals have to name the COLUMN and
+    #: not only the class. Its rule is a FOURTH trigger (`migrations/0044`), for
+    #: the reason the price pair's is a second and the receipt's is a third —
+    #: disjoint columns, a `WHEN` clause naming only its own, and a drop that
+    #: leaves the other three standing.
+    #:
+    #: ⚠ It is DECLARED rather than left silent, and the omission would have
+    #: been invisible: G19 asks only whether a declared column is defended, so
+    #: a writable `kind` beside three governed neighbours is a hole no gate can
+    #: see (#416 paid for exactly that shape one table over). Re-pointing it
+    #: moves a whole posting between the two populations every kind-filtered
+    #: read separates — the projected revenue and the metered events — with
+    #: every amount on the row still correct and both totals wrong afterwards.
     transition_classes = {
         "provider_cost_micros": RESOLVE_ONCE,
         "costing_status": RESOLVE_ONCE,
@@ -390,6 +451,7 @@ class Posting(BaseModel):
         "billed_cost_micros": RESOLVE_ONCE,
         "pricing_status": RESOLVE_ONCE,
         RECEIPT_COLUMN: RESOLVE_ONCE,
+        "kind": FROZEN,
     }
 
     class Meta:
@@ -494,6 +556,18 @@ class Posting(BaseModel):
                                not_applicable_reason__isnull=False)
                 ),
                 name="ck_posting_pricing_status_agrees_with_the_price",
+            ),
+            # THE DISCRIMINATOR'S CLOSED SET, at the database (#417). Same
+            # shape and same argument as the four value-set checks above it: a
+            # closed concept that only `clean()` defends is open to anything
+            # that writes without validating, and most of what writes here
+            # does. It stands alone rather than joining a combination rule
+            # because this column agrees with no other — what a posting IS is
+            # not implied by any amount or status on the row, which is the
+            # whole of ADR-0006 §3.8's line about it.
+            models.CheckConstraint(
+                condition=models.Q(kind__in=sorted(USAGE_EVENT_KIND_VALUES)),
+                name="ck_posting_kind",
             ),
         ]
         indexes = [

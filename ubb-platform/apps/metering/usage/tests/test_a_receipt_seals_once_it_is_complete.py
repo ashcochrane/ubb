@@ -805,7 +805,8 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
         self.assertEqual(
             _triggers_on_the_table(),
             {"trg_posting_declared_transitions",
-             "trg_posting_price_transitions", TRIGGER})
+             "trg_posting_price_transitions", TRIGGER,
+             "trg_posting_kind_frozen"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -852,7 +853,8 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
             run_python.reverse_code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
                          {"trg_posting_declared_transitions",
-                          "trg_posting_price_transitions"})
+                          "trg_posting_price_transitions",
+                          "trg_posting_kind_frozen"})
         _through_the_queryset(sealed, **{RECEIPT: _priced_at(9_999)})
         sealed.refresh_from_db()
         self.assertEqual(getattr(sealed, RECEIPT)["totals"][PRICE], 9_999)
@@ -861,7 +863,8 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
             run_python.code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
                          {"trg_posting_declared_transitions",
-                          "trg_posting_price_transitions", TRIGGER})
+                          "trg_posting_price_transitions", TRIGGER,
+                          "trg_posting_kind_frozen"})
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(

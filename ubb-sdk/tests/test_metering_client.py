@@ -297,6 +297,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [
                 {"id": "00000000-0000-0000-0000-0000000000e1",
+                 "kind": "metered_usage",
                  "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known",
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],

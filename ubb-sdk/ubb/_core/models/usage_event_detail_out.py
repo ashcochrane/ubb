@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
+from ..models.usage_event_detail_out_kind import UsageEventDetailOutKind
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from ..models.usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
@@ -42,6 +43,7 @@ class UsageEventDetailOut:
             effective_at (str):
             id (UUID):
             idempotency_key (str):
+            kind (UsageEventDetailOutKind):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
             pricing_status (UsageEventDetailOutPricingStatus):
             billed_cost_micros (int | None | Unset):
@@ -76,6 +78,7 @@ class UsageEventDetailOut:
     effective_at: str
     id: UUID
     idempotency_key: str
+    kind: UsageEventDetailOutKind
     measurements_status: UsageEventDetailOutMeasurementsStatus
     pricing_status: UsageEventDetailOutPricingStatus
     billed_cost_micros: int | None | Unset = UNSET
@@ -114,6 +117,8 @@ class UsageEventDetailOut:
         id = str(self.id)
 
         idempotency_key = self.idempotency_key
+
+        kind = self.kind.value
 
         measurements_status = self.measurements_status.value
 
@@ -216,6 +221,7 @@ class UsageEventDetailOut:
             "effective_at": effective_at,
             "id": id,
             "idempotency_key": idempotency_key,
+            "kind": kind,
             "measurements_status": measurements_status,
             "pricing_status": pricing_status,
         })
@@ -278,6 +284,11 @@ class UsageEventDetailOut:
 
 
         idempotency_key = d.pop("idempotency_key")
+
+        kind = UsageEventDetailOutKind(d.pop("kind"))
+
+
+
 
         measurements_status = UsageEventDetailOutMeasurementsStatus(d.pop("measurements_status"))
 
@@ -479,6 +490,7 @@ class UsageEventDetailOut:
             effective_at=effective_at,
             id=id,
             idempotency_key=idempotency_key,
+            kind=kind,
             measurements_status=measurements_status,
             pricing_status=pricing_status,
             billed_cost_micros=billed_cost_micros,

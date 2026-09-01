@@ -47,14 +47,17 @@ prohibited moves are also impossible under #351's combination `CHECK`. Every
 refusal below therefore asserts **the message Postgres answers with**: the
 trigger names the transition class it is holding, and a `CHECK` names its own
 constraint. That distinction has teeth here, because this table now carries
-**three** triggers and **six** `CHECK`s over three declared subjects, and
+**four** triggers and **seven** `CHECK`s over four declared subjects, and
 "something refused this" stopped being evidence the moment the second trigger
-landed.
+landed. #417's `kind` discriminator is the fourth of each — a `FROZEN` column
+with its own rule and its own value-set check.
 ⚠ Naming the transition CLASS is not enough on its own either: `resolve_once` is
-the class all three are declared into — the two pairs and, since #353, the
-receipt column — so every trigger's message carries that token. Every refusal
-below therefore also asserts the COLUMN the rule is about, which is what
-separates this rule from the two beside it.
+the class three of the four are declared into — the two pairs and, since #353,
+the receipt column — so each of those three messages carries that token. (#417's
+`kind` carries `frozen` instead, which is `claimed_provider_cost_micros`'
+class rather than a new one, so naming a class is not enough on that side
+either.) Every refusal below therefore also asserts the COLUMN the rule is
+about, which is what separates this rule from the three beside it.
 
 **A `BEFORE` trigger runs before the table's constraints are evaluated**, so on
 an `UPDATE` the trigger answers first and the combination `CHECK` is never
@@ -96,7 +99,7 @@ REASON = "not_applicable_reason"
 TABLE = Posting._meta.db_table
 
 #: The rule this module is about, addressed BY NAME rather than by counting.
-#: The table carries three now, and `pg_trigger` promises no order at all, so an
+#: The table carries four now, and `pg_trigger` promises no order at all, so an
 #: assertion reading "the first row" would be reading whichever one Postgres
 #: happened to hand back.
 TRIGGER = "trg_posting_price_transitions"
@@ -430,7 +433,7 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
         self.assertEqual(
             _triggers_on_the_table(),
             {"trg_posting_declared_transitions", TRIGGER,
-             "trg_posting_receipt_sealing"})
+             "trg_posting_receipt_sealing", "trg_posting_kind_frozen"})
 
     def test_it_fires_before_each_updated_row(self):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -474,7 +477,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
             run_python.reverse_code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
                          {"trg_posting_declared_transitions",
-                          "trg_posting_receipt_sealing"})
+                          "trg_posting_receipt_sealing",
+                          "trg_posting_kind_frozen"})
         _through_the_queryset(resolved, **{PRICE: 999})
         resolved.refresh_from_db()
         self.assertEqual(getattr(resolved, PRICE), 999)
@@ -483,7 +487,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
             run_python.code(None, editor)
         self.assertEqual(_triggers_on_the_table(),
                          {"trg_posting_declared_transitions", TRIGGER,
-                          "trg_posting_receipt_sealing"})
+                          "trg_posting_receipt_sealing",
+                          "trg_posting_kind_frozen"})
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 _through_the_queryset(resolved, **{PRICE: 1_000})

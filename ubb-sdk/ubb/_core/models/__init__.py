@@ -272,6 +272,7 @@ from .usage_batch_response_results_item import UsageBatchResponseResultsItem
 from .usage_event_detail_out import UsageEventDetailOut
 from .usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from .usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
+from .usage_event_detail_out_kind import UsageEventDetailOutKind
 from .usage_event_detail_out_measurements import UsageEventDetailOutMeasurements
 from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
@@ -283,6 +284,7 @@ from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingSta
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from .usage_event_out import UsageEventOut
 from .usage_event_out_costing_status import UsageEventOutCostingStatus
+from .usage_event_out_kind import UsageEventOutKind
 from .usage_event_out_metadata import UsageEventOutMetadata
 from .usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
 from .usage_event_out_pricing_status import UsageEventOutPricingStatus
@@ -579,6 +581,7 @@ __all__ = (
     "UsageEventDetailOut",
     "UsageEventDetailOutCostingStatus",
     "UsageEventDetailOutGroupingFields",
+    "UsageEventDetailOutKind",
     "UsageEventDetailOutMeasurements",
     "UsageEventDetailOutMeasurementsStatus",
     "UsageEventDetailOutMetadata",
@@ -590,6 +593,7 @@ __all__ = (
     "UsageEventDetailOutUnresolvedReasonType0",
     "UsageEventOut",
     "UsageEventOutCostingStatus",
+    "UsageEventOutKind",
     "UsageEventOutMetadata",
     "UsageEventOutNotApplicableReasonType0",
     "UsageEventOutPricingStatus",
