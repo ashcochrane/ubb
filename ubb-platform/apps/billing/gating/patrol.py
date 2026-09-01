@@ -274,31 +274,36 @@ def remint_unannounced_kills(tenant):
 
 
 def _remint_kill(task, tenant):
-    """Mint the stopped unit's current state — same catalog type as the
-    original announcement, current totals, ``re_announcement: true`` — and
-    move the stamp, inside the caller's transaction.
+    """Mint the stopped unit's current state — the event its own row now
+    names, current totals, ``re_announcement: true`` — and move the stamp,
+    inside the caller's transaction.
 
-    The unit is `killed` or `expired`, and this reads its state off the row
-    rather than assuming either: re-minting is repairing a delivery, so the
-    event it sends must say what is true now (#408)."""
+    ⚠ THE STATE IS READ OFF THE ROW AND SO IS EVERYTHING ELSE. A re-mint
+    repairs a delivery; it applies no transition of its own and remembers
+    nothing about the one that was applied, so every fact it publishes has to
+    come from the record. The unit is `killed` or `expired`, and since the four
+    terminal events that is what chooses which one is sent (#140 §4.3) — a
+    re-mint of a unit that expired says `*.expired`, not the event the original
+    announcement happened to carry."""
     from apps.platform.events.outbox import write_event
-    from apps.platform.events.schemas import (
-        SubtaskLimitExceeded, TaskLimitExceeded)
+    from apps.platform.events.schemas import terminal_stop_event
+    from apps.platform.work.services import (
+        STOP_CAUSE_KEY, STOP_MECHANISM_KEY)
 
+    announcement = terminal_stop_event(
+        task.status, is_contained=task.parent_id is not None)
     common = dict(
         tenant_id=str(tenant.id), customer_id=str(task.customer_id),
         billing_owner_id=str(task.billing_owner_id or ""),
         external_task_id=task.external_task_id,
-        reason=task.metadata.get("kill_reason", ""),
-        # ⚠ THE MECHANISM IS DELIBERATELY LEFT UNSTATED HERE (#412), AND IT IS
-        # NOT THIS PATROL. A re-mint applies no transition — it repairs the
-        # delivery of a stop some other mechanism already applied — and the
-        # row records the CAUSE of that stop but not the mechanism, so there
-        # is nothing to read back and naming the patrol would answer a
-        # question nobody asked. `re_announcement` below is what says what
-        # this event is. Recording the mechanism on the row is the ticket that
-        # splits these two events into four; when it does, this line reads it
-        # exactly as the one above reads the cause.
+        reason_code=task.metadata.get(STOP_CAUSE_KEY, ""),
+        # ⚠ AND THE MECHANISM IS READ BACK RATHER THAN INVENTED — it is not
+        # this patrol, which applied nothing. The lane that DID apply the stop
+        # records itself on the row (`TaskService._stop_and_announce`, and
+        # `_cascade` for a contained piece), so a repaired delivery names the
+        # same mechanism the original did. Empty where the row holds none,
+        # which is UBB declining to state one rather than guessing.
+        trigger_source=task.metadata.get(STOP_MECHANISM_KEY, ""),
         total_billed_cost_micros=task.total_billed_cost_micros,
         total_provider_cost_micros=task.total_provider_cost_micros,
         # A re-mint publishes the unit's CURRENT state, so it publishes the
@@ -308,11 +313,11 @@ def _remint_kill(task, tenant):
         provider_cost_limit_micros=task.provider_cost_limit_micros or 0,
         re_announcement=True)
     if task.parent_id is not None:
-        outbox = write_event(SubtaskLimitExceeded(
+        outbox = write_event(announcement(
             subtask_id=str(task.id), parent_task_id=str(task.parent_id),
             **common))
     else:
-        outbox = write_event(TaskLimitExceeded(task_id=str(task.id), **common))
+        outbox = write_event(announcement(task_id=str(task.id), **common))
     task.announce_outbox_id = outbox.id
     task.save(update_fields=["announce_outbox_id", "updated_at"])
 

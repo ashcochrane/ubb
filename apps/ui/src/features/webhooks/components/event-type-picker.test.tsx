@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
+import { groupedEventTypes } from "../lib/event-groups";
 import { EventTypePicker } from "./event-type-picker";
 
 function Harness({ initialAll = false }: { initialAll?: boolean }) {
@@ -24,8 +25,14 @@ describe("EventTypePicker", () => {
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("switch", { name: "All events (*)" }));
-    // Narrowing reveals the full grouped catalog (35 event types).
-    expect(screen.getAllByRole("checkbox").length).toBe(35);
+    // Narrowing reveals the full grouped catalog — every option of every
+    // group, read off the grouping the picker itself renders rather than
+    // counted here. A literal was 35 until the terminal stop events became
+    // four, which is what a running tally in an assertion does; this asks the
+    // question the case is actually about, which is that the picker offers
+    // ALL of them.
+    const offered = groupedEventTypes().flatMap((group) => group.options);
+    expect(screen.getAllByRole("checkbox").length).toBe(offered.length);
   });
 
   it("toggles individual event types on and off", () => {

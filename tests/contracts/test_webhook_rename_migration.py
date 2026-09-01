@@ -18,39 +18,30 @@ is not.
 (gates/README.md, deliberately); this suite has PyYAML and no Django. The
 migration is read with `ast` and never imported — #204's rule — so nothing here
 needs Django settings, a database, or the app registry.
+
+**The one-to-two map is NOT here**, and that was a decision rather than an
+oversight. `test_webhook_split_migration.py` beside this module holds the
+terminal-event split, whose map takes one retired name to TWO successors — a
+shape `test_the_map_is_one_to_one` below refuses BY DESIGN, because a 1:1 map
+is what lets THIS migration ship an exact reverse. Two maps with two shapes and
+two reverse guarantees are two modules; the readers they share are in
+`_helpers`.
 """
 
-import ast
-
 import pytest
-import yaml
 
-from _helpers import REPO_ROOT
+from _helpers import (
+    LEDGER_PATH, REPO_ROOT, module_literal, names_a_gate_still_owes)
 from tools.vocabulary import load_registry
 
 MIGRATION_PATH = ("ubb-platform/apps/platform/events/migrations/"
                   "0007_rename_thirteen_webhook_event_types.py")
-LEDGER_PATH = "gates/migration-ledger.yaml"
 GATE = "G8"
-
-
-def _literal(module: ast.Module, name: str):
-    """The value assigned to a module-level `name`, evaluated as a literal.
-
-    `ast.literal_eval` rather than an import: a dict of strings is exactly what
-    it is for, and reading the file keeps this suite free of Django.
-    """
-    for node in module.body:
-        for target in getattr(node, "targets", []):
-            if isinstance(target, ast.Name) and target.id == name:
-                return ast.literal_eval(node.value)
-    raise AssertionError(f"{MIGRATION_PATH} declares no module-level `{name}`")
 
 
 @pytest.fixture(scope="module")
 def renames():
-    source = (REPO_ROOT / MIGRATION_PATH).read_text(encoding="utf-8")
-    return _literal(ast.parse(source), "RENAMES")
+    return module_literal(MIGRATION_PATH, "RENAMES")
 
 
 @pytest.fixture(scope="module")
@@ -62,10 +53,7 @@ def events():
 @pytest.fixture(scope="module")
 def still_owed():
     """The names G8's remaining ledger entries say are still published wrong."""
-    document = yaml.safe_load(
-        (REPO_ROOT / LEDGER_PATH).read_text(encoding="utf-8"))
-    return {entry["found"] for entry in document["entries"]
-            if entry["gate"] == GATE}
+    return names_a_gate_still_owes(GATE)
 
 
 def test_every_name_being_migrated_from_is_one_the_registry_retired(

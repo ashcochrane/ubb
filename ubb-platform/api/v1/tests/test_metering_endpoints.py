@@ -540,6 +540,7 @@ class MeteringTaskEndpointTest(TestCase):
         server kills the task."""
         from apps.metering.usage.models import Posting
         from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import TaskKilled
 
         task = self._task(limit=10_000_000)
         # First event under limit
@@ -574,7 +575,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(task.metadata.get("kill_reason"), "task_limit")
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(OutboxEvent.objects.filter(
-            event_type="task.limit_exceeded").count(), 1)
+            event_type=TaskKilled.EVENT_TYPE).count(), 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_killed_task_returns_200_task_not_active(self, mock_process):

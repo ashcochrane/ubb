@@ -275,7 +275,19 @@ exclusions:
     # retired-term totals were UNCHANGED across the same commit — 26 terms in
     # 87 sites, in both directions — while the ledger fell by two, this
     # ticket paying `g2-backend-usage_event_kind` and its G4 twin.
-    files: 246
+    # 246 → 247 in the terminal-event split: one migration, carrying the stored
+    # subscriptions and outbox rows off the two overloaded Task events onto the
+    # four that name the state entered. ⚠ IT NAMES BOTH RETIRED TERMS AND
+    # CANNOT AVOID EITHER — the map's KEYS are the names it is migrating away
+    # from, so a split that could not name what it retires would not be
+    # reviewable. That is `0026`/`0027`/`0033`'s worked example again, and it
+    # is also the last thing keeping the two words in the tree at all: their
+    # G7 entries reached zero in this same commit, so every SWEPT file is now
+    # refused them and only this exclusion and the gate bookkeeping hold them.
+    # ⚠ THE SWEEP'S TOTALS DID MOVE HERE, unlike the six entries above: 26
+    # terms → 24 and 87 sites → 80, the two event names leaving the tree
+    # entirely and taking seven G7 entries with them.
+    files: 247
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -20411,10 +20411,10 @@
         "summary": "stop.fired delivery"
       }
     },
-    "subtask.limit_exceeded": {
+    "subtask.expired": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_subtask_limit_exceeded",
+        "operationId": "webhook_subtask_expired",
         "parameters": [
           {
             "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
@@ -20450,7 +20450,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "Subtask-kill fan-out event (#38) \u2014 the subtask sibling of\nTaskLimitExceeded, emitted exactly once per winning transition out of\n`active` on a SUBTASK (its own limit/floor crossing, or a sweeper).\nThe subtask is killed ALONE: the parent keeps running and counting, so\nconsumers tear down only the named child. A parent's own crossing emits\ntask.limit_exceeded instead and cascades its kill downward silently \u2014\ncascaded children never emit this event (they crossed nothing).\n\nIds are explicit (spec \u00a7B \u2014 the run-era scope field died with the\nsplit): subtask_id = the killed child unit, parent_task_id = the parent\nwhose totals its spend rolls up into. Totals and limit are the\nSUBTASK's own, denominationally explicit; only the provider (COGS)\ntotal races the limit.",
+                    "description": "Nobody ever told UBB how this contained piece of work ended.\n\nOne model and one status set means one rule (#154 \u00a73.1), so contained work\nsplits exactly as the whole unit does \u2014 and the ids and the altitude rule\nare `SubtaskKilled`'s.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
@@ -20482,9 +20482,9 @@
                         "title": "Re Announcement",
                         "type": "boolean"
                       },
-                      "reason": {
+                      "reason_code": {
                         "default": "",
-                        "title": "Reason",
+                        "title": "Reason Code",
                         "type": "string"
                       },
                       "subtask_id": {
@@ -20528,7 +20528,7 @@
                     "required": [
                       "tenant_id"
                     ],
-                    "title": "SubtaskLimitExceeded",
+                    "title": "SubtaskExpired",
                     "type": "object"
                   },
                   "event_id": {
@@ -20536,7 +20536,7 @@
                     "type": "string"
                   },
                   "event_type": {
-                    "const": "subtask.limit_exceeded",
+                    "const": "subtask.expired",
                     "type": "string"
                   },
                   "livemode": {
@@ -20570,13 +20570,13 @@
             "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
           }
         },
-        "summary": "subtask.limit_exceeded delivery"
+        "summary": "subtask.expired delivery"
       }
     },
-    "task.limit_exceeded": {
+    "subtask.killed": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_task_limit_exceeded",
+        "operationId": "webhook_subtask_killed",
         "parameters": [
           {
             "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
@@ -20612,7 +20612,169 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "One-rule task-kill fan-out event (#37). The SINGLE canonical class \u2014\nno other module may redefine it.\n\nEmitted exactly once per winning transition OUT OF `active` \u2014 by the\nverdict-driven kill flow (sync record, batch items, async settle), by the\nenforcement patrol, and by either sweeper \u2014 so sibling/idle workers tear\nthe task down. The task is a signal point, not a wall: events arriving\nafter this still land, bill, and count into both totals.\n\ncustomer_id      = the SEAT that owns the task.\nbilling_owner_id = resolve_billing_owner(seat) \u2014 the KILL SCOPE.\nreason           = one of apps.platform.work.reasons (closed set).\ntrigger_source   = which mechanism applied the stop (open set).\nBoth running totals are carried, denominationally explicit; only the\nprovider (COGS) total races provider_cost_limit_micros.",
+                    "description": "The same spend stop on CONTAINED work, which is killed ALONE: the\nparent keeps running and counting, so a subscriber tears down only the\nnamed child (#38).\n\nA parent's own crossing emits `task.killed` instead and cascades downward\nsilently \u2014 cascaded children never emit this event, because they crossed\nnothing themselves.\n\nIds are explicit: subtask_id is the stopped child, parent_task_id the\nparent whose totals its spend rolls up into. The totals and the limit are\nthe child's own.",
+                    "properties": {
+                      "billing_owner_id": {
+                        "default": "",
+                        "title": "Billing Owner Id",
+                        "type": "string"
+                      },
+                      "customer_id": {
+                        "default": "",
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "external_task_id": {
+                        "default": "",
+                        "title": "External Task Id",
+                        "type": "string"
+                      },
+                      "parent_task_id": {
+                        "default": "",
+                        "title": "Parent Task Id",
+                        "type": "string"
+                      },
+                      "provider_cost_limit_micros": {
+                        "default": 0,
+                        "title": "Provider Cost Limit Micros",
+                        "type": "integer"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "reason_code": {
+                        "default": "",
+                        "title": "Reason Code",
+                        "type": "string"
+                      },
+                      "subtask_id": {
+                        "default": "",
+                        "title": "Subtask Id",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "total_billed_cost_micros": {
+                        "default": 0,
+                        "title": "Total Billed Cost Micros",
+                        "type": "integer"
+                      },
+                      "total_provider_cost_micros": {
+                        "default": 0,
+                        "title": "Total Provider Cost Micros",
+                        "type": "integer"
+                      },
+                      "trigger_source": {
+                        "default": "",
+                        "title": "Trigger Source",
+                        "type": "string",
+                        "x-ubb-concept": "trigger_source",
+                        "x-ubb-known-values": [
+                          "usage_ingest",
+                          "enforcement_patrol",
+                          "parent_cascade",
+                          "pool_crossing",
+                          "stale_reaper"
+                        ]
+                      },
+                      "unresolved_event_count": {
+                        "default": 0,
+                        "title": "Unresolved Event Count",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "tenant_id"
+                    ],
+                    "title": "SubtaskKilled",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "subtask.killed",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "subtask.killed delivery"
+      }
+    },
+    "task.expired": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_task_expired",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "NOBODY EVER TOLD UBB HOW THIS WHOLE UNIT OF WORK ENDED \u2014 it went quiet\nfor longer than its silence window, or ran past its absolute deadline, and\na sweeper wrote the honest answer.\n\nThe same announcement on the same terms as `TaskKilled`, and a SEPARATE\nevent for the reason the split exists: a subscriber paging an on-call\nengineer about spend wants the one above and not this one, and a\nsubscriber cleaning up after crashed workers wants this one and not that.",
                     "properties": {
                       "billing_owner_id": {
                         "default": "",
@@ -20639,9 +20801,9 @@
                         "title": "Re Announcement",
                         "type": "boolean"
                       },
-                      "reason": {
+                      "reason_code": {
                         "default": "",
-                        "title": "Reason",
+                        "title": "Reason Code",
                         "type": "string"
                       },
                       "task_id": {
@@ -20685,7 +20847,7 @@
                     "required": [
                       "tenant_id"
                     ],
-                    "title": "TaskLimitExceeded",
+                    "title": "TaskExpired",
                     "type": "object"
                   },
                   "event_id": {
@@ -20693,7 +20855,7 @@
                     "type": "string"
                   },
                   "event_type": {
-                    "const": "task.limit_exceeded",
+                    "const": "task.expired",
                     "type": "string"
                   },
                   "livemode": {
@@ -20727,7 +20889,164 @@
             "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
           }
         },
-        "summary": "task.limit_exceeded delivery"
+        "summary": "task.expired delivery"
+      }
+    },
+    "task.killed": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_task_killed",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "UBB STOPPED THIS WHOLE UNIT OF WORK ON A SPEND SIGNAL, and that is all\nthis event ever means \u2014 a ceiling crossing, the enforcement patrol, or a\ncustomer-wide stop reaching it.\n\nEmitted exactly once per winning transition into `killed`, so racing\ncallers (the sync endpoint, batch items, async settle workers, the patrol)\ncan never double-emit. A stop is a signal point and not a wall: events\narriving after it still land, bill, and count into both totals.",
+                    "properties": {
+                      "billing_owner_id": {
+                        "default": "",
+                        "title": "Billing Owner Id",
+                        "type": "string"
+                      },
+                      "customer_id": {
+                        "default": "",
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "external_task_id": {
+                        "default": "",
+                        "title": "External Task Id",
+                        "type": "string"
+                      },
+                      "provider_cost_limit_micros": {
+                        "default": 0,
+                        "title": "Provider Cost Limit Micros",
+                        "type": "integer"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "reason_code": {
+                        "default": "",
+                        "title": "Reason Code",
+                        "type": "string"
+                      },
+                      "task_id": {
+                        "default": "",
+                        "title": "Task Id",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      },
+                      "total_billed_cost_micros": {
+                        "default": 0,
+                        "title": "Total Billed Cost Micros",
+                        "type": "integer"
+                      },
+                      "total_provider_cost_micros": {
+                        "default": 0,
+                        "title": "Total Provider Cost Micros",
+                        "type": "integer"
+                      },
+                      "trigger_source": {
+                        "default": "",
+                        "title": "Trigger Source",
+                        "type": "string",
+                        "x-ubb-concept": "trigger_source",
+                        "x-ubb-known-values": [
+                          "usage_ingest",
+                          "enforcement_patrol",
+                          "parent_cascade",
+                          "pool_crossing",
+                          "stale_reaper"
+                        ]
+                      },
+                      "unresolved_event_count": {
+                        "default": 0,
+                        "title": "Unresolved Event Count",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "tenant_id"
+                    ],
+                    "title": "TaskKilled",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "task.killed",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "task.killed delivery"
       }
     },
     "tenant.api_key_created": {

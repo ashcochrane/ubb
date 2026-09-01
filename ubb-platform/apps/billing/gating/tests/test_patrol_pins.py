@@ -22,6 +22,12 @@ Pin 4  — stop + clear during a blind window → recovery delivers the current
 Pin 5  — the soft pair rides the same rails; families stay independent.
 Pin 6  — a task whose kill transaction crashed is killed and announced by the
          sweep; a subtask likewise, alone, parent unaffected.
+
+⚠ A RE-MINT PUBLISHES WHAT THE ROW SAYS NOW, and since the terminal-event split
+that includes WHICH of the four events it is (#140 §4.3). The patrol repairs a
+delivery it did not make, so it is the one emitter with no caller to take the
+name from — which makes it the only place *the name is the state entered* is
+falsifiable, and the case doing that is named for it below.
 """
 import pytest
 from unittest.mock import patch
@@ -39,9 +45,13 @@ from apps.billing.queries import get_patrol_stats
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import (
+    SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant
-from core.vocabulary import TRIGGER_SOURCE_ENFORCEMENT_PATROL
+from core.vocabulary import (
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL, TRIGGER_SOURCE_STALE_REAPER,
+    TRIGGER_SOURCE_USAGE_INGEST)
 
 
 def _tenant(enf="enforcing", mode="prepaid"):
@@ -304,9 +314,9 @@ class TestPin6TaskSweep:
         task.refresh_from_db()
         assert task.status == "killed"
         assert task.metadata["kill_reason"] == "task_limit"
-        ev = _events("task.limit_exceeded").get()
+        ev = _events(TaskKilled.EVENT_TYPE).get()
         assert ev.payload["task_id"] == str(task.id)
-        assert ev.payload["reason"] == "task_limit"
+        assert ev.payload["reason_code"] == "task_limit"
         # WHICH MECHANISM APPLIED IT (#412). The sweep found a unit already
         # over its ceiling that no usage report had stopped, and saying so is
         # the only way a subscriber tells this apart from the ingest lane
@@ -314,9 +324,12 @@ class TestPin6TaskSweep:
         assert ev.payload["trigger_source"] == TRIGGER_SOURCE_ENFORCEMENT_PATROL
         assert ev.payload["re_announcement"] is False  # a fresh kill signal
         assert task.announce_outbox_id == ev.id
+        # ...AND IT IS RECORDED ON THE ROW, which is what lets a later re-mint
+        # of this same unit name the mechanism instead of going silent.
+        assert task.metadata["trigger_source"] == TRIGGER_SOURCE_ENFORCEMENT_PATROL
         # Idempotent: the next pass finds nothing active.
         assert patrol.sweep_over_limit_tasks(t) == 0
-        assert _events("task.limit_exceeded").count() == 1
+        assert _events(TaskKilled.EVENT_TYPE).count() == 1
 
     def test_subtask_is_swept_alone_parent_unaffected(self):
         t = _tenant()
@@ -328,11 +341,11 @@ class TestPin6TaskSweep:
         parent.refresh_from_db()
         assert child.status == "killed"
         assert parent.status == "active"
-        ev = _events("subtask.limit_exceeded").get()
+        ev = _events(SubtaskKilled.EVENT_TYPE).get()
         assert ev.payload["subtask_id"] == str(child.id)
         assert ev.payload["parent_task_id"] == str(parent.id)
-        assert ev.payload["reason"] == "subtask_limit"
-        assert not _events("task.limit_exceeded").exists()
+        assert ev.payload["reason_code"] == "subtask_limit"
+        assert not _events(TaskKilled.EVENT_TYPE).exists()
 
     def test_under_limit_and_unlimited_tasks_are_left_alone(self):
         t = _tenant()
@@ -349,21 +362,23 @@ class TestPin6TaskSweep:
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
         dead = OutboxEvent.objects.create(
-            event_type="task.limit_exceeded", payload={}, tenant_id=t.id,
+            event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
                      stamp=dead.id, meta={"kill_reason": "task_limit"})
         assert patrol.remint_unannounced_kills(t) == 1
-        ev = _events("task.limit_exceeded").exclude(id=dead.id).get()
+        ev = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
         assert ev.payload["re_announcement"] is True
         assert ev.payload["task_id"] == str(task.id)
-        assert ev.payload["reason"] == "task_limit"
-        # ⚠ AND IT NAMES NO MECHANISM (#412), WHICH IS THE POINT OF ASSERTING
-        # IT. A re-mint applies no transition — it repairs the delivery of a
-        # stop some other mechanism already made — and the row records the
-        # cause but not the mechanism, so there is nothing true to put here.
-        # Naming the patrol would tell a subscriber the patrol stopped this
-        # unit, which it did not.
+        assert ev.payload["reason_code"] == "task_limit"
+        # ⚠ AND IT NAMES NO MECHANISM, BECAUSE THIS ROW HOLDS NONE — which is
+        # a different claim from the one this case made before the terminal
+        # events split. A re-mint applies no transition; it repairs the
+        # delivery of a stop some other lane made, so it READS the mechanism
+        # off the row rather than naming itself. This fixture stands a row up
+        # with only a cause recorded, which is what a pre-split row looks
+        # like, and empty is then the honest answer. The case below is the
+        # other half, and the two must differ or neither is evidence.
         assert ev.payload["trigger_source"] == ""
         assert ev.payload["total_provider_cost_micros"] == 2_000
         task.refresh_from_db()
@@ -371,18 +386,73 @@ class TestPin6TaskSweep:
         # The fresh stamp is in flight: the next pass mints nothing.
         assert patrol.remint_unannounced_kills(t) == 0
 
+    def test_a_remint_names_the_mechanism_the_stopping_lane_recorded(self):
+        """The other half of the pair above: where the row DOES record which
+        lane stopped the work, the repaired delivery says so.
+
+        This is what the mechanism is written onto the row for. A subscriber
+        receiving a re-mint learns the same thing the original announcement
+        said, rather than a blank that reads as *UBB does not know* — and the
+        patrol never names ITSELF here, because it stopped nothing.
+        """
+        t = _tenant()
+        c = _customer(t, balance_micros=1_000_000)
+        dead = OutboxEvent.objects.create(
+            event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
+            status="failed")
+        _task(t, c, limit=1_000, total=2_000, status="killed", stamp=dead.id,
+              meta={"kill_reason": "task_limit",
+                    "trigger_source": TRIGGER_SOURCE_USAGE_INGEST})
+
+        assert patrol.remint_unannounced_kills(t) == 1
+
+        ev = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
+        assert ev.payload["trigger_source"] == TRIGGER_SOURCE_USAGE_INGEST
+
+    def test_an_expired_unit_remints_the_expiry_and_not_the_spend_stop(self):
+        """⚠ THE ONE CASE THAT PROVES THE NAME FOLLOWS THE ROW.
+
+        Everywhere else the lane that applies a stop also knows which of the
+        four events it is, so an emitter that took the name from its CALLER
+        would look identical. A re-mint has no such caller: it repairs a
+        delivery it did not make, so the only thing it can read is the state
+        the record carries. A unit a sweeper expired must therefore re-announce
+        `task.expired` — never the spend stop, which would page an on-call
+        engineer about a ceiling that was never crossed.
+
+        The dead stamp deliberately carries the OTHER event, which is what a
+        row announced before the split looks like: the repaired delivery says
+        what is true now rather than repeating what was sent.
+        """
+        t = _tenant()
+        c = _customer(t, balance_micros=1_000_000)
+        dead = OutboxEvent.objects.create(
+            event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
+            status="failed")
+        task = _task(t, c, total=2_000, status="expired", stamp=dead.id,
+                     meta={"kill_reason": "silence_window",
+                           "trigger_source": TRIGGER_SOURCE_STALE_REAPER})
+
+        assert patrol.remint_unannounced_kills(t) == 1
+
+        ev = _events(TaskExpired.EVENT_TYPE).get()
+        assert ev.payload["task_id"] == str(task.id)
+        assert ev.payload["re_announcement"] is True
+        assert ev.payload["trigger_source"] == TRIGGER_SOURCE_STALE_REAPER
+        assert _events(TaskKilled.EVENT_TYPE).count() == 1  # the dead one only
+
     def test_killed_subtask_remints_the_subtask_event(self):
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
         parent = _task(t, c, limit=1_000_000)
         dead = OutboxEvent.objects.create(
-            event_type="subtask.limit_exceeded", payload={}, tenant_id=t.id,
+            event_type=SubtaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         child = _task(t, c, limit=2_000, total=3_000, status="killed",
                       parent=parent, stamp=dead.id,
                       meta={"kill_reason": "subtask_limit"})
         assert patrol.remint_unannounced_kills(t) == 1
-        ev = _events("subtask.limit_exceeded").exclude(id=dead.id).get()
+        ev = _events(SubtaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
         assert ev.payload["re_announcement"] is True
         assert ev.payload["subtask_id"] == str(child.id)
         assert ev.payload["parent_task_id"] == str(parent.id)
@@ -398,8 +468,8 @@ class TestPin6TaskSweep:
         _task(t, c, status="killed", parent=parent,
               meta={"kill_reason": "parent_killed"})
         assert patrol.remint_unannounced_kills(t) == 0
-        assert not _events("subtask.limit_exceeded").exists()
-        assert not _events("task.limit_exceeded").exists()
+        assert not _events(SubtaskKilled.EVENT_TYPE).exists()
+        assert not _events(TaskKilled.EVENT_TYPE).exists()
 
 
 @pytest.mark.django_db

@@ -33,7 +33,7 @@ from django.utils import timezone
 
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import TaskLimitExceeded
+from apps.platform.events.schemas import TaskExpired
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task, TaskType
@@ -288,10 +288,10 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         announced = {
             row.payload["task_id"]: row.payload
             for row in OutboxEvent.objects.filter(
-                event_type=TaskLimitExceeded.EVENT_TYPE)}
-        self.assertEqual(announced[str(quiet.id)]["reason"],
+                event_type=TaskExpired.EVENT_TYPE)}
+        self.assertEqual(announced[str(quiet.id)]["reason_code"],
                          reasons.SILENCE_WINDOW)
-        self.assertEqual(announced[str(overrun.id)]["reason"],
+        self.assertEqual(announced[str(overrun.id)]["reason_code"],
                          reasons.STALE_MAX_AGE)
         for payload in announced.values():
             self.assertEqual(payload["trigger_source"],

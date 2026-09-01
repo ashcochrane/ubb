@@ -205,7 +205,9 @@ entries:
   # event's subject". An owner slice may move earlier but never later, so any
   # slice that touches one of these surfaces first may take it.
   #
-  # **Thirteen of the twenty are gone (#222), and seven remain.** The thirteen
+  # **Fifteen of the twenty are gone and five remain.** Thirteen went in #222
+  # and the two Task events went in the terminal-event split, which is the one
+  # payment in this family that is not a rename at all. The thirteen
   # were the ones whose correction depended on nothing: no payload, emitter or
   # state model changed, so the namespace was simply wrong and correcting it was
   # a string change plus the surfaces carrying the string. Seven of those had
@@ -218,37 +220,25 @@ entries:
   # say the v1 contract breaks deliberately ONCE and map #137 constraint 1 — no
   # live integrators — is the freedom that makes a clean break available.
   #
-  # The seven below each have a real dependency, so none of them is a rename:
-  # slice 5 SPLITS the two Task events into `killed` and `expired` (#140 §4.3),
-  # and slice 6 rewrites the five control emitters under #150's four families.
-  # Renaming either first would encode a target state nobody has agreed, or edit
+  # The five below each have a real dependency, so none of them is a rename:
+  # slice 6 rewrites the five control emitters under #150's four families, and
+  # renaming one first would encode a target state nobody has agreed, or edit
   # the same code twice.
 
-  # Slice 5 (Work) — the Task's terminal states are its subject.
-  - id: g8-task-limit-exceeded-names-a-bound-not-a-state
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::TaskLimitExceeded
-    expected: task.killed and task.expired
-    found: task.limit_exceeded
-    owner_slice: slice_5
-    reason: >-
-      Named for a bound rather than for the state entered, and `limit_exceeded`
-      is no `task_status` value — so the event announces a state a Task cannot
-      be in. It becomes TWO events: a subscriber alerting on spend incidents
-      must stop being paged when a worker dies, and "how often did work stop on
-      a ceiling?" must be answerable without parsing a reason string
-      (#140 §4.3). Slice 5 lands the six lifecycle states.
-
-  - id: g8-subtask-limit-exceeded-names-a-bound-not-a-state
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::SubtaskLimitExceeded
-    expected: subtask.killed and subtask.expired
-    found: subtask.limit_exceeded
-    owner_slice: slice_5
-    reason: >-
-      The same defect on contained work. One model and one status set means one
-      rule, so the Subtask's terminal events split exactly as the Task's do
-      (#154 §3.1). Slice 5 lands both.
+  # THE TWO SLICE-5 ENTRIES WERE HERE AND ARE PAID (the terminal-event split).
+  # They named the two Task events for a BOUND rather than for the state
+  # entered — and `limit_exceeded` is no `task_status` value, so each announced
+  # a state a unit of work cannot be in. Each became TWO events, `killed` and
+  # `expired`, at both altitudes: a subscriber alerting on spend incidents had
+  # to stop being paged when a worker died, and "how often did work stop on a
+  # ceiling?" had to become answerable without parsing a cause out of the
+  # payload (#140 §4.3, ratified in full by #154 §5.3). One model and one status
+  # set means one rule, so contained work split exactly as the whole unit did
+  # (#154 §3.1). This is the only payment in this family that a 1:1 rename
+  # cannot express, which is why `0007` excluded the pair and said so, and why
+  # `0008` is one `RunPython` over two tables under two different rules. Their
+  # G7 twins on all four surfaces died in the same commit: a G8 entry and its
+  # G7 entries are one debt read from two sides.
 
   # Slice 6 (Spend control) — the four families. The wallet's own three levels
   # were here too until #222 renamed them; what is left is the control events
@@ -664,15 +654,13 @@ entries:
       state changed (ADR-0006 §5). `customer.stopped` replaces it when
       slice 6 rebuilds spend control. Same owner as G8's entry.
 
-  - id: g7-backend-subtask.limit_exceeded
-    gate: G7
-    site: backend::subtask.limit_exceeded
-    expected: webhook_event_type
-    found: 10 files
-    owner_slice: slice_5
-    reason: >-
-      The subtask half of the same split (#140 §4.3), owned by the slice
-      that rebuilds the lifecycle. Same owner as G8's entry.
+  # `g7-backend-subtask.limit_exceeded` WAS HERE AND IS PAID (the
+  # terminal-event split), with its G8 entry and its console and openapi twins.
+  # It stood at 10 files. The word is now refused in every swept file rather
+  # than counted in ten: paying a G7 debt deletes the EXCUSE, not the
+  # retirement, and the `retired_aliases` entry that keeps it refused stays.
+  # The excluded sets still hold it and always will — the migration that names
+  # what it splits, and this bookkeeping.
 
   - id: g7-backend-subtask_limit
     gate: G7
@@ -695,17 +683,13 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-backend-task.limit_exceeded
-    gate: G7
-    site: backend::task.limit_exceeded
-    expected: webhook_event_type
-    found: 15 files
-    owner_slice: slice_5
-    reason: >-
-      Replaced by TWO events rather than renamed to one: #140 §4.3
-      splits a spend kill from a Task nobody ever closed. Slice 5
-      rebuilds the Task lifecycle that distinguishes them. Same owner as
-      G8's entry for the same event.
+  # `g7-backend-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
+  # split). It stood at 15 files, the largest of the four surfaces, and the
+  # word is now refused in every swept file rather than counted. Replaced by
+  # TWO events rather than renamed to one, which is the whole reason it could
+  # not be paid alongside the thirteen (#140 §4.3). See the note in the G8
+  # section above for the argument; the two gates are one debt read from two
+  # sides and died together.
 
   - id: g7-backend-task_limit
     gate: G7
@@ -968,15 +952,11 @@ entries:
       state changed (ADR-0006 §5). `customer.stopped` replaces it when
       slice 6 rebuilds spend control. Same owner as G8's entry.
 
-  - id: g7-console-subtask.limit_exceeded
-    gate: G7
-    site: console::subtask.limit_exceeded
-    expected: webhook_event_type
-    found: 2 files
-    owner_slice: slice_5
-    reason: >-
-      The subtask half of the same split (#140 §4.3), owned by the slice
-      that rebuilds the lifecycle. Same owner as G8's entry.
+  # `g7-console-subtask.limit_exceeded` WAS HERE AND IS PAID (the
+  # terminal-event split), at 2 files: the hand-held event list in `labels.ts`
+  # and the generated contract snapshot beside it. Both took all four
+  # successors, which the registry and the locale catalogue already had wording
+  # for — the console's own value list is what was behind.
 
   - id: g7-console-subtask_limit
     gate: G7
@@ -999,17 +979,9 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-console-task.limit_exceeded
-    gate: G7
-    site: console::task.limit_exceeded
-    expected: webhook_event_type
-    found: 2 files
-    owner_slice: slice_5
-    reason: >-
-      Replaced by TWO events rather than renamed to one: #140 §4.3
-      splits a spend kill from a Task nobody ever closed. Slice 5
-      rebuilds the Task lifecycle that distinguishes them. Same owner as
-      G8's entry for the same event.
+  # `g7-console-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
+  # split), at the same 2 files as its contained-work twin above and in the
+  # same edit.
 
   - id: g7-console-task_limit
     gate: G7
@@ -1152,24 +1124,14 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-docs-task.limit_exceeded
-    gate: G7
-    site: docs::task.limit_exceeded
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_5
-    reason: >-
-      Replaced by TWO events rather than renamed to one: #140 §4.3
-      splits a spend kill from a Task nobody ever closed. Slice 5
-      rebuilds the Task lifecycle that distinguishes them. Same owner as
-      G8's entry for the same event.
-      TWO UNTIL #284, and the second was a dated prototype. That ticket
-      widened the frozen-documents exclusion over `docs/prototypes/`, so
-      the file left the swept set rather than being rewritten. The one
-      left is a living spend-control guide. G8's entry for the same event
-      is UNAFFECTED: it is sited on `events/schemas.py::TaskLimitExceeded`
-      and records the event name rather than a file count, so an exclusion
-      over documentation cannot move it.
+  # `g7-docs-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
+  # split). It stood at 1 file — the living spend-control guide, which tells an
+  # integrator which webhook to handle to cancel a unit of work, and now names
+  # both states it can be stopped in. It had been TWO until #284, whose widened
+  # frozen-documents exclusion took a dated prototype out of the swept set
+  # rather than rewriting it. There was never a `docs::` entry for the
+  # contained-work half: that name appears only in frozen dated documents, so
+  # one would have been false.
 
   - id: g7-docs-task_limit
     gate: G7
@@ -1319,15 +1281,10 @@ entries:
       state changed (ADR-0006 §5). `customer.stopped` replaces it when
       slice 6 rebuilds spend control. Same owner as G8's entry.
 
-  - id: g7-openapi-subtask.limit_exceeded
-    gate: G7
-    site: openapi::subtask.limit_exceeded
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_5
-    reason: >-
-      The subtask half of the same split (#140 §4.3), owned by the slice
-      that rebuilds the lifecycle. Same owner as G8's entry.
+  # `g7-openapi-subtask.limit_exceeded` WAS HERE AND IS PAID (the
+  # terminal-event split), at 1 file. The published `webhooks` section derives
+  # wholly from the payload classes, so it took the four successors by
+  # regeneration rather than by an edit.
 
   - id: g7-openapi-subtask_limit
     gate: G7
@@ -1350,17 +1307,9 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-openapi-task.limit_exceeded
-    gate: G7
-    site: openapi::task.limit_exceeded
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_5
-    reason: >-
-      Replaced by TWO events rather than renamed to one: #140 §4.3
-      splits a spend kill from a Task nobody ever closed. Slice 5
-      rebuilds the Task lifecycle that distinguishes them. Same owner as
-      G8's entry for the same event.
+  # `g7-openapi-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
+  # split), at the same 1 file and by the same regeneration as its
+  # contained-work twin above.
 
   - id: g7-openapi-task_limit
     gate: G7
@@ -2478,9 +2427,12 @@ entries:
       The contract may not advertise these values while the backend consumer
       holds 0 of 37 of them: the spec would publish the agreed vocabulary on a
       field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control, and the seven events G8 still owes
-      are the ones #150's four families rewrite. The metadata appears in that
-      slice.
+      that. Slice 6 rebuilds spend control, and the five events G8 still owes
+      are the ones #150's four families rewrite — it was seven until the
+      terminal-event split paid the two Task debts, which moved the backend
+      consumer's list without moving this count, because the count is of values
+      HELD BY REFERENCE and `labels.ts` still holds all thirty-seven as its
+      own. The metadata appears in that slice.
 
   # --- G6: the console's hand-written value maps (#210) ---------------------
   #

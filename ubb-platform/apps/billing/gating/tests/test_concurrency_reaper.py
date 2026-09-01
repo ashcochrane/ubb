@@ -3,13 +3,15 @@
 The concurrency cap is enforcing-only and counts ACTIVE tasks for the billing
 owner (pooled business shares one cap). The reaper EXPIRES stale active work of
 enforcing tenants (past its silence window or past its absolute deadline) and
-emits task.limit_exceeded; close_abandoned_tasks stays the baseline >1h sweeper
+announces `task.expired`; close_abandoned_tasks stays the baseline >1h sweeper
 but skips alive (recent heartbeat) tasks.
 
 ⚠ BOTH SWEEPERS WRITE `expired` (#408) — nobody ever told UBB how the work
 ended, which is the one thing a silence CAN say. `killed` is reserved for a
 spend signal, so the assertions below name the state each sweeper is entitled
-to write and never the other.
+to write and never the other. Since the terminal-event split the ANNOUNCEMENT
+says the same thing (#140 §4.3): this reaper can only ever emit the expiry, and
+the cases below name the class rather than a string so that stays checked.
 
 ⚠ EVERY WINDOW HERE IS NOW A RESOLVED ONE (#412). The tenants below declare no
 kind of work, so each falls to the rung it always ran on — the tenant's own
@@ -28,6 +30,7 @@ from django.utils import timezone
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import TaskExpired
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
@@ -103,7 +106,8 @@ class TestReaper:
 
     def _emitted(self, task_id):
         return OutboxEvent.objects.filter(
-            event_type="task.limit_exceeded", payload__task_id=str(task_id)).exists()
+            event_type=TaskExpired.EVENT_TYPE,
+            payload__task_id=str(task_id)).exists()
 
     def test_expires_stale_heartbeat_task_and_emits(self):
         t = _tenant()
@@ -116,8 +120,9 @@ class TestReaper:
         assert task.metadata.get("kill_reason") == reasons.SILENCE_WINDOW
         assert self._emitted(task.id)
         payload = OutboxEvent.objects.get(
-            event_type="task.limit_exceeded", payload__task_id=str(task.id)).payload
-        assert payload["reason"] == reasons.SILENCE_WINDOW
+            event_type=TaskExpired.EVENT_TYPE,
+            payload__task_id=str(task.id)).payload
+        assert payload["reason_code"] == reasons.SILENCE_WINDOW
         assert payload["total_billed_cost_micros"] == 0
         assert payload["total_provider_cost_micros"] == 0
         assert "scope" not in payload

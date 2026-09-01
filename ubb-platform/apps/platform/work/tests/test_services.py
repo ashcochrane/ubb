@@ -7,6 +7,7 @@ from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
 from apps.platform.work.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
 from apps.platform.work.services import CloseDeclaration, TaskService
@@ -291,7 +292,7 @@ class KillAndAnnounceTest(TestCase):
         )
 
     def _events(self):
-        return OutboxEvent.objects.filter(event_type="task.limit_exceeded")
+        return OutboxEvent.objects.filter(event_type=TaskKilled.EVENT_TYPE)
 
     def test_emits_limit_event_exactly_once(self):
         task = TaskService.create_task(
@@ -313,7 +314,7 @@ class KillAndAnnounceTest(TestCase):
         self.assertEqual(self._events().count(), 1)
         payload = self._events().get().payload
         self.assertEqual(payload["task_id"], str(task.id))
-        self.assertEqual(payload["reason"], TASK_LIMIT)
+        self.assertEqual(payload["reason_code"], TASK_LIMIT)
         self.assertEqual(payload["tenant_id"], str(self.tenant.id))
         self.assertEqual(payload["customer_id"], str(self.customer.id))
         self.assertEqual(payload["billing_owner_id"], str(self.customer.id))
@@ -373,7 +374,7 @@ class KillAndAnnounceTest(TestCase):
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         sub.refresh_from_db()
         parent.refresh_from_db()
-        event = OutboxEvent.objects.get(event_type="subtask.limit_exceeded")
+        event = OutboxEvent.objects.get(event_type=SubtaskKilled.EVENT_TYPE)
         self.assertEqual(sub.announce_outbox_id, event.id)
         # The parent keeps running, unstamped — nothing was announced for it.
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
@@ -381,17 +382,17 @@ class KillAndAnnounceTest(TestCase):
 
     def test_failed_event_insert_rolls_the_kill_flip_back(self):
         """#43 §A — the kill-flip sibling of delivery pin 2: the flip and its
-        event are one transaction, so a failed task.limit_exceeded INSERT
-        (real SQL error — only a genuine DB error aborts the transaction)
-        takes the active->killed flip down with it. kill_and_announce
-        swallows the failure (never a 5xx for recorded money) and the next
-        event's verdict retries the kill."""
+        event are one transaction, so a failed `task.killed` INSERT (real SQL
+        error — only a genuine DB error aborts the transaction) takes the
+        active->killed flip down with it. kill_and_announce swallows the
+        failure (never a 5xx for recorded money) and the next event's verdict
+        retries the kill."""
         from django.db import connection
 
         orig_create = OutboxEvent.objects.create
 
         def _create(**kwargs):
-            if kwargs.get("event_type") == "task.limit_exceeded":
+            if kwargs.get("event_type") == TaskKilled.EVENT_TYPE:
                 with connection.cursor() as cur:
                     cur.execute("SELECT 1/0")
             return orig_create(**kwargs)

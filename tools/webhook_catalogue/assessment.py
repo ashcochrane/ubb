@@ -25,11 +25,18 @@ LEDGER_PATH = "gates/migration-ledger.yaml"
 #: The gate these debts are recorded against.
 GATE = "G8"
 
-#: How a ledger entry names more than one end-state event. `task.limit_exceeded`
-#: is replaced by TWO events rather than renamed to one — #140 §4.3 splits a
-#: spend kill from a Task nobody ever closed, because a subscriber alerting on
-#: spend incidents must stop being paged when a worker dies. A debt whose
-#: payment is a split has to be able to say so.
+#: How a ledger entry names more than one end-state event. The two Task debts
+#: were what forced it: `task.limit_exceeded` was replaced by TWO events rather
+#: than renamed to one — #140 §4.3 splits a spend kill from a unit of work
+#: nobody ever closed, because a subscriber alerting on spend incidents must
+#: stop being paged when a worker dies. A debt whose payment is a split has to
+#: be able to say so.
+#:
+#: ⚠ THOSE TWO ENTRIES ARE PAID AND NO SHIPPED ENTRY USES THIS ANY MORE. It is
+#: kept because the affordance is about what a ledger may RECORD, not about who
+#: is currently recording it, and the next debt whose payment is a split will
+#: need it; `test_webhook_catalogue.py` keeps a live control over it so an
+#: unused capability cannot quietly stop working.
 EXPECTED_SEPARATOR = " and "
 
 

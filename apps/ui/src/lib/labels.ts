@@ -393,7 +393,7 @@ export const subscriptionStatusLabel = legacyLabelMap({
 export const planIntervalLabel = legacyLabelMap({ month: "Monthly", year: "Yearly" });
 
 // ---------------------------------------------------------------------------
-// Webhooks — the event-type catalog (35 types; "*" = all events)
+// Webhooks — the event-type catalog (37 types; "*" = all events)
 
 export const WEBHOOK_EVENT_TYPES = [
   "auto_top_up.requires_action",
@@ -417,8 +417,10 @@ export const WEBHOOK_EVENT_TYPES = [
   "soft_floor.crossed",
   "stop.cleared",
   "stop.fired",
-  "subtask.limit_exceeded",
-  "task.limit_exceeded",
+  "subtask.expired",
+  "subtask.killed",
+  "task.expired",
+  "task.killed",
   "tenant.api_key_created",
   "tenant.api_key_revoked",
   "tenant.api_key_rotated",

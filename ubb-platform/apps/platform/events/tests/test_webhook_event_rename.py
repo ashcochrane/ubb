@@ -32,22 +32,29 @@ from apps.platform.tenants.models import Tenant
 MIGRATION = importlib.import_module(
     "apps.platform.events.migrations.0007_rename_thirteen_webhook_event_types")
 
-#: The seven G8 debts #222 deliberately leaves in the migration ledger. Each is
-#: blocked on work that is not a rename: slice 5 SPLITS the two Task events into
-#: `killed` and `expired` (#140 §4.3), and slice 6 rewrites the five control
-#: emitters under #150's four families. A migration that renamed them now would
-#: be guessing at a target state that does not exist yet.
+#: The G8 debts #222 deliberately leaves in the migration ledger. Each is
+#: blocked on work that is not a rename: slice 6 rewrites the five control
+#: emitters under #150's four families, and a migration that renamed them now
+#: would be guessing at a target state that does not exist yet.
+#:
+#: ⚠ THIS TUPLE WAS SEVEN AND IS NOW FIVE, and the two that left are what this
+#: list was built to notice. It said outright that *the day slice 5 pays one of
+#: these, the name leaves the catalogue and this test goes red naming it* — and
+#: the terminal-event split paid both Task debts at once, turning the two
+#: overloaded events into `killed` and `expired` at each altitude (#140 §4.3).
+#: The tripwire fired, was read, and shrank in the same commit that removed the
+#: names from the catalogue. That is a good tripwire doing its job; the five
+#: below keep doing it for slice 6.
 #:
 #: A second encoding of the ledger's remaining entries, and it does not need an
-#: agreement test to keep it honest: the day slice 5 pays one of these, the name
-#: leaves the catalogue and `test_the_deferred_seven_are_not_renamed` goes red
-#: naming it. The check that DOES need a separate home is the one this list
-#: cannot make — that `RENAMES` names only retired terms — because the registry
-#: is YAML and this suite has no PyYAML. It lives in
-#: tests/contracts/test_webhook_rename_migration.py.
+#: agreement test to keep it honest, for exactly the reason just demonstrated.
+#: The check that DOES need a separate home is the one this list cannot make —
+#: that `RENAMES` names only retired terms — because the registry is YAML and
+#: this suite has no PyYAML. It lives in
+#: tests/contracts/test_webhook_rename_migration.py, beside the sibling that
+#: holds the split's own one-to-two map.
 DEFERRED = (
-    "task.limit_exceeded", "subtask.limit_exceeded", "stop.fired",
-    "stop.cleared", "soft_floor.crossed", "soft_floor.cleared",
+    "stop.fired", "stop.cleared", "soft_floor.crossed", "soft_floor.cleared",
     "budget.threshold_reached",
 )
 
@@ -88,10 +95,13 @@ def test_every_new_name_is_a_published_event():
     assert not missing, f"{missing} are not events UBB publishes"
 
 
-def test_the_deferred_seven_are_not_renamed():
-    """#222 renames only what depends on nothing. The Task pair becomes TWO
-    events in slice 5 and the five control events are rewritten in slice 6, so
-    a 1:1 rename here would encode a target state nobody has agreed."""
+def test_the_deferred_five_are_not_renamed():
+    """#222 renames only what depends on nothing. The five control events are
+    rewritten under #150's four families in slice 6, so a 1:1 rename here would
+    encode a target state nobody has agreed.
+
+    The Task pair was a sixth and seventh entry until the terminal-event split
+    paid them; `0008` carries them, and this list shrank in that commit."""
     for name in DEFERRED:
         assert name not in MIGRATION.RENAMES, name
         assert name in WEBHOOK_EVENT_TYPES, (
@@ -150,14 +160,14 @@ class TestSubscriptionsSurviveTheRename:
             tenant=self.tenant, url="https://example.com/mixed",
             secret="s", event_types=[
                 "usage.recorded", "margin.provider_cost_spike",
-                "task.limit_exceeded", "billing.credit_grant_expired"])
+                "stop.fired", "billing.credit_grant_expired"])
 
         MIGRATION.rename_subscriptions(global_apps, None)
 
         config.refresh_from_db()
         assert config.event_types == [
             "usage.recorded", "provider.cost_spike",
-            "task.limit_exceeded", "credit_grant.expired"]
+            "stop.fired", "credit_grant.expired"]
 
     def test_the_wildcard_and_the_empty_subscription_are_untouched(self):
         """`["*"]` is all events and `[]` is none (0003's explicit opt-in). Both

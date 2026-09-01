@@ -493,9 +493,9 @@ class Task(BaseModel):
     # accumulate_cost. Null until the first metered event.
     last_event_at = models.DateTimeField(null=True, blank=True)
     # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
-    # this unit's stop announcement (task.limit_exceeded /
-    # subtask.limit_exceeded), stamped inside the same transaction as the
-    # winning flip + emission. Stays null on silent cascaded stops (the
+    # this unit's stop announcement — one of the four terminal events, chosen
+    # by the state this row now carries — stamped inside the same transaction
+    # as the winning flip + emission. Stays null on silent cascaded stops (the
     # parent's event is the one signal) and on the states a tenant declares
     # (nothing to announce — the tenant already knows). Plain UUID, not an FK —
     # outbox cleanup deletes terminally-successful rows and the stamp must
@@ -503,10 +503,12 @@ class Task(BaseModel):
     #
     # ⚠ IT IS STAMPED ON `killed` AND ON `expired` ALIKE (#408). UBB announced
     # both before the six states existed and announces both after; what changed
-    # is which state the announcement accompanies, not whether one is sent. The
-    # event NAME still says `limit_exceeded` for an expiry, which is the debt
-    # the terminal-event split pays — a ledgered debt this ticket neither
-    # widens nor pretends to have paid.
+    # is which state the announcement accompanies, not whether one is sent.
+    # The two announcements say so out loud since the terminal-event split
+    # (#140 §4.3) — `task.killed` and `task.expired`, and their contained-work
+    # pair — so this column addresses an event that names the state this row
+    # is in, and the patrol's re-mint reads the state back off the row rather
+    # than remembering which event it stamped.
     announce_outbox_id = models.UUIDField(null=True, blank=True)
 
     # WHY THE CALLER SAID IT DID NOT DELIVER, and the sentence beside it (#409).

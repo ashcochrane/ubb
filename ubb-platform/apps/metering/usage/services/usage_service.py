@@ -408,8 +408,10 @@ class RecordingConflict(IntegrityError):
 
 def _execute_kills(kills, *, tenant_id, customer_id):
     """One-rule (#37): run the recording core's kill plan post-commit — the
-    idempotent active->killed flip + task.limit_exceeded /
-    subtask.limit_exceeded on the winning transition (kill_and_announce). The
+    idempotent active->killed flip + `task.killed` / `subtask.killed` on the
+    winning transition (kill_and_announce). This lane always announces the
+    spend stop rather than the expiry: it holds a crossing, and the event is
+    named for the state entered (#140 §4.3). The
     event is ALREADY recorded and billed — the kill is a signal, never a
     wall, so it runs in its own transaction after the recording committed. A
     subtask's own crossing kills it ALONE; a parent crossing kills the parent

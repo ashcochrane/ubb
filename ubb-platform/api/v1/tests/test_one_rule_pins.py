@@ -47,6 +47,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -103,7 +104,7 @@ class OneRulePinTestBase(TestCase):
             content_type="application/json", **self._auth())
 
     def _limit_events(self):
-        return OutboxEvent.objects.filter(event_type="task.limit_exceeded")
+        return OutboxEvent.objects.filter(event_type=TaskKilled.EVENT_TYPE)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -142,7 +143,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertEqual(body["task_total_billed_cost_micros"], 15_000_000)
         self.assertEqual(self._limit_events().count(), 1)
         payload = self._limit_events().get().payload
-        self.assertEqual(payload["reason"], "task_limit")
+        self.assertEqual(payload["reason_code"], "task_limit")
         # WHICH MECHANISM APPLIED IT, beside why (#412). This crossing was
         # tipped by the usage report the test just made, and the field is what
         # tells a subscriber that apart from the patrol finding the same
@@ -186,7 +187,8 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
         self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.total_provider_cost_micros, 12_000_000)
         self.assertEqual(self._limit_events().count(), 1)
-        self.assertEqual(self._limit_events().get().payload["reason"], "task_limit")
+        self.assertEqual(self._limit_events().get().payload["reason_code"],
+                         "task_limit")
 
         # The stop verdict rides the same 200 — no later call is needed to
         # learn that the ceiling bit.
@@ -427,7 +429,7 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
     def test_no_run_era_event_type_in_catalog(self):
         from apps.platform.events import catalog, schemas
         self.assertNotIn("run.limit_exceeded", catalog.WEBHOOK_EVENT_TYPES)
-        self.assertIn("task.limit_exceeded", catalog.WEBHOOK_EVENT_TYPES)
+        self.assertIn(TaskKilled.EVENT_TYPE, catalog.WEBHOOK_EVENT_TYPES)
         self.assertFalse(hasattr(schemas, "RunLimitExceeded"))
 
     def test_retired_config_fields_are_gone(self):

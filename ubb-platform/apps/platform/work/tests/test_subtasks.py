@@ -18,15 +18,12 @@ cascaded row, because a cascade announces nothing of its own.
 """
 import uuid
 
-from django.test import TestCase
-
-from apps.platform.customers.models import Customer
-from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
     STOP_CAUSE_KEY, STOP_MECHANISM_KEY, CloseDeclaration, TaskService)
-from apps.platform.tenants.models import Tenant
+from apps.platform.work.tests._helpers import WorkTestBase
 from core.vocabulary import (
     OUTCOME_REASON_EXECUTION_FAILED, OUTCOME_REASON_PARENT_CLOSED,
     TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED,
@@ -35,30 +32,12 @@ from core.vocabulary import (
     TRIGGER_SOURCE_PARENT_CASCADE)
 
 
-class SubtaskTestBase(TestCase):
-    def setUp(self):
-        self.tenant = Tenant.objects.create(
-            name="Subtasks", products=["metering", "billing"])
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="cust-1")
-
-    def _task(self, limit=None, balance=100_000_000, parent=None):
-        return TaskService.create_task(
-            self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
-            billing_owner_id=self.customer.id, parent=parent)
-
-    def _a_parent_and_its_contained_work(self, **kwargs):
-        """The pair almost every containment case needs: a top-level unit and
-        one piece of work running inside it."""
-        parent = self._task(**kwargs)
-        return parent, self._task(parent=parent)
-
-    def _events(self, event_type):
-        return OutboxEvent.objects.filter(event_type=event_type)
+# The tenant/customer/unit-of-work fixture these nine classes share moved to
+# `_helpers.WorkTestBase` when a second module needed it
+# (`docs/conventions/testing.md`).
 
 
-class CreateSubtaskTest(SubtaskTestBase):
+class CreateSubtaskTest(WorkTestBase):
     def test_create_task_with_parent(self):
         parent = self._task()
         sub = self._task(limit=5_000_000, parent=parent)
@@ -76,7 +55,7 @@ class CreateSubtaskTest(SubtaskTestBase):
             self._task(parent=sub)
 
 
-class RollupTest(SubtaskTestBase):
+class RollupTest(WorkTestBase):
     def test_subtask_spend_rolls_up_into_parent_totals(self):
         parent = self._task()
         sub = self._task(parent=parent)
@@ -146,7 +125,7 @@ class RollupTest(SubtaskTestBase):
         self.assertEqual(parent.total_provider_cost_micros, 2_000_000)
 
 
-class SubtaskVerdictTest(SubtaskTestBase):
+class SubtaskVerdictTest(WorkTestBase):
     def test_subtask_own_limit_fires_crossed_subtask_limit(self):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
@@ -194,7 +173,7 @@ class SubtaskVerdictTest(SubtaskTestBase):
         self.assertTrue(verdicts["crossed_task_limit"])
 
 
-class KillCascadeTest(SubtaskTestBase):
+class KillCascadeTest(WorkTestBase):
     def test_kill_subtask_kills_it_alone(self):
         parent = self._task()
         sub = self._task(parent=parent)
@@ -265,7 +244,7 @@ class KillCascadeTest(SubtaskTestBase):
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
 
 
-class CascadeRecordTest(SubtaskTestBase):
+class CascadeRecordTest(WorkTestBase):
     """WHAT A CASCADE WRITES DOWN, AND WHY IT IS THREE RECORDS RATHER THAN ONE
     (#413, spec §8).
 
@@ -390,7 +369,7 @@ class CascadeRecordTest(SubtaskTestBase):
                                     OUTCOME_REASON_PARENT_CLOSED})
 
 
-class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
+class ContainmentCutsDownwardOnlyTest(WorkTestBase):
     """A parent's end reaches the work inside it; nothing inside it reaches the
     parent (#413, spec §8).
 
@@ -482,8 +461,8 @@ class ContainmentCutsDownwardOnlyTest(SubtaskTestBase):
         self.assertEqual(contained.status, TASK_STATUS_KILLED)
 
 
-class AnnounceTest(SubtaskTestBase):
-    def test_subtask_kill_announces_subtask_limit_exceeded(self):
+class AnnounceTest(WorkTestBase):
+    def test_a_contained_kill_announces_its_own_totals_and_its_own_limit(self):
         parent = self._task()
         sub = self._task(limit=5_000_000, parent=parent,
                          balance=100_000_000)
@@ -494,12 +473,12 @@ class AnnounceTest(SubtaskTestBase):
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
 
-        self.assertEqual(self._events("task.limit_exceeded").count(), 0)
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 1)
-        payload = self._events("subtask.limit_exceeded").get().payload
+        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 0)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
+        payload = self._events(SubtaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["subtask_id"], str(sub.id))
         self.assertEqual(payload["parent_task_id"], str(parent.id))
-        self.assertEqual(payload["reason"], reasons.SUBTASK_LIMIT)
+        self.assertEqual(payload["reason_code"], reasons.SUBTASK_LIMIT)
         self.assertEqual(payload["total_billed_cost_micros"], 8_000_000)
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
@@ -516,11 +495,11 @@ class AnnounceTest(SubtaskTestBase):
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
 
-        # ONE task.limit_exceeded for the parent; the cascade flips the
-        # subtask silently (it crossed nothing of its own).
-        self.assertEqual(self._events("task.limit_exceeded").count(), 1)
-        self.assertEqual(self._events("subtask.limit_exceeded").count(), 0)
-        payload = self._events("task.limit_exceeded").get().payload
+        # ONE task.killed for the parent; the cascade flips the contained work
+        # silently (it crossed nothing of its own).
+        self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
+        self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 0)
+        payload = self._events(TaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["task_id"], str(parent.id))
         # The parent's totals are the rolled-up totals.
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
@@ -529,7 +508,7 @@ class AnnounceTest(SubtaskTestBase):
         self.assertEqual(sub.metadata["kill_reason"], reasons.PARENT_KILLED)
 
 
-class KillPlanTest(SubtaskTestBase):
+class KillPlanTest(WorkTestBase):
     """reasons.kill_plan — the single verdicts->kills map every ingest path
     shares (sync record, batch items, async settle)."""
 
@@ -567,7 +546,7 @@ class KillPlanTest(SubtaskTestBase):
         self.assertEqual(plan, [])
 
 
-class StopFieldsTest(SubtaskTestBase):
+class StopFieldsTest(WorkTestBase):
     """reasons.stop_fields — the scalar (stop_reason, stop_scope) pair on the
     ack; the WIDEST tripped scope wins the scalar slot (a parent trip must
     stop the whole tree)."""

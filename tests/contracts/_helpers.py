@@ -39,16 +39,23 @@ PAYLOAD_SCHEMAS = "ubb-platform/apps/platform/events/schemas.py"
 
 
 def events_whose_payload_declares(field):
-    """The webhook names whose payload class declares ``field``.
+    """The webhook names whose payload class carries ``field``.
 
-    ``{event type, ...}``, read out of the payload module's own source. Two
-    reasons this is derived rather than written down, and both matter:
+    ``{event type, ...}``, read out of the payload module's own source,
+    INHERITED FIELDS INCLUDED — a payload that takes a field from a shared base
+    carries it on the wire exactly as one declaring it inline does, and a
+    reader that could not see that would answer this question wrongly the day a
+    base appeared. The four terminal stop events are the first such base and
+    the reason this walk resolves them.
 
-    **The names cannot be spelled here.** The two terminal stop events are
-    retired words the split renames, and this suite's ledger seat for them on
-    this surface is ZERO — so a module naming one fails the sweep for a word it
-    does not own. Deriving is the first of the three techniques the sweep's own
-    plan prefers, and it is the one that leaves nothing behind.
+    Two reasons this is derived rather than written down, and both matter:
+
+    **The names could not be spelled here.** The two events this field first
+    rode were retired words with a ZERO ledger seat on this surface, so a module
+    naming one failed the sweep for a word it did not own. Deriving was the
+    first of the three techniques the sweep's own plan prefers, and the one
+    that leaves nothing behind. Their successors are free words and the
+    constraint is gone — but the derivation stays, on the second reason.
 
     **It is the comparison worth making anyway.** A caller pins what the
     published CONTRACT says about a field against what the PRODUCER declares —
@@ -56,10 +63,9 @@ def events_whose_payload_declares(field):
     job (#203). A hard-coded pair would agree with both right up until one of
     them moved.
 
-    ⚠ IT GOES RED WHEN THE SPLIT LANDS, WHICH IS THE POINT. The two events
-    become four, so every caller's expected set changes and a person has to
-    say what the new answer is instead of a stale literal quietly still
-    passing.
+    ⚠ IT WENT RED WHEN THE SPLIT LANDED, WHICH WAS THE POINT. The two events
+    became four, every caller's expected set changed with them, and a person
+    read the diff instead of a stale literal quietly still passing.
 
     Read with :mod:`ast` and never imported — this suite has no Django, which
     is the same rule the rename migration's own contract test states.
@@ -67,24 +73,77 @@ def events_whose_payload_declares(field):
     import ast
 
     source = (REPO_ROOT / PAYLOAD_SCHEMAS).read_text(encoding="utf-8")
+    classes = {node.name: node for node in ast.parse(source).body
+               if isinstance(node, ast.ClassDef)}
+
+    def declares(name, seen=None):
+        """``field`` is annotated on this class or on a base it names here.
+
+        Bases outside this module are not resolved and cannot be: they are
+        never dataclasses carrying payload fields, and a walk that followed
+        them would be guessing at source it has not read.
+        """
+        seen = seen or set()
+        if name in seen or name not in classes:
+            return False
+        seen.add(name)
+        node = classes[name]
+        if any(isinstance(statement, ast.AnnAssign)
+               and isinstance(statement.target, ast.Name)
+               and statement.target.id == field
+               for statement in node.body):
+            return True
+        return any(isinstance(base, ast.Name) and declares(base.id, seen)
+                   for base in node.bases)
+
     found = set()
-    for node in ast.parse(source).body:
-        if not isinstance(node, ast.ClassDef):
-            continue
-        event_type, declares = None, False
+    for name, node in classes.items():
+        event_type = None
         for statement in node.body:
-            if (isinstance(statement, ast.AnnAssign)
-                    and isinstance(statement.target, ast.Name)
-                    and statement.target.id == field):
-                declares = True
             if (isinstance(statement, ast.Assign)
                     and any(isinstance(t, ast.Name) and t.id == "EVENT_TYPE"
                             for t in statement.targets)
                     and isinstance(statement.value, ast.Constant)):
                 event_type = statement.value.value
-        if declares and event_type:
+        if event_type and declares(name):
             found.add(event_type)
     return found
+
+
+#: The migration ledger, for the two modules that hold a migration's own map to
+#: the debts still recorded against the gate it pays.
+LEDGER_PATH = "gates/migration-ledger.yaml"
+
+
+def module_literal(path, name):
+    """The value bound to a module-level ``name`` in ``path``, as a literal.
+
+    ``ast.literal_eval`` rather than an import, for the reason #204 gives: a
+    migration is read and never imported, so nothing here needs Django
+    settings, a database or the app registry — and a migration's map is a dict
+    of strings, which is exactly what a literal reader is for.
+    """
+    import ast
+
+    source = (REPO_ROOT / path).read_text(encoding="utf-8")
+    for node in ast.parse(source).body:
+        for target in getattr(node, "targets", []):
+            if isinstance(target, ast.Name) and target.id == name:
+                return ast.literal_eval(node.value)
+    raise AssertionError(f"{path} declares no module-level `{name}`")
+
+
+def names_a_gate_still_owes(gate):
+    """The `found` values of every ledger entry recorded against ``gate``.
+
+    What a migration may NOT move: a debt is paid by rewriting the name AND
+    deleting its entry, in one act, so an entry surviving a rewrite would
+    excuse a violation that no longer exists.
+    """
+    document = yaml.safe_load(
+        (REPO_ROOT / LEDGER_PATH).read_text(encoding="utf-8"))
+    return {entry["found"] for entry in document["entries"]
+            if entry["gate"] == gate}
 
 
 def concept(**overrides):

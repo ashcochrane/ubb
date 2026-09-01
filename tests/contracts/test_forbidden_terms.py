@@ -303,7 +303,16 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # ticket's whole schema change is a column on one table. The
         # retired-term totals were unchanged in both directions, 26 terms in
         # 87 sites, while the ledger fell by two.
-        "historical-migrations": (UNTIL_SLICE_8, 246, 19),
+        # 246 -> 247 in the terminal-event split: ONE migration, carrying the
+        # stored subscriptions and outbox rows off the two overloaded Task
+        # events onto the four that name the state entered. It NAMES both
+        # retired terms and cannot avoid either -- the map's keys are what it
+        # migrates away from -- and it is now one of the two remaining places
+        # in the tree that may, the G7 entries for both having reached zero in
+        # the same commit. ⚠ THE RETIRED-TERM TOTALS MOVED HERE, unlike every
+        # entry above: 26 terms -> 24 and 87 sites -> 80, and the ledger fell
+        # by nine (two G8 and seven G7, one debt read from two sides).
+        "historical-migrations": (UNTIL_SLICE_8, 247, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

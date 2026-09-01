@@ -55,19 +55,21 @@ THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT = {
 }
 
 #: What has legally arrived since, and the concept it is (#412): the mechanism
-#: that applied a stop, on the two events that announce one.
+#: that applied a stop, on the events that announce one.
 #:
 #: ⚠ NOT FOLDED INTO THE SET ABOVE, because that set's name is a claim about
 #: WHEN — the population as it stood before the container's split — and
 #: widening it in place would quietly make the name false. Kept apart, the two
-#: sets say what this module actually knows: the split moved no payload, and
-#: something else later added one marker to two events.
+#: sets say what this module actually knows: the container's split moved no
+#: payload, and something else later added one marker to the stop events.
 #:
-#: The event names are DERIVED, never spelled: they are retired words this
-#: suite has no ledger seat for, and reading them off the payload classes that
-#: declare the field holds the document to the producer rather than to a
-#: literal. The pair goes red when the split renames these two events into
-#: four, which is a person's decision rather than a stale literal's.
+#: The event names are DERIVED, never spelled — originally because they were
+#: retired words this suite had no ledger seat for, and now because the
+#: derivation is simply the better assertion: it holds the published document
+#: to the PRODUCER rather than to a literal. It did what it was built to do.
+#: The terminal-event split took those two events to FOUR, the derived set
+#: changed with them, and a person read the diff rather than a stale pair
+#: quietly still passing.
 THE_MECHANISM_MARKER = "trigger_source"
 
 

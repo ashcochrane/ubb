@@ -955,8 +955,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # there was never a G4 debt to delete. The seeding floor below therefore
     # moves for `task_outcome` alone.
     "outcome_reason": Published(3, ENUM),
-    # WHICH MECHANISM APPLIED A STOP (#412) — two nodes, the two terminal stop
-    # events, which are one fact carried at two altitudes.
+    # WHICH MECHANISM APPLIED A STOP (#412) — FOUR nodes, the four terminal
+    # stop events, which are one fact carried at two altitudes and in each of
+    # the two states a unit of work can be stopped in. It was two until the
+    # split (#140 §4.3): the field did not move, the events it rides did, and
+    # the count moves with the nodes because that is what this map counts.
     #
     # ⚠ THE FIRST **OPEN** CONCEPT IN THIS MAP TO BE ADVERTISED, so it renders
     # `x-ubb-known-values` documentation metadata beside an untouched
@@ -970,7 +973,7 @@ CONCEPTS_IN_THE_CONTRACT = {
     # what open means — and here UBB drives three of the five: the ingest lane,
     # the enforcement patrol, and the sweeper. The other two arrive with the
     # mechanisms that produce them.
-    "trigger_source": Published(2, KNOWN_VALUES),
+    "trigger_source": Published(4, KNOWN_VALUES),
     # WHICH KIND OF POSTING A ROW IS (#417) — two nodes, the usage list row and
     # the detail, which are the two responses that serve a STORED posting back
     # to a reader who did not create it. That is the rule rather than the count:
@@ -1328,11 +1331,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     #
     # ⚠ AND NOT ON ANY SCHEMA DESCRIBING A UNIT OF WORK, which is a placement a
     # reader would look for and is a real absence rather than an oversight. The
-    # mechanism is a fact about a TRANSITION, not about a row, and the row does
-    # not record it — the metadata carries the stop's CAUSE and nothing has
-    # ever written the mechanism beside it. Marking `TaskOut` would advertise a
-    # field UBB cannot fill. The ticket that splits these two events into four
-    # is where the row starts recording it.
+    # mechanism is a fact about a TRANSITION, and the marker belongs where the
+    # VALUE travels — on an announcement of a stop, which is what these four
+    # are. The row does now RECORD it, as of the split: the lane that applies a
+    # stop writes itself beside the cause so the patrol's re-mint can repair a
+    # delivery without going silent. Whether a unit-of-work RESPONSE should
+    # publish it is a separate question, and one no ticket has taken: it would
+    # be a new field on a read surface rather than a marker on a value already
+    # crossing, which is the only thing this map decides.
     #
     # ⚠ THIS IS THE ONLY OPEN CONCEPT IN THIS FUNCTION, so it is the only line
     # where the marker renders documentation metadata rather than an `enum`.
