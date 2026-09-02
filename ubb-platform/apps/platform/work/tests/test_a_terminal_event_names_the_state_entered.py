@@ -20,6 +20,15 @@ The payload case beside them holds the OTHER half of §20's ruling: the two
 OPEN vocabulary fields ship and the CLOSED control pair does not, because three
 of that set's four families do not exist yet and publishing a closed set with
 one producible member is the one thing a closed set may not do.
+
+⚠ THIS MODULE IS THE FRESH-CROSSING HALF ONLY. The four cases here drive lanes
+that APPLY a stop and therefore know which of the four events it is, so they
+cannot tell an emitter reading the record from one taking the name off its
+caller. The patrol's re-mint is the half that can, having no caller to take a
+name from, and it is proved in
+`apps.billing.gating.tests.test_patrol_pins.TestTheRemintNamesTheStateTheRowCarries`
+(#420) — which is also where the re-announcement marker's TRUE half lives, the
+FALSE half being asserted here on all four.
 """
 import dataclasses
 
@@ -41,7 +50,8 @@ THE_FOUR = (TaskKilled, TaskExpired, SubtaskKilled, SubtaskExpired)
 
 class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
     def _assert_announced(self, unit, event, *, status):
-        """`unit` is in `status`, announced `event`, and announced NOTHING ELSE.
+        """`unit` is in `status`, announced `event`, announced NOTHING ELSE,
+        and said it was announcing it for the first time.
 
         The status is asserted beside the event because the two are one claim:
         the name IS the state entered, so a case that checked only the name
@@ -53,6 +63,16 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
         `subtask.expired` is exactly the distinction this ticket exists to
         make, and it is the pair a subscriber alerting on spend subscribes
         across.
+
+        ⚠ AND THE RE-ANNOUNCEMENT MARKER IS ASSERTED FALSE HERE, on all four,
+        because a crossing IS the news (#420). The marker's whole meaning is
+        *this is a repaired delivery of the state the row carries now*, so it
+        is the patrol's word and no other lane's — a subscriber that treated a
+        first delivery as a repair would dedup away the only announcement it
+        was ever going to get. It rides in this helper rather than in four
+        copies because it is one fact about all four, and the patrol's
+        re-mints assert the other half of the pair
+        (`apps.billing.gating.tests.test_patrol_pins`).
         """
         unit.refresh_from_db()
         self.assertEqual(unit.status, status)
@@ -61,6 +81,7 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
         fired = {other.EVENT_TYPE for other in THE_FOUR
                  if self._events(other.EVENT_TYPE).exists()}
         self.assertEqual(fired, {event.EVENT_TYPE})
+        self.assertIs(announcement.payload["re_announcement"], False)
         return announcement
 
     def test_a_whole_unit_stopped_on_a_spend_signal_announces_task_killed(self):
