@@ -49,9 +49,11 @@ describe("KindDetailPage", () => {
     renderWithProviders(<KindDetailPage kindKey={KIND_FIXED_KEY} />);
     const sold = await soldSection(KIND_FIXED_KEY);
     const against = ceilingAgainstPrice(sold);
-    expect(await against.findByText(/Runs were quoted \$5\.00\./)).toBeInTheDocument();
+    expect(await against.findByText(/3 runs were quoted \$5\.00\./)).toBeInTheDocument();
     expect(against.getByText("The $3.00 ceiling is 60% of that price.")).toBeInTheDocument();
     expect(against.getByText(/Raising the price without moving the ceiling tightens it/)).toBeInTheDocument();
+    // The evidence lags a repricing by one run, and the page says so.
+    expect(against.getByText(/shows here from the next run/)).toBeInTheDocument();
   });
 
   it("shows a range when different customers' books quoted the runs differently", async () => {
@@ -59,7 +61,7 @@ describe("KindDetailPage", () => {
     const sold = await soldSection(KIND_FIXED_NEGOTIATED_KEY);
     const against = ceilingAgainstPrice(sold);
     expect(
-      await against.findByText(/Runs were quoted between \$4\.00 and \$8\.00\./),
+      await against.findByText(/2 runs were quoted between \$4\.00 and \$8\.00\./),
     ).toBeInTheDocument();
     expect(
       against.getByText("The $3.00 ceiling is between 37% and 75% of the price."),

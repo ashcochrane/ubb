@@ -47,7 +47,6 @@ export async function listRuns(
         query: {
           cursor,
           task_type: filters.task_type,
-          status: filters.status,
         },
       },
     }),

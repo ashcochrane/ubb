@@ -99,7 +99,23 @@ describe("DeclareKindDialog", () => {
     expect(dialog.queryAllByRole("combobox")).toHaveLength(0);
     expect(dialog.queryAllByRole("checkbox")).toHaveLength(0);
     expect(dialog.queryAllByRole("switch")).toHaveLength(0);
-    expect(dialog.getByText(/an amount, never a share of the price/)).toBeInTheDocument();
+  });
+
+  it("refuses a key already declared at that altitude, so a blank form never replaces a standing kind", async () => {
+    renderWithProviders(<Harness />);
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Key$/ }), {
+      target: { value: KIND_FIXED_KEY },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "Declare" }));
+    expect(
+      await dialog.findByText(/already declared at this altitude/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    const after = await listKinds();
+    expect(after).toHaveLength(MOCK_KINDS.length);
+    expect(after.find((kind) => kind.key === KIND_FIXED_KEY)).toEqual(FIXED);
   });
 
   it("declares a new kind beside every standing one, leaving their ceilings and grouping fields untouched", async () => {

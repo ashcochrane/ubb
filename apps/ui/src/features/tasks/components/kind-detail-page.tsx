@@ -1,12 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ListChecks } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { DetailList } from "@/components/shared/detail-list";
 import { DisabledHint } from "@/components/shared/disabled-hint";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { PageHeader } from "@/components/shared/page-header";
+import { Section } from "@/components/shared/section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,15 +24,14 @@ import {
   type Ceiling,
   declarationsUnderKey,
   describeCeiling,
+  describeDuration,
   describeShare,
-  describeWindow,
   effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
   pricingModeLabel,
 } from "../lib/kinds";
 import { DeclareKindDialog } from "./declare-kind-dialog";
-import { Section } from "./section";
 
 /**
  * /tasks/kinds/{key} — one kind of work, as a routed object a colleague can
@@ -145,10 +145,16 @@ function KindOfWorkCard({
       >
         <HowItIsSold
           kind={kind}
-          ceiling={ceiling}
-          runs={runs}
-          runsSettled={runsSettled}
-          currency={currency}
+          againstPrice={
+            kind.pricing_mode === "fixed" ? (
+              <CeilingAgainstPrice
+                ceiling={ceiling}
+                runs={runs}
+                runsSettled={runsSettled}
+                currency={currency}
+              />
+            ) : undefined
+          }
         />
       </Section>
 
@@ -159,13 +165,13 @@ function KindOfWorkCard({
         <DetailList
           items={[
             { label: "Ceiling", value: describeCeiling(ceiling, currency) },
-            { label: "Silence window", value: describeWindow(kind.silence_window_seconds) },
+            {
+              label: "Silence window",
+              value: describeDuration(kind.silence_window_seconds) ?? "Workspace default",
+            },
             {
               label: "Absolute deadline",
-              value:
-                kind.absolute_deadline_seconds == null
-                  ? "None"
-                  : describeWindow(kind.absolute_deadline_seconds),
+              value: describeDuration(kind.absolute_deadline_seconds) ?? "None",
             },
             {
               label: "Required grouping fields",
@@ -197,34 +203,16 @@ function KindOfWorkCard({
  * There is one place prices are edited, and the amount a run is quoted is
  * resolved per customer from that customer's own book at start — so the
  * registry carries no figure for a kind of work and this page invents none.
- *
- * THE CEILING AGAINST THE PRICE (#150 §5.4, rehomed here by #150 §17): a
- * tenant who raises a price and leaves the ceiling alone has silently
- * tightened it in relative terms, and this row is where they see it. The
- * price it is held against is what this kind's runs were actually quoted —
- * one figure when every book agrees, a range when a customer's book differs —
- * and a kind nobody has run yet says so rather than guessing. The mechanism
- * behind the ceiling is slice 6's; only the rendering lands here.
  */
 function HowItIsSold({
   kind,
-  ceiling,
-  runs,
-  runsSettled,
-  currency,
+  againstPrice,
 }: {
   kind: KindOfWork;
-  ceiling: Ceiling | null;
-  runs: readonly RunRow[];
-  runsSettled: boolean;
-  currency: string;
+  /** The ceiling-against-price row, present only for a kind sold at one price. */
+  againstPrice?: ReactNode;
 }) {
   const fixed = kind.pricing_mode === "fixed";
-  const bookLink = (
-    <Link to="/pricing" className="text-accent-text underline-offset-2 hover:underline">
-      Open the pricing books
-    </Link>
-  );
   return (
     <DetailList
       items={[
@@ -248,30 +236,31 @@ function HowItIsSold({
                   ? "One agreed price per delivered run, set as a line in the pricing book."
                   : "Set per event by the rules in the pricing book."}
               </span>
-              {bookLink}
+              <Link to="/pricing" className="text-accent-text underline-offset-2 hover:underline">
+                Open the pricing books
+              </Link>
             </span>
           ),
         },
-        ...(fixed
-          ? [
-              {
-                label: "Ceiling against price",
-                value: (
-                  <CeilingAgainstPrice
-                    ceiling={ceiling}
-                    runs={runs}
-                    runsSettled={runsSettled}
-                    currency={currency}
-                  />
-                ),
-              },
-            ]
+        ...(againstPrice !== undefined
+          ? [{ label: "Ceiling against price", value: againstPrice }]
           : []),
       ]}
     />
   );
 }
 
+/**
+ * THE CEILING AGAINST THE PRICE (#150 §5.4, rehomed here by #150 §17): a
+ * tenant who raises a price and leaves the ceiling alone has silently
+ * tightened it in relative terms, and this row is where they see it.
+ *
+ * The price it is held against is what this kind's runs were actually quoted
+ * — one figure when every book agrees, a range when a customer's book differs
+ * — and a kind nobody has run yet says so rather than guessing. That lags a
+ * repricing by exactly one run, and the copy says so too. The mechanism
+ * behind the ceiling is slice 6's; only the rendering lands here.
+ */
 function CeilingAgainstPrice({
   ceiling,
   runs,
@@ -294,19 +283,43 @@ function CeilingAgainstPrice({
     );
   }
   const onePrice = priced.lowMicros === priced.highMicros;
+  const runsWere = priced.runCount === 1 ? "1 run was" : `${priced.runCount} runs were`;
   const quoted = onePrice
-    ? `Runs were quoted ${formatMicros(priced.lowMicros, currency)}.`
-    : `Runs were quoted between ${formatMicros(priced.lowMicros, currency)} and ${formatMicros(priced.highMicros, currency)}.`;
-  if (ceiling.micros === null) {
+    ? `${runsWere} quoted ${formatMicros(priced.lowMicros, currency)}.`
+    : `${runsWere} quoted between ${formatMicros(priced.lowMicros, currency)} and ${formatMicros(priced.highMicros, currency)}.`;
+  const lag = (
+    <span className="text-text-secondary">
+      A price changed in the book shows here from the next run.
+    </span>
+  );
+  if (ceiling.source === "uncapped") {
     return (
       <span>
-        {quoted} <span className="text-text-secondary">There is no ceiling to hold against it.</span>
+        {quoted}{" "}
+        <span className="text-text-secondary">There is no ceiling to hold against it.</span>{" "}
+        {lag}
+      </span>
+    );
+  }
+  // The share against the HIGH price is the low share, and vice versa; a
+  // `null` here means a run was quoted at no charge, which a ceiling cannot
+  // be a share of.
+  const lowShare = describeShare(ceiling.micros, priced.highMicros);
+  const highShare = describeShare(ceiling.micros, priced.lowMicros);
+  if (lowShare === null || highShare === null) {
+    return (
+      <span>
+        {quoted}{" "}
+        <span className="text-text-secondary">
+          A run quoted at no charge has no price for the ceiling to be a share of.
+        </span>{" "}
+        {lag}
       </span>
     );
   }
   const share = onePrice
-    ? `${describeShare(ceiling.micros, priced.lowMicros)} of that price`
-    : `between ${describeShare(ceiling.micros, priced.highMicros)} and ${describeShare(ceiling.micros, priced.lowMicros)} of the price`;
+    ? `${lowShare} of that price`
+    : `between ${lowShare} and ${highShare} of the price`;
   return (
     <span>
       {quoted}{" "}
@@ -315,7 +328,8 @@ function CeilingAgainstPrice({
       </span>{" "}
       <span className="text-text-secondary">
         Raising the price without moving the ceiling tightens it.
-      </span>
+      </span>{" "}
+      {lag}
     </span>
   );
 }

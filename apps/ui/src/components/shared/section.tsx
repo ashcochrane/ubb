@@ -3,11 +3,15 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Bordered content section used across the tasks pages.
+ * Bordered content section for a detail page — a heading, an optional line
+ * under it, and the content.
  *
- * A local copy of the events feature's, on purpose: one feature never imports
- * another's components, and a section is small enough that sharing it would
- * buy a cross-feature edge and nothing else.
+ * A layout primitive with no opinion about any feature, which is why it lives
+ * here: the events feature carries its own copy from before this one existed,
+ * and a third copy is where "sharing buys only a cross-feature edge" stops
+ * being true. Named, so a test can scope its queries to one section with
+ * `getByRole("region", { name })` — two concepts can share a word, and a
+ * page-wide query cannot say which side it found.
  */
 export function Section({
   title,

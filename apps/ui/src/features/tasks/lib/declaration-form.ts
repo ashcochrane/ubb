@@ -46,6 +46,16 @@ export const kindFormSchema = z.object({
 
 export type KindFormValues = z.infer<typeof kindFormSchema>;
 
+/**
+ * The same form on a REVISION, where the key is not in play.
+ *
+ * The key control is disabled and its value comes off the standing row, so
+ * the grammar above — a console-side nicety for a key being minted — must not
+ * run against it: the wire accepts any string, and a kind declared from the
+ * API under a spelling this form would refuse must still be revisable here.
+ */
+export const revisionFormSchema = kindFormSchema.extend({ key: z.string() });
+
 /** An amount in the workspace currency, as typed, to integer micros; empty is none. */
 export function amountToMicros(value: string): number | null {
   const trimmed = value.trim();

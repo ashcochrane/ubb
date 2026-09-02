@@ -18,11 +18,12 @@ import {
   type PricingMode,
 } from "@/lib/vocabulary";
 
-import type {
-  DeclareKindsBody,
-  KindOfWork,
-  KindOfWorkDeclaration,
-  RunRow,
+import {
+  sameDeclaration,
+  type DeclareKindsBody,
+  type KindOfWork,
+  type KindOfWorkDeclaration,
+  type RunRow,
 } from "../api/types";
 
 /** The catalogue's words for how a kind of work is sold. */
@@ -70,16 +71,20 @@ export function declarationNotes(opts: { meteringOnly: boolean }): readonly stri
     : [REGIME_CANNOT_CHANGE];
 }
 
-/** Where a kind of work's ceiling comes from — the declaration, the workspace, or nowhere. */
-export type CeilingSource = "declaration" | "workspace" | "uncapped";
-
-export interface Ceiling {
-  micros: number | null;
-  source: CeilingSource;
-}
+/**
+ * The COGS ceiling a run of this kind starts under: a number, from the
+ * declaration or from the workspace default, or none at all.
+ *
+ * A union rather than a nullable number, so that the two sources that always
+ * carry an amount cannot be asked to render one they do not have — the `?? 0`
+ * a nullable field invites is the defect `apps/ui/CLAUDE.md` names.
+ */
+export type Ceiling =
+  | { readonly source: "declaration" | "workspace"; readonly micros: number }
+  | { readonly source: "uncapped" };
 
 /**
- * The COGS ceiling a run of this kind actually starts under.
+ * The ceiling a run of this kind actually starts under.
  *
  * The declaration's own number when it names one; otherwise the workspace
  * default; otherwise none — and "none" is rendered as UNCAPPED rather than
@@ -92,12 +97,12 @@ export function effectiveCeiling(
   config: TenantConfig | undefined,
 ): Ceiling | null {
   if (kind.default_provider_cost_limit_micros != null) {
-    return { micros: kind.default_provider_cost_limit_micros, source: "declaration" };
+    return { source: "declaration", micros: kind.default_provider_cost_limit_micros };
   }
   if (config === undefined) return null;
   const workspace = config.default_task_provider_cost_limit_micros;
-  if (workspace != null) return { micros: workspace, source: "workspace" };
-  return { micros: null, source: "uncapped" };
+  if (workspace != null) return { source: "workspace", micros: workspace };
+  return { source: "uncapped" };
 }
 
 /**
@@ -108,20 +113,23 @@ export function describeCeiling(ceiling: Ceiling | null, currency: string): stri
   if (ceiling === null) return ABSENT_LABEL;
   switch (ceiling.source) {
     case "declaration":
-      return formatMicros(ceiling.micros ?? 0, currency);
+      return formatMicros(ceiling.micros, currency);
     case "workspace":
-      return `${formatMicros(ceiling.micros ?? 0, currency)} (workspace default)`;
+      return `${formatMicros(ceiling.micros, currency)} (workspace default)`;
     case "uncapped":
       return "Uncapped";
   }
 }
 
 /**
- * A window in seconds, as a person reads one; `null` is the workspace's own
- * default rather than no window, and says so.
+ * A duration in seconds as a person reads one, or `null` when there is none.
+ *
+ * The caller says what "none" means, because it differs by field: an absent
+ * silence window is the workspace's own default, an absent deadline is no
+ * deadline at all. A helper that chose one word would be wrong for the other.
  */
-export function describeWindow(seconds: number | null | undefined): string {
-  if (seconds == null) return "Workspace default";
+export function describeDuration(seconds: number | null | undefined): string | null {
+  if (seconds == null) return null;
   if (seconds % 3_600 === 0) return `${seconds / 3_600} h`;
   if (seconds % 60 === 0) return `${seconds / 60} min`;
   return `${seconds} s`;
@@ -155,6 +163,9 @@ export interface PricedRuns {
  * runs were actually quoted — one figure when every book agrees, a range when
  * a customer's own book prices it differently — and a kind nobody has run yet
  * has no price to show a ceiling against, which is said rather than guessed.
+ *
+ * It follows that this LAGS a repricing by one run: a price changed in the
+ * book shows here once a run has been quoted at it. The rendering says so.
  */
 export function pricedRuns(
   runs: readonly Pick<RunRow, "agreed_price_micros">[],
@@ -183,17 +194,30 @@ export function ceilingShare(ceilingMicros: number, priceMicros: number): number
  * The share as a whole percentage, FLOORED: "37%" for three eighths, as #150
  * §5.4 itself writes it. Rounding up would overstate the headroom a run has
  * under its ceiling, and the conservative direction is the honest one here.
+ *
+ * `null` when the price is nothing. Zero is a price a tenant may agree to,
+ * so a run quoted at no charge is real evidence — but a ceiling is not a
+ * share of nothing, and saying so beats printing an infinity.
  */
-export function describeShare(ceilingMicros: number, priceMicros: number): string {
+export function describeShare(ceilingMicros: number, priceMicros: number): string | null {
+  if (priceMicros <= 0) return null;
   return formatPercent(Math.floor(ceilingShare(ceilingMicros, priceMicros) * 100), 0);
 }
 
-/** A declaration's identity is the word AND the altitude, not the word alone. */
-export function sameDeclaration(
-  a: Pick<KindOfWork, "kind" | "key">,
-  b: Pick<KindOfWork, "kind" | "key">,
+/**
+ * Whether a declaration with this identity already stands.
+ *
+ * The guard that keeps a blank form from replacing a standing kind of work:
+ * the route is an idempotent PUT, so a new declaration under a standing
+ * `(kind, key)` with the same regime is ACCEPTED — and its empty ceiling,
+ * windows and grouping fields would silently become the kind's. Revising is a
+ * different act, taken from the kind's own page.
+ */
+export function alreadyDeclared(
+  standing: readonly KindOfWork[],
+  target: Pick<KindOfWork, "kind" | "key">,
 ): boolean {
-  return a.kind === b.kind && a.key === b.key;
+  return standing.some((kind) => sameDeclaration(kind, target));
 }
 
 /**

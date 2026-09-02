@@ -5,14 +5,15 @@ import { PRICING_MODE_VALUES } from "@/lib/vocabulary";
 
 import type { KindOfWork } from "../api/types";
 import {
+  alreadyDeclared,
   altitudeLabel,
   ceilingShare,
   declarationBody,
   declarationNotes,
   declarationsUnderKey,
   describeCeiling,
+  describeDuration,
   describeShare,
-  describeWindow,
   effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
@@ -97,18 +98,15 @@ describe("the ceiling a kind of work actually runs under", () => {
   it("is the declaration's own when it names one", () => {
     expect(
       effectiveCeiling(kind({ key: "k", default_provider_cost_limit_micros: 3_000_000 }), config(9_000_000)),
-    ).toEqual({ micros: 3_000_000, source: "declaration" });
+    ).toEqual({ source: "declaration", micros: 3_000_000 });
   });
 
   it("falls back to the workspace default, then to uncapped — never silently", () => {
     expect(effectiveCeiling(kind({ key: "k" }), config(9_000_000))).toEqual({
-      micros: 9_000_000,
       source: "workspace",
+      micros: 9_000_000,
     });
-    expect(effectiveCeiling(kind({ key: "k" }), config(null))).toEqual({
-      micros: null,
-      source: "uncapped",
-    });
+    expect(effectiveCeiling(kind({ key: "k" }), config(null))).toEqual({ source: "uncapped" });
   });
 
   it("is unknown while the workspace config has not arrived, rather than uncapped", () => {
@@ -116,21 +114,22 @@ describe("the ceiling a kind of work actually runs under", () => {
   });
 
   it("is described so that none, not-yet-known and a number read differently", () => {
-    expect(describeCeiling({ micros: 3_000_000, source: "declaration" }, "usd")).toBe("$3.00");
-    expect(describeCeiling({ micros: 9_000_000, source: "workspace" }, "usd")).toBe(
+    expect(describeCeiling({ source: "declaration", micros: 3_000_000 }, "usd")).toBe("$3.00");
+    expect(describeCeiling({ source: "workspace", micros: 9_000_000 }, "usd")).toBe(
       "$9.00 (workspace default)",
     );
-    expect(describeCeiling({ micros: null, source: "uncapped" }, "usd")).toBe("Uncapped");
+    expect(describeCeiling({ source: "uncapped" }, "usd")).toBe("Uncapped");
     expect(describeCeiling(null, "usd")).toBe("—");
   });
 });
 
-describe("a window", () => {
-  it("reads as a person would say it, and an absent one names the workspace default", () => {
-    expect(describeWindow(600)).toBe("10 min");
-    expect(describeWindow(7_200)).toBe("2 h");
-    expect(describeWindow(90)).toBe("90 s");
-    expect(describeWindow(null)).toBe("Workspace default");
+describe("a duration", () => {
+  it("reads as a person would say it, and an absent one is left for the caller to name", () => {
+    expect(describeDuration(600)).toBe("10 min");
+    expect(describeDuration(7_200)).toBe("2 h");
+    expect(describeDuration(90)).toBe("90 s");
+    expect(describeDuration(null)).toBeNull();
+    expect(describeDuration(undefined)).toBeNull();
   });
 });
 
@@ -176,6 +175,19 @@ describe("the price a kind of work sold for, read off its runs", () => {
   it("says the share as a whole percentage, floored — never overstating the headroom", () => {
     expect(describeShare(3_000_000, 5_000_000)).toBe("60%");
     expect(describeShare(3_000_000, 8_000_000)).toBe("37%");
+  });
+
+  it("has no share to say against a run quoted at no charge", () => {
+    expect(describeShare(3_000_000, 0)).toBeNull();
+  });
+});
+
+describe("whether a declaration already stands", () => {
+  it("is decided by the word and the altitude together", () => {
+    const standing = [kind({ key: "translate" }), kind({ key: "render-frame", kind: "subtask" })];
+    expect(alreadyDeclared(standing, { kind: "task", key: "translate" })).toBe(true);
+    expect(alreadyDeclared(standing, { kind: "subtask", key: "translate" })).toBe(false);
+    expect(alreadyDeclared(standing, { kind: "task", key: "render-frame" })).toBe(false);
   });
 });
 

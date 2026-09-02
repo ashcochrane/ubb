@@ -30,14 +30,27 @@ export type RunsPage = RootSchemas["PaginatedTasks"];
 export type { PricingMode, TaskTypeKind } from "@/lib/vocabulary";
 
 /**
+ * A declaration's identity is the word AND the altitude, not the word alone:
+ * one key may name a kind of work at either altitude, and the two are
+ * different declarations with different policy (`TaskType`'s uniqueness is
+ * `(tenant, kind, key)`). Here rather than in `lib/`, because the mock needs
+ * the same rule and a mock does not reach into its feature's lib.
+ */
+export function sameDeclaration(
+  a: Pick<KindOfWork, "kind" | "key">,
+  b: Pick<KindOfWork, "kind" | "key">,
+): boolean {
+  return a.kind === b.kind && a.key === b.key;
+}
+
+/**
  * How the runs list is narrowed.
  *
- * Only the two filters this feature reads today. The route also takes a
- * customer, which the runs surface (#424) will add when it has a reader for
- * it — a filter the mock would have to ignore is worse than one it does not
- * offer.
+ * Only the filter this feature reads today. The route also takes a status
+ * and a customer, which the runs surface (#424) adds when it has readers for
+ * them — a filter the mock would have to ignore is worse than one it does
+ * not offer.
  */
 export interface RunsFilters {
   task_type?: string;
-  status?: string;
 }

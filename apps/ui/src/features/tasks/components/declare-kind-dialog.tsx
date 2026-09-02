@@ -24,10 +24,12 @@ import type { KindOfWork } from "../api/types";
 import {
   formDefaults,
   kindFormSchema,
+  revisionFormSchema,
   toDeclaration,
   type KindFormValues,
 } from "../lib/declaration-form";
 import {
+  alreadyDeclared,
   altitudeLabel,
   declarationBody,
   declarationNotes,
@@ -72,7 +74,7 @@ export function DeclareKindDialog({
   const currency = useTenantCurrency().toUpperCase();
   const declare = useDeclareKinds();
   const form = useForm<KindFormValues>({
-    resolver: zodResolver(kindFormSchema),
+    resolver: zodResolver(revising ? revisionFormSchema : kindFormSchema),
     defaultValues: formDefaults(existing),
   });
 
@@ -85,6 +87,19 @@ export function DeclareKindDialog({
   }, [open, existing]);
 
   const onSubmit = (values: KindFormValues) => {
+    // ⚠ A NEW DECLARATION UNDER A STANDING IDENTITY IS REFUSED HERE, because
+    // the route would not refuse it: an idempotent PUT with the same regime
+    // ACCEPTS it, and the blank form's ceiling, windows and grouping fields
+    // would silently replace the standing kind's. Revising is its own act,
+    // from the kind's page, with the identity and the regime held fixed.
+    if (!revising && alreadyDeclared(standing, { kind: values.kind, key: values.key })) {
+      form.setError("key", {
+        message:
+          "A kind of work with this key is already declared at this altitude. Open it to " +
+          "revise its ceiling and windows, or pick another key.",
+      });
+      return;
+    }
     const declaration = toDeclaration(values, existing);
     declare.mutate(declarationBody(standing, declaration), {
       onSuccess: () => {
@@ -186,7 +201,7 @@ export function DeclareKindDialog({
           <FormField
             label={`Ceiling (${currency})`}
             error={form.formState.errors.ceiling?.message}
-            hint="The most one run may spend on supplier cost before UBB stops it — an amount, never a share of the price. Leave it empty to use the workspace default."
+            hint="The most one run may spend on supplier cost before UBB stops it, as an amount. Leave it empty to use the workspace default."
           >
             {(id) => (
               <Input

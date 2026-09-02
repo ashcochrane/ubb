@@ -109,6 +109,10 @@ export function useCloseTask() {
       eventsApi.closeTask(taskId, outcome),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
+      // The tasks feature reads the same runs under its own root-mounted
+      // namespace (#423); a close changes what they say, so over-invalidate
+      // rather than miss.
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 }

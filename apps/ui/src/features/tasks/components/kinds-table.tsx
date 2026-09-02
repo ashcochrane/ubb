@@ -17,7 +17,7 @@ import type { KindOfWork } from "../api/types";
 import {
   altitudeLabel,
   describeCeiling,
-  describeWindow,
+  describeDuration,
   effectiveCeiling,
   pricingModeLabel,
   sortedKinds,
@@ -69,7 +69,7 @@ export function KindsTable({ kinds }: { kinds: readonly KindOfWork[] }) {
                   {describeCeiling(effectiveCeiling(kind, config), currency)}
                 </TableCell>
                 <TableCell className="text-[12px]">
-                  {describeWindow(kind.silence_window_seconds)}
+                  {describeDuration(kind.silence_window_seconds) ?? "Workspace default"}
                 </TableCell>
                 <TableCell>
                   {kind.retired ? (

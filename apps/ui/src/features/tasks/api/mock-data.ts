@@ -1,7 +1,8 @@
 // Mock fixtures for the tasks feature — one coherent story, September 2026.
 //
-// Acme AI (the tenant) has declared seven kinds of work. Three are sold at one
-// agreed price, and the runs beneath them are what lets the console show a
+// Acme AI (the tenant) has declared eight kinds of work under seven words —
+// one word names a kind at either altitude. Three are sold at one agreed
+// price, and the runs beneath them are what lets the console show a
 // ceiling AGAINST a price (#150 §5.4): a run pins the price it was quoted at
 // start, and that pinned figure is the only wire-borne evidence of what a kind
 // of work sells for — the amount itself is a line in a pricing book, resolved

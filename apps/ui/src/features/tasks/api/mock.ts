@@ -8,15 +8,14 @@ import { mockDelay } from "@/lib/api-provider";
 import { TASK_TYPE_KIND_VALUES } from "@/lib/vocabulary";
 
 import { MOCK_KINDS, MOCK_RUNS } from "./mock-data";
-import type {
-  DeclareKindsBody,
-  KindOfWork,
-  KindOfWorkDeclaration,
-  RunsFilters,
-  RunsPage,
+import {
+  sameDeclaration,
+  type DeclareKindsBody,
+  type KindOfWork,
+  type KindOfWorkDeclaration,
+  type RunsFilters,
+  type RunsPage,
 } from "./types";
-
-const MOCK_PAGE_SIZE = 25;
 
 function copyOf(kind: KindOfWork): KindOfWork {
   return { ...kind, required_dimensions: [...kind.required_dimensions] };
@@ -32,13 +31,6 @@ export function resetTasksMockState(): void {
 export async function listKinds(): Promise<KindOfWork[]> {
   await mockDelay();
   return kinds.map(copyOf);
-}
-
-function sameDeclaration(
-  a: Pick<KindOfWork, "kind" | "key">,
-  b: Pick<KindOfWork, "kind" | "key">,
-): boolean {
-  return a.kind === b.kind && a.key === b.key;
 }
 
 /**
@@ -125,22 +117,14 @@ export async function declareKinds(body: DeclareKindsBody): Promise<KindOfWork[]
   return kinds.map(copyOf);
 }
 
+/** The fixture is one page; the cursor is accepted for the signature and never needed. */
 export async function listRuns(
   filters: RunsFilters,
-  cursor: string | undefined,
+  _cursor: string | undefined,
 ): Promise<RunsPage> {
   await mockDelay();
   const rows = MOCK_RUNS.filter(
-    (row) =>
-      (filters.task_type === undefined || row.task_type === filters.task_type) &&
-      (filters.status === undefined || row.status === filters.status),
+    (row) => filters.task_type === undefined || row.task_type === filters.task_type,
   );
-  const start = cursor ? Number(cursor) : 0;
-  const page = rows.slice(start, start + MOCK_PAGE_SIZE);
-  const hasMore = start + MOCK_PAGE_SIZE < rows.length;
-  return {
-    data: page.map((row) => ({ ...row })),
-    has_more: hasMore,
-    next_cursor: hasMore ? String(start + MOCK_PAGE_SIZE) : null,
-  };
+  return { data: rows.map((row) => ({ ...row })), has_more: false, next_cursor: null };
 }
