@@ -32,6 +32,8 @@ import { Route as AppReferralsCustomerIdRouteImport } from './routes/_app/referr
 import { Route as AppPricingBookIdRouteImport } from './routes/_app/pricing/$bookId'
 import { Route as AppEventsEventIdRouteImport } from './routes/_app/events/$eventId'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/_app/customers/$customerId'
+import { Route as AppTasksRunsIndexRouteImport } from './routes/_app/tasks/runs/index'
+import { Route as AppTasksRunsTaskIdRouteImport } from './routes/_app/tasks/runs/$taskId'
 import { Route as AppTasksKindsKeyRouteImport } from './routes/_app/tasks/kinds/$key'
 
 const SignInRoute = SignInRouteImport.update({
@@ -148,6 +150,16 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   path: '/customers/$customerId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTasksRunsIndexRoute = AppTasksRunsIndexRouteImport.update({
+  id: '/tasks/runs/',
+  path: '/tasks/runs/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTasksRunsTaskIdRoute = AppTasksRunsTaskIdRouteImport.update({
+  id: '/tasks/runs/$taskId',
+  path: '/tasks/runs/$taskId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTasksKindsKeyRoute = AppTasksKindsKeyRouteImport.update({
   id: '/tasks/kinds/$key',
   path: '/tasks/kinds/$key',
@@ -178,6 +190,8 @@ export interface FileRoutesByFullPath {
   '/tasks/': typeof AppTasksIndexRoute
   '/webhooks/': typeof AppWebhooksIndexRoute
   '/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
+  '/tasks/runs/$taskId': typeof AppTasksRunsTaskIdRoute
+  '/tasks/runs/': typeof AppTasksRunsIndexRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
@@ -202,6 +216,8 @@ export interface FileRoutesByTo {
   '/tasks': typeof AppTasksIndexRoute
   '/webhooks': typeof AppWebhooksIndexRoute
   '/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
+  '/tasks/runs/$taskId': typeof AppTasksRunsTaskIdRoute
+  '/tasks/runs': typeof AppTasksRunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -229,6 +245,8 @@ export interface FileRoutesById {
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/webhooks/': typeof AppWebhooksIndexRoute
   '/_app/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
+  '/_app/tasks/runs/$taskId': typeof AppTasksRunsTaskIdRoute
+  '/_app/tasks/runs/': typeof AppTasksRunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -256,6 +274,8 @@ export interface FileRouteTypes {
     | '/tasks/'
     | '/webhooks/'
     | '/tasks/kinds/$key'
+    | '/tasks/runs/$taskId'
+    | '/tasks/runs/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/sign-in'
@@ -280,6 +300,8 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/webhooks'
     | '/tasks/kinds/$key'
+    | '/tasks/runs/$taskId'
+    | '/tasks/runs'
   id:
     | '__root__'
     | '/_app'
@@ -306,6 +328,8 @@ export interface FileRouteTypes {
     | '/_app/tasks/'
     | '/_app/webhooks/'
     | '/_app/tasks/kinds/$key'
+    | '/_app/tasks/runs/$taskId'
+    | '/_app/tasks/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -476,6 +500,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/tasks/runs/': {
+      id: '/_app/tasks/runs/'
+      path: '/tasks/runs'
+      fullPath: '/tasks/runs/'
+      preLoaderRoute: typeof AppTasksRunsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tasks/runs/$taskId': {
+      id: '/_app/tasks/runs/$taskId'
+      path: '/tasks/runs/$taskId'
+      fullPath: '/tasks/runs/$taskId'
+      preLoaderRoute: typeof AppTasksRunsTaskIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tasks/kinds/$key': {
       id: '/_app/tasks/kinds/$key'
       path: '/tasks/kinds/$key'
@@ -524,6 +562,8 @@ interface AppRouteChildren {
   AppTasksIndexRoute: typeof AppTasksIndexRoute
   AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
   AppTasksKindsKeyRoute: typeof AppTasksKindsKeyRoute
+  AppTasksRunsTaskIdRoute: typeof AppTasksRunsTaskIdRoute
+  AppTasksRunsIndexRoute: typeof AppTasksRunsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -544,6 +584,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppTasksIndexRoute: AppTasksIndexRoute,
   AppWebhooksIndexRoute: AppWebhooksIndexRoute,
   AppTasksKindsKeyRoute: AppTasksKindsKeyRoute,
+  AppTasksRunsTaskIdRoute: AppTasksRunsTaskIdRoute,
+  AppTasksRunsIndexRoute: AppTasksRunsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

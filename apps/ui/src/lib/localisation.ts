@@ -99,8 +99,9 @@ export function resolveLabel(
  *
  * The same call shape as the legacy `@/lib/labels` maps on purpose: migrating a
  * vocabulary is then one line in one file, and every call site of the old label
- * function keeps working unchanged. What changes is what it does when it does
- * not recognise a value.
+ * function keeps working once its import points at the new home — #424 moved
+ * `taskStatusLabel` to `@/lib/task-status` exactly that way. What changes is
+ * what it does when it does not recognise a value.
  */
 export function labelMap(labelKeys: Readonly<Record<string, string>>) {
   return (value: string | null | undefined): string =>

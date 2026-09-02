@@ -13,13 +13,15 @@ import { useHasRole } from "@/hooks/use-current-role";
 import { useKindsOfWork } from "../api/queries";
 import { DeclareKindDialog } from "./declare-kind-dialog";
 import { KindsTable } from "./kinds-table";
+import { TasksNav } from "./tasks-nav";
 
 /**
  * /tasks — the kinds of work this workspace sells.
  *
  * KINDS OF WORK ARE THE FRONT DOOR, AND RUNS ARE A SIBLING (#423, spec §25
  * Q2): a tenant looking here is looking at how their business sells, not at a
- * log of what ran. The runs surface lands beside this one (#424).
+ * log of what ran. Runs are the sibling surface (#424), reached from the nav
+ * under the header.
  *
  * Declaring is Admin-floored on the server (a declaration decides how usage
  * is costed, which makes it a pricing-rule change), and the button says so
@@ -44,6 +46,7 @@ export function TasksPage() {
           </DisabledHint>
         }
       />
+      <TasksNav current="kinds" />
 
       {kinds.isLoading ? (
         <Card size="sm" className="p-3">

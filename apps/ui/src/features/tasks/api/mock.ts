@@ -7,12 +7,13 @@ import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { TASK_TYPE_KIND_VALUES } from "@/lib/vocabulary";
 
-import { MOCK_KINDS, MOCK_RUNS } from "./mock-data";
+import { MOCK_CONTAINED, MOCK_KINDS, MOCK_RUNS } from "./mock-data";
 import {
   sameDeclaration,
   type DeclareKindsBody,
   type KindOfWork,
   type KindOfWorkDeclaration,
+  type RunDetail,
   type RunsFilters,
   type RunsPage,
 } from "./types";
@@ -117,14 +118,43 @@ export async function declareKinds(body: DeclareKindsBody): Promise<KindOfWork[]
   return kinds.map(copyOf);
 }
 
-/** The fixture is one page; the cursor is accepted for the signature and never needed. */
+/**
+ * Top-level runs, narrowed the way the route narrows them.
+ *
+ * The fixture is one page; the cursor is accepted for the signature and
+ * never needed.
+ */
 export async function listRuns(
   filters: RunsFilters,
   _cursor: string | undefined,
 ): Promise<RunsPage> {
   await mockDelay();
   const rows = MOCK_RUNS.filter(
-    (row) => filters.task_type === undefined || row.task_type === filters.task_type,
+    (row) =>
+      (filters.task_type === undefined || row.task_type === filters.task_type) &&
+      (filters.status === undefined || row.status === filters.status),
   );
   return { data: rows.map((row) => ({ ...row })), has_more: false, next_cursor: null };
+}
+
+/**
+ * One run with everything contained in it, as the route answers: the row
+ * plus its children, oldest first, and `404 not_found` for an id nobody has.
+ * A piece of contained work is a run too, and answers with nothing contained
+ * in it.
+ */
+export async function getRun(taskId: string): Promise<RunDetail> {
+  await mockDelay();
+  const everyRow = [...MOCK_RUNS, ...Object.values(MOCK_CONTAINED).flat()];
+  const found = everyRow.find((row) => row.task_id === taskId);
+  if (!found) {
+    throw new ApiProblem({
+      status: 404,
+      code: "not_found",
+      title: "Not Found",
+      detail: `No unit of work ${taskId}.`,
+    });
+  }
+  const contained = MOCK_CONTAINED[taskId] ?? [];
+  return { ...found, subtasks: contained.map((row) => ({ ...row })) };
 }

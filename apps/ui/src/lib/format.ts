@@ -211,3 +211,12 @@ export function formatFileSize(bytes: number): string {
   if (bytes >= 1_000_000) return `${Math.round(bytes / 1_000_000)} MB`;
   return `${Math.max(1, Math.round(bytes / 1000))} KB`;
 }
+
+/**
+ * The first eight characters of an id, for a cell that cannot hold a UUID:
+ * "7f3c2a10…". Show the whole id beside it — a copy affordance, a title —
+ * rather than only the truncation.
+ */
+export function shortId(id: string): string {
+  return id.length > 8 ? `${id.slice(0, 8)}…` : id;
+}

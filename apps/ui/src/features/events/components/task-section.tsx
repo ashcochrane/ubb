@@ -11,9 +11,9 @@ import { Button } from "@/components/ui/button";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatEventCount, formatMicros } from "@/lib/format";
-import { taskStatusLabel } from "@/lib/labels";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 import { partialTotalNote, supplierCostTotal } from "@/lib/supplier-cost";
+import { taskStatusLabel } from "@/lib/task-status";
 
 import { useCloseTask } from "../api/queries";
 import type { CloseTaskResult } from "../api/types";

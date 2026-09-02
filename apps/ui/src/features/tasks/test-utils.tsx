@@ -28,7 +28,13 @@ export function renderWithProviders(ui: ReactNode) {
     path: "/",
     component: () => <>{ui}</>,
   });
-  const stubPaths = ["/tasks", "/tasks/kinds/$key", "/pricing"];
+  const stubPaths = [
+    "/tasks",
+    "/tasks/kinds/$key",
+    "/tasks/runs",
+    "/tasks/runs/$taskId",
+    "/pricing",
+  ];
   const stubs = stubPaths.map((path) =>
     createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
   );
@@ -42,3 +48,11 @@ export function renderWithProviders(ui: ReactNode) {
     </QueryClientProvider>,
   );
 }
+
+/**
+ * The class the destructive Badge variant carries, and only it. The Badge's
+ * base class names the destructive colour for `aria-invalid` states on EVERY
+ * variant, so a bare `/destructive/` match finds every badge; a test asserting
+ * a state is — or is not — drawn as a failure matches this instead.
+ */
+export const DRAWN_AS_FAILURE = /(^|\s)text-destructive(\s|$)/;

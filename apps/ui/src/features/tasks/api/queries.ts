@@ -44,3 +44,18 @@ export function useRuns(filters: RunsFilters, options?: { enabled?: boolean }) {
     options,
   );
 }
+
+/**
+ * One run with everything contained in it.
+ *
+ * `enabled: false` while the id is not yet known: the run page fetches a
+ * piece of contained work's CONTAINING run once it knows there is one, because
+ * only that run can say whether a customer price applies to the piece.
+ */
+export function useRun(taskId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["tasks", "run", taskId] as const,
+    queryFn: () => tasksApi.getRun(taskId),
+    enabled: options?.enabled,
+  });
+}

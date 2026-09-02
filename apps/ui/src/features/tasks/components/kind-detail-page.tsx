@@ -52,12 +52,21 @@ export function KindDetailPage({ kindKey }: { kindKey: string }) {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/tasks"
-        className="inline-flex items-center gap-1 text-[12px] text-text-secondary hover:text-text-primary"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> All kinds of work
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          to="/tasks"
+          className="inline-flex items-center gap-1 text-[12px] text-text-secondary hover:text-text-primary"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> All kinds of work
+        </Link>
+        <Link
+          to="/tasks/runs"
+          search={{ task_type: kindKey }}
+          className="text-[12px] text-accent-text underline-offset-2 hover:underline"
+        >
+          Runs of this kind
+        </Link>
+      </div>
 
       {kinds.isLoading ? (
         <Card size="sm" className="p-3">

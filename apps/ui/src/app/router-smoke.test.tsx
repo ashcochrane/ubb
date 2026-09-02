@@ -13,6 +13,8 @@ import {
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { RUN_ACTIVE_ID } from "@/features/tasks/api/mock-data";
+
 import { routeTree } from "./routeTree.gen";
 
 const ROUTES: Array<{ path: string; expectText: RegExp }> = [
@@ -20,6 +22,8 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/events", expectText: /events/i },
   { path: "/tasks", expectText: /kinds of work/i },
   { path: "/tasks/kinds/video-render", expectText: /how it is sold/i },
+  { path: "/tasks/runs", expectText: /every run of a kind of work/i },
+  { path: `/tasks/runs/${RUN_ACTIVE_ID}`, expectText: /what it cost and earned/i },
   { path: "/customers", expectText: /customers/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },

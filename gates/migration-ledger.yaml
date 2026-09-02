@@ -1940,19 +1940,6 @@ entries:
       #210 splits the two. A Pool refuses starts and stops a customer but
       kills nothing (#150). Slice 6 rebuilds it.
 
-  - id: g2-console-task_status
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::task_status
-    expected: task_status
-    found: 0 of 6 values
-    owner_slice: slice_5
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #140's six states — `cancelled` and `expired` are
-      new and `killed` narrows to genuine spend signals. Slice 5 rebuilds the
-      Task.
-
   - id: g2-console-tenant_posture
     gate: G2
     site: apps/ui/src/lib/labels.ts::tenant_posture
@@ -2702,18 +2689,6 @@ entries:
       set, so there is no label key to move it to yet and no domain slice's
       subject contains it. Owned by the cutover, where the ledger reaches zero;
       pulling it earlier is the ratchet's one free move.
-
-  - id: g6-map-task-status-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::taskStatusLabel
-    expected: task_status
-    owner_slice: slice_5
-    reason: >-
-      `taskStatusLabel` hand-writes the wording for a Task's status, and falls
-      back to `humanize` for anything it does not recognise. It becomes
-      `labelMap(TASK_STATUS_LABEL_KEYS)` in the slice that rebuilds that
-      vocabulary — the same slice the concept's own value-list entry names,
-      because a value list and the words for it cannot honestly move apart.
 
   - id: g6-map-tenant-invoice-status-label
     gate: G6
