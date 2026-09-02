@@ -33,6 +33,7 @@ import {
   COSTING_METHOD_VALUES,
   COSTING_STATUS_VALUES,
   PRICING_METHOD_VALUES,
+  PRICING_MODE_VALUES,
   PRICING_STATUS_VALUES,
   RATE_STRUCTURE_VALUES,
   TENANT_PRODUCT_VALUES,
@@ -269,6 +270,21 @@ export const COSTING_STATUSES = COSTING_STATUS_VALUES;
 export const RATE_STRUCTURES = RATE_STRUCTURE_VALUES;
 export const PRICING_METHODS = PRICING_METHOD_VALUES;
 export const PRICING_STATUSES = PRICING_STATUS_VALUES;
+
+// How a kind of work is sold — the registry's two, held BY REFERENCE (#423),
+// on the same terms and for the same reason as the trio above. `domain-
+// vocabulary/` names this file as the console's consumer of `pricing_mode`,
+// and until now it held neither value, which is what `g2-console-pricing_mode`
+// recorded and what this line pays off. There was never a hand-written map to
+// delete for this one: the concept was created by slice 5 (#414), so the
+// console's first sight of it is already the migrated shape.
+//
+// The WORDS have been in the catalogue under `pricing_mode.*` since #406, and
+// the binding is `features/tasks/lib/kinds.ts` — the surface that renders a
+// kind of work, per slice 4's rule that a surface binds the words it renders.
+// Nothing here, and no map: this file is the legacy adapter, and a concept
+// that has been migrated leaves behind its value list and nothing else.
+export const PRICING_MODES = PRICING_MODE_VALUES;
 
 export const stopScopeLabel = legacyLabelMap({
   task: "Task",

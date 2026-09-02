@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,720 of 2,134 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,742 of 2,156 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1826,6 +1826,26 @@ measurement_key:
     # `git add -A`, and it was put back to 45 by saying "whole pieces of
     # work". Same lesson, unchanged: the gate is what holds the line, and the
     # number that counts is the one taken after the review pass.
+    #
+    # THE CONSOLE'S TASKS TAB MOVED BOTH DENOMINATORS BY TWENTY-TWO AND LEFT
+    # THE NUMERATOR WHERE IT WAS (1,720 -> 1,742 swept, 2,134 -> 2,156
+    # tracked, `units` UNMOVED at 45 files and 123 occurrences). Twenty-two
+    # tracked files arrived and every one is swept, because a console feature
+    # built from zero (#423) is all source: the tasks feature's api sextet,
+    # its two lib modules and their two tests, four components and their
+    # three tests, a router test helper, the two route files, the test that
+    # holds the Tasks tab ungated, and one shared section primitive (the
+    # build had it feature-local; the review pass moved it to the layer it
+    # belongs to). No migration, no schema change and no generated SDK
+    # module — the contract and the console's snapshot of it regenerate
+    # byte-identical — so the exclusion counts hold at 247 and 414.
+    #
+    # THE NUMERATOR HELD ON THE FIRST MEASUREMENT in the commit with the most
+    # prose about work of any so far — a whole surface whose subject is kinds
+    # of work and what they sell for. The English that held was "a kind of
+    # work", "a unit of work", "a whole piece of work" and "a run"; the
+    # caveat is the standing one, that the number that counts is the one
+    # taken after the review pass.
 
     - term: units
       retired_as: >-
