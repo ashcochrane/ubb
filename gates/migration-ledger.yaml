@@ -1369,13 +1369,16 @@ entries:
     gate: G7
     site: sdk::budget
     expected: control_family
-    found: 10 files
+    found: 9 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
       Ceiling, Customer Spend Pool, Wallet policy, Admission control —
       replace one word that named all of them at once, and slice 6
-      builds them.
+      builds them. 10 → 9 in #421, a fall in extent and not a payment:
+      the spend stop's exception was rewritten as the `BaseException`
+      signal and its docstring stopped describing the customer-scope
+      verdict with this word. Slice 6 still owes the nine.
 
   # ⚠ `card_type` REACHED ZERO ON THE SDK IN #373 and its entry is deleted —
   # the LAST surface holding it apart from the backend's four files, so the

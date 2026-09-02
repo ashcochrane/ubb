@@ -163,15 +163,18 @@ class UBBClient:
                      task_id: str | None = None,
                      measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = False) -> RecordUsageResponse:
+                     raise_on_stop: bool = True) -> RecordUsageResponse:
         """Record a usage event via metering — a full passthrough to
-        ``MeteringClient.record_usage()`` (kept in signature parity by
-        test_sdk_delegation.TestRecordUsageSignatureParity).
+        ``MeteringClient.record_usage()`` (kept in signature parity, defaults
+        included, by test_sdk_delegation.TestRecordUsageSignatureParity).
 
         One-rule contract: every event is recorded and billed with an HTTP
-        200 — check ``result.stop`` on every ack and stop sending work for
-        the named scope (``result.stop_scope``). ``raise_on_stop`` raises
-        UBBStoppedError instead, for exception-driven loops.
+        200, and a stop verdict on the ack is RAISED by default as
+        ``UBBStopRequested`` — a ``BaseException`` carrying that ack, so your
+        own ``except Exception:`` cannot swallow it. Catch it once, where you
+        can honour ``stop_scope``, and stop sending work for that scope; the
+        event itself was recorded. ``raise_on_stop=False`` returns the ack
+        with ``result.stop`` set instead.
 
         Pricing: supply ``provider_cost_micros`` (the SUPPLIER'S own reported
         cost, admissible only where the Event Type declares that it arrives on

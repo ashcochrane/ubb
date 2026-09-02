@@ -5,7 +5,7 @@ from datetime import datetime
 import httpx
 
 from ubb import _operations as ops
-from ubb.exceptions import UBBConnectionError, UBBStoppedError
+from ubb.exceptions import UBBConnectionError, UBBStopRequested
 from ubb._http import raise_for_status
 from ubb._models import from_wire, list_from_wire
 from ubb.retry import request_with_retry
@@ -90,14 +90,15 @@ class MeteringClient:
                      task_id: str | None = None,
                      measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = False) -> RecordUsageResponse:
+                     raise_on_stop: bool = True) -> RecordUsageResponse:
         """Record a usage event via POST /api/v1/metering/usage.
 
         One-rule contract: every event that reaches UBB is priced, recorded,
-        and billed with an HTTP 200 — check ``result.stop`` on every ack and
-        stop sending work for the named scope (``result.stop_scope``: the
-        task, or the whole customer). A non-200 always means "this was not
-        recorded".
+        and billed with an HTTP 200, and the ack carries the verdict. When
+        the verdict says stop, this call RAISES ``UBBStopRequested`` carrying
+        that ack (see ``raise_on_stop`` below): stop sending work for the
+        named scope (``stop_scope``: the task, or the whole customer). A
+        non-200 always means "this was not recorded".
 
         ``idempotency_key`` is the ONE correlation value this call takes, and
         it is now the second positional parameter rather than the third. There
@@ -155,10 +156,19 @@ class MeteringClient:
         request does not publish is still dropped without comment. Write the
         rule instead.
 
-        ``raise_on_stop``: when True, raise UBBStoppedError if the response
-        carries a stop verdict (result.stop). The event is still
-        recorded+charged either way; this is purely an ergonomic choice
-        between checking result.stop and catching an exception.
+        ``raise_on_stop``: True by default. A stop verdict on the ack is
+        raised as ``UBBStopRequested`` — a ``BaseException``, so your own
+        ``except Exception:`` around a provider loop cannot swallow it and
+        keep spending — carrying the whole acknowledgement, so nothing is
+        lost by catching it. The event was recorded and charged either way;
+        the signal is about the NEXT call, never a failed submission. Catch
+        it once, at the boundary that can honour ``stop_scope``, and never
+        resend the event. ``raise_on_stop=False`` returns the same ack with
+        ``result.stop`` set instead of raising. The one reason to choose it
+        is recording work that has ALREADY happened one call at a time,
+        where a stop raised part-way would leave the rest unrecorded — and
+        ``record_batch`` is the better tool for that, because it never
+        raises.
         """
         body: dict = {
             "customer_id": customer_id,
@@ -186,8 +196,11 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE, json=body)
         result = from_wire(RecordUsageResponse, r.json())
         if raise_on_stop and result.stop:
-            raise UBBStoppedError(
-                reason=result.stop_reason, scope=result.stop_scope, task_id=result.task_id)
+            # Ordering is contract (#179 §1.3): the write committed and the
+            # ack is fully built before anything is raised, and the signal
+            # carries that ack. It sits after `_request`, so the retry loop
+            # never sees it and a completed event is never re-sent.
+            raise UBBStopRequested(result, idempotency_key=idempotency_key)
         return result
 
     def record_batch(self, events: list[dict]) -> BatchResult:
@@ -202,6 +215,15 @@ class MeteringClient:
         with per-item results aligned positionally to ``events``. On a network
         failure, retry the WHOLE batch: per-item idempotency keys make a full
         replay return the original event ids with zero new rows.
+
+        A stop is REPORTED, never raised (#421). Each item carries its own
+        verdict (``item.stop`` / ``stop_reason`` / ``stop_scope``);
+        ``result.stop`` says whether any recorded item asked for one and
+        ``result.first_stop_index`` names the earliest that did. One stopped
+        piece of work must not abandon the rest of the batch, and a stop
+        cannot prevent work that already completed — this path records
+        history, and it records all of it. Honour the per-item scope in your
+        own loop; ``record_usage`` is the call that raises.
         """
         wire_events = []
         for ev in events:
@@ -220,6 +242,14 @@ class MeteringClient:
                 detail=item.get("detail"),
                 event_id=item.get("event_id"),
                 data=item,
+                # A rejected item carries the server's constant verdict —
+                # `stop: false`, null reason and scope — because nothing was
+                # recorded and so nothing can have stopped; an accepted item
+                # may omit the key altogether, since the contract's `stop`
+                # is optional with a false default. Both read as False.
+                stop=bool(item.get("stop", False)),
+                stop_reason=item.get("stop_reason"),
+                stop_scope=item.get("stop_scope"),
             )
             for item in body.get("results", [])
         ]

@@ -130,9 +130,13 @@ The big-bang tightened HTTP semantics (400 = malformed only; 422 = semantic;
 
 > **Note on "run not active" / hard-stop 429s.** There is no `UBBHardStopError`
 > or `UBBRunNotActiveError` in v3. Under the one-rule contract a **spend stop
-> rides a success (200) response**, not an error — read `result.stop` (or opt
-> into `record_usage(..., raise_on_stop=True)` → `UBBStoppedError`). A 429 from
-> usage ingestion is plain rate limiting and is safely retried (see §6).
+> rides a success (200) response**, not an error. `record_usage` **raises it by
+> default** as `UBBStopRequested` — a `BaseException`, so a catch-all
+> `except Exception:` cannot swallow it — carrying the acknowledgement; the
+> event was recorded. `raise_on_stop=False` returns the ack with `result.stop`
+> set instead, and `record_batch` never raises (the stop is reported per
+> item). A 429 from a usage report is plain rate limiting and is safely
+> retried (see §6).
 
 ---
 

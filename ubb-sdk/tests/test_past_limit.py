@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from ubb.billing import BillingClient
+from ubb.exceptions import UBBStopRequested
 from ubb.metering import MeteringClient
 
 _CTX = [{"limit": "task_limit", "stop_scope": "task",
@@ -22,12 +23,16 @@ class StopContextAckTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_carries_stop_context(self, mock_post):
+        """A stopped ack is RAISED by default (#421), so the context arrives
+        on the signal's ``result`` — the same acknowledgement, nothing lost."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known",
             "stop": True, "stop_reason": "task_limit",
             "stop_scope": "task", "stop_context": _CTX})
-        result = self.client.record_usage(customer_id="c1",
-                                          idempotency_key="i1", task_id="task_1")
+        with self.assertRaises(UBBStopRequested) as cm:
+            self.client.record_usage(customer_id="c1",
+                                     idempotency_key="i1", task_id="task_1")
+        result = cm.exception.result
         self.assertEqual(result.stop_context, _CTX)
         self.assertFalse(result.stop_context[0]["arrived_after"])
 

@@ -57,14 +57,18 @@ Back-out is instant (set `off`).
    silently counted uncovered events as zero.
 2. **Attribute usage.** Pass that `task_id` on **every** `record_usage(...)`
    for the task. `metadata` is an analytics-only label bag — it never attaches a limit.
-3. **Honor the stop.** Check `result.stop` on **every** ack and stop sending
-   work for the named scope: `stop_scope="task"` (or `"subtask"`) → stop that
+3. **Honor the stop.** The SDK **raises it by default**: a stop verdict on the
+   ack becomes `UBBStopRequested`, which derives from `BaseException` so your
+   own `except Exception:` cannot swallow it and keep spending. Catch it once,
+   at the boundary that can act on its scope, and stop sending work for that
+   scope: `stop_scope="task"` (or `"subtask"`) → stop that
    task (`stop_reason ∈ {task_limit, subtask_limit, task_not_active}`; the
    task is already killed server-side for the first two); `stop_scope="customer"`
    → halt all that customer's tasks at the next safe boundary
-   (`stop_reason = customer_wide_stop`). Or pass `raise_on_stop=True` and catch
-   `UBBStoppedError`. Either way the event was recorded and billed — the stop
-   is an instruction, not an error.
+   (`stop_reason = customer_wide_stop`). Reading `result.stop` in line is the
+   opt-out (`raise_on_stop=False`), and a batch never raises — it reports the
+   stop per item. Either way the event was recorded and billed — the stop
+   is an instruction, not an error, and the signal carries the ack to prove it.
 4. **Handle the webhooks** (catches *idle*/*sibling* workers not currently
    posting): on `customer.suspended` cancel **all** that customer's
    tasks; on `task.killed` **or** `task.expired` cancel the task named by
@@ -95,7 +99,9 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   created nothing.
 - **`pre_check` →** `{allowed, reason, balance_micros}` — pull, as a poll. It
   registers nothing; the call above is the only one that starts a task.
-- **`record_usage` result →** always 200 for a recorded event: `stop` /
+- **`record_usage` →** always 200 for a recorded event, and when the verdict
+  says stop the SDK **raises** `UBBStopRequested` by default, carrying the whole
+  result as `stop.result` (`raise_on_stop=False` returns it instead): `stop` /
   `stop_reason` / `stop_scope` (cooperative — the event *was* charged),
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both
   running totals, denominationally explicit — only the provider total races
@@ -121,10 +127,10 @@ The stop is cooperative — your runtime cancels at a safe boundary. Common shap
 
 - **Inngest:** `cancelOn` matched to a `customer.suspended` webhook keyed on `data.customer_id`; finishes the current step.
 - **Temporal:** webhook → `workflow.cancel()`; activities must heartbeat to receive the cancellation.
-- **Vercel AI SDK:** a `stopWhen` predicate that consults the last `record_usage` result's `stop`.
-- **LangGraph:** check the `stop` flag at a node boundary; stop via the checkpointer.
-- **OpenAI Agents SDK:** `result.cancel()` (after the current turn) when `stop` is seen.
-- **Plain workers / Celery:** check `result.stop` between steps; on the webhook, `revoke`/cancel the matching job.
+- **Vercel AI SDK:** a `stopWhen` predicate set by your `UBBStopRequested` handler (or, with `raise_on_stop=False`, fed by the last `record_usage` result's `stop`).
+- **LangGraph:** catch `UBBStopRequested` at a node boundary; stop via the checkpointer.
+- **OpenAI Agents SDK:** `result.cancel()` (after the current turn) from the `UBBStopRequested` handler.
+- **Plain workers / Celery:** let `UBBStopRequested` end the current piece of work — catch it once at the worker's outer boundary, never per call; on the webhook, `revoke`/cancel the matching work.
 
 ## The honest guarantee (and its bound)
 

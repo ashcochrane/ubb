@@ -312,9 +312,50 @@ All clients automatically retry transient failures: HTTP `429`, `502`, `503`, `5
 plus timeouts and connection errors — with jittered exponential backoff (0.5s base,
 doubling, ±25% jitter, capped at 10s). A server-supplied `Retry-After` header is
 honored, capped at 30s. Every other 4xx (`400`/`403`/`404`/`405`/`409`/`410`/`422`)
-is **never** retried. A spend stop rides a `200` (read `result.stop`), so it is
-never an error to retry. Pass `max_retries=0` to any client constructor to disable
-retries.
+is **never** retried. A spend stop rides a `200` — the event was recorded — so it is
+never an error to retry, and the SDK never retries one: `record_usage` raises it as
+`UBBStopRequested` only after the acknowledgement is back. Pass `max_retries=0` to
+any client constructor to disable retries.
+
+## Honouring a spend stop
+
+`record_usage` **raises by default** when the acknowledgement says stop. The signal,
+`UBBStopRequested`, derives from `BaseException` — not `Exception` and not
+`UBBError` — for the reason `KeyboardInterrupt` does: your own `except Exception:`
+around a provider loop cannot swallow the one signal that protects your customer's
+money and carry on spending. The event **was recorded and charged**; the signal is
+about the next call, never a failed submission, and it carries the whole
+acknowledgement (`stop.result`) plus `event_id`, `idempotency_key`, `stop_scope`,
+`stop_reason` and `task_id`. Catch it **once**, at the outermost boundary that can
+honour its scope, and never resend the event:
+
+```python
+from ubb import UBBStopRequested
+
+try:
+    run_customer_work()                     # record_usage(...) inside, per call
+except UBBStopRequested as stop:
+    log.info("UBB requested a stop", extra={"scope": stop.stop_scope,
+                                           "reason": stop.stop_reason,
+                                           "event_id": stop.event_id})
+    stop_dispatching_new_work(stop.stop_scope)   # "task", or the whole "customer"
+```
+
+A bare `except:` or `except BaseException:` still catches it; that is accepted, the
+objective being the common accidental failure rather than technical impossibility.
+The rule for such a handler is the one Python already has for `KeyboardInterrupt`:
+**re-raise anything outside `Exception` unless you are handling that specific named
+signal** — a broad handler that swallows `BaseException` swallows the stop with it.
+Every ordinary SDK failure stays an `Exception` under `UBBError`.
+
+`record_usage(..., raise_on_stop=False)` returns the same acknowledgement with
+`result.stop` set instead of raising. The one reason to choose it is recording work
+that has **already** happened one call at a time, where a stop raised part-way would
+leave the rest unrecorded — and `record_batch` is the better tool for that, because
+it **never raises**: each item carries its own `stop` / `stop_reason` / `stop_scope`,
+`result.stop` says whether any item asked for one, and `result.first_stop_index`
+names the earliest that did. One stopped piece of work does not abandon the other
+forty-nine.
 
 ## Verifying webhooks
 
@@ -403,9 +444,10 @@ client.record_usage(customer_id: str, idempotency_key: str, *,
     provider_cost_micros=None, claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
     dimensions=None, metadata=None, task_id=None, measurements=None,
-    recorded_at=None, raise_on_stop=False)
+    recorded_at=None, raise_on_stop=True)      # a stop verdict raises UBBStopRequested
 
-# record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected)
+# record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected,
+#                               stop, first_stop_index) — never raises
 client.record_batch(events: list[dict])
 
 # usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
@@ -427,7 +469,7 @@ client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
 | `uncosted_measurement_keys` | Measurements with no matching cost rule |
 | `billed_cost_micros` | Amount charged to the customer wallet |
 | `new_balance_micros` | Customer wallet balance after this event |
-| `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response) |
+| `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response; `record_usage` raises it as `UBBStopRequested` by default, carrying this whole object as `stop.result`) |
 
 ---
 
