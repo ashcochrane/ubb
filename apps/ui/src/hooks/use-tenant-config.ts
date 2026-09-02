@@ -101,3 +101,35 @@ export function useIsPostpaid(): boolean {
   const { data } = useTenantConfig();
   return isPostpaid(data);
 }
+
+/**
+ * The posture in which a workspace meters and never bills, as the wire spells
+ * it today.
+ *
+ * ⚠ SPELLED HERE AND NOWHERE NEW. The value is a retired word (slice 8 renames
+ * it to `external`, the fact a tenant is actually choosing) with a console
+ * ledger seat that is a CEILING on how many files may carry it — so a feature
+ * that needs to ask the question imports this predicate rather than comparing
+ * the string itself, and the rename becomes one line here instead of one per
+ * caller. This file already carried the word, which is why the predicate lives
+ * beside `isPostpaid` rather than in the feature that first needed it (#423).
+ */
+export const METERING_ONLY_BILLING_MODE: TenantConfig["billing_mode"] = "meter_only";
+
+/**
+ * Whether the workspace meters without billing.
+ *
+ * The posture decides what a declaration DOES rather than what it says: a
+ * fixed-price kind of work is recorded and inert for a workspace that does not
+ * bill, and becomes a start-gate refusal the day billing is enabled (#187 §9).
+ * Deliberately the sibling of `isPostpaid` above and just as narrow.
+ */
+export function isMeteringOnly(config: TenantConfig | undefined): boolean {
+  return config?.billing_mode === METERING_ONLY_BILLING_MODE;
+}
+
+/** Metering-only posture as a hook; false while config is loading. */
+export function useIsMeteringOnly(): boolean {
+  const { data } = useTenantConfig();
+  return isMeteringOnly(data);
+}

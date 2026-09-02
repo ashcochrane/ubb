@@ -18,6 +18,8 @@ import { routeTree } from "./routeTree.gen";
 const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/", expectText: /overview|getting started/i },
   { path: "/events", expectText: /events/i },
+  { path: "/tasks", expectText: /kinds of work/i },
+  { path: "/tasks/kinds/video-render", expectText: /how it is sold/i },
   { path: "/customers", expectText: /customers/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },

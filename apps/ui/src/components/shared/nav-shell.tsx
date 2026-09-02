@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { navSections } from "./nav-config";
+import { visibleNavSections } from "./nav-config";
 import { TopBar } from "./top-bar";
 import { useAuthUser } from "@/hooks/use-auth";
 import { useCurrentRole } from "@/hooks/use-current-role";
@@ -27,14 +27,7 @@ export function NavShell({ children, userSlot }: NavShellProps) {
   const { role } = useCurrentRole();
 
   // Product-gated navigation: never show a surface the tenant can't use.
-  const visibleSections = navSections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter(
-        (item) => !item.product || (config?.products.includes(item.product) ?? false),
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
+  const visibleSections = visibleNavSections(config?.products);
 
   const initial = (user.name || user.email || "?").charAt(0).toUpperCase();
 

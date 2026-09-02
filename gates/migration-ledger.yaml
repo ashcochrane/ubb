@@ -1768,9 +1768,9 @@ entries:
   # made the backend hold both values made the contract's excuse false; see the
   # note at `g4-openapi-pricing_mode`'s old position.
   #
-  # `g2-console-pricing_mode` SURVIVES and is still slice 5's, owed by the
-  # console ticket that gives the registry a front door. G2 is measured per
-  # surface and `labels.ts` holds no map for this concept yet.
+  # `g2-console-pricing_mode` survived this commit and was paid by #423, the
+  # console ticket that gave the registry a front door — see the note at its
+  # old position among the console entries. G2 is measured per surface.
 
   # ⚠ `pricing_receipt_subject_type` REACHED 2 OF 2 ON THE BACKEND IN #370 and
   # its entry is deleted. The entry named `usage/models.py` as the consumer,
@@ -1918,17 +1918,15 @@ entries:
   # dead export. The catalogue carries both words and `customer-price.test.ts`
   # holds it to them meanwhile.
 
-  - id: g2-console-pricing_mode
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::pricing_mode
-    expected: pricing_mode
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #147 snapshots `Task.pricing_mode` at creation, so
-      the column is the Task's. Slice 5 rebuilds the Task.
+  # ⚠ `g2-console-pricing_mode` REACHED 2 OF 2 IN #423 and its entry is
+  # deleted, in the shape slices 3 and 4 established (spec §26): `labels.ts`
+  # holds `PRICING_MODE_VALUES` by reference, the words were already in the
+  # catalogue under `pricing_mode.*` (#406), and the binding sits at the
+  # surface that renders a kind of work — `features/tasks/lib/kinds.ts`, the
+  # console's first tasks feature. There was no hand-written map to delete:
+  # the entry read `0 of 2` because the concept did not exist on this surface
+  # at all (§27's third shape, the same one `g2-backend-pricing_mode` had),
+  # and the console's first sight of it is already the migrated shape.
 
   - id: g2-console-spend_pool_enforce_mode
     gate: G2
