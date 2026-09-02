@@ -53,6 +53,16 @@ start of a parallel hierarchy: every ordinary SDK failure stays an `Exception`
 under `UBBError`, and `record_batch` never raises it — the batch reports the
 stop per item.
 
+**A missing declaration is an ordinary error.** `TaskOutcomeRequired` — a
+`UBBError`, client-side like `UBBValidationError` — is raised by the work
+block `start_task` returns when it exits cleanly with none of `complete()` /
+`fail(outcome_reason)` / `cancel()` called. It leaves the unit of work open
+and carries the handle, so the declaration still lands (#422, #179 §2). An
+ordinary exception escaping the block declares `failed` with
+`execution_failed`; anything outside `Exception` — the stop included —
+propagates with nothing declared, and the classification is structural, not a
+list.
+
 ## Naming an operation, never spelling a route (#209, #155 §8.3)
 
 `ubb/_operations.py` (generated, ratcheted) is the third exception to "hand
@@ -96,8 +106,9 @@ a docstring is a string. It found nothing when it landed (of 53 documented
 routes, 48 resolved exactly, 4 named a family and 1 was ledger-excused), and
 nothing since: measured after #373, **59 documented routes, 55 exact, 4 naming
 a family and none excused** — the excused one went with the method that
-documented it. It is there for the rename that fixes a call and forgets the
-prose.
+documented it; after #422, **67 documented, 63 exact, 4 a family, none
+excused** — the unit-of-work surface added eight, every one resolving. It is
+there for the rename that fixes a call and forgets the prose.
 
 ## Open-world tolerance
 

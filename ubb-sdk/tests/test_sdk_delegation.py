@@ -269,8 +269,11 @@ class TestCloseTaskSignatureParity:
 
     #: (facade method, metering method) pairs the facade must mirror in full.
     #: Params intentionally NOT mirrored go in `KNOWN_DIVERGENCES` with a
-    #: comment; there are none today for either method.
-    PASSTHROUGHS = ("record_usage", "close_task")
+    #: comment; there are none today for any of them. The unit-of-work
+    #: surface joined in #422: the start, and the three reads that arrived
+    #: with it.
+    PASSTHROUGHS = ("record_usage", "close_task", "start_task", "get_task",
+                    "list_tasks", "list_subtasks")
     KNOWN_DIVERGENCES: set = set()
 
     def test_every_facade_passthrough_accepts_every_lower_param(self):
@@ -310,6 +313,55 @@ class TestCloseTaskSignatureParity:
         client.metering.close_task = MagicMock()
         with pytest.raises(TypeError):
             client.close_task("task_1")
+        client.close()
+
+    def test_the_facade_start_forwards_the_declaration_and_hands_back_the_handle(self):
+        """The facade's start is the metering client's start: every field
+        reaches it under its own name and what comes back is the handle
+        itself, so the work block reads the same through either client."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        sentinel = object()
+        client.metering.start_task = MagicMock(return_value=sentinel)
+
+        result = client.start_task("c1", "nightly-42", task_type="render",
+                                   parent_task_id="task_0",
+                                   provider_cost_limit_micros=5_000_000,
+                                   external_task_id="run-7",
+                                   metadata={"report": "weekly"})
+
+        assert result is sentinel
+        args, kwargs = client.metering.start_task.call_args
+        assert args == ("c1", "nightly-42")
+        assert kwargs["task_type"] == "render"
+        assert kwargs["parent_task_id"] == "task_0"
+        assert kwargs["provider_cost_limit_micros"] == 5_000_000
+        assert kwargs["external_task_id"] == "run-7"
+        assert kwargs["metadata"] == {"report": "weekly"}
+        client.close()
+
+    def test_the_facade_start_requires_the_key(self):
+        """A PIN of the facade's signature, asserted by the parameter's name:
+        the key is the retry story and the reason the route requires it, and
+        a facade that defaulted it would mint a new unit of work per retry."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        client.metering.start_task = MagicMock()
+        with pytest.raises(TypeError, match="idempotency_key"):
+            client.start_task("c1")
+        client.close()
+
+    def test_the_facade_reads_forward_their_filters(self):
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        for method, args, kwargs in (
+            ("get_task", ("task_1",), {}),
+            ("list_tasks", (), {"cursor": "c", "limit": 5, "customer_id": "c1",
+                                "task_type": "render", "status": "active"}),
+            ("list_subtasks", ("task_1",), {"cursor": "c", "limit": 5}),
+        ):
+            sentinel = object()
+            setattr(client.metering, method, MagicMock(return_value=sentinel))
+            assert getattr(client, method)(*args, **kwargs) is sentinel
+            getattr(client.metering, method).assert_called_once_with(
+                *args, **kwargs)
         client.close()
 
 

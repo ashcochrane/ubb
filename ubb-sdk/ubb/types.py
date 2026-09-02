@@ -12,9 +12,9 @@ class PreCheckResult:
     balance_micros: int | None = None
     # THE THREE FIELDS THAT DESCRIBED A UNIT OF WORK ARE GONE (#410). This
     # answer used to double as the response to a registration, because a flag
-    # on the same call created one; registering work is its own call now, and
-    # a wrapper for it is #422's. Keeping them would publish three values that
-    # are permanently None.
+    # on the same call created one; registering work is its own call now —
+    # `MeteringClient.start_task`, which answers with a `StartedTask` (#422).
+    # Keeping them would publish three values that are permanently None.
 
 @dataclass(frozen=True)
 class BatchItemResult:

@@ -48,6 +48,14 @@ Back-out is instant (set `off`).
    call is refused (`409 idempotency_key_conflict`) naming the field that
    differs, rather than quietly handing you the first one.
 
+   From the SDK this is `client.start_task(customer_id, idempotency_key, ...)`,
+   which answers with a handle: use it as a `with` block around the run and
+   end it inside with `task.complete()`, `task.fail(outcome_reason)` or
+   `task.cancel()`. A block that ends without one raises `TaskOutcomeRequired`
+   and leaves the task **open** — UBB never guesses an ending — and an
+   ordinary exception escaping it declares `failed` with `execution_failed`
+   and re-raises.
+
    *(Registering nothing, just asking: `pre_check(customer_id)` — your "is this
    customer allowed right now?" poll for webhook-less setups. It answers `200`
    with `allowed: false` rather than refusing, and it starts nothing.)*
@@ -97,6 +105,12 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   provider_cost_limit_micros, external_task_id, created_at, replayed}` — push,
   at task start. `replayed` says this call found your key already claimed and
   created nothing.
+- **`start_task` (SDK) →** a `StartedTask` handle over the call above:
+  `task_id`, `replayed`, and the close as `complete()` / `fail(outcome_reason)`
+  / `cancel()`. As a `with` block it declares an ending only where control flow
+  is evidence for one — a clean exit with none raises `TaskOutcomeRequired`
+  with the task still open, an ordinary exception declares `failed`, and a
+  stop raised inside it declares nothing.
 - **`pre_check` →** `{allowed, reason, balance_micros}` — pull, as a poll. It
   registers nothing; the call above is the only one that starts a task.
 - **`record_usage` →** always 200 for a recorded event, and when the verdict
@@ -130,7 +144,7 @@ The stop is cooperative — your runtime cancels at a safe boundary. Common shap
 - **Vercel AI SDK:** a `stopWhen` predicate set by your `UBBStopRequested` handler (or, with `raise_on_stop=False`, fed by the last `record_usage` result's `stop`).
 - **LangGraph:** catch `UBBStopRequested` at a node boundary; stop via the checkpointer.
 - **OpenAI Agents SDK:** `result.cancel()` (after the current turn) from the `UBBStopRequested` handler.
-- **Plain workers / Celery:** let `UBBStopRequested` end the current piece of work — catch it once at the worker's outer boundary, never per call; on the webhook, `revoke`/cancel the matching work.
+- **Plain workers / Celery:** let `UBBStopRequested` end the current piece of work — catch it once at the worker's outer boundary, never per call. A `with client.start_task(...)` block it escapes declares nothing, so that handler is where the task is `cancel()`led or `fail()`ed; on the webhook, `revoke`/cancel the matching work.
 
 ## The honest guarantee (and its bound)
 

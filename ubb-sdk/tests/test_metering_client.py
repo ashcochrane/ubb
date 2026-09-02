@@ -555,6 +555,126 @@ class MeteringClientTest(unittest.TestCase):
             "reason_detail": "the provider returned 503",
         })
 
+    # ---- start_task's grouping bag, and the three reads (#422) ----
+    #
+    # These sit here rather than in `test_work_block.py`, which holds the
+    # rest of the start-and-close surface, because their fixtures spell the
+    # grouping bag's wire key — retired vocabulary under a spread ceiling
+    # another slice owns, which this module already counts against and a new
+    # module would put over.
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_start_task_sends_the_grouping_bag_under_its_wire_key(self, mock_post):
+        """The bag travels under the request property's own name — the keyword
+        the start shares with ``record_usage`` — and only when given; the
+        start's answer never echoes it back (`StartTaskResponse`)."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "task_id": "task_1", "parent_task_id": None, "task_type": "render",
+            "status": "active", "provider_cost_limit_micros": None,
+            "agreed_price_micros": None, "external_task_id": "",
+            "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
+        })
+        task = self.client.start_task("c1", "k1", task_type="render",
+                                      dimensions={"region": "eu"})
+        self.assertEqual(mock_post.call_args.args[0], "/api/v1/tasks")
+        self.assertEqual(mock_post.call_args.kwargs["json"], {
+            "customer_id": "c1", "idempotency_key": "k1",
+            "task_type": "render", "dimensions": {"region": "eu"},
+        })
+        self.assertEqual(task.task_id, "task_1")
+
+    @staticmethod
+    def _a_task_row(**overrides) -> dict:
+        """`api/v1/schemas.py::task_out`, as the wire sends it."""
+        row = {
+            "task_id": "task_1", "parent_task_id": None, "task_type": "render",
+            "status": TASK_STATUS_COMPLETED, "outcome_reason": None,
+            "reason_detail": None, "total_provider_cost_micros": 1_750_000,
+            "unresolved_event_count": 1, "total_billed_cost_micros": 2_500_000,
+            "unpriced_event_count": 0, "event_count": 12,
+            "provider_cost_limit_micros": 5_000_000, "agreed_price_micros": None,
+            "dimensions": {"grouping_field_1": "eu"},
+            "created_at": "2026-09-02T09:00:00+00:00",
+            "completed_at": "2026-09-02T09:30:00+00:00",
+        }
+        row.update(overrides)
+        return row
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_get_task_url_and_result(self, mock_get):
+        from ubb._core.models.task_detail_out import TaskDetailOut
+        contained = self._a_task_row(task_id="sub_1", parent_task_id="task_1",
+                                     status=TASK_STATUS_FAILED,
+                                     outcome_reason=OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+                                     reason_detail="the provider returned 503")
+        mock_get.return_value = MagicMock(
+            status_code=200, json=lambda: dict(self._a_task_row(),
+                                              subtasks=[contained]))
+        result = self.client.get_task("task_1")
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/tasks/task_1")
+        self.assertIsInstance(result, TaskDetailOut)
+        self.assertEqual(result.task_id, "task_1")
+        self.assertEqual(result.status, TASK_STATUS_COMPLETED)
+        self.assertEqual(result.total_billed_cost_micros, 2_500_000)
+        self.assertEqual(result.unresolved_event_count, 1)
+        self.assertIsNone(result.outcome_reason)
+        (inner,) = result.subtasks
+        self.assertEqual(inner.task_id, "sub_1")
+        self.assertEqual(inner.parent_task_id, "task_1")
+        self.assertEqual(inner.status, TASK_STATUS_FAILED)
+        self.assertEqual(inner.outcome_reason,
+                         OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR)
+        self.assertEqual(inner.reason_detail, "the provider returned 503")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_tasks_url_filters_and_page(self, mock_get):
+        from ubb._core.models.task_out import TaskOut
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "data": [self._a_task_row(), self._a_task_row(task_id="task_2")],
+            "next_cursor": "abc", "has_more": True,
+        })
+        page = self.client.list_tasks(cursor="xyz", limit=2, customer_id="c1",
+                                      task_type="render",
+                                      status=TASK_STATUS_COMPLETED)
+        self.assertEqual(mock_get.call_args.args[0], "/api/v1/tasks")
+        # THE WHOLE PARAMS DICT, not one key at a time: a filter the route
+        # publishes nowhere rides along beside a per-key assertion unseen.
+        self.assertEqual(mock_get.call_args.kwargs["params"], {
+            "cursor": "xyz", "limit": 2, "customer_id": "c1",
+            "task_type": "render", "status": TASK_STATUS_COMPLETED,
+        })
+        self.assertIsInstance(page, PaginatedResponse)
+        self.assertEqual([row.task_id for row in page.data],
+                         ["task_1", "task_2"])
+        self.assertIsInstance(page.data[0], TaskOut)
+        self.assertEqual(page.next_cursor, "abc")
+        self.assertTrue(page.has_more)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_tasks_sends_no_params_it_was_not_given(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "data": [], "next_cursor": None, "has_more": False,
+        })
+        page = self.client.list_tasks()
+        self.assertIsNone(mock_get.call_args.kwargs.get("params"))
+        self.assertEqual(page.data, [])
+        self.assertIsNone(page.next_cursor)
+        self.assertFalse(page.has_more)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_list_subtasks_url_and_page(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "data": [self._a_task_row(task_id="sub_1", parent_task_id="task_1")],
+            "next_cursor": None, "has_more": False,
+        })
+        page = self.client.list_subtasks("task_1", limit=10)
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/tasks/task_1/subtasks")
+        self.assertEqual(mock_get.call_args.kwargs["params"], {"limit": 10})
+        (inner,) = page.data
+        self.assertEqual(inner.parent_task_id, "task_1")
+        self.assertFalse(page.has_more)
+
     # ---- book URL correctness ----
 
     @patch("ubb.metering.httpx.Client.post")

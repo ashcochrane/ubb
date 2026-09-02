@@ -145,7 +145,8 @@ class BillingClientTest(unittest.TestCase):
         One proved the wire body could carry the task vocabulary, the other
         that it did not when the flag was off. This call registers nothing
         now, so the second case is the whole claim and the first has no
-        subject — the wrapper for the route that DOES register work is #422's.
+        subject — the wrapper for the route that DOES register work is
+        `MeteringClient.start_task` (#422).
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "allowed": True, "reason": None, "balance_micros": 10_000_000,

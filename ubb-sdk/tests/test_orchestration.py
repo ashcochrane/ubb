@@ -242,10 +242,12 @@ class TestOrchestratedPreCheck(unittest.TestCase):
     # wrapper is deleted with it, and the route that registers work is
     # ungated, requires the caller's key, and answers a refusal as a refusal.
     #
-    # THEY ARE DELETED RATHER THAN REPOINTED because #422 owns the SDK's start
-    # and the shape of its signature, and a case rewritten here would be a
-    # second answer to a question that ticket has to settle. What survives of
-    # this client's half is the advisory check, covered by the cases above.
+    # THEY WERE DELETED RATHER THAN REPOINTED because #422 owned the SDK's
+    # start and the shape of its signature, and a case rewritten here would
+    # have been a second answer to a question that ticket settled:
+    # `MeteringClient.start_task` answers with a `StartedTask` handle, and
+    # `tests/test_work_block.py` holds its cases. What survives of this
+    # client's half is the advisory check, covered by the cases above.
 
     def test_pre_check_no_billing_trivially_allowed(self):
         """Without billing, pre_check returns trivially allowed."""

@@ -38,3 +38,14 @@ def from_wire(model_cls: type[T], data: dict) -> T:
 def list_from_wire(model_cls: type[T], rows: list[dict]) -> list[T]:
     """``from_wire`` over a list of rows (e.g. a page of items)."""
     return [from_wire(model_cls, row) for row in rows]
+
+
+def page_from_wire(model_cls: type[T], body: dict):
+    """The cursor envelope every list answers — ``data`` / ``next_cursor`` /
+    ``has_more`` (MIGRATION.md §2) — with its rows parsed through
+    ``model_cls``. One reader for the one envelope, so a list method names its
+    row model and nothing else."""
+    from ubb.types import PaginatedResponse  # the shell type; imported here
+    return PaginatedResponse(data=list_from_wire(model_cls, body["data"]),
+                             next_cursor=body.get("next_cursor"),
+                             has_more=body["has_more"])

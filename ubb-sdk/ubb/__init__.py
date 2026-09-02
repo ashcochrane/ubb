@@ -1,5 +1,5 @@
 from ubb.client import UBBClient
-from ubb.metering import MeteringClient
+from ubb.metering import MeteringClient, StartedTask
 from ubb.billing import BillingClient
 from ubb.subscriptions import SubscriptionsClient
 from ubb.referrals import ReferralsClient
@@ -8,7 +8,10 @@ from ubb.referrals import ReferralsClient
 # types the client returns, re-exported here as the SDK's public surface. Never
 # hand-typed again; they regenerate under the CI ratchet.
 from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.start_task_response import StartTaskResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.task_out import TaskOut
+from ubb._core.models.task_detail_out import TaskDetailOut
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.budget_config_out import BudgetConfigOut
@@ -29,7 +32,9 @@ from ubb._core.models.withdraw_response import WithdrawResponse
 # Shell-owned ergonomic types: the pagination container, the orchestration
 # pre-check result, and the batch aggregate. The small hand results that once
 # covered untyped 200s were retired by #98 — those DTOs now come from the
-# generated core above.
+# generated core above. `StartedTask` (#422) is imported beside its client
+# rather than from here: it is a handle holding a client, not a plain value
+# — the unit of work a start answers with, and the work block around it.
 from ubb.types import (
     PreCheckResult, PaginatedResponse,
     BatchItemResult, BatchResult,
@@ -37,7 +42,7 @@ from ubb.types import (
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
     UBBValidationError, UBBConnectionError, UBBConflictError,
-    UBBStopRequested, UBBWebhookVerificationError,
+    UBBStopRequested, UBBWebhookVerificationError, TaskOutcomeRequired,
 )
 # The registry-derived per-code exception hierarchy (ConflictError,
 # InsufficientBalanceError, …) — catch a family or one exact code.
@@ -60,18 +65,21 @@ from ubb._spec_revision import SPEC_VERSION as __spec_version__
 __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     # generated DTOs
-    "RecordUsageResponse", "CloseTaskResponse", "CustomerResponse", "BalanceResponse",
+    "RecordUsageResponse", "StartTaskResponse", "CloseTaskResponse", "TaskOut",
+    "TaskDetailOut", "CustomerResponse", "BalanceResponse",
     "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
-    # shell-owned types
+    # shell-owned types, and the handle a start answers with (#422)
     "PreCheckResult", "PaginatedResponse", "BatchItemResult", "BatchResult",
+    "StartedTask",
     # base exception surface, plus the one control signal that sits OUTSIDE
-    # Exception (UBBStopRequested — the spend stop, #421)
+    # Exception (UBBStopRequested — the spend stop, #421); the missing
+    # declaration (TaskOutcomeRequired, #422) is an ordinary UBBError
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
-    "UBBStopRequested", "UBBWebhookVerificationError",
+    "UBBStopRequested", "UBBWebhookVerificationError", "TaskOutcomeRequired",
     # webhooks + release identity (SDK version + spec stamp)
     "verify_webhook", "verify_webhook_legacy",
     "__version__", "__spec_revision__", "__spec_version__",

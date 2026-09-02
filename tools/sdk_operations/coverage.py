@@ -318,6 +318,8 @@ def _check_documented_routes(documented, operations, excuses, errors):
     exactly, 4 named a family, and one named a route deleted long ago.
     Re-measured after #373: 59 documented routes, 55 exact, 4 naming a family
     and none excused — the excused one went with the method that documented it.
+    After #422: 67 documented, 63 exact, 4 a family, none excused — the
+    unit-of-work surface added eight, all resolving.
 
     Three ways to be legitimate:
 

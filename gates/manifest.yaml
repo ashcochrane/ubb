@@ -708,8 +708,10 @@ gates:
       the ledger excused. Measured again after #373: **59 documented routes, 55
       resolving exactly, 4 naming a family and NONE excused** — the excused one
       went with the method that documented it, and the shell has gained prose
-      since. It is installed for the rename that has not happened yet — the one
-      that would otherwise fix a call and leave the prose behind.
+      since. After #422: **67 documented, 63 exact, 4 a family, none excused**,
+      the unit-of-work surface having added eight that all resolve. It is
+      installed for the rename that has not happened yet — the one that would
+      otherwise fix a call and leave the prose behind.
       ADR-0007 §4's method-AND-path identity did not weaken; it moved to the one
       place the mistake can still be made. A call site cannot spell a method, so
       a valid path under the wrong verb is now only reachable as a registry

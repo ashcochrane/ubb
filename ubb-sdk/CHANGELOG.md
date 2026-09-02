@@ -87,6 +87,22 @@ disagree with the shipped bytes.
 - Open-world tolerance: unknown fields land in `additional_properties`, response
   enums parse as plain `str` — a pinned client never crashes on a newly added
   field or enum value (ADR-003).
+- **A unit of work is started and closed from the client (#422).**
+  `start_task(customer_id, idempotency_key, ...)` registers work through
+  `POST /api/v1/tasks` — the key is required and yours — and answers with a
+  `StartedTask`: a context manager around the run whose `complete()` /
+  `fail(outcome_reason)` / `cancel()` declare how it ended over the one close
+  route. A clean exit with no declaration raises `TaskOutcomeRequired` (an
+  ordinary `UBBError`) and leaves the work **open**; an ordinary exception
+  declares `failed` with reason `execution_failed` and re-raises; a spend
+  stop, an interrupt or any other `BaseException` propagates with nothing
+  declared. `get_task`, `list_tasks` and `list_subtasks` wrap the three
+  reads. The lifecycle's states and outcomes are named through
+  `ubb.vocabulary` (`TASK_STATUS_*`, `TASK_OUTCOME_*`, `OUTCOME_REASON_*`),
+  and `ubb.metering.TERMINAL_TASK_STATUSES` is the set of states a unit can
+  have ended in. (The `start_task` that stood on `UBBClient` before #410
+  wrapped a flag on the affordability call, which is gone; this one is
+  written against the route that registers work.)
 
 ### Retained (not shims)
 

@@ -2009,32 +2009,6 @@ entries:
       wrapper's declared behaviour, and the wrapper does not exist until the
       Code Builder slice. The SDK names it before then only as documentation.
 
-  - id: g2-sdk-task_outcome
-    gate: G2
-    site: ubb-sdk/ubb/metering.py::task_outcome
-    expected: task_outcome
-    found: 0 of 3 values
-    owner_slice: slice_5
-    reason: >-
-      The SDK names no value here at all — the field is a bare string, so an
-      integrator has no constant to branch on, which is the whole reason #207
-      generated `ubb/vocabulary.py`. #140 makes the outcome a required
-      argument of close and the only thing that decides whether a Charge
-      fires. Slice 5 rebuilds the lifecycle.
-
-  - id: g2-sdk-task_status
-    gate: G2
-    site: ubb-sdk/ubb/metering.py::task_status
-    expected: task_status
-    found: 0 of 6 values
-    owner_slice: slice_5
-    reason: >-
-      The SDK names no value here at all — the field is a bare string, so an
-      integrator has no constant to branch on, which is the whole reason #207
-      generated `ubb/vocabulary.py`. #140's six states — `cancelled` and
-      `expired` are new and `killed` narrows to genuine spend signals. Slice 5
-      rebuilds the Task.
-
   - id: g2-sdk-webhook_event_type
     gate: G2
     site: ubb-sdk/ubb/webhooks.py::webhook_event_type

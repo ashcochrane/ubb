@@ -5,7 +5,7 @@ import httpx
 from ubb import _operations as ops
 from ubb.exceptions import UBBConnectionError
 from ubb._http import raise_for_status
-from ubb._models import from_wire
+from ubb._models import from_wire, page_from_wire
 from ubb.retry import request_with_retry
 from ubb.types import PaginatedResponse
 # Generated DTOs (the wrap, #84).
@@ -188,9 +188,7 @@ class BillingClient:
         r = self._request(
             *ops.API_V1_BILLING_ENDPOINTS_GET_TRANSACTIONS(customer_id),
             params=params)
-        body = r.json()
-        txns = [from_wire(WalletTransactionOut, item) for item in body["data"]]
-        return PaginatedResponse(data=txns, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+        return page_from_wire(WalletTransactionOut, r.json())
 
     def set_budget(self, customer_id, cap_micros, enforce_mode="alert_only",
                    hard_stop_pct=100, alert_levels=None, fail_closed=False):
@@ -246,10 +244,7 @@ class BillingClient:
         if cursor is not None:
             params["cursor"] = cursor
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_LIST_GRANTS(customer_id), params=params)
-        body = r.json()
-        grants = [from_wire(GrantOut, item) for item in body["data"]]
-        return PaginatedResponse(data=grants, next_cursor=body.get("next_cursor"),
-                                 has_more=body["has_more"])
+        return page_from_wire(GrantOut, r.json())
 
     def void_grant(self, customer_id: str, grant_id: str) -> GrantOut:
         """Void a grant via POST /api/v1/billing/customers/{customer_id}/grants/{grant_id}/void.

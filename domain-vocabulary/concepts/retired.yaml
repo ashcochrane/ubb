@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,718 of 2,132 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,720 of 2,134 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1806,6 +1806,26 @@ measurement_key:
     # and it was put back to 45 by saying "pieces of work" and "work on
     # demand". Nothing about care over the surviving senses would have helped;
     # what helps is the gate, run after `git add -A`.
+    #
+    # THE SDK'S START AND CLOSE MOVED BOTH DENOMINATORS BY TWO AND LEFT THE
+    # NUMERATOR WHERE IT WAS (1,718 -> 1,720 swept, 2,132 -> 2,134 tracked,
+    # `units` UNMOVED at 45 files and 123 occurrences). Two tracked files
+    # arrived and both are swept: the SDK test module for the work block and
+    # its five exits, and the platform's live-server proof of the same block
+    # against the database. (The build commit had a third — a package
+    # conftest sharing an outbox fixture — on a premise the review pass found
+    # false; it went, and the count with it.) No migration and no generated
+    # SDK module — the contract regenerates byte-identical, so the exclusion
+    # counts hold at 247 and 414.
+    #
+    # ⚠ THE NINTH CONSECUTIVE WINDOW, AND THE SAME SHAPE AS THE EIGHTH. The
+    # word arrived once, in the list read's docstring — "a page counts whole
+    # units of work" — ordinary English about work in a file that carries
+    # none of the three surviving senses. It went to 46 files and 124
+    # occurrences, `tests/contracts` found it on the first run after
+    # `git add -A`, and it was put back to 45 by saying "whole pieces of
+    # work". Same lesson, unchanged: the gate is what holds the line, and the
+    # number that counts is the one taken after the review pass.
 
     - term: units
       retired_as: >-
