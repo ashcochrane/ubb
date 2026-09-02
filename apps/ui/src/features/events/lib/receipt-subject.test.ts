@@ -4,6 +4,7 @@ import { PRICING_RECEIPT_SUBJECT_TYPE_VALUES } from "@/lib/vocabulary";
 
 import {
   RECEIPT_SUBJECT_EXPLANATIONS,
+  explainsACharge,
   pricingReceiptSubjectTypeLabel,
   receiptExplanation,
 } from "./receipt-subject";
@@ -49,6 +50,12 @@ describe("what a receipt explains", () => {
   // which would tell a reader the price was agreed for a posting nobody
   // agreed anything about.
   it("reads a stated, an unstated and an unfamiliar subject as the ordinary case", () => {
+    expect(explainsACharge("charge")).toBe(true);
+    expect(explainsACharge("usage_event")).toBe(false);
+    expect(explainsACharge(null)).toBe(false);
+    expect(explainsACharge(undefined)).toBe(false);
+    expect(explainsACharge("some_future_subject")).toBe(false);
+
     expect(receiptExplanation("charge")).toBe(RECEIPT_SUBJECT_EXPLANATIONS.charge);
     expect(receiptExplanation("usage_event")).toBe(
       RECEIPT_SUBJECT_EXPLANATIONS.usage_event,

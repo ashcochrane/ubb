@@ -434,16 +434,19 @@ export type ChargeReceiptRecord = {
 };
 
 /**
- * A receipt whose subject is a Charge, and the two amounts it fixes on the
- * posting that stores it.
+ * A receipt whose subject is a Charge, and everything it fixes on the posting
+ * that stores it.
  *
  * THE RECORD AND THE COLUMNS TRAVEL TOGETHER, for the reason every other
  * scenario here returns a pair: the projection writes `billed_cost_micros`
- * from the same `charge.amount_micros` the record's totals carry, and a
- * settled zero beside a `known` costing status because a Charge has no
- * supplier. A fixture that composed the record and then stated a price of its
+ * from the same `charge.amount_micros` the record's totals carry, a settled
+ * zero beside a `known` costing status because a Charge has no supplier, and
+ * the posting's own `effective_at` and `currency` from the same
+ * `charged_at` and `currency` the record states. A fixture that composed the
+ * record and then stated a price — or an instant, or a denomination — of its
  * own beside it would describe a posting whose receipt and whose columns
- * disagree — the shape the receipt exists to remove.
+ * disagree, which is the shape the receipt exists to remove; so all of them
+ * ride here and a consumer restates none.
  *
  * The receipt's method is null on BOTH sides and that rides here as a typed
  * fact, not a default: the posting's `pricing_method` is read out of the
@@ -461,12 +464,33 @@ export interface ChargeReceiptScenario extends CustomerPriceScenario, SupplierCo
   readonly pricing_receipt: ChargeReceiptRecord;
   readonly pricing_receipt_subject_type: Extract<PricingReceiptSubjectType, "charge">;
   readonly pricing_method: null;
+  /** When delivery was declared — the record's instant, and the posting's. */
+  readonly effective_at: string;
+  readonly currency: string;
   readonly billed_cost_micros: number;
   readonly pricing_status: Extract<PricingStatus, "known">;
   readonly not_applicable_reason: null;
   readonly provider_cost_micros: 0;
   readonly costing_status: Extract<CostingStatus, "known">;
   readonly unresolved_reason: null;
+}
+
+/**
+ * The facts about one Charge that its receipt is composed from — the few a
+ * projection can vary. A named shape so a fixture's seed can extend it and
+ * hand itself straight to `chargeReceipt`, rather than restating six fields
+ * under a second set of names.
+ */
+export interface ChargeTerms {
+  /** The Charge the receipt explains. */
+  readonly charge_id: string;
+  /** The instant delivery was declared. */
+  readonly charged_at: string;
+  readonly currency: string;
+  readonly agreed_price_micros: number;
+  /** The Pricing Book line that answered, and the published version that held it. */
+  readonly agreed_price_line_id: string;
+  readonly book_version: number;
 }
 
 /**
@@ -477,17 +501,7 @@ export interface ChargeReceiptScenario extends CustomerPriceScenario, SupplierCo
  * an identifier in the provenance section, and the section admits no other
  * leaf.
  */
-export function chargeReceipt(terms: {
-  /** The Charge the receipt explains. */
-  charge_id: string;
-  /** The instant delivery was declared. */
-  charged_at: string;
-  currency: string;
-  agreed_price_micros: number;
-  /** The Pricing Book line that answered, and the published version that held it. */
-  agreed_price_line_id: string;
-  book_version: number;
-}): ChargeReceiptScenario {
+export function chargeReceipt(terms: ChargeTerms): ChargeReceiptScenario {
   return {
     // The posting's two amounts, in the pairs `knownPrice(amount)` and
     // `knownCost(0)` return — spelled here with their literal types because
@@ -500,6 +514,8 @@ export function chargeReceipt(terms: {
     costing_status: "known",
     unresolved_reason: null,
     pricing_method: null,
+    effective_at: terms.charged_at,
+    currency: terms.currency,
     pricing_receipt_subject_type: "charge",
     pricing_receipt: {
       receipt_schema_version: RECEIPT_SCHEMA_VERSION,

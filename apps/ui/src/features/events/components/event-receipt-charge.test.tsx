@@ -13,12 +13,15 @@
 // ⚠ THE MUTATION THAT PROVES IT IS NOT VACUOUS. In `event-detail-page.tsx`,
 // stop reading `pricing_receipt_subject_type` — render the record tree for
 // every receipt, as the page did before #425. The second case below goes red
-// on every one of its assertions: the subject is wire-borne and typed, so the
-// mock cannot hide that mutation the way it hides a narrowing. What the mock
-// CAN hide is a composer drift — a `chargeReceipt` that stopped writing the
-// regime, say — because the mock composes from the same function; that is why
-// the record's shape is pinned in `economic-scenarios.test.ts` rather than
-// here.
+// on the charge's sentence and on every row of the summary list, because the
+// list is what the subject decides. The record tree's own leaves do NOT move:
+// it rendered `subject_type` and both identifiers before #425 and after, so
+// the row assertions are scoped to the summary list rather than to the
+// section, and the two claims about the tree say only what the tree is. What
+// the mock CAN hide is a composer drift — a `chargeReceipt` that stopped
+// writing the regime, say — because the mock composes from the same function;
+// that is why the record's shape is pinned in `economic-scenarios.test.ts`
+// rather than here.
 //
 // ⚠ WHY THIS IS NOT ON THE TASKS SURFACE, THOUGH THE TICKET NAMES IT THERE.
 // The run page reads `GET /tasks/{id}` and nothing else. A run carries no
@@ -33,7 +36,7 @@
 // change nobody owns.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -54,6 +57,7 @@ import {
   RECEIPT_SUBJECT_EXPLANATIONS,
   pricingReceiptSubjectTypeLabel,
 } from "../lib/receipt-subject";
+import { rowBeside, sectionText, summaryListOf } from "../test-utils";
 import { EventDetailPage } from "./event-detail-page";
 
 const CHARGE_EVENT_ID = "4c9e2a17-8b53-4d06-a1f8-6e3b7d0c5a92";
@@ -68,9 +72,10 @@ const CHARGED_AT = "2026-08-30T11:31:00Z";
  * Hand-assembled rather than seeded, for the reason in the header. The two
  * things composed are the two economic states this slice makes reachable: the
  * measurements through slice 2's composer, and the receipt — with the subject
- * it names, the absent method and both amounts — through this commit's. What
- * is left is what a projection carries by being one: the kind, an empty Event
- * Type and provider, the Charge's own derived key, and an empty metadata bag.
+ * it names, the absent method, both amounts, the instant and the currency —
+ * through this commit's. What is left is what a projection carries by being
+ * one: the kind, an empty Event Type and provider, the Charge's own derived
+ * key, and an empty metadata bag.
  */
 const CHARGE_DETAIL: UsageEventDetail = {
   id: CHARGE_EVENT_ID,
@@ -84,9 +89,7 @@ const CHARGE_DETAIL: UsageEventDetail = {
     agreed_price_line_id: LINE_ID,
     book_version: 7,
   }),
-  effective_at: CHARGED_AT,
   created_at: CHARGED_AT,
-  currency: "usd",
   event_type: "",
   provider: "",
   grouping_fields: {},
@@ -114,13 +117,6 @@ function renderReceipt() {
     </QueryClientProvider>
   );
   return render(ui);
-}
-
-/** Everything one section of the receipt says, by the title it renders under. */
-function sectionText(title: string): string {
-  const section = screen.getByText(title).closest("section");
-  expect(section).not.toBeNull();
-  return section?.textContent ?? "";
 }
 
 describe("a receipt whose subject is a Charge", () => {
@@ -158,19 +154,26 @@ describe("a receipt whose subject is a Charge", () => {
     expect(receipt).toContain(RECEIPT_SUBJECT_EXPLANATIONS.charge);
     expect(receipt).not.toContain(RECEIPT_SUBJECT_EXPLANATIONS.usage_event);
 
-    expect(receipt).toContain("Explains");
-    expect(receipt).toContain(pricingReceiptSubjectTypeLabel("charge"));
-    expect(receipt).toContain("Agreed price");
-    expect(receipt).toContain("$5.00");
-    expect(receipt).toContain("Sold as");
-    expect(receipt).toContain(pricingModeLabel("fixed"));
-    expect(receipt).toContain(CHARGE_ID);
-    expect(receipt).toContain(LINE_ID);
-    expect(receipt).toContain("Book version");
-    expect(receipt).toContain("7");
+    // Scoped to the summary list, row by row (see the header): the record
+    // tree below it renders every leaf of the record verbatim, so a section-
+    // wide `toContain` on an identifier would be satisfied with the list gone.
+    const summary = summaryListOf("Pricing receipt");
+    expect(
+      within(rowBeside(summary, "Explains")).getByText(pricingReceiptSubjectTypeLabel("charge")),
+    ).toBeInTheDocument();
+    expect(within(rowBeside(summary, "Agreed price")).getByText("$5.00")).toBeInTheDocument();
+    expect(
+      within(rowBeside(summary, "Sold as")).getByText(pricingModeLabel("fixed")),
+    ).toBeInTheDocument();
+    expect(within(rowBeside(summary, "Charge ID")).getByText(CHARGE_ID)).toBeInTheDocument();
+    expect(
+      within(rowBeside(summary, "Pricing Book line")).getByText(LINE_ID),
+    ).toBeInTheDocument();
+    expect(within(rowBeside(summary, "Book version")).getByText("7")).toBeInTheDocument();
 
-    // The record itself is still shown under the explanation — it is the
-    // record — and it names the Charge as its subject, not this posting.
+    // The record itself is still shown under the summary — it is the record —
+    // and it names the Charge as its subject, not this posting. Neither of
+    // these moves under the mutation in the header; they say what the tree is.
     expect(receipt).toContain("subject_type");
     expect(receipt).not.toContain(CHARGE_EVENT_ID);
   });

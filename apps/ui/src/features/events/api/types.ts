@@ -115,7 +115,7 @@ function rec(value: unknown): Record<string, unknown> | null {
  * over an untyped record would need a fallback, and a fallback for a price is
  * the `?? 0` this console exists to refuse.
  */
-export interface ChargeReceiptTerms {
+export interface ChargeReceiptFacts {
   /** The Charge the record explains — its own subject, never the posting it is stored on. */
   charge_id: string | null;
   /** The regime the record carries by value: `fixed`, on every record the backend writes. */
@@ -125,9 +125,9 @@ export interface ChargeReceiptTerms {
   book_version: string | null;
 }
 
-export function asChargeReceiptTerms(
+export function asChargeReceiptFacts(
   record: Record<string, unknown>,
-): ChargeReceiptTerms {
+): ChargeReceiptFacts {
   const pricing = rec(record.pricing);
   const detail = pricing === null ? null : rec(pricing.detail);
   const provenance = rec(record.provenance);

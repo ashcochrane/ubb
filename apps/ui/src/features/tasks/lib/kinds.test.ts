@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { TenantConfig } from "@/hooks/use-tenant-config";
-import { pricingModeLabel } from "@/lib/pricing-mode";
 import { PRICING_MODE_VALUES } from "@/lib/vocabulary";
 
 import type { KindOfWork } from "../api/types";
@@ -54,18 +53,16 @@ function config(defaultCeiling: number | null): TenantConfig {
   };
 }
 
-describe("the words for how a kind of work is sold", () => {
+describe("the words for a kind of work", () => {
   // The regime's words are bound in `@/lib/pricing-mode` since #425 — two
-  // features render them — and the altitude's here; both are the catalogue's.
-  it("are the catalogue's, whichever module binds them", () => {
-    expect(pricingModeLabel("event_priced")).toBe("Event priced");
-    expect(pricingModeLabel("fixed")).toBe("Fixed price");
+  // features render them — and tested there; the altitude's are bound here.
+  it("are the catalogue's for the altitude", () => {
     expect(altitudeLabel("task")).toBe("Task");
     expect(altitudeLabel("subtask")).toBe("Subtask");
   });
 
   it("render a value the registry has never seen as itself, never humanised", () => {
-    expect(pricingModeLabel("some_future_regime")).toBe("some_future_regime");
+    expect(altitudeLabel("some_future_altitude")).toBe("some_future_altitude");
   });
 
   it("explain every regime the registry declares", () => {

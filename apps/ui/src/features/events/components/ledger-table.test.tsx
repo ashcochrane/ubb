@@ -6,7 +6,7 @@
 // is one cell's rule, not the paging. The rows are assembled here, as the
 // list route serves them — `UsageEventOut` carries the kind and no receipt.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { knownCost, knownPrice } from "@/lib/economic-scenarios";
@@ -57,9 +57,16 @@ describe("LedgerTable", () => {
     expect(screen.getByText("chat.completion")).toBeInTheDocument();
     expect(screen.queryByText(usageEventKindLabel("metered_usage"))).not.toBeInTheDocument();
 
-    // The charge's amounts read as they are: the agreed price, and a settled
-    // supplier cost of nothing.
-    expect(screen.getByText("$5.00")).toBeInTheDocument();
-    expect(screen.getByText("$0.0310")).toBeInTheDocument();
+    // Each row's amounts, read off that row. The metered row carries its
+    // sub-unit price and cost at four decimals; the charge carries the agreed
+    // price beside a settled supplier cost of NOTHING — a real zero, from a
+    // `known` status, because no supplier stands behind a Charge.
+    const metered = screen.getByText("chat.completion").closest("tr");
+    const charge = cell.closest("tr");
+    if (!metered || !charge) throw new Error("a row is missing");
+    expect(within(metered).getByText("$0.0310")).toBeInTheDocument();
+    expect(within(metered).getByText("$0.0120")).toBeInTheDocument();
+    expect(within(charge).getByText("$5.00")).toBeInTheDocument();
+    expect(within(charge).getByText("$0.00")).toBeInTheDocument();
   });
 });

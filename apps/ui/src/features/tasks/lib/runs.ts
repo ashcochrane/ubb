@@ -254,6 +254,11 @@ export const RUN_TOTALS_COVER =
  * the tasks surface can get to it: the contract publishes no read of a run's
  * postings, so the posting itself renders on the events surface and nowhere
  * else.
+ *
+ * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE. Nothing in the
+ * console can see the day a later slice makes the projection accumulate into
+ * the run; this constant is the console site to revisit then, and the test
+ * that pins it is the one to rewrite.
  */
 export const RUN_TOTALS_LEAVE_OUT_THE_CHARGE =
   "A run sold at one agreed price also carries that price as one charge posting once it delivers. These totals do not count it; the agreed price below does.";

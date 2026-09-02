@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -38,6 +38,7 @@ import {
   measurementsStatusLabel,
 } from "../lib/measurements";
 import { RECEIPT_SUBJECT_EXPLANATIONS } from "../lib/receipt-subject";
+import { rowBeside, sectionText, summaryListOf } from "../test-utils";
 import { EventDetailPage } from "./event-detail-page";
 
 function renderPage(props: { eventId: string; customerId?: string }) {
@@ -63,21 +64,13 @@ function renderPage(props: { eventId: string; customerId?: string }) {
 const CUSTOMER_PRICE = "Customer price";
 const SUPPLIER_COST = "Supplier cost";
 
-/**
- * Everything one section of the receipt says.
- *
- * ⚠ THE SECTION IS THE UNIT NOW (#371), and it has to be. The catalogue gives
- * `costing_status.known` and `pricing_status.known` the same word, so a
- * page-wide query for "Known" finds two nodes and cannot say which side it
- * found — and the two are opposite facts about the same posting. Scoping the
- * question to a section is what keeps an assertion about the price from
- * passing on the cost.
- */
-function sectionText(title: string): string {
-  const section = screen.getByText(title).closest("section");
-  expect(section).not.toBeNull();
-  return section?.textContent ?? "";
-}
+// ⚠ THE SECTION IS THE UNIT (#371), and it has to be. The catalogue gives
+// `costing_status.known` and `pricing_status.known` the same word, so a
+// page-wide query for "Known" finds two nodes and cannot say which side it
+// found — and the two are opposite facts about the same posting. Scoping the
+// question to a section is what keeps an assertion about the price from
+// passing on the cost. `sectionText` moved to `../test-utils` in #425, the
+// day a second file on this page needed it, and carries the argument there.
 
 describe("EventDetailPage", () => {
   it("renders the full receipt for the rich mock event", async () => {
@@ -312,13 +305,18 @@ describe("EventDetailPage", () => {
     expect(sectionText(CUSTOMER_PRICE)).not.toContain("$0.00");
 
     // And the receipt explains the agreed price rather than showing a record
-    // with nothing in it.
-    const receipt = sectionText("Pricing receipt");
-    expect(receipt).toContain(RECEIPT_SUBJECT_EXPLANATIONS.charge);
-    expect(receipt).toContain("Agreed price");
-    expect(receipt).toContain("$2.50");
-    expect(receipt).toContain(CHARGE_FIXED_PRICE_ID);
-    expect(receipt).toContain(FIXED_PRICE_LINE_ID);
+    // with nothing in it — read off the summary list, because the record tree
+    // under it renders the same identifiers verbatim whether or not the page
+    // read the subject (`event-receipt-charge.test.tsx` says why).
+    expect(sectionText("Pricing receipt")).toContain(RECEIPT_SUBJECT_EXPLANATIONS.charge);
+    const summary = summaryListOf("Pricing receipt");
+    expect(within(rowBeside(summary, "Agreed price")).getByText("$2.50")).toBeInTheDocument();
+    expect(
+      within(rowBeside(summary, "Charge ID")).getByText(CHARGE_FIXED_PRICE_ID),
+    ).toBeInTheDocument();
+    expect(
+      within(rowBeside(summary, "Pricing Book line")).getByText(FIXED_PRICE_LINE_ID),
+    ).toBeInTheDocument();
   });
 
   it("renders the quantities themselves when the record is still there", async () => {

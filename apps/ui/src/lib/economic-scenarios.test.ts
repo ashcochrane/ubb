@@ -408,6 +408,11 @@ describe("the receipt whose subject is a Charge", () => {
   it("fixes the posting's amounts to the record's totals, with no method", () => {
     const scenario = chargeReceipt(terms);
 
+    // And the posting's instant and denomination to the record's, so a
+    // consumer has nothing of its own to state beside the record.
+    expect(scenario.effective_at).toBe(scenario.pricing_receipt.effective_at);
+    expect(scenario.currency).toBe(scenario.pricing_receipt.currency);
+
     expect(scenario.billed_cost_micros).toBe(scenario.pricing_receipt.totals.billed_cost_micros);
     expect(scenario.pricing_status).toBe("known");
     expect(scenario.not_applicable_reason).toBeNull();

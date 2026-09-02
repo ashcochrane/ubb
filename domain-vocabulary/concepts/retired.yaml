@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,764 of 2,178 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,766 of 2,180 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1860,21 +1860,23 @@ measurement_key:
     # contained work" and "a whole unit of work"; the number that counts is
     # the one taken after the review pass, which is the standing caveat.
     #
-    # THE TWO ECONOMIC STATES MOVED BOTH DENOMINATORS BY SEVEN AND LEFT THE
-    # NUMERATOR WHERE IT WAS (1,757 -> 1,764 swept, 2,171 -> 2,178 tracked,
-    # `units` UNMOVED at 45 files and 123 occurrences). Seven tracked files
+    # THE TWO ECONOMIC STATES MOVED BOTH DENOMINATORS BY NINE AND LEFT THE
+    # NUMERATOR WHERE IT WAS (1,757 -> 1,766 swept, 2,171 -> 2,180 tracked,
+    # `units` UNMOVED at 45 files and 123 occurrences). Nine tracked files
     # arrived and every one is swept, because the charge's console consumer
     # (#425) is all source: a lib binding for the regime's words, which two
-    # features now render; two events-feature bindings — the posting's kind
-    # and the receipt's subject — with a test each; a component test for the
-    # ledger's one reader of the kind; and the test that assembles a charge
-    # posting from the canonical scenarios and renders it. No migration, no
+    # features now render, and its test; two events-feature bindings — the
+    # posting's kind and the receipt's subject — with a test each; a component
+    # test for the ledger's one reader of the kind; the test that assembles a
+    # charge posting from the canonical scenarios and renders it; and the
+    # events feature's shared test readers. Seven on the build and two on the
+    # review pass, which is the caveat working as written. No migration, no
     # schema change and no generated module — the contract and the console's
     # snapshot of it are untouched — so the exclusion counts hold at 247 and
     # 414. The prose that held was "a whole unit of work", "one agreed
-    # price", "a charge posting" and "measured quantities"; the number that
-    # counts is the one taken after the review pass, which is the standing
-    # caveat.
+    # price", "a charge posting" and "measured quantities"; the one word the
+    # review pass reached for was a retired prose synonym with no sweep seat,
+    # caught by a grep the sweep cannot do, and rewritten.
 
     - term: units
       retired_as: >-

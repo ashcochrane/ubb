@@ -33,7 +33,7 @@ import {
 
 import { useUsageEvent } from "../api/queries";
 import {
-  asChargeReceiptTerms,
+  asChargeReceiptFacts,
   asStopContextEntries,
   type UsageEventDetail,
 } from "../api/types";
@@ -45,6 +45,7 @@ import {
 } from "../lib/measurements";
 import { formatEventMicros, formatSignedEventMicros } from "../lib/money";
 import {
+  explainsACharge,
   pricingReceiptSubjectTypeLabel,
   receiptExplanation,
 } from "../lib/receipt-subject";
@@ -135,43 +136,49 @@ function Measurements({ detail }: { detail: UsageEventDetail }) {
 }
 
 /**
- * What a receipt whose subject is a Charge says, said before the record is
- * shown (#425, spec §29).
+ * What a receipt explains, said before the record is shown — and, where the
+ * subject is a Charge, what the record holds (#425, spec §29).
  *
- * A charge posting's record has an empty costing detail and a pricing detail
- * holding one key, and rendered as a tree that reads as a receipt with
- * something missing from it. Nothing is: the whole unit of work was sold for
- * one agreed price, settled before any of it ran, so there is no measured
- * quantity and no rule for the record to restate. This list says what the
- * record does hold — which Charge it explains, the price that was agreed, the
- * regime the record carries by value, and the Pricing Book line and version
- * that answered — and the tree below it is then the record it always was.
+ * The first row is the wire's own typed word for the subject, rendered for
+ * every receipt that states one: a reader is told what kind of record they
+ * are looking at before they read it. The rest render only for a Charge. A
+ * charge posting's record has an empty costing detail and a pricing detail
+ * holding one key, and as a tree it reads as a receipt with something missing
+ * from it. Nothing is: the whole unit of work was sold for one agreed price,
+ * settled before any of it ran, so there is no measured quantity and no rule
+ * for the record to restate. The rows say what the record does hold — the
+ * price that was agreed, the regime the record carries by value, which Charge
+ * it explains, and the Pricing Book line and version that answered — and the
+ * tree below is then the record it always was.
  *
  * THE AMOUNT IS THE POSTING'S OWN, read through `settledPriceMicros` like every
  * other price on this page, and not the record's total: the projection writes
  * both from the Charge's amount, and reading an untyped record for a figure
  * would need a fallback a price may never have. The identifiers come off the
- * record through `asChargeReceiptTerms`, which yields a string or an absence
+ * record through `asChargeReceiptFacts`, which yields a string or an absence
  * and nothing that could be mistaken for a number.
  */
-function ChargeExplanation({ detail }: { detail: UsageEventDetail }) {
-  const terms = asChargeReceiptTerms(detail.pricing_receipt);
-  const agreed = settledPriceMicros(detail);
+function ReceiptSummary({ detail }: { detail: UsageEventDetail }) {
+  const subject = detail.pricing_receipt_subject_type;
+  if (subject == null) return null;
   const items: DetailItem[] = [
-    {
-      label: "Explains",
-      value: pricingReceiptSubjectTypeLabel(detail.pricing_receipt_subject_type),
-    },
-    {
-      label: "Agreed price",
-      value:
-        agreed === null ? ABSENT_LABEL : formatEventMicros(agreed, detail.currency),
-    },
-    { label: "Sold as", value: pricingModeLabel(terms.pricing_mode) },
-    { label: "Charge", value: terms.charge_id, mono: true },
-    { label: "Pricing Book line", value: terms.agreed_price_line_id, mono: true },
-    { label: "Book version", value: terms.book_version, mono: true },
+    { label: "Explains", value: pricingReceiptSubjectTypeLabel(subject) },
   ];
+  if (explainsACharge(subject)) {
+    const facts = asChargeReceiptFacts(detail.pricing_receipt);
+    const agreed = settledPriceMicros(detail);
+    items.push(
+      {
+        label: "Agreed price",
+        value:
+          agreed === null ? ABSENT_LABEL : formatEventMicros(agreed, detail.currency),
+      },
+      { label: "Sold as", value: pricingModeLabel(facts.pricing_mode) },
+      { label: "Charge ID", value: facts.charge_id, mono: true },
+      { label: "Pricing Book line", value: facts.agreed_price_line_id, mono: true },
+      { label: "Book version", value: facts.book_version, mono: true },
+    );
+  }
   return <DetailList items={items} className="mb-3" />;
 }
 
@@ -454,7 +461,7 @@ export function EventDetailPage({
             and a charge's record explains a price that was agreed rather than
             derived, so it is opened with a sentence saying so and a list of
             what it holds, before the record itself. `../lib/receipt-subject`
-            owns both sentences. */}
+            owns both sentences and the one question asked of the subject. */}
         <Section
           title="Pricing receipt"
           description={receiptExplanation(detail.pricing_receipt_subject_type)}
@@ -462,9 +469,7 @@ export function EventDetailPage({
         >
           {hasReceipt ? (
             <>
-              {detail.pricing_receipt_subject_type === "charge" && (
-                <ChargeExplanation detail={detail} />
-              )}
+              <ReceiptSummary detail={detail} />
               <KeyValueTree value={detail.pricing_receipt} mono />
             </>
           ) : (

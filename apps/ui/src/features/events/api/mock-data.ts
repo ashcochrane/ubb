@@ -20,6 +20,7 @@ import {
   unknownCost,
   unknownPrice,
   waivedPrice,
+  type ChargeTerms,
   type CustomerPriceScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
@@ -218,19 +219,12 @@ interface DetailSeed {
  * subject was the usage event under an event-priced regime. Its `kind` was
  * the one true thing about it.
  */
-interface ChargeSeed {
+interface ChargeSeed extends ChargeTerms {
+  /** The posting's id — a different id from the Charge's, which `ChargeTerms` carries. */
   id: string;
-  /** The Charge the receipt explains — a different id from the posting's. */
-  charge_id: string;
   /** The unit of work sold whole, which the posting names as its task. */
   task_id: string;
-  /** When delivery was declared: the posting's own instant, and the record's. */
-  charged_at: string;
   created_at?: string;
-  agreed_price_micros: number;
-  /** The Pricing Book line that answered, and the published version that held it. */
-  agreed_price_line_id: string;
-  book_version: number;
   /** The grouping values the Charge froze at the moment the money became owed. */
   dim1?: string;
   dim2?: string;
@@ -355,29 +349,21 @@ const RECEIPT_EXPLAINS_A_USAGE_EVENT: PricingReceiptSubjectType = "usage_event";
  * `task_charge`; the measurements are `measurementsNotApplicable()` — slice
  * 2's composer, which the backend derives off the kind and never off a record
  * (a projection has no measurement record at all); the receipt, the subject
- * it names, the absent method and both amounts are `chargeReceipt(...)`'s,
- * composed as one object so the record and the columns cannot disagree; the
- * Event Type and the provider are empty because no caller reported this row
- * and `kind` says what it is instead; the idempotency key is the Charge's own
- * derived one; and the metadata bag is empty because a projection is written
- * by UBB, not by a caller with a bag to attach.
+ * it names, the absent method, both amounts, the instant and the currency
+ * are `chargeReceipt(seed)`'s, composed as one object so the record and the
+ * columns cannot disagree; the Event Type and the provider are empty because
+ * no caller reported this row and `kind` says what it is instead; the
+ * idempotency key is the Charge's own derived one; and the metadata bag is
+ * empty because a projection is written by UBB, not by a caller with a bag
+ * to attach.
  */
 function makeChargeDetail(seed: ChargeSeed): UsageEventDetail {
   return {
     id: seed.id,
     kind: "task_charge",
     ...correlationId(seed.id, { idempotency_key: `task:${seed.task_id}` }),
-    ...chargeReceipt({
-      charge_id: seed.charge_id,
-      charged_at: seed.charged_at,
-      currency: "usd",
-      agreed_price_micros: seed.agreed_price_micros,
-      agreed_price_line_id: seed.agreed_price_line_id,
-      book_version: seed.book_version,
-    }),
-    effective_at: seed.charged_at,
+    ...chargeReceipt(seed),
     created_at: seed.created_at ?? seed.charged_at,
-    currency: "usd",
     event_type: "",
     provider: "",
     grouping_fields: groupingFieldsOf(seed),
@@ -904,6 +890,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       task_id: TASK_FIXED_PRICE_ID,
       charged_at: "2026-06-11T08:14:02Z",
       created_at: "2026-06-11T08:14:03Z",
+      currency: "usd",
       agreed_price_micros: 2_500_000,
       agreed_price_line_id: FIXED_PRICE_LINE_ID,
       book_version: FIXED_PRICE_BOOK_VERSION,
