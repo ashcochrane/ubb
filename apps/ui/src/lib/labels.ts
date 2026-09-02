@@ -38,6 +38,7 @@ import {
   RATE_STRUCTURE_VALUES,
   TASK_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
+  USAGE_EVENT_KIND_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
 
@@ -280,11 +281,14 @@ export const PRICING_STATUSES = PRICING_STATUS_VALUES;
 // delete for this one: the concept was created by slice 5 (#414), so the
 // console's first sight of it is already the migrated shape.
 //
-// The WORDS have been in the catalogue under `pricing_mode.*` since #406, and
-// the binding is `features/tasks/lib/kinds.ts` — the surface that renders a
-// kind of work, per slice 4's rule that a surface binds the words it renders.
-// Nothing here, and no map: this file is the legacy adapter, and a concept
-// that has been migrated leaves behind its value list and nothing else.
+// The WORDS have been in the catalogue under `pricing_mode.*` since #406. The
+// binding was `features/tasks/lib/kinds.ts` — the surface that renders a kind
+// of work, per slice 4's rule that a surface binds the words it renders —
+// until #425 moved it to `@/lib/pricing-mode`, the day a second feature came
+// to render the same word: a charge's receipt carries the regime by value,
+// and a concept two features render binds in `lib/`. Nothing here, and no
+// map: this file is the legacy adapter, and a concept that has been migrated
+// leaves behind its value list and nothing else.
 export const PRICING_MODES = PRICING_MODE_VALUES;
 
 export const stopScopeLabel = legacyLabelMap({
@@ -343,6 +347,23 @@ export const ingestRejectionLabel = legacyLabelMap({
 // legacy adapter, and a concept that has been migrated leaves behind its
 // value list and nothing else.
 export const TASK_STATUSES = TASK_STATUS_VALUES;
+
+// Which kind of posting a usage row is — the registry's two, held BY
+// REFERENCE (#425), on the same terms and for the same reason as the lists
+// above. `domain-vocabulary/` names this file as the console's consumer of
+// `usage_event_kind`, and until now it held neither value, which is what
+// `g2-console-usage_event_kind` recorded and what this line pays off. There
+// was never a hand-written map to delete for this one: the concept was
+// created by slice 5 (#417), so the console's first sight of it is already
+// the migrated shape — spec §27's third shape, as `PRICING_MODES` above.
+//
+// The WORDS have been in the catalogue under `usage_event_kind.*` since the
+// concept was coined, and the binding is `features/events/lib/kind.ts` — the
+// surface that renders a posting, per slice 4's rule that a surface binds the
+// words it renders. Nothing here, and no map: this file is the legacy
+// adapter, and a concept that has been migrated leaves behind its value list
+// and nothing else.
+export const USAGE_EVENT_KINDS = USAGE_EVENT_KIND_VALUES;
 
 export const pastLimitFamilyLabel = legacyLabelMap({
   floor_stop: "Balance floor stop",

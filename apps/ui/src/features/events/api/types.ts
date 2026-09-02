@@ -97,6 +97,50 @@ function rec(value: unknown): Record<string, unknown> | null {
 }
 
 // ---------------------------------------------------------------------------
+// The Pricing Receipt — spec-untyped (`additionalProperties: true`), read by
+// the page only where its subject is a Charge.
+// [backend-verified shape — `pricing/services/charge_projection.the_receipt_for`,
+//  whose record `apps/ui/src/lib/economic-scenarios.ts::chargeReceipt` composes]
+
+/**
+ * What a receipt whose subject is a Charge says about itself, read off the
+ * untyped record.
+ *
+ * Every field is a string the record carries, or `null` where it does not:
+ * the sections these come from admit identifiers and nothing else, so there
+ * is no number here to coalesce. ⚠ THE AMOUNT IS NOT READ FROM THE RECORD.
+ * The posting's own typed column carries the same figure — the projection
+ * writes both from the Charge's amount — and `settledPriceMicros` in
+ * `@/lib/customer-price` is the one place a price is read; a second reader
+ * over an untyped record would need a fallback, and a fallback for a price is
+ * the `?? 0` this console exists to refuse.
+ */
+export interface ChargeReceiptTerms {
+  /** The Charge the record explains — its own subject, never the posting it is stored on. */
+  charge_id: string | null;
+  /** The regime the record carries by value: `fixed`, on every record the backend writes. */
+  pricing_mode: string | null;
+  /** The Pricing Book line that answered, and the published version that held it. */
+  agreed_price_line_id: string | null;
+  book_version: string | null;
+}
+
+export function asChargeReceiptTerms(
+  record: Record<string, unknown>,
+): ChargeReceiptTerms {
+  const pricing = rec(record.pricing);
+  const detail = pricing === null ? null : rec(pricing.detail);
+  const provenance = rec(record.provenance);
+  return {
+    charge_id: str(record.subject_id),
+    pricing_mode: detail === null ? null : str(detail.pricing_mode),
+    agreed_price_line_id:
+      provenance === null ? null : str(provenance.agreed_price_line_id),
+    book_version: provenance === null ? null : str(provenance.book_version),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // stop_context entries — spec types them as bare `items: {}`.
 // [backend-verified shape — see discovery spec §1.1]
 

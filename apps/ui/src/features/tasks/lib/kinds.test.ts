@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TenantConfig } from "@/hooks/use-tenant-config";
+import { pricingModeLabel } from "@/lib/pricing-mode";
 import { PRICING_MODE_VALUES } from "@/lib/vocabulary";
 
 import type { KindOfWork } from "../api/types";
@@ -17,7 +18,6 @@ import {
   effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
-  pricingModeLabel,
   REGIME_CANNOT_CHANGE,
   REGIME_IS_INERT_UNTIL_BILLING,
   sortedKinds,
@@ -55,7 +55,9 @@ function config(defaultCeiling: number | null): TenantConfig {
 }
 
 describe("the words for how a kind of work is sold", () => {
-  it("are the catalogue's, bound at this surface", () => {
+  // The regime's words are bound in `@/lib/pricing-mode` since #425 — two
+  // features render them — and the altitude's here; both are the catalogue's.
+  it("are the catalogue's, whichever module binds them", () => {
     expect(pricingModeLabel("event_priced")).toBe("Event priced");
     expect(pricingModeLabel("fixed")).toBe("Fixed price");
     expect(altitudeLabel("task")).toBe("Task");

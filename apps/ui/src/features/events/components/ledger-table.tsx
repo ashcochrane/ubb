@@ -21,6 +21,7 @@ import { formatDate } from "@/lib/format";
 import { stopReasonLabel } from "@/lib/labels";
 
 import { asStopContextEntries, type UsageEventRow } from "../api/types";
+import { usageEventKindLabel } from "../lib/kind";
 import { formatEventMicros } from "../lib/money";
 
 function money(
@@ -102,9 +103,16 @@ export function LedgerTable({
             <TableCell className="pl-3 text-[12px] text-text-secondary">
               {formatDate(row.effective_at)}
             </TableCell>
+            {/* A row naming no Event Type is a posting no caller reported —
+                the charge for a whole unit of work sold at one agreed price,
+                projected by UBB when it delivered (#417) — and its KIND is
+                what says so. A dash here read as a row with something missing
+                from it; the catalogue's word for the kind is what it is. */}
             <TableCell className="text-[13px]">
               {row.event_type === "" ? (
-                <span className="text-text-muted">—</span>
+                <span className="text-text-muted" data-kind={row.kind}>
+                  {usageEventKindLabel(row.kind)}
+                </span>
               ) : (
                 row.event_type
               )}

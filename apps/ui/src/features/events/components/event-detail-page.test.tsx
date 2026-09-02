@@ -17,6 +17,7 @@ import {
 } from "@/lib/supplier-cost";
 
 import {
+  CHARGE_FIXED_PRICE_ID,
   CUSTOMER_A_ID,
   EVENT_COST_NOT_APPLICABLE_ID,
   EVENT_PRUNED_ID,
@@ -28,12 +29,15 @@ import {
   EVENT_UNPRICED_ID,
   EVENT_UNRESOLVED_ID,
   EVENT_WAIVED_ID,
+  FIXED_PRICE_LINE_ID,
 } from "../api/mock-data";
+import { usageEventKindLabel } from "../lib/kind";
 import {
   MEASUREMENTS_STATUS_EXPLANATIONS,
   NO_QUANTITIES_RECORDED,
   measurementsStatusLabel,
 } from "../lib/measurements";
+import { RECEIPT_SUBJECT_EXPLANATIONS } from "../lib/receipt-subject";
 import { EventDetailPage } from "./event-detail-page";
 
 function renderPage(props: { eventId: string; customerId?: string }) {
@@ -121,11 +125,13 @@ describe("EventDetailPage", () => {
     // `queryByText(...)` returning null is satisfied by a page that failed to
     // render at all — the row is missing either way — so an absence on its own
     // is not evidence that the rest survived. Reading every label out of the
-    // section says both things at once: these nine rows are here, in this
-    // order, and there is no tenth — the deleted row sat SECOND, so restoring
-    // it shows up as an extra label in position two rather than at the end. It
-    // is the same technique `THE_WHOLE_RECORDING_REQUEST` uses on the backend's
-    // request body, for the same reason.
+    // section says both things at once: these ten rows are here, in this
+    // order, and there is no eleventh — the deleted row sat SECOND, so
+    // restoring it shows up as an extra label in position two rather than at
+    // the end. It is the same technique `THE_WHOLE_RECORDING_REQUEST` uses on
+    // the backend's request body, for the same reason. (Nine until #425 added
+    // the posting's kind, which sits third; the count was re-taken from the
+    // page rather than incremented.)
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
@@ -138,6 +144,7 @@ describe("EventDetailPage", () => {
     expect(labels).toEqual([
       "Event ID",
       "Idempotency key",
+      "Kind",
       "Happened at",
       "Recorded at",
       "Event type",
@@ -275,6 +282,13 @@ describe("EventDetailPage", () => {
     expect(screen.getByText("$0.0940")).toBeInTheDocument();
   });
 
+  // ⚠ SINCE #425 THIS IS A PAYLOAD THE BACKEND CAN PRODUCE. The seed used to
+  // carry an Event Type, a `reported` supplier cost and a usage-event receipt
+  // under an event-priced regime — none of which a projection can have — and
+  // the assertion passed over all of it because it never looked past the
+  // measurement section. It is composed from the canonical scenarios now
+  // (`makeChargeDetail`), and this case reads the rest of the page too. The
+  // fixture the mock does NOT author is `event-receipt-charge.test.tsx`.
   it("renders a task charge as never-measured, distinctly from pruned", async () => {
     renderPage({ eventId: EVENT_TASK_CHARGE_ID, customerId: CUSTOMER_A_ID });
 
@@ -288,6 +302,23 @@ describe("EventDetailPage", () => {
       screen.queryByText(measurementsStatusLabel("pruned")),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(NO_QUANTITIES_RECORDED)).not.toBeInTheDocument();
+    // No quantity invented to fill the gap — the section holds no digit.
+    expect(sectionText("Usage measurements")).not.toMatch(/\d/);
+
+    // The page says what kind of row this is, and the price is the agreed one:
+    // a figure, and never a charge of nothing.
+    expect(sectionText("Details")).toContain(usageEventKindLabel("task_charge"));
+    expect(sectionText(CUSTOMER_PRICE)).toContain("$2.50");
+    expect(sectionText(CUSTOMER_PRICE)).not.toContain("$0.00");
+
+    // And the receipt explains the agreed price rather than showing a record
+    // with nothing in it.
+    const receipt = sectionText("Pricing receipt");
+    expect(receipt).toContain(RECEIPT_SUBJECT_EXPLANATIONS.charge);
+    expect(receipt).toContain("Agreed price");
+    expect(receipt).toContain("$2.50");
+    expect(receipt).toContain(CHARGE_FIXED_PRICE_ID);
+    expect(receipt).toContain(FIXED_PRICE_LINE_ID);
   });
 
   it("renders the quantities themselves when the record is still there", async () => {
@@ -519,10 +550,15 @@ describe("EventDetailPage", () => {
   // ⚠ THE VEHICLE MOVED IN #409 AND THE CLAIM DID NOT. This used to close the
   // KILLED task, which held the reported/calculated pair on purpose — and a
   // close against a killed unit is now REFUSED rather than answered 200 (see
-  // the test below). The fixed-price task carries the same pair: a calculated
-  // supplier cost on one event and a `reported` one on the other, both known,
-  // and nothing unresolved between them. The claim under test is the caveat
-  // logic, not which task carries it.
+  // the test below). ⚠ AND THE PAIR MOVED AGAIN IN #425. The fixed-price task
+  // used to carry a `reported` supplier cost on its charge posting — a row no
+  // caller reported, which the backend costs at a settled nothing with no
+  // method at all, and the mock now says so. What that task holds is a
+  // metered event costed from Cost Rates beside a charge whose supplier cost
+  // is settled and derived by nothing: two settled costs arrived at two
+  // different ways, and nothing unresolved between them, which is still the
+  // claim under test — the caveat reads the count and never the method. The
+  // reported/calculated pair itself now sits only on the killed task.
   it("reads a task costed BOTH ways as complete, with no caveat", async () => {
     renderPage({ eventId: EVENT_TASK_CHARGE_ID, customerId: CUSTOMER_A_ID });
 

@@ -1,22 +1,20 @@
-// A kind of work, as this feature reasons about one: the words for how it is
-// sold, what a tenant is told when declaring it, the ceiling it really runs
-// under, and the price its runs were quoted.
+// A kind of work, as this feature reasons about one: what a tenant is told
+// when declaring it, the ceiling it really runs under, and the price its runs
+// were quoted.
 //
-// THE WORDS FOR `pricing_mode` ARE BOUND HERE (#423, spec §26). The registry
-// names `@/lib/labels` as the console's consumer of the value list, and that
-// file holds the list by reference and nothing else — the legacy adapter is
-// not where a migrated concept's wording lives. The catalogue has carried
-// `pricing_mode.*` since #406; this is the surface that renders them, and a
-// surface binds the words it renders.
+// THE WORDS FOR `pricing_mode` WERE BOUND HERE BY #423 AND MOVED TO
+// `@/lib/pricing-mode` BY #425, the day a second feature came to render the
+// same word: the events feature shows the regime a charge's receipt carries
+// by value, and one feature never reaches into another. The registry names
+// `@/lib/labels` as the console's consumer of the value list, and that file
+// holds the list by reference and nothing else — the legacy adapter is not
+// where a migrated concept's wording lives. What stays here is the copy only
+// this surface needs: what each regime means to somebody declaring one.
 
 import type { TenantConfig } from "@/hooks/use-tenant-config";
 import { formatMicros, formatPercent } from "@/lib/format";
 import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
-import {
-  PRICING_MODE_LABEL_KEYS,
-  TASK_TYPE_KIND_LABEL_KEYS,
-  type PricingMode,
-} from "@/lib/vocabulary";
+import { TASK_TYPE_KIND_LABEL_KEYS, type PricingMode } from "@/lib/vocabulary";
 
 import {
   sameDeclaration,
@@ -25,9 +23,6 @@ import {
   type KindOfWorkDeclaration,
   type RunRow,
 } from "../api/types";
-
-/** The catalogue's words for how a kind of work is sold. */
-export const pricingModeLabel = labelMap(PRICING_MODE_LABEL_KEYS);
 
 /** The catalogue's words for which altitude a declaration is meant for. */
 export const altitudeLabel = labelMap(TASK_TYPE_KIND_LABEL_KEYS);

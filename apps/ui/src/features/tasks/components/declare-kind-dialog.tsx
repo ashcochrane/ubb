@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { toastSuccess } from "@/lib/mutations";
+import { pricingModeLabel } from "@/lib/pricing-mode";
 import { cn } from "@/lib/utils";
 import { PRICING_MODE_VALUES, TASK_TYPE_KIND_VALUES } from "@/lib/vocabulary";
 
@@ -34,7 +35,6 @@ import {
   declarationBody,
   declarationNotes,
   PRICING_MODE_EXPLANATIONS,
-  pricingModeLabel,
 } from "../lib/kinds";
 
 /**
