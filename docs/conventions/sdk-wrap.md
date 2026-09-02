@@ -43,6 +43,16 @@ except ConflictError:              # or the whole 409 family
     ...
 ```
 
+**The spend stop is not an error, and it is the one type outside `Exception`.**
+`record_usage` raises `UBBStopRequested` by default when the acknowledgement
+says stop; it derives from `BaseException` — not `UBBError` — so a tenant's
+own `except Exception:` around a provider loop cannot swallow it and keep
+spending (#179 §1, #421). The event was recorded; the signal carries the
+acknowledgement and is about the next call. It is one narrow type, never the
+start of a parallel hierarchy: every ordinary SDK failure stays an `Exception`
+under `UBBError`, and `record_batch` never raises it — the batch reports the
+stop per item.
+
 ## Naming an operation, never spelling a route (#209, #155 §8.3)
 
 `ubb/_operations.py` (generated, ratcheted) is the third exception to "hand

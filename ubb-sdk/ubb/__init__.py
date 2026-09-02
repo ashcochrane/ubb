@@ -37,7 +37,7 @@ from ubb.types import (
 from ubb.exceptions import (
     UBBError, UBBAuthError, UBBAPIError,
     UBBValidationError, UBBConnectionError, UBBConflictError,
-    UBBStoppedError, UBBWebhookVerificationError,
+    UBBStopRequested, UBBWebhookVerificationError,
 )
 # The registry-derived per-code exception hierarchy (ConflictError,
 # InsufficientBalanceError, …) — catch a family or one exact code.
@@ -67,10 +67,11 @@ __all__ = [
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types
     "PreCheckResult", "PaginatedResponse", "BatchItemResult", "BatchResult",
-    # base exception surface
+    # base exception surface, plus the one control signal that sits OUTSIDE
+    # Exception (UBBStopRequested — the spend stop, #421)
     "UBBError", "UBBAuthError", "UBBAPIError",
     "UBBValidationError", "UBBConnectionError", "UBBConflictError",
-    "UBBStoppedError", "UBBWebhookVerificationError",
+    "UBBStopRequested", "UBBWebhookVerificationError",
     # webhooks + release identity (SDK version + spec stamp)
     "verify_webhook", "verify_webhook_legacy",
     "__version__", "__spec_revision__", "__spec_version__",

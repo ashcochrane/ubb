@@ -175,7 +175,10 @@ class TestMeteringDelegation:
 
     def test_record_usage_forwards_metrics_backdating_and_stop(self):
         """The facade passes the richer metering params through, and works
-        without provider_cost_micros (metrics-only recording)."""
+        without provider_cost_micros (metrics-only recording). The stop
+        keyword forwarded is the OPT-OUT: raising is the default on both
+        clients now (#421), so the value that must survive the passthrough is
+        the one a caller has to spell."""
         sentinel = object()
         self.client.metering.record_usage = MagicMock(return_value=sentinel)
         result = self.client.record_usage(
@@ -183,14 +186,14 @@ class TestMeteringDelegation:
             measurements={"tokens": 1000},
             recorded_at="2026-06-01T00:00:00Z",
             task_id="task_1",
-            raise_on_stop=True,
+            raise_on_stop=False,
         )
         assert result is sentinel
         _, kwargs = self.client.metering.record_usage.call_args
         assert kwargs["measurements"] == {"tokens": 1000}
         assert kwargs["recorded_at"] == "2026-06-01T00:00:00Z"
         assert kwargs["task_id"] == "task_1"
-        assert kwargs["raise_on_stop"] is True
+        assert kwargs["raise_on_stop"] is False
 
 
 class TestRecordUsageSignatureParity:
@@ -227,6 +230,29 @@ class TestRecordUsageSignatureParity:
                     f"UBBClient.record_usage made '{name}' required, but it is "
                     f"optional on MeteringClient.record_usage"
                 )
+
+    def test_facade_keeps_every_default(self):
+        """Presence and optionality are not enough: a default is behaviour.
+        When the spend stop started raising by default (#421) a facade left
+        at the old value would have passed both checks above and handed every
+        facade caller the silent path. The two signatures must agree on the
+        VALUE of every shared default."""
+        facade = inspect.signature(UBBClient.record_usage).parameters
+        lower = inspect.signature(MeteringClient.record_usage).parameters
+        empty = inspect.Parameter.empty
+        compared = 0
+        for name, param in lower.items():
+            if name == "self" or name in self.KNOWN_DIVERGENCES:
+                continue
+            if param.default is empty:
+                continue
+            assert facade[name].default == param.default, (
+                f"UBBClient.record_usage defaults '{name}' to "
+                f"{facade[name].default!r}, but MeteringClient.record_usage "
+                f"defaults it to {param.default!r}"
+            )
+            compared += 1
+        assert compared > 0  # the walk compared something
 
 
 class TestCloseTaskSignatureParity:

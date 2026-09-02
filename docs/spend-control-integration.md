@@ -57,14 +57,18 @@ Back-out is instant (set `off`).
    silently counted uncovered events as zero.
 2. **Attribute usage.** Pass that `task_id` on **every** `record_usage(...)`
    for the task. `metadata` is an analytics-only label bag — it never attaches a limit.
-3. **Honor the stop.** Check `result.stop` on **every** ack and stop sending
-   work for the named scope: `stop_scope="task"` (or `"subtask"`) → stop that
+3. **Honor the stop.** The SDK **raises it by default**: a stop verdict on the
+   ack becomes `UBBStopRequested`, which derives from `BaseException` so your
+   own `except Exception:` cannot swallow it and keep spending. Catch it once,
+   at the boundary that can act on its scope, and stop sending work for that
+   scope: `stop_scope="task"` (or `"subtask"`) → stop that
    task (`stop_reason ∈ {task_limit, subtask_limit, task_not_active}`; the
    task is already killed server-side for the first two); `stop_scope="customer"`
    → halt all that customer's tasks at the next safe boundary
-   (`stop_reason = customer_wide_stop`). Or pass `raise_on_stop=True` and catch
-   `UBBStoppedError`. Either way the event was recorded and billed — the stop
-   is an instruction, not an error.
+   (`stop_reason = customer_wide_stop`). Reading `result.stop` in line is the
+   opt-out (`raise_on_stop=False`), and a batch never raises — it reports the
+   stop per item. Either way the event was recorded and billed — the stop
+   is an instruction, not an error, and the signal carries the ack to prove it.
 4. **Handle the webhooks** (catches *idle*/*sibling* workers not currently
    posting): on `customer.suspended` cancel **all** that customer's
    tasks; on `task.killed` **or** `task.expired` cancel the task named by

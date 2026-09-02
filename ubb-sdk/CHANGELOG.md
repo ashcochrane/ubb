@@ -60,6 +60,21 @@ disagree with the shipped bytes.
 - **Single versioned API.** All routes under `/api/v1/…`; per-mount
   `docs`/`openapi.json` and API-roots removed (`base_url` unchanged). See
   MIGRATION.md §5.
+- **The spend stop raises by default, and the signal cannot be swallowed by
+  `except Exception:` (#421, #179 §1).** `record_usage(..., raise_on_stop)`
+  now defaults to `True`; the signal is `UBBStopRequested`, which derives from
+  `BaseException` (not `Exception`, not `UBBError`) and carries the whole
+  acknowledgement as `stop.result` beside `event_id`, `idempotency_key`,
+  `stop_scope`, `stop_reason` and `task_id`. The event was recorded and
+  charged — never resend it. The old `UBBStoppedError` (an `Exception` under
+  `UBBError`, raised only on opt-in) is gone: its name said the thing the
+  signal must never say, and its base let a tenant catch-all eat it.
+  `raise_on_stop=False` returns the ack with `result.stop` set, as before.
+  `record_batch` still never raises; each `BatchItemResult` now carries its
+  own `stop` / `stop_reason` / `stop_scope`, and `BatchResult` derives `stop`
+  and `first_stop_index` from them. (v3.0 has not shipped, so this is part of
+  the one coordinated cut rather than a second release.) See README →
+  *Honouring a spend stop*.
 
 ### Added
 
