@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:  # the annotation only; this module stays free of the core
+if TYPE_CHECKING:  # the annotations only; this module stays free of the core
     from ubb._core.models.record_usage_response import RecordUsageResponse
+    from ubb.metering import StartedTask
 
 
 class UBBError(Exception):
@@ -34,6 +35,57 @@ class UBBConnectionError(UBBError):
     def __init__(self, message: str, original: Exception | None = None):
         self.original = original
         super().__init__(message)
+
+# A MISSING DECLARATION IS AN ORDINARY ERROR, NOT A CONTROL SIGNAL (#422,
+# spec §24, #179 §2.4–§2.5). It reports an integration defect — a work block
+# ended without saying how the work ended — and it is wanted in production,
+# not only in development, because both quiet options were rejected: closing
+# as `cancelled` puts a tenant-declared word onto work nobody declared
+# anything about (and strips a charge that may have been earned), and leaving
+# the work open silently holds a concurrency slot and any prepaid reservation
+# until expiry, with no signal at all for a tenant that is not enforcing.
+# Raising while leaving the work open is truthful about the unknown ending,
+# visible at once, and recoverable.
+#
+# It sits under `UBBError` like every other failure this SDK raises: the ONE
+# type outside `Exception` is the spend stop below, and `test_stop_verdict.py`
+# pins that set at exactly one. #179 §2.4 also asks this to carry the unit's
+# expiry time; the registration does not publish one, so it carries what the
+# wire does — the handle, and through it the identity and the last state
+# this client saw.
+class TaskOutcomeRequired(UBBError):
+    """A work block ended cleanly and nothing declared how the work ended.
+
+    Raised by the handle ``start_task`` returns when its ``with`` block exits
+    without an exception and none of ``complete()``, ``fail(...)`` or
+    ``cancel()`` was called on it. THE UNIT OF WORK IS STILL OPEN on UBB's
+    side: nothing was sent and nothing was invented, because the forgiving
+    answer and the answer that moves money are the same word and UBB will not
+    guess between them. Declare it explicitly — ``exc.task.complete()``,
+    ``exc.task.fail(outcome_reason)`` or ``exc.task.cancel()`` land exactly
+    as they would have inside the block.
+
+    ``task`` is the handle itself; ``task_id``, ``task_type`` and ``status``
+    (the last state this client saw for it) read straight off it."""
+    def __init__(self, task: StartedTask):
+        self.task = task
+        super().__init__(
+            f"Unit of work {task.task_id} left its block without a declared "
+            f"outcome. It is still open on UBB's side — nothing was sent and "
+            f"nothing was invented. Call complete(), fail(outcome_reason) or "
+            f"cancel() on it explicitly.")
+
+    @property
+    def task_id(self) -> str:
+        return self.task.task_id
+
+    @property
+    def task_type(self) -> str:
+        return self.task.task_type
+
+    @property
+    def status(self) -> str:
+        return self.task.status
 
 # The spend stop is the ONE type in this SDK outside `Exception`, and it is
 # deliberately not a `UBBError` (#179 §1.4, #421). `UBBStoppedError` used to

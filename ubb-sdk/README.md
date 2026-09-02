@@ -140,6 +140,43 @@ for item in batch.results:
 > keys guarantee a full replay returns the original event ids with zero new rows (a duplicate
 > key *within* one batch resolves to the first item's event id).
 
+### 2c. Start a unit of work, and declare how it ended
+
+A unit of work — a workflow run, one piece of work for one customer — is registered with
+`start_task` and closed by declaring its outcome. The start takes **your** idempotency key:
+unique per customer, stable across retries, never minted on the line. Send the same key again
+and you get the unit you already started (`task.replayed`) and nothing is created twice. The
+answer is a handle; use it as a `with` block around the whole run, pass its `task_id` on every
+usage event, and declare the ending inside the block with exactly one of three methods:
+
+```python
+with client.start_task("cust-uuid-here", "nightly-42", task_type="transcode") as task:
+    res = client.record_usage("cust-uuid-here", "idem-1", task_id=task.task_id,
+                              measurements={"input_tokens": 1000})
+    task.complete()      # delivered — the one ending that can create a charge
+    # task.fail(vocabulary.OUTCOME_REASON_TIMEOUT, reason_detail="...")  — a reason is required
+    # task.cancel()                                                       — a reason is optional
+```
+
+The block declares an ending only where its own control flow is evidence for one:
+
+| The block | The handle does |
+|---|---|
+| ends after an explicit `complete()` / `fail()` / `cancel()` | nothing — the declaration stands |
+| ends cleanly with **no** declaration | raises `TaskOutcomeRequired` and **leaves the work open** |
+| an ordinary exception escapes it | declares `failed` with reason `execution_failed`, then re-raises it |
+| `UBBStopRequested`, `KeyboardInterrupt`, any other `BaseException` | declares nothing; it propagates unchanged |
+
+`TaskOutcomeRequired` is an ordinary `UBBError`, and it is wanted in production: UBB never
+guesses an ending, because the forgiving answer and the answer that moves money are the same
+word. It carries the handle, so `exc.task.complete()` still lands. `outcome_reason` values come
+from `ubb.vocabulary.OUTCOME_REASON_VALUES` (`unspecified` is always available); the states a
+unit can have ended in are `ubb.metering.TERMINAL_TASK_STATUSES`. Your own key-values — a
+report id, an output location — are `metadata`, declared on the start; a completion takes no
+payload. `get_task`, `list_tasks` and `list_subtasks` read the work back, and
+`close_task(task_id, outcome)` is the primitive for closing by id from somewhere the handle
+did not travel.
+
 ### 3. Read per-customer cost analytics
 
 ```python
@@ -341,6 +378,11 @@ except UBBStopRequested as stop:
     stop_dispatching_new_work(stop.stop_scope)   # "task", or the whole "customer"
 ```
 
+Inside a `with client.start_task(...)` block the stop propagates the same way and the
+block declares **nothing** — a stop is evidence of a stop, not of how the work ended — so
+the handler above is also where you decide whether that unit of work is `cancel()`led or
+`fail()`ed.
+
 A bare `except:` or `except BaseException:` still catches it; that is accepted, the
 objective being the common accidental failure rather than technical impossibility.
 The rule for such a handler is the one Python already has for `KeyboardInterrupt`:
@@ -449,6 +491,20 @@ client.record_usage(customer_id: str, idempotency_key: str, *,
 # record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected,
 #                               stop, first_stop_index) — never raises
 client.record_batch(events: list[dict])
+
+# start_task  → StartedTask  (a context manager: complete() / fail(outcome_reason) / cancel();
+#                             a clean exit with no declaration raises TaskOutcomeRequired)
+client.start_task(customer_id: str, idempotency_key: str, *,
+    task_type=None, parent_task_id=None, provider_cost_limit_micros=None,
+    dimensions=None, external_task_id=None, metadata=None)
+
+# close_task  → CloseTaskResponse  (the primitive the handle's three methods delegate to)
+client.close_task(task_id: str, outcome: str, *, outcome_reason=None, reason_detail=None)
+
+# get_task  → TaskDetailOut · list_tasks / list_subtasks  → PaginatedResponse[TaskOut]
+client.get_task(task_id: str)
+client.list_tasks(*, cursor=None, limit=None, customer_id=None, task_type=None, status=None)
+client.list_subtasks(task_id: str, *, cursor=None, limit=None)
 
 # usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
 client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None,

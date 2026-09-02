@@ -811,8 +811,9 @@ def test_a_stale_route_in_a_docstring_is_refused(tmp_path):
     contract. The rule caught nothing when it landed (of 53 documented routes,
     48 resolved exactly, 4 named a family and 1 was ledger-excused) and nothing
     since: re-measured after #373, 59 documented routes, 55 exact, 4 naming a
-    family and none excused. It is here for the rename that fixes a call and
-    forgets the prose.
+    family and none excused; after #422, 67 documented, 63 exact, 4 a family
+    and none excused. It is here for the rename that fixes a call and forgets
+    the prose.
     """
     invalid = rejection(tmp_path, operations=(THING_LIST,), modules={
         "things.py": client_module(

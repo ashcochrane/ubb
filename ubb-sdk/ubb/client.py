@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from ubb import _operations as ops
 from ubb.exceptions import (
@@ -12,6 +13,8 @@ from ubb.types import PreCheckResult, PaginatedResponse
 # its sub-clients do.
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.task_detail_out import TaskDetailOut
+from ubb._core.models.task_out import TaskOut
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.refund_response import RefundResponse
@@ -20,6 +23,9 @@ from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
+
+if TYPE_CHECKING:  # the annotation only; the client itself is imported lazily
+    from ubb.metering import StartedTask
 
 
 def _check_micros(value: int, name: str) -> None:
@@ -145,13 +151,57 @@ class UBBClient:
 
         return PreCheckResult(allowed=True, can_proceed=True)
 
-    # ⚠ `start_task` STOOD HERE AND IS DELETED RATHER THAN REPOINTED (#410).
-    # It was documented as a convenience wrapper around the flag that made the
-    # affordability call create a unit of work, and that flag is gone: the call
-    # it wrapped can no longer register anything, so the method could only have
-    # gone on returning an answer with no unit of work in it. Registering work
-    # is `POST /api/v1/tasks` now, and the wrapper for it is #422's — which is
-    # also where the key that route requires gets its place in the signature.
+    # THE UNIT-OF-WORK SURFACE, IN SIGNATURE PARITY WITH THE METERING CLIENT
+    # (test_sdk_delegation.TestCloseTaskSignatureParity walks all four). A
+    # `start_task` stood here before #410 as a wrapper around a flag that made
+    # the affordability call register work; the flag went with the creation
+    # path, the method was deleted rather than repointed, and this one is
+    # written against the route that registers work (#422). The route is
+    # ungated, and this facade reaches it through the metering client's
+    # transport for the reason every platform-level call below does.
+
+    def start_task(self, customer_id: str, idempotency_key: str, *,
+                   task_type: str | None = None,
+                   parent_task_id: str | None = None,
+                   provider_cost_limit_micros: int | None = None,
+                   dimensions: dict | None = None,
+                   external_task_id: str | None = None,
+                   metadata: dict | None = None) -> StartedTask:
+        """Register a unit of work via POST /api/v1/tasks and get a handle to
+        declare how it ended — a full passthrough to
+        ``MeteringClient.start_task``, which carries the rules.
+
+        ``idempotency_key`` is required and is YOUR identifier for the work,
+        stable across retries: the same key hands back the unit you already
+        started. The answer is a ``StartedTask``; use it as a context manager
+        around the run and end it with ``complete()``, ``fail(outcome_reason)``
+        or ``cancel()`` inside the block."""
+        return self._require_metering().start_task(
+            customer_id, idempotency_key, task_type=task_type,
+            parent_task_id=parent_task_id,
+            provider_cost_limit_micros=provider_cost_limit_micros,
+            dimensions=dimensions, external_task_id=external_task_id,
+            metadata=metadata)
+
+    def get_task(self, task_id: str) -> TaskDetailOut:
+        """One unit of work's cost receipt plus the work contained in it, via
+        GET /api/v1/tasks/{task_id}."""
+        return self._require_metering().get_task(task_id)
+
+    def list_tasks(self, *, cursor: str | None = None, limit: int | None = None,
+                   customer_id: str | None = None, task_type: str | None = None,
+                   status: str | None = None) -> PaginatedResponse[TaskOut]:
+        """Top-level work with its rollups via GET /api/v1/tasks."""
+        return self._require_metering().list_tasks(
+            cursor=cursor, limit=limit, customer_id=customer_id,
+            task_type=task_type, status=status)
+
+    def list_subtasks(self, task_id: str, *, cursor: str | None = None,
+                      limit: int | None = None) -> PaginatedResponse[TaskOut]:
+        """The work contained in one unit, via
+        GET /api/v1/tasks/{task_id}/subtasks."""
+        return self._require_metering().list_subtasks(
+            task_id, cursor=cursor, limit=limit)
 
     def record_usage(self, customer_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,

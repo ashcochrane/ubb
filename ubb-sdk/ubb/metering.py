@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import httpx
 
 from ubb import _operations as ops
-from ubb.exceptions import UBBConnectionError, UBBStopRequested
+from ubb.exceptions import (
+    TaskOutcomeRequired, UBBConnectionError, UBBStopRequested,
+)
 from ubb._http import raise_for_status
 from ubb._models import from_wire, list_from_wire
 from ubb.retry import request_with_retry
@@ -13,10 +16,25 @@ from ubb.types import (
     PaginatedResponse,
     BatchItemResult, BatchResult,
 )
+# The lifecycle's values are NAMED, never spelled (#422, story 28): the
+# three declarations the handle below sends, the one reason the block may
+# declare on its own, and the closed set of states — which this module holds
+# by reference so an integrator branches on a name rather than a string they
+# typed. `ubb.vocabulary` is generated from the registry and rides its own
+# ratchet, so what this client sends cannot drift from what the server
+# recognises.
+from ubb.vocabulary import (
+    OUTCOME_REASON_EXECUTION_FAILED, TASK_OUTCOME_CANCELLED,
+    TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE,
+    TASK_STATUS_VALUES,
+)
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
+from ubb._core.models.start_task_response import StartTaskResponse
+from ubb._core.models.task_detail_out import TaskDetailOut
+from ubb._core.models.task_out import TaskOut
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
@@ -39,6 +57,212 @@ def _serialize_recorded_at(value):
                 "datetime.now(timezone.utc)) or an ISO-8601 string with offset")
         return value.isoformat()
     return str(value)
+
+
+def _page_of(model_cls, body: dict) -> PaginatedResponse:
+    """The cursor envelope every list answers, parsed through ``model_cls``."""
+    return PaginatedResponse(data=list_from_wire(model_cls, body["data"]),
+                             next_cursor=body.get("next_cursor"),
+                             has_more=body["has_more"])
+
+
+logger = logging.getLogger("ubb.metering")
+
+
+#: THE STATES A UNIT OF WORK CAN HAVE ENDED IN — every state the registry
+#: declares except the one live one, read off its closed set rather than
+#: listed a second time here. `active` is the only non-terminal state, so
+#: work whose state is in this set has ended and owes no declaration: that is
+#: what `StartedTask.is_open` reads, and what an integrator branches on
+#: (`if detail.status in TERMINAL_TASK_STATUSES`) instead of comparing five
+#: strings they typed. Story 28's constant, for the states; the outcomes are
+#: named on the handle's three methods.
+TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES - {TASK_STATUS_ACTIVE})
+
+
+def _attach(exc: BaseException, note: str) -> None:
+    """Attach ``note`` to ``exc`` without raising anything in its place.
+
+    A note rides the traceback where the developer is already looking. The
+    SDK's floor is Python 3.10, where notes do not exist, so there it is
+    logged instead — never swallowed, and never promoted over the exception
+    that actually broke the work."""
+    if hasattr(exc, "add_note"):
+        exc.add_note(note)
+    else:  # pragma: no cover - Python 3.10 only
+        logger.warning(note)
+
+
+class StartedTask:
+    """A unit of work this client started, and the one place to say how it
+    ended.
+
+    ``start_task`` answers with one of these: the unit UBB registered, or the
+    one the key already claimed (``replayed``). Use it as a context manager
+    around the WHOLE run and declare the ending inside the block with exactly
+    one of ``complete()``, ``fail(outcome_reason)`` or ``cancel()``::
+
+        with client.start_task(customer_id, "nightly-42",
+                               task_type="transcode") as task:
+            client.record_usage(customer_id, "e1", task_id=task.task_id, ...)
+            task.complete()
+
+    The block declares an ending only where its own control flow is evidence
+    for one. A declaration made inside it stands. A clean exit with none
+    raises ``TaskOutcomeRequired`` and LEAVES THE WORK OPEN — nothing is sent
+    and nothing is invented, and the declaration the block forgot still lands
+    on the handle that signal carries. An ordinary exception escaping the
+    block declares ``failed`` with the reason ``execution_failed`` — the
+    exception's type name as the sentence beside it, never its message, which
+    is yours to disclose — and the exception itself propagates; if reporting
+    that failure to UBB fails too, the report's failure is attached to the
+    original as a note and never raised in its place. A spend stop
+    (``UBBStopRequested``), an interrupt, a cancellation or any other
+    ``BaseException`` propagates with nothing declared: a stop is evidence of
+    a stop, and a Ctrl-C during work that had in fact delivered must not
+    write ``failed`` onto it.
+
+    ``result`` is the whole registration (a ``StartTaskResponse``);
+    ``task_id``, ``task_type``, ``parent_task_id``, ``replayed``,
+    ``provider_cost_limit_micros``, ``agreed_price_micros``,
+    ``external_task_id`` and ``created_at`` read straight off it. ``closed``
+    is the close's acknowledgement once a declaration has landed, ``None``
+    before; ``declared`` is the outcome sent through this handle, or ``None``.
+
+    Your own key-values — a report id, an output location — are ``metadata``,
+    declared on the start or on the usage events, and readable back. A
+    completion takes no payload: ``outcome`` is the declaration, not a place
+    for one, and no second word is coined beside it. The three methods are
+    the whole close surface here; there is no single close taking an outcome
+    word beside them, so the value a caller could mistype is never typed.
+    ``close_task`` on the client is the primitive they delegate to, for
+    closing work by id from somewhere this handle did not travel.
+    """
+
+    def __init__(self, client: MeteringClient, result: StartTaskResponse) -> None:
+        self._client = client
+        self.result = result
+        self.declared: str | None = None
+        self.closed: CloseTaskResponse | None = None
+
+    # ---- identity: read off the registration, never copied ----
+
+    @property
+    def task_id(self) -> str:
+        return self.result.task_id
+
+    @property
+    def task_type(self) -> str:
+        return self.result.task_type or ""
+
+    @property
+    def parent_task_id(self) -> str | None:
+        return self.result.parent_task_id
+
+    @property
+    def replayed(self) -> bool:
+        return self.result.replayed
+
+    @property
+    def provider_cost_limit_micros(self) -> int | None:
+        return self.result.provider_cost_limit_micros
+
+    @property
+    def agreed_price_micros(self) -> int | None:
+        return self.result.agreed_price_micros
+
+    @property
+    def external_task_id(self) -> str:
+        return self.result.external_task_id or ""
+
+    @property
+    def created_at(self) -> str:
+        return self.result.created_at
+
+    @property
+    def status(self) -> str:
+        """The last state this client saw: the one the close entered once a
+        declaration has landed, the registration's before. The plain value,
+        so it compares with ``ubb.vocabulary``'s names and sits in
+        ``TERMINAL_TASK_STATUSES``."""
+        recorded = self.closed if self.closed is not None else self.result
+        return str(recorded.status)
+
+    @property
+    def is_open(self) -> bool:
+        """Whether this handle still owes a declaration: the unit was live
+        when it was handed back, and nothing has been declared THROUGH THIS
+        HANDLE since. A replayed start can hand back work that already ended,
+        which is not open. What this cannot see is a close made some other
+        way — by id, from another process — and it does not ask UBB: it is a
+        statement about this block, not a read."""
+        return self.declared is None and self.status not in TERMINAL_TASK_STATUSES
+
+    # ---- the three declarations ----
+
+    def complete(self) -> CloseTaskResponse:
+        """The work was delivered. Where the kind of work is sold at one
+        agreed price this is the declaration that creates its charge, exactly
+        once; ``charge_created`` on the acknowledgement says whether this
+        call did."""
+        return self._declare(TASK_OUTCOME_DELIVERED)
+
+    def fail(self, outcome_reason: str, *,
+             reason_detail: str | None = None) -> CloseTaskResponse:
+        """The work failed. ``outcome_reason`` is REQUIRED and comes from
+        UBB's closed list (``ubb.vocabulary.OUTCOME_REASON_VALUES``);
+        ``unspecified`` is a member, so there is always an honest answer.
+        ``reason_detail`` is the free-text sentence beside it, for display and
+        never grouped on."""
+        return self._declare(TASK_OUTCOME_FAILED, outcome_reason=outcome_reason,
+                             reason_detail=reason_detail)
+
+    def cancel(self, *, outcome_reason: str | None = None,
+               reason_detail: str | None = None) -> CloseTaskResponse:
+        """The work was withdrawn deliberately — by you, or by your customer.
+        A reason is optional here, where ``fail`` requires one."""
+        return self._declare(TASK_OUTCOME_CANCELLED,
+                             outcome_reason=outcome_reason,
+                             reason_detail=reason_detail)
+
+    def _declare(self, outcome: str, *, outcome_reason: str | None = None,
+                 reason_detail: str | None = None) -> CloseTaskResponse:
+        # Recorded as declared BEFORE the request goes out: a refusal or a
+        # transport failure raises out of this call to whoever made it, and
+        # the block's exit must not then pile a second declaration onto the
+        # one that was refused.
+        self.declared = outcome
+        self.closed = self._client.close_task(
+            self.task_id, outcome, outcome_reason=outcome_reason,
+            reason_detail=reason_detail)
+        return self.closed
+
+    # ---- the work block ----
+
+    def __enter__(self) -> StartedTask:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        # THE FIVE EXITS (#179 §2.2), and the classification is STRUCTURAL:
+        # nothing here lists what not to treat as failure. The spend stop sits
+        # outside `Exception` (#421), so the second test below covers it along
+        # with KeyboardInterrupt, SystemExit and CancelledError without naming
+        # any of them — and a control-flow type added tomorrow is classified
+        # the same way without anyone remembering to add it.
+        if exc_type is None:
+            if self.is_open:
+                raise TaskOutcomeRequired(self)
+            return False
+        if issubclass(exc_type, Exception) and self.is_open:
+            try:
+                self.fail(OUTCOME_REASON_EXECUTION_FAILED,
+                          reason_detail=type(exc).__qualname__)
+            except Exception as reporting:
+                # #179 §2.3: the exception that broke the work stays primary.
+                _attach(exc, f"UBB was not told the work failed: reporting "
+                             f"it raised {type(reporting).__name__}: "
+                             f"{reporting}")
+        return False
 
 
 class MeteringClient:
@@ -256,6 +480,96 @@ class MeteringClient:
         return BatchResult(results=results, accepted=body.get("accepted", 0),
                            rejected=body.get("rejected", 0))
 
+    def start_task(self, customer_id: str, idempotency_key: str, *,
+                   task_type: str | None = None,
+                   parent_task_id: str | None = None,
+                   provider_cost_limit_micros: int | None = None,
+                   dimensions: dict | None = None,
+                   external_task_id: str | None = None,
+                   metadata: dict | None = None) -> StartedTask:
+        """Register a unit of work via POST /api/v1/tasks, and get the same
+        one back on a retry.
+
+        ``idempotency_key`` is REQUIRED and is YOUR identifier for this unit
+        of work: unique per customer and stable across every retry of the
+        same work, never minted on the line, because a new value on every
+        attempt makes a retried start a second unit of work — and where the
+        kind of work is sold at one agreed price, a second charge. Send the
+        same key again and the answer is the unit you already started, with
+        ``replayed`` True and nothing created a second time; send it
+        describing a DIFFERENT unit and the server refuses it
+        (``409 idempotency_key_conflict``) naming the field that differs.
+
+        ``task_type`` names a declared kind of work, which pins its ceiling,
+        its expiry windows and how it is sold. ``parent_task_id`` registers
+        contained work under a running unit through this same call — there
+        is one start shape, not two. ``provider_cost_limit_micros`` caps what
+        the unit may spend at the supplier, never higher than the kind of
+        work allows. ``dimensions`` is the declared grouping bag at this
+        altitude, under the keyword ``record_usage`` already uses because the
+        request property spells it. ``external_task_id`` is a free-text label
+        reusable across attempts; ``metadata`` is your own key-values,
+        readable back and never consulted for pricing. Neither of the last
+        two is pinned: a replay carrying different values is still a replay,
+        and the original's stand.
+
+        A refusal is a refusal, never a 200: ``409 task_start_refused`` says
+        why this customer may not begin new work, and a ``422`` answers a
+        request that is wrong in itself. The answer is a ``StartedTask`` —
+        use it as a context manager around the run and declare the ending
+        inside it; see the class for the five exits.
+        """
+        body: dict = {"customer_id": customer_id,
+                      "idempotency_key": idempotency_key}
+        if task_type is not None:
+            body["task_type"] = task_type
+        if parent_task_id is not None:
+            body["parent_task_id"] = parent_task_id
+        if provider_cost_limit_micros is not None:
+            body["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if dimensions is not None:
+            body["dimensions"] = dimensions
+        if external_task_id is not None:
+            body["external_task_id"] = external_task_id
+        if metadata is not None:
+            body["metadata"] = metadata
+        r = self._request(*ops.API_V1_TASK_ENDPOINTS_START_TASK, json=body)
+        return StartedTask(self, from_wire(StartTaskResponse, r.json()))
+
+    def get_task(self, task_id: str) -> TaskDetailOut:
+        """One unit of work's cost receipt plus the work contained in it, via
+        GET /api/v1/tasks/{task_id}: the materialised rollups — including
+        events that landed after a kill — its state, and how it ended."""
+        r = self._request(*ops.API_V1_TASK_ENDPOINTS_GET_TASK(task_id))
+        return from_wire(TaskDetailOut, r.json())
+
+    def list_tasks(self, *, cursor: str | None = None, limit: int | None = None,
+                   customer_id: str | None = None, task_type: str | None = None,
+                   status: str | None = None) -> PaginatedResponse[TaskOut]:
+        """Top-level work with its rollups via GET /api/v1/tasks, newest
+        first. Contained work is omitted — it belongs to its parent's detail
+        — so a page counts whole pieces of work. ``status`` filters on one of
+        ``ubb.vocabulary.TASK_STATUS_VALUES``; the route decides what it
+        accepts, and this client holds no list of its own."""
+        params = {k: v for k, v in {
+            "cursor": cursor, "limit": limit, "customer_id": customer_id,
+            "task_type": task_type, "status": status}.items() if v is not None}
+        r = self._request(*ops.API_V1_TASK_ENDPOINTS_LIST_TASKS,
+                          params=params or None)
+        return _page_of(TaskOut, r.json())
+
+    def list_subtasks(self, task_id: str, *, cursor: str | None = None,
+                      limit: int | None = None) -> PaginatedResponse[TaskOut]:
+        """The work contained in one unit, via
+        GET /api/v1/tasks/{task_id}/subtasks. A unit with nothing inside it
+        answers an empty page, not a 404. To start contained work, call
+        ``start_task`` naming ``parent_task_id``."""
+        params = {k: v for k, v in {"cursor": cursor, "limit": limit}.items()
+                  if v is not None}
+        r = self._request(*ops.API_V1_TASK_ENDPOINTS_LIST_SUBTASKS(task_id),
+                          params=params or None)
+        return _page_of(TaskOut, r.json())
+
     def close_task(self, task_id: str, outcome: str, *,
                    outcome_reason: str | None = None,
                    reason_detail: str | None = None) -> CloseTaskResponse:
@@ -266,6 +580,12 @@ class MeteringClient:
         default — the server does not either. A default here would be the
         forgiving path becoming the money-moving one: a caller that forgot the
         argument would silently declare a delivery.
+
+        This is the primitive: the handle ``start_task`` returns declares
+        through it as ``complete()`` / ``fail(outcome_reason)`` / ``cancel()``,
+        which is the preferred shape because it never types the outcome word.
+        Call this directly to close work by id from somewhere that handle did
+        not travel, naming the outcome through ``ubb.vocabulary``.
 
         ``outcome_reason`` is required when the outcome is a failure, optional
         on a cancellation, and accepted on neither when the work was delivered;
@@ -313,9 +633,7 @@ class MeteringClient:
         if episode_seq is not None:
             params["episode_seq"] = episode_seq
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_USAGE(customer_id), params=params)
-        body = r.json()
-        events = [from_wire(UsageEventOut, item) for item in body["data"]]
-        return PaginatedResponse(data=events, next_cursor=body.get("next_cursor"), has_more=body["has_more"])
+        return _page_of(UsageEventOut, r.json())
 
     def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
         """The past-limit report (#41) via
