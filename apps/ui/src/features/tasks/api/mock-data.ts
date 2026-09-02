@@ -22,6 +22,15 @@
 //   legacy-ocr          task     event priced   retired
 //   translate           BOTH altitudes share the word — two declarations
 
+import {
+  completePriceTotal,
+  completeTotal,
+  incompletePriceTotal,
+  incompleteTotal,
+  type CostTotalScenario,
+  type PriceTotalScenario,
+} from "@/lib/economic-scenarios";
+
 import type { KindOfWork, RunRow, TaskStatus } from "./types";
 
 export const KIND_EVENT_PRICED_KEY = "document-summary";
@@ -158,6 +167,22 @@ function run(
   };
 }
 
+/**
+ * The five wire totals a run row carries, composed from the canonical
+ * scenarios (`@/lib/economic-scenarios`, #155 §9.4) so a fixture cannot take
+ * an amount without the count that says what it means. The scenarios spell
+ * the amount `micros`; the wire spells each side's own name.
+ */
+function totals(cost: CostTotalScenario, price: PriceTotalScenario, eventCount: number) {
+  return {
+    total_provider_cost_micros: cost.micros,
+    unresolved_event_count: cost.unresolved_event_count,
+    total_billed_cost_micros: price.micros,
+    unpriced_event_count: price.unpriced_event_count,
+    event_count: eventCount,
+  };
+}
+
 // --- Runs ------------------------------------------------------------------
 //
 // The runs beneath those kinds tell the second story, the one the runs surface
@@ -208,11 +233,9 @@ export const MOCK_RUNS: readonly RunRow[] = [
     status: "active",
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
     provider_cost_limit_micros: VIDEO_RENDER_CEILING_MICROS,
-    // Everything contained in it (1,197,000 over 28 events, one of them never
-    // costed) plus 43,000 over two events reported against the run itself.
-    total_provider_cost_micros: 1_240_000,
-    unresolved_event_count: 1,
-    event_count: 30,
+    // Everything contained in it (669,000 over 28 events, one of them never
+    // costed) plus 571,000 over two events reported against the run itself.
+    ...totals(incompleteTotal(1_240_000, 1), completePriceTotal(0), 30),
     created_at: "2026-09-01T14:05:00Z",
   }),
   run({
@@ -228,11 +251,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
   run({
     task_id: RUN_UNKNOWN_COST_ID,
     task_type: KIND_SHARED_WORD_KEY,
-    total_provider_cost_micros: 0,
-    unresolved_event_count: 3,
-    total_billed_cost_micros: 0,
-    unpriced_event_count: 3,
-    event_count: 3,
+    ...totals(incompleteTotal(0, 3), incompletePriceTotal(0, 3), 3),
     created_at: "2026-08-31T09:00:00Z",
     completed_at: "2026-08-31T09:04:00Z",
   }),
@@ -261,9 +280,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_type: KIND_EVENT_PRICED_KEY,
     // Two pieces of contained work (175,000 / 350,000 over three events) plus
     // one event reported against the run itself.
-    total_provider_cost_micros: 310_000,
-    total_billed_cost_micros: 620_000,
-    event_count: 4,
+    ...totals(completeTotal(310_000), completePriceTotal(620_000), 4),
     created_at: "2026-08-29T09:12:00Z",
     completed_at: "2026-08-29T09:13:00Z",
   }),
@@ -273,10 +290,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     status: "killed",
     // A lower ceiling than the kind's, asked for at start, and crossed.
     provider_cost_limit_micros: 800_000,
-    total_provider_cost_micros: 900_000,
-    unresolved_event_count: 2,
-    total_billed_cost_micros: 1_500_000,
-    event_count: 9,
+    ...totals(incompleteTotal(900_000, 2), completePriceTotal(1_500_000), 9),
     created_at: "2026-08-28T20:00:00Z",
     completed_at: "2026-08-28T20:03:00Z",
   }),
@@ -322,7 +336,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
   }),
 ];
 
-function containedId(ordinal: number): string {
+export function containedId(ordinal: number): string {
   return `c0000000-0000-4000-8000-${String(ordinal).padStart(12, "0")}`;
 }
 
@@ -351,9 +365,12 @@ const CONTAINED_UNDER_ACTIVE: readonly RunRow[] = Array.from(
       ...(status === "failed"
         ? { outcome_reason: "upstream_provider_error" as const, reason_detail: "Renderer answered 502" }
         : {}),
-      total_provider_cost_micros: uncosted ? 0 : ordinal * 3_000,
-      unresolved_event_count: uncosted ? 1 : 0,
-      event_count: 1,
+      // Whole cents each, so no piece reads as a zero it is not.
+      ...totals(
+        uncosted ? incompleteTotal(0, 1) : completeTotal(10_000 + ordinal * 1_000),
+        completePriceTotal(0),
+        1,
+      ),
       created_at: startedAt,
       ...(status === "active" ? {} : { completed_at: endedAt }),
     });

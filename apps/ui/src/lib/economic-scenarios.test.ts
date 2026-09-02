@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   availableMeasurements,
+  completePriceTotal,
   completeTotal,
   costNotApplicable,
+  incompletePriceTotal,
   incompleteTotal,
   knownCost,
   knownPrice,
@@ -310,4 +312,25 @@ describe("cost total scenarios", () => {
       "—",
     );
   });
+});
+
+describe("customer price total scenarios", () => {
+  it("says a billed total that left nothing out is whole", () => {
+    const scenario = completePriceTotal(620_000);
+
+    expect(scenario.micros).toBe(620_000);
+    expect(scenario.unpriced_event_count).toBe(0);
+  });
+
+  it("says a billed total that skipped events is a floor, and how many it skipped", () => {
+    const scenario = incompletePriceTotal(620_000, 3);
+
+    expect(scenario.micros).toBe(620_000);
+    expect(scenario.unpriced_event_count).toBe(3);
+  });
+
+  // The rendering assertion §9.2 asks for sits where the console first renders
+  // this total — the runs surface's component tests, against the runs mock
+  // that composes these scenarios (#424). No `lib/` renderer reads the price
+  // side yet, so there is nothing at this altitude to assert against.
 });

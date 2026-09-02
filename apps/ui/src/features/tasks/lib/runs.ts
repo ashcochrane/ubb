@@ -10,28 +10,23 @@
 //
 // NO NUMBER NOBODY KNOWS RENDERS AS A ZERO AMOUNT (#424; #155 §9.2). A run's
 // totals arrive as a figure beside a COUNT of what the figure could not
-// include, and the count is what says whether the figure is a figure, a floor,
-// or nothing at all — the `incomplete_total` scenario in
-// `@/lib/economic-scenarios`, and the reading `@/lib/supplier-cost` gives every
-// other total in the console. What is different here is the THIRD outcome.
-// Elsewhere a total whose resolved part sums to nothing renders as an absence;
-// on this surface it renders as UNKNOWN, in a word, because the runs list puts
-// it in a column beside real zeros — a run that ran nothing — and beside
-// amounts that do not apply, and a column of dashes could not tell a reader
-// which of the three they were looking at. All three are distinct here, and
-// none of them is `$0.00`.
+// include — `incompleteTotal` and `incompletePriceTotal` in
+// `@/lib/economic-scenarios` — and the count is what says whether the figure
+// is a figure, a floor, or nothing at all. That is the reading
+// `@/lib/supplier-cost` gives every other total in the console; what is
+// different here is the THIRD outcome. Elsewhere a total whose resolved part
+// sums to nothing renders as an absence; on this surface it renders as
+// UNKNOWN, in a word, because the runs list puts it in a column beside real
+// zeros — a run that ran nothing — and beside amounts that do not apply, and a
+// column of dashes could not tell a reader which of the three they were
+// looking at. All three are distinct here, and none of them is `$0.00`.
 
 import { z } from "zod";
 
 import { pricingStatusLabel } from "@/lib/customer-price";
 import { formatMicros } from "@/lib/format";
 import { labelMap } from "@/lib/localisation";
-import {
-  AT_LEAST,
-  isPartial,
-  partialTotalNote,
-  type CostCompleteness,
-} from "@/lib/supplier-cost";
+import { AT_LEAST, partialTotalNote } from "@/lib/supplier-cost";
 import {
   OUTCOME_REASON_LABEL_KEYS,
   TASK_STATUS_VALUES,
@@ -75,11 +70,14 @@ export function kindKeysForRuns(kinds: readonly KindOfWork[]): string[] {
 /**
  * The wording for a total none of whose parts UBB has learned.
  *
- * Console copy rather than a catalogue word, and deliberately so: a total
- * carries a COUNT of what it left out, never a status, so there is no registry
- * value here for the catalogue to word (`incompleteTotal` in
- * `@/lib/economic-scenarios` makes the same point). It is the same kind of
- * copy as `at least`, one reading further along.
+ * Console copy, and NOT the catalogue's `pricing_status.unknown` or
+ * `costing_status.unresolved`, though the catalogue words both. Those are the
+ * states of ONE posting; a total is not in a state. It is an amount beside a
+ * COUNT of what it left out, with no registry value of its own for the
+ * catalogue to word — `incompleteTotal` in `@/lib/economic-scenarios` makes
+ * the same point, and `at least` beside it is copy of the same kind. The one
+ * run-level reading this surface DOES take from the catalogue is the one that
+ * is a registry value with a registry reason: a price that does not apply.
  */
 export const UNKNOWN_TOTAL = "Unknown";
 
@@ -93,49 +91,36 @@ export interface RunTotals {
 }
 
 /**
- * A supplier-cost total and what it is worth as a statement.
+ * A total and what it is worth as a statement — the shape both sides share.
  *
  * A union rather than a string, so a renderer branches on WHICH reading it
  * holds and cannot coalesce one into a number: `figure` is the amount, `floor`
- * is an amount the run cost AT LEAST, and `unknown` is no amount at all.
+ * is an amount the run cost — or will be charged — AT LEAST, and `unknown` is
+ * no amount at all. `eventsLeftOut` is the count the total could not include,
+ * whichever side's count that is.
  */
-export type SupplierCostReading =
+export type TotalReading =
   | { readonly kind: "figure"; readonly micros: number }
-  | {
-      readonly kind: "floor";
-      readonly micros: number;
-      readonly unresolvedEventCount: number;
-    }
-  | { readonly kind: "unknown"; readonly unresolvedEventCount: number };
-
-/** Any row carrying a supplier-cost total beside the count it could not include. */
-export interface SupplierCostTotal extends CostCompleteness {
-  readonly total_provider_cost_micros: number;
-}
+  | { readonly kind: "floor"; readonly micros: number; readonly eventsLeftOut: number }
+  | { readonly kind: "unknown"; readonly eventsLeftOut: number };
 
 /**
- * Three outcomes, and the third is the one this surface words differently.
+ * The decision both totals make, once.
  *
- *   nothing missing        → the figure
- *   missing, floor above 0 → a floor
- *   missing, floor at 0    → unknown: UBB knows no amount here
+ *   nothing left out          → the figure
+ *   left out, amount above 0  → a floor
+ *   left out, amount at 0     → unknown: UBB knows no amount here
  *
- * A run whose events all resolved to nothing, with nothing missing, is a
+ * A total whose parts all resolved to nothing, with nothing left out, is a
  * FIGURE of zero — a real zero, and it renders as one.
  */
-export function readSupplierCost(row: SupplierCostTotal): SupplierCostReading {
-  if (!isPartial(row)) return { kind: "figure", micros: row.total_provider_cost_micros };
-  if (row.total_provider_cost_micros === 0) {
-    return { kind: "unknown", unresolvedEventCount: row.unresolved_event_count };
-  }
-  return {
-    kind: "floor",
-    micros: row.total_provider_cost_micros,
-    unresolvedEventCount: row.unresolved_event_count,
-  };
+function readTotal(micros: number, eventsLeftOut: number): TotalReading {
+  if (eventsLeftOut <= 0) return { kind: "figure", micros };
+  if (micros === 0) return { kind: "unknown", eventsLeftOut };
+  return { kind: "floor", micros, eventsLeftOut };
 }
 
-export function describeSupplierCost(reading: SupplierCostReading, currency: string): string {
+export function describeTotal(reading: TotalReading, currency: string): string {
   switch (reading.kind) {
     case "figure":
       return formatMicros(reading.micros, currency);
@@ -146,39 +131,52 @@ export function describeSupplierCost(reading: SupplierCostReading, currency: str
   }
 }
 
+function eventsHave(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "event has" : "events have"}`;
+}
+
+// The supplier cost
+
+export type SupplierCostReading = TotalReading;
+
+/** Any row carrying a supplier-cost total beside the count it could not include. */
+export interface SupplierCostTotal {
+  readonly total_provider_cost_micros: number;
+  readonly unresolved_event_count: number;
+}
+
+export function readSupplierCost(row: SupplierCostTotal): SupplierCostReading {
+  return readTotal(row.total_provider_cost_micros, row.unresolved_event_count);
+}
+
 /** The sentence beside a supplier-cost reading, or nothing when the figure is whole. */
 export function explainSupplierCost(reading: SupplierCostReading): string | null {
   switch (reading.kind) {
     case "figure":
       return null;
     case "floor":
-      return partialTotalNote(reading.unresolvedEventCount);
+      return partialTotalNote(reading.eventsLeftOut);
     case "unknown":
       return (
-        `${eventsHave(reading.unresolvedEventCount)} a supplier cost UBB has not ` +
-        `learned, and no event under this run has one it has. The amount is missing, not zero.`
+        `${eventsHave(reading.eventsLeftOut)} a supplier cost UBB has not learned, ` +
+        `and no event under this run has one it has. The amount is missing, not zero.`
       );
   }
 }
 
+// The customer price
+
 /**
- * A customer-price total and what it is worth as a statement — the price-side
- * twin, with the fourth reading the supplier cost has no counterpart for.
- *
- * `not_applicable` is decided by the SUBJECT before any count is read, and it
- * carries the registry's own reason (`not_applicable_reason` in
- * `@/lib/vocabulary`) so the renderer can say which of two different things it
- * means: revenue that sits on the run's own agreed price, or revenue that
- * exists nowhere because the workspace does not bill.
+ * The price-side reading, with the fourth outcome the supplier cost has no
+ * counterpart for. `not_applicable` is decided by the SUBJECT before any
+ * count is read, and it carries the registry's own reason
+ * (`not_applicable_reason` in `@/lib/vocabulary`) so the renderer can say
+ * which of two different things it means: revenue that sits on the run's own
+ * agreed price, or revenue that exists nowhere because the workspace does not
+ * bill.
  */
 export type CustomerPriceReading =
-  | { readonly kind: "figure"; readonly micros: number }
-  | {
-      readonly kind: "floor";
-      readonly micros: number;
-      readonly unpricedEventCount: number;
-    }
-  | { readonly kind: "unknown"; readonly unpricedEventCount: number }
+  | TotalReading
   | { readonly kind: "not_applicable"; readonly reason: NotApplicableReason };
 
 /** Any row carrying a customer-price total beside the count it could not include. */
@@ -206,11 +204,17 @@ export interface PriceApplicability {
 }
 
 /**
- * Whether a top-level run is sold at one agreed price: it pinned one at start
- * (#415), and that pinned figure is the only wire-borne sign of the regime a
- * run was sold under. Contained work never pins a price of its own — one
- * agreed price buys the whole unit of work — so for it the answer is the
- * containing run's, and a caller passes that run rather than the child.
+ * Whether a run is sold at one agreed price: it pinned one at start (#415),
+ * and that pinned figure is the only wire-borne sign of the regime a run was
+ * sold under.
+ *
+ * ⚠ ASK THE CONTAINING RUN, NEVER A PIECE OF CONTAINED WORK. Contained work
+ * never pins a price of its own — one agreed price buys the whole unit of work
+ * — so its own `agreed_price_micros` is null under either regime, and reading
+ * it would answer "priced per event" for work whose revenue does not apply,
+ * which then renders as `$0.00`. The run page resolves the containing run
+ * before it reads anything (`run-detail-page.tsx`); the list holds only
+ * top-level runs, for which the row is the run.
  */
 export function soldAtOnePrice(run: Pick<RunRow, "agreed_price_micros">): boolean {
   return run.agreed_price_micros != null;
@@ -224,32 +228,14 @@ export function readCustomerPrice(
   if (applicability.soldAtOnePrice) {
     return { kind: "not_applicable", reason: "fixed_task_pricing" };
   }
-  if (row.unpriced_event_count === 0) {
-    return { kind: "figure", micros: row.total_billed_cost_micros };
-  }
-  if (row.total_billed_cost_micros === 0) {
-    return { kind: "unknown", unpricedEventCount: row.unpriced_event_count };
-  }
-  return {
-    kind: "floor",
-    micros: row.total_billed_cost_micros,
-    unpricedEventCount: row.unpriced_event_count,
-  };
+  return readTotal(row.total_billed_cost_micros, row.unpriced_event_count);
 }
 
 export function describeCustomerPrice(reading: CustomerPriceReading, currency: string): string {
-  switch (reading.kind) {
-    case "figure":
-      return formatMicros(reading.micros, currency);
-    case "floor":
-      return `${AT_LEAST} ${formatMicros(reading.micros, currency)}`;
-    case "unknown":
-      return UNKNOWN_TOTAL;
-    case "not_applicable":
-      // The registry's own word for the state every posting under the run is
-      // in — this one has a value, so the catalogue words it.
-      return pricingStatusLabel("not_applicable");
-  }
+  // The registry's own word for the state every posting under the run is in
+  // — this one is a value the catalogue words (see `UNKNOWN_TOTAL`).
+  if (reading.kind === "not_applicable") return pricingStatusLabel("not_applicable");
+  return describeTotal(reading, currency);
 }
 
 /**
@@ -271,21 +257,17 @@ export function explainCustomerPrice(reading: CustomerPriceReading): string | nu
       return null;
     case "floor":
       return (
-        `${eventsHave(reading.unpricedEventCount)} a customer price UBB has not ` +
-        `resolved. They are left out of this total, so the true figure is higher.`
+        `${eventsHave(reading.eventsLeftOut)} a customer price UBB has not resolved. ` +
+        `They are left out of this total, so the true figure is higher.`
       );
     case "unknown":
       return (
-        `${eventsHave(reading.unpricedEventCount)} a customer price UBB has not ` +
-        `resolved, and no event under this run has one it has. The amount is missing, not zero.`
+        `${eventsHave(reading.eventsLeftOut)} a customer price UBB has not resolved, ` +
+        `and no event under this run has one it has. The amount is missing, not zero.`
       );
     case "not_applicable":
       return RUN_PRICE_NOT_APPLICABLE[reading.reason];
   }
-}
-
-function eventsHave(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "event has" : "events have"}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,31 +392,6 @@ export function containedTotals(contained: readonly RunRow[]): ContainedTotals {
     totals.unpriced_event_count += row.unpriced_event_count;
   }
   return totals;
-}
-
-/**
- * What was reported against the run itself rather than against anything
- * contained in it.
- *
- * A run's own totals include everything underneath it — the accumulate
- * primitive rolls every child's costs and counts into its parent, without
- * exception and even after a kill — and events may attach straight to the run
- * as a first-class path. So the remainder over the contained totals is exactly
- * that direct usage. `null` where the arithmetic goes negative: a run whose
- * totals are smaller than its children's is a record the console cannot read
- * a remainder off, and a negative amount would be a wrong number rather than a
- * fact.
- */
-export function directlyOnRun(run: RunTotals, contained: ContainedTotals): RunTotals | null {
-  const remainder = {
-    event_count: run.event_count - contained.event_count,
-    total_provider_cost_micros:
-      run.total_provider_cost_micros - contained.total_provider_cost_micros,
-    unresolved_event_count: run.unresolved_event_count - contained.unresolved_event_count,
-    total_billed_cost_micros: run.total_billed_cost_micros - contained.total_billed_cost_micros,
-    unpriced_event_count: run.unpriced_event_count - contained.unpriced_event_count,
-  };
-  return Object.values(remainder).some((value) => value < 0) ? null : remainder;
 }
 
 /** "28 pieces of contained work" / "1 piece of contained work". */

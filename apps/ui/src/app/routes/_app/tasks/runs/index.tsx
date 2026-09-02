@@ -15,6 +15,7 @@ function RouteComponent() {
     <RunsPage
       search={search}
       onSearchChange={(next) => void navigate({ search: next, replace: true })}
+      onGoToKinds={() => void navigate({ to: "/tasks" })}
     />
   );
 }

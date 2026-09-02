@@ -7,8 +7,7 @@ import {
   containedTotals,
   describeAgreedPrice,
   describeCustomerPrice,
-  describeSupplierCost,
-  directlyOnRun,
+  describeTotal,
   explainCustomerPrice,
   explainSupplierCost,
   foldContainedWork,
@@ -46,22 +45,22 @@ describe("a supplier-cost total", () => {
     });
     const zero = readSupplierCost({ total_provider_cost_micros: 0, unresolved_event_count: 0 });
     expect(zero).toEqual({ kind: "figure", micros: 0 });
-    expect(describeSupplierCost(zero, "usd")).toBe("$0.00");
+    expect(describeTotal(zero, "usd")).toBe("$0.00");
     expect(explainSupplierCost(zero)).toBeNull();
   });
 
   it("is a floor when something is missing and the resolved part is above zero", () => {
     const floor = readSupplierCost({ total_provider_cost_micros: 900_000, unresolved_event_count: 2 });
-    expect(floor).toEqual({ kind: "floor", micros: 900_000, unresolvedEventCount: 2 });
-    expect(describeSupplierCost(floor, "usd")).toBe("at least $0.90");
+    expect(floor).toEqual({ kind: "floor", micros: 900_000, eventsLeftOut: 2 });
+    expect(describeTotal(floor, "usd")).toBe("at least $0.90");
     expect(explainSupplierCost(floor)).toMatch(/2 events have a supplier cost UBB has not learned/);
   });
 
   it("is unknown, never a zero, when nothing under the run was ever costed", () => {
     const unknown = readSupplierCost({ total_provider_cost_micros: 0, unresolved_event_count: 3 });
-    expect(unknown).toEqual({ kind: "unknown", unresolvedEventCount: 3 });
-    expect(describeSupplierCost(unknown, "usd")).toBe(UNKNOWN_TOTAL);
-    expect(describeSupplierCost(unknown, "usd")).not.toMatch(/\$/);
+    expect(unknown).toEqual({ kind: "unknown", eventsLeftOut: 3 });
+    expect(describeTotal(unknown, "usd")).toBe(UNKNOWN_TOTAL);
+    expect(describeTotal(unknown, "usd")).not.toMatch(/\$/);
     expect(explainSupplierCost(unknown)).toMatch(/missing, not zero/);
   });
 });
@@ -75,10 +74,10 @@ describe("a customer-price total", () => {
     expect(readCustomerPrice({ total_billed_cost_micros: 620_000, unpriced_event_count: 1 }, BILLS)).toEqual({
       kind: "floor",
       micros: 620_000,
-      unpricedEventCount: 1,
+      eventsLeftOut: 1,
     });
     const unknown = readCustomerPrice({ total_billed_cost_micros: 0, unpriced_event_count: 3 }, BILLS);
-    expect(unknown).toEqual({ kind: "unknown", unpricedEventCount: 3 });
+    expect(unknown).toEqual({ kind: "unknown", eventsLeftOut: 3 });
     expect(describeCustomerPrice(unknown, "usd")).toBe(UNKNOWN_TOTAL);
     expect(explainCustomerPrice(unknown)).toMatch(/missing, not zero/);
   });
@@ -185,25 +184,6 @@ describe("contained work", () => {
     const shownOnly = containedTotals(foldContainedWork(many, false).shown);
     expect(shownOnly.total_provider_cost_micros).not.toBe(totals.total_provider_cost_micros);
     expect(shownOnly.event_count).not.toBe(totals.event_count);
-  });
-
-  it("reads what was reported against the run itself as the remainder, and refuses a negative one", () => {
-    const contained = containedTotals(pieces(4));
-    const run = {
-      event_count: contained.event_count + 2,
-      total_provider_cost_micros: contained.total_provider_cost_micros + 43_000,
-      unresolved_event_count: contained.unresolved_event_count,
-      total_billed_cost_micros: contained.total_billed_cost_micros + 86_000,
-      unpriced_event_count: contained.unpriced_event_count + 1,
-    };
-    expect(directlyOnRun(run, contained)).toEqual({
-      event_count: 2,
-      total_provider_cost_micros: 43_000,
-      unresolved_event_count: 0,
-      total_billed_cost_micros: 86_000,
-      unpriced_event_count: 1,
-    });
-    expect(directlyOnRun({ ...run, event_count: contained.event_count - 1 }, contained)).toBeNull();
   });
 });
 

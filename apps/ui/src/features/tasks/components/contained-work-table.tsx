@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
+import { CopyButton } from "@/components/shared/copy-button";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,14 +18,11 @@ import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
 import type { RunRow } from "../api/types";
 import {
   containedTotals,
-  directlyOnRun,
   foldContainedWork,
   piecesOfContainedWork,
   readCustomerPrice,
   readSupplierCost,
-  soldAtOnePrice,
   type PriceApplicability,
-  type RunTotals,
 } from "../lib/runs";
 import { CustomerPriceReadingView, SupplierCostReadingView } from "./amount-reading";
 import { RunStatusBadge } from "./run-status-badge";
@@ -41,25 +39,23 @@ import { RunStatusBadge } from "./run-status-badge";
  * because a roll-up that summed only the visible rows would be a wrong number
  * on a readable page. `contained-work-table.test.tsx` holds both halves.
  *
- * The customer price of contained work is decided by the run CONTAINING it —
- * contained work is sold the way the work containing it is sold, and never
- * pins a price of its own — so the run is what is asked, not the child.
+ * Whether a customer price applies is decided by the run CONTAINING the work
+ * — contained work is sold the way the work containing it is sold, and never
+ * pins a price of its own — so the caller passes that decision in, made from
+ * the containing run, and no row here is asked about its own regime.
  */
 export function ContainedWorkTable({
-  run,
   contained,
   currency,
-  meteringOnly,
+  applicability,
 }: {
-  /** The containing run: its own totals, and whether it was sold at one price. */
-  run: RunTotals & Pick<RunRow, "agreed_price_micros">;
-  /** Every piece of work contained in it — the whole list, never a page. */
+  /** Every piece of work contained in the run — the whole list, never a page. */
   contained: readonly RunRow[];
   currency: string;
-  meteringOnly: boolean;
+  /** Read off the CONTAINING run and the workspace's posture, never off a row. */
+  applicability: PriceApplicability;
 }) {
   const [showAll, setShowAll] = useState(false);
-  const applicability: PriceApplicability = { meteringOnly, soldAtOnePrice: soldAtOnePrice(run) };
 
   if (contained.length === 0) {
     return (
@@ -72,7 +68,6 @@ export function ContainedWorkTable({
 
   const { shown, folded } = foldContainedWork(contained, showAll);
   const totals = containedTotals(contained);
-  const direct = directlyOnRun(run, totals);
 
   return (
     <div className="overflow-x-auto">
@@ -91,13 +86,17 @@ export function ContainedWorkTable({
           {shown.map((row) => (
             <TableRow key={row.task_id} data-contained-row data-status={row.status}>
               <TableCell>
-                <Link
-                  to="/tasks/runs/$taskId"
-                  params={{ taskId: row.task_id }}
-                  className="font-mono text-[12px] text-text-primary underline-offset-2 hover:underline"
-                >
-                  {shortId(row.task_id)}
-                </Link>
+                <span className="inline-flex items-center gap-1.5">
+                  <Link
+                    to="/tasks/runs/$taskId"
+                    params={{ taskId: row.task_id }}
+                    title={row.task_id}
+                    className="font-mono text-[12px] text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {shortId(row.task_id)}
+                  </Link>
+                  <CopyButton value={row.task_id} label="Copy run ID" />
+                </span>
               </TableCell>
               <TableCell className="font-mono text-[12px]">
                 {row.task_type ? tenantDefinedLabel(row.task_type) : ABSENT_LABEL}
@@ -152,28 +151,6 @@ export function ContainedWorkTable({
               />
             </TableCell>
           </TableRow>
-          {direct !== null && direct.event_count > 0 && (
-            <TableRow data-direct-row>
-              <TableCell colSpan={3}>
-                <span className="text-[12px] font-medium">Reported against the run itself</span>
-                <span className="block text-[11px] font-normal text-text-secondary">
-                  Events attached to the run rather than to anything contained in it.
-                </span>
-              </TableCell>
-              <TableCell className="text-right text-[12px]">
-                {formatEventCount(direct.event_count)}
-              </TableCell>
-              <TableCell className="text-right text-[12px]">
-                <SupplierCostReadingView reading={readSupplierCost(direct)} currency={currency} />
-              </TableCell>
-              <TableCell className="text-right text-[12px]">
-                <CustomerPriceReadingView
-                  reading={readCustomerPrice(direct, applicability)}
-                  currency={currency}
-                />
-              </TableCell>
-            </TableRow>
-          )}
         </TableFooter>
       </Table>
     </div>

@@ -17,7 +17,7 @@ import {
   RUN_UNKNOWN_COST_ID,
 } from "../api/mock-data";
 import { CONTAINED_ROWS_SHOWN_INLINE } from "../lib/runs";
-import { renderWithProviders } from "../test-utils";
+import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
 import { RunDetailPage } from "./run-detail-page";
 
 async function opened(taskId: string) {
@@ -42,13 +42,10 @@ function readingBeside(scope: HTMLElement, label: string): HTMLElement {
   return found;
 }
 
-/** The destructive variant, and only it, colours its text; the base class names the colour for aria-invalid states on every variant. */
-const DRAWN_AS_FAILURE = /(^|\s)text-destructive(\s|$)/;
-
 describe("RunDetailPage", () => {
   it("renders a run from its routed id: how it ended, what it cost and earned, and the work it contains", async () => {
     await opened(RUN_ACTIVE_ID);
-    expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
+    expect(within(region("How it ended")).getByText("Active")).toBeInTheDocument();
 
     const money = region("What it cost and earned");
     expect(within(rowBeside(money, "Events")).getByText("30")).toBeInTheDocument();
@@ -83,9 +80,9 @@ describe("RunDetailPage", () => {
   it("renders an expired run as its own state and says it is not a failure", async () => {
     await opened(RUN_EXPIRED_ID);
     const ended = region("How it ended");
-    const badge = ended.querySelector<HTMLElement>("[data-tone]");
+    const badge = ended.querySelector<HTMLElement>("[data-status]");
     if (!badge) throw new Error("the section holds no drawn state");
-    expect(badge).toHaveAttribute("data-tone", "expired");
+    expect(badge).toHaveAttribute("data-status", "expired");
     expect(badge).toHaveTextContent("Expired");
     expect(badge.className).not.toMatch(DRAWN_AS_FAILURE);
     expect(within(ended).getByText(/Not a failure/)).toBeInTheDocument();
@@ -124,7 +121,12 @@ describe("RunDetailPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("names the run containing a piece of contained work opened on its own", async () => {
+  // ⚠ THE CASE REVIEW FOUND: a piece of contained work carries no pinned price
+  // of its own, so read off its own row the regime is "priced per event" and
+  // revenue that does not apply renders as `$0.00`. The page must ask the run
+  // containing it. Reading `soldAtOnePrice(detail)` instead of the parent's
+  // turns the reading below into `figure` and this red.
+  it("reads a piece of contained work's regime off the run containing it, and names that run", async () => {
     const piece = MOCK_CONTAINED[RUN_ACTIVE_ID]?.[0];
     if (!piece) throw new Error("the fixture holds no contained work");
     await opened(piece.task_id);
@@ -132,6 +134,13 @@ describe("RunDetailPage", () => {
       "href",
       `/tasks/runs/${RUN_ACTIVE_ID}`,
     );
+    const money = region("What it cost and earned");
+    const price = readingBeside(money, "Customer price");
+    expect(price).toHaveAttribute("data-reading", "not_applicable");
+    expect(price).toHaveTextContent("Priced at the task");
+    expect(money).not.toHaveTextContent("$0.00");
+    // Its own cost is its own, and a real figure.
+    expect(readingBeside(money, "Supplier cost")).toHaveAttribute("data-reading", "figure");
     expect(
       within(region("Contained work")).getByText(/Nothing is contained in this run/),
     ).toBeInTheDocument();

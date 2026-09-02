@@ -4,16 +4,19 @@
 // Identity lives in `@/lib/vocabulary` (generated from `domain-vocabulary/`),
 // expression in `@/locales` reached through `@/lib/localisation`. This module
 // is where the two meet for `task_status` — the `@/lib/products` shape — plus
-// the two things neither of them may hold: what each state means for the
-// person reading it, and which one of them is a failure.
+// the one thing neither of them may hold: what each state means for the
+// person reading it.
 //
-// IT SITS IN `lib/` RATHER THAN IN THE TASKS FEATURE because two features
-// render a lifecycle state and they cannot share one: the runs surface is
-// `features/tasks`, and the receipt's task panel — which shows a close's
+// ⚠ IT SITS IN `lib/`, WHICH IS A DELIBERATE DEPARTURE FROM THE LETTER OF
+// SPEC §26. §26 binds the lifecycle words "at the surface that renders them —
+// the tasks feature". Two features render a lifecycle state: the runs surface
+// is `features/tasks`, and the receipt's task panel — which shows a close's
 // answer — is `features/events`. The console's imports only flow down, so a
-// binding inside either feature would have to be written twice. That is the
-// rule `@/lib/customer-price` states for the pricing method (#372), applied to
-// the second concept it turned out to cover.
+// binding inside either feature would have to be written twice, and two
+// bindings of one concept is the drift the localisation layer exists to
+// abolish. That is the rule `@/lib/customer-price` states for the pricing
+// method (#372), applied to the second concept it turned out to cover; the
+// tasks feature is still the first surface to render every one of the six.
 //
 // THIS IS THE PAYMENT OF `g2-console-task_status` AND `g6-map-task-status-label`
 // TOGETHER, in the shape slices 3 and 4 established (spec §26): the four-state
@@ -34,6 +37,15 @@ export const taskStatusLabel = labelMap(TASK_STATUS_LABEL_KEYS);
  * What each state means for the person reading a run — console-owned copy
  * (ADR-0008 §4.5), total over the generated type so a state the registry adds
  * and this has no sentence for fails `tsc` rather than rendering nothing.
+ *
+ * ⚠ THE `expired` SENTENCE CARRIES A RULE: an expired run is not a failure
+ * (#187 §7, #140 §11). Expiry means nobody declared an ending, and it can
+ * strike live work in the middle of a long atomic call — an accepted
+ * consequence of having no keepalive, acceptable only while it stays visible
+ * for what it is. A cancelled run is a withdrawal, not a verdict, and a killed
+ * run is UBB's own spend stop, which says something about the ceiling and
+ * nothing about whether the work was going well. How each is DRAWN follows
+ * from this in `features/tasks/components/run-status-badge.tsx`.
  */
 export const TASK_STATUS_EXPLANATIONS = {
   active: "Still running. Usage reported under it is still landing and counting.",
@@ -47,33 +59,3 @@ export const TASK_STATUS_EXPLANATIONS = {
   expired:
     "Nobody told UBB how this ended, so UBB closed it when its window ran out. Not a failure: expiry can strike live work that reports nothing for a while, and it is recorded as its own state so it is never counted as one.",
 } as const satisfies Record<TaskStatus, string>;
-
-/**
- * How a state reads at a glance.
- *
- * ⚠ `failure` IS `failed` AND NOTHING ELSE. An expired run is not a failure
- * (#187 §7, #140 §11): expiry means nobody declared an ending, and it can
- * strike live work in the middle of a long atomic call — an accepted
- * consequence of having no keepalive, acceptable only while it stays visible
- * for what it is. A cancelled run is a withdrawal, not a verdict. A killed run
- * is UBB's own spend stop, which says something about the ceiling and nothing
- * about whether the work was going well. Grouping, counting or colouring any
- * of the three as a failure would make a spend signal or a missing declaration
- * read as the caller's verdict, which none of them is.
- */
-export type TaskStatusTone =
-  | "live"
-  | "delivered"
-  | "failure"
-  | "withdrawn"
-  | "stopped"
-  | "expired";
-
-export const TASK_STATUS_TONES = {
-  active: "live",
-  completed: "delivered",
-  failed: "failure",
-  cancelled: "withdrawn",
-  killed: "stopped",
-  expired: "expired",
-} as const satisfies Record<TaskStatus, TaskStatusTone>;

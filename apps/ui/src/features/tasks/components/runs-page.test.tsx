@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,7 +20,7 @@ import {
   RUN_UNKNOWN_COST_ID,
 } from "../api/mock-data";
 import type { RunsSearch } from "../lib/runs";
-import { renderWithProviders } from "../test-utils";
+import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
 import { RunsPage } from "./runs-page";
 
 function renderRuns(search: RunsSearch = {}) {
@@ -29,8 +29,8 @@ function renderRuns(search: RunsSearch = {}) {
   return { onSearchChange, ...view };
 }
 
-async function loaded(): Promise<void> {
-  await screen.findByRole("table");
+async function loaded(): Promise<HTMLElement> {
+  return screen.findByRole("table");
 }
 
 function rowOf(taskId: string): HTMLElement {
@@ -65,13 +65,10 @@ function reading(row: HTMLElement, index: number): HTMLElement {
 }
 
 function badge(row: HTMLElement): HTMLElement {
-  const found = cell(row, STATE).querySelector<HTMLElement>("[data-tone]");
+  const found = cell(row, STATE).querySelector<HTMLElement>("[data-status]");
   if (!found) throw new Error("the state cell holds no drawn state");
   return found;
 }
-
-/** The destructive variant, and only it, colours its text; the base class names the colour for aria-invalid states on every variant. */
-const DRAWN_AS_FAILURE = /(^|\s)text-destructive(\s|$)/;
 
 describe("RunsPage", () => {
   it("lists every top-level run, newest first, each a link to its own page and to its kind's", async () => {
@@ -89,9 +86,9 @@ describe("RunsPage", () => {
 
   it("says every one of the six states in the catalogue's words", async () => {
     renderRuns();
-    await loaded();
+    const table = within(await loaded());
     for (const word of ["Active", "Completed", "Failed", "Cancelled", "Killed", "Expired"]) {
-      expect(screen.getAllByText(word).length).toBeGreaterThan(0);
+      expect(table.getAllByText(word).length).toBeGreaterThan(0);
     }
   });
 
@@ -100,15 +97,18 @@ describe("RunsPage", () => {
     await loaded();
     const expired = badge(rowOf(RUN_EXPIRED_ID));
     const failed = badge(rowOf(RUN_FAILED_ID));
-    expect(expired).toHaveAttribute("data-tone", "expired");
+    expect(expired).toHaveAttribute("data-status", "expired");
     expect(expired).toHaveTextContent("Expired");
     expect(expired.className).not.toMatch(DRAWN_AS_FAILURE);
     expect(expired).toHaveAttribute("title", expect.stringMatching(/Not a failure/));
-    expect(failed).toHaveAttribute("data-tone", "failure");
+    expect(failed).toHaveAttribute("data-status", "failed");
     expect(failed).toHaveTextContent("Failed");
     expect(failed.className).toMatch(DRAWN_AS_FAILURE);
   });
 
+  // The grouping is the wire's own state filter, and what this pins on the
+  // console's side is the page's wiring of it: drop `status` from the read the
+  // page makes and the expired run is back in the list.
   it("keeps an expired run out of the failure grouping", async () => {
     renderRuns({ status: "failed" });
     await loaded();
@@ -130,12 +130,13 @@ describe("RunsPage", () => {
     expect(row).not.toHaveTextContent("$0.00");
   });
 
-  it("says Not applicable, never a zero amount, for the customer price of a run sold at one agreed price", async () => {
+  it("says Not applicable, never a zero amount, for the customer price of a run sold at one agreed price — and why", async () => {
     renderRuns();
     await loaded();
     const row = rowOf(RUN_DELIVERED_FIXED_ID);
     expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute("data-reading", "not_applicable");
     expect(reading(row, CUSTOMER_PRICE)).toHaveTextContent("Not applicable");
+    expect(reading(row, CUSTOMER_PRICE)).toHaveTextContent("Priced at the task");
     expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute(
       "title",
       expect.stringMatching(/sold at one agreed price/),
@@ -176,7 +177,7 @@ describe("RunsPage", () => {
     }
   });
 
-  it("says no run has a customer price when the workspace meters without billing", async () => {
+  it("says no run has a customer price when the workspace meters without billing, and why", async () => {
     const original = readMockTenantConfig();
     try {
       writeMockTenantConfig({ ...original, billing_mode: METERING_ONLY_BILLING_MODE });
@@ -184,6 +185,7 @@ describe("RunsPage", () => {
       await loaded();
       for (const row of bodyRows()) {
         expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute("data-reading", "not_applicable");
+        expect(reading(row, CUSTOMER_PRICE)).toHaveTextContent("Metering only");
         expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute(
           "title",
           expect.stringMatching(/does not bill customers through UBB/),
@@ -194,11 +196,12 @@ describe("RunsPage", () => {
     }
   });
 
-  it("offers the kind and state filters, and the way back to kinds of work", async () => {
+  it("offers the kind and state filters, a copy of every run's id, and the way back to kinds of work", async () => {
     renderRuns();
     await loaded();
     expect(screen.getByRole("combobox", { name: "Kind of work" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "State" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copy run ID" })).toHaveLength(MOCK_RUNS.length);
     expect(screen.getByRole("link", { name: "Kinds of work" })).toHaveAttribute("href", "/tasks");
     expect(screen.getByRole("link", { name: "Runs" })).toHaveAttribute("aria-current", "page");
   });

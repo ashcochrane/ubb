@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
+import { CopyButton } from "@/components/shared/copy-button";
 import {
   Table,
   TableBody,
@@ -22,7 +23,9 @@ import { RunStatusBadge } from "./run-status-badge";
  *
  * Every row is a LINK to the run's own page, and its kind is a link to the
  * kind's. The totals are READINGS rather than numbers: a figure, a floor, an
- * unknown or a not-applicable, each drawn as itself (see `../lib/runs`).
+ * unknown or a not-applicable, each drawn as itself (see `../lib/runs`). The
+ * list holds only top-level runs, so each row is the run its own regime is
+ * read off; contained work is on its parent's page.
  */
 export function RunsTable({
   runs,
@@ -52,13 +55,17 @@ export function RunsTable({
           {runs.map((run) => (
             <TableRow key={run.task_id} data-status={run.status}>
               <TableCell>
-                <Link
-                  to="/tasks/runs/$taskId"
-                  params={{ taskId: run.task_id }}
-                  className="font-mono text-[12px] font-medium text-text-primary underline-offset-2 hover:underline"
-                >
-                  {shortId(run.task_id)}
-                </Link>
+                <span className="inline-flex items-center gap-1.5">
+                  <Link
+                    to="/tasks/runs/$taskId"
+                    params={{ taskId: run.task_id }}
+                    title={run.task_id}
+                    className="font-mono text-[12px] font-medium text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {shortId(run.task_id)}
+                  </Link>
+                  <CopyButton value={run.task_id} label="Copy run ID" />
+                </span>
               </TableCell>
               <TableCell>
                 {run.task_type ? (

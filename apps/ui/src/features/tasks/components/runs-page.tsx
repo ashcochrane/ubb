@@ -29,6 +29,8 @@ export interface RunsPageProps {
   /** URL-backed: the route passes it down and receives changes back. */
   search: RunsSearch;
   onSearchChange: (next: RunsSearch) => void;
+  /** Where a workspace with no runs yet is sent: the kinds of work, which come first. */
+  onGoToKinds?: () => void;
 }
 
 /**
@@ -45,13 +47,14 @@ export interface RunsPageProps {
  * surface offers, and it groups by the registry's states exactly — an expired
  * run is under "Expired" and nowhere else (#187 §7).
  */
-export function RunsPage({ search, onSearchChange }: RunsPageProps) {
+export function RunsPage({ search, onSearchChange, onGoToKinds }: RunsPageProps) {
   const currency = useTenantCurrency();
   const meteringOnly = useIsMeteringOnly();
   const kinds = useKindsOfWork();
   const runs = useRuns({ task_type: search.task_type, status: search.status });
   const narrowed = search.task_type !== undefined || search.status !== undefined;
   const update = (patch: Partial<RunsSearch>) => onSearchChange({ ...search, ...patch });
+  const clear = () => update({ task_type: undefined, status: undefined });
 
   return (
     <div className="space-y-4">
@@ -66,6 +69,7 @@ export function RunsPage({ search, onSearchChange }: RunsPageProps) {
         kinds={kindKeysForRuns(kinds.data ?? [])}
         narrowed={narrowed}
         onChange={update}
+        onClear={clear}
       />
 
       {runs.isInitialLoading ? (
@@ -83,23 +87,21 @@ export function RunsPage({ search, onSearchChange }: RunsPageProps) {
           title="Couldn't load your runs"
         />
       ) : runs.rows.length === 0 ? (
-        <EmptyState
-          icon={ListChecks}
-          title={narrowed ? "No runs match these filters" : "No runs yet"}
-          description={
-            narrowed
-              ? "Nothing ran under that kind of work in that state. Clear the filters to see every run."
-              : "A run reports here the moment your code starts one. Declare a kind of work first, then start work of that kind from the SDK."
-          }
-          action={
-            narrowed
-              ? {
-                  label: "Show every run",
-                  onClick: () => update({ task_type: undefined, status: undefined }),
-                }
-              : undefined
-          }
-        />
+        narrowed ? (
+          <EmptyState
+            icon={ListChecks}
+            title="No runs match these filters"
+            description="Nothing ran under that kind of work in that state. Clear the filters to see every run."
+            action={{ label: "Show every run", onClick: clear }}
+          />
+        ) : (
+          <EmptyState
+            icon={ListChecks}
+            title="No runs yet"
+            description="A run reports here the moment your code starts one. Declare a kind of work first, then start work of that kind from the SDK."
+            action={onGoToKinds ? { label: "See kinds of work", onClick: onGoToKinds } : undefined}
+          />
+        )
       ) : (
         <Card size="sm" className="gap-0 py-0">
           <RunsTable runs={runs.rows} currency={currency} meteringOnly={meteringOnly} />
@@ -123,11 +125,13 @@ function RunsFilters({
   kinds,
   narrowed,
   onChange,
+  onClear,
 }: {
   search: RunsSearch;
   kinds: readonly string[];
   narrowed: boolean;
   onChange: (patch: Partial<RunsSearch>) => void;
+  onClear: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-end gap-4">
@@ -178,11 +182,7 @@ function RunsFilters({
       </div>
 
       {narrowed && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange({ task_type: undefined, status: undefined })}
-        >
+        <Button variant="ghost" size="sm" onClick={onClear}>
           Clear filters
         </Button>
       )}

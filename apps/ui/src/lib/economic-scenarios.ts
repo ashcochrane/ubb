@@ -319,3 +319,41 @@ export function incompleteTotal(
 ): CostTotalScenario {
   return { micros, unresolved_event_count: unresolvedEventCount };
 }
+
+// ---------------------------------------------------------------------------
+// The customer-price total — `incomplete_total`'s price-side twin (#424).
+
+/**
+ * A total built over customer prices, and how many of them it had to skip.
+ *
+ * The price side of `CostTotalScenario`, and the first the console has had
+ * to hold: a run's billed total (`TaskOut.total_billed_cost_micros`) arrives
+ * beside `unpriced_event_count`, which counts the events whose price UBB
+ * could not resolve — a `waived` price and a `not_applicable` one are NOT
+ * counted, because neither is missing information. So non-zero means the
+ * amount beside it is a floor, exactly as on the cost side, and a zero amount
+ * beside a non-zero count is no amount at all.
+ */
+export interface PriceTotalScenario {
+  readonly micros: number;
+  readonly unpriced_event_count: number;
+}
+
+/** A billed total that left nothing out. */
+export function completePriceTotal(micros: number): PriceTotalScenario {
+  return { micros, unpriced_event_count: 0 };
+}
+
+/**
+ * A billed total that left events out, and how many.
+ *
+ * Both arguments required and no default for the count, for the reason
+ * `incompleteTotal` gives: a default of zero would be the silent completeness
+ * claim this scenario exists to make impossible to write by accident.
+ */
+export function incompletePriceTotal(
+  micros: number,
+  unpricedEventCount: number,
+): PriceTotalScenario {
+  return { micros, unpriced_event_count: unpricedEventCount };
+}

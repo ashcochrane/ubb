@@ -3,18 +3,17 @@ import { describe, expect, it } from "vitest";
 
 import { formatEventCount } from "@/lib/format";
 
+import { containedId, RUN_ACTIVE_ID } from "../api/mock-data";
 import type { RunRow } from "../api/types";
-import { CONTAINED_ROWS_SHOWN_INLINE } from "../lib/runs";
-import { renderWithProviders } from "../test-utils";
+import { CONTAINED_ROWS_SHOWN_INLINE, type PriceApplicability } from "../lib/runs";
+import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
 import { ContainedWorkTable } from "./contained-work-table";
-
-const RUN_ID = "6e1f2c8a-3b47-4d90-a5e2-7c9d0b1f3a64";
 
 /** One piece of contained work, costed at ten thousand micros per ordinal so sums come out in whole cents. */
 function piece(ordinal: number, overrides: Partial<RunRow> = {}): RunRow {
   return {
-    task_id: `c0000000-0000-4000-8000-${String(ordinal).padStart(12, "0")}`,
-    parent_task_id: RUN_ID,
+    task_id: containedId(ordinal),
+    parent_task_id: RUN_ACTIVE_ID,
     task_type: "render-shot",
     status: "completed",
     total_provider_cost_micros: ordinal * 10_000,
@@ -33,34 +32,18 @@ const EVENTS_OVER_THIRTY = THIRTY.reduce((sum, row) => sum + row.event_count, 0)
 const COST_OVER_THIRTY = "$4.65";
 const COST_OVER_THE_SHOWN_TWENTY_FIVE = "$3.25";
 
-/**
- * A run sold at one agreed price, whose own totals hold everything contained
- * in it plus two events reported against the run itself.
- */
-function runContaining(contained: readonly RunRow[], overrides: { agreed_price_micros?: number | null } = {}) {
-  const sum = (read: (row: RunRow) => number) => contained.reduce((total, row) => total + read(row), 0);
-  return {
-    agreed_price_micros: 5_000_000,
-    event_count: sum((row) => row.event_count) + 2,
-    total_provider_cost_micros: sum((row) => row.total_provider_cost_micros) + 20_000,
-    unresolved_event_count: sum((row) => row.unresolved_event_count),
-    total_billed_cost_micros: sum((row) => row.total_billed_cost_micros),
-    unpriced_event_count: sum((row) => row.unpriced_event_count),
-    ...overrides,
-  };
-}
+// The decision the CONTAINING run makes, handed in the way the run page hands
+// it — no row in the table is asked about its own regime.
+const UNDER_A_FIXED_PRICE_RUN: PriceApplicability = { meteringOnly: false, soldAtOnePrice: true };
+const UNDER_AN_EVENT_PRICED_RUN: PriceApplicability = { meteringOnly: false, soldAtOnePrice: false };
+const IN_A_WORKSPACE_THAT_DOES_NOT_BILL: PriceApplicability = {
+  meteringOnly: true,
+  soldAtOnePrice: false,
+};
 
-function renderTable(contained: readonly RunRow[], opts: { meteringOnly?: boolean; agreedPrice?: number | null } = {}) {
-  // `null` means priced per event, and is a value: `??` would coalesce it into
-  // the fixed price and silently test the wrong regime.
-  const agreedPrice = opts.agreedPrice === undefined ? 5_000_000 : opts.agreedPrice;
+function renderTable(contained: readonly RunRow[], applicability = UNDER_A_FIXED_PRICE_RUN) {
   return renderWithProviders(
-    <ContainedWorkTable
-      run={runContaining(contained, { agreed_price_micros: agreedPrice })}
-      contained={contained}
-      currency="usd"
-      meteringOnly={opts.meteringOnly ?? false}
-    />,
+    <ContainedWorkTable contained={contained} currency="usd" applicability={applicability} />,
   );
 }
 
@@ -94,9 +77,6 @@ function readingIn(row: HTMLElement, column: number): HTMLElement | null {
   }
   return null;
 }
-
-/** The destructive variant, and only it, colours its text; the base class names the colour for aria-invalid states on every variant. */
-const DRAWN_AS_FAILURE = /(^|\s)text-destructive(\s|$)/;
 
 const EVENTS = 3;
 const SUPPLIER_COST = 4;
@@ -134,38 +114,31 @@ describe("ContainedWorkTable", () => {
     expect(folded[SUPPLIER_COST]).not.toBe(COST_OVER_THE_SHOWN_TWENTY_FIVE);
   });
 
-  it("shows what was reported against the run itself as the remainder over the roll-up", async () => {
-    renderTable(THIRTY);
-    await screen.findByText("Reported against the run itself");
-    const direct = document.querySelector<HTMLElement>("tfoot tr[data-direct-row]");
-    if (!direct) throw new Error("no direct row");
-    const cells = cellsOf(direct);
-    expect(cells[EVENTS]).toBe("2");
-    expect(cells[SUPPLIER_COST]).toBe("$0.02");
-  });
-
   it("renders an expired piece of contained work as expired, never as a failure", async () => {
-    const rows = [piece(1), piece(2, { status: "expired" }), piece(3, { status: "failed", outcome_reason: "timeout" })];
+    const rows = [
+      piece(1),
+      piece(2, { status: "expired" }),
+      piece(3, { status: "failed", outcome_reason: "timeout" }),
+    ];
     renderTable(rows);
     await screen.findByText("All contained work");
-    const expired = document.querySelector<HTMLElement>('tbody tr[data-status="expired"] [data-tone]');
-    const failed = document.querySelector<HTMLElement>('tbody tr[data-status="failed"] [data-tone]');
+    const expired = document.querySelector<HTMLElement>('tbody tr[data-status="expired"] [data-status]');
+    const failed = document.querySelector<HTMLElement>('tbody tr[data-status="failed"] [data-status]');
     if (!expired || !failed) throw new Error("both rows should carry a drawn state");
-    expect(expired).toHaveAttribute("data-tone", "expired");
     expect(expired).toHaveTextContent("Expired");
     expect(expired.className).not.toMatch(DRAWN_AS_FAILURE);
-    expect(failed).toHaveAttribute("data-tone", "failure");
     expect(failed).toHaveTextContent("Failed");
     expect(failed.className).toMatch(DRAWN_AS_FAILURE);
   });
 
-  it("says a customer price is not applicable to every piece under a run sold at one agreed price — and to the roll-up", async () => {
+  it("says a customer price is not applicable to every piece under a run sold at one agreed price — and to the roll-up — with the reason", async () => {
     renderTable(THIRTY.slice(0, 3));
     await screen.findByText("All contained work");
     for (const row of [...shownRows(), rollupRow()]) {
       const reading = readingIn(row, CUSTOMER_PRICE);
       expect(reading).toHaveAttribute("data-reading", "not_applicable");
       expect(reading).toHaveTextContent("Not applicable");
+      expect(reading).toHaveTextContent("Priced at the task");
       expect(reading).not.toHaveTextContent("$");
     }
   });
@@ -193,16 +166,20 @@ describe("ContainedWorkTable", () => {
       piece(1, { total_billed_cost_micros: 200_000 }),
       piece(2, { total_billed_cost_micros: 150_000 }),
     ];
-    const bills = renderTable(rows, { agreedPrice: null });
+    const bills = renderTable(rows, UNDER_AN_EVENT_PRICED_RUN);
     await screen.findByText("All contained work");
     expect(cellsOf(rollupRow())[CUSTOMER_PRICE]).toBe("$0.35");
     bills.unmount();
 
-    renderTable(rows, { agreedPrice: null, meteringOnly: true });
+    renderTable(rows, IN_A_WORKSPACE_THAT_DOES_NOT_BILL);
     await screen.findByText("All contained work");
     const reading = readingIn(rollupRow(), CUSTOMER_PRICE);
     expect(reading).toHaveAttribute("data-reading", "not_applicable");
-    expect(reading).toHaveAttribute("title", expect.stringMatching(/does not bill customers through UBB/));
+    expect(reading).toHaveTextContent("Metering only");
+    expect(reading).toHaveAttribute(
+      "title",
+      expect.stringMatching(/does not bill customers through UBB/),
+    );
   });
 
   it("says so when nothing is contained, rather than drawing an empty table", async () => {

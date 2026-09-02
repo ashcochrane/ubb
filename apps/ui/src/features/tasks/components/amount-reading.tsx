@@ -2,7 +2,7 @@ import { notApplicableReasonLabel } from "@/lib/customer-price";
 
 import {
   describeCustomerPrice,
-  describeSupplierCost,
+  describeTotal,
   explainCustomerPrice,
   explainSupplierCost,
   type CustomerPriceReading,
@@ -15,8 +15,10 @@ import {
  *
  * `data-reading` is the reading's kind, so a test asserts WHICH reading a cell
  * holds rather than matching prose that could be satisfied by the wrong one.
- * In a table cell the explanation is the title; on a detail page there is
- * room for the sentence itself.
+ * The qualifier — WHY a price does not apply, in the catalogue's words — is
+ * drawn in both layouts, because the two reasons send a reader to opposite
+ * places (#151 §8) and a hover title is not a rendering. In a table cell the
+ * longer explanation is the title; on a detail page there is room for it.
  */
 function Reading({
   kind,
@@ -25,7 +27,7 @@ function Reading({
   note,
   layout,
 }: {
-  kind: string;
+  kind: CustomerPriceReading["kind"];
   text: string;
   qualifier?: string;
   note: string | null;
@@ -40,6 +42,9 @@ function Reading({
         title={note ?? undefined}
       >
         {text}
+        {qualifier && (
+          <span className="block text-[11px] font-normal text-text-secondary">{qualifier}</span>
+        )}
       </span>
     );
   }
@@ -64,7 +69,7 @@ export function SupplierCostReadingView({
   return (
     <Reading
       kind={reading.kind}
-      text={describeSupplierCost(reading, currency)}
+      text={describeTotal(reading, currency)}
       note={explainSupplierCost(reading)}
       layout={layout}
     />
