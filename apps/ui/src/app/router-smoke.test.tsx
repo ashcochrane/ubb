@@ -20,6 +20,11 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/events", expectText: /events/i },
   { path: "/tasks", expectText: /kinds of work/i },
   { path: "/tasks/kinds/video-render", expectText: /how it is sold/i },
+  { path: "/tasks/runs", expectText: /every run of a kind of work/i },
+  {
+    path: "/tasks/runs/6e1f2c8a-3b47-4d90-a5e2-7c9d0b1f3a64",
+    expectText: /what it cost and earned/i,
+  },
   { path: "/customers", expectText: /customers/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },

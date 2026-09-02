@@ -44,3 +44,11 @@ export function useRuns(filters: RunsFilters, options?: { enabled?: boolean }) {
     options,
   );
 }
+
+/** One run with everything contained in it. */
+export function useRun(taskId: string) {
+  return useQuery({
+    queryKey: ["tasks", "run", taskId] as const,
+    queryFn: () => tasksApi.getRun(taskId),
+  });
+}

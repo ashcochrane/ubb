@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,742 of 2,156 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,757 of 2,171 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1846,6 +1846,19 @@ measurement_key:
     # work", "a unit of work", "a whole piece of work" and "a run"; the
     # caveat is the standing one, that the number that counts is the one
     # taken after the review pass.
+    #
+    # THE RUNS SURFACE MOVED BOTH DENOMINATORS BY FIFTEEN AND LEFT THE
+    # NUMERATOR WHERE IT WAS (1,742 -> 1,757 swept, 2,156 -> 2,171 tracked,
+    # `units` UNMOVED at 45 files and 123 occurrences). Fifteen tracked files
+    # arrived and every one is swept, because the console's second tasks
+    # surface (#424) is all source: one shared lib module binding the
+    # lifecycle words, the feature's runs lib and its test, seven components
+    # and their three tests, and the two route files. No migration, no schema
+    # change and no generated SDK module — the contract and the console's
+    # snapshot of it are untouched — so the exclusion counts hold at 247 and
+    # 414. The prose that held was "a run", "contained work", "a piece of
+    # contained work" and "a whole unit of work"; the number that counts is
+    # the one taken after the review pass, which is the standing caveat.
 
     - term: units
       retired_as: >-

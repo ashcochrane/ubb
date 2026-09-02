@@ -94,7 +94,11 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/events/components/ledger-table.tsx",
     "apps/ui/src/features/events/components/past-limit-panel.tsx",
     "apps/ui/src/features/events/components/stop-context-timeline.tsx",
-    "apps/ui/src/features/events/components/task-section.tsx",
+    # `task-section.tsx` LEFT IN #424: its one word — a unit of work's
+    # lifecycle state — came from `taskStatusLabel`, deleted with its ledger
+    # entry; the panel now binds `@/lib/task-status`, the same binding the
+    # runs surface renders. A conversion rather than a deletion: the file
+    # still exists, it just no longer reaches the adapter.
     "apps/ui/src/features/events/components/timeseries-card.tsx",
     "apps/ui/src/features/events/lib/search.ts",
     # The add-a-rule dialog's line went with the dialog in #367 — its route is
@@ -374,7 +378,7 @@ def test_every_adapter_export_is_classified(legacy):
         HUMANISER, "roleRank",
         "BILLING_MODES", "COSTING_METHODS", "COSTING_STATUSES",
         "PRICING_METHODS", "PRICING_MODES", "PRICING_STATUSES", "PRODUCTS",
-        "RATE_STRUCTURES", "ROLES",
+        "RATE_STRUCTURES", "ROLES", "TASK_STATUSES",
         "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "

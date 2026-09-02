@@ -11,6 +11,7 @@
 // the registry owns is the drift the consumer gates exist to abolish.
 
 import type { RootSchemas } from "@/api/types";
+import type { TaskStatus } from "@/lib/vocabulary";
 
 /** One declared kind of work, as the registry reports it. */
 export type KindOfWork = RootSchemas["TaskTypeOut"];
@@ -27,7 +28,14 @@ export type RunRow = RootSchemas["TaskOut"];
 /** A page of runs, in the house cursor envelope. */
 export type RunsPage = RootSchemas["PaginatedTasks"];
 
-export type { PricingMode, TaskTypeKind } from "@/lib/vocabulary";
+/**
+ * One run with the work contained in it — every piece, not a page (see
+ * `getRun` in `./api`). A piece of contained work is the same shape with a
+ * parent and nothing contained in it.
+ */
+export type RunDetail = RootSchemas["TaskDetailOut"];
+
+export type { PricingMode, TaskStatus, TaskTypeKind } from "@/lib/vocabulary";
 
 /**
  * A declaration's identity is the word AND the altitude, not the word alone:
@@ -46,11 +54,12 @@ export function sameDeclaration(
 /**
  * How the runs list is narrowed.
  *
- * Only the filter this feature reads today. The route also takes a status
- * and a customer, which the runs surface (#424) adds when it has readers for
- * them — a filter the mock would have to ignore is worse than one it does
- * not offer.
+ * The kind of work and the lifecycle state — the two the runs surface reads
+ * (#424). The route also takes a customer, which arrives when a surface has
+ * a reader for it: a filter the mock would have to ignore is worse than one
+ * it does not offer.
  */
 export interface RunsFilters {
   task_type?: string;
+  status?: TaskStatus;
 }

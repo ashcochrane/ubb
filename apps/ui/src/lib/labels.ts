@@ -1,7 +1,7 @@
 // THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
 // This module used to be the console's whole labelling layer, and ADR-0008 §4
-// retired the idea it rests on. It hand-writes twenty-nine value maps and falls
+// retired the idea it rests on. It hand-writes twenty-six value maps and falls
 // back to `humanize`, which title-cases a raw token into something that reads
 // like English — manufacturing user-facing terminology out of an implementation
 // token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that
@@ -36,6 +36,7 @@ import {
   PRICING_MODE_VALUES,
   PRICING_STATUS_VALUES,
   RATE_STRUCTURE_VALUES,
+  TASK_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
@@ -323,12 +324,25 @@ export const ingestRejectionLabel = legacyLabelMap({
   validation_error: "Validation failed",
 });
 
-export const taskStatusLabel = legacyLabelMap({
-  active: "Active",
-  completed: "Completed",
-  failed: "Failed",
-  killed: "Killed",
-});
+// ⚠ `taskStatusLabel` IS DELETED (#424), WHICH IS WHAT ITS LEDGER ENTRY ASKED
+// FOR: *"it becomes `labelMap(TASK_STATUS_LABEL_KEYS)` in the slice that
+// rebuilds that vocabulary — the same slice the concept's own value-list entry
+// names, because a value list and the words for it cannot honestly move
+// apart."* Both halves are paid in this commit — the binding is
+// `@/lib/task-status`, off the locale catalogue, which has carried all six
+// states under `task_status.*` since slice 0; the value list is held by
+// reference on the line below. The old map held FOUR of the six: `cancelled`
+// and `expired` were never in it, and adding them to it would have been the
+// wrong payment twice over (spec §26, §27).
+
+// The durable state a unit of work is in — the registry's six, held BY
+// REFERENCE (#424), on the same terms and for the same reason as `PRODUCTS`
+// and the pricing lists above. `domain-vocabulary/` names this file as the
+// console's consumer of `task_status`, so re-homing the list is a registry
+// edit rather than a console one. Nothing here, and no map: this file is the
+// legacy adapter, and a concept that has been migrated leaves behind its
+// value list and nothing else.
+export const TASK_STATUSES = TASK_STATUS_VALUES;
 
 export const pastLimitFamilyLabel = legacyLabelMap({
   floor_stop: "Balance floor stop",

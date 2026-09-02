@@ -28,7 +28,13 @@ export function renderWithProviders(ui: ReactNode) {
     path: "/",
     component: () => <>{ui}</>,
   });
-  const stubPaths = ["/tasks", "/tasks/kinds/$key", "/pricing"];
+  const stubPaths = [
+    "/tasks",
+    "/tasks/kinds/$key",
+    "/tasks/runs",
+    "/tasks/runs/$taskId",
+    "/pricing",
+  ];
   const stubs = stubPaths.map((path) =>
     createRoute({ getParentRoute: () => rootRoute, path, component: () => null }),
   );

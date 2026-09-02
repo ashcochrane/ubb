@@ -7,6 +7,7 @@ import { unwrap } from "@/api/problem";
 import type {
   DeclareKindsBody,
   KindOfWork,
+  RunDetail,
   RunsFilters,
   RunsPage,
 } from "./types";
@@ -47,8 +48,25 @@ export async function listRuns(
         query: {
           cursor,
           task_type: filters.task_type,
+          status: filters.status,
         },
       },
     }),
+  );
+}
+
+/**
+ * One run and EVERY piece of work contained in it.
+ *
+ * The detail carries its contained work whole rather than paged — the route
+ * reads one row plus its children — and that is what lets the containment
+ * table's roll-up row total every child rather than a page of them (#424).
+ * Contained work also has a paged read of its own (`/tasks/{id}/subtasks`),
+ * which nothing here reads: a second source for the same rows is a second
+ * answer to one question.
+ */
+export async function getRun(taskId: string): Promise<RunDetail> {
+  return unwrap(
+    await rootApi.GET("/tasks/{task_id}", { params: { path: { task_id: taskId } } }),
   );
 }

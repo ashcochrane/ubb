@@ -124,7 +124,7 @@ imports; no client calls from components (go through the feature's queries.ts); 
 ## Navigation model
 
 ```
-Overview /  ·  Events /events  ·  Tasks /tasks (+ /kinds/$key)  ·  Customers /customers
+Overview /  ·  Events /events  ·  Tasks /tasks (+ /kinds/$key · /runs · /runs/$taskId)  ·  Customers /customers
 REVENUE: Pricing /pricing · Billing /billing [billing] · Plans /plans [billing] · Referrals /referrals [referrals]
 PLATFORM: Webhooks /webhooks · Developers /developers · Settings /settings (+ /team /products /billing /audit)
 ```
