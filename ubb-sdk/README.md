@@ -150,6 +150,8 @@ answer is a handle; use it as a `with` block around the whole run, pass its `tas
 usage event, and declare the ending inside the block with exactly one of three methods:
 
 ```python
+from ubb import vocabulary
+
 with client.start_task("cust-uuid-here", "nightly-42", task_type="transcode") as task:
     res = client.record_usage("cust-uuid-here", "idem-1", task_id=task.task_id,
                               measurements={"input_tokens": 1000})

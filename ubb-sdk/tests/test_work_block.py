@@ -153,8 +153,11 @@ class TheStartIsOneCallTest(_ClientCase):
         self.assertEqual(task.task_id, "sub_1")
 
     def test_the_key_is_required(self):
-        """No default and no generated one: a key minted on the line would be
-        a new value on every retry, and a retried start a second unit of work."""
+        """A PIN of the signature rather than evidence for a behaviour: no
+        default and no generated one, because a key minted on the line would
+        be a new value on every retry, and a retried start a second unit of
+        work. It goes red at this address if a default is ever added; what it
+        asserts is the parameter by name, not Python's refusal in general."""
         with self.assertRaisesRegex(TypeError, "idempotency_key"):
             self.client.start_task("c1")
         signature = inspect.signature(MeteringClient.start_task)
@@ -216,7 +219,9 @@ class TheThreeDeclarationsTest(_ClientCase):
         """The reason is a required positional: the server refuses a failure
         with no reason, and a wrapper that let the argument be omitted would
         turn that refusal into a round trip. ``unspecified`` is always
-        available, so requiring one costs the caller nothing."""
+        available, so requiring one costs the caller nothing. The signature
+        half is a PIN (the parameter, by name); the evidence half is the
+        request count — a wrapper that defaulted the reason sends one."""
         task = self.start(mock_post)
         with self.assertRaisesRegex(TypeError, "outcome_reason"):
             task.fail()
@@ -361,13 +366,17 @@ class TheFiveExitsTest(_ClientCase):
             httpx.ConnectError("UBB is unreachable"),
         ]
         with self.assertRaises(ValueError) as cm:
-            with self.start_without_answers(mock_post):
+            with self.start_without_answers() as task:
                 raise ValueError("the work broke")
         self.assertEqual(str(cm.exception), "the work broke")
         self.assertEqual(mock_post.call_count, 2)
         notes = " ".join(getattr(cm.exception, "__notes__", []))
         self.assertIn("UBB", notes)
         self.assertIn(UBBConnectionError.__name__, notes)
+        # Nothing reached UBB, so nothing was declared: the handle is still
+        # open, and the failure can be reported again once UBB is back.
+        self.assertIsNone(task.declared)
+        self.assertTrue(task.is_open)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_a_refused_declaration_is_not_followed_by_a_second_one(self, mock_post):
@@ -378,15 +387,23 @@ class TheFiveExitsTest(_ClientCase):
         handle. Exactly two requests reach the wire — the start and the
         refused close — which is what recording the declaration BEFORE the
         request goes out buys."""
-        refused = {"code": "task_already_terminal",
-                   "detail": "this unit is already killed"}
+        # The problem+json body `api/v1/problems.py::problem_response`
+        # renders for the close route's 409, extensions and all.
+        refused = {
+            "type": "https://ubb.dev/errors/task_already_terminal",
+            "title": "This unit of work has already ended, and differently",
+            "status": 409, "code": "task_already_terminal",
+            "detail": "this unit is already killed and cannot be closed as "
+                      "delivered",
+            "task_status": "killed", "charge_created": False,
+        }
         mock_post.side_effect = [
             MagicMock(status_code=200, json=lambda: _started()),
             MagicMock(status_code=409, headers={}, text=str(refused),
                       json=lambda: refused),
         ]
         with self.assertRaises(UBBAPIError) as cm:
-            with self.start_without_answers(mock_post) as task:
+            with self.start_without_answers() as task:
                 task.complete()
         self.assertEqual(cm.exception.code, "task_already_terminal")
         self.assertEqual(mock_post.call_count, 2)
@@ -394,7 +411,34 @@ class TheFiveExitsTest(_ClientCase):
         self.assertIsNone(task.closed)
         self.assertFalse(task.is_open)
 
-    def start_without_answers(self, mock_post) -> StartedTask:
+    @patch("ubb.metering.httpx.Client.post")
+    def test_a_declaration_that_never_reached_ubb_is_not_a_declaration(self, mock_post):
+        """The other side of the case above. A refusal is a declaration UBB
+        answered; a connection failure means nothing arrived, so the handle
+        is still open — and a caller who swallows that failure and lets the
+        block end cleanly is told so rather than left with open work and no
+        signal, which is the quiet option #179 §2.5 rejected. The forgotten
+        declaration then lands on the same handle; a close is idempotent, so
+        one that did arrive and lost its answer replays rather than doubles."""
+        mock_post.side_effect = [
+            MagicMock(status_code=200, json=lambda: _started()),
+            httpx.ConnectError("UBB is unreachable"),
+            MagicMock(status_code=200, json=lambda: _closed()),
+        ]
+        with self.assertRaises(TaskOutcomeRequired) as cm:
+            with self.start_without_answers() as task:
+                try:
+                    task.complete()
+                except UBBConnectionError:
+                    pass  # the caller's own catch, on purpose
+        self.assertIsNone(task.declared)
+        self.assertTrue(task.is_open)
+        self.assertEqual(mock_post.call_count, 2)   # the start, the lost close
+        cm.exception.task.complete()
+        self.assertEqual(mock_post.call_count, 3)
+        self.assertFalse(task.is_open)
+
+    def start_without_answers(self) -> StartedTask:
         """A start whose later answers the test has already queued itself."""
         return self.client.start_task("c1", "nightly-42", task_type="transcode")
 
@@ -468,9 +512,9 @@ class TheLifecycleStatesAreConstantsTest(unittest.TestCase):
     set rather than listed a second time."""
 
     def test_the_terminal_set_is_every_state_but_the_live_one(self):
-        self.assertEqual(
-            TERMINAL_TASK_STATUSES,
-            vocabulary.TASK_STATUS_VALUES - {vocabulary.TASK_STATUS_ACTIVE})
+        """The PROPERTIES of the set, not a restatement of its derivation —
+        restating `VALUES - {ACTIVE}` here could only catch the comprehension
+        being replaced by a literal."""
         self.assertNotIn(vocabulary.TASK_STATUS_ACTIVE, TERMINAL_TASK_STATUSES)
         self.assertEqual(len(TERMINAL_TASK_STATUSES), 5)
         for state in (vocabulary.TASK_STATUS_COMPLETED,

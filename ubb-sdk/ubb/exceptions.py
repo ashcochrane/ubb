@@ -49,10 +49,14 @@ class UBBConnectionError(UBBError):
 #
 # It sits under `UBBError` like every other failure this SDK raises: the ONE
 # type outside `Exception` is the spend stop below, and `test_stop_verdict.py`
-# pins that set at exactly one. #179 §2.4 also asks this to carry the unit's
-# expiry time; the registration does not publish one, so it carries what the
-# wire does — the handle, and through it the identity and the last state
-# this client saw.
+# pins that set at exactly one. #179 §2.4 lists what it carries — the
+# identity, the current state, the expiry time, and the terminal declarations
+# it will accept. The three properties below are the first two, read through
+# the handle rather than copied off it (a second hop, on purpose: the handle
+# is the thing to act on, and the exception must not disagree with it); the
+# accepted declarations ARE the handle's three methods; and the expiry time
+# is not on the wire — the registration does not publish one — so it carries
+# what the wire does.
 class TaskOutcomeRequired(UBBError):
     """A work block ended cleanly and nothing declared how the work ended.
 

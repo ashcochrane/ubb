@@ -32,8 +32,9 @@ from ubb._core.models.withdraw_response import WithdrawResponse
 # Shell-owned ergonomic types: the pagination container, the orchestration
 # pre-check result, and the batch aggregate. The small hand results that once
 # covered untyped 200s were retired by #98 — those DTOs now come from the
-# generated core above. `StartedTask` (imported beside its client above) is
-# the fourth: the handle a start answers with, and the work block (#422).
+# generated core above. `StartedTask` (#422) is imported beside its client
+# rather than from here: it is a handle holding a client, not a plain value
+# — the unit of work a start answers with, and the work block around it.
 from ubb.types import (
     PreCheckResult, PaginatedResponse,
     BatchItemResult, BatchResult,

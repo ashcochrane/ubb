@@ -32,7 +32,7 @@ THE_KEY = "nightly-42"
 
 
 @pytest.fixture
-def sdk(live_server, _no_outbox_dispatch):
+def sdk(live_server):
     """A metering-only tenant with one customer, and the real client pointed
     at the live server. Metering-only, because the start is ungated and this
     module is about the record, not the wallet."""

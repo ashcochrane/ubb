@@ -340,7 +340,8 @@ class TestCloseTaskSignatureParity:
         client.close()
 
     def test_the_facade_start_requires_the_key(self):
-        """The key is the retry story and the reason the route requires it;
+        """A PIN of the facade's signature, asserted by the parameter's name:
+        the key is the retry story and the reason the route requires it, and
         a facade that defaulted it would mint a new unit of work per retry."""
         client = UBBClient(api_key="test", metering=True, billing=False)
         client.metering.start_task = MagicMock()

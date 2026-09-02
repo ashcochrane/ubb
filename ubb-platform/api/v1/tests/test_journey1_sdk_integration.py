@@ -36,9 +36,33 @@ def _get(api, path):
     return r.json()
 
 
-# `_no_outbox_dispatch` lives in this package's `conftest.py` now (#422): the
-# work-block live test needs the same neutralised dispatch, and one fixture
-# with one docstring beats two.
+@pytest.fixture
+def _no_outbox_dispatch():
+    """Neutralize the transactional-outbox Celery dispatch for this test.
+
+    record_usage writes an OutboxEvent and fires
+    ``transaction.on_commit(lambda: process_single_event.delay(...))`` (see
+    apps/platform/events/outbox.py). Under live_server there is no Celery
+    worker / broker, so that ``.delay()`` tries to publish to the real AMQP
+    broker and raises ``kombu.exceptions.OperationalError`` (ConnectionRefused)
+    on the commit hook -> the /api/v1/metering/usage request returns HTTP 500.
+
+    Flipping the global ``app.conf.task_always_eager`` is unreliable across the
+    full suite: earlier tests mutate that global Celery state, and the on-commit
+    hook runs on the live_server thread, so the flag is not guaranteed to be in
+    effect at dispatch time. Patching the dispatch symbol to a no-op removes the
+    broker dependency entirely and is deterministic regardless of global state.
+    Because live_server runs in this same process, the patch applies to the
+    server thread too.
+
+    This does NOT weaken the test: the HTTP response (routing, pricing/COGS, and
+    the SDK response contract) is computed synchronously before commit; only the
+    fire-and-forget async fan-out is suppressed.
+    """
+    from unittest.mock import patch
+
+    with patch("apps.platform.events.tasks.process_single_event.delay"):
+        yield
 
 
 @pytest.mark.django_db(transaction=True)

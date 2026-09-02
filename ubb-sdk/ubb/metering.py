@@ -10,7 +10,7 @@ from ubb.exceptions import (
     TaskOutcomeRequired, UBBConnectionError, UBBStopRequested,
 )
 from ubb._http import raise_for_status
-from ubb._models import from_wire, list_from_wire
+from ubb._models import from_wire, list_from_wire, page_from_wire
 from ubb.retry import request_with_retry
 from ubb.types import (
     PaginatedResponse,
@@ -57,13 +57,6 @@ def _serialize_recorded_at(value):
                 "datetime.now(timezone.utc)) or an ISO-8601 string with offset")
         return value.isoformat()
     return str(value)
-
-
-def _page_of(model_cls, body: dict) -> PaginatedResponse:
-    """The cursor envelope every list answers, parsed through ``model_cls``."""
-    return PaginatedResponse(data=list_from_wire(model_cls, body["data"]),
-                             next_cursor=body.get("next_cursor"),
-                             has_more=body["has_more"])
 
 
 logger = logging.getLogger("ubb.metering")
@@ -193,8 +186,10 @@ class StartedTask:
         """Whether this handle still owes a declaration: the unit was live
         when it was handed back, and nothing has been declared THROUGH THIS
         HANDLE since. A replayed start can hand back work that already ended,
-        which is not open. What this cannot see is a close made some other
-        way — by id, from another process — and it does not ask UBB: it is a
+        which is not open. A declaration the server refused counts as made —
+        UBB answered it; one that never reached UBB (a connection failure)
+        does not. What this cannot see is a close made some other way — by
+        id, from another process — and it does not ask UBB: it is a
         statement about this block, not a read."""
         return self.declared is None and self.status not in TERMINAL_TASK_STATUSES
 
@@ -227,14 +222,25 @@ class StartedTask:
 
     def _declare(self, outcome: str, *, outcome_reason: str | None = None,
                  reason_detail: str | None = None) -> CloseTaskResponse:
-        # Recorded as declared BEFORE the request goes out: a refusal or a
-        # transport failure raises out of this call to whoever made it, and
-        # the block's exit must not then pile a second declaration onto the
-        # one that was refused.
+        # Recorded as declared BEFORE the request goes out, so a declaration
+        # the server REFUSES — answered, and judged — stays declared: it
+        # raises out of this call to whoever made it, and the block's exit
+        # must not pile a second declaration onto one that was refused. A
+        # TRANSPORT failure is the other case: nothing reached UBB, so nothing
+        # was declared, and the handle says so — a caller who swallows the
+        # connection error and lets the block end cleanly then gets
+        # `TaskOutcomeRequired` rather than silent open work, and the
+        # declaration it forgot lands on the same handle (a close is
+        # idempotent, so a request that did arrive and lost its answer is
+        # replayed, never doubled).
         self.declared = outcome
-        self.closed = self._client.close_task(
-            self.task_id, outcome, outcome_reason=outcome_reason,
-            reason_detail=reason_detail)
+        try:
+            self.closed = self._client.close_task(
+                self.task_id, outcome, outcome_reason=outcome_reason,
+                reason_detail=reason_detail)
+        except UBBConnectionError:
+            self.declared = None
+            raise
         return self.closed
 
     # ---- the work block ----
@@ -556,7 +562,7 @@ class MeteringClient:
             "task_type": task_type, "status": status}.items() if v is not None}
         r = self._request(*ops.API_V1_TASK_ENDPOINTS_LIST_TASKS,
                           params=params or None)
-        return _page_of(TaskOut, r.json())
+        return page_from_wire(TaskOut, r.json())
 
     def list_subtasks(self, task_id: str, *, cursor: str | None = None,
                       limit: int | None = None) -> PaginatedResponse[TaskOut]:
@@ -568,7 +574,7 @@ class MeteringClient:
                   if v is not None}
         r = self._request(*ops.API_V1_TASK_ENDPOINTS_LIST_SUBTASKS(task_id),
                           params=params or None)
-        return _page_of(TaskOut, r.json())
+        return page_from_wire(TaskOut, r.json())
 
     def close_task(self, task_id: str, outcome: str, *,
                    outcome_reason: str | None = None,
@@ -633,7 +639,7 @@ class MeteringClient:
         if episode_seq is not None:
             params["episode_seq"] = episode_seq
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_USAGE(customer_id), params=params)
-        return _page_of(UsageEventOut, r.json())
+        return page_from_wire(UsageEventOut, r.json())
 
     def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
         """The past-limit report (#41) via
