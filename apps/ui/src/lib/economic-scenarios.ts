@@ -42,6 +42,16 @@
 // `priceNotApplicable` below for why fixing one would leave the other with no
 // fixture for anything to render.
 //
+// THE RECEIPT WHOSE SUBJECT IS A CHARGE is the last arrival (#425, spec §29).
+// `pricing_receipt_subject_type.charge` shipped with the value set and became
+// producible by the backend in #418, when a delivered unit of work sold at one
+// agreed price first projected onto a posting; until this commit nothing in
+// the console composed one. `chargeReceipt` below is that composer, and it
+// returns the record TOGETHER WITH the two amounts the record's totals fix,
+// for the reason every scenario here returns a pair: a receipt saying the
+// price was agreed at one figure beside a column saying another is a posting
+// the backend cannot write.
+//
 // This module is fixture material, and it sits in `lib/` because the SET spans
 // features even where a single scenario does not: §9.3 puts unresolved cost on
 // margin, revenue on pricing, the indeterminate ceiling on spend control and
@@ -59,6 +69,8 @@ import type {
   CostingStatus,
   MeasurementsStatus,
   NotApplicableReason,
+  PricingMode,
+  PricingReceiptSubjectType,
   PricingStatus,
   UnresolvedReason,
 } from "@/lib/vocabulary";
@@ -356,4 +368,169 @@ export function incompletePriceTotal(
   unpricedEventCount: number,
 ): PriceTotalScenario {
   return { micros, unpriced_event_count: unpricedEventCount };
+}
+
+// ---------------------------------------------------------------------------
+// The receipt whose subject is a Charge — `pricing_receipt_subject_type`'s
+// second value, and the second economic state slice 5 makes reachable (#425).
+
+/**
+ * The shape a receipt written today declares — `receipts.RECEIPT_SCHEMA_VERSION`
+ * on the backend. A fixture composing a record composes the current shape.
+ */
+export const RECEIPT_SCHEMA_VERSION = 1;
+
+/** The engine that computed it — `pricing_service.PRICING_ENGINE_VERSION`. */
+export const PRICING_ENGINE_VERSION = "2.1.0";
+
+/**
+ * The record a delivered unit of work's charge posting carries, as
+ * `charge_projection.the_receipt_for` writes it. A type alias rather than an
+ * interface so it stays assignable to the wire's untyped `pricing_receipt`.
+ *
+ * Everything that is EMPTY here is empty on purpose, and the emptiness is the
+ * content: no supplier stands behind a Charge, so the costing section names no
+ * method and holds no detail; the price was agreed before the work ran rather
+ * than derived from anything, so the pricing section names no method either
+ * and its detail carries exactly one thing — the regime that licenses that.
+ * The backend refuses a charge receipt that does not say `fixed` there
+ * (`receipts._validate_the_agreed_regime`), and refuses a settled amount with
+ * no method on every OTHER subject: this is the one record shape where an
+ * absent method is a fact rather than a hole.
+ */
+export type ChargeReceiptRecord = {
+  readonly receipt_schema_version: typeof RECEIPT_SCHEMA_VERSION;
+  readonly pricing_engine_version: string;
+  readonly subject_type: Extract<PricingReceiptSubjectType, "charge">;
+  /** The CHARGE's own id — never the posting the record is stored on. */
+  readonly subject_id: string;
+  /** When delivery was declared, which is when the revenue landed. */
+  readonly effective_at: string;
+  readonly currency: string;
+  readonly costing: {
+    readonly method: null;
+    readonly status: Extract<CostingStatus, "known">;
+    readonly detail: Record<string, never>;
+  };
+  readonly pricing: {
+    readonly method: null;
+    readonly status: Extract<PricingStatus, "known">;
+    readonly detail: { readonly pricing_mode: Extract<PricingMode, "fixed"> };
+  };
+  readonly totals: {
+    /** A settled nothing, never an unlearned one: no supplier is behind a Charge. */
+    readonly provider_cost_micros: 0;
+    readonly billed_cost_micros: number;
+  };
+  /**
+   * Cross-reference ids and nothing else — both strings, because the book
+   * version is half of an identity here (the `(line, version)` pair names the
+   * one published record that answered) rather than a figure.
+   */
+  readonly provenance: {
+    readonly agreed_price_line_id: string;
+    readonly book_version: string;
+  };
+};
+
+/**
+ * A receipt whose subject is a Charge, and everything it fixes on the posting
+ * that stores it.
+ *
+ * THE RECORD AND THE COLUMNS TRAVEL TOGETHER, for the reason every other
+ * scenario here returns a pair: the projection writes `billed_cost_micros`
+ * from the same `charge.amount_micros` the record's totals carry, a settled
+ * zero beside a `known` costing status because a Charge has no supplier, and
+ * the posting's own `effective_at` and `currency` from the same
+ * `charged_at` and `currency` the record states. A fixture that composed the
+ * record and then stated a price — or an instant, or a denomination — of its
+ * own beside it would describe a posting whose receipt and whose columns
+ * disagree, which is the shape the receipt exists to remove; so all of them
+ * ride here and a consumer restates none.
+ *
+ * The receipt's method is null on BOTH sides and that rides here as a typed
+ * fact, not a default: the posting's `pricing_method` is read out of the
+ * record by the serialiser, so a charge posting never carries one.
+ *
+ * WHAT IT DOES NOT RETURN, and why. The posting's `kind` is `task_charge` and
+ * its measurements are `measurementsNotApplicable()`; both are the consumer's
+ * to write beside this, visibly, because the measurement state has its own
+ * composer (slice 2's) and the reachability gate reads which composers a
+ * consumer imports. A charge receipt on a posting calling itself
+ * `metered_usage` is a payload the backend cannot produce — the mock's charge
+ * builder writes the kind itself, and a test fixture states it.
+ */
+export interface ChargeReceiptScenario extends CustomerPriceScenario, SupplierCostScenario {
+  readonly pricing_receipt: ChargeReceiptRecord;
+  readonly pricing_receipt_subject_type: Extract<PricingReceiptSubjectType, "charge">;
+  readonly pricing_method: null;
+  /** When delivery was declared — the record's instant, and the posting's. */
+  readonly effective_at: string;
+  readonly currency: string;
+  readonly billed_cost_micros: number;
+  readonly pricing_status: Extract<PricingStatus, "known">;
+  readonly not_applicable_reason: null;
+  readonly provider_cost_micros: 0;
+  readonly costing_status: Extract<CostingStatus, "known">;
+  readonly unresolved_reason: null;
+}
+
+/**
+ * The facts about one Charge that its receipt is composed from — the few a
+ * projection can vary. A named shape so a fixture's seed can extend it and
+ * hand itself straight to `chargeReceipt`, rather than restating six fields
+ * under a second set of names.
+ */
+export interface ChargeTerms {
+  /** The Charge the receipt explains. */
+  readonly charge_id: string;
+  /** The instant delivery was declared. */
+  readonly charged_at: string;
+  readonly currency: string;
+  readonly agreed_price_micros: number;
+  /** The Pricing Book line that answered, and the published version that held it. */
+  readonly agreed_price_line_id: string;
+  readonly book_version: number;
+}
+
+/**
+ * Compose the receipt for one delivered unit of work sold at one agreed price.
+ *
+ * `book_version` is taken as the number the Pricing Book carries and written
+ * as the string the record carries, which is what the projection does: it is
+ * an identifier in the provenance section, and the section admits no other
+ * leaf.
+ */
+export function chargeReceipt(terms: ChargeTerms): ChargeReceiptScenario {
+  return {
+    // The posting's two amounts, in the pairs `knownPrice(amount)` and
+    // `knownCost(0)` return — spelled here with their literal types because
+    // this scenario promises MORE than those two do: not merely a settled
+    // price and a settled cost, but this price and a cost of exactly nothing.
+    billed_cost_micros: terms.agreed_price_micros,
+    pricing_status: "known",
+    not_applicable_reason: null,
+    provider_cost_micros: 0,
+    costing_status: "known",
+    unresolved_reason: null,
+    pricing_method: null,
+    effective_at: terms.charged_at,
+    currency: terms.currency,
+    pricing_receipt_subject_type: "charge",
+    pricing_receipt: {
+      receipt_schema_version: RECEIPT_SCHEMA_VERSION,
+      pricing_engine_version: PRICING_ENGINE_VERSION,
+      subject_type: "charge",
+      subject_id: terms.charge_id,
+      effective_at: terms.charged_at,
+      currency: terms.currency,
+      costing: { method: null, status: "known", detail: {} },
+      pricing: { method: null, status: "known", detail: { pricing_mode: "fixed" } },
+      totals: { provider_cost_micros: 0, billed_cost_micros: terms.agreed_price_micros },
+      provenance: {
+        agreed_price_line_id: terms.agreed_price_line_id,
+        book_version: String(terms.book_version),
+      },
+    },
+  };
 }

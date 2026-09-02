@@ -16,6 +16,7 @@ import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantConfig, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
+import { pricingModeLabel } from "@/lib/pricing-mode";
 
 import { useKindsOfWork, useRuns } from "../api/queries";
 import type { KindOfWork, RunRow } from "../api/types";
@@ -29,7 +30,6 @@ import {
   effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
-  pricingModeLabel,
 } from "../lib/kinds";
 import { DeclareKindDialog } from "./declare-kind-dialog";
 

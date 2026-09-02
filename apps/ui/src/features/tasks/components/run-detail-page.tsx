@@ -20,6 +20,7 @@ import type { RunDetail } from "../api/types";
 import {
   CONTAINED_ROWS_SHOWN_INLINE,
   describeAgreedPrice,
+  describeRunTotals,
   outcomeReasonLabel,
   readAgreedPrice,
   readCustomerPrice,
@@ -187,10 +188,7 @@ function RunDetailBody({
         />
       </Section>
 
-      <Section
-        title="What it cost and earned"
-        description="Totals over every event under this run, including the work contained in it."
-      >
+      <Section title="What it cost and earned" description={describeRunTotals(applicability)}>
         <DetailList
           items={[
             { label: "Events", value: formatEventCount(detail.event_count) },

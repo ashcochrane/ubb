@@ -11,12 +11,17 @@ import {
   CONTAINED_UNDER_ACTIVE_RUN,
   MOCK_CONTAINED,
   RUN_ACTIVE_ID,
+  RUN_DELIVERED_EVENT_PRICED_ID,
   RUN_DELIVERED_FIXED_ID,
   RUN_EXPIRED_ID,
   RUN_FAILED_ID,
   RUN_UNKNOWN_COST_ID,
 } from "../api/mock-data";
-import { CONTAINED_ROWS_SHOWN_INLINE } from "../lib/runs";
+import {
+  CONTAINED_ROWS_SHOWN_INLINE,
+  RUN_TOTALS_COVER,
+  RUN_TOTALS_LEAVE_OUT_THE_CHARGE,
+} from "../lib/runs";
 import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
 import { RunDetailPage } from "./run-detail-page";
 
@@ -105,6 +110,32 @@ describe("RunDetailPage", () => {
       within(rowBeside(money, "Agreed price")).getByText("$5.00 — owed: the run delivered."),
     ).toBeInTheDocument();
     expect(readingBeside(money, "Supplier cost")).toHaveTextContent("$2.87");
+  });
+
+  // The nearest the tasks surface can get to a charge posting (#425). The
+  // contract publishes no read of a run's postings and the run's counters
+  // never accumulate the projection, so the totals' own sentence says what
+  // they leave out — on a run sold at one agreed price, and on no other.
+  //
+  // ⚠ THE SENTENCE IS SPELLED HERE, NOT ASKED OF `describeRunTotals`. The
+  // first draft asserted the page against that function's own answer, and a
+  // mutation making it ignore the regime stayed green: the page and the
+  // assertion moved together. Composing the two constants in the test is
+  // what makes that mutation red.
+  it("says a run sold at one agreed price carries its price as a charge posting the totals leave out", async () => {
+    await opened(RUN_DELIVERED_FIXED_ID);
+    const money = region("What it cost and earned");
+    expect(
+      within(money).getByText(`${RUN_TOTALS_COVER} ${RUN_TOTALS_LEAVE_OUT_THE_CHARGE}`),
+    ).toBeInTheDocument();
+    expect(money).toHaveTextContent(/one charge posting/);
+  });
+
+  it("says nothing about a charge posting on a run priced per event", async () => {
+    await opened(RUN_DELIVERED_EVENT_PRICED_ID);
+    const money = region("What it cost and earned");
+    expect(within(money).getByText(RUN_TOTALS_COVER)).toBeInTheDocument();
+    expect(within(money).queryByText(/charge posting/)).toBeNull();
   });
 
   it("says why a failed run failed, in the catalogue's words, and that its price is not owed", async () => {

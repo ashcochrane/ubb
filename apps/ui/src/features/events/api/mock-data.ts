@@ -8,22 +8,26 @@
 
 import {
   availableMeasurements,
+  chargeReceipt,
   costNotApplicable,
   knownCost,
   knownPrice,
   measurementsNotApplicable,
   priceNotApplicable,
+  PRICING_ENGINE_VERSION,
   prunedMeasurements,
+  RECEIPT_SCHEMA_VERSION,
   unknownCost,
   unknownPrice,
   waivedPrice,
+  type ChargeTerms,
   type CustomerPriceScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
 import type {
   CostingMethod,
   PricingMethod,
-  UsageEventKind,
+  PricingReceiptSubjectType,
 } from "@/lib/vocabulary";
 
 // The receipt's per-quantity component. Its shape lives one module over
@@ -58,6 +62,16 @@ export const TASK_OPEN_ID = "5e2f8a9c-7b1d-4d36-a284-9f6c0b3e7d51";
  * asserts those numbers today, so it would have gone unnoticed.
  */
 export const TASK_FIXED_PRICE_ID = "8c1d6f24-9e37-4b05-a6d8-3f2b7c40e195";
+/**
+ * The Charge that Task's delivery created (#416), which its one charge posting
+ * projects (#417). Its OWN id, distinct from the posting's: the receipt the
+ * posting stores explains the Charge and names it as its subject, never the
+ * row it is stored on.
+ */
+export const CHARGE_FIXED_PRICE_ID = "e3b7a1d9-4c26-4f58-9a03-2d8e6b5c7f14";
+/** The Pricing Book line that answered the agreed price, and the version that held it. */
+export const FIXED_PRICE_LINE_ID = "c58d2f61-7a93-4b0e-8d47-1f6a9e3b2c05";
+export const FIXED_PRICE_BOOK_VERSION = 3;
 
 export const EVENT_RICH_ID = "d41f7a92-5c3e-48b6-9a70-1e8f2c6b3d54";
 export const EVENT_TIPPING_ID = "a97c3e51-8d2b-4f60-b813-5c4a9e7f1d20";
@@ -190,18 +204,31 @@ interface DetailSeed {
    * object, so a seed cannot take the bag and leave the status to the default.
    */
   measurements_status?: UsageEventDetail["measurements_status"];
-  /**
-   * Which kind of posting this is (#417). Defaults to `metered_usage`, which is
-   * what every seed but one is: a real event a caller reported.
-   *
-   * ⚠ **IT IS NOT INDEPENDENT OF `measurements_status` ABOVE**, and the pair is
-   * why this field could not simply be defaulted everywhere. `not_applicable`
-   * is DERIVED from the kind — the backend reads the kind first and never looks
-   * at the record — so a seed composing `measurementsNotApplicable()` while
-   * calling itself `metered_usage` describes a posting the derivation cannot
-   * produce. The one seed that does compose it says so here.
-   */
-  kind?: UsageEventKind;
+}
+
+/**
+ * A charge posting's seed: the few facts a projection can vary (#425).
+ *
+ * Everything else about a charge posting is fixed by what it is, and
+ * `makeChargeDetail` writes it rather than letting a seed state it. A seed
+ * that could set a costing method, an Event Type, a provider or a metadata
+ * bag on a projection would be describing a posting the backend cannot write
+ * — and this file's charge seed did exactly that until #425: a `reported`
+ * supplier cost on a row no caller reported, an Event Type no tenant declared
+ * (supplied by `makeDetail`'s default), a metadata bag, and a receipt whose
+ * subject was the usage event under an event-priced regime. Its `kind` was
+ * the one true thing about it.
+ */
+interface ChargeSeed extends ChargeTerms {
+  /** The posting's id — a different id from the Charge's, which `ChargeTerms` carries. */
+  id: string;
+  /** The unit of work sold whole, which the posting names as its task. */
+  task_id: string;
+  created_at?: string;
+  /** The grouping values the Charge froze at the moment the money became owed. */
+  dim1?: string;
+  dim2?: string;
+  dim3?: string;
 }
 
 /**
@@ -227,18 +254,22 @@ export function correlationId(
   };
 }
 
-function makeDetail(seed: DetailSeed): UsageEventDetail {
-  // Keyed by the declared key with unset slots omitted, exactly as the API now
-  // answers (#277).
-  //
-  // The keys stay spelled for the slots, and that is FORCED rather than lazy:
-  // this mock tenant's declared keys have to match `TIMESERIES_GROUP_BY` in
-  // `@/lib/labels`, which the group-by picker offers and which still lists
-  // `dim1`/`dim2`/`dim3`. That list and the `dimensionLabel` map beside it are
-  // the analytics grouping vocabulary, and both are recorded in the migration
-  // ledger as slice 7's. Renaming the keys here without it would leave the
-  // picker asking for an axis no posting carries, and every bar would read
-  // "(unattributed)".
+/**
+ * The posting's grouping values, keyed by the declared key with unset slots
+ * omitted, exactly as the API now answers (#277).
+ *
+ * The keys stay spelled for the slots, and that is FORCED rather than lazy:
+ * this mock tenant's declared keys have to match `TIMESERIES_GROUP_BY` in
+ * `@/lib/labels`, which the group-by picker offers and which still lists
+ * `dim1`/`dim2`/`dim3`. That list and the `dimensionLabel` map beside it are
+ * the analytics grouping vocabulary, and both are recorded in the migration
+ * ledger as slice 7's. Renaming the keys here without it would leave the
+ * picker asking for an axis no posting carries, and every bar would read
+ * "(unattributed)".
+ */
+function groupingFieldsOf(
+  seed: Pick<DetailSeed, "dim1" | "dim2" | "dim3">,
+): Record<string, string> {
   const groupingFields: Record<string, string> = {};
   for (const [key, value] of [
     ["dim1", seed.dim1],
@@ -247,12 +278,16 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
   ] as const) {
     if (value !== undefined && value !== "") groupingFields[key] = value;
   }
+  return groupingFields;
+}
+
+function makeDetail(seed: DetailSeed): UsageEventDetail {
   return {
     id: seed.id,
-    // WHICH KIND OF POSTING THIS IS (#417), defaulted rather than required:
-    // every seed but one is a real event a caller reported, and spelling that
-    // on each of them would be noise around the one that is not.
-    kind: seed.kind ?? "metered_usage",
+    // Every seed this builder takes is a real event a caller reported (#417).
+    // The one posting that is not — the charge — has a builder of its own
+    // below, because almost nothing about a projection is a seed's to state.
+    kind: "metered_usage",
     ...correlationId(seed.id, seed),
     // All three from the seed's one PRICE scenario object, for the same reason
     // the cost trio below comes from its own: a constant `"known"` beside a
@@ -278,10 +313,14 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     currency: "usd",
     event_type: seed.event_type ?? "chat.completion",
     provider: seed.provider ?? "openai",
-    grouping_fields: groupingFields,
+    grouping_fields: groupingFieldsOf(seed),
     measurements: seed.measurements ?? {},
     measurements_status: seed.measurements_status ?? "available",
     pricing_receipt: pricingReceipt(seed),
+    // READ OUT OF THE RECORD BY THE SERIALISER, never inferred from the row
+    // it is stored on. Here it is the same constant the record is built with,
+    // so the column and the record cannot say different things.
+    pricing_receipt_subject_type: RECEIPT_EXPLAINS_A_USAGE_EVENT,
     // DERIVED FROM THE RECEIPT AND NEVER STATED BESIDE IT. The column is what
     // the engine wrote off the record's own price section, so a seed that could
     // set the two apart would be describing a posting whose receipt and whose
@@ -294,11 +333,46 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
   };
 }
 
-/** The shape a receipt written today declares (`receipts.RECEIPT_SCHEMA_VERSION`). */
-const RECEIPT_SCHEMA_VERSION = 1;
+/**
+ * What every receipt `makeDetail` writes explains. The projection of a Charge
+ * writes the other value, and composes its whole record from
+ * `@/lib/economic-scenarios` — see `makeChargeDetail` below. The shape and
+ * engine versions come from that same module, so the two builders cannot
+ * describe records from two engines.
+ */
+const RECEIPT_EXPLAINS_A_USAGE_EVENT: PricingReceiptSubjectType = "usage_event";
 
-/** The engine that computed it (`pricing_service.PRICING_ENGINE_VERSION`). */
-const PRICING_ENGINE_VERSION = "2.1.0";
+/**
+ * One charge posting, built from what a charge posting IS (#425, spec §29).
+ *
+ * Nothing here is seeded but the facts a projection can vary. The kind is
+ * `task_charge`; the measurements are `measurementsNotApplicable()` — slice
+ * 2's composer, which the backend derives off the kind and never off a record
+ * (a projection has no measurement record at all); the receipt, the subject
+ * it names, the absent method, both amounts, the instant and the currency
+ * are `chargeReceipt(seed)`'s, composed as one object so the record and the
+ * columns cannot disagree; the Event Type and the provider are empty because
+ * no caller reported this row and `kind` says what it is instead; the
+ * idempotency key is the Charge's own derived one; and the metadata bag is
+ * empty because a projection is written by UBB, not by a caller with a bag
+ * to attach.
+ */
+function makeChargeDetail(seed: ChargeSeed): UsageEventDetail {
+  return {
+    id: seed.id,
+    kind: "task_charge",
+    ...correlationId(seed.id, { idempotency_key: `task:${seed.task_id}` }),
+    ...chargeReceipt(seed),
+    created_at: seed.created_at ?? seed.charged_at,
+    event_type: "",
+    provider: "",
+    grouping_fields: groupingFieldsOf(seed),
+    ...measurementsNotApplicable(),
+    metadata: {},
+    task_id: seed.task_id,
+    stop_context: null,
+  };
+}
 
 /**
  * How this seed's price was derived, or that none was.
@@ -342,7 +416,7 @@ function pricingReceipt(seed: DetailSeed): Record<string, unknown> {
   return {
     receipt_schema_version: RECEIPT_SCHEMA_VERSION,
     pricing_engine_version: PRICING_ENGINE_VERSION,
-    subject_type: "usage_event",
+    subject_type: RECEIPT_EXPLAINS_A_USAGE_EVENT,
     subject_id: seed.id,
     effective_at: seed.effective_at,
     currency: "usd",
@@ -796,32 +870,31 @@ const FEATURE_EVENTS: MockEvent[] = [
   },
   {
     customer_id: CUSTOMER_A_ID,
-    detail: makeDetail({
-      // A unit of work sold for one agreed price, projected onto its one
-      // posting. Nothing was ever measured, so there is nothing a retention
-      // horizon could have removed — the empty bag here and the empty bag above
-      // are the same object and different facts.
-      //
-      // ⚠ **IT NAMES NO EVENT TYPE AND COST NOTHING, AND BOTH CHANGED IN
-      // #417** — this seed used to invent an `event_type` of `task.charge` and
-      // carry a supplier cost of its own. Neither is a posting the backend can
-      // produce now that one writes these rows: a projection is marked
-      // system-generated by its `kind` precisely so it does not impersonate an
-      // Event Type no tenant declared, and its supplier cost is a settled zero
-      // because the work a fixed-price unit really burned is on the metered
-      // postings beside it. Composing this state from the canonical scenarios,
-      // and asserting how it renders on the tasks surface, is #425's.
+    // A unit of work sold for one agreed price, projected onto its one posting
+    // (#417, #418). Nothing was ever measured, so there is nothing a retention
+    // horizon could have removed — the empty bag here and the empty bag above
+    // are the same object and different facts.
+    //
+    // COMPOSED FROM THE CANONICAL SCENARIOS AND FROM NOTHING ELSE (#425, spec
+    // §29). This used to be a `makeDetail` seed, and it described a posting
+    // the backend cannot write: `chat.completion` on `openai`, supplied by
+    // that builder's defaults for a row no caller reported; a `reported`
+    // supplier cost, for the same row; a metadata bag; and a receipt whose
+    // subject was the usage event and whose regime was `event_priced`, on the
+    // one posting in this file that is neither. `makeChargeDetail` takes the
+    // facts a projection can vary and writes the rest from what a charge is —
+    // and the page's tests then render a payload the backend really produces.
+    detail: makeChargeDetail({
       id: EVENT_TASK_CHARGE_ID,
-      effective_at: "2026-06-11T08:14:02Z",
-      created_at: "2026-06-11T08:14:03Z",
-      kind: "task_charge",
-      dim1: "batch",
-      price: knownPrice(2_500_000),
-      cost: knownCost(0),
-      metadata: { env: "prod", team: "assist" },
+      charge_id: CHARGE_FIXED_PRICE_ID,
       task_id: TASK_FIXED_PRICE_ID,
-      costing_method: "reported",
-      ...measurementsNotApplicable(),
+      charged_at: "2026-06-11T08:14:02Z",
+      created_at: "2026-06-11T08:14:03Z",
+      currency: "usd",
+      agreed_price_micros: 2_500_000,
+      agreed_price_line_id: FIXED_PRICE_LINE_ID,
+      book_version: FIXED_PRICE_BOOK_VERSION,
+      dim1: "batch",
     }),
   },
   // -------------------------------------------------------------------------

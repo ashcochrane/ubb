@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantConfig, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { tenantDefinedLabel } from "@/lib/localisation";
+import { pricingModeLabel } from "@/lib/pricing-mode";
 
 import type { KindOfWork } from "../api/types";
 import {
@@ -19,7 +20,6 @@ import {
   describeCeiling,
   describeDuration,
   effectiveCeiling,
-  pricingModeLabel,
   sortedKinds,
 } from "../lib/kinds";
 

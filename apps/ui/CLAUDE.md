@@ -56,11 +56,14 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   the generated module because `domain-vocabulary/` names this file as the console's consumer of it
   (`PRODUCTS` / `Product` are the worked example, #241). Don't reach here for a canonical type —
   import `TenantProduct` and friends from `src/lib/vocabulary.ts` directly.
-- **A migrated concept gets its own small `src/lib/` module** — `src/lib/products.ts` is the first:
-  the label bound once (`labelMap(TENANT_PRODUCT_LABEL_KEYS)`), plus any console-owned explanatory
-  copy beside it as a constant total over the generated type, so a value with no sentence is a `tsc`
-  failure. Explanatory prose is NOT catalogue content (ADR-0008 §4.5) and has no label key: keys must
-  decompose into a declared concept prefix and a declared value of it, both ways.
+- **A migrated concept gets its own small module** — `src/lib/products.ts` is the first: the label
+  bound once (`labelMap(TENANT_PRODUCT_LABEL_KEYS)`), plus any console-owned explanatory copy beside
+  it as a constant total over the generated type, so a value with no sentence is a `tsc` failure.
+  Explanatory prose is NOT catalogue content (ADR-0008 §4.5) and has no label key: keys must
+  decompose into a declared concept prefix and a declared value of it, both ways. **A surface binds
+  the words it renders**: the module sits in that feature's `lib/` while one feature is the only
+  reader (`features/events/lib/measurements.ts`) and moves to `src/lib/` the day a second feature
+  renders the word (`src/lib/pricing-mode.ts`, moved in #425), because imports only flow down.
 - **Canonical values**: `src/lib/vocabulary.ts` is **generated** from the repo's vocabulary registry
   (`domain-vocabulary/`) — value lists, union types and stable label *keys*, never the English.
   Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates

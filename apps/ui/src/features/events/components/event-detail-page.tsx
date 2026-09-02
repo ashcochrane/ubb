@@ -24,6 +24,7 @@ import {
   settledPriceMicros,
 } from "@/lib/customer-price";
 import { ABSENT_LABEL } from "@/lib/localisation";
+import { pricingModeLabel } from "@/lib/pricing-mode";
 import {
   COSTING_STATUS_EXPLANATIONS,
   costingStatusLabel,
@@ -31,13 +32,23 @@ import {
 } from "@/lib/supplier-cost";
 
 import { useUsageEvent } from "../api/queries";
-import { asStopContextEntries, type UsageEventDetail } from "../api/types";
+import {
+  asChargeReceiptFacts,
+  asStopContextEntries,
+  type UsageEventDetail,
+} from "../api/types";
+import { usageEventKindLabel } from "../lib/kind";
 import {
   MEASUREMENTS_STATUS_EXPLANATIONS,
   NO_QUANTITIES_RECORDED,
   measurementsStatusLabel,
 } from "../lib/measurements";
 import { formatEventMicros, formatSignedEventMicros } from "../lib/money";
+import {
+  explainsACharge,
+  pricingReceiptSubjectTypeLabel,
+  receiptExplanation,
+} from "../lib/receipt-subject";
 import { shortId } from "../lib/search";
 import { KeyValueTree } from "./key-value-tree";
 import { RefundAction } from "./refund-action";
@@ -124,6 +135,53 @@ function Measurements({ detail }: { detail: UsageEventDetail }) {
   );
 }
 
+/**
+ * What a receipt explains, said before the record is shown — and, where the
+ * subject is a Charge, what the record holds (#425, spec §29).
+ *
+ * The first row is the wire's own typed word for the subject, rendered for
+ * every receipt that states one: a reader is told what kind of record they
+ * are looking at before they read it. The rest render only for a Charge. A
+ * charge posting's record has an empty costing detail and a pricing detail
+ * holding one key, and as a tree it reads as a receipt with something missing
+ * from it. Nothing is: the whole unit of work was sold for one agreed price,
+ * settled before any of it ran, so there is no measured quantity and no rule
+ * for the record to restate. The rows say what the record does hold — the
+ * price that was agreed, the regime the record carries by value, which Charge
+ * it explains, and the Pricing Book line and version that answered — and the
+ * tree below is then the record it always was.
+ *
+ * THE AMOUNT IS THE POSTING'S OWN, read through `settledPriceMicros` like every
+ * other price on this page, and not the record's total: the projection writes
+ * both from the Charge's amount, and reading an untyped record for a figure
+ * would need a fallback a price may never have. The identifiers come off the
+ * record through `asChargeReceiptFacts`, which yields a string or an absence
+ * and nothing that could be mistaken for a number.
+ */
+function ReceiptSummary({ detail }: { detail: UsageEventDetail }) {
+  const subject = detail.pricing_receipt_subject_type;
+  if (subject == null) return null;
+  const items: DetailItem[] = [
+    { label: "Explains", value: pricingReceiptSubjectTypeLabel(subject) },
+  ];
+  if (explainsACharge(subject)) {
+    const facts = asChargeReceiptFacts(detail.pricing_receipt);
+    const agreed = settledPriceMicros(detail);
+    items.push(
+      {
+        label: "Agreed price",
+        value:
+          agreed === null ? ABSENT_LABEL : formatEventMicros(agreed, detail.currency),
+      },
+      { label: "Sold as", value: pricingModeLabel(facts.pricing_mode) },
+      { label: "Charge ID", value: facts.charge_id, mono: true },
+      { label: "Pricing Book line", value: facts.agreed_price_line_id, mono: true },
+      { label: "Book version", value: facts.book_version, mono: true },
+    );
+  }
+  return <DetailList items={items} className="mb-3" />;
+}
+
 export function EventDetailPage({
   eventId,
   customerId,
@@ -203,6 +261,12 @@ export function EventDetailPage({
   const identityItems: DetailItem[] = [
     idItem("Event ID", detail.id),
     idItem("Idempotency key", detail.idempotency_key),
+    // WHICH KIND OF POSTING THIS IS (#417, #425), in the catalogue's words. A
+    // charge posting names no Event Type and no provider — no caller reported
+    // it — so without this row the page had nothing that said what kind of
+    // row a reader had opened, and an empty measurement section under it
+    // read as missing data.
+    { label: "Kind", value: usageEventKindLabel(detail.kind) },
     { label: "Happened at", value: formatDate(detail.effective_at) },
     {
       label: "Recorded at",
@@ -390,14 +454,24 @@ export function EventDetailPage({
             on a metering-only workspace it answers "no charge exists anywhere".
             The sentence is console copy rather than the schema's `description`
             for the ordinary reason — the wire's prose is written for whoever is
-            integrating, and this is written for whoever is reading a receipt. */}
+            integrating, and this is written for whoever is reading a receipt.
+
+            AND THE SUBJECT DECIDES WHICH SENTENCE (#425, spec §29). The wire
+            states what a receipt explains — one usage event, or one Charge —
+            and a charge's record explains a price that was agreed rather than
+            derived, so it is opened with a sentence saying so and a list of
+            what it holds, before the record itself. `../lib/receipt-subject`
+            owns both sentences and the one question asked of the subject. */}
         <Section
           title="Pricing receipt"
-          description="How UBB worked this event out — what it resolved, by which method, and as of when. Every event has one, including on a workspace that only meters: a receipt explains the amounts above, and is not evidence that a customer was charged."
+          description={receiptExplanation(detail.pricing_receipt_subject_type)}
           className="lg:col-span-2"
         >
           {hasReceipt ? (
-            <KeyValueTree value={detail.pricing_receipt} mono />
+            <>
+              <ReceiptSummary detail={detail} />
+              <KeyValueTree value={detail.pricing_receipt} mono />
+            </>
           ) : (
             <p className="text-[12px] text-text-muted">
               No receipt was recorded for this event.

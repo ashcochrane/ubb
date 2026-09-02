@@ -238,6 +238,40 @@ export function describeCustomerPrice(reading: CustomerPriceReading, currency: s
   return describeTotal(reading, currency);
 }
 
+/** What a run's five totals are over. */
+export const RUN_TOTALS_COVER =
+  "Totals over every metered event under this run, including the work contained in it.";
+
+/**
+ * What they are NOT over, for a run sold at one agreed price (#425).
+ *
+ * The projection of a delivered run's Charge is a posting under the run — it
+ * names the run as its task — that the run's own counters never accumulate:
+ * `TaskService.accumulate_cost` runs on the metered recording path and on no
+ * other, so the totals above leave out exactly the posting that carries the
+ * run's revenue. "Every event under this run" was one posting short on the
+ * one run where that posting is the money, and this sentence is the nearest
+ * the tasks surface can get to it: the contract publishes no read of a run's
+ * postings, so the posting itself renders on the events surface and nowhere
+ * else.
+ *
+ * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE. Nothing in the
+ * console can see the day a later slice makes the projection accumulate into
+ * the run; this constant is the console site to revisit then, and the test
+ * that pins it is the one to rewrite.
+ */
+export const RUN_TOTALS_LEAVE_OUT_THE_CHARGE =
+  "A run sold at one agreed price also carries that price as one charge posting once it delivers. These totals do not count it; the agreed price below does.";
+
+/** The sentence under the totals: what they cover, and — where it applies — what they leave out. */
+export function describeRunTotals(
+  applicability: Pick<PriceApplicability, "soldAtOnePrice">,
+): string {
+  return applicability.soldAtOnePrice
+    ? `${RUN_TOTALS_COVER} ${RUN_TOTALS_LEAVE_OUT_THE_CHARGE}`
+    : RUN_TOTALS_COVER;
+}
+
 /**
  * Why a run generates no customer revenue of its own, said at the run rather
  * than at one event — console copy (ADR-0008 §4.5), total over the registry's

@@ -1954,18 +1954,16 @@ entries:
       when the billing mode it is derived from is rebuilt, alongside
       `customer_billing_mode` at the cutover.
 
-  - id: g2-console-usage_event_kind
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::usage_event_kind
-    expected: usage_event_kind
-    found: 0 of 2 values
-    owner_slice: slice_5
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #139 projects a Charge onto one marked posting, and
-      the discriminator is what seven consumers of `billed_cost_micros` must
-      filter on. Slice 5 builds the Charge.
+  # ⚠ `g2-console-usage_event_kind` REACHED 2 OF 2 IN #425 and its entry is
+  # deleted, in the shape slices 3 and 4 established (spec §26): `labels.ts`
+  # holds `USAGE_EVENT_KIND_VALUES` by reference, the words were already in the
+  # catalogue under `usage_event_kind.*`, and the binding sits at the surface
+  # that renders a posting — `features/events/lib/kind.ts`, read by the ledger
+  # and by the receipt, which is where a charge posting renders as itself.
+  # There was no hand-written map to delete: the entry read `0 of 2` because
+  # the concept did not exist on this surface at all (§27's third shape, the
+  # same one `g2-console-pricing_mode` had), and the console's first sight of
+  # it is already the migrated shape.
 
   - id: g2-console-webhook_event_type
     gate: G2

@@ -17,7 +17,6 @@ import {
   effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
-  pricingModeLabel,
   REGIME_CANNOT_CHANGE,
   REGIME_IS_INERT_UNTIL_BILLING,
   sortedKinds,
@@ -54,16 +53,16 @@ function config(defaultCeiling: number | null): TenantConfig {
   };
 }
 
-describe("the words for how a kind of work is sold", () => {
-  it("are the catalogue's, bound at this surface", () => {
-    expect(pricingModeLabel("event_priced")).toBe("Event priced");
-    expect(pricingModeLabel("fixed")).toBe("Fixed price");
+describe("the words for a kind of work", () => {
+  // The regime's words are bound in `@/lib/pricing-mode` since #425 — two
+  // features render them — and tested there; the altitude's are bound here.
+  it("are the catalogue's for the altitude", () => {
     expect(altitudeLabel("task")).toBe("Task");
     expect(altitudeLabel("subtask")).toBe("Subtask");
   });
 
   it("render a value the registry has never seen as itself, never humanised", () => {
-    expect(pricingModeLabel("some_future_regime")).toBe("some_future_regime");
+    expect(altitudeLabel("some_future_altitude")).toBe("some_future_altitude");
   });
 
   it("explain every regime the registry declares", () => {

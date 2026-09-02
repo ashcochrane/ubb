@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   availableMeasurements,
+  chargeReceipt,
   completePriceTotal,
   completeTotal,
   costNotApplicable,
@@ -333,4 +334,104 @@ describe("customer price total scenarios", () => {
   // this total — the runs surface's component tests, against the runs mock
   // that composes these scenarios (#424). No `lib/` renderer reads the price
   // side yet, so there is nothing at this altitude to assert against.
+});
+
+describe("the receipt whose subject is a Charge", () => {
+  const terms = {
+    charge_id: "9b1c4e72-0d35-4a68-8f27-3e5a6c9d1b40",
+    charged_at: "2026-06-11T08:14:02Z",
+    currency: "usd",
+    agreed_price_micros: 2_500_000,
+    agreed_price_line_id: "5f2a7c91-3b64-4d08-9e15-7a0c2b8d4f63",
+    book_version: 3,
+  } as const;
+
+  // The record is about the CHARGE, and it says so in itself rather than
+  // leaving a reader to infer it from the row it happens to be stored on —
+  // the inference the backend's `subject_type_of` exists to refuse.
+  it("explains the Charge, not the posting it is stored on", () => {
+    const scenario = chargeReceipt(terms);
+
+    expect(scenario.pricing_receipt_subject_type).toBe("charge");
+    expect(scenario.pricing_receipt.subject_type).toBe("charge");
+    expect(scenario.pricing_receipt.subject_id).toBe(terms.charge_id);
+    expect(scenario.pricing_receipt.effective_at).toBe(terms.charged_at);
+  });
+
+  // The shape `charge_projection.the_receipt_for` writes, key for key: both
+  // methods null, both amounts settled, the regime carried by value and no
+  // per-quantity line anywhere. Pinned as one object so a drift on either
+  // side — the backend's writer or this composer — is a diff a reader can
+  // hold against the other.
+  it("names no method on either side, and carries the regime by value", () => {
+    const record = chargeReceipt(terms).pricing_receipt;
+
+    expect(record.costing).toEqual({ method: null, status: "known", detail: {} });
+    expect(record.pricing).toEqual({
+      method: null,
+      status: "known",
+      detail: { pricing_mode: "fixed" },
+    });
+    expect(record.totals).toEqual({ provider_cost_micros: 0, billed_cost_micros: 2_500_000 });
+    expect("components" in record.pricing.detail).toBe(false);
+    expect(Object.keys(record).sort()).toEqual([
+      "costing",
+      "currency",
+      "effective_at",
+      "pricing",
+      "pricing_engine_version",
+      "provenance",
+      "receipt_schema_version",
+      "subject_id",
+      "subject_type",
+      "totals",
+    ]);
+  });
+
+  // The provenance section admits identifiers and nothing else, so the book
+  // version — a number on the Pricing Book — travels as the string the
+  // projection writes.
+  it("carries the line that answered and the book version as identifiers", () => {
+    const record = chargeReceipt(terms).pricing_receipt;
+
+    expect(record.provenance).toEqual({
+      agreed_price_line_id: terms.agreed_price_line_id,
+      book_version: "3",
+    });
+  });
+
+  // ⚠ THE PROPERTY THE SCENARIO EXISTS FOR. The posting's own columns are
+  // returned beside the record and say the same thing it does: the price is
+  // the agreed amount and settled, the supplier cost is a settled nothing,
+  // and neither was derived by any method. A fixture cannot compose the
+  // record and then state a different price beside it.
+  it("fixes the posting's amounts to the record's totals, with no method", () => {
+    const scenario = chargeReceipt(terms);
+
+    // And the posting's instant and denomination to the record's, so a
+    // consumer has nothing of its own to state beside the record.
+    expect(scenario.effective_at).toBe(scenario.pricing_receipt.effective_at);
+    expect(scenario.currency).toBe(scenario.pricing_receipt.currency);
+
+    expect(scenario.billed_cost_micros).toBe(scenario.pricing_receipt.totals.billed_cost_micros);
+    expect(scenario.pricing_status).toBe("known");
+    expect(scenario.not_applicable_reason).toBeNull();
+    expect(scenario.provider_cost_micros).toBe(scenario.pricing_receipt.totals.provider_cost_micros);
+    expect(scenario.costing_status).toBe("known");
+    expect(scenario.unresolved_reason).toBeNull();
+    expect(scenario.pricing_method).toBeNull();
+
+    // And the pairs are the ones the two amount scenarios already compose,
+    // so a charge posting reads through every existing price and cost path.
+    expect(scenario).toMatchObject(knownPrice(2_500_000));
+    expect(scenario).toMatchObject(knownCost(0));
+  });
+
+  it("hands each caller its own record, so one fixture cannot edit another", () => {
+    const first = chargeReceipt(terms);
+    const second = chargeReceipt(terms);
+
+    expect(first.pricing_receipt).not.toBe(second.pricing_receipt);
+    expect(first.pricing_receipt.provenance).not.toBe(second.pricing_receipt.provenance);
+  });
 });
