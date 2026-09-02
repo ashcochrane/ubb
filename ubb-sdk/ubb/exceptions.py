@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # the annotation only; this module stays free of the core
+    from ubb._core.models.record_usage_response import RecordUsageResponse
+
 
 class UBBError(Exception):
     pass
@@ -30,6 +35,16 @@ class UBBConnectionError(UBBError):
         self.original = original
         super().__init__(message)
 
+# The spend stop is the ONE type in this SDK outside `Exception`, and it is
+# deliberately not a `UBBError` (#179 §1.4, #421). `UBBStoppedError` used to
+# sit under `UBBError`, which meant a tenant's `except Exception: continue`
+# around a provider loop ate the stop and kept spending — and excluding it by
+# name inside UBB's own code cannot reach tenant code. Python draws this line
+# already for `KeyboardInterrupt`, `SystemExit` and `CancelledError`. One narrow
+# type, never the start of a parallel hierarchy: `test_stop_verdict.py` reads
+# the set of such types off `ubb.__all__` and pins it at exactly this one.
+# The convenience attributes below are properties over `result` rather than
+# copies, so the signal and the acknowledgement it carries cannot disagree.
 class UBBStopRequested(BaseException):
     """UBB recorded the event and is asking you to stop spending for a scope.
 
@@ -44,34 +59,45 @@ class UBBStopRequested(BaseException):
     ``stop_scope``.
 
     It derives from ``BaseException`` — not ``Exception``, not ``UBBError`` —
-    for the reason ``KeyboardInterrupt`` does: a tenant's own
-    ``except Exception:`` around a provider loop must not be able to swallow
-    the one signal that protects their customer's money and carry on
-    spending. Catch it by name, once, at the outermost boundary that can
-    honour its scope; a helper that knows about one call has neither the
-    authority nor the context to halt everything for a customer. A bare
-    ``except:`` or ``except BaseException:`` still catches it, and that is
-    accepted: the objective is the common accidental failure, not technical
-    impossibility (#179 §1.4). Every ordinary SDK failure stays an
-    ``Exception`` under ``UBBError``; this is the one type outside it.
+    for the reason ``KeyboardInterrupt`` does: your own ``except Exception:``
+    around a provider loop cannot swallow it and carry on spending. Catch it
+    by name, once, at the outermost boundary that can honour its scope; a
+    helper that knows about one call has neither the authority nor the
+    context to halt everything for a customer. A bare ``except:`` or
+    ``except BaseException:`` still catches it — re-raise anything outside
+    ``Exception`` unless you are handling this signal by name. Every
+    ordinary SDK failure stays an ``Exception`` under ``UBBError``.
 
     ``result`` is the whole acknowledgement (a ``RecordUsageResponse``, the
     exact object ``raise_on_stop=False`` would have returned), so nothing is
     lost by catching this; ``event_id``, ``stop_scope``, ``stop_reason`` and
-    ``task_id`` are lifted off it and ``idempotency_key`` off the call, so a
-    handler can log what happened and reconcile without a second request.
-    ``record_batch`` never raises this — it reports the stop per item."""
-    def __init__(self, result, *, idempotency_key: str | None = None):
+    ``task_id`` read straight off it, and ``idempotency_key`` is the one you
+    sent, so a handler can log what happened and reconcile without a second
+    request. ``record_batch`` never raises this — it reports the stop per
+    item."""
+    def __init__(self, result: RecordUsageResponse, *, idempotency_key: str):
         self.result = result
         self.idempotency_key = idempotency_key
-        self.event_id = result.event_id
-        self.stop_scope = result.stop_scope
-        self.stop_reason = result.stop_reason
-        self.task_id = result.task_id
         super().__init__(
             f"UBB requested a stop for {self.stop_scope or 'an unnamed scope'}"
             f" ({self.stop_reason or 'spend ceiling reached'}). Event "
             f"{self.event_id} was recorded and charged; do not resend it")
+
+    @property
+    def event_id(self) -> str:
+        return self.result.event_id
+
+    @property
+    def stop_scope(self) -> str | None:
+        return self.result.stop_scope
+
+    @property
+    def stop_reason(self) -> str | None:
+        return self.result.stop_reason
+
+    @property
+    def task_id(self) -> str | None:
+        return self.result.task_id
 
 class UBBWebhookVerificationError(UBBError):
     """Webhook signature verification failed.

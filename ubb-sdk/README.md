@@ -343,6 +343,9 @@ except UBBStopRequested as stop:
 
 A bare `except:` or `except BaseException:` still catches it; that is accepted, the
 objective being the common accidental failure rather than technical impossibility.
+The rule for such a handler is the one Python already has for `KeyboardInterrupt`:
+**re-raise anything outside `Exception` unless you are handling that specific named
+signal** — a broad handler that swallows `BaseException` swallows the stop with it.
 Every ordinary SDK failure stays an `Exception` under `UBBError`.
 
 `record_usage(..., raise_on_stop=False)` returns the same acknowledgement with

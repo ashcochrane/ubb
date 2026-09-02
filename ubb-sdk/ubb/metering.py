@@ -166,9 +166,9 @@ class MeteringClient:
         resend the event. ``raise_on_stop=False`` returns the same ack with
         ``result.stop`` set instead of raising. The one reason to choose it
         is recording work that has ALREADY happened one call at a time,
-        where a stop raised part-way would leave the rest unrecorded and UBB
-        short of real supplier cost — and ``record_batch`` is the better tool
-        for that, because it never raises.
+        where a stop raised part-way would leave the rest unrecorded — and
+        ``record_batch`` is the better tool for that, because it never
+        raises.
         """
         body: dict = {
             "customer_id": customer_id,
@@ -242,8 +242,11 @@ class MeteringClient:
                 detail=item.get("detail"),
                 event_id=item.get("event_id"),
                 data=item,
-                # A rejected item sends null stop fields: nothing was
-                # recorded, so there is no verdict, and that reads as False.
+                # A rejected item carries the server's constant verdict —
+                # `stop: false`, null reason and scope — because nothing was
+                # recorded and so nothing can have stopped; an accepted item
+                # may omit the key altogether, since the contract's `stop`
+                # is optional with a false default. Both read as False.
                 stop=bool(item.get("stop", False)),
                 stop_reason=item.get("stop_reason"),
                 stop_scope=item.get("stop_scope"),

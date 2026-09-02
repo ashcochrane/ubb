@@ -21,16 +21,16 @@ class BatchItemResult:
     """One item's VERDICT from record_batch — the field set #78 unified across
     the batch route and the async ingest route, which slice 1 deleted; this is
     the surviving shape. ``data`` is the full raw per-item body (accepted: the same
-    fields as RecordUsageResult; rejected: {accepted, code, detail} plus null
-    stop fields). ``code`` words come from the platform's error-code
-    registry.
+    fields as RecordUsageResult; rejected: {accepted, code, detail} plus the
+    constant verdict ``stop: false`` with null reason and scope). ``code``
+    words come from the platform's error-code registry.
 
     ``stop`` / ``stop_reason`` / ``stop_scope`` are the item's own spend-stop
     verdict, lifted off ``data`` exactly as ``accepted`` and ``code`` are. An
     item that was recorded may also be asking you to stop, and the batch
     REPORTS that here rather than raising (#421): one stopped piece of work
-    must not abandon the rest of the batch. A rejected item was not recorded
-    and carries no verdict — its ``stop`` is False."""
+    must not abandon the rest of the batch. A rejected item was not recorded,
+    so nothing can have stopped — its ``stop`` is False."""
     accepted: bool
     code: str | None = None
     detail: str | None = None
@@ -40,18 +40,20 @@ class BatchItemResult:
     stop_reason: str | None = None
     stop_scope: str | None = None
 
+# `stop` and `first_stop_index` are properties, not fields: a derived fact is
+# not stored beside its source (ADR-0006 §4), so a report built by hand and
+# one parsed off the wire answer the same way, and the two cannot disagree.
 @dataclass(frozen=True)
 class BatchResult:
     """The batch's report. ``results`` align positionally to the events sent.
 
-    ``stop`` and ``first_stop_index`` are DERIVED from the items rather than
-    stored beside them (ADR-0006 §4): whether any recorded item asked for a
-    stop, and the position of the earliest that did — ``None`` when none did.
-    A stop cannot prevent work that already completed, so the batch never
-    raises; it says so per item and here in aggregate, and what to do about
-    it is yours. There is no aggregate scope on purpose: a batch may carry
-    several customers' work, and each item's ``stop_scope`` is the one that
-    binds."""
+    ``stop`` says whether any recorded item asked for a stop and
+    ``first_stop_index`` is the position of the earliest that did — ``None``
+    when none did; both are read off the items. A stop cannot prevent work
+    that already completed, so the batch never raises; it says so per item
+    and here in aggregate, and what to do about it is yours. There is no
+    aggregate scope on purpose: a batch may carry several customers' work,
+    and each item's ``stop_scope`` is the one that binds."""
     results: list[BatchItemResult]
     accepted: int
     rejected: int

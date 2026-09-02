@@ -99,7 +99,9 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   created nothing.
 - **`pre_check` →** `{allowed, reason, balance_micros}` — pull, as a poll. It
   registers nothing; the call above is the only one that starts a task.
-- **`record_usage` result →** always 200 for a recorded event: `stop` /
+- **`record_usage` →** always 200 for a recorded event, and when the verdict
+  says stop the SDK **raises** `UBBStopRequested` by default, carrying the whole
+  result as `stop.result` (`raise_on_stop=False` returns it instead): `stop` /
   `stop_reason` / `stop_scope` (cooperative — the event *was* charged),
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both
   running totals, denominationally explicit — only the provider total races
@@ -125,10 +127,10 @@ The stop is cooperative — your runtime cancels at a safe boundary. Common shap
 
 - **Inngest:** `cancelOn` matched to a `customer.suspended` webhook keyed on `data.customer_id`; finishes the current step.
 - **Temporal:** webhook → `workflow.cancel()`; activities must heartbeat to receive the cancellation.
-- **Vercel AI SDK:** a `stopWhen` predicate that consults the last `record_usage` result's `stop`.
-- **LangGraph:** check the `stop` flag at a node boundary; stop via the checkpointer.
-- **OpenAI Agents SDK:** `result.cancel()` (after the current turn) when `stop` is seen.
-- **Plain workers / Celery:** check `result.stop` between steps; on the webhook, `revoke`/cancel the matching job.
+- **Vercel AI SDK:** a `stopWhen` predicate set by your `UBBStopRequested` handler (or, with `raise_on_stop=False`, fed by the last `record_usage` result's `stop`).
+- **LangGraph:** catch `UBBStopRequested` at a node boundary; stop via the checkpointer.
+- **OpenAI Agents SDK:** `result.cancel()` (after the current turn) from the `UBBStopRequested` handler.
+- **Plain workers / Celery:** let `UBBStopRequested` end the current piece of work — catch it once at the worker's outer boundary, never per call; on the webhook, `revoke`/cancel the matching work.
 
 ## The honest guarantee (and its bound)
 

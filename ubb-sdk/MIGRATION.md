@@ -135,7 +135,7 @@ The big-bang tightened HTTP semantics (400 = malformed only; 422 = semantic;
 > `except Exception:` cannot swallow it — carrying the acknowledgement; the
 > event was recorded. `raise_on_stop=False` returns the ack with `result.stop`
 > set instead, and `record_batch` never raises (the stop is reported per
-> item). A 429 from usage ingestion is plain rate limiting and is safely
+> item). A 429 from a usage report is plain rate limiting and is safely
 > retried (see §6).
 
 ---

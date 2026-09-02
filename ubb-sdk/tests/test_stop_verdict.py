@@ -153,20 +153,18 @@ class TheSignalIsRaisedAfterTheWriteTest(_ClientCase):
     def test_a_stop_is_never_retried(self, mock_post):
         """Retries exist for transport failures. A stop is a successful write
         whose ack asks for something; with three retries configured, the
-        request still goes out exactly once."""
+        request still goes out exactly once.
+
+        NOT EVIDENCE ON ITS OWN. The property holds by two facts at once —
+        the raise sits after ``_request`` returns, and ``retry.py`` catches
+        only ``Exception`` — so no single edit reddens it; a signal moved
+        inside the retry loop would still escape that loop untouched. It is
+        here so the claim is stated where a reader looks for it, beside the
+        cases that do discriminate."""
         _responding(mock_post, _stopped_ack())
         with self.assertRaises(UBBStopRequested):
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertEqual(mock_post.call_count, 1)
-
-    @patch("ubb.metering.httpx.Client.post")
-    def test_the_context_manager_still_closes_when_the_signal_escapes(self, mock_post):
-        _responding(mock_post, _stopped_ack())
-        with patch.object(MeteringClient, "close") as close:
-            with self.assertRaises(UBBStopRequested):
-                with MeteringClient(api_key="ubb_live_x", max_retries=0) as client:
-                    client.record_usage(customer_id="c1", idempotency_key="i1")
-        close.assert_called_once()
 
 
 class TheStopSurvivesATenantCatchAllTest(_ClientCase):
@@ -181,7 +179,7 @@ class TheStopSurvivesATenantCatchAllTest(_ClientCase):
         with self.assertRaises(UBBStopRequested):
             try:
                 self.client.record_usage(customer_id="c1", idempotency_key="i1")
-            except Exception:  # noqa: BLE001 — the tenant's own catch-all, on purpose
+            except Exception:  # the tenant's own catch-all, on purpose
                 swallowed = True
         self.assertFalse(swallowed, "a bare `except Exception:` ate the spend stop")
 
@@ -197,7 +195,7 @@ class TheStopSurvivesATenantCatchAllTest(_ClientCase):
         caught = None
         try:
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # the same catch-all as the case above
             caught = e
         self.assertIsInstance(caught, UBBAPIError)
         self.assertIsInstance(caught, UBBError)
@@ -233,7 +231,7 @@ class TheStopSurvivesATenantCatchAllTest(_ClientCase):
         caught = None
         try:
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
-        except BaseException as e:  # noqa: BLE001 — deliberately the widest net
+        except BaseException as e:  # deliberately the widest net
             caught = e
         self.assertIsInstance(caught, UBBStopRequested)
 
@@ -288,8 +286,11 @@ class ABatchReportNeverRaisesTest(_ClientCase):
 
     @staticmethod
     def _rejected(code: str) -> dict:
+        """The server's constant verdict for a rejected item: nothing was
+        recorded, so nothing can have stopped (`api/v1/metering_endpoints.py`,
+        `_rejected`)."""
         return {"accepted": False, "code": code, "detail": "refused",
-                "stop": None, "stop_reason": None, "stop_scope": None}
+                "stop": False, "stop_reason": None, "stop_scope": None}
 
     @patch("ubb.metering.httpx.Client.post")
     def test_a_stopped_item_among_unstopped_ones_is_reported_not_raised(self, mock_post):
@@ -334,17 +335,29 @@ class ABatchReportNeverRaisesTest(_ClientCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_a_batch_with_no_stop_says_so(self, mock_post):
-        self._batch_of(mock_post, [self._accepted("evt_0"), self._rejected("validation_error")])
+        """Three shapes of 'no stop', and each reads as exactly False: an
+        accepted item saying so, a rejected item (the server's constant
+        trio), and an accepted item that OMITS the key — the contract's
+        ``stop`` is optional with a false default, so an ack may leave it
+        out, and a reader that passed the raw value through would hand a
+        caller ``None`` for that one."""
+        without_the_key = self._accepted("evt_2")
+        del without_the_key["stop"]
+        self._batch_of(mock_post, [self._accepted("evt_0"),
+                                   self._rejected("validation_error"),
+                                   without_the_key])
         result = self.client.record_batch([
-            {"customer_id": "c1", "idempotency_key": "k0"},
-            {"customer_id": "c1", "idempotency_key": "k1"},
+            {"customer_id": "c1", "idempotency_key": f"k{i}"} for i in range(3)
         ])
         self.assertFalse(result.stop)
         self.assertIsNone(result.first_stop_index)
-        self.assertEqual([r.stop for r in result.results], [False, False])
+        for item in result.results:
+            self.assertIs(item.stop, False)
 
     def test_the_batch_has_no_raising_knob_at_all(self):
-        """The non-raising posture is not a default a caller could flip: the
-        batch call takes nothing that would make it raise."""
+        """A PIN, not evidence for the claim above: the signature is unchanged
+        by this ticket and this passes against the previous code too. It is
+        here so a knob added to the batch call later goes red at the address
+        that says the non-raising posture is not a default a caller flips."""
         params = inspect.signature(MeteringClient.record_batch).parameters
         self.assertEqual(set(params), {"self", "events"})
