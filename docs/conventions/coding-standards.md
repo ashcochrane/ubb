@@ -43,6 +43,24 @@ idempotent with a deterministic key, e.g. `usage_deduction:{event_id}`, `auto_to
 `expiry:{grant_id}`. A replay must be a no-op, not a double effect. Balance movements are always an
 append-only **ledger entry** keyed this way — never a bare `balance += x`.
 
+Two shapes of key, and which one applies is decided by who is reporting the fact:
+
+- **A caller-supplied key for something the caller did**, claimed permanently. Registering a unit of
+  work (#410) is the worked example: `idempotency_key` is required, unique per `(tenant, customer)`,
+  and never released — not at a terminal state and not after a window — because the case that
+  matters is the first attempt delivering, its response being lost, and a released key starting a
+  second unit of work that is charged twice. A repeat carrying the same declaration replays the
+  original (`replayed: true`); one that changes a pinned field is `409` naming the field.
+  `api/v1/tests/test_a_start_claims_its_key.py` holds it (`test_the_claim_survives_the_work_ending`,
+  and one refusal per pinned field).
+- **A system-derived key for something the system decided.** The Charge (#416) is the worked
+  example: its key is derived from the unit of work (`task:{id}`) and never accepted from a caller,
+  because a caller does not supply amounts or keys the system can derive, and the party retrying the
+  request is the last one who should hold the thing that makes a charge exactly-once. The projected
+  posting takes the same key, so the posting table's own uniqueness refuses a second projection of
+  one charge. `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py` holds it
+  (`test_the_idempotency_key_is_derived_from_the_work`).
+
 ## Data-plane rules
 
 - **Soft delete only.** Rows use `deleted_at` (`core/soft_delete.py`); hard delete through the ORM

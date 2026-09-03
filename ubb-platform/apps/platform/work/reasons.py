@@ -25,10 +25,11 @@ than partial: an open set is designed for a consumer that produces some of it.
 ⚠ THE METADATA KEY IS STILL SPELLED `kill_reason` AND CARRIES EXPIRIES TOO
 (#408). Both sweepers write `expired` rather than `killed`, and the reason they
 pass — a silence window elapsed, or the absolute deadline — is stamped under the
-key it always used. The key is `outcome_reason`'s to rename, in the ticket that
-wires that concept's consumers; renaming it here would be a second spelling of a
-value set another ticket owns. Nothing mis-reads it in the meantime: every
-consumer of the key gates on `status == killed` first.
+key it always used. The rename was left to the ticket wiring `outcome_reason`'s
+consumers, and that work landed (#409, #413) WITHOUT renaming it — so the key is
+an unowned residual, recorded here rather than implied paid (#426). Nothing
+mis-reads it in the meantime: every consumer of the key gates on
+`status == killed` first.
 
 One-rule model (docs/plans/2026-07-15-one-rule-enforcement-spec.md): these are
 signal reasons, not refusal codes — every usage report answers HTTP 200; the

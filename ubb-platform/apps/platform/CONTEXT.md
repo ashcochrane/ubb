@@ -227,10 +227,15 @@ it is one answer, fixed at the first declaration.
 Declared and read at `/api/v1/task-types`, mounted at the ROOT beside `/event-types` and `/plans`
 since #414 and gated on `metering` from there — the mount and the product gate are separate
 questions, and a declaration realized by billing and by metering and owned by neither is the kernel
-test. Retired, never deleted: `retired_at` records when a kind of work stopped being offered and
-the row stays readable, because work already done under it still refers to it.
+test. **That mount is a deliberate departure from the 2026-07-30 placement decision (#141 §3),
+which kept this registry behind `/metering/`; ADR-0011 records the departure, the two facts that
+justified it — slice 2's root-mounted Event Type catalogue, and the pricing regime landing on this
+registry — and which document is current.** Retired, never deleted: `retired_at` records when a
+kind of work stopped being offered and the row stays readable, because work already done under it
+still refers to it.
 (ADR-0005, whose Decision clause on what a `Task` carries is superseded on exactly this point;
-`apps/platform/work/models.py:TaskType`)
+ADR-0011; `apps/platform/work/models.py:TaskType`;
+`api/v1/tests/test_task_type_registry.py:test_the_registry_is_mounted_at_the_root`)
 _Avoid_: a second name for the contained case. The column that carried one was collapsed into this
 one; a Subtask is the same record with a parent, never a second pricing entity.
 
@@ -257,8 +262,11 @@ necessary rather than theoretical.
 On the wire the declaration is `pricing_mode`, defaulted only for a kind of work that does not exist
 yet: omitting it on one that does leaves the regime alone, because a client that has never heard of
 the field must not re-sell every `fixed` kind of work per event on its next idempotent PUT.
-(`apps/platform/work/models.py:TaskType.pricing_mode`;
-`work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py`; registry concept `pricing_mode`)
+(ADR-0012, which carries the four-reason argument and names every test that holds it;
+`apps/platform/work/models.py:TaskType.pricing_mode`;
+`work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py`; registry concept `pricing_mode`;
+`apps/platform/work/tests/test_a_kind_of_work_declares_how_it_is_sold.py:TheRegimeIsFrozenTest`;
+`apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`)
 _Avoid_: reading this as a third `pricing_method` (`apps/metering/CONTEXT.md`). That column says
 how a price is DERIVED and has exactly two values; an agreed price is not derived at all, so work
 sold that way records no method rather than a third one.
@@ -303,6 +311,11 @@ generated registry, of which `active` is the only non-terminal one and **termina
 never permitted**. Each of the five is told apart by WHO WROTE IT, which is what lets a money
 decision key on one: `completed` means the tenant declared delivery and nothing else may write it,
 `killed` means UBB stopped the work on a spend signal and nothing tenant-declared may land there.
+Both invariants are held by `apps/platform/work/tests/test_lifecycle_states.py`
+(`CompletedMeansTheTenantDeclaredDeliveryTest`, `KilledMeansUbbStoppedItOnASpendSignalTest`,
+`TerminalToAnythingIsNeverPermittedTest`). Its lifecycle — start, read, list, the contained-work
+list and close — is at `/api/v1/tasks`, at the root and gated on no product (ADR-0011); what a
+delivered unit of work sold at one agreed price is charged is ADR-0013.
 (`apps/platform/work/models.py:Task`; registry concept `task_status`)
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
 the open bag is labelling only and never attaches a limit.
@@ -320,7 +333,9 @@ across attempts, never unique, never required. The label is the only place the r
 The column is nullable and the uniqueness rule is PARTIAL: every unit registered before the key
 existed holds NULL, and there is no caller-supplied value to invent for them that would not be a
 fabricated declaration.
-(`apps/platform/work/models.py:Task.idempotency_key`, `uq_task_idempotency_key`)
+(`apps/platform/work/models.py:Task.idempotency_key`, `uq_task_idempotency_key`;
+`api/v1/tests/test_a_start_claims_its_key.py`: `TestTheKeyIsClaimedPermanently` holds the
+permanent claim and `TestARepeatThatContradictsIsRefused` holds one `409` per pinned field)
 _Avoid_: treating the label as an identity, and "releasing" a key at a terminal state.
 
 **Subtask**:
@@ -342,7 +357,10 @@ when the answer is known rather than an inference from what happened underneath.
 `GET /api/v1/tasks/{task_id}/subtasks`; the write side is the one create route with a parent named.
 Two altitudes and no third: deeper structure is a
 task-scoped Grouping Field value, which is already inherited down the tree and already
-cardinality-capped. (`apps/platform/work/models.py:Task.parent`)
+cardinality-capped. (`apps/platform/work/models.py:Task.parent`;
+`apps/platform/work/tests/test_subtasks.py`: `CascadeRecordTest` holds what each of the three
+cascades writes and that the three reasons are distinct, `ContainmentCutsDownwardOnlyTest` holds
+that a failed piece of contained work leaves its parent running)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 
 **Task limit (provider-cost limit)**:
@@ -390,7 +408,15 @@ read off the row AFTER the flip, so the claim *the name is the state entered* is
 record rather than a habit each emitter keeps; the enforcement patrol's re-mint reads the same row
 and therefore repairs a delivery with whatever is true now. A **Cancelled (task)** and the states a
 tenant declares announce nothing at all — the tenant already knows how the work ended.
-(`apps/platform/events/schemas.py:terminal_stop_event`)
+(`apps/platform/events/schemas.py:terminal_stop_event`;
+`apps/platform/work/tests/test_a_terminal_event_names_the_state_entered.py` holds the four names
+on the lanes that apply a stop, and that the payload carries `reason_code` and `trigger_source` and
+no `control_family` or `control_id` — the closed pair is **slice 6's** (#188), declined here
+because three of its four families do not exist yet;
+`apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
+one place *the name is the state entered* is falsifiable, the re-mint;
+`apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration —
+subscriptions fan out to both successors, queued rows route by their own recorded reason)
 _Avoid_: naming one of these for the ceiling that fired — the cause is a field, and a single
 overloaded event was declined outright (#140 §4.3, ratified by #154 §5.3).
 
@@ -405,6 +431,63 @@ there would either fire a spurious spend event at the customer's workers or beco
 `killed` row with no announcement — which already means *silently cascaded by a parent*.
 (`apps/platform/work/services.py:TaskService.close_task`, cascading
 `WITHDRAWN_BY_A_CLOSE`)
+
+**Task outcome**:
+What the tenant declares when it closes a unit of work — `delivered | failed | cancelled` — and the
+only thing that decides whether a **Charge** fires (`apps/metering/CONTEXT.md`; ADR-0013). One
+call, one MANDATORY field, one code path: the close refuses a request with no declaration rather
+than defaulting it to a delivery, because **the forgiving path must never be the money-moving one**
+— a dropped field, a stale example or an old client would otherwise bill a customer for work that
+failed. It is a separate concept from the resulting state because the caller declares an outcome
+and UBB records a state: `delivered` enters `completed`, `failed` enters `failed`, `cancelled`
+enters `cancelled`, and **no declaration maps onto `killed` or `expired`**, which is what makes a
+close against a unit UBB stopped a refusal by construction rather than a case. A repeated identical
+close REPLAYS — `replayed: true`, the original's `charge_created`, nothing written — and a close
+declaring something else against a terminal unit is `409` naming the state the unit is really in: a
+delivery declared on killed work must never answer `200`, because under a Charge that is silent
+revenue loss whose first symptom is a month-end number, and letting the late delivery win would
+make ignoring the stop signal free. The SDK offers the three as `complete()` / `fail(outcome_reason)`
+/ `cancel()` on the handle `start_task` returns (`docs/conventions/sdk-wrap.md`).
+(`apps/platform/work/services.py:CloseDeclaration` and `STATUS_FOR_OUTCOME`; registry concept
+`task_outcome`; `api/v1/tests/test_task_lifecycle_endpoints.py`: `TestTheCloseDeclaresAnOutcome`
+and `TestReplayAndRefusal`)
+_Avoid_: reading `completed` as the outcome — the outcome is the word the tenant said and the
+status is what UBB recorded; a second public word for the business payload a completion carries —
+that is `metadata`, already on the record (#179 §8, spec §24); and a `partial` outcome — #139 §3.2
+settled that there are no partial charges.
+
+**Outcome reason**:
+Why a unit of work did not deliver, declared by the caller beside a `failed` or `cancelled`
+outcome — a CLOSED set of nine: `upstream_provider_error` · `timeout` · `invalid_input` ·
+`internal_error` · `execution_failed` · `customer_cancelled` · `superseded` · `parent_closed` ·
+`unspecified`. Required on `failed`, optional on `cancelled`, refused on `delivered` (there is no
+*why it did not deliver* for work that did), and an unrecognised value is refused at the boundary.
+`unspecified` is what makes *required* cheap: the caller always has a valid answer and a dashboard
+always has a bucket. `reason_detail` is the free-text sentence beside it, never validated and never
+grouped on — the cardinality guard that lets the code stay a small closed set. `execution_failed` is
+the one value the generated wrapper may declare on its own, because an exception escaping the work
+block is evidence for it (#179 §2).
+**It is NOT `reason_code`, and the two must never be tidied together.** `reason_code` (**Stop
+reason**) answers why UBB STOPPED work — UBB-produced, OPEN, consumed by `work/reasons.py`; this
+answers why the tenant says the work did not deliver — caller-supplied, CLOSED, consumed by the
+close. ADR-0006 R2 forbids two public concepts wearing one word, and the registry's siblings settle
+the name: `unresolved_reason` explains an `unresolved` costing status, `not_applicable_reason` a
+`not_applicable` pricing status, and this explains a declared **Task outcome**. The
+producer/consumer reconciliation that lets `reasons.py`'s closed set sit under an open registry
+concept DOES NOT TRANSFER: that holds because a stop reason is UBB-produced, and this value arrives
+from outside, so the closed set is a rule on what may come in. **`parent_closed` and
+`parent_killed` are two concepts, not a near miss**: the first is what the tenant's close declares
+for contained work it withdrew, the second is what UBB records when a spend kill cascaded —
+different actor, different set, different kind.
+Coined by slice 5 (#406) — the one coinage in the slice; every other name came from the registry.
+(`domain-vocabulary/concepts/tasks.yaml:outcome_reason`;
+`apps/platform/work/models.py:Task.outcome_reason`;
+`tests/contracts/test_end_state_vocabulary.py:test_the_close_reason_is_a_closed_set_of_exactly_the_decided_values`;
+`api/v1/tests/test_task_lifecycle_endpoints.py:TestTheReasonBesideTheOutcome`;
+`apps/platform/work/tests/test_subtasks.py:CascadeRecordTest` for the actor distinction)
+_Avoid_: `reason_code` for this field; a tenant-declared registry of reasons — map constraint 5
+governs what a tenant sells and what it costs, not UBB's own lifecycle vocabulary; and reading `""`
+as a tenth value — the column has no third state, and `""` means *nobody gave one*.
 
 **Heartbeat**:
 A task's most-recent-event timestamp; its absence past the **Silence window** is what a sweeper
@@ -448,9 +531,11 @@ it were built. The three spend-shaped words above are still this backend's own s
 renamed by the slice that rebuilds spend control.
 (`apps/platform/work/reasons.py`)
 _Note_: the metadata key is still spelled `kill_reason` and now carries an **Expired (task)**'s
-reason too — `silence_window` / `stale_max_age` on a row that says `expired`. The rename is
-`outcome_reason`'s, in the ticket that wires that concept's consumers; every consumer of the key
-gates on `status == killed` first, so nothing mis-reads it meanwhile. **All three cascades record a
+reason too — `silence_window` / `stale_max_age` on a row that says `expired`. The rename was left
+to the ticket wiring `outcome_reason`'s consumers, and that work landed (#409, #413) without
+renaming it — so the key is an **unowned residual**, recorded here rather than implied paid
+(`STOP_CAUSE_KEY`, `apps/platform/work/services.py`); every consumer of the key gates on
+`status == killed` first, so nothing mis-reads it meanwhile. **All three cascades record a
 reason now**, and they are not the same concept: a close cascade writes `outcome_reason:
 parent_closed` (caller-supplied, so not in this vocabulary at all), while the kill and expiry
 cascades write `parent_killed` and `silence_window` under this key.

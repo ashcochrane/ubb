@@ -133,10 +133,18 @@ Mutations whose replay would move money or write usage carry a **required
 `idempotency_key` body field backed by database uniqueness** (no
 `Idempotency-Key` header in v1): debit, credit, withdraw, refund, grants
 (create/void), top-ups (tenant + widget — `uq_topup_attempt_idempotency`),
-and all usage ingestion (Posting uniqueness at record/settle). A replay
-is a no-op returning the original outcome, never a double effect. Entity
-creates dedupe on natural identity or answer 409 `conflict` (customers,
-plans, rate-card books, rates, webhook configs, referral attribution).
+all usage ingestion (Posting uniqueness at record/settle), and registering
+a unit of work (`POST /tasks` — `uq_task_idempotency_key`, unique per
+customer, claimed permanently; #410). A replay is a no-op returning the
+original outcome, never a double effect, and the start says so with
+`replayed: true`; a repeat that changes a pinned field is 409
+`idempotency_key_conflict` naming the field. The close of a unit of work
+carries no key and needs none — the unit's own identity is the key: an
+identical repeat replays (`replayed: true`, the original's
+`charge_created`), and one declaring a different outcome or reason is 409
+naming the state the unit is really in (#409, #416). Entity creates dedupe
+on natural identity or answer 409 `conflict` (customers, plans, rate-card
+books, rates, webhook configs, referral attribution).
 
 ## Vocabulary: the values a field may carry (#208)
 

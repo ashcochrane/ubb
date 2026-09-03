@@ -90,6 +90,9 @@ CASE = re.compile(r"^(?:[A-Z][A-Za-z0-9]*Test|test_[a-z0-9_]+)$")
 OPTED_IN = (
     "0009-a-correction-is-a-further-publish.md",
     "0010-recovery-projects-stripe-moves-the-money.md",
+    "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
+    "0012-how-a-kind-of-work-is-sold-is-frozen.md",
+    "0013-a-delivered-unit-of-work-is-charged-once-by-a-charge-that-projects-onto-one-posting.md",
 )
 
 
