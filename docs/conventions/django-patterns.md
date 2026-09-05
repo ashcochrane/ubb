@@ -156,6 +156,41 @@ wire and validate.
   name** rather than counting, installs and drops them together, times each permitted move
   separately, alternates the states per run and prints a **noise floor** — because the first version
   of it reported a trigger that made every statement faster.
+- **A declaration table can carry a class too, and the same mechanism holds it** — `TaskType`'s
+  pricing regime (#414, ADR-0012) is `FROZEN` under a `BEFORE UPDATE` trigger exactly as a posting's
+  pairs are, with a `WHEN` clause that makes an idempotent re-declaration free. That clause is
+  load-bearing rather than an optimisation: the registry's write surface is a whole-collection `PUT`
+  that sends every column on every call, so a rule firing on equal values would refuse a tenant
+  re-sending what it already declared. The route's own `409` is the courtesy, not the enforcement.
+  Worked example: `apps/platform/work/tests/test_a_kind_of_work_declares_how_it_is_sold.py`
+  (`TheRegimeIsFrozenTest`, whose control case is what stops a rule that refuses every update from
+  passing).
+- **A rule that compares two rows is a rule about who may be BORN, so it is a `BEFORE INSERT`
+  trigger, and its three doors are the three ways a row is born.** A `CHECK` sees one row and can
+  never read the parent; a mutability class governs what may happen to a row *after* it exists.
+  Contained work sharing its container's pricing regime (#415) is the first: refused through
+  `objects.create()`, a bare `save()` on the base class, and an `INSERT` around the ORM, with
+  `TaskService.create_task` holding the same rule first so a caller gets a sentence naming both
+  regimes rather than an `IntegrityError`. Worked example:
+  `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`, whose last class
+  replaces the rule's body in-process with one that still names the column and reads the parent's
+  regime but refuses nothing — a mutant a control reading the function's source for the column name
+  cannot tell from the shipped rule — and shows the mixed tree is then admitted at every door:
+  *remove X and confirm*, run rather than asserted.
+- **A whole-record declarer over many columns diffs the old row against the new over a NAMED set
+  and names the columns that moved.** `Charge` (#416, ADR-0013) is the first: every economic column
+  `FROZEN` under one rule, so *something refused this* stopped being unambiguous the day it landed,
+  and every assertion about it names a column beside the class. Two things follow. A pointer is
+  declared by its **column** (`task_id`, not `task`), because G19 searches a trigger body and a
+  trigger says `NEW.task_id` — declaring the field name would be satisfiable only by a comment. And
+  the column set is read **off the migration that installed the rule**, so the declaration on the
+  model and the rule on the table are compared against one list rather than two copies that agree
+  until somebody edits one. Worked example:
+  `apps/metering/pricing/tests/test_a_charge_is_written_once_and_never_edited.py`. `Posting.kind`
+  (#417) is the same class on a column with no admitted move at all, and the fourth trigger on that
+  table: `usage/tests/test_a_postings_kind_is_settled_at_birth.py` shows what a `FROZEN` trio looks
+  like when there is no admitted move to serve as the control — the columns and sibling rules the
+  trigger must leave alone are asserted instead.
 
 ## Migrations
 

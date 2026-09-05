@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,766 of 2,180 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,769 of 2,183 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1877,6 +1877,31 @@ measurement_key:
     # price", "a charge posting" and "measured quantities"; the one word the
     # review pass reached for was a retired prose synonym with no sweep seat,
     # caught by a grep the sweep cannot do, and rewritten.
+    #
+    # THE LIVING DOCUMENTS MOVED BOTH DENOMINATORS BY THREE AND LEFT THE
+    # NUMERATOR WHERE IT WAS (1,766 -> 1,769 swept, 2,180 -> 2,183 tracked,
+    # `units` UNMOVED at 45 files and 123 occurrences) — BUT NOT ON THE FIRST
+    # TAKE, which is why this paragraph is longer than a denominator move
+    # needs. Three tracked files arrived and every one is swept: the three
+    # ADRs slice 5's docs ticket (#426) wrote, on the unit of work's root
+    # mount, the frozen pricing regime and the Charge. No source, no
+    # migration, no schema change and no generated module, so the exclusion
+    # counts hold at 247 and 414. The first measurement read 47 files and 125
+    # occurrences — a RISE, the case this entry says to investigate before
+    # rewriting the number — and both occurrences were this ticket's own new
+    # prose: "units of work" in the context map's kernel line and "prices
+    # whole units only" in ADR-0012, ordinary English about work and neither
+    # of the three surviving senses. Both were rewritten to the singular ("the
+    # unit of work", "a whole unit of work") and the count re-taken, so the
+    # numerator records what the tree holds rather than what this ticket
+    # nearly added. Same shape as #408's rise, one slice later: care about the
+    # surviving senses would not have caught either; only measuring did. AND
+    # THE REVIEW PASS DID IT A THIRD TIME — "whose units are sold per event" in
+    # a glossary citation, 46 files on the re-take — reworded to "every unit of
+    # work" and re-taken again before the commit. Three occurrences in one
+    # ticket, all ordinary English, which is the standing caveat about prose
+    # written during a review pass (#415) arriving on the ticket that writes
+    # the most prose of all.
 
     - term: units
       retired_as: >-

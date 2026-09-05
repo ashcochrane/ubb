@@ -72,7 +72,13 @@ When a plan or issue lands, **fold its lasting outcomes into the living docs**: 
 `CONTEXT.md` glossary (via `/domain-modeling`), an ADR in `docs/adr/` for a genuinely
 hard-to-reverse decision, or `docs/conventions/`. **Prefer backing any hard rule with a test, as
 ADR-001 does.** Dated docs under `docs/plans/` and `docs/reviews/` are **frozen history** — read
-them for "why we decided X", never edit them as current truth.
+them for "why we decided X", never edit them as current truth. **When a slice departs from a
+decision a frozen document made, the ADR that records the departure names the document and the
+section it supersedes, quotes what that section said, and states the evidence that justified the
+departure** — so a reader finding both can tell which is current and why (ADR-0011 is the worked
+example; ADR-0009's *Amends* line is the earlier one). The naming half is held by
+`tests/contracts/test_adr_proof_tables.py:test_an_adr_that_departs_from_a_frozen_decision_names_the_document`;
+the quoting half is review's.
 
 ## Agent skills
 

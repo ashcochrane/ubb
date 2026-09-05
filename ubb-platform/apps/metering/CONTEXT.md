@@ -14,6 +14,39 @@ whole slice's vocabulary now hangs off. (`apps/metering/usage/models.py:Posting`
 _Avoid_: treating a posting as a mutable row. The published detail and list schemas still carry the
 older noun; that is a contract surface a later slice moves, not a second concept.
 
+**Posting kind**:
+`metered_usage | task_charge` — the nature of one posting and NOTHING else (ADR-0006 §3):
+`metered_usage` is a real event for work that occurred, `task_charge` is the projection of a
+**Charge** onto the rails when a unit of work sold at one agreed price is delivered (#417). A charge
+posting carries the amount as customer revenue; a supplier cost of zero that is SETTLED, never
+`NULL` — there is nothing to resolve, and the supplier work the unit really burned is on the metered
+postings beside it; no measurement record at all; no Event Type and no provider; the ten Grouping
+Field values the work carried; and the instant delivery was declared. It is a PROJECTION of the
+Charge and not a posting with a flag — rebuilt from the Charge if wrong, carrying UBB's own platform
+fee explicitly, and marked system-generated in its own column so it impersonates no tenant Event
+Type — and ADR-0013 §3 carries that argument, the money key, and why the column is `FROZEN` at
+birth.
+**A posting is born one kind or the other and is never converted.** `posting_kind()` is the ONE
+function that answers it, and **Measurements status** reads it first — a charge posting is
+`not_applicable`, never `pruned`.
+**What counts a charge posting and what does not is decided by the ECONOMIC FIELD each measure is
+about**: it is real revenue, so every monetary total includes it or a tenant under-reports what they
+sold; it is not a reported event, so `Task.event_count` and every count of events excludes it or a
+per-event average gains a denominator nobody billed. ADR-0013's Consequences say which of G14's
+four pins hold that today and which are slice 7's.
+**A compensating Charge is refused at the projection** — a negative posting would move nothing on
+the rails, and correcting a charge there needs a refund path nobody owns yet (ADR-0013 §3).
+(ADR-0013 §3; `apps/metering/usage/models.py:Posting.kind`;
+`apps/metering/usage/measurements.py:posting_kind`;
+`pricing/services/charge_projection.py:project_the_charge`; registry concept `usage_event_kind`;
+`usage/tests/test_a_postings_kind_is_settled_at_birth.py`;
+`api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py`;
+`api/v1/tests/test_the_kind_discriminator_pins.py`)
+_Avoid_: the spelling #139 §4.3 gave the second value — it lives in `economics.yaml`'s retirement
+table for a migration to name, and nothing else spells it; and reading the kind as a pricing or
+costing method — it says what the row IS, and the **Pricing Receipt** says how its amounts were
+resolved.
+
 **Posting measurement**:
 What was measured on a posting — the child record, one-to-one with its parent, holding the detail
 that may legitimately expire. Separate from the posting because two retention promises disagree by
@@ -289,11 +322,20 @@ work crossing a month boundary has its cost in the earlier period and its revenu
 which the resolution instant on the row is what keeps margin exact through.
 Every economic column is `FROZEN` and a trigger holds it, so **a correction is a compensating record
 naming the one it corrects, never an edit** — the original still says what UBB originally charged.
-(`apps/metering/pricing/models.py:Charge`;
-`pricing/services/charge_service.py`; `pricing/migrations/0031`)
+It is written on the WINNING transition into `completed` and in the same transaction as it, never
+through an outbox event — a crash between the two would lose revenue for delivered work with
+nothing to replay from — and the kernel does not call it: the composition layer puts the close and
+the charge together (ADR-001). **It reaches the rails as exactly one posting** — see **Posting
+kind** — which is a projection OF this row and is rebuilt from it if wrong, never the other way
+round.
+(ADR-0013, which carries the whole argument and names every test that holds it;
+`apps/metering/pricing/models.py:Charge`; `pricing/services/charge_service.py`;
+`pricing/migrations/0031`; `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py`;
+`pricing/tests/test_a_charge_is_written_once_and_never_edited.py`)
 _Avoid_: reading the price pinned on the work as this record — that is the DETERMINATION, which is
-mutable, carries no currency, and may exist and never become a charge; and expecting a posting —
-the projection onto the rails is a later ticket's and is a projection OF this row.
+mutable, carries no currency, and may exist and never become a charge; and reading the
+`task_charge` posting as this record — that is the projection, and a wrong one is rebuilt from
+here.
 
 **Cost book**:
 The versioned container of what **one supplier charges this tenant** — pinned to that supplier and
