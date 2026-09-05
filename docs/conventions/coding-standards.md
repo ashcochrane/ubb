@@ -47,19 +47,22 @@ Two shapes of key, and which one applies is decided by who is reporting the fact
 
 - **A caller-supplied key for something the caller did**, claimed permanently. Registering a unit of
   work (#410) is the worked example: `idempotency_key` is required, unique per `(tenant, customer)`,
-  and never released — not at a terminal state and not after a window — because the case that
-  matters is the first attempt delivering, its response being lost, and a released key starting a
-  second unit of work that is charged twice. A repeat carrying the same declaration replays the
+  and never released — the claim survives the work ending, and there is no window to expire it
+  because the uniqueness rule is partial on `NULL` and conditioned on nothing else — since the case
+  that matters is the first attempt delivering, its response being lost, and a released key starting
+  a second unit of work that is charged twice. A repeat carrying the same declaration replays the
   original (`replayed: true`); one that changes a pinned field is `409` naming the field.
   `api/v1/tests/test_a_start_claims_its_key.py` holds it (`test_the_claim_survives_the_work_ending`,
   and one refusal per pinned field).
 - **A system-derived key for something the system decided.** The Charge (#416) is the worked
-  example: its key is derived from the unit of work (`task:{id}`) and never accepted from a caller,
-  because a caller does not supply amounts or keys the system can derive, and the party retrying the
-  request is the last one who should hold the thing that makes a charge exactly-once. The projected
-  posting takes the same key, so the posting table's own uniqueness refuses a second projection of
-  one charge. `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py` holds it
-  (`test_the_idempotency_key_is_derived_from_the_work`).
+  example: its key is derived from the unit of work (`task:{id}`), because a caller does not supply
+  amounts or keys the system can derive, and the party retrying the request is the last one who
+  should hold the thing that makes a charge exactly-once — the close request carries only the
+  declaration and has no key field for a caller to supply one through (`CloseTaskRequest` in
+  `openapi/v1.json`). The projected posting takes the same key, so the posting table's own
+  uniqueness refuses a second projection of one charge. `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py`
+  holds it (`test_the_idempotency_key_is_derived_from_the_work`, which asserts the key carries the
+  work's identity and deliberately not a format).
 
 ## Data-plane rules
 

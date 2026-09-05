@@ -76,7 +76,9 @@ them for "why we decided X", never edit them as current truth. **When a slice de
 decision a frozen document made, the ADR that records the departure names the document and the
 section it supersedes, quotes what that section said, and states the evidence that justified the
 departure** — so a reader finding both can tell which is current and why (ADR-0011 is the worked
-example; ADR-0005's opening section is the earlier one).
+example; ADR-0009's *Amends* line is the earlier one). The naming half is held by
+`tests/contracts/test_adr_proof_tables.py:test_an_adr_that_departs_from_a_frozen_decision_names_the_document`;
+the quoting half is review's.
 
 ## Agent skills
 

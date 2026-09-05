@@ -1,4 +1,4 @@
-# ADR-0011: A unit of work is a kernel concept with its own root namespace — and so is the registry of its kinds
+# ADR-0011: A unit of work is a kernel concept at the root — and so is the registry of its kinds
 
 **Status:** accepted
 **Date:** 2026-09-03
@@ -16,9 +16,10 @@ ADR-0008 §4 is why the path says `task-types` while the console says *kinds of 
 
 ## Context
 
-#141 decided on 2026-07-30 that a job is a unit of work rather than a unit of billing, and moved its
-whole lifecycle to one top-level namespace with no product gate on it. It also said, in its own
-header: *"No ADR yet, deliberately… The ADR is owed after #154."* #154 landed as ADR-0006; slice 5
+#141 decided on 2026-07-30, in its own words, that *"a job is a unit of work, not a unit of
+billing"* — the unit of work, in this repository's vocabulary — and moved its whole lifecycle to one
+top-level namespace with no product gate on it. It also said, in its own header: *"No ADR yet,
+deliberately… The ADR is owed after #154."* #154 landed as ADR-0006; slice 5
 built the move (#409) and the start the surface had never had (#410). This is the ADR that was
 owed.
 
@@ -60,16 +61,19 @@ one clean break on nothing.
 **Ungated is a separate claim from the mount, and it is the one with teeth.** `/event-types` and
 `/plans` sit at the root and still gate, because each declares a vocabulary a tenant who lacks that
 product has no reason to hold. A unit of work is not a declaration. It is the thing every product's
-answer is *about* — metering hangs postings off it, billing keys a charge on how it ended, spend
-control stops it — so there is no product whose absence makes these calls meaningless, and no
-product to gate them on.
+answer is *about* — metering hangs postings off it and writes the charge that keys on how it ended,
+billing draws that charge down, spend control stops it — so there is no product whose absence makes
+these calls meaningless, and no product to gate them on.
 
 The money-shaped checks inside the start — affordability, the floor, the concurrency cap — are
 conditioned **inside the call** on whether the tenant has a wallet to test, never on a product flag
-at the door. A metering-only caller is not refused them; they do not apply. The condition is the
-tenant's *product*, deliberately not whether a wallet row exists: a billing customer who has never
-been credited has no row, and reading its absence as *nothing to test* would let exactly that
-customer start unlimited work with nothing behind it.
+at the door. A metering-only caller is not refused them; they do not apply. *Has a wallet* — the
+spec's phrase and the test class's — means a wallet **regime**, not a wallet **row**: the condition
+is the tenant's *product*, deliberately not whether a `Wallet` row exists, because a billing
+customer who has never been credited has no row, and reading its absence as *nothing to test* would
+let exactly that customer start unlimited work with nothing behind it. The case that separates the
+two readings is the one in the table below where a billing customer with no wallet row is still
+refused at its floor.
 
 The creation path this replaces — a flag on the billing-gated advisory affordability call — is
 **retired, not redirected**. The advisory call survives as the read-only half it always also was.
@@ -85,10 +89,10 @@ work is sold, which makes it a pricing-rule change rather than a day-to-day data
 
 ### 3. What did not move, on purpose
 
-Job analytics (`GET /metering/analytics/tasks`) stays where it is and stays gated. It is a reporting
-surface, it belongs to slice 7's analytics collapse, and moving it now would break one path twice —
-once here and once there. It is asserted in both directions: it still answers where it was, and it
-did not also appear at the root.
+The task analytics report (`GET /metering/analytics/tasks`) stays where it is and stays gated. It is
+a reporting surface, it belongs to slice 7's analytics collapse, and moving it now would break one
+path twice — once here and once there. It is asserted in both directions: it still answers where it
+was, and it did not also appear at the root.
 
 ### 4. Which document is current
 
@@ -98,7 +102,7 @@ of #141 §3 and §4 as kept:
 | #141 §3 said | Now | Where |
 |---|---|---|
 | Start, read, list and close at `/api/v1/tasks`, with no product gate | **kept** — built by #409 and #410; a fifth call, the contained-work list, joined them in #413 on the same footing | §1 |
-| Job analytics stays behind `/metering/`, gated on `metering` | **kept** | §3 |
+| The task analytics report stays behind `/metering/`, gated on `metering` | **kept** | §3 |
 | The kind-of-work registry stays at `/metering/task-types` | **superseded** — `/api/v1/task-types`, still gated on `metering`, still Admin to write | §2, and the two facts in Context |
 | The read-only half of the old check becomes `GET /billing/customers/{id}/affordability` | **not built by slice 5**; slice 6's, with the creation path's replacement name | hand-forward on #188 |
 
@@ -116,8 +120,9 @@ in Context so a reader need not open it to know which row moved.
 
 | Rule | Test |
 |---|---|
-| §1 — every lifecycle call answers at the root for a metering-only tenant, a billing tenant and a tenant that does not meter; the old paths are gone | `ubb-platform/api/v1/tests/test_task_lifecycle_endpoints.py` — `test_every_call_reaches_a_metering_only_tenant`, `test_the_metering_prefixed_paths_are_gone`, `test_every_call_reaches_a_billing_tenant`, `test_every_call_reaches_a_tenant_that_does_not_meter`, and `test_the_gated_report_beside_them_refuses_the_same_tenant` — the control that proves there is a gate for the lifecycle to be absent from |
-| §1 — the start registers work for a metering-only tenant, and the money-shaped half runs only where there is a wallet | `ubb-platform/api/v1/tests/test_a_start_claims_its_key.py` — `test_a_metering_only_tenant_registers_a_unit_of_work`; `test_the_check_does_not_run_for_a_tenant_without_a_wallet` beside `test_a_customer_that_cannot_afford_the_work_is_refused_at_once` (one customer state, two postures); `test_a_billing_customer_with_no_wallet_row_is_still_subject_to_its_floor` |
+| §1 — the read, the list, the contained-work list and the close answer at the root for a metering-only tenant, a billing tenant and a tenant that does not meter; the old paths are gone | `ubb-platform/api/v1/tests/test_task_lifecycle_endpoints.py` — `test_every_call_reaches_a_metering_only_tenant`, `test_the_metering_prefixed_paths_are_gone`, `test_every_call_reaches_a_billing_tenant`, `test_every_call_reaches_a_tenant_that_does_not_meter`, and `test_the_gated_report_beside_them_refuses_the_same_tenant` — the control that proves there is a gate for the lifecycle to be absent from |
+| §1 — the start registers work for a metering-only tenant, for a billing tenant, and for a tenant that does not meter at all | `ubb-platform/api/v1/tests/test_a_start_claims_its_key.py` — `test_a_metering_only_tenant_registers_a_unit_of_work`, `test_a_billing_tenant_registers_a_unit_of_work`, `test_a_tenant_that_does_not_meter_registers_a_unit_of_work` |
+| §1 — the money-shaped half runs only where there is a wallet regime, and *has a wallet* means the product rather than a row | same module — `test_the_check_does_not_run_for_a_tenant_without_a_wallet` beside `test_a_customer_that_cannot_afford_the_work_is_refused_at_once` (one customer state, two postures); `test_a_billing_customer_with_no_wallet_row_is_admitted_at_zero` beside `test_a_billing_customer_with_no_wallet_row_is_still_subject_to_its_floor` (the second is the case that separates *regime* from *row*) |
 | §1 — the creation path is retired, not redirected | same module — `test_the_affordability_call_registers_nothing`, `test_the_flag_that_drove_it_is_gone`, `test_the_answer_no_longer_carries_a_registration` |
 | §2 — the registry is mounted at the root, read off the assembled API rather than off its own module; the old path is gone | `ubb-platform/api/v1/tests/test_task_type_registry.py` — `test_the_registry_is_mounted_at_the_root`, `test_the_metering_prefixed_path_is_gone` |
 | §2 — the gate and the floor came with the mount | same module — `test_a_tenant_that_does_not_meter_is_refused`, `test_a_write_below_admin_is_refused_and_a_read_is_not`, `test_an_unauthenticated_caller_reaches_neither_route` |

@@ -5,7 +5,7 @@
 **Decision records:** `docs/plans/2026-07-30-fixed-price-task-economics-decision.md` (#139 §2) —
 what an agreed price means, kept whole · `docs/plans/2026-08-02-charging-modes-decision.md` (#151
 §17–§18) — the refusal code, the open question this ADR closes, and the parent/child rule that
-document called *"the weakest enforcement in the document, and it guards a money-shaped rule"* ·
+document called *"the weakest enforcement in the document and it guards a money-shaped rule"* ·
 `docs/plans/2026-08-04-code-builder-inputs-decision.md` (#156 §14.2) — which narrowed the question
 and deliberately left it open · the slice-5 specification on #187 (§9–§10), where the ruling is
 argued
@@ -22,12 +22,14 @@ metered revenue for that unit; it is not a fee on top and not a floor, markup ne
 the cost side is entirely unchanged, and it prices a whole unit of work only. The regime is declared
 on the kind of work and **snapshotted onto each unit of work at start**.
 
-#151 §18 left one thing open about it: *"nothing decides how a kind of work's pricing regime may
-change over time. Flipping a live kind of work from `event_priced` to `fixed` changes the revenue
+#151 §18 left one thing open about it: *"Nothing decides how a Task Type's [pricing regime] may
+change over time. … flipping a live kind of work from `event_priced` to `fixed` changes the revenue
 shape of every future job of that kind with no effective-dating and no publish record. #148 gave
-pricing rules a publish; this declaration has nothing equivalent."* #156 §14.2 sharpened it: Event
-Types now have a publish and Task Types still do not, and **whether that is one mechanism
-generalised or two is undecided**.
+pricing rules a publish; this declaration has nothing equivalent."* (The bracketed words carry the
+registry's spelling for the field name that document used, and the ellipsis stands for a sentence
+about retire-never-delete that §1 below takes up.) #156 §14.2 sharpened it: Event Types now have a
+publish and Task Types still do not, and **whether that is one mechanism generalised or two is
+undecided**.
 
 Three shapes were available: a publish record for the declaration (the Pricing Book's shape), a
 draft-and-published state (the Event Type's shape), or a mutability class with the database behind
@@ -56,8 +58,9 @@ Four reasons, in order of weight.
    point is that this is the weaker instrument.
 3. **#156 §14.2's question is genuinely open and this slice cannot honestly close it.** Minting a
    third publish shape here would answer *"one mechanism generalised, or two?"* by shipping a
-   third, which is against ADR-0007 §3's spirit of not shipping a mechanism the programme has not
-   agreed.
+   third — a public surface the programme may later fold into whichever answer it gives, which is
+   exactly the provisional public shape ADR-0007 §3 refuses, because repairing it would cost a
+   second break of a published name.
 4. **It matches the write floor already in place.** The declaration surface is Admin-only
    throughout, on the ruling that a declaration decides how usage is costed and is therefore a
    pricing-rule change. Freezing the money-shaped half of that declaration is consistent, not novel.
@@ -98,8 +101,8 @@ refused. The invariant compares **two rows**, so no column `CHECK` can express i
 about who may be *born*: a `BEFORE INSERT` trigger on `ubb_task`
 (`trg_task_containment_shares_the_pricing_regime`) refuses the row before it exists, through the
 three doors a row is born by — `objects.create()`, a bare `save()`, and an `INSERT` around the ORM.
-`TaskService.create_task` holds the same rule first, so a caller gets a sentence naming both regimes
-instead of an `IntegrityError`.
+`TaskService.create_task` holds the same rule first, so a caller gets a refusal that carries both
+regimes as attributes and names the containing one in its sentence, instead of an `IntegrityError`.
 
 What a mixed tree would cost, and why the rule refuses both directions: a per-event step under a
 parent sold at one agreed price adds metered revenue to a unit whose revenue that price was supposed
@@ -137,7 +140,7 @@ and at the route a tenant calls.
 | §2 — saying nothing is not declaring per-event | same module — `test_omitting_the_regime_keeps_it_rather_than_re_selling_per_event`, `test_a_new_kind_of_work_that_names_no_regime_is_event_priced` |
 | §1 — retire-and-redeclare leaves both rows readable, and a retirement instant never slides | same module — `test_retiring_and_declaring_a_replacement_leaves_both_rows`, `test_a_retired_kind_of_work_is_still_readable`, `test_re_retiring_does_not_move_the_instant` |
 | §1 and §4 — no third publish mechanism: exactly two operations, exactly these fields | same module — `test_the_registry_publishes_exactly_two_operations`, `test_the_declaration_carries_exactly_these_fields` |
-| §3 — a mixed tree cannot be born, through every door, in either direction, and no row survives the refusal; the rule admits what it should; the service names both regimes; gutting the rule is measured rather than argued | `ubb-platform/apps/platform/work/tests/test_containment_shares_the_pricing_regime.py` — `TheDatabaseRefusesAMixedTreeTest`, `TheRuleAdmitsEverythingItShouldTest`, `TheServiceGivesTheRefusalASentenceTest`, `AGreenBoardOverAGuttedRuleIsMeasuredRatherThanArguedTest` |
+| §3 — a mixed tree cannot be born, through every door, in either direction, and no row survives the refusal; the rule admits what it should; the service's refusal carries both regimes and names the containing one; gutting the rule is measured rather than argued | `ubb-platform/apps/platform/work/tests/test_containment_shares_the_pricing_regime.py` — `TheDatabaseRefusesAMixedTreeTest`, `TheRuleAdmitsEverythingItShouldTest`, `TheServiceGivesTheRefusalASentenceTest`, `AGreenBoardOverAGuttedRuleIsMeasuredRatherThanArguedTest` |
 | §3 — over the wire: a differing regime is refused naming both; only a whole unit carries a price; a priced kind with no price refuses the start; and for a tenant that does not bill the unresolved refusal is inert until they enable billing while the contained-work refusal is live all the same | `ubb-platform/api/v1/tests/test_an_agreed_price_is_pinned_before_the_work_runs.py` — `test_a_differing_regime_is_refused_and_names_both`, `test_a_line_against_a_contained_kind_of_work_is_refused`, `test_the_start_is_refused_with_the_named_code`, `test_enabling_billing_turns_the_declaration_into_a_refusal`, `test_the_contained_work_refusal_is_live_for_them_all_the_same` |
 
 ## Consequences

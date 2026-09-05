@@ -21,30 +21,21 @@ older noun; that is a contract surface a later slice moves, not a second concept
 posting carries the amount as customer revenue; a supplier cost of zero that is SETTLED, never
 `NULL` — there is nothing to resolve, and the supplier work the unit really burned is on the metered
 postings beside it; no measurement record at all; no Event Type and no provider; the ten Grouping
-Field values the work carried; and the instant delivery was declared. **It is a PROJECTION and not
-a posting with a flag**, for three reasons that are each a property of the tree: a wrong projection
-can be rebuilt from the Charge where a wrong canonical event would be permanent; UBB's own platform
-fee is charged on it explicitly, by the same accumulation every metered posting reaches; and it
-says what it is in its own column instead of impersonating a tenant Event Type, so there is nothing
-to quarantine. The posting's id is still the exactly-once money key — the chain *unit of work →
-Charge → posting → deduction* is 1:1 at every hop, and the amount-mismatch guard still fires.
-**A posting is born one kind or the other and is never converted**: the column is `FROZEN`, held by
-the fourth trigger on `ubb_posting`, because re-pointing it would move a whole row between the two
-populations every kind-filtered read separates, with every amount still correct and both totals
-wrong. `posting_kind()` is the ONE function that answers it, and **Measurements status** reads it
-first — a charge posting is `not_applicable`, never `pruned`.
+Field values the work carried; and the instant delivery was declared. It is a PROJECTION of the
+Charge and not a posting with a flag — rebuilt from the Charge if wrong, carrying UBB's own platform
+fee explicitly, and marked system-generated in its own column so it impersonates no tenant Event
+Type — and ADR-0013 §3 carries that argument, the money key, and why the column is `FROZEN` at
+birth.
+**A posting is born one kind or the other and is never converted.** `posting_kind()` is the ONE
+function that answers it, and **Measurements status** reads it first — a charge posting is
+`not_applicable`, never `pruned`.
 **What counts a charge posting and what does not is decided by the ECONOMIC FIELD each measure is
-about** (G14's pins 2 and 4, written by slice 5): it is real revenue, so every monetary total
-includes it or a tenant under-reports what they sold; it is not a reported event, so
-`Task.event_count` and every count of events excludes it or a per-event average gains a denominator
-nobody billed. Pins 1 and 3 — the `recorded_events` measure, and the provider and measurement
-analytics excluding `task_charge` — are **slice 7's**, and the manifest row is owed to slice 7 with
-them.
-**A compensating Charge is refused at the projection**, as a named residual: the rails act only on
-a positive billed amount, so a negative posting would look like a reversal and move nothing;
-correcting a charge on the rails needs a refund path, and `charge_service.compensate` has no route
-either, because a correction needs an operator surface and a record of who acted. Nobody owns that
-path yet.
+about**: it is real revenue, so every monetary total includes it or a tenant under-reports what they
+sold; it is not a reported event, so `Task.event_count` and every count of events excludes it or a
+per-event average gains a denominator nobody billed. ADR-0013's Consequences say which of G14's
+four pins hold that today and which are slice 7's.
+**A compensating Charge is refused at the projection** — a negative posting would move nothing on
+the rails, and correcting a charge there needs a refund path nobody owns yet (ADR-0013 §3).
 (ADR-0013 §3; `apps/metering/usage/models.py:Posting.kind`;
 `apps/metering/usage/measurements.py:posting_kind`;
 `pricing/services/charge_projection.py:project_the_charge`; registry concept `usage_event_kind`;

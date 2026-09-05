@@ -274,20 +274,25 @@ sold that way records no method rather than a third one.
 **Agreed price**:
 What one whole delivered unit of work was sold for, resolved at START from a work-level line in the
 customer's own policy book (`apps/metering/CONTEXT.md`: *Work-level price line*) and PINNED onto the
-unit of work with the identity of the line that answered. Two columns that move together or not at
-all — a number with no line cannot be reproduced from the record, and the database refuses either
-alone. **Determination, not charge**: it says which price applies, while whether it is owed at all
-depends on how the work ended, so a unit of work that failed carries this number and is charged
-nothing. **Markup never applies to it** and no `pricing_method` is recorded, because the price was
-agreed rather than derived.
+unit of work with the identity of the line that answered and the version the customer's book stood
+at (#416 widened the pair to three, because the book's counter steps on every publish and a Charge
+reading it at close would record the wrong one). Three columns that move together or not at all — a
+number with no line, or a resolution with no version, cannot be reproduced from the record, and the
+database refuses any subset. **Determination, not charge**: it says which price applies, while
+whether it is owed at all depends on how the work ended, so a unit of work that failed carries this
+number and is charged nothing. **Markup never applies to it** and no `pricing_method` is recorded,
+because the price was agreed rather than derived.
 **Revenue and COGS resolve against DIFFERENT INSTANTS, deliberately** — the price is pinned at
 start, every supplier cost resolves at its own posting's timestamp. *The price was promised; the
 cost is observed.* Without that sentence a single receipt reads like a defect, which is why it is
 also stated at `apps/metering/pricing/receipts.py`.
 **A whole unit of work only**: contained work never carries one, and a line written against a
 declaration meant for contained work refuses the start loudly rather than being ignored.
-(`apps/platform/work/models.py:Task.agreed_price_micros` and `.agreed_price_line_id`;
-`work/migrations/0022_an_agreed_price_is_pinned_before_the_work_runs.py`)
+(`apps/platform/work/models.py:Task.agreed_price_micros`, `.agreed_price_line_id` and
+`.agreed_price_book_version`; `ck_task_agreed_price_and_its_provenance_move_together`;
+`work/migrations/0022_an_agreed_price_is_pinned_before_the_work_runs.py`;
+`apps/platform/work/tests/test_containment_shares_the_pricing_regime.py:OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest`,
+whose `test_a_resolution_without_the_version_that_answered_is_refused` drives the third member)
 _Avoid_: reading a null as *not yet resolved*. It means the unit of work is priced per event, or is
 contained work — `parent` beside it tells those two apart — and a start that could not resolve a
 price it needed was refused rather than registered.
@@ -333,9 +338,11 @@ across attempts, never unique, never required. The label is the only place the r
 The column is nullable and the uniqueness rule is PARTIAL: every unit registered before the key
 existed holds NULL, and there is no caller-supplied value to invent for them that would not be a
 fabricated declaration.
-(`apps/platform/work/models.py:Task.idempotency_key`, `uq_task_idempotency_key`;
-`api/v1/tests/test_a_start_claims_its_key.py`: `TestTheKeyIsClaimedPermanently` holds the
-permanent claim and `TestARepeatThatContradictsIsRefused` holds one `409` per pinned field)
+(`apps/platform/work/models.py:Task.idempotency_key`, `uq_task_idempotency_key` — partial on
+`NULL` and conditioned on nothing else, which is why there is no window to expire a claim;
+`api/v1/tests/test_a_start_claims_its_key.py`: `test_the_claim_survives_the_work_ending` holds the
+claim across a terminal state and `TestARepeatThatContradictsIsRefused` holds one `409` per pinned
+field)
 _Avoid_: treating the label as an identity, and "releasing" a key at a terminal state.
 
 **Subtask**:
@@ -410,13 +417,11 @@ and therefore repairs a delivery with whatever is true now. A **Cancelled (task)
 tenant declares announce nothing at all — the tenant already knows how the work ended.
 (`apps/platform/events/schemas.py:terminal_stop_event`;
 `apps/platform/work/tests/test_a_terminal_event_names_the_state_entered.py` holds the four names
-on the lanes that apply a stop, and that the payload carries `reason_code` and `trigger_source` and
-no `control_family` or `control_id` — the closed pair is **slice 6's** (#188), declined here
-because three of its four families do not exist yet;
+on the lanes that apply a stop and the payload's two fields — the closed `control_family` pair
+is slice 6's, for the reason ADR-0006 §5's applied-by note gives;
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
 one place *the name is the state entered* is falsifiable, the re-mint;
-`apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration —
-subscriptions fan out to both successors, queued rows route by their own recorded reason)
+`apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration)
 _Avoid_: naming one of these for the ceiling that fired — the cause is a field, and a single
 overloaded event was declined outright (#140 §4.3, ratified by #154 §5.3).
 
@@ -446,11 +451,13 @@ close REPLAYS — `replayed: true`, the original's `charge_created`, nothing wri
 declaring something else against a terminal unit is `409` naming the state the unit is really in: a
 delivery declared on killed work must never answer `200`, because under a Charge that is silent
 revenue loss whose first symptom is a month-end number, and letting the late delivery win would
-make ignoring the stop signal free. The SDK offers the three as `complete()` / `fail(outcome_reason)`
-/ `cancel()` on the handle `start_task` returns (`docs/conventions/sdk-wrap.md`).
+make ignoring the stop signal free. The SDK's handle exposes the three declarations by name
+(`docs/conventions/sdk-wrap.md`).
 (`apps/platform/work/services.py:CloseDeclaration` and `STATUS_FOR_OUTCOME`; registry concept
 `task_outcome`; `api/v1/tests/test_task_lifecycle_endpoints.py`: `TestTheCloseDeclaresAnOutcome`
-and `TestReplayAndRefusal`)
+and `TestReplayAndRefusal`, where every unit of work is sold per event so a replay reports `false`;
+`api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py:test_a_replay_reports_the_answer_the_original_gave`
+is where a replay reports the original's `true`)
 _Avoid_: reading `completed` as the outcome — the outcome is the word the tenant said and the
 status is what UBB recorded; a second public word for the business payload a completion carries —
 that is `metadata`, already on the record (#179 §8, spec §24); and a `partial` outcome — #139 §3.2
@@ -479,7 +486,7 @@ from outside, so the closed set is a rule on what may come in. **`parent_closed`
 `parent_killed` are two concepts, not a near miss**: the first is what the tenant's close declares
 for contained work it withdrew, the second is what UBB records when a spend kill cascaded —
 different actor, different set, different kind.
-Coined by slice 5 (#406) — the one coinage in the slice; every other name came from the registry.
+Coined and declared by slice 5 (#406).
 (`domain-vocabulary/concepts/tasks.yaml:outcome_reason`;
 `apps/platform/work/models.py:Task.outcome_reason`;
 `tests/contracts/test_end_state_vocabulary.py:test_the_close_reason_is_a_closed_set_of_exactly_the_decided_values`;

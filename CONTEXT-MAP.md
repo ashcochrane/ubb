@@ -16,9 +16,9 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
   - [`apps/platform/work`](./ubb-platform/apps/platform/CONTEXT.md#tasks) — the unit of work and
     the registry of its kinds: the six-state lifecycle, the close that must declare an outcome,
     how each kind of work is sold, and the windows it may run inside. Realized by metering
-    (postings roll into it), by billing (a charge keys on how it ended) and by spend control (a
-    stop flips it), and owned by none of them — which is why it and its registry mount at the
-    root (ADR-0011).
+    (postings roll into it, and its pricing app writes the charge that keys on how it ended), by
+    billing (which draws that charge down) and by spend control (a stop flips it), and owned by
+    none of them — which is why it and its registry mount at the root (ADR-0011).
   - [`apps/platform/event_types`](./ubb-platform/apps/platform/CONTEXT.md#event-type-catalogue) —
     the tenant's declaration surface for what it meters: the Event Type and its supplier, category,
     declared quantities and reported-cost mapping.

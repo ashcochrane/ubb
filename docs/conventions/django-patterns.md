@@ -172,9 +172,11 @@ wire and validate.
   `objects.create()`, a bare `save()` on the base class, and an `INSERT` around the ORM, with
   `TaskService.create_task` holding the same rule first so a caller gets a sentence naming both
   regimes rather than an `IntegrityError`. Worked example:
-  `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`, whose last class replaces
-  the rule's body in-process with one that reads both regimes and refuses nothing, and shows the
-  mixed tree is then admitted at every door — *remove X and confirm*, run rather than asserted.
+  `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`, whose last class
+  replaces the rule's body in-process with one that still names the column and reads the parent's
+  regime but refuses nothing — a mutant a control reading the function's source for the column name
+  cannot tell from the shipped rule — and shows the mixed tree is then admitted at every door:
+  *remove X and confirm*, run rather than asserted.
 - **A whole-record declarer over many columns diffs the old row against the new over a NAMED set
   and names the columns that moved.** `Charge` (#416, ADR-0013) is the first: every economic column
   `FROZEN` under one rule, so *something refused this* stopped being unambiguous the day it landed,

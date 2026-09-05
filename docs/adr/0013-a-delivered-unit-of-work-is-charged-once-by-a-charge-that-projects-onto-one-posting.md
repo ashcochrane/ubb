@@ -1,4 +1,4 @@
-# ADR-0013: A delivered unit of work sold at one agreed price is charged once — by a Charge that projects onto one posting
+# ADR-0013: A delivered unit of work is charged once — by a Charge that projects onto one posting
 
 **Status:** accepted
 **Date:** 2026-09-03
@@ -63,9 +63,9 @@ composition layer puts the two together, as it already does at the start gate.
 a unique identity within its tenant and customer, and a caller does not supply amounts or keys the
 system can derive. Belt and braces beside that, each holding a different failure: a partial
 uniqueness on the charge table (`uq_charge_one_original_per_unit_of_work`) makes a second original
-charge a database error rather than a double charge when two closes race; and the projected posting
-takes this row's key, so the posting table's own uniqueness refuses a second projection of one
-charge.
+charge a database error rather than a double charge — the guard that would hold if two closes ever
+both won their own read; and the projected posting takes this row's key, so the posting table's own
+uniqueness refuses a second projection of one charge.
 
 A replay of the close reports **the original's** `charge_created` beside `replayed: true` — a
 retrying caller asking *did my close bill this?* must not be told `false` for work that was charged.
@@ -83,10 +83,10 @@ copied off the row, because a Pricing Book's counter steps on every publish and 
 would record the version the book has reached *since*.
 
 **Dated at delivery**, so delivered work is always billable. Dating back to the start would keep
-cost and revenue in one period, but a unit starting at 23:58 on the 31st and closing after the month's
-push had claimed the period would become unbillable for delivered work — a failure in the worst
-direction. The accepted consequence is that a unit crossing a month boundary has its cost in the
-earlier period and its revenue in the later one; the start instant on the row is what keeps
+cost and revenue in one period, but a unit starting at 23:58 on the 31st and closing after the
+month's push had claimed the period would become unbillable for delivered work — a failure in the
+worst direction. The accepted consequence is that a unit crossing a month boundary has its cost
+in the earlier period and its revenue in the later one; the start instant on the row is what keeps
 unit-level margin exact regardless.
 
 **Every economic column is FROZEN** (ADR-0007 §2) and a `BEFORE UPDATE` trigger
@@ -154,8 +154,9 @@ Every metered posting under a unit of work sold at one agreed price carries `pri
 not_applicable` with `not_applicable_reason = fixed_task_pricing`: the customer revenue for those
 events is the agreed price, and none of it is theirs. The price ladder is not consulted for such an
 event at all; the cost side resolves exactly as it does under any other regime. **Zero is refused
-at the database** — a row cannot claim to be unpriced and carry an amount — so *never zero* is a
-property of the table rather than a convention.
+at the database** — `ck_posting_pricing_status_agrees_with_the_price` admits four combinations of
+status, amount and reason and refuses the other twelve, `not_applicable` beside an amount of `0`
+among them — so *never zero* is a property of the table rather than a convention.
 
 **A finer declared quantity multiplies these postings rather than zero-revenue ones.** Sixty
 per-minute postings under a fixed-price unit are sixty cost-only postings, sixty receipts and sixty
@@ -191,7 +192,7 @@ database.
 | Premise — `completed` is written only by an explicit close, `killed` only by UBB, both sweepers write `expired`, and terminal to anything is never permitted | `ubb-platform/apps/platform/work/tests/test_lifecycle_states.py` — `CompletedMeansTheTenantDeclaredDeliveryTest` (including `test_no_writer_in_this_service_reaches_it_but_the_close`), `KilledMeansUbbStoppedItOnASpendSignalTest`, `BothSweepersWriteExpiredTest`, `TerminalToAnythingIsNeverPermittedTest` |
 | §1 — one close declaring delivery earns one Charge; a second identical close earns nothing and reports the original's answer; per-event work and contained work are charged nothing | `ubb-platform/api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py` — `test_a_close_declaring_delivery_creates_one_charge`, `test_a_second_identical_close_creates_no_second_charge`, `test_a_replay_reports_the_answer_the_original_gave`, `test_work_sold_per_event_is_charged_nothing`, `test_contained_work_under_a_priced_parent_is_charged_nothing` |
 | §1 — no other ending charges, even one that burned real supplier cost; a contradicting close is refused and charges nothing | same module — `test_a_declared_failure_charges_nothing`, `test_a_declared_cancellation_charges_nothing`, `test_work_ubb_killed_on_its_ceiling_charges_nothing`, `test_work_nobody_ever_explained_charges_nothing`, `test_a_failure_that_burned_real_supplier_cost_still_charges_nothing`, `test_a_delivery_declared_on_killed_work_is_refused_and_charges_nothing`; and `ubb-platform/api/v1/tests/test_task_lifecycle_endpoints.py` — `test_a_delivery_declared_on_a_unit_ubb_killed_is_refused`, `test_no_outcome_can_close_a_unit_ubb_stopped` |
-| §1 — exactly one original charge per unit of work at the database, when two closes race; the derived key is unique within the tenant | `ubb-platform/apps/metering/pricing/tests/test_a_charge_is_written_once_and_never_edited.py` — `ExactlyOneOriginalChargePerPieceOfWorkTest` |
+| §1 — a second original charge for one unit of work is a database error, which is what would hold if two closes both won their own read; a correction is not refused by that rule; the derived key is unique within the tenant and two tenants never collide | `ubb-platform/apps/metering/pricing/tests/test_a_charge_is_written_once_and_never_edited.py` — `ExactlyOneOriginalChargePerPieceOfWorkTest` |
 | §2 — what the Charge carries: its own currency, the line and the book version that answered rather than the one in force now, both instants, a key derived from the work, the Grouping Field snapshot; dated at delivery, and a month boundary still nets its own margin | charged-once module — `test_the_charge_carries_its_own_currency`, `test_the_charge_names_the_line_that_answered_and_its_book_version`, `test_the_book_version_is_the_one_that_answered_not_the_one_in_force_now`, `test_the_charge_carries_both_instants`, `test_the_idempotency_key_is_derived_from_the_work`, `test_the_charge_snapshots_the_grouping_values_the_work_carried`, `test_the_charge_is_dated_at_delivery_and_not_at_the_start`, `test_work_crossing_a_month_boundary_still_nets_its_own_margin` |
 | §2 — every economic column is frozen through every door and the rule names what moved; a correction is a compensating record and the original still says what UBB charged; the declaration is what the database defends | written-once module — `EveryEconomicColumnOfAChargeIsFrozenTest`, `ACorrectionIsACompensatingRecordTest`, `TheDeclarationIsWhatTheDatabaseDefendsTest` |
 | §3 — one posting, every field named above, and no other ending projects anything | `ubb-platform/api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py` — `test_a_delivered_priced_unit_of_work_produces_one_charge_posting`, `test_the_posting_carries_the_amount_as_customer_revenue`, `test_the_posting_carries_a_settled_supplier_cost_of_nothing`, `test_the_posting_has_no_measurement_record_at_all`, `test_the_posting_names_no_event_type_and_no_provider`, `test_the_posting_inherits_the_grouping_values_the_work_carried`, `test_no_other_ending_projects_anything` |
@@ -200,7 +201,8 @@ database.
 | §3 — a posting is born one kind and never converted, the closed set is held at the database, and the rule is the fourth trigger on the table | `ubb-platform/apps/metering/usage/tests/test_a_postings_kind_is_settled_at_birth.py` — `AKindIsNeverConvertedTest`, `TheClosedSetIsHeldAtTheDatabaseTest`, `TheRuleIsHeldByAFourthTriggerOnThisTableTest` |
 | §3 — a compensating charge is refused at the projection, and the rails would have ignored it | projection module — `test_a_correction_is_refused_at_the_projection`, `test_the_rails_would_have_ignored_it_anyway` |
 | §4 — a tenant that does not bill through UBB is charged with no wallet in sight, the charge is a record rather than a collection, the projection is written, the revenue reaches the margin report, and nothing is collected | charged-once module — `test_a_delivered_piece_of_work_is_charged_with_no_wallet_in_sight`, `test_the_charge_is_a_record_rather_than_a_collection`; projection module — `test_the_projection_is_written_with_no_wallet_in_sight`, `test_the_revenue_reaches_the_margin_report`, `test_nothing_is_collected_for_it` |
-| §5 — not applicable and never zero, with the database saying so; cost-only; per-event work unaffected; the reason is the one slice 4 coined; no price rule is consulted; a fine grain multiplies these; the unit counts none as unpriced | not-applicable module — `test_a_metered_posting_carries_no_customer_price_at_all`, `test_it_is_not_a_zero_and_the_database_is_what_says_so`, `test_the_supplier_work_is_still_costed`, `test_work_priced_per_event_is_unaffected`, `test_the_reason_is_the_one_slice_4_coined_for_this_case`, `test_no_price_rule_is_consulted_at_all`, `test_a_finely_declared_quantity_multiplies_these_and_not_zeroes`, `test_the_piece_of_work_counts_none_of_them_as_unpriced` |
+| §5 — not applicable and never zero; cost-only; per-event work unaffected; the reason is the one slice 4 coined; no price rule is consulted; a fine grain multiplies these; the unit counts none as unpriced | not-applicable module — `test_a_metered_posting_carries_no_customer_price_at_all`, `test_it_is_not_a_zero_and_the_database_is_what_says_so` (the end-to-end reading: `None`, not `0`), `test_the_supplier_work_is_still_costed`, `test_work_priced_per_event_is_unaffected`, `test_the_reason_is_the_one_slice_4_coined_for_this_case`, `test_no_price_rule_is_consulted_at_all`, `test_a_finely_declared_quantity_multiplies_these_and_not_zeroes`, `test_the_piece_of_work_counts_none_of_them_as_unpriced` |
+| §5 — the database is what refuses a zero beside `not_applicable`: the whole sixteen-combination space, four admitted and twelve refused by name, on `INSERT` and as literal SQL | `ubb-platform/apps/metering/usage/tests/test_a_price_ubb_cannot_resolve_stops_being_zero.py` — `EveryIllegalCombinationIsRefusedByTheDatabaseTest`: `test_the_twelve_illegal_combinations_are_each_refused`, `test_the_derived_set_is_the_whole_space_minus_the_legal_four`, `test_an_illegal_combination_written_as_literal_sql_is_refused`, and the control `test_the_orm_can_insert_a_legal_combination` |
 | §5 — posture wins the tie, and the Charge the other reason would point at does exist | not-applicable module — `test_the_posture_reason_is_recorded_and_not_the_regimes`, `test_the_charge_the_more_specific_reason_would_point_at_does_exist`; the rule on its own, over all four combinations: `ubb-platform/apps/metering/pricing/tests/test_why_a_price_does_not_apply.py` — `test_the_reason_recorded_for_each_combination`, `test_posture_beats_the_jobs_regime_where_they_disagree` |
 | §5 — the receipt whose subject is the Charge: subject, no method, regime by value, no supplier work and no measured quantity, a valid receipt | not-applicable module — `test_the_projection_carries_a_receipt_whose_subject_is_the_charge`, `test_the_subject_is_the_charge_and_not_the_row_it_is_stored_on`, `test_the_price_is_the_agreed_one_and_names_no_method`, `test_it_carries_the_regime_by_value`, `test_it_records_no_supplier_work_and_no_measured_quantity`, `test_the_stored_record_is_a_valid_receipt` |
 | §5 — the price was promised and the cost is observed | `ubb-platform/api/v1/tests/test_an_agreed_price_is_pinned_before_the_work_runs.py` — `test_costs_float_while_the_agreed_price_stays_at_the_start_instant` |

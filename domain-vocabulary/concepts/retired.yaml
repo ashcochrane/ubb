@@ -1895,7 +1895,13 @@ measurement_key:
     # unit of work", "a whole unit of work") and the count re-taken, so the
     # numerator records what the tree holds rather than what this ticket
     # nearly added. Same shape as #408's rise, one slice later: care about the
-    # surviving senses would not have caught either; only measuring did.
+    # surviving senses would not have caught either; only measuring did. AND
+    # THE REVIEW PASS DID IT A THIRD TIME — "whose units are sold per event" in
+    # a glossary citation, 46 files on the re-take — reworded to "every unit of
+    # work" and re-taken again before the commit. Three occurrences in one
+    # ticket, all ordinary English, which is the standing caveat about prose
+    # written during a review pass (#415) arriving on the ticket that writes
+    # the most prose of all.
 
     - term: units
       retired_as: >-
