@@ -40,9 +40,12 @@ kernel, and a read contract or a hook in between would be a second definition
 of "unresolved" one indirection away from the one built here.
 :func:`hold_an_unrecognised_quantity` is called by ``UsageService._record_core``
 (#428): the compute spine answers ``measurement_not_declared`` for a name a
-declared Event Type's declaration does not carry and records the quantity on
-the receipt, and the recording path holds it beside the posting in the same
-write, so the posting's reason and the held row cannot exist apart. Building
+declared Event Type's declaration does not carry — on the branch that rates a
+report against Cost Rates, and by #428's decision only there, since the other
+three branches settle or leave the cost for a reason that is not the name —
+and records the quantity on the receipt, and the recording path holds it
+beside the posting in the same write, so the posting's reason and the held row
+cannot exist apart. Building
 the safeguard beside the table is what stopped it being re-derived —
 differently — by whoever wired the close, and the same argument put the join's
 hold on the recording path rather than in the spine, which a Resolution Run

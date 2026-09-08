@@ -19,15 +19,11 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from apps.platform.event_types.costing import cost_declaration
-from apps.platform.event_types.models import (
-    EventType, Measurement, ReportedCostMapping)
+from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
-    AMOUNT_REPRESENTATION_MICROS,
-    COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     SOURCE_KIND_CALLER_SUPPLIED,
-    UNIT_TOKEN,
 )
 
 KEY = "acme.embed"
@@ -37,19 +33,9 @@ def _tenant(name="T"):
     return Tenant.objects.create(name=name)
 
 
-def _declaration(tenant, *, key=KEY, quantities=(),
-                 costing_method=COSTING_METHOD_CALCULATED, mapping=False):
-    event_type = EventType.objects.create(
-        tenant=tenant, key=key, costing_method=costing_method)
-    for code in quantities:
-        Measurement.objects.create(
-            event_type=event_type, code=code, unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-    if mapping:
-        ReportedCostMapping.objects.create(
-            event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
-            amount_representation=AMOUNT_REPRESENTATION_MICROS, currency="usd")
-    return event_type
+def _declaration(tenant, *, key=KEY, **facts):
+    """`declares_an_event_type` with this module's key as the default."""
+    return declares_an_event_type(tenant, key, **facts)
 
 
 @pytest.mark.django_db

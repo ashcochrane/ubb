@@ -194,11 +194,18 @@ and the first two return a `Replay` stamped with the event's original moment, ne
 A period holding an unresolved name does not close silently: `refuse_a_silent_close` is called by
 `TenantBillingService.close_period` (#329), placed by `occurred_at`.
 **Which half has a production caller.** The quantity half: since #428 the recording path holds
-every name a declared Event Type's declaration does not carry, in the same write as the posting
-that says `measurement_not_declared` (metering glossary, *unresolved_reason*). The Event Type half
-has none — the registry is opt-in and a report against an undeclared Event Type is recorded and
-costed against Cost Rates (`costing.cost_declaration`), so §3.4's "not recorded" line describes a
-posture the registry has not adopted; UNOWNED RESIDUAL, as is the consumer of `Replay`.
+every name the compute spine measured against a declared Event Type's set and found missing, in
+the same write as the posting that says `measurement_not_declared` (metering glossary,
+*unresolved_reason*). That is every name on a report the spine rated against Cost Rates, and — by
+#428's decision, not an accident of where the code sits — not a name on a report whose cost a
+caller stated, a supplier reports or the declaration says does not exist: there the posting's
+reason is not the name, and a held row beside it would block a period close over a name whose cost
+is already settled. The Event Type half has none — the registry is opt-in and a report against an
+undeclared Event Type is recorded and costed against Cost Rates (`costing.cost_declaration`), so
+§3.4's "not recorded" line describes a posture the registry has not adopted; UNOWNED RESIDUAL, as
+is the consumer of `Replay`, and as is the remediation-time divergence #428 named and did not
+close: a declaration DELETED with names held beneath it leaves a Resolution Run to rate those
+names by spelling while the held rows stay open.
 (`apps/platform/event_types/models.py:QuarantinedKey`; `apps/platform/event_types/quarantine.py`;
 `apps/platform/event_types/tests/test_quarantine.py`)
 _Avoid_: a `get_or_create` of a declaration anywhere on this path, and a foreign key from a held

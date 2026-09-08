@@ -556,13 +556,17 @@ class UsageService:
                 # each with its number on the receipt; this is the accept
                 # half's one production caller, and it reads them off the
                 # receipt on the same terms every column above is written on.
-                # Inside the savepoint, so the two records are one write — a
-                # posting marked `measurement_not_declared` with no held row,
-                # or a held row with no posting, is the state #428 was raised
-                # to end. Placed by the posting's own moment, which is what the
-                # period close reads (#329) and what a replay is stamped with;
-                # never by the clock. A replay of the same key answered above
-                # before anything was priced, so one event holds each name once.
+                # In the posting's own savepoint, after its insert, so the two
+                # records are one write — a posting marked `measurement_not_
+                # declared` with no held row, or a held row with no posting, is
+                # the state #428 was raised to end; the recording transaction
+                # is what `test_neither_half_survives_without_the_other` pins.
+                # Placed by the posting's own moment, which is what the period
+                # close reads (#329) and what a replay is stamped with; never by
+                # the clock. One event holds each name once: a replay of the
+                # same key answers in `record_usage` before anything is priced,
+                # and a racing duplicate is refused at the insert above, which
+                # never reaches this line — the savepoint's own contribution.
                 for measurement_key, quantity in \
                         costing.undeclared_quantities.items():
                     hold_an_unrecognised_quantity(

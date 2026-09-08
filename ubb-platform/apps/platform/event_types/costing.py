@@ -109,8 +109,10 @@ def cost_declaration(*, tenant, key):
     # WITH A NULL CODE, and the aggregate keeps it: `{NULL}`, an array whose one
     # member is not a name. Stripped here, so a declaration carrying no
     # quantity answers an empty set and reads as carrying none, rather than as
-    # carrying a name every real name would then be compared against.
-    declared_codes = frozenset(code for code in (row.declared_codes or ())
+    # carrying a name every real name would then be compared against. The
+    # aggregate itself is never null — the declaration's own row always joins
+    # — so there is nothing to coalesce before the strip.
+    declared_codes = frozenset(code for code in row.declared_codes
                                if code is not None)
     return CostDeclaration(
         costing_method=row.costing_method,

@@ -43,10 +43,12 @@ the event's own moment — with the posting's own column, in both directions.
 from datetime import timedelta
 
 import pytest
+from django.db import transaction
 from django.utils import timezone
 
 from apps.metering.pricing.receipts import (
     recorded_quantities, uncosted_quantity_keys)
+from apps.metering.pricing.services.resolution_run import RunSelector, execute
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services import usage_service
@@ -56,7 +58,6 @@ from apps.platform.event_types.models import (
     EventType,
     Measurement,
     QuarantinedKey,
-    ReportedCostMapping,
     UNRECOGNISED_MEASUREMENT_KEY,
 )
 from apps.platform.event_types.quarantine import (
@@ -65,11 +66,10 @@ from apps.platform.event_types.quarantine import (
     register_the_held_name,
     unresolved_in_period,
 )
+from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
-    AMOUNT_REPRESENTATION_MICROS,
-    COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
@@ -98,22 +98,13 @@ def _customer(tenant, external_id="c1"):
     return Customer.objects.create(tenant=tenant, external_id=external_id)
 
 
-def _declaration(tenant, *, key=EVENT_TYPE_KEY,
-                 costing_method=COSTING_METHOD_CALCULATED,
-                 quantities=(DECLARED_QUANTITY,), mapping=False):
-    """An Event Type declared the way a tenant declares one, with the
-    quantities it carries — the set the name below is measured against."""
-    event_type = EventType.objects.create(
-        tenant=tenant, key=key, costing_method=costing_method)
-    for code in quantities:
-        Measurement.objects.create(
-            event_type=event_type, code=code, unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-    if mapping:
-        ReportedCostMapping.objects.create(
-            event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
-            amount_representation=AMOUNT_REPRESENTATION_MICROS, currency="usd")
-    return event_type
+def _declaration(tenant, **facts):
+    """The Event Type every report here names, declared the way a tenant
+    declares one — `declares_an_event_type` with this module's key and its one
+    declared quantity as the defaults. The quantities are the set the name
+    below is measured against."""
+    facts.setdefault("quantities", (DECLARED_QUANTITY,))
+    return declares_an_event_type(tenant, EVENT_TYPE_KEY, **facts)
 
 
 def _cost_rate(tenant, *, measurement_key=DECLARED_QUANTITY, micros=5_000):
@@ -146,17 +137,15 @@ def _a_declared_and_rated_tenant():
     return tenant, _customer(tenant)
 
 
-def _the_month_of(posting):
-    """The period-close window the posting's own moment falls in, half-open —
-    the shape `unresolved_in_period` takes and the close asks with."""
-    opens, closes = month_bounds(posting.effective_at)
+def _the_month_holding(instant):
+    """The period-close window the instant falls in, half-open — the shape
+    `unresolved_in_period` takes and the close asks with."""
+    opens, closes = month_bounds(instant)
     return utc_day_start(opens), utc_day_start(closes)
 
 
-def _the_month_after(posting):
-    opens, closes = month_bounds(posting.effective_at)
-    _, following = month_bounds(utc_day_start(closes))
-    return utc_day_start(closes), utc_day_start(following)
+def _the_month_of(posting):
+    return _the_month_holding(posting.effective_at)
 
 
 # ---------------------------------------------------------------------------
@@ -499,13 +488,17 @@ class TestTheTwoDefinitionsAgree:
         return tenant, (undeclared, unrated, settled)
 
     @staticmethod
-    def _undeclared_names_on(postings):
-        """The posting side's answer: `(event type, name, moment)` for every
-        undeclared name on every posting whose column says so — read off the
-        receipt the column was written from."""
+    def _undeclared_names_of(tenant):
+        """The posting side's answer, over EVERY posting the path wrote for
+        the tenant: `(event type, name, moment)` for each name on each posting
+        whose column says the reason. The names are read off the receipt's own
+        mapping by key: no production reader separates that mapping from the
+        rest of the bag (`recorded_quantities` unions it, `costing_of` serves
+        a fresh receipt only), and the record's own statement is the thing the
+        held rows are being compared with."""
         return {
             (posting.event_type, name, posting.effective_at)
-            for posting in postings
+            for posting in Posting.objects.filter(tenant=tenant)
             if posting.unresolved_reason
             == UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
             for name in posting.pricing_receipt["costing"]["detail"][
@@ -523,7 +516,7 @@ class TestTheTwoDefinitionsAgree:
         tenant, postings = self._a_month_of_reports()
         undeclared, unrated, settled = postings
 
-        from_the_postings = self._undeclared_names_on(postings)
+        from_the_postings = self._undeclared_names_of(tenant)
         from_the_close = self._held_names_in(tenant, _the_month_of(undeclared))
 
         assert from_the_postings, "the fixture produced no undeclared name, " \
@@ -541,47 +534,49 @@ class TestTheTwoDefinitionsAgree:
                                   closes_at=closes_at)
         assert refusal.value.held == (A_NAME_NOBODY_DECLARED,)
 
-    def test_the_two_are_placed_by_the_events_own_moment(self):
-        """Both sides read WHEN THE EVENT HAPPENED. The following month holds
-        nothing while the posting is still unresolved — a held name is not
-        placed by when anybody gets round to it, and neither is the column."""
-        tenant, postings = self._a_month_of_reports()
-        undeclared = postings[0]
-
-        assert self._undeclared_names_on(postings)
-        assert self._held_names_in(tenant, _the_month_after(undeclared)) == set()
-
-    def test_a_backdated_report_is_held_at_its_own_moment(self):
-        """The moment is the posting's `effective_at`, not when it arrived.
-
-        Backdated inside the tenant's backfill window — relative to now, as
-        `docs/conventions/testing.md` asks of anything on this path — so the
-        held row and the column disagree by a day if either reads the clock.
+    def test_both_sides_place_a_backdated_report_in_the_month_it_happened(self):
+        """Both sides read WHEN THE EVENT HAPPENED, and this is the case that
+        can tell. A report backdated across a month boundary — inside the
+        tenant's backfill window and relative to now, as
+        `docs/conventions/testing.md` asks of anything on this path — is held
+        in the month of its own moment and NOT in the month the clock is in.
+        A held row placed by when it was written would sit in the clock's
+        month here, and so would a column; the now-stamped fixture above
+        cannot see that, because there the two months are one, which is why
+        this case exists beside it.
         """
         tenant, customer = _a_declared_and_rated_tenant()
-        happened_at = timezone.now() - timedelta(days=2)
+        happened_at = timezone.now() - timedelta(days=32)
+        assert (month_bounds(happened_at)[0]
+                != month_bounds(timezone.now())[0]), "the premise: two months"
 
         posting = _posting(_record(
             tenant, customer, "backdated", effective_at=happened_at,
             measurements={DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
 
         (held,) = _held(tenant)
-        assert held.occurred_at == happened_at
-        assert posting.effective_at == happened_at
+        assert held.occurred_at == posting.effective_at == happened_at
         assert held.occurred_at != posting.created_at
+        from_the_postings = self._undeclared_names_of(tenant)
+        assert from_the_postings
+        assert self._held_names_in(tenant, _the_month_of(posting)) \
+            == from_the_postings
+        assert self._held_names_in(
+            tenant, _the_month_holding(timezone.now())) == set()
 
     def test_registering_the_name_frees_the_close_and_leaves_the_posting_to_a_replay(self):
         """What #428 does NOT close, said where it can be read.
 
         The tenant registers the name; the close is free. The posting is still
-        `unresolved` / `measurement_not_declared`: re-costing it is the replay
-        the remediation returns (#265's `Replay`), and nothing in this
-        repository consumes one yet. So the two halves agree at ACCEPT — which
-        is the join this ticket builds — and diverge at remediation until a
-        replay consumer exists. That consumer is an UNOWNED RESIDUAL; a
-        Resolution Run re-resolving the receipt would settle this posting once
-        the name is declared, but the mapped and dismissed paths need the
-        re-keyed bag only the replay carries.
+        `unresolved` / `measurement_not_declared` — nothing about a
+        remediation re-costs it. So the two halves agree at ACCEPT, which is
+        the join this ticket builds, and diverge at remediation until
+        something consumes it. A REGISTERED name is reachable by a Resolution
+        Run, which the class below proves; a MAPPED name needs the re-keyed bag
+        only #265's `Replay` carries; and a DISMISSED name returns no replay by
+        design and needs the posting re-costed without it. Neither of the last
+        two has a consumer — UNOWNED RESIDUAL, written in the metering
+        glossary.
         """
         tenant, postings = self._a_month_of_reports()
         undeclared = postings[0]
@@ -598,3 +593,68 @@ class TestTheTwoDefinitionsAgree:
         undeclared.refresh_from_db()
         assert undeclared.unresolved_reason == \
             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
+
+
+# ---------------------------------------------------------------------------
+# What a recovery does with it
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestWhatARecoveryDoesWithIt:
+    """A Resolution Run re-runs the spine over the stored receipt, so it asks
+    the name question again — which is the claim `resolution_run.py`'s
+    docstring and the metering glossary make, backed here rather than
+    asserted.
+
+    The fixture is the case that could go wrong: a Cost Rate EXISTS at the
+    undeclared spelling, declared by the rate fixture beneath another Event
+    Type, which is exactly what a rate matched by spelling looks like. The
+    run must not settle the posting against it while the name is undeclared
+    beneath the posting's own Event Type, and must the moment the tenant
+    declares it there — from the receipt's bag, so at the whole call's cost.
+    """
+
+    def _an_undeclared_name_with_a_rate_at_its_spelling(self):
+        tenant, customer = _a_declared_and_rated_tenant()
+        _cost_rate(tenant, measurement_key=A_NAME_NOBODY_DECLARED, micros=7_000)
+
+        posting = _posting(_record(tenant, customer, "k1", measurements={
+            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 1_000}))
+
+        assert posting.unresolved_reason == \
+            UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED, \
+            "the rate at the spelling costed the name, so nothing below is " \
+            "about a run"
+        return tenant, posting
+
+    @staticmethod
+    def _a_run(tenant):
+        with transaction.atomic():
+            return execute(tenant=tenant, selector=RunSelector())
+
+    def test_a_run_does_not_settle_a_name_by_its_spelling(self):
+        tenant, posting = self._an_undeclared_name_with_a_rate_at_its_spelling()
+
+        self._a_run(tenant)
+
+        posting.refresh_from_db()
+        assert posting.costing_status == COSTING_STATUS_UNRESOLVED
+        assert posting.unresolved_reason == \
+            UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
+        assert posting.provider_cost_micros is None
+
+    def test_a_run_settles_the_posting_once_the_name_is_declared_beneath_its_event_type(self):
+        tenant, posting = self._an_undeclared_name_with_a_rate_at_its_spelling()
+        Measurement.objects.create(
+            event_type=EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY),
+            code=A_NAME_NOBODY_DECLARED, unit=UNIT_TOKEN,
+            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+
+        self._a_run(tenant)
+
+        posting.refresh_from_db()
+        assert posting.costing_status == COSTING_STATUS_KNOWN
+        assert posting.unresolved_reason is None
+        # Both quantities, at their rates: 1,000 at 5,000 per 1,000 and
+        # 1,000 at 7,000 per 1,000 — the whole call, from the receipt's bag.
+        assert posting.provider_cost_micros == 5_000 + 7_000

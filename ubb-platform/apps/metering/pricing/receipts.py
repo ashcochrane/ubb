@@ -158,6 +158,7 @@ it exactly as it did before. The keys that arrived are inside the open
 containers, which no reader may assume a fixed set of. A version bumped for an
 additive detail key would say a record had become unreadable when it had not,
 and would fork the one reader below for no question it could answer differently.
+The costing section's `undeclared_quantities` (#428) arrived the same way.
 
 ⚠⚠ **AND A COMPONENT'S ARITHMETIC-SHAPE KEY WAS *RENAMED* WITHOUT MOVING IT
 EITHER (#366), WHICH IS A HARDER CASE AND IS DECIDED RATHER THAN INHERITED.** A
@@ -242,7 +243,11 @@ SECTIONED_SCHEMA_VERSION = 1
 
 #: THE SHAPE A RECEIPT BUILT TODAY DECLARES, AND ONLY THAT. Bump this when a key
 #: moves, arrives or leaves — never because an amount would come out
-#: differently, which is what `pricing_engine_version` is for.
+#: differently, which is what `pricing_engine_version` is for. A key arriving
+#: INSIDE a section's `detail` is the exception the module docstring argues
+#: (#350, #357): the open containers promise no fixed key set, so an additive
+#: detail key leaves every reader reading, and `undeclared_quantities` (#428)
+#: arrived that way too.
 RECEIPT_SCHEMA_VERSION = SECTIONED_SCHEMA_VERSION
 
 #: EVERY SHAPE THIS CODE CAN READ, which is deliberately not the one shape it

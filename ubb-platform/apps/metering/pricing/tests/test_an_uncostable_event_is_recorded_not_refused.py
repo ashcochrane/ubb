@@ -29,21 +29,14 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
-from apps.platform.event_types.models import (
-    EventType,
-    Measurement,
-    ReportedCostMapping,
-)
+from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
-    AMOUNT_REPRESENTATION_MICROS,
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
-    SOURCE_KIND_CALLER_SUPPLIED,
-    UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
@@ -71,17 +64,9 @@ def _declaration(tenant, *, costing_method=COSTING_METHOD_CALCULATED,
     question answerable: an Event Type with neither has no axis a Cost Rate
     could name and nowhere a supplier figure could come from.
     """
-    event_type = EventType.objects.create(
-        tenant=tenant, key=EVENT_TYPE_KEY, costing_method=costing_method)
-    for code in quantities:
-        Measurement.objects.create(
-            event_type=event_type, code=code, unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-    if mapping:
-        ReportedCostMapping.objects.create(
-            event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
-            amount_representation=AMOUNT_REPRESENTATION_MICROS, currency="usd")
-    return event_type
+    return declares_an_event_type(
+        tenant, EVENT_TYPE_KEY, costing_method=costing_method,
+        quantities=quantities, mapping=mapping)
 
 
 def _price(tenant, customer, **kwargs):

@@ -205,10 +205,12 @@ def with_receipt_reads(result):
 
     Two reads, and they answer two questions.
 
-    The uncosted-quantity list says WHICH declared quantities went uncosted;
-    `costing_status` on the same body says THAT the cost is unresolved. Neither
-    is the other: a tenant fixing this needs the specific declaration, and a
-    reader totalling a column needs the status.
+    The uncosted-quantity list says WHICH quantities went uncosted — a
+    declared one no rate matched, or since #428 a name the Event Type's
+    declaration does not carry; `costing_status` on the same body says THAT
+    the cost is unresolved. Neither is the other: a tenant fixing this needs
+    the specific declaration, and a reader totalling a column needs the
+    status.
 
     The pricing method says HOW the customer price was derived; `pricing_status`
     beside it says whether that price is settled. Null means no derivation

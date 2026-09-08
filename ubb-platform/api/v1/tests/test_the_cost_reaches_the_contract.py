@@ -38,14 +38,12 @@ from pathlib import Path
 from django.test import Client, SimpleTestCase, TestCase
 
 from apps.platform.customers.models import Customer
-from apps.platform.event_types.models import (
-    EventType, Measurement, QuarantinedKey)
+from apps.platform.event_types.models import QuarantinedKey
+from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
-from core.vocabulary import (COSTING_METHOD_CALCULATED, COSTING_STATUS_KNOWN,
-                             COSTING_STATUS_UNRESOLVED,
-                             SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
+from core.vocabulary import (COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED,
                              UNRESOLVED_REASON_COST_RATE_MISSING,
                              UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
 
@@ -158,12 +156,8 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         ack has to carry it. The fourth schema, the unresolved queue's row,
         is `test_the_unresolved_queue_names_the_declaration` below.
         """
-        declared = EventType.objects.create(
-            tenant=self.tenant, key="acme.embed",
-            costing_method=COSTING_METHOD_CALCULATED)
-        Measurement.objects.create(
-            event_type=declared, code="tokens", unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        declares_an_event_type(self.tenant, "acme.embed",
+                               quantities=("tokens",))
         cost_rate_in_default_book(self.tenant, measurement_key="tokens",
                                   rate_per_unit_micros=42, unit_quantity=1)
 
@@ -184,12 +178,8 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
 
     def test_the_unresolved_queue_names_the_declaration(self):
         """The fourth schema carrying the value, read through its own route."""
-        declared = EventType.objects.create(
-            tenant=self.tenant, key="acme.embed",
-            costing_method=COSTING_METHOD_CALCULATED)
-        Measurement.objects.create(
-            event_type=declared, code="tokens", unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        declares_an_event_type(self.tenant, "acme.embed",
+                               quantities=("tokens",))
         ack = self.record("queued", event_type="acme.embed",
                           measurements={"tokns": 7})
 
