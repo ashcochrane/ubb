@@ -31,6 +31,7 @@ from core.vocabulary import (
     TASK_TYPE_KIND_SUBTASK,
     TASK_TYPE_KIND_TASK,
     UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
@@ -300,6 +301,14 @@ class Costing(NamedTuple):
     costing_status: str
     #: Which input did not arrive, and `None` unless the status is `unresolved`.
     unresolved_reason: Optional[str]
+    #: THE NAMES THE DECLARATION DOES NOT CARRY, EACH WITH THE NUMBER IT
+    #: ARRIVED WITH (#428) — `{}` unless the reason above is
+    #: `measurement_not_declared`. Read off the receipt on the same terms as the
+    #: reason, and read by the recording path, which holds each one in
+    #: quarantine beside the posting it writes. The spine RECORDS them and does
+    #: not hold them: a Resolution Run re-runs the spine over a stored receipt,
+    #: and a hold from inside it would mint a held row per recovery.
+    undeclared_quantities: dict
     #: `known` · `waived` · `unknown` · `not_applicable`, held by reference from
     #: `core.vocabulary` (#351), and read off the receipt's price section rather
     #: than decided again here.
@@ -779,13 +788,23 @@ class PricingService:
            `unresolved`, `reported_cost_missing`
         4. otherwise the quantities resolve against Cost Rates → `known` and the
            sum (**zero is a resolved amount**: a call that genuinely cost
-           nothing), or `unresolved`, `cost_rate_missing` and the list of
-           quantities that matched no rate
+           nothing); or `unresolved`, `measurement_not_declared` where the
+           Event Type IS declared and a name on the report is one its
+           declaration does not carry (#428), with those quantities recorded
+           for the recording path to hold; or `unresolved`, `cost_rate_missing`
+           and the list of quantities that matched no rate
 
         **A partly resolved cost is not a resolved cost.** Where any quantity
         matched no rate the amount is `None` and the resolved lines stay in the
         receipt below, which is where the floor lives. Storing the partial sum
         is the ambiguity #317's column exists to remove, one layer up.
+
+        **The name is read on the fourth branch and only there (#428).** It is
+        the one branch that looks a name up to cost it; in the other three the
+        cost is settled or outstanding for a reason that has nothing to do with
+        the name, and a reason that named it there would be false about the
+        remedy. The registry is opt-in, so the question is asked only where a
+        declaration exists to be missing from.
 
         **THE SPINE DECIDES THE STATUSES AND THE RECEIPT RECORDS THEM (#349).**
         Nothing here assembles the stored record by hand: the two sides are
@@ -868,6 +887,11 @@ class PricingService:
         # working silently, on exactly the records that most need fixing. A
         # snapshot is a fact that is either there or not.
         uncosted_quantities = {}
+        # AND THE NAMES THE DECLARATION DOES NOT CARRY, BY VALUE TOO (#428) —
+        # a second mapping rather than more members of the first, because they
+        # are two remedies: a run re-costs the first once a rate exists, and the
+        # second waits on the tenant deciding what a spelling meant.
+        undeclared_quantities = {}
 
         # ---- COST ----
         unresolved_reason = None
@@ -905,6 +929,38 @@ class PricingService:
             # always costed.
             computed_micros = 0
             uncosted = {}
+            undeclared = {}
+            # A NAME THE DECLARATION DOES NOT CARRY IS NOT RATED, IT IS RECORDED
+            # FOR HOLDING (#428, #265, spec §3.4). Where the Event Type is
+            # declared, its set of quantity codes is what a name on the report
+            # is measured against; a name outside it is a spelling the tenant
+            # has to decide about — map it, register it or dismiss it — and
+            # rating it against whatever rule happens to match the spelling
+            # would cost a call under a name nobody chose. So it takes no rule,
+            # its number is kept by value below, and the recording path holds
+            # it in quarantine beside the posting. `declaration` is bound: the
+            # walrus on the second branch ran because the first did not.
+            #
+            # THE NAME QUESTION COMES BEFORE THE RATE QUESTION. A posting says
+            # one reason, and where a report carries both an undeclared name
+            # and a declared-but-unrated one the reason is the name: no rate
+            # can be written against a name the catalogue does not carry
+            # (#326), so the declaration is the earlier fix. The unrated one
+            # stays in the uncosted mapping for the run that costs it later.
+            #
+            # AN EMPTY KEY IS NOT A NAME. It is not a spelling anybody can
+            # decide about, and the held row refuses a quantity row naming
+            # nothing (`ck_quarantined_key_names_what_it_is_about`) — so it
+            # stays on the rate path and reads as it always did.
+            #
+            # AND THE PRICE SIDE BELOW IS NOT ASKED. It prices what its rules
+            # match, as it always has; this reason is about the supplier cost,
+            # and a margin over a cost that is unresolved is already waived
+            # by `_priced_by_markup`. Whether an undeclared name may take a
+            # PRICE rule is a customer-revenue question this ticket does not
+            # move.
+            declared_codes = (None if declaration is None
+                              else declaration.declared_quantity_codes)
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
             # It rejected an event that declared a nameless magnitude with no
             # quantity name to resolve a rate card against — "you told us there
@@ -940,6 +996,10 @@ class PricingService:
             # where a gate goes red rather than quiet. The rename belongs to the
             # ticket that owns the word.
             for measurement_key, units_val in measurements.items():
+                if (declared_codes is not None and measurement_key
+                        and measurement_key not in declared_codes):
+                    undeclared[measurement_key] = units_val
+                    continue
                 card = resolve_the_cost_rule(measurement_key)
                 if card is None:
                     uncosted[measurement_key] = units_val
@@ -948,11 +1008,14 @@ class PricingService:
                 computed_micros += component["micros"]
                 cost_components.append(component)
                 cost_rate_ids[measurement_key] = str(card.id)
-            if uncosted:
+            if undeclared or uncosted:
                 uncosted_quantities = uncosted
+                undeclared_quantities = undeclared
                 costing_method = None
                 costing_status = COSTING_STATUS_UNRESOLVED
-                unresolved_reason = UNRESOLVED_REASON_COST_RATE_MISSING
+                unresolved_reason = (
+                    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED if undeclared
+                    else UNRESOLVED_REASON_COST_RATE_MISSING)
             else:
                 costing_method = COSTING_METHOD_CALCULATED
                 costing_status = COSTING_STATUS_KNOWN
@@ -1087,8 +1150,20 @@ class PricingService:
                     # statements that can disagree about the same fact — the
                     # shape this ticket refuses everywhere else, applied to
                     # its own record.
-                    "uncosted_measurement_keys": list(uncosted_quantities),
+                    #
+                    # AND SINCE #428 IT IS DERIVED FROM BOTH MAPPINGS. A name
+                    # the declaration does not carry went uncosted too, and
+                    # this list is the only thing on the ack that can tell a
+                    # caller WHICH name — a reader of `measurement_not_
+                    # declared` with no name beside it would have the shrug the
+                    # registry's summary refuses. The two mappings stay apart
+                    # because they are two remedies: the run re-costs the
+                    # first once a rate exists, and the second waits on a
+                    # tenant's decision about a spelling.
+                    "uncosted_measurement_keys": [*uncosted_quantities,
+                                                  *undeclared_quantities],
                     "uncosted_quantities": uncosted_quantities,
+                    "undeclared_quantities": undeclared_quantities,
                     # WHICH INPUT DID NOT ARRIVE, ON THE RECORD RATHER THAN
                     # ONLY ON THE COLUMN (#356). The status says a cost is
                     # unresolved and this says why, which is the difference
@@ -1479,6 +1554,10 @@ def costing_of(receipt):
         pricing_receipt=receipt,
         costing_status=costing["status"],
         unresolved_reason=costing["detail"]["unresolved_reason"],
+        # THE NAMES THE RECORDING PATH HOLDS (#428), off the same section the
+        # reason came from, so the held rows and the column that names them
+        # are read from one record.
+        undeclared_quantities=costing["detail"]["undeclared_quantities"],
         pricing_status=pricing["status"],
         # THE PRICE HALF OF THE LINE ABOVE (#418). Read off the record on
         # exactly the terms the cost side's reason is, so the posting's column

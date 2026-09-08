@@ -31,20 +31,19 @@ field, because the second would pass however badly the query behaved.
 and is asserted on the posting by metering's own uncostable-event module, and
 the period close consults the query below (#329).
 
-⚠ **What is NOT paid is an agreement between them, and #329's ticket says
-otherwise.** It calls the test below *"the existing test that goes red the day
-the two definitions disagree"*. It cannot: it creates no posting, reads no
-costing status and imports nothing from pricing, so a drift on the pricing side
-leaves it green. It is a one-sided test and always was — deliberately, because
-when it was written the other side did not exist.
-
-**The agreement is unbuildable until the accept half is wired, which is why
-this is recorded rather than papered over.** Nothing on the recording path calls
-:func:`hold_an_unrecognised_quantity`, so no posting and no held row are ever
-produced by the same event; there is no case in which the two definitions can be
-compared. The commit that gives the recording path a caller is the one that can
-assert an event marked `unresolved` is also the event the close refuses over,
-and it is the commit that should.
+**And the agreement between them is paid too (#428).** This module used to
+record that #329's *"the existing test that goes red the day the two
+definitions disagree"* named a test that could not — the one below creates no
+posting, reads no costing status and imports nothing from pricing — and that
+nothing on the recording path called :func:`hold_an_unrecognised_quantity`, so
+no posting and no held row were ever produced by one event. The recording path
+calls it now, and the agreement lives where the production caller is:
+``apps/metering/usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py``
+records reports through ``UsageService.record_usage`` and compares the period
+close's held names with the posting's own ``unresolved_reason`` in both
+directions. What is still one-sided is the Event Type half —
+:func:`hold_an_unrecognised_event_type` has no production caller, because the
+registry is opt-in — and this module's cases for it remain the only ones.
 
 The structural half — that a held name can never become a declaration, by
 relation or by identity — is a property of the model registry and of this

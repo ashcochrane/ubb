@@ -33,15 +33,29 @@ the ordinary route and does no more than record that it happened, so this
 module cannot register a name even by accident.
 ``apps/platform/tests/test_quarantine_invariants.py`` holds that to the source.
 
-**The safeguard is wired; the accept half is not.** :func:`refuse_a_silent_close`
-is consulted by ``TenantBillingService.close_period`` (#329), which calls it
-directly — ADR-001 lets any product import the platform kernel, and a read
-contract or a hook in between would be a second definition of "unresolved" one
-indirection away from the one built here. What still has no caller is the accept
-half above: no recording path holds a name yet. Slice 2 owned the declaration
-and the machinery; slice 3 owns the behaviours that read it (#193 §L), and this
-was the first of them. Building the safeguard beside the table is what stopped
-it being re-derived — differently — by whoever wired the close.
+**The safeguard is wired, and so is the quantity half of the accept path.**
+:func:`refuse_a_silent_close` is consulted by ``TenantBillingService.close_period``
+(#329), which calls it directly — ADR-001 lets any product import the platform
+kernel, and a read contract or a hook in between would be a second definition
+of "unresolved" one indirection away from the one built here.
+:func:`hold_an_unrecognised_quantity` is called by ``UsageService._record_core``
+(#428): the compute spine answers ``measurement_not_declared`` for a name a
+declared Event Type's declaration does not carry and records the quantity on
+the receipt, and the recording path holds it beside the posting in the same
+write, so the posting's reason and the held row cannot exist apart. Building
+the safeguard beside the table is what stopped it being re-derived —
+differently — by whoever wired the close, and the same argument put the join's
+hold on the recording path rather than in the spine, which a Resolution Run
+re-runs over stored receipts.
+
+**What still has no production caller is** :func:`hold_an_unrecognised_event_type`.
+The Event Type registry is opt-in (``costing.cost_declaration``): a report
+against a key nobody declared is recorded and costed against Cost Rates as it
+always was, so nothing on the recording path can find an Event Type
+unrecognised. That is a standing departure from spec §3.4's "held outside the
+record until registered", not decided by #428 and owned by nobody; and the
+:class:`Replay` the two naming remediations return has no consumer either —
+both UNOWNED RESIDUALS, said here rather than left to read as wired.
 """
 from dataclasses import dataclass
 from datetime import datetime

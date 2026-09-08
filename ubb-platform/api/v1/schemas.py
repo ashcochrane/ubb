@@ -584,9 +584,11 @@ class RecordUsageResponse(Schema):
     # the record does not say, which is the honest answer for a receipt written
     # before the subject was typed.
     pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
-    # WHICH declared quantities went uncosted — the status above says THAT the
-    # cost is unresolved, and this says which declaration to fix. Both, because
-    # neither answers the other's question (#320).
+    # WHICH quantities went uncosted — the status above says THAT the cost is
+    # unresolved, and this says which declaration to fix. Both, because neither
+    # answers the other's question (#320). Since #428 it also names a quantity
+    # the Event Type's declaration does not carry: the ack has no other field
+    # that could tell a reader of `measurement_not_declared` WHICH name.
     #
     # It took the canonical word for a declared quantity here rather than in a
     # later break: the response was already breaking in this commit, no ledger
@@ -2540,8 +2542,10 @@ class UnresolvedQueueRow(Schema):
     costing_status: CostingStatus
     #: WHICH INPUT DID NOT ARRIVE. Null unless the cost is unresolved. This is
     #: the recorded *why* the queue exists to show: a tenant who reads
-    #: `cost_rate_missing` knows what to write, and one who reads
-    #: `reported_cost_missing` knows they are waiting on a supplier.
+    #: `cost_rate_missing` knows what to write, one who reads
+    #: `reported_cost_missing` knows they are waiting on a supplier, and one
+    #: who reads `measurement_not_declared` knows a name their declaration
+    #: does not carry is held for their decision (#428).
     unresolved_reason: Optional[UnresolvedReason] = None
     billed_cost_micros: Optional[int] = None
     #: Whether the customer price above is settled. `unknown` is the other

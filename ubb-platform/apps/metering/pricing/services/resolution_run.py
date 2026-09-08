@@ -491,12 +491,17 @@ def _the_record_cannot_account_for_a_completion(posting, stored):
 
     **TWO — AN UNRESOLVED COST WHOSE RECORD KEPT NO QUANTITIES.** A run
     re-resolves from the receipt — never from the measurement rows, which prune
-    — and the receipt keeps the quantities a recovery needs in exactly one case:
-    an unresolved cost whose quantities matched no rule (`uncosted_quantities`,
-    #350). The other cause of an unresolved cost is a supplier declared to
-    report its own figure that never did, and that branch of the engine records
-    **no quantities at all**, because what recovers it is the figure arriving
-    rather than a re-costing. Re-resolved from an empty bag the engine computes
+    — and the receipt keeps the quantities a recovery needs in exactly two
+    cases: an unresolved cost whose quantities matched no rule
+    (`uncosted_quantities`, #350), and one carrying a name the Event Type's
+    declaration does not carry (`undeclared_quantities`, #428 — the run
+    re-runs the spine, which answers the name question again, so such a posting
+    settles once the tenant has declared the name and a rate reaches it, and
+    stays unresolved until then). The third cause of an unresolved cost is a
+    supplier declared to report its own figure that never did, and that branch
+    of the engine records **no quantities at all**, because what recovers it is
+    the figure arriving rather than a re-costing. Re-resolved from an empty bag
+    the engine computes
     a cost of exactly zero, and every condition for settling it is then
     satisfied: status `known`, amount a number, door admits, trigger admits,
     receipt seals over it. A posting that measured a million tokens would have

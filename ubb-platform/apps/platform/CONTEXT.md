@@ -180,6 +180,30 @@ unrelated quantities on someone's chart), and a differing spelling never prevent
 _Avoid_: confusing it with a grouping field — that binds a tenant key to a physical slot and reaches
 rate selection; this one relates two declared quantities and reaches nothing but analytics.
 
+**Held name (quarantined key)**:
+A name UBB has never seen, kept for the tenant to decide about — accept, quarantine, replay
+(#265). Two kinds, told apart by `unrecognised`: an Event Type nobody declared, which carries the
+whole measured bag because nothing else holds it (spec §3.4, "held outside the record until
+registered"); and a quantity code beneath a DECLARED Event Type whose declaration does not mention
+it, which carries the one number beside that name, as text, because the declaration that would say
+its scale is the one missing. Never auto-registered, enforced at the source and the model registry
+by `apps/platform/tests/test_quarantine_invariants.py`: a held name never points at a declaration
+and nothing points back. Three remediations record three different tenant decisions — map to a
+declaration that exists, register the name the tenant has just declared, dismiss as non-economic —
+and the first two return a `Replay` stamped with the event's original moment, never the repair's.
+A period holding an unresolved name does not close silently: `refuse_a_silent_close` is called by
+`TenantBillingService.close_period` (#329), placed by `occurred_at`.
+**Which half has a production caller.** The quantity half: since #428 the recording path holds
+every name a declared Event Type's declaration does not carry, in the same write as the posting
+that says `measurement_not_declared` (metering glossary, *unresolved_reason*). The Event Type half
+has none — the registry is opt-in and a report against an undeclared Event Type is recorded and
+costed against Cost Rates (`costing.cost_declaration`), so §3.4's "not recorded" line describes a
+posture the registry has not adopted; UNOWNED RESIDUAL, as is the consumer of `Replay`.
+(`apps/platform/event_types/models.py:QuarantinedKey`; `apps/platform/event_types/quarantine.py`;
+`apps/platform/event_types/tests/test_quarantine.py`)
+_Avoid_: a `get_or_create` of a declaration anywhere on this path, and a foreign key from a held
+name to a declaration — both are auto-registration in other clothes.
+
 ## Grouping fields
 
 **Grouping field**:

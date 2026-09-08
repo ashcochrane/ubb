@@ -223,7 +223,9 @@ class Posting(BaseModel):
     # nothing about supplier cost has recorded what UBB actually holds, and
     # inventing an unknown it never observed would make every period partial.
     # The writers that produce `unresolved` are the ones that learn a cost is
-    # missing, and they are built by the tickets that follow this one.
+    # missing, and they were built by the tickets that followed this one: the
+    # compute spine (#320) writes the first two reasons below, and the third
+    # since #428.
     costing_status = models.CharField(
         max_length=32, choices=COSTING_STATUS_CHOICES,
         default=COSTING_STATUS_KNOWN)

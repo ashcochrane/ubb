@@ -223,6 +223,36 @@ is `apps/ui/src/lib/customer-price.ts`, not the legacy label adapter its four ne
 _Avoid_: adding a third value without deciding its tie-break against these two — the pair is closed
 and the posture rule only works because there are exactly two.
 
+**unresolved_reason**:
+Which input was missing when the supplier cost could not be settled, read **only** where
+`costing_status` is `unresolved` and never on its own — the registry's own summary calls a status
+that says a cost is missing without saying what would settle it a shrug. Three values, each naming
+a remedy: `reported_cost_missing` (an Event Type declared to report its cost, recorded with no
+supplier figure — what settles it is the figure arriving, and its receipt keeps no quantities);
+`cost_rate_missing` (a quantity matched no Cost Rate in force at the event's moment — what settles
+it is a rate, and a Resolution Run re-costs it from the receipt's `uncosted_quantities`); and
+`measurement_not_declared` (the event matched a declared Event Type and carries a name that
+declaration does not carry — what settles it is the tenant deciding what the name meant). The third
+is decided in the compute spine's rating branch and only there (#428): a figure the caller
+supplied, a declaration that reports its cost and one that declares none never read a name, and
+the registry is opt-in, so an undeclared Event Type has no declaration for a name to be missing
+from and costs as it always did. **The same report that writes `measurement_not_declared` holds
+the name** — see the platform glossary's *Held name*; the two records are one write in
+`UsageService._record_core`, and
+`usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py` compares the period
+close's held names with this column over postings recorded through the production path. The name
+comes before the rate: a report carrying both an undeclared name and a declared-but-unrated
+quantity says `measurement_not_declared`, because no rate can be written against a name the
+catalogue does not carry (#326). ⚠ The receipt keeps the undeclared quantity too
+(`undeclared_quantities`), so a Resolution Run settles such a posting once the tenant has
+registered the name and a rate reaches it; a name the tenant MAPS to another spelling or DISMISSES
+needs the re-keyed bag only #265's `Replay` carries, and nothing consumes one — UNOWNED RESIDUAL.
+(`domain-vocabulary/concepts/economics.yaml:unresolved_reason`;
+`apps/metering/pricing/services/pricing_service.py:PricingService._compute`;
+`apps/metering/usage/models.py:Posting.unresolved_reason`)
+_Avoid_: reading `cost_rate_missing` for a name the declaration does not carry — that was the
+answer before #428 and was wrong about the remedy; and deriving the reason anywhere but the spine.
+
 **Margin**:
 Realized `billed_cost − provider_cost`, computed on read and never stored.
 _Avoid_: conflating margin (the realized per-event difference) with markup (the configured rule).

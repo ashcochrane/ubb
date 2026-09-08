@@ -45,6 +45,7 @@ from core.vocabulary import (
     SOURCE_KIND_CALLER_SUPPLIED,
     UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_STATUS_KNOWN,
@@ -475,13 +476,17 @@ class TestTheRecordingCallStopsRefusing:
         above cover an unrated quantity that IS declared; this covers the other
         one, and the pair is what makes the status about the name.
 
-        ⚠ THE OTHER SIDE OF THIS FACT IS NOT CROSS-CHECKED, AND #329 CLAIMED IT
-        WAS. Quarantine answers the same question for the period close — which
-        events a month cannot account for — but its own test asserts only its
-        query, creates no posting and never reads a costing status, so a drift
-        here leaves it green. The two definitions cannot be compared until
-        something on the recording path holds a name, and nothing does yet; the
-        quarantine test module records what closes it.
+        ⚠ THE REASON MOVED IN #428, AND THE MOVE IS THE POINT. This posting
+        used to say `cost_rate_missing`, which was the truest of the two values
+        the spine could then produce and was still wrong about the remedy: no
+        rate can be written against a name the declaration does not carry
+        (#326). It now says `measurement_not_declared` — the value the contract
+        advertised since #323 with nothing to produce it — and the same report
+        holds the name in quarantine. The cross-check #329 claimed and this
+        docstring used to record as missing is
+        `usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py`,
+        whose agreement class compares the period close's held names with this
+        column over postings recorded through the production path.
         """
         tenant = _tenant()
         customer = _customer(tenant)
@@ -496,7 +501,8 @@ class TestTheRecordingCallStopsRefusing:
         posting = Posting.objects.get(id=result["event_id"])
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
         assert posting.provider_cost_micros is None
-        assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
+        assert posting.unresolved_reason == \
+            UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
 
         # THE CONTROL, IN THE SAME FIXTURE, and it is what makes the assertion
         # above evidence rather than a coincidence: the identical event without

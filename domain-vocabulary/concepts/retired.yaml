@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,769 of 2,183 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,771 of 2,185 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1902,6 +1902,21 @@ measurement_key:
     # ticket, all ordinary English, which is the standing caveat about prose
     # written during a review pass (#415) arriving on the ticket that writes
     # the most prose of all.
+    #
+    # THE QUARANTINE JOIN MOVED BOTH DENOMINATORS BY TWO AND LEFT THE
+    # NUMERATOR WHERE IT WAS (1,769 -> 1,771 swept, 2,183 -> 2,185 tracked,
+    # `units` UNMOVED at 45 files and 123 occurrences). Two tracked files
+    # arrived and both are swept, because the join (#428) is all source: the
+    # module that records a report carrying a name its declaration does not
+    # carry through the production path and compares the period close's held
+    # names with the posting's own reason, and the kernel test that asks the
+    # costing read directly for the set of declared codes it now answers. No
+    # migration, no schema change and no generated module — the value was
+    # already published and the contract regenerates byte-identical — so the
+    # exclusion counts hold at 247 and 414. The prose that held was "a name
+    # the declaration does not carry", "a quantity", "the number as sent" and
+    # "measured quantities"; the count was taken after the build and re-taken
+    # after the review pass.
 
     - term: units
       retired_as: >-
