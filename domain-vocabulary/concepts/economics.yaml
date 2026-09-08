@@ -535,15 +535,15 @@ measurements_status:
   # PRODUCTION TODAY — a deliberate ruling, and the opposite of the one G4
   # applies to a RENAME. Every posting the table holds has a measurement record
   # (#270's fold gave every existing row one, and the metered recording path
-  # writes one in the same transaction), so today every response says
-  # `available`. `pruned` becomes reachable when something prunes — §E6 ships
-  # the horizon column with no clock behind it, deliberately — and
-  # `not_applicable` when slice 5 marks a posting as the projection of a
-  # Charge. Publishing two values now and a third later is precisely what a
-  # CLOSED set may not do: it would make slice 5 a breaking change to a
-  # generated client that had switched exhaustively over the pair. So the
-  # complete set ships in the commit that coins it, and both mechanisms land
-  # underneath it without touching this document.
+  # writes one in the same transaction), so when this set was coined every
+  # response said `available`. `pruned` becomes reachable when something prunes
+  # — §E6 ships the horizon column with no clock behind it, deliberately — and
+  # `not_applicable` became reachable when slice 5 marked a posting as the
+  # projection of a Charge (#417). Publishing two values then and a third later
+  # is precisely what a CLOSED set may not do: it would have made slice 5 a
+  # breaking change to a generated client that had switched exhaustively over
+  # the pair. So the complete set shipped in the commit that coined it, and both
+  # mechanisms landed underneath it without touching this document.
   #
   # This is NOT a migration-ledger debt and must not be seeded as one. A ledger
   # entry records a violation some slice owes a payment for, and

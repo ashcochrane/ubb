@@ -1579,10 +1579,11 @@ entries:
   # their contents, and would never see a `9 of 9` typed into one.
   #
   # THE OWNER IS THE SLICE THAT REBUILDS THE CONCEPT'S SUBJECT, never the slice
-  # that owns the file. `task_status` is slice 5's whether the consumer
-  # restating it is a Django model, the console or the SDK — which is #205's
-  # rule for event names, applied to consumers. Two consequences worth seeing
-  # rather than discovering:
+  # that owns the file. `task_status` was slice 5's whether the consumer
+  # restating it was a Django model, the console or the SDK — which is #205's
+  # rule for event names, applied to consumers — and each of its three entries
+  # died in the slice-5 ticket that rebuilt that consumer (#408, #422, #424).
+  # Two consequences worth seeing rather than discovering:
   #
   #   - THE CONSOLE'S TWENTY ARE NOT SLICE 0'S. #210 says so itself: *"Slice 0
   #     is complete when the mechanism is active and regressions are impossible
