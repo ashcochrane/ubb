@@ -74,6 +74,40 @@
 # control can go red for a reason THE REMOVAL ITSELF INTRODUCED, and three of
 # these did before the removals were corrected. That is as false a claim as a
 # green one, and only reading the failure tells them apart.
+#
+# Slice 5's flip (#427) is the fourth a slice makes in its own last ticket, and
+# the first where a manifest row that had named the slice left by RE-OWNERSHIP
+# rather than by installation: G14 read `owned_by_slice_5` until #417 landed the
+# discriminator column it was waiting on and re-owned the two pins that outlive
+# slice 5 to slice 7, whose one economic query is their subject. So nothing was
+# owed here either. All 30 of its ledger entries had died in the commits that
+# made them false, and `unlanded[0]` moved from slice 5 to slice 6 with no
+# control re-pointed.
+#
+# The census was walked by IDENTITY over `git rev-list`, twenty-one commits of
+# which twelve moved the ledger, and it ended at 162 rather than the 164 the
+# ticket forecast — or the 163 it allowed for if `g3-backend-trigger_source`
+# died in #412 as ruled. It did die there, and it took its contract twin
+# `g4-openapi-trigger_source` with it: the contract suite refuses a concept whose
+# backend consumer holds every value while no schema node carries the marker, so
+# paying the backend entry in full forces the contract entry in the same commit.
+# Both were slice 6's, paid early, which the ratchet permits. Nothing was born
+# and no owner moved; `g3-backend-reason_code` survives at 2 of 5, slice 6's
+# still. The per-gate shape at 162: G2 22, G3 6, G4 14, G6 34, G7 80, G8 5, G9 1.
+#
+# The flip turned nothing red, so all twenty-three controls were mutation-checked
+# again. Wherever the fault was an entry the removal RELABELLED it, as #375
+# taught — every real-git control among them — and where it was a missing
+# field, a bad type, an uninstalled gate or an unreadable ref the removal took
+# out that cause and nothing else. ALL TWENTY-THREE failed without their cause,
+# and every failure was read rather than counted: twelve `DID NOT RAISE
+# GatesInvalid`, ten an empty fault set against the code they assert, one
+# `assert not True` on a comparison holding nothing. None went red for a reason
+# the removal introduced — the three real-git controls that did so in #375 each
+# failed on `set() == {'ledger_grew'}` this time — and the twin, which mutates
+# the `UNLANDED_SLICE` sentinel rather than any slice this flip names, is
+# untouched by construction. This flip added nothing to the method; it is the
+# first the method survived unchanged.
 
 version: 1
 
@@ -112,7 +146,7 @@ slices:
     issue: 187
     title: Work
     order: 5
-    landed: false
+    landed: true
 
   slice_6:
     issue: 188

@@ -76,12 +76,14 @@ every gate is accounted for. Locations may vary; accountability may not.
 construction rather than by a second check somebody has to remember to write.
 
 **A gate whose subject does not exist is recorded against its owner, never
-installed as a test that passes on nothing.** Two rows say so today: the four
-`kind` discriminator pins have no column to pin (slice 5), and ADR-0007 §1
-states the data-carrying migration rule does not bind before the cutover squash
-(slice 8). A third said so until slice 3 gave G19 the subject it was waiting
-for — the first columns declared into a class the database defends, with a
-trigger holding them (#318) — and #319 flipped that row to `installed`.
+installed as a test that passes on nothing.** Two rows say so today: the two
+`kind` discriminator pins that outlive slice 5 have no query to pin — the column
+itself landed in #417, which re-owned G14 from slice 5 to slice 7, whose one
+economic query is the pins' subject — and ADR-0007 §1 states the data-carrying
+migration rule does not bind before the cutover squash (slice 8). A third said
+so until slice 3 gave G19 the subject it was waiting for — the first columns
+declared into a class the database defends, with a trigger holding them (#318)
+— and #319 flipped that row to `installed`.
 
 ### Flipping a row
 
@@ -365,10 +367,11 @@ than their contents, so a `9 of 9 values` typed into one would licence a whole
 concept for as long as the entry stood.
 
 **The owner is the slice that rebuilds the concept's SUBJECT, never the slice
-that owns the file.** `task_status` is slice 5's whether the consumer restating
-it is a Django model, the console or the SDK — #205's rule for event names,
-applied to consumers. Two consequences are worth seeing rather than
-discovering.
+that owns the file.** `task_status` was slice 5's whether the consumer restating
+it was a Django model, the console or the SDK — #205's rule for event names,
+applied to consumers. Each of its three entries died in the slice-5 ticket that
+rebuilt that consumer (#408, #422, #424). Two consequences are worth seeing
+rather than discovering.
 
 The **console's twenty are not slice 0's**, and #210 is what settles that: *"Slice
 0 is complete when the mechanism is active and regressions are impossible — not
