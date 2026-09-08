@@ -90,6 +90,9 @@ CASE = re.compile(r"^(?:[A-Z][A-Za-z0-9]*Test|test_[a-z0-9_]+)$")
 OPTED_IN = (
     "0009-a-correction-is-a-further-publish.md",
     "0010-recovery-projects-stripe-moves-the-money.md",
+    "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
+    "0012-how-a-kind-of-work-is-sold-is-frozen.md",
+    "0013-a-delivered-unit-of-work-is-charged-once-by-a-charge-that-projects-onto-one-posting.md",
 )
 
 
@@ -311,3 +314,155 @@ def test_only_a_python_path_is_read_as_a_module(span, is_module):
 
     assert bool(modules) is is_module
     assert cases == ()
+
+
+# ---------------------------------------------------------------------------
+# An ADR that departs from a frozen decision names the document it departs
+# from (#426)
+# ---------------------------------------------------------------------------
+#
+# `CLAUDE.md`'s ratchet says that when a slice departs from a decision a frozen
+# document made, the ADR recording the departure names the document and the
+# section it supersedes, quotes what that section said, and states the
+# evidence. The quoting and the evidence are review's to judge. The NAMING is
+# checkable, and it is the half that decays silently: a header reading
+# *Supersedes: #141 §3* is a cross-reference nothing type-checks, and a reader
+# who does not know which dated file resolves #141 is left to guess.
+#
+# The rule: a departure line in an ADR's header (`Supersedes`, `Amends`,
+# `Reverses`) that names an issue-numbered decision must be accompanied, in the
+# same header, by the backticked path of the frozen document under
+# `docs/plans/` whose `**Resolves:**` line carries that issue — where such a
+# document exists. Departures from another ADR, or from a document that says
+# which issue it resolves nowhere, are outside the rule and are said to be.
+
+#: A header field that records a departure from an earlier decision.
+DEPARTURE_FIELD = re.compile(r"^-?\s*\*\*(Supersedes|Amends|Reverses):\*\*")
+
+#: Any header field, which is where one departure field ends and the next
+#: field begins — a field wraps onto continuation lines.
+HEADER_FIELD = re.compile(r"^-?\s*\*\*[A-Za-z ]+:\*\*")
+
+#: An issue-numbered decision named on a departure field.
+ISSUE_NUMBER = re.compile(r"#(\d+)\b")
+
+#: The frozen documents this repository writes decisions in.
+FROZEN_DOCUMENT = re.compile(r"`(docs/plans/[\w./-]+\.md)`")
+
+#: How a frozen decision document says which issue it resolves.
+RESOLVES = re.compile(r"^\*\*Resolves:\*\*\s*\[#(\d+)\]", re.MULTILINE)
+
+#: The ADRs whose departure fields name an issue-numbered decision today. A
+#: LIST RATHER THAN A COUNT, for the reason `OPTED_IN` is one: a header
+#: reworded so the field no longer matches would otherwise leave the rule
+#: passing over fewer files with nothing red.
+DEPARTING = (
+    "0008-audit-method-and-launch-gates.md",
+    "0009-a-correction-is-a-further-publish.md",
+    "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
+)
+
+
+def header_of(text):
+    """Everything above an ADR's first second-level heading."""
+    end = text.find("\n## ")
+    return text if end == -1 else text[:end]
+
+
+def departure_issues(header):
+    """The issue numbers named on the header's departure fields, with their
+    continuation lines — a field wraps, and the number is often on the
+    second line."""
+    issues, inside = set(), False
+    for line in header.splitlines():
+        if HEADER_FIELD.match(line):
+            inside = bool(DEPARTURE_FIELD.match(line))
+        if inside:
+            issues.update(int(n) for n in ISSUE_NUMBER.findall(line))
+    return issues
+
+
+def frozen_decisions():
+    """``{issue number: git-root-relative path}`` for every dated decision
+    under `docs/plans/` that says which issue it resolves."""
+    decisions = {}
+    for path in sorted((REPO_ROOT / "docs" / "plans").glob("*.md")):
+        found = RESOLVES.search(path.read_text(encoding="utf-8"))
+        if found:
+            decisions[int(found.group(1))] = path.relative_to(REPO_ROOT).as_posix()
+    return decisions
+
+
+def departure_findings(adr_name, text, decisions):
+    """Everything wrong with one ADR's departure fields, as readable lines,
+    and whether the ADR has any such field to judge."""
+    header = header_of(text)
+    issues = departure_issues(header)
+    named = set(FROZEN_DOCUMENT.findall(header))
+    problems = []
+    for issue in sorted(issues):
+        document = decisions.get(issue)
+        if document is not None and document not in named:
+            problems.append(
+                f"{adr_name}: departs from #{issue} and its header does not "
+                f"name `{document}`, the frozen document that resolves it.")
+    return problems, bool(issues)
+
+
+def test_an_adr_that_departs_from_a_frozen_decision_names_the_document():
+    """The rule itself, over every ADR in both homes."""
+    decisions = frozen_decisions()
+    assert decisions, "no dated decision under docs/plans says what it resolves"
+    problems = [line
+                for name, text in adrs().items()
+                for line in departure_findings(name, text, decisions)[0]]
+
+    assert problems == [], "\n".join(problems)
+
+
+def test_the_adrs_that_depart_are_the_ones_expected():
+    """The vacuity guard: the ADRs the rule actually examined."""
+    departing = tuple(name for name, text in adrs().items()
+                      if departure_findings(name, text, frozen_decisions())[1])
+
+    assert departing == DEPARTING
+
+
+def test_a_departure_that_names_no_frozen_document_is_a_finding():
+    """The negative control, over a synthetic header against the real
+    decisions, so the parser proves itself on a case that must fail."""
+    text = ("# ADR-9999: synthetic\n\n**Status:** accepted\n"
+            "**Supersedes:** #141 §3's table row\n\n## Context\n")
+
+    problems, examined = departure_findings("synthetic.md", text,
+                                            frozen_decisions())
+    assert examined
+    (problem,) = problems
+    assert "#141" in problem
+    assert "2026-07-30-task-lifecycle-placement-decision.md" in problem
+
+
+def test_a_departure_that_names_the_document_is_clean():
+    """The positive control, and the wrapped-field case in one: the issue
+    number sits on the field's second line."""
+    text = ("# ADR-9999: synthetic\n\n"
+            "**Decision records:** "
+            "`docs/plans/2026-07-30-task-lifecycle-placement-decision.md`\n"
+            "**Supersedes:** the registry row in\n"
+            "#141 §3, and nothing else\n\n## Context\n")
+
+    problems, examined = departure_findings("synthetic.md", text,
+                                            frozen_decisions())
+    assert examined
+    assert problems == []
+
+
+def test_a_departure_from_another_adr_is_outside_the_rule():
+    """ADR-0006 supersedes ADR-0005: no issue number, nothing to resolve."""
+    text = ("# ADR-9999: synthetic\n\n**Supersedes:** ADR-0005 on its central "
+            "noun\n\n## Context\n")
+
+    problems, examined = departure_findings("synthetic.md", text,
+                                            frozen_decisions())
+    assert not examined
+    assert problems == []

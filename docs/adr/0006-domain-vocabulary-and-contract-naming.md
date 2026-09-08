@@ -78,6 +78,16 @@ control_family  canonical control-family vocabulary
 One overloaded event carrying a discriminating reason string makes every consumer reimplement the
 classification. Distinct states get distinct events.
 
+*Applied by slice 5 (#419, #420):* the two terminal events that named a bound became four that name
+the state entered — `task.killed`, `task.expired`, `subtask.killed`, `subtask.expired` — with
+`reason_code` and `trigger_source` on the payload and the name read off the row **after** the flip,
+so the claim is a property of the record rather than a habit each emitter keeps
+(`apps/platform/work/tests/test_a_terminal_event_names_the_state_entered.py`;
+`apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries`).
+`control_family` and `control_id` are **not yet on the payload**: they are slice 6's (#188), because
+three of that closed set's four families do not exist until it lands, and a closed set may not be
+published with one producible member. Adding them later is additive.
+
 ### 6. A configured maximum is named as a maximum
 
 `max_task_starts_per_minute`, not `task_start_rate_per_minute` — the latter reads as telemetry

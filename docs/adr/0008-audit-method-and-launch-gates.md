@@ -6,7 +6,8 @@
 evidence, the full 27-gate inventory, the registry design and the Code Builder test pyramid
 **Amends:** ADR-0007 §5, by splitting one admission act into two (§6); and #155 §11.4, by moving the
 live-money test off the slice 8 completion gate (§6)
-**Reverses:** #154 §9.1 on one point — the console's `humanize()` fallback (§4)
+**Reverses:** #154 §9.1 on one point — the console's `humanize()` fallback (§4); the frozen record
+is `docs/plans/2026-08-03-vocabulary-lock-decision.md`
 **Companion:** ADR-0006 owns *what things are called*; ADR-0007 owns *how they may change*; this ADR
 owns *how we prove any of it is true*
 

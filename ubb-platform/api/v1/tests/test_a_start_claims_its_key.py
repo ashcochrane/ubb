@@ -119,6 +119,30 @@ class TestAStartRegistersAUnitOfWork(StartTestBase):
         assert body["replayed"] is False
         assert Task.objects.get(id=body["task_id"]).tenant_id == self.tenant.id
 
+    def test_a_tenant_that_does_not_meter_registers_a_unit_of_work(self):
+        """The start is ungated like the four reads and the close (#426).
+
+        `test_task_lifecycle_endpoints.py` drives those four for a tenant
+        that does not meter; nothing drove the START for one until ADR-0011
+        claimed all five are ungated and its proof table had no row for it.
+
+        ⚠ THE TENANT HAS TO BE MADE THROUGH `QuerySet.update()`, because
+        `Tenant.clean` refuses to store products without metering — the same
+        shape `test_task_type_registry.py` uses to prove a gate that cannot
+        currently refuse anybody. A billing-only tenant reaches the
+        money-shaped half, so this customer has a wallet regime and no wallet
+        row, which `test_a_billing_customer_with_no_wallet_row_is_admitted_at_zero`
+        below already shows is admitted.
+        """
+        Tenant.objects.filter(id=self.tenant.id).update(
+            products=["billing"], billing_mode="prepaid")
+
+        response = self._start(task_type=A_KIND_OF_WORK)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == TASK_STATUS_ACTIVE
+        assert Task.objects.filter(tenant=self.tenant).count() == 1
+
     def test_the_key_is_written_down_where_the_claim_can_be_read(self):
         key = "nightly-batch-1"
         self._start(idempotency_key=key)
