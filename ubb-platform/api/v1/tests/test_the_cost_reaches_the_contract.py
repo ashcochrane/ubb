@@ -38,11 +38,14 @@ from pathlib import Path
 from django.test import Client, SimpleTestCase, TestCase
 
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.models import QuarantinedKey
+from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from core.vocabulary import (COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED,
-                             UNRESOLVED_REASON_COST_RATE_MISSING)
+                             UNRESOLVED_REASON_COST_RATE_MISSING,
+                             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
 
 # The recording body comes from there rather than being built here, and it is
 # the migration ledger that decided so: the request still carries a retired
@@ -123,9 +126,10 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
     def test_an_unresolved_posting_names_the_missing_input_on_all_three(self):
         """The ack, the list row and the receipt all carry the reason.
 
-        A quantity nobody declared a Cost Rate for is the one unresolved cause
-        reachable from the wire today, and the spine records it as such. The
-        assertion is on the VALUE rather than on the key being present: a
+        A quantity nobody declared a Cost Rate for, against an Event Type
+        nobody declared — the shape every recording call in this repository
+        had before the registry — and the spine records it as a missing rate.
+        The assertion is on the VALUE rather than on the key being present: a
         response carrying `unresolved_reason: null` beside `"unresolved"` would
         satisfy a presence check and tell a reader exactly as little as the
         status did on its own.
@@ -139,6 +143,56 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
                                  COSTING_STATUS_UNRESOLVED)
                 self.assertEqual(body["unresolved_reason"],
                                  UNRESOLVED_REASON_COST_RATE_MISSING)
+
+    def test_a_name_the_declaration_does_not_carry_names_the_declaration_on_all_three(self):
+        """The third value, producible (#428).
+
+        `measurement_not_declared` was published on four schemas since #323
+        and written by nothing: no recording path held a name. This is that
+        value reaching the wire from a real report — a declared Event Type,
+        its one declared quantity rated, and a second name the declaration
+        does not mention — on the ack, the list row and the receipt, with the
+        held row beside them and the undeclared name in the only field the
+        ack has to carry it. The fourth schema, the unresolved queue's row,
+        is `test_the_unresolved_queue_names_the_declaration` below.
+        """
+        declares_an_event_type(self.tenant, "acme.embed",
+                               quantities=("tokens",))
+        cost_rate_in_default_book(self.tenant, measurement_key="tokens",
+                                  rate_per_unit_micros=42, unit_quantity=1)
+
+        ack = self.record("undeclared-name", event_type="acme.embed",
+                          measurements={"tokens": 100, "tokns": 7})
+
+        for name, body in self.each_response(ack):
+            with self.subTest(response=name):
+                self.assertEqual(body["costing_status"],
+                                 COSTING_STATUS_UNRESOLVED)
+                self.assertEqual(body["unresolved_reason"],
+                                 UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
+        self.assertEqual(ack["uncosted_measurement_keys"], ["tokns"])
+        self.assertEqual(
+            list(QuarantinedKey.objects.filter(tenant=self.tenant)
+                 .values_list("event_type_key", "measurement_key", "quantity")),
+            [("acme.embed", "tokns", "7")])
+
+    def test_the_unresolved_queue_names_the_declaration(self):
+        """The fourth schema carrying the value, read through its own route."""
+        declares_an_event_type(self.tenant, "acme.embed",
+                               quantities=("tokens",))
+        ack = self.record("queued", event_type="acme.embed",
+                          measurements={"tokns": 7})
+
+        response = self.http.get(
+            "/api/v1/metering/pricing/unresolved-queue",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = [row for row in response.json()["data"]
+                if row["usage_event_id"] == ack["event_id"]]
+        self.assertEqual(len(rows), 1, response.json())
+        self.assertEqual(rows[0]["unresolved_reason"],
+                         UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
 
     def test_a_settled_posting_publishes_no_reason_on_all_three(self):
         """The other direction, and it is what stops the field being noise.

@@ -86,3 +86,35 @@ def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
     return Measurement.objects.create(
         event_type=event_type, code=measurement_key, unit=UNIT_TOKEN,
         source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+
+
+def declares_an_event_type(tenant, key, *,
+                           costing_method=COSTING_METHOD_CALCULATED,
+                           quantities=(), mapping=False, currency="usd"):
+    """An Event Type declared the way a tenant declares one, with what it
+    carries said in one call (#428).
+
+    The modules that ask the costing read what a declaration means — the
+    spine's uncostable-event cases, the read's own tests, the join's and the
+    wire's — each built the same three records by hand before this. A caller
+    says the facts and never learns which records carry them: `quantities`
+    are the codes declared beneath the Event Type (the set a name on a report
+    is measured against, and half of what makes a declaration carry no cost);
+    `mapping` declares a caller-supplied reported-cost mapping, the other
+    half. `declares_a_caller_supplied_cost` above is the ADMITTING pair said
+    once and stays the door for a test that wants the supplier's figure
+    accepted; this is the general shape, for a test that wants to say which
+    facts hold and which do not.
+    """
+    event_type = EventType.objects.create(
+        tenant=tenant, key=key, costing_method=costing_method)
+    for code in quantities:
+        Measurement.objects.create(
+            event_type=event_type, code=code, unit=UNIT_TOKEN,
+            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+    if mapping:
+        ReportedCostMapping.objects.create(
+            event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
+            amount_representation=AMOUNT_REPRESENTATION_MICROS,
+            currency=currency)
+    return event_type

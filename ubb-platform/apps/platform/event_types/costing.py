@@ -28,7 +28,7 @@ event, which this is not.
 """
 from typing import NamedTuple
 
-from django.db.models import Count
+from django.contrib.postgres.aggregates import ArrayAgg
 
 from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
 
@@ -36,7 +36,7 @@ from .models import REPORTED_COST_MAPPING, EventType
 
 
 class CostDeclaration(NamedTuple):
-    """The three facts about a declaration that a cost decision turns on."""
+    """The four facts about a declaration that a cost decision turns on."""
 
     #: How this Event Type's supplier cost is arrived at — held by reference
     #: from `core.vocabulary`, never re-spelled here.
@@ -51,6 +51,16 @@ class CostDeclaration(NamedTuple):
     #: kind itself, and it is answered off the row already joined below rather
     #: than by a second query.
     reported_cost_source_kind: str | None
+    #: WHICH quantity codes this Event Type declares (#428) — the set a name on
+    #: a report is measured against, so the compute spine can tell a quantity
+    #: nobody declared from one nobody wrote a rate for. Declarations are
+    #: Event-Type-local (#193 §C2), so this is THIS declaration's set and never
+    #: the tenant's catalogue: a name declared beneath another Event Type is
+    #: not declared here. Empty for a declaration carrying no quantity, which
+    #: is a different answer from the `None` the whole record is for an Event
+    #: Type nobody declared — the first is a tenant's statement, the second is
+    #: the registry's opt-in.
+    declared_quantity_codes: frozenset[str]
 
 
 def cost_declaration(*, tenant, key):
@@ -80,24 +90,39 @@ def cost_declaration(*, tenant, key):
     """
     if not key:
         return None
+    # STILL ONE QUERY (#428). The codes ride the same join the count of them
+    # used to, aggregated into an array rather than counted, and the count the
+    # no-cost rule reads is taken off the set — a second round trip for the
+    # names would be paid once per recording call, on the hottest write path in
+    # the system, and `tests/test_costing.py` pins the number.
     row = (EventType.objects
            .filter(tenant=tenant, key=key)
            .select_related(REPORTED_COST_MAPPING)
-           .annotate(declared_quantities=Count("measurements"))
+           .annotate(declared_codes=ArrayAgg("measurements__code"))
            .first())
     if row is None:
         return None
     # A missing reverse one-to-one answers None through getattr's default, the
     # same read `EventType.publication_blockers` makes.
     mapping = getattr(row, REPORTED_COST_MAPPING, None)
+    # A LEFT JOIN OVER A DECLARATION WITH NOTHING BENEATH IT YIELDS ONE ROW
+    # WITH A NULL CODE, and the aggregate keeps it: `{NULL}`, an array whose one
+    # member is not a name. Stripped here, so a declaration carrying no
+    # quantity answers an empty set and reads as carrying none, rather than as
+    # carrying a name every real name would then be compared against. The
+    # aggregate itself is never null — the declaration's own row always joins
+    # — so there is nothing to coalesce before the strip.
+    declared_codes = frozenset(code for code in row.declared_codes
+                               if code is not None)
     return CostDeclaration(
         costing_method=row.costing_method,
         declares_no_cost=(
             row.costing_method != COSTING_METHOD_REPORTED
-            and row.declared_quantities == 0
+            and not declared_codes
             and mapping is None),
         reported_cost_source_kind=(None if mapping is None
                                    else mapping.source_kind),
+        declared_quantity_codes=declared_codes,
     )
 
 

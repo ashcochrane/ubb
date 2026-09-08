@@ -14,6 +14,7 @@ from core.vocabulary import (
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     BackfillDirtyPeriod, Posting, PostingMeasurement)
+from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.models import SLOTS
@@ -549,6 +550,29 @@ class UsageService:
                 PostingMeasurement.objects.create(
                     posting=event, measurements=inp.measurements or {},
                     recorded_at=event.created_at)
+                # THE NAMES THE DECLARATION DOES NOT CARRY ARE HELD HERE,
+                # BESIDE THE POSTING THAT SAYS SO (#428, #265, spec §3.4). The
+                # spine decided the posting's reason from them and recorded
+                # each with its number on the receipt; this is the accept
+                # half's one production caller, and it reads them off the
+                # receipt on the same terms every column above is written on.
+                # In the posting's own savepoint, after its insert, so the two
+                # records are one write — a posting marked `measurement_not_
+                # declared` with no held row, or a held row with no posting, is
+                # the state #428 was raised to end; the recording transaction
+                # is what `test_neither_half_survives_without_the_other` pins.
+                # Placed by the posting's own moment, which is what the period
+                # close reads (#329) and what a replay is stamped with; never by
+                # the clock. One event holds each name once: a replay of the
+                # same key answers in `record_usage` before anything is priced,
+                # and a racing duplicate is refused at the insert above, which
+                # never reaches this line — the savepoint's own contribution.
+                for measurement_key, quantity in \
+                        costing.undeclared_quantities.items():
+                    hold_an_unrecognised_quantity(
+                        tenant=tenant, event_type_key=inp.event_type,
+                        measurement_key=measurement_key, quantity=quantity,
+                        occurred_at=event.effective_at)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
                     # both totals (the tipping event and everything after a

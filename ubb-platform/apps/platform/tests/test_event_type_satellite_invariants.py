@@ -187,6 +187,9 @@ BEHAVIOURAL_SURFACES = (
 #: not merely tolerated — spec §3.4 rules that billing calls the kernel
 #: quarantine guard DIRECTLY, so a later ticket of this same slice needs exactly
 #: that reach and would otherwise arrive to a red gate it had no way to satisfy.
+#: #329 took that reach for the close, and #428 takes it from the recording
+#: path, which holds a name a declaration does not carry through
+#: ``quarantine.hold_an_unrecognised_quantity``.
 #: What still holds the line is ADR-001's import matrix, which governs which
 #: packages may reach which, and what this rule adds on top of it is one thing:
 #: money code does not hold catalogue ROWS.

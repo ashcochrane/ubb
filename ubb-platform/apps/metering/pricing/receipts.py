@@ -158,6 +158,7 @@ it exactly as it did before. The keys that arrived are inside the open
 containers, which no reader may assume a fixed set of. A version bumped for an
 additive detail key would say a record had become unreadable when it had not,
 and would fork the one reader below for no question it could answer differently.
+The costing section's `undeclared_quantities` (#428) arrived the same way.
 
 ⚠⚠ **AND A COMPONENT'S ARITHMETIC-SHAPE KEY WAS *RENAMED* WITHOUT MOVING IT
 EITHER (#366), WHICH IS A HARDER CASE AND IS DECIDED RATHER THAN INHERITED.** A
@@ -242,7 +243,11 @@ SECTIONED_SCHEMA_VERSION = 1
 
 #: THE SHAPE A RECEIPT BUILT TODAY DECLARES, AND ONLY THAT. Bump this when a key
 #: moves, arrives or leaves — never because an amount would come out
-#: differently, which is what `pricing_engine_version` is for.
+#: differently, which is what `pricing_engine_version` is for. A key arriving
+#: INSIDE a section's `detail` is the exception the module docstring argues
+#: (#350, #357): the open containers promise no fixed key set, so an additive
+#: detail key leaves every reader reading, and `undeclared_quantities` (#428)
+#: arrived that way too.
 RECEIPT_SCHEMA_VERSION = SECTIONED_SCHEMA_VERSION
 
 #: EVERY SHAPE THIS CODE CAN READ, which is deliberately not the one shape it
@@ -974,13 +979,15 @@ def _readable_version_of(receipt):
 
 
 def uncosted_quantity_keys(receipt):
-    """WHICH DECLARED QUANTITIES WENT UNCOSTED, out of a receipt of any shape.
+    """WHICH QUANTITIES WENT UNCOSTED, out of a receipt of any shape.
 
     Read by the recording surfaces, which answer it beside `costing_status` —
     the status says THAT a cost is unresolved and this says which declaration to
-    fix. An idempotent replay serves the receipt the posting was recorded with,
-    so this is a live read path over rows in the older shape rather than a
-    migration courtesy.
+    fix: a declared quantity no rate matched, or since #428 a name the Event
+    Type's declaration does not carry, for which this is the only place the ack
+    can name it. An idempotent replay serves the receipt the posting was
+    recorded with, so this is a live read path over rows in the older shape
+    rather than a migration courtesy.
 
     The three-way dispatch this rests on is :func:`_readable_version_of`, which
     both readers share; what is written here is only where THIS answer lives in
@@ -1005,13 +1012,16 @@ def recorded_quantities(receipt):
     exactly the postings that most need fixing. A snapshot is a fact that is
     either there or not.
 
-    THREE PLACES HOLD IT AND THEY ARE VIEWS OF ONE BAG. A quantity that had a
+    FOUR PLACES HOLD IT AND THEY ARE VIEWS OF ONE BAG. A quantity that had a
     cost rate is a costing component; one that had none is in the costing
-    section's uncosted mapping; and one on a posting whose cost was stated by
-    the caller, or declared not to exist, appears only as a PRICE component,
-    because the cost side of such a receipt records no components at all. Taking
-    the union is what makes this the bag the engine saw, rather than whichever
-    part of it the reader happened to look at.
+    section's uncosted mapping; one under a name the declaration does not carry
+    is in its undeclared mapping (#428); and one on a posting whose cost was
+    stated by the caller, or declared not to exist, appears only as a PRICE
+    component, because the cost side of such a receipt records no components at
+    all. Taking the union is what makes this the bag the engine saw, rather
+    than whichever part of it the reader happened to look at — and the third
+    is in it so that a re-costing after the tenant declares the name costs the
+    whole call rather than silently less of it.
 
     ⚠ A RECEIPT IN AN OLDER SHAPE ANSWERS EMPTY, which is what it is: that shape
     recorded no per-quantity terms, so there is nothing in it to re-resolve from
@@ -1034,6 +1044,11 @@ def recorded_quantities(receipt):
     uncosted = receipt["costing"]["detail"]
     if "uncosted_quantities" in uncosted:
         quantities.update(uncosted["uncosted_quantities"])
+    # Presence-checked like the mapping above it, and for the same reason: a
+    # receipt written before #428 has no such key, and that is not a corrupt
+    # record but an older one.
+    if "undeclared_quantities" in uncosted:
+        quantities.update(uncosted["undeclared_quantities"])
     return quantities
 
 
