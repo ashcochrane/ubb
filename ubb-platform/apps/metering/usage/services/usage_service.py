@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 
+from core.crossing import ceiling_fields
 from core.time_windows import month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -192,7 +193,8 @@ def _inherit_dimensions(task_id, dimension_slots):
 _UNRESOLVED = object()  # sentinel: _result should look the parent up itself
 
 
-def _result(event, *, task_total_billed=None, task_total_provider=None,
+def _result(event, *, task=None,
+            task_total_billed=None, task_total_provider=None,
             task_total_unresolved=None, task_total_unpriced=None,
             stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None,
@@ -210,13 +212,21 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
     return path of record_usage — the happy path AND both idempotent-replay
     returns — so a replayed event for an already-stopped owner never reports
     "all clear".
+
+    ``task`` is the accumulated row on the happy path; a replay passes none
+    and the unit is read back here (#452) — the same one lookup the parent
+    fallback already made — so the ceiling assessment on a replayed ack is
+    the unit's standing NOW, on `stop`'s own footing (the durable flag is
+    read at replay time too), while the totals stay null because they say
+    what THIS recording did.
     """
+    if task is None and event.task_id:
+        from apps.platform.work.models import Task
+        task = Task.objects.filter(id=event.task_id).only(
+            "id", "parent_id", "provider_cost_limit_micros",
+            "total_provider_cost_micros", "unresolved_event_count").first()
     if parent_task_id is _UNRESOLVED:
-        parent_task_id = None
-        if event.task_id:
-            from apps.platform.work.models import Task
-            parent_task_id = Task.objects.filter(
-                id=event.task_id).values_list("parent_id", flat=True).first()
+        parent_task_id = task.parent_id if task is not None else None
     return {
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
@@ -249,6 +259,12 @@ def _result(event, *, task_total_billed=None, task_total_provider=None,
         # missing from both.
         "task_total_unpriced_event_count": task_total_unpriced,
         "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
+        # WHERE THE NAMED UNIT STANDS AGAINST ITS CEILING (#452): the row's
+        # own derived assessment and the utilisation beside it, as one value
+        # spelled once for every response that carries it. Null exactly when
+        # no unit is named; on a replay it is the unit's standing now (see
+        # the docstring).
+        **ceiling_fields(task.ceiling_assessment if task is not None else None),
         # The itemized past-limit array (#41, spec §H) — read from the event
         # row, so idempotent replays return the ORIGINAL context unchanged.
         "stop_context": event.stop_context,
@@ -772,7 +788,7 @@ class UsageService:
                 outcome.verdicts, is_subtask=task.parent_id is not None)
             if unit_reason is not None:
                 stop, stop_reason, stop_scope = True, unit_reason, unit_scope
-        return _result(outcome.event,
+        return _result(outcome.event, task=task,
                        task_total_billed=task.total_billed_cost_micros if task else None,
                        task_total_provider=task.total_provider_cost_micros if task else None,
                        task_total_unresolved=task.unresolved_event_count if task else None,

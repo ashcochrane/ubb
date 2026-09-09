@@ -41,6 +41,11 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # this says how many of the unit's costs the running total beside it could not
 # include. A caller watching its own spend against a COGS limit is watching a
 # floor wherever it is non-zero, which no per-event field can tell it.
+#
+# The three `ceiling_*` keys joined in #452, and they are about the unit too:
+# what its ceiling concluded, in the registry's word, and the utilisation
+# beside it. Null on the same rule as the unit totals — no named unit, nothing
+# to assess — which the builder call below (no task) is what pins.
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "costing_status",
     "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
@@ -49,8 +54,9 @@ _RESULT_KEYS = {
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
     "task_total_unresolved_event_count", "task_total_unpriced_event_count",
-    "stop", "stop_reason", "stop_scope", "stop_context",
-    "measurements", "pricing_receipt", "grouping_fields",
+    "stop", "stop_reason", "stop_scope",
+    "ceiling_status", "ceiling_used_percentage", "ceiling_remaining_micros",
+    "stop_context", "measurements", "pricing_receipt", "grouping_fields",
 }
 
 
@@ -107,6 +113,12 @@ class ResultSignatureTest(TestCase):
         self.assertIsNone(out["parent_task_id"])
         self.assertIsNone(out["task_total_billed_cost_micros"])
         self.assertIsNone(out["task_total_provider_cost_micros"])
+        # No unit was handed in, so there is nothing to assess (#452): a
+        # replay carries no assessment rather than one taken off a row the
+        # replayed recording never saw.
+        self.assertIsNone(out["ceiling_status"])
+        self.assertIsNone(out["ceiling_used_percentage"])
+        self.assertIsNone(out["ceiling_remaining_micros"])
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_stop_fields_on_happy_path_and_replay(self, _mock):

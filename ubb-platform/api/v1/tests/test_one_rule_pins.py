@@ -2,7 +2,8 @@
 
 Pin 1  — the tipping event lands and bills, and the task limit bites on the
          one recording path — at record time, with nothing deferred to a
-         later sweep (#192).
+         later sweep (#192). Since #452 the tipping event lands EXACTLY on
+         the ceiling: at or above the line stops, everywhere.
 Pin 2  — events on a killed task land, bill, and count into both totals.
 Pin 3  — Wallet carries no floor CHECK constraint (ADR-002 pin): spend policy
          is enforced in application code, never a DB constraint on the ledger.
@@ -38,6 +39,7 @@ from django.core.cache import cache
 from django.test import TestCase, Client
 
 from apps.billing.gating.models import RiskConfig
+from apps.billing.gating.patrol import sweep_over_limit_tasks
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
@@ -52,6 +54,9 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
+    CEILING_STATUS_CEILING_REACHED, CEILING_STATUS_INDETERMINATE,
+    CEILING_STATUS_NOT_APPLICABLE, CEILING_STATUS_WITHIN_CEILING,
+    COSTING_STATUS_UNRESOLVED,
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
 
@@ -109,28 +114,36 @@ class OneRulePinTestBase(TestCase):
 
 @patch("apps.platform.events.tasks.process_single_event")
 class Pin1SyncTippingEventTest(OneRulePinTestBase):
+    """⚠ THE ARITHMETIC LANDS EXACTLY ON THE CEILING, DELIBERATELY (#452,
+    #150 §10.3). Until slice 6 this pin tipped the unit one million micros
+    OVER its ceiling, which the live lane's strictly-above compare and the
+    patrol's at-or-above compare agreed on — and the disagreement between
+    them, a unit landing ON the line, was never exercised. At or above the
+    line stops, everywhere, so the boundary is now the pin: a pin is evidence
+    of today, not a constraint on the re-model."""
+
     def test_tipping_event_lands_bills_and_kills(self, _mock):
         task = self._task(limit=10_000_000)
         # The kill executes on the recording transaction's on_commit (#112).
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(task.id),
-                                provider_cost_micros=11_000_000,
+                                provider_cost_micros=10_000_000,
                                 bills=15_000_000)
 
-        # The event that crossed the limit answers 200 and is durably
+        # The event that reached the ceiling answers 200 and is durably
         # recorded + billed — never rolled back.
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         event = Posting.objects.get(id=body["event_id"])
         self.assertEqual(event.billed_cost_micros, 15_000_000)
-        self.assertEqual(event.provider_cost_micros, 11_000_000)
+        self.assertEqual(event.provider_cost_micros, 10_000_000)
         self.assertEqual(event.task_id, task.id)
         self.assertEqual(OutboxEvent.objects.filter(
             event_type="usage.recorded").count(), 1)
 
         # Both totals include the tipping event; the task flipped to killed.
         task.refresh_from_db()
-        self.assertEqual(task.total_provider_cost_micros, 11_000_000)
+        self.assertEqual(task.total_provider_cost_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 15_000_000)
         self.assertEqual(task.status, TASK_STATUS_KILLED)
         self.assertEqual(task.metadata["kill_reason"], "task_limit")
@@ -139,8 +152,21 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], "task_limit")
         self.assertEqual(body["stop_scope"], "task")
-        self.assertEqual(body["task_total_provider_cost_micros"], 11_000_000)
+        self.assertEqual(body["task_total_provider_cost_micros"], 10_000_000)
         self.assertEqual(body["task_total_billed_cost_micros"], 15_000_000)
+        # The assessment beside the verdict says the same thing in the
+        # registry's word, and the utilisation is the whole ceiling used.
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
+        self.assertEqual(body["ceiling_used_percentage"], 100)
+        self.assertEqual(body["ceiling_remaining_micros"], 0)
+        # ...AND THE STOP HAS A TIPPING EVENT TO ATTRIBUTE: this report is
+        # marked as the one that landed the unit on its ceiling, which the
+        # strictly-above compare could not do for exactly this report — it
+        # would have passed, and the patrol's kill an hour later would have
+        # had no event to point at.
+        (context,) = body["stop_context"]
+        self.assertEqual(context["limit"], "task_limit")
+        self.assertIs(context["arrived_after"], False)
         self.assertEqual(self._limit_events().count(), 1)
         payload = self._limit_events().get().payload
         self.assertEqual(payload["reason_code"], "task_limit")
@@ -152,8 +178,186 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         # a hand-built one would hard-code the key the producer sets.
         self.assertEqual(payload["trigger_source"], TRIGGER_SOURCE_USAGE_INGEST)
         self.assertEqual(payload["task_id"], str(task.id))
-        self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
+        self.assertEqual(payload["total_provider_cost_micros"], 10_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 10_000_000)
+        # And the patrol then finds nothing to sweep: the event that landed
+        # the unit on its ceiling is the event that stopped it, so the repair
+        # lane has nothing left to repair.
+        self.assertEqual(sweep_over_limit_tasks(self.tenant), 0)
+        self.assertEqual(self._limit_events().count(), 1)
+
+    def test_one_micro_under_the_ceiling_is_not_a_crossing(self, _mock):
+        """The other side of the line, so the pin above is about `>=` and
+        not merely about a large enough number."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=9_999_999,
+                                bills=15_000_000)
+        body = resp.json()
+        self.assertFalse(body["stop"])
+        self.assertIsNone(body["stop_reason"])
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_WITHIN_CEILING)
+        self.assertEqual(body["ceiling_used_percentage"], 99)
+        self.assertEqual(body["ceiling_remaining_micros"], 1)
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
+        self.assertEqual(self._limit_events().count(), 0)
+        self.assertEqual(sweep_over_limit_tasks(self.tenant), 0)
+
+
+@patch("apps.platform.events.tasks.process_single_event")
+class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
+    """The four-way assessment on the recording acknowledgement (#452, slice
+    6 §3, §13) — TD claims 2 and 3, through the route.
+
+    Utilisation is INFORMATION (#150 §9): the two figures beside the status
+    are computed over the KNOWN total in every evaluated state, and it is the
+    status that tells a reader how to read them. No warning event, no
+    threshold, no amber state (§12) — the stop stays binary and these three
+    fields say where the unit stands.
+    """
+
+    def test_known_below_with_one_unresolved_is_indeterminate_and_not_stopped(self, _mock):
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), provider_cost_micros=4_000_000,
+                         bills=1_000_000)
+            # A report whose supplier cost UBB could not resolve: the Event
+            # Type declares a caller-supplied cost and the caller sent none.
+            resp = self._record(task_id=str(task.id), bills=1_000_000)
+        body = resp.json()
+        self.assertEqual(body["costing_status"], COSTING_STATUS_UNRESOLVED)
+        self.assertEqual(body["task_total_unresolved_event_count"], 1)
+        self.assertFalse(body["stop"])
+        self.assertIsNone(body["stop_reason"])
+        # UBB tried and could not tell — and says so rather than "within".
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_INDETERMINATE)
+        # The percentage is over the KNOWN total, which is why a reader must
+        # treat it as a floor: the unresolved cost is not in it.
+        self.assertEqual(body["ceiling_used_percentage"], 40)
+        self.assertEqual(body["ceiling_remaining_micros"], 6_000_000)
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
+
+    def test_known_at_the_ceiling_is_reached_and_stopped_whatever_remains_unresolved(self, _mock):
+        """Known-over always fires (#150 §4.2): the unresolved cost can only
+        add to a total that has already reached the line, so it never buys
+        the unit a softer answer or a reprieve."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), bills=1_000_000)  # unresolved
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=10_000_000,
+                                bills=1_000_000)
+        body = resp.json()
+        self.assertEqual(body["task_total_unresolved_event_count"], 1)
+        self.assertTrue(body["stop"])
+        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
+        self.assertEqual(body["ceiling_used_percentage"], 100)
+        self.assertEqual(body["ceiling_remaining_micros"], 0)
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
+
+    def test_no_pinned_ceiling_is_not_applicable_with_null_utilisation(self, _mock):
+        """Nothing was evaluated, so nothing was concluded (#158 §12.4) —
+        never `within_ceiling`, never `indeterminate`, however the costs
+        stand. Both shapes of cost are driven so the absence of a ceiling is
+        shown to answer first, which is what the registry's rule says."""
+        task = self._task(limit=None)
+        with self.captureOnCommitCallbacks(execute=True):
+            costed = self._record(task_id=str(task.id),
+                                  provider_cost_micros=10**9, bills=1_000_000)
+            uncosted = self._record(task_id=str(task.id), bills=1_000_000)
+        for resp in (costed, uncosted):
+            body = resp.json()
+            self.assertEqual(body["ceiling_status"],
+                             CEILING_STATUS_NOT_APPLICABLE)
+            self.assertIsNone(body["ceiling_used_percentage"])
+            self.assertIsNone(body["ceiling_remaining_micros"])
+            self.assertFalse(body["stop"])
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_ACTIVE)
+
+    def test_a_report_naming_no_unit_carries_no_assessment(self, _mock):
+        """Null exactly when no unit is named: nothing to assess.
+        `not_applicable` would be the wrong word — that is a unit with no
+        ceiling, and here there is no unit at all."""
+        with self.captureOnCommitCallbacks(execute=True):
+            body = self._record(provider_cost_micros=1_000, bills=1_000).json()
+        self.assertIsNone(body["task_id"])
+        self.assertIsNone(body["task_total_provider_cost_micros"])
+        self.assertIsNone(body["ceiling_status"])
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
+
+    def test_a_replayed_acknowledgement_carries_the_units_standing_now(self, _mock):
+        """An idempotent replay answers with the unit's CURRENT assessment,
+        on `stop`'s own footing (the durable flag is read at replay time),
+        while the unit totals stay null because they say what this recording
+        did and a replay did nothing. Driven past the original: a later
+        report moves the unit onto its ceiling, and the replay of the FIRST
+        report says so rather than repeating what the first one saw."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            first = self._record(task_id=str(task.id), idempotency_key="k-1",
+                                 provider_cost_micros=4_000_000, bills=1_000)
+            self.assertEqual(first.json()["ceiling_status"],
+                             CEILING_STATUS_WITHIN_CEILING)
+            self._record(task_id=str(task.id), provider_cost_micros=6_000_000,
+                         bills=1_000)
+            replay = self._record(task_id=str(task.id), idempotency_key="k-1",
+                                  provider_cost_micros=4_000_000,
+                                  bills=1_000).json()
+        self.assertEqual(replay["event_id"], first.json()["event_id"])
+        self.assertIsNone(replay["task_total_provider_cost_micros"])
+        self.assertEqual(replay["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
+        self.assertEqual(replay["ceiling_used_percentage"], 100)
+        self.assertEqual(replay["ceiling_remaining_micros"], 0)
+
+    def test_the_stops_shape_on_the_acknowledgement_is_unchanged(self, _mock):
+        """`stop`, `stop_reason` and `stop_scope` keep their names, types and
+        positions (#180 §11 makes them the shell target's exit-20 contract).
+        Asserted rather than assumed: the body's key ORDER is what a
+        streaming reader sees first, so the three sit exactly where they did
+        and the assessment arrives after them."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            body = self._record(task_id=str(task.id),
+                                provider_cost_micros=10_000_000,
+                                bills=1_000).json()
+        keys = list(body)
+        at = keys.index("stop")
+        self.assertEqual(keys[at:at + 3], ["stop", "stop_reason", "stop_scope"])
+        self.assertIs(body["stop"], True)
+        self.assertIsInstance(body["stop_reason"], str)
+        self.assertIsInstance(body["stop_scope"], str)
+        self.assertGreater(keys.index("ceiling_status"), at + 2)
+        self.assertEqual(
+            keys[keys.index("ceiling_status"):][:3],
+            ["ceiling_status", "ceiling_used_percentage",
+             "ceiling_remaining_micros"])
+
+    def test_the_unit_read_carries_the_same_assessment(self, _mock):
+        """The unit read publishes what the row derives, so a reader who
+        missed the acknowledgement gets the same three answers."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            self._record(task_id=str(task.id), provider_cost_micros=2_500_000,
+                         bills=1_000)
+            self._record(task_id=str(task.id), bills=1_000)  # unresolved
+        body = self.http_client.get(
+            f"/api/v1/tasks/{task.id}", **self._auth()).json()
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_INDETERMINATE)
+        self.assertEqual(body["ceiling_used_percentage"], 25)
+        self.assertEqual(body["ceiling_remaining_micros"], 7_500_000)
+        uncapped = self._task(limit=None)
+        body = self.http_client.get(
+            f"/api/v1/tasks/{uncapped.id}", **self._auth()).json()
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
 
 
 @patch("apps.platform.events.tasks.process_single_event")

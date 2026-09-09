@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.task_out_ceiling_status import TaskOutCeilingStatus
 from ..models.task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from ..models.task_out_status import TaskOutStatus
 from ..types import UNSET, Unset
@@ -28,6 +29,7 @@ T = TypeVar("T", bound="TaskOut")
 class TaskOut:
     """ 
         Attributes:
+            ceiling_status (TaskOutCeilingStatus):
             created_at (str):
             event_count (int):
             status (TaskOutStatus):
@@ -37,6 +39,8 @@ class TaskOut:
             unpriced_event_count (int):
             unresolved_event_count (int):
             agreed_price_micros (int | None | Unset):
+            ceiling_remaining_micros (int | None | Unset):
+            ceiling_used_percentage (int | None | Unset):
             completed_at (None | str | Unset):
             dimensions (TaskOutDimensions | Unset):
             outcome_reason (None | TaskOutOutcomeReasonType0 | Unset):
@@ -46,6 +50,7 @@ class TaskOut:
             task_type (str | Unset):  Default: ''.
      """
 
+    ceiling_status: TaskOutCeilingStatus
     created_at: str
     event_count: int
     status: TaskOutStatus
@@ -55,6 +60,8 @@ class TaskOut:
     unpriced_event_count: int
     unresolved_event_count: int
     agreed_price_micros: int | None | Unset = UNSET
+    ceiling_remaining_micros: int | None | Unset = UNSET
+    ceiling_used_percentage: int | None | Unset = UNSET
     completed_at: None | str | Unset = UNSET
     dimensions: TaskOutDimensions | Unset = UNSET
     outcome_reason: None | TaskOutOutcomeReasonType0 | Unset = UNSET
@@ -70,6 +77,8 @@ class TaskOut:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.task_out_dimensions import TaskOutDimensions
+        ceiling_status = self.ceiling_status.value
+
         created_at = self.created_at
 
         event_count = self.event_count
@@ -91,6 +100,18 @@ class TaskOut:
             agreed_price_micros = UNSET
         else:
             agreed_price_micros = self.agreed_price_micros
+
+        ceiling_remaining_micros: int | None | Unset
+        if isinstance(self.ceiling_remaining_micros, Unset):
+            ceiling_remaining_micros = UNSET
+        else:
+            ceiling_remaining_micros = self.ceiling_remaining_micros
+
+        ceiling_used_percentage: int | None | Unset
+        if isinstance(self.ceiling_used_percentage, Unset):
+            ceiling_used_percentage = UNSET
+        else:
+            ceiling_used_percentage = self.ceiling_used_percentage
 
         completed_at: None | str | Unset
         if isinstance(self.completed_at, Unset):
@@ -134,6 +155,7 @@ class TaskOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "ceiling_status": ceiling_status,
             "created_at": created_at,
             "event_count": event_count,
             "status": status,
@@ -145,6 +167,10 @@ class TaskOut:
         })
         if agreed_price_micros is not UNSET:
             field_dict["agreed_price_micros"] = agreed_price_micros
+        if ceiling_remaining_micros is not UNSET:
+            field_dict["ceiling_remaining_micros"] = ceiling_remaining_micros
+        if ceiling_used_percentage is not UNSET:
+            field_dict["ceiling_used_percentage"] = ceiling_used_percentage
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
         if dimensions is not UNSET:
@@ -168,6 +194,11 @@ class TaskOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.task_out_dimensions import TaskOutDimensions
         d = dict(src_dict)
+        ceiling_status = TaskOutCeilingStatus(d.pop("ceiling_status"))
+
+
+
+
         created_at = d.pop("created_at")
 
         event_count = d.pop("event_count")
@@ -195,6 +226,26 @@ class TaskOut:
             return cast(int | None | Unset, data)
 
         agreed_price_micros = _parse_agreed_price_micros(d.pop("agreed_price_micros", UNSET))
+
+
+        def _parse_ceiling_remaining_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        ceiling_remaining_micros = _parse_ceiling_remaining_micros(d.pop("ceiling_remaining_micros", UNSET))
+
+
+        def _parse_ceiling_used_percentage(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        ceiling_used_percentage = _parse_ceiling_used_percentage(d.pop("ceiling_used_percentage", UNSET))
 
 
         def _parse_completed_at(data: object) -> None | str | Unset:
@@ -270,6 +321,7 @@ class TaskOut:
         task_type = d.pop("task_type", UNSET)
 
         task_out = cls(
+            ceiling_status=ceiling_status,
             created_at=created_at,
             event_count=event_count,
             status=status,
@@ -279,6 +331,8 @@ class TaskOut:
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             agreed_price_micros=agreed_price_micros,
+            ceiling_remaining_micros=ceiling_remaining_micros,
+            ceiling_used_percentage=ceiling_used_percentage,
             completed_at=completed_at,
             dimensions=dimensions,
             outcome_reason=outcome_reason,

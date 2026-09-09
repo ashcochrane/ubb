@@ -131,11 +131,22 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertEqual(result.status, TASK_STATUS_ACTIVE)
         self.assertFalse(any(verdicts.values()))
 
-    def test_accumulate_cost_exact_limit_not_crossed(self):
+    def test_accumulate_cost_exactly_on_the_ceiling_is_a_crossing(self):
+        """INVERTED at its own address (#452, slice 6 §3): this case used to
+        pin that landing exactly on the ceiling was NOT a crossing, which
+        was the live lane's strictly-above compare disagreeing with the
+        patrol's at-or-above. At or above the line stops, everywhere."""
         task = self._task(limit=self.limit)
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=0, provider_cost_micros=10_000_000)
         self.assertEqual(result.total_provider_cost_micros, 10_000_000)
+        self.assertTrue(verdicts["crossed_task_limit"])
+
+    def test_accumulate_cost_one_under_the_ceiling_is_not_a_crossing(self):
+        task = self._task(limit=self.limit)
+        result, verdicts = TaskService.accumulate_cost(
+            task.id, billed_cost_micros=0, provider_cost_micros=9_999_999)
+        self.assertEqual(result.total_provider_cost_micros, 9_999_999)
         self.assertFalse(verdicts["crossed_task_limit"])
         self.assertEqual(result.status, TASK_STATUS_ACTIVE)
 

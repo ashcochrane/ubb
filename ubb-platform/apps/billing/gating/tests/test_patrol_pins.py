@@ -825,14 +825,84 @@ class TestPatrolBeatAndCounters:
         # Global (no tenant filter) sums the same rows.
         assert get_patrol_stats()["patrol_reminted_7d"] == 1
 
-    def test_off_tenants_are_never_patrolled(self):
+    def test_an_off_tenants_ceiling_is_repaired_by_the_beat_and_nothing_else_is(self):
+        """INVERTED at its own address (#452, slice 6 §3, §10). This case
+        used to pin that an `off` tenant is never patrolled; declaring a
+        ceiling is itself the opt-in (#150 §11.2), so the ceiling's repair
+        legs now run for every tenant while the customer-wide family stays
+        governed by the switch. Both halves are asserted: the crashed
+        ceiling kill is repaired, and an orphaned stop flag on the same
+        tenant — the signal suite's business — is left exactly as planted.
+        """
         t = _tenant(enf="off")
         c = _customer(t, balance_micros=1_000_000)
+        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
         task = _task(t, c, limit=1_000, total=5_000)
         reconcile_live_ledgers()
         task.refresh_from_db()
+        assert task.status == "killed"
+        assert task.metadata["kill_reason"] == "task_limit"
+        assert (task.metadata[STOP_MECHANISM_KEY]
+                == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
+        assert get_patrol_stats(tenant_id=t.id)["patrol_sweep_killed_7d"] == 1
+        # The signal suite did not run for this tenant: the orphaned flag
+        # an enforcing tenant's pass would have re-aligned still stands, and
+        # no re-alignment was counted.
+        assert Door.stop_reason(c.id) == "customer_wide_stop"
+        assert get_patrol_stats(tenant_id=t.id)["patrol_flag_realigned_7d"] == 0
+
+    def test_a_crashed_ceiling_kill_on_an_off_tenant_is_retried_by_the_beat(self):
+        """The recording lane's own kill crashes AFTER the tipping accumulate
+        committed — the row sits active, exactly on its ceiling, and no
+        further report is coming. Before #452 an `off` tenant's unit stayed
+        there forever; the hourly beat now retries it through the same
+        `kill_and_announce` seam, under the patrol's own mechanism word."""
+        from apps.platform.work.services import TaskService
+        t = _tenant(enf="off")
+        c = _customer(t, balance_micros=1_000_000)
+        task = _task(t, c, limit=1_000)
+        TaskService.accumulate_cost(
+            task.id, billed_cost_micros=0, provider_cost_micros=1_000)
+        with patch("apps.platform.events.outbox.write_event",
+                   side_effect=RuntimeError("the outbox insert crashed")):
+            assert TaskService.kill_and_announce(
+                task.id, reasons.TASK_LIMIT, tenant_id=t.id,
+                customer_id=c.id,
+                trigger_source=TRIGGER_SOURCE_USAGE_INGEST) is False
+        task.refresh_from_db()
         assert task.status == "active"
-        assert not PatrolOutcome.objects.filter(tenant=t).exists()
+        assert task.total_provider_cost_micros == 1_000
+
+        reconcile_live_ledgers()
+
+        task.refresh_from_db()
+        assert task.status == "killed"
+        ev = _events(TaskKilled.EVENT_TYPE).get()
+        assert ev.payload["task_id"] == str(task.id)
+        assert ev.payload["trigger_source"] == TRIGGER_SOURCE_ENFORCEMENT_PATROL
+        assert task.announce_outbox_id == ev.id
+        # Idempotent on the next beat: nothing left to sweep, nothing re-sent.
+        reconcile_live_ledgers()
+        assert _events(TaskKilled.EVENT_TYPE).count() == 1
+
+    def test_an_off_tenants_dead_lettered_kill_announcement_is_reminted(self):
+        """The other half of the ceiling's repair (§C.4): a kill that WAS
+        applied but whose announcement dead-lettered. Universal for the same
+        reason the sweep is — a ceiling kill happens for every tenant, so
+        its delivery is repaired for every tenant."""
+        t = _tenant(enf="off")
+        c = _customer(t, balance_micros=1_000_000)
+        dead = OutboxEvent.objects.create(
+            event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
+            status="failed")
+        task = _task(t, c, limit=1_000, total=2_000, status="killed",
+                     stamp=dead.id, meta={"kill_reason": "task_limit"})
+        reconcile_live_ledgers()
+        task.refresh_from_db()
+        fresh = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
+        assert fresh.payload["re_announcement"] is True
+        assert task.announce_outbox_id == fresh.id
+        assert get_patrol_stats(tenant_id=t.id)["patrol_reminted_7d"] == 1
 
     def test_stats_shape_is_zeroed_when_quiet(self):
         assert get_patrol_stats() == {"patrol_reminted_7d": 0,

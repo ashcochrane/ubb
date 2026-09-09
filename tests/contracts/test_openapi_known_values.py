@@ -1008,6 +1008,26 @@ CONCEPTS_IN_THE_CONTRACT = {
     # anything but the default all arrived together, because a discriminator
     # with nothing to discriminate is the vacuous form of paying this.
     "usage_event_kind": Published(2, ENUM),
+    # WHAT A CEILING ASSESSMENT CONCLUDED FOR ONE UNIT OF WORK (#452, slice 6
+    # §3) — three nodes: the recording acknowledgement, the unit read and the
+    # unit detail, which are the three responses that describe a unit's
+    # standing against its ceiling. The start's answer is NOT a fourth: a
+    # unit that has just been registered has spent nothing, so every start
+    # would publish the same constant beside a ceiling it has not yet raced.
+    #
+    # ⚠ ITS BACKEND HALF IS THE FIRST DERIVED CONCEPT A MODEL SERVES WITHOUT A
+    # COLUMN. `measurements_status` (#271) is served by a serialiser; this one
+    # is a property on the row (ADR-0006 R4), computed by the one predicate in
+    # `core.crossing` from three columns the row already holds, and the model
+    # holds the four values on `TASK_STATUS_CHOICES`'s footing — identities
+    # from the registry, wording written beside them, read by the admin's
+    # listing. The entry read `0 of 4 values` over a consumer that held
+    # nothing at all, so paying it was creation rather than re-sourcing, and
+    # its G4 twin died in the same commit for the rule this map states at
+    # `trigger_source`: the census answers `advertised` from the backend
+    # alone, and a served concept with no marked node is what the test above
+    # refuses.
+    "ceiling_status": Published(3, ENUM),
 }
 
 
@@ -1369,6 +1389,20 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # permanent constant on that response. Making the ack able to produce one
     # would have to move THIS line, which is the point of stating it.
     placed("usage_event_kind", {"UsageEventOut", "UsageEventDetailOut"})
+    # WHERE A UNIT STANDS AGAINST ITS CEILING (#452), on the three responses
+    # that describe a unit's spend: the acknowledgement of the report that
+    # moved it, and the two shapes that read it back. Nullable on the first
+    # (no named unit, nothing to assess — the marker sits on the string
+    # member) and never on the other two, where `not_applicable` is the
+    # answer for a unit with no ceiling rather than an absence.
+    #
+    # ⚠ NOT ON `StartTaskResponse`, which carries the pinned ceiling and could
+    # carry this beside it. A unit that has just been registered has spent
+    # nothing, so the field would be a constant on every start that pins a
+    # ceiling and `not_applicable` on every start that does not — a fact the
+    # ceiling field beside it already states. The unit read is one call away
+    # for the reader who wants it later, when it can be something else.
+    placed("ceiling_status", {"RecordUsageResponse", "TaskOut", "TaskDetailOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2122,6 +2156,8 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     that only ever descends in step with a deletion still catches it.
     """
     assert len(_entries(programme)) == len(_owed_sites(decisions))
-    assert len(_entries(programme)) >= 14, (
+    # 14 -> 13 in #452: `ceiling_status`, the first of slice 6's seven, paid
+    # in full with its backend twin in one commit.
+    assert len(_entries(programme)) >= 13, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

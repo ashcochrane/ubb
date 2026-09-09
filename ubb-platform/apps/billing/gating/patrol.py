@@ -5,7 +5,11 @@ Late, never lost: a real crossing always eventually produces its signal, and
 an emitted signal always eventually reaches the tenant, no matter what
 crashed at the moment of detection or how long the tenant's endpoint was
 down. The jobs here join the existing hourly reconcile pass
-(``reconcile_live_ledgers`` — no new scheduled task; enforcing tenants only):
+(``reconcile_live_ledgers`` — no new scheduled task). Since #452 that pass
+visits EVERY tenant: legs 1, 2 and 4 are the customer-wide family and run for
+enforcing tenants only; leg 3 is the ceiling's repair and runs for all,
+because declaring a ceiling is itself the opt-in (#150 §11.2) and the
+recording lane stops on it whatever the switch says:
 
 1. Missed-transition drive + fast-flag re-alignment run PER OWNER inside
    ``LiveCounter.reconcile`` (§C.1/§C.2) — this module receives their
@@ -41,6 +45,7 @@ from django.db import transaction
 from django.db.models import Exists, F, OuterRef
 from django.utils import timezone
 
+from core.crossing import ceiling_reached_q
 from core.vocabulary import (
     TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL)
@@ -61,16 +66,29 @@ def run_patrol(tenant, *, flag_realigned=0):
     """Run the tenant-level patrol jobs (after the per-owner reconcile loop)
     and record every outcome. ``flag_realigned`` is the count the per-owner
     reconcile passes already collected. Each job is isolated — one failing
-    leg never blocks the others. Returns the outcome counts."""
+    leg never blocks the others. Returns the outcome counts.
+
+    ⚠ TWO OF THE LEGS RUN FOR EVERY TENANT AND THE REST FOR ENFORCING ONES
+    (#452, slice 6 §3, §10). The ceiling is always on where declared — the
+    recording lane stops a unit on it whatever ``enforcement_mode`` says — so
+    the repair of a crashed ceiling stop (the sweep) and of a stopped unit's
+    dead-lettered announcement (the kill re-mint) run for every tenant the
+    beat visits. The signal-ledger re-mint and the live-balance repair are
+    the customer-wide family, which the switch governs; an ``off`` tenant
+    has no ledger rows to re-mint and no counter to repair, and saying so
+    here is what keeps that a decision rather than a coincidence."""
     from apps.billing.gating import repair
+    from apps.platform.tenants.flags import enforcing
 
     counts = {OUTCOME_FLAG_REALIGNED: flag_realigned,
               OUTCOME_REMINTED: 0, OUTCOME_SWEEP_KILLED: 0,
               OUTCOME_REPAIRED: 0, OUTCOME_REPAIRED_MICROS: 0,
               OUTCOME_REPAIR_LAPSED: 0}
-    for outcome, job in ((OUTCOME_REMINTED, remint_unannounced_signals),
-                         (OUTCOME_SWEEP_KILLED, sweep_over_limit_tasks),
-                         (OUTCOME_REMINTED, remint_unannounced_kills)):
+    legs = [(OUTCOME_SWEEP_KILLED, sweep_over_limit_tasks),
+            (OUTCOME_REMINTED, remint_unannounced_kills)]
+    if enforcing(tenant):
+        legs.insert(0, (OUTCOME_REMINTED, remint_unannounced_signals))
+    for outcome, job in legs:
         try:
             counts[outcome] += job(tenant)
         except Exception:
@@ -206,10 +224,13 @@ def sweep_over_limit_tasks(tenant):
     from apps.platform.work.services import TaskService
 
     swept = 0
-    over = Task.objects.filter(
-        tenant=tenant, status=TASK_STATUS_ACTIVE,
-        provider_cost_limit_micros__isnull=False,
-        total_provider_cost_micros__gte=F("provider_cost_limit_micros"))
+    # THE ONE COMPARE in its queryset spelling (#452): the same `>=` the
+    # recording lane applies to the row in hand, so this sweep can only ever
+    # find what that lane failed to stop — never a unit it deliberately
+    # passed over.
+    over = Task.objects.filter(tenant=tenant, status=TASK_STATUS_ACTIVE).filter(
+        ceiling_reached_q("total_provider_cost_micros",
+                          "provider_cost_limit_micros"))
     for task in over.iterator():
         reason = SUBTASK_LIMIT if task.parent_id is not None else TASK_LIMIT
         # kill_and_announce never raises; a lost race (already terminal)

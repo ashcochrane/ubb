@@ -10,6 +10,7 @@ from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from apps.platform.work import services as work_services
+from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.vocabulary import (
@@ -502,6 +503,23 @@ UsageEventKind = Annotated[
 RateStructure = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "rate_structure"})]
 
+#: WHAT A CEILING ASSESSMENT CONCLUDED FOR ONE UNIT OF WORK (#452, slice 6
+#: §3) — the registry's closed set of four, derived on the row by the one
+#: predicate in `core.crossing` and held by reference in
+#: `apps.platform.work.models`, which is the backend consumer that lets this
+#: field be advertised at all. The lower-bound rule the values carry as
+#: registry data (#158 §12.3) is a spend-control safety invariant: once the
+#: KNOWN total has reached the ceiling, nothing unresolved can argue it back.
+#:
+#: Nullable on the acknowledgement (no named unit, nothing to assess) and
+#: never on the unit read, so the alias is marked and each carrier decides
+#: `Optional` for itself — the marker lands in the string member either way.
+#:
+#: NO HAND-WRITTEN `description`, on `TaskStatus`'s footing: the registry
+#: owns the summary and generates the values.
+CeilingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "ceiling_status"})]
+
 
 class RecordUsageResponse(Schema):
     event_id: str
@@ -566,6 +584,28 @@ class RecordUsageResponse(Schema):
     stop: bool = False
     stop_reason: Optional[str] = None
     stop_scope: Optional[str] = None
+    # WHAT THE NAMED UNIT'S CEILING ASSESSMENT CONCLUDED, and the utilisation
+    # beside it (#452, slice 6 §3). The stop above is the verdict; this is
+    # where the unit stands, in the registry's word, whether or not anything
+    # stopped: `indeterminate` never stops anything and is never a breach,
+    # and a reader of the two figures must read the status first — under
+    # `indeterminate` the percentage is a floor and the headroom a ceiling,
+    # because both are computed over the KNOWN total, which is the total the
+    # ceiling is compared against (`task_total_unresolved_event_count` above
+    # says how much that total leaves out). No warning event, no threshold,
+    # no amber state: enforcement stays binary and this is information.
+    #
+    # Null exactly when no unit is named — nothing to assess — which is why
+    # the marker sits on the string member and not on the union (the
+    # `NotApplicableReason` argument). On an idempotent REPLAY it is the
+    # unit's standing NOW, on the same footing as `stop` (read from the
+    # durable flag at replay time), while the unit totals above stay null on
+    # a replay because they say what THIS recording did, and a replay did
+    # nothing. The two figures are ALSO null under `not_applicable`: no
+    # ceiling, no share of one.
+    ceiling_status: Optional[CeilingStatus] = None
+    ceiling_used_percentage: Optional[int] = None
+    ceiling_remaining_micros: Optional[int] = None
     # The itemized past-limit story (#41, spec §H): null when the event
     # landed past nothing, else the event's immutable stop-context ARRAY —
     # one entry per limit it landed past (a simultaneous task-limit +
@@ -1312,6 +1352,17 @@ class TaskOut(Schema):
     #: and contained work, which never pins a price of its own because one
     #: agreed price buys a whole unit of work.
     agreed_price_micros: Optional[int] = None
+    #: WHAT THE CEILING ASSESSMENT CONCLUDED FOR THIS UNIT (#452, slice 6
+    #: §3) — the acknowledgement's three fields, read the same way (the
+    #: reading rule is written once, on `RecordUsageResponse.ceiling_status`).
+    #: Derived on the row from the totals above and the ceiling beside them,
+    #: never stored, so it cannot lag them. Never null HERE, unlike on the
+    #: acknowledgement: a unit read always names a unit, and a unit with no
+    #: ceiling is `not_applicable`, which is a real answer (nothing was
+    #: evaluated) rather than an absence.
+    ceiling_status: CeilingStatus
+    ceiling_used_percentage: Optional[int] = None
+    ceiling_remaining_micros: Optional[int] = None
     dimensions: dict = Field(default_factory=dict)
     created_at: str
     completed_at: Optional[str] = None
@@ -1337,6 +1388,8 @@ def task_out(t):
         "event_count": t.event_count,
         "provider_cost_limit_micros": t.provider_cost_limit_micros,
         "agreed_price_micros": t.agreed_price_micros,
+        # Derived on the row, read here — one derivation, not a second.
+        **ceiling_fields(t.ceiling_assessment),
         # A FREE-FORM OBJECT, so its keys are data and not contract: the
         # published document types this as an object and names no property, and
         # #276 renaming the columns therefore renames the keys here without

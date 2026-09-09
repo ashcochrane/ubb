@@ -1696,19 +1696,6 @@ entries:
       work on cost or on time (#150). Slice 6 rebuilds the spend controls and
       declares both bases.
 
-  - id: g2-backend-ceiling_status
-    gate: G2
-    site: ubb-platform/apps/platform/work/models.py::ceiling_status
-    expected: ceiling_status
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #146 made a ceiling
-      three-valued and #148 added the fourth; a status that cannot honestly
-      say `indeterminate` is a spend-control defect, not a naming one. Slice 6
-      rebuilds it.
-
   - id: g2-backend-control_family
     gate: G2
     site: ubb-platform/apps/billing/gating/models.py::control_family
@@ -2230,20 +2217,6 @@ entries:
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 6 rebuilds the ceiling, which is what declares whether it
       bounds cost or time (#150). The metadata appears in that slice.
-
-  - id: g4-openapi-ceiling_status
-    gate: G4
-    site: openapi/v1.json::ceiling_status
-    expected: ceiling_status
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds the ceiling, and #158 §12.3's lower-bound rule
-      over these statuses is a spend-control safety invariant rather than a
-      naming detail. The metadata appears in that slice.
 
   - id: g4-openapi-control_family
     gate: G4

@@ -5362,6 +5362,46 @@
             ],
             "title": "Billed Cost Micros"
           },
+          "ceiling_remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Remaining Micros"
+          },
+          "ceiling_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "within_ceiling",
+                  "ceiling_reached",
+                  "indeterminate",
+                  "not_applicable"
+                ],
+                "type": "string",
+                "x-ubb-concept": "ceiling_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Status"
+          },
+          "ceiling_used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Used Percentage"
+          },
           "claimed_provider_cost_micros": {
             "anyOf": [
               {
@@ -6841,6 +6881,39 @@
             ],
             "title": "Agreed Price Micros"
           },
+          "ceiling_remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Remaining Micros"
+          },
+          "ceiling_status": {
+            "enum": [
+              "within_ceiling",
+              "ceiling_reached",
+              "indeterminate",
+              "not_applicable"
+            ],
+            "title": "Ceiling Status",
+            "type": "string",
+            "x-ubb-concept": "ceiling_status"
+          },
+          "ceiling_used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Used Percentage"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -6975,6 +7048,7 @@
           "total_billed_cost_micros",
           "unpriced_event_count",
           "event_count",
+          "ceiling_status",
           "created_at"
         ],
         "title": "TaskDetailOut",
@@ -6992,6 +7066,39 @@
               }
             ],
             "title": "Agreed Price Micros"
+          },
+          "ceiling_remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Remaining Micros"
+          },
+          "ceiling_status": {
+            "enum": [
+              "within_ceiling",
+              "ceiling_reached",
+              "indeterminate",
+              "not_applicable"
+            ],
+            "title": "Ceiling Status",
+            "type": "string",
+            "x-ubb-concept": "ceiling_status"
+          },
+          "ceiling_used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Used Percentage"
           },
           "completed_at": {
             "anyOf": [
@@ -7120,6 +7227,7 @@
           "total_billed_cost_micros",
           "unpriced_event_count",
           "event_count",
+          "ceiling_status",
           "created_at"
         ],
         "title": "TaskOut",

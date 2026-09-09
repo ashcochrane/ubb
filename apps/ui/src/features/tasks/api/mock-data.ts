@@ -31,7 +31,36 @@ import {
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
+import type { CeilingStatus } from "@/lib/vocabulary";
+
 import type { KindOfWork, RunRow, TaskStatus } from "./types";
+
+/**
+ * The ceiling assessment a run row carries (#452), composed from the row's
+ * OWN three numbers so a fixture can never say a status its totals
+ * contradict — the same reason `totals()` below takes a scenario rather
+ * than a bare amount. FIXTURE COMPOSITION ONLY: the backend derives this on
+ * the row (`core/crossing.py`, the registry's four-way rule) and the
+ * console reads it off the wire; nothing rendering a run may re-derive it
+ * from here. The two figures are over the KNOWN total, which is why a
+ * reader of an `indeterminate` row must treat the percentage as a floor.
+ */
+export function ceilingAssessment(
+  row: Pick<RunRow, "provider_cost_limit_micros" | "total_provider_cost_micros" | "unresolved_event_count">,
+): Pick<RunRow, "ceiling_status" | "ceiling_used_percentage" | "ceiling_remaining_micros"> {
+  const ceiling = row.provider_cost_limit_micros;
+  if (ceiling === undefined || ceiling === null) {
+    return { ceiling_status: "not_applicable", ceiling_used_percentage: null, ceiling_remaining_micros: null };
+  }
+  const known = row.total_provider_cost_micros;
+  const status: CeilingStatus =
+    known >= ceiling ? "ceiling_reached" : row.unresolved_event_count > 0 ? "indeterminate" : "within_ceiling";
+  return {
+    ceiling_status: status,
+    ceiling_used_percentage: ceiling > 0 ? Math.floor((known * 100) / ceiling) : null,
+    ceiling_remaining_micros: Math.max(ceiling - known, 0),
+  };
+}
 
 export const KIND_EVENT_PRICED_KEY = "document-summary";
 export const KIND_FIXED_KEY = "video-render";
@@ -156,8 +185,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
 function run(
   overrides: Partial<RunRow> & Pick<RunRow, "task_id" | "task_type" | "created_at">,
 ): RunRow {
-  return {
-    status: "completed",
+  const row = {
+    status: "completed" as const,
     total_provider_cost_micros: 0,
     unresolved_event_count: 0,
     total_billed_cost_micros: 0,
@@ -165,6 +194,7 @@ function run(
     event_count: 0,
     ...overrides,
   };
+  return { ...row, ...ceilingAssessment(row) };
 }
 
 /**

@@ -343,7 +343,7 @@ def handle_charge_dispute_closed(event):
         # Suspending the owner (not the seat) is what RiskService.check
         # actually reads for every seat funded by this wallet.
         from apps.billing.queries import get_customer_min_balance
-        from apps.billing.gating.crossing import past_floor
+        from core.crossing import past_floor
         owner = Customer.objects.select_for_update().get(id=owner_id)
         threshold = get_customer_min_balance(owner.id, owner.tenant_id)
         if past_floor(result.balance_micros, threshold) and owner.status == "active":

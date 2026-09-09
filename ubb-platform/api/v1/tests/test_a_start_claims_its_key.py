@@ -574,7 +574,7 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         """A wallet past the line its own configured floor draws.
 
         ⚠ THE FLOOR IS A MAGNITUDE AND THE LINE IS ITS NEGATION
-        (`apps/billing/gating/crossing.py`), so `min_balance_micros` is how far
+        (`core/crossing.py`), so `min_balance_micros` is how far
         BELOW zero this customer may go, and a positive balance is never past
         anything. Zero here means the line is zero, and the balance is under
         it — which is the shape a real customer reaches by spending.

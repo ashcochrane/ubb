@@ -224,7 +224,11 @@ only; a `skipped` outbox status (documented for years, produced never) was delet
 
 **Patrol**:
 The hourly traffic-independent backstop that makes every signal "late, never lost" — the #44 leg
-of the reconcile beat (no scheduled task of its own; enforcing tenants only). Per pass: drives
+of the reconcile beat (no scheduled task of its own; since #452 the beat visits every tenant, and
+only the ceiling's two legs — the sweep of work at or past its ceiling and the re-mint of a
+stopped unit's dead-lettered announcement — run for a tenant whose enforcement switch is `off`,
+because declaring a ceiling is itself the opt-in; the signal legs and the repair stay enforcing
+tenants only). Per pass: drives
 missed signal transitions in both directions for both families, re-aligns the fast stop flag to
 durable truth, re-mints unannounced signal rows and killed tasks as fresh current-state events
 (`re_announcement: true`, bottom line only), sweeps active tasks at-or-past their
@@ -287,9 +291,12 @@ RISES over it), the transition/level/recovery forms, the budget stop line's `enf
 semantics (an `alert_only` budget alerts but can never cross, in every lane; a `blocking`
 budget both alerts and can cross), and the month
 label/bounds the postpaid crossing is scoped by — has ONE owner:
-`apps/billing/gating/crossing.py` (#110). Every lane (fast, durable, start-gate, reconcile,
-repair, budget gate, dispute clawback) imports those predicates rather than re-deriving the
-comparison.
+`core/crossing.py` (#110; moved from this product into the kernel's shared package by #452, so
+the kernel's own ceiling compare could import it rather than keep an inline copy that disagreed).
+Every lane (fast, durable, start-gate, reconcile, repair, budget gate, dispute clawback) imports
+those predicates rather than re-deriving the comparison, and since #452 so does the unit of
+work's COGS ceiling — the recording lane's live compare, the patrol's sweep and the analytics
+reached-count — at or above the line, everywhere.
 _Avoid_: writing `balance < -floor` / `spend >= cap * pct // 100` inline anywhere — that is the
 exact re-sprawl #110 retired.
 

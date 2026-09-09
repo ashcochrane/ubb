@@ -1,4 +1,4 @@
-"""#110: ``apps.billing.gating.crossing`` is the ONE owner of the Crossing
+"""#110: ``core.crossing`` is the ONE owner of the Crossing
 decision — the floor/threshold sign conventions every lane (fast, durable,
 start-gate, reconcile, repair, budget gate) imports.
 
@@ -13,7 +13,7 @@ function only reads attributes), so the model-field default for
 """
 import datetime
 
-from apps.billing.gating import crossing
+from core import crossing
 from apps.billing.gating.models import BudgetConfig
 
 FLOOR = 1_000_000  # min_balance magnitude; the comparable line is -1_000_000
@@ -197,3 +197,124 @@ class TestMonthMath:
         now = datetime.datetime(2026, 7, 22, tzinfo=datetime.timezone.utc)
         assert crossing.same_month(datetime.datetime(2026, 7, 2), now) is True
         assert crossing.same_month(datetime.datetime(2026, 8, 2), now) is False
+
+
+# --- the Ceiling (#452, slice 6 §3) -----------------------------------------
+#
+# The third orientation joins the module rather than living beside the row it
+# assesses: the same `>=` used to be spelled three times — strictly-above on
+# the live ingest lane, at-or-above on the patrol and the analytics count — and
+# a unit landing EXACTLY on its ceiling survived the event that landed it and
+# was killed by the patrol within the hour with no tipping event to attribute.
+# Every case below is about the boundary, because the boundary is the defect.
+
+CEILING = 10_000_000
+
+
+class TestCeilingReached:
+    def test_at_or_above_the_line_is_reached(self):
+        assert crossing.ceiling_reached(CEILING, CEILING) is True  # AT = reached
+        assert crossing.ceiling_reached(CEILING + 1, CEILING) is True
+        assert crossing.ceiling_reached(CEILING - 1, CEILING) is False
+        assert crossing.ceiling_reached(0, CEILING) is False
+
+    def test_no_ceiling_is_never_reached(self):
+        assert crossing.ceiling_reached(10**12, None) is False
+
+    def test_a_zero_ceiling_is_reached_by_nothing_at_all(self):
+        # `>=` on the line, so a ceiling of zero is reached before the first
+        # report — a real answer, and the reason a zero is refused at the
+        # start rather than made a special case here.
+        assert crossing.ceiling_reached(0, 0) is True
+
+    # The query form (`ceiling_reached_q`) is pinned to the level form on REAL
+    # rows, over every boundary shape, in the work app's
+    # `TheRowAssessesItsOwnCeilingTest` — a `Q` compared with a `Q` here would
+    # only re-state the derivation, which is the vacuous shape.
+
+
+class TestCeilingStatus:
+    """The registry's four-way rule as code — each case is one row of
+    `spend-controls.yaml`'s `value_semantics`, in the registry's own order."""
+
+    def test_no_ceiling_is_not_applicable_whatever_the_cost(self):
+        for known in (0, CEILING, 10**12):
+            for unresolved in (0, 3):
+                assert crossing.ceiling_status(
+                    ceiling_micros=None, known_micros=known,
+                    unresolved_count=unresolved) == "not_applicable"
+
+    def test_known_at_or_above_is_reached_whatever_remains_unresolved(self):
+        # Known-over always fires (#150 §4.2): an unresolved cost can only add
+        # to a total that has already reached the line.
+        for unresolved in (0, 1):
+            assert crossing.ceiling_status(
+                ceiling_micros=CEILING, known_micros=CEILING,
+                unresolved_count=unresolved) == "ceiling_reached"
+            assert crossing.ceiling_status(
+                ceiling_micros=CEILING, known_micros=CEILING + 1,
+                unresolved_count=unresolved) == "ceiling_reached"
+
+    def test_known_below_with_something_unresolved_is_indeterminate(self):
+        assert crossing.ceiling_status(
+            ceiling_micros=CEILING, known_micros=CEILING - 1,
+            unresolved_count=1) == "indeterminate"
+
+    def test_known_below_with_nothing_unresolved_is_within(self):
+        assert crossing.ceiling_status(
+            ceiling_micros=CEILING, known_micros=CEILING - 1,
+            unresolved_count=0) == "within_ceiling"
+
+    def test_every_answer_is_one_of_the_registrys_four(self):
+        from core.vocabulary import CEILING_STATUS_VALUES
+        answers = {
+            crossing.ceiling_status(ceiling_micros=c, known_micros=k,
+                                    unresolved_count=u)
+            for c in (None, CEILING) for k in (0, CEILING - 1, CEILING)
+            for u in (0, 1)}
+        assert answers == CEILING_STATUS_VALUES
+
+
+class TestCeilingUtilisation:
+    """Information beside the assessment (#150 §9): a whole percentage of the
+    ceiling the KNOWN total has used, rounded down so it never overstates,
+    and the headroom left — both over the known total in every evaluated
+    state, both absent where no ceiling applies."""
+
+    def test_percentage_is_whole_and_rounded_down(self):
+        assert crossing.ceiling_used_percentage(0, CEILING) == 0
+        assert crossing.ceiling_used_percentage(CEILING // 2, CEILING) == 50
+        assert crossing.ceiling_used_percentage(CEILING - 1, CEILING) == 99
+        assert crossing.ceiling_used_percentage(CEILING, CEILING) == 100
+        assert crossing.ceiling_used_percentage(CEILING * 2, CEILING) == 200
+
+    def test_remaining_is_the_headroom_and_never_negative(self):
+        assert crossing.ceiling_remaining_micros(0, CEILING) == CEILING
+        assert crossing.ceiling_remaining_micros(CEILING - 1, CEILING) == 1
+        assert crossing.ceiling_remaining_micros(CEILING, CEILING) == 0
+        # Past the line there is no headroom left, and the percentage beside
+        # it is what says by how much — a negative "remaining" would be the
+        # same fact spelled as a number a reader has to negate.
+        assert crossing.ceiling_remaining_micros(CEILING + 5, CEILING) == 0
+
+    def test_no_ceiling_has_no_utilisation(self):
+        assert crossing.ceiling_used_percentage(CEILING, None) is None
+        assert crossing.ceiling_remaining_micros(CEILING, None) is None
+
+    def test_a_share_of_nothing_is_not_a_share(self):
+        # A zero ceiling is `ceiling_reached` (the compare says so) and has
+        # no headroom, but a percentage of zero is not a number.
+        assert crossing.ceiling_used_percentage(0, 0) is None
+        assert crossing.ceiling_remaining_micros(0, 0) == 0
+
+    def test_the_assessment_travels_as_one_value(self):
+        # The three answers composed once, so a reader cannot take the
+        # figures without the status that says how to read them.
+        assert crossing.ceiling_assessment(
+            ceiling_micros=CEILING, known_micros=CEILING // 4,
+            unresolved_count=2) == crossing.CeilingAssessment(
+                "indeterminate", 25, CEILING - CEILING // 4)
+        assert crossing.ceiling_assessment(
+            ceiling_micros=None, known_micros=CEILING,
+            unresolved_count=0) == crossing.CeilingAssessment(
+                "not_applicable", None, None)

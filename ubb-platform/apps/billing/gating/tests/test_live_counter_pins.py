@@ -17,7 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.billing.gating.crossing import month_label_bounds
+from core.crossing import month_label_bounds
 from apps.billing.gating.services.live_counter import (Door, LiveCounter,
                                                        stop_channel)
 from apps.billing.wallets.models import Wallet

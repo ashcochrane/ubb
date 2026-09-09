@@ -26,7 +26,7 @@ client directly).
 import pytest
 from django.core.cache import cache
 
-from apps.billing.gating.crossing import budget_stop_threshold
+from core.crossing import budget_stop_threshold
 from apps.billing.gating.models import BudgetConfig
 from apps.billing.gating.services.budget_service import BudgetService
 from apps.billing.gating.services.live_counter import Door, LiveCounter

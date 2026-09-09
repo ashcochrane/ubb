@@ -1,8 +1,13 @@
 from django.db import models
 
+from core import crossing
 from core.models import BaseModel
 from core.transitions import FROZEN
 from core.vocabulary import (
+    CEILING_STATUS_CEILING_REACHED,
+    CEILING_STATUS_INDETERMINATE,
+    CEILING_STATUS_NOT_APPLICABLE,
+    CEILING_STATUS_WITHIN_CEILING,
     OUTCOME_REASON_CUSTOMER_CANCELLED,
     OUTCOME_REASON_EXECUTION_FAILED,
     OUTCOME_REASON_INTERNAL_ERROR,
@@ -122,6 +127,34 @@ OUTCOME_REASON_CHOICES = [
     (OUTCOME_REASON_SUPERSEDED, "Superseded"),
     (OUTCOME_REASON_PARENT_CLOSED, "Parent closed"),
     (OUTCOME_REASON_UNSPECIFIED, "Unspecified"),
+]
+
+# WHAT A CEILING ASSESSMENT CONCLUDED FOR ONE UNIT OF WORK (#452, slice 6 §3),
+# held here under the same rule as the two sets above (ADR-0008 §4): the
+# identities are the registry's and only the wording is written here.
+#
+# ⚠ NO COLUMN HOLDS THIS — it is DERIVED on the row (ADR-0006 R4), by
+# `Task.ceiling_assessment` below, from three columns the row already carries,
+# through the one predicate in `core.crossing`. So this is not a `choices=`
+# list on a field: it is the closed set the assessment answers from, held by
+# the module the registry names as the concept's consumer, and read by the
+# admin's listing, which shows the assessment beside the totals it is about.
+#
+#   not_applicable   no ceiling applies to this unit — nothing was evaluated,
+#                    so nothing was concluded (never "within", never
+#                    "indeterminate").
+#   ceiling_reached  the KNOWN supplier total is at or above the ceiling,
+#                    whatever remains unresolved — unresolved cost can only
+#                    add to it, so no later resolution softens this.
+#   indeterminate    the known total is below the ceiling and at least one
+#                    applicable cost is unresolved: UBB tried and cannot tell.
+#                    Never stops anything; never a breach.
+#   within_ceiling   every applicable cost is resolved and the total is below.
+CEILING_STATUS_CHOICES = [
+    (CEILING_STATUS_NOT_APPLICABLE, "Not applicable"),
+    (CEILING_STATUS_CEILING_REACHED, "Ceiling reached"),
+    (CEILING_STATUS_INDETERMINATE, "Indeterminate"),
+    (CEILING_STATUS_WITHIN_CEILING, "Within ceiling"),
 ]
 
 
@@ -734,6 +767,30 @@ class Task(BaseModel):
         return (f"Task({self.id}: {self.status}, "
                 f"billed={self.total_billed_cost_micros}, "
                 f"provider={self.total_provider_cost_micros})")
+
+    # THE CEILING ASSESSMENT, DERIVED AND NEVER STORED (#452, ADR-0006 R4).
+    #
+    # Three columns the row already holds — the pinned ceiling, the running
+    # KNOWN supplier total and the count of events that total could not
+    # include — through the one predicate every other reader of the ceiling
+    # imports (`core.crossing`), so the answer here is the answer the recording
+    # lane stopped on and the answer the patrol's sweep selects by. A stored
+    # copy would be a second answer able to disagree with all three the
+    # moment a late event moved the total.
+    #
+    # ONE value, not three properties: the status is what tells a reader how
+    # to read the two figures beside it (#150 §9 — under `indeterminate` the
+    # percentage is a floor and the headroom a ceiling), so the row hands them
+    # out together and the acknowledgement and the unit read publish exactly
+    # what it hands out. Both figures are None exactly where no ceiling
+    # applies.
+
+    @property
+    def ceiling_assessment(self) -> crossing.CeilingAssessment:
+        return crossing.ceiling_assessment(
+            ceiling_micros=self.provider_cost_limit_micros,
+            known_micros=self.total_provider_cost_micros,
+            unresolved_count=self.unresolved_event_count)
 
     def save(self, *args, **kwargs):
         """Guard the immutable declared kind (D7/D8) — ONE guard, because

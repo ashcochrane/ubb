@@ -404,9 +404,29 @@ _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 **Task limit (provider-cost limit)**:
 A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
 passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
-races it; crossing it is a signal point (kill + `task.killed`), never a billing wall.
+races it; reaching it — the known total **at or above** the line, compared in one place
+(`core/crossing.py::ceiling_reached`, #452) by the recording lane, the patrol's sweep and the
+analytics reached-count alike — is a signal point (kill + `task.killed`), never a billing wall.
 (`apps/platform/work/models.py:Task.provider_cost_limit_micros`)
-_Avoid_: "hard stop" — that vocabulary retired with the 429.
+_Avoid_: "hard stop" — that vocabulary retired with the 429; and "exceeded" — a ceiling is
+reached, not exceeded, because the line itself stops.
+
+**Ceiling assessment (`ceiling_status`)**:
+What the ceiling concluded for one unit of work, **derived on the row and never stored** (#452,
+ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running known supplier
+total and the unresolved-event count — through the same predicate the crossing uses. One of the
+registry's four: `not_applicable` (no ceiling applies — nothing was evaluated, so nothing was
+concluded), `ceiling_reached` (the **known** total is at or above the line, whatever remains
+unresolved — known-over always fires and no later resolution softens it), `indeterminate` (known
+below, at least one applicable cost unresolved — UBB tried and cannot tell; never stops anything,
+never a breach), `within_ceiling` (everything resolved and below). Travels on the recording
+acknowledgement (null where no unit is named) and the unit read, beside `ceiling_used_percentage`
+and `ceiling_remaining_micros` — information over the **known** total, null under `not_applicable`;
+under `indeterminate` the percentage is a floor and the headroom a ceiling, and the status is what
+says so — the three travel as one value (`apps/platform/work/models.py:Task.ceiling_assessment`,
+`core/crossing.py::ceiling_assessment`).
+_Avoid_: storing it, or re-deriving it anywhere but the row; a warning threshold or an amber state
+beside it — enforcement is binary and this is information (#150 §9, §12).
 
 **Killed (task)**:
 **UBB stopped this unit on a spend signal, and that is all it ever means** — a ceiling crossing, the

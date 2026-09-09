@@ -49,10 +49,16 @@
       "representation": "enum"
     },
     "ceiling_status": {
-      "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "within_ceiling",
+        "ceiling_reached",
+        "indeterminate",
+        "not_applicable"
+      ]
     },
     "control_family": {
       "advertised": false,

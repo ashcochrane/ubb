@@ -221,7 +221,7 @@ def debit(*, customer_id, tenant, amount_micros, idempotency_key,
         new_balance = wallet.balance_micros - amount_micros
         if tenant.billing_mode != "postpaid":
             from apps.billing.queries import get_customer_min_balance
-            from apps.billing.gating.crossing import past_floor
+            from core.crossing import past_floor
             floor = get_customer_min_balance(wallet.customer_id, tenant.id)
             if past_floor(new_balance, floor):
                 if not allow_negative:
@@ -527,7 +527,7 @@ def _drawdown_tail(tenant):
     """The live drawdown's winning-branch signal tail (see draw_down_usage)."""
     def events(wallet, owner, old_balance, new_balance, txn):
         from apps.billing.queries import get_customer_min_balance
-        from apps.billing.gating.crossing import crossed_floor, past_floor
+        from core.crossing import crossed_floor, past_floor
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import (

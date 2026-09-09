@@ -68,10 +68,9 @@ import logging
 
 from django.conf import settings
 
-from apps.billing.gating.crossing import (budget_stop_threshold, crossed_live,
-                                          floor_line, month_label_bounds,
-                                          past_floor, recovered_floor,
-                                          same_month)
+from core.crossing import (budget_stop_threshold, crossed_live, floor_line,
+                           month_label_bounds, past_floor, recovered_floor,
+                           same_month)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 

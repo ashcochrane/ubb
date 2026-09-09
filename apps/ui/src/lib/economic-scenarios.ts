@@ -31,8 +31,12 @@
 // names. `known_economics` is the ordinary case every existing fixture already
 // is; slice 3 owns `unknown_cost` and `incomplete_total` and both arrive below;
 // slice 4 owns `waived_revenue` and `pricing_not_applicable` and both are here
-// too. `indeterminate_ceiling` is slice 7's under §9.3, arriving with the slice
-// that introduces its state. The measurement trio below is a seventh the list
+// too. `indeterminate_ceiling`'s STATE is on the wire since #452 (`ceiling_status`
+// on the acknowledgement and the unit read, slice 6 §3); the scenario arrives
+// with the console surface that renders it (slice 6 §18), because a scenario
+// with no consumer fails the reachability gate on the commit that adds it —
+// until then the tasks mock composes the assessment from each fixture's own
+// numbers. The measurement trio below is a seventh the list
 // does not name, which is the whole reason slice 2 owed a fixture at all.
 //
 // `pricing_not_applicable` IS TWO STATES RATHER THAN ONE, and it is the only
