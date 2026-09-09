@@ -1,10 +1,11 @@
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
 import { ApiProblem, problemMessage } from "@/api/problem";
 import { FormField } from "@/components/shared/form-field";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -53,7 +54,10 @@ import {
  *
  * There is no fraction-of-price ceiling here and no cap scoped to a grouping
  * field — both were revoked (#150 §5.2, §6.2) and #150 §6.4 addresses that
- * revocation at this surface. The ceiling is an absolute amount, and the
+ * revocation at this surface. The ceiling is an absolute amount, or the
+ * declared choice of NONE (#453, #150 §8): "Uncapped" is something a tenant
+ * says, never something the form infers from an empty field, and the form
+ * refuses a declaration that says neither or both before the route does. The
  * pinned set of controls in `declare-kind-dialog.test.tsx` holds it there.
  */
 export function DeclareKindDialog({
@@ -201,7 +205,7 @@ export function DeclareKindDialog({
           <FormField
             label={`Ceiling (${currency})`}
             error={form.formState.errors.ceiling?.message}
-            hint="The most one run may spend on supplier cost before UBB stops it, as an amount. Leave it empty to use the workspace default."
+            hint="The most one run may spend on supplier cost before UBB stops it, as an amount — or declare the kind uncapped below. A kind of work never inherits the workspace default."
           >
             {(id) => (
               <Input
@@ -212,6 +216,26 @@ export function DeclareKindDialog({
               />
             )}
           </FormField>
+          <Controller
+            control={form.control}
+            name="uncapped"
+            render={({ field }) => (
+              <label className="flex items-start gap-2.5">
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={(checked) => field.onChange(checked === true)}
+                />
+                <span className="text-[12px]">
+                  <span className="font-medium text-text-primary">Uncapped</span>
+                  <span className="mt-0.5 block text-text-secondary">
+                    This kind of work runs under no ceiling, by your declaration. A start may
+                    still request one. Uncapped is a choice, not an omission: a kind of work
+                    must state a ceiling or declare itself uncapped.
+                  </span>
+                </span>
+              </label>
+            )}
+          />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField

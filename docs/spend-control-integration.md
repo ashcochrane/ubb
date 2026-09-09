@@ -32,10 +32,13 @@ Back-out is instant (set `off`).
 
 1. **Start-gate.** `POST /api/v1/tasks` at the start of each task (your unit of
    agent work — a workflow execution), with `customer_id` and a **required**
-   `idempotency_key` of your own. Pass `provider_cost_limit_micros` to cap what
-   the task may **burn** (provider cost / COGS — not your marked-up price);
-   omitted, your tenant default applies; absent both, the task is uncapped and
-   no signal ever fires. You get back `task_id`. A refusal is an HTTP refusal,
+   `idempotency_key` of your own. Pass `task_cogs_ceiling_micros` to request a
+   LOWER cap on what the task may **burn** (provider cost / COGS — not your
+   marked-up price) than its declared kind of work carries — never a higher
+   one; omitted, the kind's own ceiling applies (or, for work with no declared
+   kind, your workspace default for that altitude), and where none applies the
+   task runs under no ceiling and its `ceiling_status` says `not_applicable`.
+   You get back `task_id`. A refusal is an HTTP refusal,
    not a `200`: `409 task_start_refused` carries a `reason` saying why
    (`insufficient_funds`, `soft_floor_reached`, …) and `422 validation_error`
    answers a request that is wrong in itself.
@@ -102,7 +105,7 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
 ## The signals, in one place
 
 - **`POST /api/v1/tasks` →** `{task_id, parent_task_id, task_type, status,
-  provider_cost_limit_micros, external_task_id, created_at, replayed}` — push,
+  task_cogs_ceiling_micros, external_task_id, created_at, replayed}` — push,
   at task start. `replayed` says this call found your key already claimed and
   created nothing.
 - **`start_task` (SDK) →** a `StartedTask` handle over the call above:

@@ -10,7 +10,8 @@
 // the same two words for `pricing_mode`, but making it the authority on a set
 // the registry owns is the drift the consumer gates exist to abolish.
 
-import type { RootSchemas } from "@/api/types";
+import type { RootSchemas, TenantSchemas } from "@/api/types";
+import type { UndeclaredWorkCeilingRung } from "@/hooks/use-tenant-config";
 import type { TaskStatus } from "@/lib/vocabulary";
 
 /** One declared kind of work, as the registry reports it. */
@@ -27,6 +28,17 @@ export type RunRow = RootSchemas["TaskOut"];
 
 /** A page of runs, in the house cursor envelope. */
 export type RunsPage = RootSchemas["PaginatedTasks"];
+
+/**
+ * The workspace's two default COGS ceilings for work started with no declared
+ * kind, one per altitude (#453) — the only two fields of the tenant
+ * configuration this feature writes, because they are the ceiling of the one
+ * "kind" a tenant can never declare and belong beside the declared ones.
+ * Explicit null clears a rung; an omitted key leaves it alone. The
+ * configuration itself is `TenantConfig` from `@/hooks/use-tenant-config`,
+ * the one name every feature reads it by.
+ */
+export type UndeclaredWorkCeilings = Pick<TenantSchemas["TenantConfigIn"], UndeclaredWorkCeilingRung>;
 
 /**
  * One run with the work contained in it — every piece, not a page (see

@@ -58,7 +58,7 @@ class TestTaskLimitFanout:
         _k, raw = TenantApiKey.create_key(t, label="t")
         task = TaskService.create_task(
             tenant=t, customer=c, balance_snapshot_micros=100_000_000,
-            provider_cost_limit_micros=10_000_000, billing_owner_id=c.id)
+            task_cogs_ceiling_micros=10_000_000, billing_owner_id=c.id)
 
         declares_a_caller_supplied_cost(t, DECLARED)
 

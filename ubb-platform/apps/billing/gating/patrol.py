@@ -230,7 +230,7 @@ def sweep_over_limit_tasks(tenant):
     # passed over.
     over = Task.objects.filter(tenant=tenant, status=TASK_STATUS_ACTIVE).filter(
         ceiling_reached_q("total_provider_cost_micros",
-                          "provider_cost_limit_micros"))
+                          "task_cogs_ceiling_micros"))
     for task in over.iterator():
         reason = SUBTASK_LIMIT if task.parent_id is not None else TASK_LIMIT
         # kill_and_announce never raises; a lost race (already terminal)
@@ -331,7 +331,7 @@ def _remint_kill(task, tenant):
         # current completeness too (#328) — a repaired delivery that dropped the
         # caveat would say more than the original did.
         unresolved_event_count=task.unresolved_event_count,
-        provider_cost_limit_micros=task.provider_cost_limit_micros or 0,
+        task_cogs_ceiling_micros=task.task_cogs_ceiling_micros or 0,
         re_announcement=True)
     if task.parent_id is not None:
         outbox = write_event(announcement(

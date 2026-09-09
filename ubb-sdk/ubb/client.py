@@ -163,7 +163,7 @@ class UBBClient:
     def start_task(self, customer_id: str, idempotency_key: str, *,
                    task_type: str | None = None,
                    parent_task_id: str | None = None,
-                   provider_cost_limit_micros: int | None = None,
+                   task_cogs_ceiling_micros: int | None = None,
                    dimensions: dict | None = None,
                    external_task_id: str | None = None,
                    metadata: dict | None = None) -> StartedTask:
@@ -179,7 +179,7 @@ class UBBClient:
         return self._require_metering().start_task(
             customer_id, idempotency_key, task_type=task_type,
             parent_task_id=parent_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
+            task_cogs_ceiling_micros=task_cogs_ceiling_micros,
             dimensions=dimensions, external_task_id=external_task_id,
             metadata=metadata)
 

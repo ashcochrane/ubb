@@ -15,7 +15,7 @@ the total it races, or a local the enclosing function bound FROM either; or a
 queryset lookup ending in `__lt`, `__lte`, `__gt` or `__gte` keyed on either
 column or given the other through `F()`. Reading the function's own
 assignments is what catches the shape the live lane's inline copy actually
-had (`limit = unit.provider_cost_limit_micros; total > limit`), where the
+had (`limit = unit.task_cogs_ceiling_micros; total > limit`), where the
 comparison itself names only one column. Both column names are read off the
 model rather than spelled here, so a rename reddens this file instead of
 leaving it guarding nothing (the failure shape
@@ -47,17 +47,25 @@ PLATFORM = Path(__file__).resolve().parents[3]
 
 #: The two columns the compare is about, read off the model so the walker's
 #: subject cannot go stale while the gate stays green.
-THE_CEILING = Task._meta.get_field("provider_cost_limit_micros").attname
+THE_CEILING = Task._meta.get_field("task_cogs_ceiling_micros").attname
 THE_KNOWN_TOTAL = Task._meta.get_field("total_provider_cost_micros").attname
 COLUMNS = frozenset({THE_CEILING, THE_KNOWN_TOTAL})
 
 #: Where an ordering compare against either column may still be spelled, and
-#: how many times: `{module: count}`. Each would be a comparison a person has
-#: read and found NOT to be the crossing. (The start gate's "a start may
-#: request a ceiling lower than the declaration's, never higher" compares
-#: the REQUEST against the declaration's default — a different column, so
-#: it is not here and does not need to be.)
-PERMITTED = {}
+#: how many times: `{module: count}`. Each is a comparison a person has read
+#: and found NOT to be the crossing.
+#:
+#: The one site: the start's ceiling ladder — "a start may request a ceiling
+#: lower than the rung that answers, never higher" (#150 §8.3). It compares a
+#: REQUESTED ceiling against the declaration's figure or the tenant's default:
+#: two ceilings, and no supplier total anywhere in it. It was invisible to
+#: this walk at #452 because the declaration's column had a different name;
+#: #453 gave the declaration the unit's name at the other scope, so the local
+#: bound from the policy's key now reads as an alias of the column, and the
+#: compare is declared here rather than hidden behind a helper that would
+#: exist only to blind the walk. A second compare arriving in that module is
+#: read by a person.
+PERMITTED = {"apps/billing/gating/services/risk_service.py": 1}
 
 ORDERINGS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 ORDERING_LOOKUPS = ("__lt", "__lte", "__gt", "__gte")
@@ -104,7 +112,7 @@ def _lookup_names(call):
 
 def _aliases_of(scope):
     """The locals a function binds FROM either column — `limit =
-    unit.provider_cost_limit_micros` — so a compare against the alias is
+    unit.task_cogs_ceiling_micros` — so a compare against the alias is
     read as a compare against the column."""
     aliases = set()
     for node in ast.walk(scope):
@@ -168,7 +176,7 @@ def test_the_gate_reads_both_columns_off_the_model():
     """The vacuity guard on the subject: the model's own two column names,
     so a rename moves this file rather than leaving the walk searching for a
     spelling nothing has."""
-    assert THE_CEILING == "provider_cost_limit_micros"
+    assert THE_CEILING == "task_cogs_ceiling_micros"
     assert THE_KNOWN_TOTAL == "total_provider_cost_micros"
 
 
@@ -176,7 +184,7 @@ def test_the_gate_reads_both_columns_off_the_model():
 
 THE_LIVE_LANES_OLD_COMPARE = """
 def _crossed_limit(unit):
-    limit = unit.provider_cost_limit_micros
+    limit = unit.task_cogs_ceiling_micros
     return limit is not None and unit.total_provider_cost_micros > limit
 """
 
@@ -184,15 +192,15 @@ THE_PATROLS_OLD_FILTER = """
 def sweep(tenant):
     return Task.objects.filter(
         tenant=tenant, status="active",
-        provider_cost_limit_micros__isnull=False,
-        total_provider_cost_micros__gte=F("provider_cost_limit_micros"))
+        task_cogs_ceiling_micros__isnull=False,
+        total_provider_cost_micros__gte=F("task_cogs_ceiling_micros"))
 """
 
 THE_REACHED_COUNTS_OLD_Q = """
 def rollup(qs):
     return qs.annotate(limit_hit_count=Count("id", filter=Q(
-        provider_cost_limit_micros__isnull=False,
-        total_provider_cost_micros__gte=F("provider_cost_limit_micros"))))
+        task_cogs_ceiling_micros__isnull=False,
+        total_provider_cost_micros__gte=F("task_cogs_ceiling_micros"))))
 """
 
 A_COMPARE_THAT_IS_NOT_ABOUT_THE_CEILING = """

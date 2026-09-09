@@ -13,14 +13,14 @@ class TestTaskType:
 
     def test_key_unique_per_tenant_and_kind(self):
         t = self._t()
-        TaskType.objects.create(tenant=t, key="invoice_batch", kind="task")
+        TaskType.objects.create(tenant=t, key="invoice_batch", kind="task", uncapped=True)
         with pytest.raises(IntegrityError):
-            TaskType.objects.create(tenant=t, key="invoice_batch", kind="task")
+            TaskType.objects.create(tenant=t, key="invoice_batch", kind="task", uncapped=True)
 
     def test_same_key_allowed_across_kinds(self):
         t = self._t()
-        TaskType.objects.create(tenant=t, key="ocr", kind="task")
-        TaskType.objects.create(tenant=t, key="ocr", kind="subtask")
+        TaskType.objects.create(tenant=t, key="ocr", kind="task", uncapped=True)
+        TaskType.objects.create(tenant=t, key="ocr", kind="subtask", uncapped=True)
         assert TaskType.objects.filter(tenant=t, key="ocr").count() == 2
 
     def test_policy_returns_plain_dict(self):
@@ -34,14 +34,15 @@ class TestTaskType:
         """
         t = self._t()
         TaskType.objects.create(tenant=t, key="invoice_batch", kind="task",
-                                default_provider_cost_limit_micros=5_000_000,
+                                task_cogs_ceiling_micros=5_000_000,
                                 silence_window_seconds=1200,
                                 absolute_deadline_seconds=7200,
                                 required_dimensions=["region"])
         assert task_type_policy(t.id, "invoice_batch", "task") == {
             "key": "invoice_batch",
             "pricing_mode": PRICING_MODE_EVENT_PRICED,
-            "default_provider_cost_limit_micros": 5_000_000,
+            "task_cogs_ceiling_micros": 5_000_000,
+            "uncapped": False,
             "silence_window_seconds": 1200,
             "absolute_deadline_seconds": 7200,
             "required_dimensions": ["region"],
@@ -52,7 +53,7 @@ class TestTaskType:
         """NULL and 0 are different declarations at the silence window, so the
         read contract must not flatten one into the other on its way out."""
         t = self._t()
-        TaskType.objects.create(tenant=t, key="unbounded", kind="task")
+        TaskType.objects.create(tenant=t, key="unbounded", kind="task", uncapped=True)
         policy = task_type_policy(t.id, "unbounded", "task")
         assert policy["silence_window_seconds"] is None
         assert policy["absolute_deadline_seconds"] is None

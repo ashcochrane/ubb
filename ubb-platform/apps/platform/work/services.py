@@ -442,7 +442,7 @@ SUBTASK_DEPTH_EXCEEDED = "subtask_depth_exceeded"
 #: decides to say, which is the half that decays silently.
 PINNED_PARENT = "parent"
 PINNED_TASK_TYPE = "task_type"
-PINNED_COST_CEILING = "provider_cost_limit_micros"
+PINNED_COST_CEILING = "task_cogs_ceiling_micros"
 PINNED_GROUPING_VALUES = "grouping_values"
 
 
@@ -478,15 +478,15 @@ class StartDeclaration:
     """
 
     __slots__ = ("idempotency_key", "parent_task_id", "task_type",
-                 "grouping_values", "provider_cost_limit_micros")
+                 "grouping_values", "task_cogs_ceiling_micros")
 
     def __init__(self, idempotency_key, *, parent_task_id=None, task_type="",
-                 grouping_values=None, provider_cost_limit_micros=None):
+                 grouping_values=None, task_cogs_ceiling_micros=None):
         self.idempotency_key = idempotency_key
         self.parent_task_id = parent_task_id
         self.task_type = task_type or ""
         self.grouping_values = dict(grouping_values or {})
-        self.provider_cost_limit_micros = provider_cost_limit_micros
+        self.task_cogs_ceiling_micros = task_cogs_ceiling_micros
 
     def scope(self):
         """Which altitude this declaration sets its grouping values at.
@@ -494,7 +494,7 @@ class StartDeclaration:
         ⚠ IT IS A FACT ABOUT WHETHER A PARENT WAS NAMED, which is why it lives
         on the declaration rather than being re-derived beside every caller.
         And it is NOT the `task_type_kind` vocabulary, though two of its words
-        are spelled the same — `RiskService.resolve_type_policy` makes that
+        are spelled the same — `RiskService.resolve_start_policy` makes that
         argument in full.
         """
         return "subtask" if self.parent_task_id is not None else "task"
@@ -583,9 +583,9 @@ class StartDeclaration:
         # not a claim that can contradict anything. Where one IS named, it is
         # the resolved ceiling by construction: the resolution returns a
         # supplied value unchanged or refuses the request outright.
-        if (self.provider_cost_limit_micros is not None
-                and self.provider_cost_limit_micros
-                != task.provider_cost_limit_micros):
+        if (self.task_cogs_ceiling_micros is not None
+                and self.task_cogs_ceiling_micros
+                != task.task_cogs_ceiling_micros):
             return PINNED_COST_CEILING
         # LAST, AND THE ONLY COMPARISON THAT READS THE DATABASE — see the ⚠
         # above. Resolving is not admitting: a repeat records nothing.
@@ -655,7 +655,7 @@ class TaskService:
 
     @staticmethod
     def create_task(tenant, customer, balance_snapshot_micros,
-                    provider_cost_limit_micros=None,
+                    task_cogs_ceiling_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
                     parent=None, task_type="", dimension_slots=None,
                     idempotency_key=None,
@@ -725,7 +725,7 @@ class TaskService:
             customer=customer,
             parent=parent,
             balance_snapshot_micros=balance_snapshot_micros,
-            provider_cost_limit_micros=provider_cost_limit_micros,
+            task_cogs_ceiling_micros=task_cogs_ceiling_micros,
             metadata=metadata or {},
             external_task_id=external_task_id,
             idempotency_key=idempotency_key,
@@ -772,7 +772,7 @@ class TaskService:
         into the kill flow + stop fields (reasons.kill_plan / stop_fields):
 
         - ``crossed_task_limit``: THIS call pushed the governing TOP-LEVEL
-          task's provider total past its ``provider_cost_limit_micros`` while
+          task's provider total past its ``task_cogs_ceiling_micros`` while
           that task was still active — the unit's own limit for a top-level
           event, the PARENT's limit (raced by the rolled-up total) for a
           subtask event. Only the provider (COGS) total races a limit — a
@@ -893,7 +893,7 @@ class TaskService:
             # landed it and was killed by the patrol an hour later with no
             # tipping event to attribute the stop to.
             return ceiling_reached(unit.total_provider_cost_micros,
-                                   unit.provider_cost_limit_micros)
+                                   unit.task_cogs_ceiling_micros)
 
         was_active = task.status == TASK_STATUS_ACTIVE
         parent_was_active = (parent is not None
@@ -1158,7 +1158,7 @@ class TaskService:
                         # is non-zero (#328) — the unit really spent at least
                         # that much, so the crossing is sound and understated.
                         unresolved_event_count=stopped.unresolved_event_count,
-                        provider_cost_limit_micros=stopped.provider_cost_limit_micros or 0)
+                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros or 0)
                     if stopped.parent_id is not None:
                         outbox = write_event(announcement(
                             subtask_id=str(stopped.id),

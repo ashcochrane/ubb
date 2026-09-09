@@ -50,7 +50,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import TaskKilled
-from apps.platform.work.models import Task
+from apps.platform.work.models import Task, TaskType
 from apps.platform.work.services import TaskService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
@@ -58,6 +58,7 @@ from core.vocabulary import (
     CEILING_STATUS_NOT_APPLICABLE, CEILING_STATUS_WITHIN_CEILING,
     COSTING_STATUS_UNRESOLVED,
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
+    TASK_TYPE_KIND_TASK,
     TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
 
 
@@ -85,7 +86,7 @@ class OneRulePinTestBase(TestCase):
     def _task(self, limit=10_000_000, balance=100_000_000):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=self.customer.id)
 
     def _record(self, **extra):
@@ -110,6 +111,35 @@ class OneRulePinTestBase(TestCase):
 
     def _limit_events(self):
         return OutboxEvent.objects.filter(event_type=TaskKilled.EVENT_TYPE)
+
+    def _start(self, **extra):
+        """Register a unit of work through the one route that registers one.
+
+        ⚠ THIS USED TO BE THE AFFORDABILITY CALL WITH A FLAG ON IT (#410).
+        Registering work is `POST /api/v1/tasks` now — at the root, ungated,
+        and with the caller's key required — so a refusal is an HTTP refusal
+        rather than a verdict riding inside a 200.
+        """
+        data = {"customer_id": str(self.customer.id),
+                "idempotency_key": f"attempt-{uuid.uuid4()}"}
+        data.update(extra)
+        return self.http_client.post(
+            "/api/v1/tasks", data=json.dumps(data),
+            content_type="application/json", **self._auth())
+
+    def _started(self, **extra):
+        """...and the body of a start that was admitted."""
+        response = self._start(**extra)
+        assert response.status_code == 200, response.json()
+        return response.json()
+
+    def _tenant_declares_a_default_ceiling(self, micros, *, contained=False):
+        """The tenant's default COGS ceiling for work with no declared kind,
+        at one altitude — a kernel setting on the tenant row (#453)."""
+        rung = ("default_subtask_cogs_ceiling_micros" if contained
+                else "default_task_cogs_ceiling_micros")
+        setattr(self.tenant, rung, micros)
+        self.tenant.save(update_fields=[rung])
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -179,7 +209,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertEqual(payload["trigger_source"], TRIGGER_SOURCE_USAGE_INGEST)
         self.assertEqual(payload["task_id"], str(task.id))
         self.assertEqual(payload["total_provider_cost_micros"], 10_000_000)
-        self.assertEqual(payload["provider_cost_limit_micros"], 10_000_000)
+        self.assertEqual(payload["task_cogs_ceiling_micros"], 10_000_000)
         # And the patrol then finds nothing to sweep: the event that landed
         # the unit on its ceiling is the event that stopped it, so the repair
         # lane has nothing left to repair.
@@ -279,6 +309,92 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
             self.assertFalse(body["stop"])
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
+
+    def test_a_unit_of_an_uncapped_kind_is_not_applicable(self, _mock):
+        """TD claim 3 (#453): a kind declared `uncapped` pins no ceiling, and
+        every surface that asks says `not_applicable` with null utilisation —
+        the acknowledgement and the unit read alike — however far the cost
+        runs. Never `within_ceiling`, never `indeterminate`, and never a stop."""
+        TaskType.objects.create(tenant=self.tenant, key="free",
+                                kind=TASK_TYPE_KIND_TASK,
+                                uncapped=True)
+        started = self._started(task_type="free")
+        self.assertIsNone(started["task_cogs_ceiling_micros"])
+        with self.captureOnCommitCallbacks(execute=True):
+            body = self._record(task_id=started["task_id"],
+                                provider_cost_micros=10**9, bills=1_000).json()
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
+        self.assertFalse(body["stop"])
+        read = self.http_client.get(
+            f"/api/v1/tasks/{started['task_id']}", **self._auth()).json()
+        self.assertEqual(read["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+        self.assertIsNone(read["ceiling_used_percentage"])
+        self.assertIsNone(read["ceiling_remaining_micros"])
+        self.assertEqual(read["status"], TASK_STATUS_ACTIVE)
+
+    def test_undeclared_work_on_a_tenant_with_no_default_is_not_applicable(self, _mock):
+        """The other cause of `not_applicable` (#453; the two are not told
+        apart on the wire, by decision): no declared kind and no tenant
+        default at this altitude, so nothing applies and nothing is evaluated."""
+        started = self._started()
+        self.assertIsNone(started["task_cogs_ceiling_micros"])
+        with self.captureOnCommitCallbacks(execute=True):
+            body = self._record(task_id=started["task_id"],
+                                provider_cost_micros=10**9, bills=1_000).json()
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertFalse(body["stop"])
+        read = self.http_client.get(
+            f"/api/v1/tasks/{started['task_id']}", **self._auth()).json()
+        self.assertEqual(read["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+
+    def test_undeclared_work_on_a_tenant_with_a_default_is_evaluated_against_it(self, _mock):
+        """The tenant's rung is a real ceiling for work with no declared kind
+        (#453): the unit pins it, the assessment evaluates against it, and
+        landing on it stops the unit."""
+        self._tenant_declares_a_default_ceiling(7_000_000)
+        started = self._started()
+        self.assertEqual(started["task_cogs_ceiling_micros"], 7_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            under = self._record(task_id=started["task_id"],
+                                 provider_cost_micros=3_500_000, bills=1_000).json()
+            self.assertEqual(under["ceiling_status"], CEILING_STATUS_WITHIN_CEILING)
+            self.assertEqual(under["ceiling_used_percentage"], 50)
+            on = self._record(task_id=started["task_id"],
+                              provider_cost_micros=3_500_000, bills=1_000).json()
+        self.assertEqual(on["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
+        self.assertTrue(on["stop"])
+        task = Task.objects.get(id=started["task_id"])
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
+
+    def test_a_declared_kind_is_never_assessed_against_the_tenant_default(self, _mock):
+        """A tenant default LOWER than the kind's own figure, and lower than
+        the spend of an uncapped kind: neither unit is stopped by it, because
+        a declared kind answers for itself (#453, slice 6 §2). The start-time
+        half is `CeilingResolutionAtStartTest`; this is the assessment."""
+        self._tenant_declares_a_default_ceiling(1_000_000)
+        TaskType.objects.create(tenant=self.tenant, key="capped",
+                                kind=TASK_TYPE_KIND_TASK,
+                                task_cogs_ceiling_micros=5_000_000)
+        TaskType.objects.create(tenant=self.tenant, key="free",
+                                kind=TASK_TYPE_KIND_TASK,
+                                uncapped=True)
+        capped = self._started(task_type="capped")
+        free = self._started(task_type="free")
+        with self.captureOnCommitCallbacks(execute=True):
+            on_capped = self._record(task_id=capped["task_id"],
+                                     provider_cost_micros=2_000_000,
+                                     bills=1_000).json()
+            on_free = self._record(task_id=free["task_id"],
+                                   provider_cost_micros=2_000_000,
+                                   bills=1_000).json()
+        self.assertEqual(on_capped["ceiling_status"], CEILING_STATUS_WITHIN_CEILING)
+        self.assertEqual(on_capped["ceiling_used_percentage"], 40)
+        self.assertFalse(on_capped["stop"])
+        self.assertEqual(on_free["ceiling_status"], CEILING_STATUS_NOT_APPLICABLE)
+        self.assertFalse(on_free["stop"])
 
     def test_a_report_naming_no_unit_carries_no_assessment(self, _mock):
         """Null exactly when no unit is named: nothing to assess.
@@ -527,47 +643,56 @@ class CeilingResolutionAtStartTest(OneRulePinTestBase):
     `cost_coverage_required` with no task created.
     """
 
-    def _start(self, **extra):
-        """Register a unit of work through the one route that registers one.
+    def test_a_lower_request_wins_over_the_tenant_default(self):
+        self._tenant_declares_a_default_ceiling(7_000_000)
 
-        ⚠ THIS USED TO BE THE AFFORDABILITY CALL WITH A FLAG ON IT (#410).
-        Registering work is `POST /api/v1/tasks` now — at the root, ungated,
-        and with the caller's key required — so a refusal is an HTTP refusal
-        rather than a verdict riding inside a 200.
-        """
-        data = {"customer_id": str(self.customer.id),
-                "idempotency_key": f"attempt-{uuid.uuid4()}"}
-        data.update(extra)
-        return self.http_client.post(
-            "/api/v1/tasks", data=json.dumps(data),
-            content_type="application/json", **self._auth())
-
-    def _started(self, **extra):
-        """...and the body of a start that was admitted."""
-        response = self._start(**extra)
-        assert response.status_code == 200, response.json()
-        return response.json()
-
-    def test_an_explicit_ceiling_wins_over_the_tenant_default(self):
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
-
-        body = self._started(provider_cost_limit_micros=5_000_000)
+        body = self._started(task_cogs_ceiling_micros=5_000_000)
         task = Task.objects.get(id=body["task_id"])
-        self.assertEqual(task.provider_cost_limit_micros, 5_000_000)
-        self.assertEqual(body["provider_cost_limit_micros"], 5_000_000)
+        self.assertEqual(task.task_cogs_ceiling_micros, 5_000_000)
+        self.assertEqual(body["task_cogs_ceiling_micros"], 5_000_000)
+
+    def test_a_request_above_the_tenant_default_is_refused(self):
+        """Lower only, against whichever rung answers (#453, #150 §8.3): the
+        tenant's default for undeclared work is set by the platform team just
+        as a declaration is, and agent code may not widen either."""
+        self._tenant_declares_a_default_ceiling(7_000_000)
+
+        refused = self._start(task_cogs_ceiling_micros=9_000_000)
+        self.assertEqual(refused.status_code, 422, refused.json())
+        self.assertIn("exceeds", refused.json()["detail"])
+        self.assertIn("undeclared", refused.json()["detail"])
+        self.assertEqual(Task.objects.count(), 0)
 
     def test_the_tenant_default_applies_absent_an_explicit_ceiling(self):
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=7_000_000)
+        self._tenant_declares_a_default_ceiling(7_000_000)
 
         body = self._started()
-        self.assertEqual(body["provider_cost_limit_micros"], 7_000_000)
+        self.assertEqual(body["task_cogs_ceiling_micros"], 7_000_000)
 
-    def test_a_start_with_no_ceiling_anywhere_is_uncapped(self):
+    def test_a_declared_kind_ignores_the_tenant_default_entirely(self):
+        """A declaration answers for itself (#453, slice 6 §2): a kind with
+        its own figure pins that figure, a kind declared uncapped pins no
+        ceiling, and the tenant's default — set higher and lower than the
+        figure in turn — reaches neither. The rung is for work with no
+        declaration to answer."""
+        TaskType.objects.create(tenant=self.tenant, key="capped",
+                                kind=TASK_TYPE_KIND_TASK,
+                                task_cogs_ceiling_micros=5_000_000)
+        TaskType.objects.create(tenant=self.tenant, key="free",
+                                kind=TASK_TYPE_KIND_TASK,
+                                uncapped=True)
+        for tenant_default in (7_000_000, 3_000_000):
+            with self.subTest(tenant_default=tenant_default):
+                self._tenant_declares_a_default_ceiling(tenant_default)
+                capped = self._started(task_type="capped")
+                self.assertEqual(capped["task_cogs_ceiling_micros"], 5_000_000)
+                free = self._started(task_type="free")
+                self.assertIsNone(free["task_cogs_ceiling_micros"])
+
+    def test_a_start_with_no_ceiling_anywhere_pins_none(self):
         body = self._started()
         task = Task.objects.get(id=body["task_id"])
-        self.assertIsNone(task.provider_cost_limit_micros)
+        self.assertIsNone(task.task_cogs_ceiling_micros)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -637,15 +762,22 @@ class Pin17CleanCutSweepTest(OneRulePinTestBase):
         self.assertFalse(hasattr(schemas, "RunLimitExceeded"))
 
     def test_retired_config_fields_are_gone(self):
+        # INVERTED at its own address by #453: the two tenant-default
+        # ceilings left the risk row for the tenant row (#141 §6.2), so the
+        # pin that once held them ON the risk row now holds them off it and
+        # on the tenant, beside the two deadline rungs they joined.
         risk_fields = {f.name for f in RiskConfig._meta.get_fields()}
         self.assertNotIn("max_cost_per_task_micros", risk_fields)
-        self.assertIn("default_task_provider_cost_limit_micros", risk_fields)
+        self.assertNotIn("default_task_cogs_ceiling_micros", risk_fields)
+        self.assertNotIn("default_subtask_cogs_ceiling_micros", risk_fields)
 
         tenant_fields = {f.name for f in Tenant._meta.get_fields()}
         for gone in ("run_cost_limit_micros", "hard_stop_balance_micros",
                      "run_stale_seconds"):
             self.assertNotIn(gone, tenant_fields)
         self.assertIn("task_stale_seconds", tenant_fields)
+        self.assertIn("default_task_cogs_ceiling_micros", tenant_fields)
+        self.assertIn("default_subtask_cogs_ceiling_micros", tenant_fields)
 
         btc_fields = {f.name for f in BillingTenantConfig._meta.get_fields()}
         self.assertNotIn("run_cost_limit_micros", btc_fields)

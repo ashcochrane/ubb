@@ -512,7 +512,7 @@ class _TerminalStop:
     customer_id      = the SEAT that owns the work.
     billing_owner_id = resolve_billing_owner(seat) — the STOP SCOPE.
     Both running totals are carried, denominationally explicit; only the
-    provider (COGS) total races provider_cost_limit_micros.
+    provider (COGS) total races task_cogs_ceiling_micros.
     """
     tenant_id: str
     customer_id: str = ""
@@ -538,7 +538,7 @@ class _TerminalStop:
     #: unit spent at least the total above, so the stop is sound and the figure
     #: understates it.
     unresolved_event_count: int = 0
-    provider_cost_limit_micros: int = 0
+    task_cogs_ceiling_micros: int = 0
     #: Delivery spec §B (#43): True only on a patrol re-mint — a repaired
     #: delivery of the CURRENT state, never a fresh crossing. The re-mint reads
     #: that state off the row, so a unit that was killed re-announces

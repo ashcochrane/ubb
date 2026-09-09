@@ -176,8 +176,9 @@ class TenantConfigEndpointTest(TestCase):
 
     # --- PATCH: spend-safety knobs (one-rule #37: the run-era
     # run_cost_limit_micros / hard_stop_balance_micros / max_cost_per_task_micros
-    # knobs are retired; the per-task default is
-    # default_task_provider_cost_limit_micros (RiskConfig-backed). The
+    # knobs are retired; the two default ceilings for work with no declared
+    # kind are default_task_cogs_ceiling_micros and its contained-work twin,
+    # on the tenant row since #453. The
     # per-task floor snapshot (BillingTenantConfig-backed) that used to sit
     # alongside it was itself deleted — billing-surface-correctness plan,
     # task 1: an independent third floor that never read the customer's real
@@ -186,38 +187,61 @@ class TenantConfigEndpointTest(TestCase):
     def test_get_config_includes_task_default_knobs(self):
         body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
         self.assertEqual(body["min_balance_micros"], 0)
-        self.assertIsNone(body["default_task_provider_cost_limit_micros"])
+        self.assertIsNone(body["default_task_cogs_ceiling_micros"])
+        self.assertIsNone(body["default_subtask_cogs_ceiling_micros"])
 
     def test_patch_sets_min_balance_and_task_defaults(self):
         response = self.http_client.patch(
             "/api/v1/tenant/config",
             data=json.dumps({
                 "min_balance_micros": 5_000_000,
-                "default_task_provider_cost_limit_micros": 50_000_000,
+                "default_task_cogs_ceiling_micros": 50_000_000,
             }),
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
-        from apps.billing.gating.models import RiskConfig
-        rc = RiskConfig.objects.get(tenant=self.tenant)  # created lazily
-        self.assertEqual(rc.default_task_provider_cost_limit_micros, 50_000_000)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_task_cogs_ceiling_micros, 50_000_000)
         from apps.billing.tenant_billing.models import BillingTenantConfig
         bc = BillingTenantConfig.objects.get(tenant=self.tenant)
         # #52: the hard floor lands on BillingTenantConfig, like its siblings.
         self.assertEqual(bc.min_balance_micros, 5_000_000)
         body = response.json()
         self.assertEqual(body["min_balance_micros"], 5_000_000)
-        self.assertEqual(body["default_task_provider_cost_limit_micros"], 50_000_000)
+        self.assertEqual(body["default_task_cogs_ceiling_micros"], 50_000_000)
 
     def test_patch_task_default_limit_zero_or_negative_returns_422(self):
-        for bad in (0, -1):
-            response = self.http_client.patch(
-                "/api/v1/tenant/config",
-                data=json.dumps({"default_task_provider_cost_limit_micros": bad}),
-                content_type="application/json", **self._auth(),
-            )
-            self.assertEqual(response.status_code, 422, f"value {bad} should be rejected")
-            self.assertEqual(response.json().get("code"), "invalid_config")
+        for rung in ("default_task_cogs_ceiling_micros",
+                     "default_subtask_cogs_ceiling_micros"):
+            for bad in (0, -1):
+                response = self.http_client.patch(
+                    "/api/v1/tenant/config",
+                    data=json.dumps({rung: bad}),
+                    content_type="application/json", **self._auth(),
+                )
+                self.assertEqual(response.status_code, 422,
+                                 f"{rung}={bad} should be rejected")
+                self.assertEqual(response.json().get("code"), "invalid_config")
+                self.assertIn(rung, response.json()["detail"])
+
+    def test_patch_sets_the_contained_work_default_on_its_own(self):
+        """Both rungs are on the wire (#453; only the top-level one was), and
+        each moves alone: setting the contained-work default leaves the
+        top-level one exactly where it stood."""
+        self.tenant.default_task_cogs_ceiling_micros = 40_000_000
+        self.tenant.save(update_fields=["default_task_cogs_ceiling_micros"])
+        response = self.http_client.patch(
+            "/api/v1/tenant/config",
+            data=json.dumps({"default_subtask_cogs_ceiling_micros": 4_000_000}),
+            content_type="application/json", **self._auth(),
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["default_subtask_cogs_ceiling_micros"], 4_000_000)
+        self.assertEqual(body["default_task_cogs_ceiling_micros"], 40_000_000)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_subtask_cogs_ceiling_micros, 4_000_000)
+        self.assertEqual(self.tenant.default_task_cogs_ceiling_micros, 40_000_000)
 
     def test_patch_min_balance_negative_returns_422(self):
         response = self.http_client.patch(
@@ -316,18 +340,17 @@ class TenantConfigEndpointTest(TestCase):
         self.assertIsNone(bc.soft_min_balance_micros)
 
     def test_patch_null_clears_task_default_limit(self):
-        from apps.billing.gating.models import RiskConfig
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=50_000_000)
+        self.tenant.default_task_cogs_ceiling_micros = 50_000_000
+        self.tenant.save(update_fields=["default_task_cogs_ceiling_micros"])
         response = self.http_client.patch(
             "/api/v1/tenant/config",
-            data=json.dumps({"default_task_provider_cost_limit_micros": None}),
+            data=json.dumps({"default_task_cogs_ceiling_micros": None}),
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
-        rc = RiskConfig.objects.get(tenant=self.tenant)
-        self.assertIsNone(rc.default_task_provider_cost_limit_micros)
-        self.assertIsNone(response.json()["default_task_provider_cost_limit_micros"])
+        self.tenant.refresh_from_db()
+        self.assertIsNone(self.tenant.default_task_cogs_ceiling_micros)
+        self.assertIsNone(response.json()["default_task_cogs_ceiling_micros"])
 
     def test_get_config_includes_null_soft_floor_default(self):
         body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
@@ -388,10 +411,9 @@ class TenantConfigEndpointTest(TestCase):
         self.assertEqual(bc.soft_min_balance_micros, -2_000_000)
 
     def test_patch_omitting_knobs_leaves_them_unchanged(self):
-        from apps.billing.gating.models import RiskConfig
         from apps.billing.queries import get_billing_config
-        RiskConfig.objects.create(
-            tenant=self.tenant, default_task_provider_cost_limit_micros=42_000_000)
+        self.tenant.default_task_cogs_ceiling_micros = 42_000_000
+        self.tenant.save(update_fields=["default_task_cogs_ceiling_micros"])
         bc = get_billing_config(self.tenant.id)
         bc.min_balance_micros = 7_000_000
         bc.save(update_fields=["min_balance_micros"])
@@ -401,8 +423,8 @@ class TenantConfigEndpointTest(TestCase):
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
-        rc = RiskConfig.objects.get(tenant=self.tenant)
-        self.assertEqual(rc.default_task_provider_cost_limit_micros, 42_000_000)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.default_task_cogs_ceiling_micros, 42_000_000)
         bc.refresh_from_db()
         self.assertEqual(bc.min_balance_micros, 7_000_000)
 

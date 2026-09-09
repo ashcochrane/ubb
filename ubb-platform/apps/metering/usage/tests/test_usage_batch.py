@@ -191,7 +191,7 @@ class TestBatchOneRuleParity:
     def _task(self, t, c, limit=1_000):
         return Task.objects.create(tenant=t, customer=c, status="active",
                                    balance_snapshot_micros=10_000_000,
-                                   provider_cost_limit_micros=limit,
+                                   task_cogs_ceiling_micros=limit,
                                    billing_owner_id=c.id)
 
     def _items(self, c, task, n0=1):

@@ -481,7 +481,7 @@ class AnnounceTest(WorkTestBase):
         self.assertEqual(payload["reason_code"], reasons.SUBTASK_LIMIT)
         self.assertEqual(payload["total_billed_cost_micros"], 8_000_000)
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
-        self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
+        self.assertEqual(payload["task_cogs_ceiling_micros"], 5_000_000)
         parent.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
 

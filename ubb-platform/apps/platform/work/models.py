@@ -165,13 +165,20 @@ def _empty_list():
 class TaskType(BaseModel):
     """The tenant's declared work vocabulary, carrying POLICY (design D7).
 
-    Before this existed, a unit's COGS ceiling came from the per-call
-    `provider_cost_limit_micros` or one tenant-wide default
-    (RiskConfig.default_task_provider_cost_limit_micros) — so every kind of job
-    shared one ceiling, and a job that legitimately costs 50x its sibling forced
-    you to either cap both at the large number or let the client declare its own
-    spending limit. The ceiling now belongs to the KIND of work, server-side: a
-    start call may request lower, never higher.
+    Before this existed, a unit's COGS ceiling came from the start call or
+    one tenant-wide default — so every kind of work shared one ceiling, and
+    work that legitimately costs 50x its sibling forced you to either cap both
+    at the large number or let the client declare its own ceiling. The ceiling
+    now belongs to the KIND of work, server-side: a start call may request
+    lower, never higher.
+
+    A DECLARATION STATES ITS CEILING OR STATES THAT IT HAS NONE (#453, slice 6
+    §2, #150 §8). `task_cogs_ceiling_micros` and `uncapped` below are one
+    answer in two columns, and the database refuses a row carrying neither or
+    both — so "I configured nothing" can never be read as "no spend control".
+    The tenant's own default rungs (`Tenant.default_task_cogs_ceiling_micros`
+    and its contained-work twin) apply to work with NO declared kind only; a
+    declared kind never falls through to them.
 
     IT CARRIES HOW THE WORK IS SOLD AS WELL AS WHAT IT MAY SPEND (#414). Those
     are two different questions about the same declaration — one bounds COGS,
@@ -192,9 +199,29 @@ class TaskType(BaseModel):
     # declarations with different policy.
     kind = models.CharField(max_length=8, choices=TASK_TYPE_KIND_CHOICES,
                             default=TASK_TYPE_KIND_TASK)
-    # COGS-denominated, matching Task.provider_cost_limit_micros. NULL = fall
-    # back to the RiskConfig tenant default, then to uncapped.
-    default_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # THE COGS CEILING THIS KIND OF WORK DECLARES (#453) — the same word
+    # `Task.task_cogs_ceiling_micros` carries at the other scope, on
+    # `pricing_mode`'s precedent: one concept at two scopes, and the model
+    # name supplies the scope. This is the declaration; the unit pins what the
+    # ladder resolved from it. No `default_` prefix, because a declared value
+    # is THE ceiling of this kind — a start may request lower, never higher.
+    #
+    # NULL here means exactly one thing: this kind is declared `uncapped`
+    # (below). It never means "fall through": there is no rung under a
+    # declaration, and the check constraint beneath the fields is what makes
+    # the pair an answer rather than an omission.
+    task_cogs_ceiling_micros = models.BigIntegerField(null=True, blank=True)
+    # THIS KIND OF WORK DECLARES THAT IT HAS NO CEILING (#453, #150 §8) — a
+    # choice, never a fallback. Uncapped is legal (an internal tenant, work
+    # whose cost genuinely cannot be bounded in advance) but it has to be
+    # said: `ck_task_type_ceiling_or_uncapped` refuses a declaration carrying
+    # neither a figure nor this flag, and one carrying both.
+    #
+    # An ordinary mutable column, like the ceiling beside it (ADR-0012's
+    # Consequences): a tenant revises both as it learns what its work costs.
+    # Every declaration that predated this column carried a null ceiling and
+    # meant uncapped by it; `work/migrations/0024` says so and sets it.
+    uncapped = models.BooleanField(default=False)
     # HOW LONG THIS KIND OF WORK MAY GO QUIET (#412), the first rung of the
     # silence ladder — this declaration, then the tenant's own default, then
     # UBB's backstop. The docstring above makes the argument for the ceiling
@@ -266,12 +293,13 @@ class TaskType(BaseModel):
     #: model-level guard is the instrument this repository has already watched a
     #: production writer bypass by design.
     #:
-    #: The three bounds beside it are deliberately NOT here. A ceiling, a
-    #: silence window and an absolute deadline are operational settings a tenant
-    #: revises as it learns what its work costs and how long it takes; freezing
-    #: them would make the registry unusable and would say something false about
-    #: how they are actually used. `Task`'s own columns are a separate piece of
-    #: work with its own migration, recorded at `Task.outcome_reason`.
+    #: The three bounds and the `uncapped` flag beside it are deliberately NOT
+    #: here. A ceiling, a silence window and an absolute deadline are
+    #: operational settings a tenant revises as it learns what its work costs
+    #: and how long it takes; freezing them would make the registry unusable
+    #: and would say something false about how they are actually used. `Task`'s
+    #: own columns are a separate piece of work with its own migration,
+    #: recorded at `Task.outcome_reason`.
     transition_classes = {"pricing_mode": FROZEN}
 
     class Meta:
@@ -279,6 +307,18 @@ class TaskType(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=["tenant", "kind", "key"],
                                     name="uq_task_type_key"),
+            # A DECLARATION ANSWERS THE CEILING QUESTION EXACTLY ONCE (#453,
+            # #150 §8.1): a figure, or `uncapped`, never neither and never
+            # both. Held here rather than in a serializer (ADR-0007 §2) so a
+            # data migration, a shell session or a bulk write meets the same
+            # refusal the route renders as a validation problem.
+            models.CheckConstraint(
+                condition=(models.Q(uncapped=False,
+                                    task_cogs_ceiling_micros__isnull=False)
+                           | models.Q(uncapped=True,
+                                      task_cogs_ceiling_micros__isnull=True)),
+                name="ck_task_type_ceiling_or_uncapped",
+            ),
             # The absolute deadline is either undeclared at this rung or a
             # real window. See the column: this is the rule that keeps "no
             # tenant gets an immortal unit" a property of the database rather
@@ -372,7 +412,7 @@ class Task(BaseModel):
     )
     # Both running totals, denominationally explicit, maintained on EVERY
     # accumulate — including events landing after a kill. Only the provider
-    # total races provider_cost_limit_micros.
+    # total races task_cogs_ceiling_micros.
     total_billed_cost_micros = models.BigIntegerField(default=0)
     total_provider_cost_micros = models.BigIntegerField(default=0)
     event_count = models.IntegerField(default=0)
@@ -416,9 +456,12 @@ class Task(BaseModel):
     # rather than repaired. No code currently reads this field; do not add
     # a new floor comparison against it.
     balance_snapshot_micros = models.BigIntegerField()
-    # COGS limit: measures what the job actually burns (provider cost),
-    # never the tenant's markup policy.
-    provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # THE COGS CEILING THIS UNIT PINNED AT START (#453): what the work may
+    # burn at the supplier, never the tenant's markup policy — the same word
+    # `TaskType.task_cogs_ceiling_micros` carries at the other scope, resolved
+    # from it (or from the tenant's default rung for work with no declared
+    # kind) by the start's ladder. NULL = no ceiling applies to this unit.
+    task_cogs_ceiling_micros = models.BigIntegerField(null=True, blank=True)
 
     # HOW THIS UNIT OF WORK IS SOLD, SNAPSHOTTED AT START (#415, spec §9).
     #
@@ -427,7 +470,7 @@ class Task(BaseModel):
     # two scopes and the model name already supplies the scope. The
     # DECLARATION says how a kind of work is sold; this says how THIS unit was
     # sold, and it is a copy rather than a read for the reason
-    # `balance_snapshot_micros` and `provider_cost_limit_micros` above are
+    # `balance_snapshot_micros` and `task_cogs_ceiling_micros` above are
     # copies — a configuration change must never reach work already running.
     #
     # It is why the frozen column one table over does not need a publish
@@ -755,7 +798,7 @@ class Task(BaseModel):
             models.Index(
                 fields=["tenant"],
                 condition=models.Q(status=TASK_STATUS_ACTIVE,
-                                   provider_cost_limit_micros__isnull=False),
+                                   task_cogs_ceiling_micros__isnull=False),
                 name="idx_task_active_limited",
             ),
             # Unit-economics rollup (design D7): mean/p95 cost per KIND of job.
@@ -788,7 +831,7 @@ class Task(BaseModel):
     @property
     def ceiling_assessment(self) -> crossing.CeilingAssessment:
         return crossing.ceiling_assessment(
-            ceiling_micros=self.provider_cost_limit_micros,
+            ceiling_micros=self.task_cogs_ceiling_micros,
             known_micros=self.total_provider_cost_micros,
             unresolved_count=self.unresolved_event_count)
 

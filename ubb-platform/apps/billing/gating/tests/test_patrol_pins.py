@@ -112,7 +112,7 @@ def _task(t, c, limit=None, total=0, status="active", parent=None,
           stamp=None, meta=None):
     return Task.objects.create(
         tenant=t, customer=c, parent=parent, status=status,
-        balance_snapshot_micros=0, provider_cost_limit_micros=limit,
+        balance_snapshot_micros=0, task_cogs_ceiling_micros=limit,
         total_provider_cost_micros=total, billing_owner_id=c.id,
         announce_outbox_id=stamp, metadata=meta or {})
 

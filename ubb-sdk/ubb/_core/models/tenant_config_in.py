@@ -28,7 +28,8 @@ class TenantConfigIn:
             automatic_tax_enabled (bool | None | Unset):
             billing_mode (None | str | Unset):
             default_currency (None | str | Unset):
-            default_task_provider_cost_limit_micros (int | None | Unset):
+            default_subtask_cogs_ceiling_micros (int | None | Unset):
+            default_task_cogs_ceiling_micros (int | None | Unset):
             enforcement_mode (None | str | Unset):
             live_counter_maintenance_enabled (bool | None | Unset):
             min_balance_micros (int | None | Unset):
@@ -39,7 +40,8 @@ class TenantConfigIn:
     automatic_tax_enabled: bool | None | Unset = UNSET
     billing_mode: None | str | Unset = UNSET
     default_currency: None | str | Unset = UNSET
-    default_task_provider_cost_limit_micros: int | None | Unset = UNSET
+    default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
+    default_task_cogs_ceiling_micros: int | None | Unset = UNSET
     enforcement_mode: None | str | Unset = UNSET
     live_counter_maintenance_enabled: bool | None | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
@@ -70,11 +72,17 @@ class TenantConfigIn:
         else:
             default_currency = self.default_currency
 
-        default_task_provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.default_task_provider_cost_limit_micros, Unset):
-            default_task_provider_cost_limit_micros = UNSET
+        default_subtask_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.default_subtask_cogs_ceiling_micros, Unset):
+            default_subtask_cogs_ceiling_micros = UNSET
         else:
-            default_task_provider_cost_limit_micros = self.default_task_provider_cost_limit_micros
+            default_subtask_cogs_ceiling_micros = self.default_subtask_cogs_ceiling_micros
+
+        default_task_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.default_task_cogs_ceiling_micros, Unset):
+            default_task_cogs_ceiling_micros = UNSET
+        else:
+            default_task_cogs_ceiling_micros = self.default_task_cogs_ceiling_micros
 
         enforcement_mode: None | str | Unset
         if isinstance(self.enforcement_mode, Unset):
@@ -124,8 +132,10 @@ class TenantConfigIn:
             field_dict["billing_mode"] = billing_mode
         if default_currency is not UNSET:
             field_dict["default_currency"] = default_currency
-        if default_task_provider_cost_limit_micros is not UNSET:
-            field_dict["default_task_provider_cost_limit_micros"] = default_task_provider_cost_limit_micros
+        if default_subtask_cogs_ceiling_micros is not UNSET:
+            field_dict["default_subtask_cogs_ceiling_micros"] = default_subtask_cogs_ceiling_micros
+        if default_task_cogs_ceiling_micros is not UNSET:
+            field_dict["default_task_cogs_ceiling_micros"] = default_task_cogs_ceiling_micros
         if enforcement_mode is not UNSET:
             field_dict["enforcement_mode"] = enforcement_mode
         if live_counter_maintenance_enabled is not UNSET:
@@ -174,14 +184,24 @@ class TenantConfigIn:
         default_currency = _parse_default_currency(d.pop("default_currency", UNSET))
 
 
-        def _parse_default_task_provider_cost_limit_micros(data: object) -> int | None | Unset:
+        def _parse_default_subtask_cogs_ceiling_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(int | None | Unset, data)
 
-        default_task_provider_cost_limit_micros = _parse_default_task_provider_cost_limit_micros(d.pop("default_task_provider_cost_limit_micros", UNSET))
+        default_subtask_cogs_ceiling_micros = _parse_default_subtask_cogs_ceiling_micros(d.pop("default_subtask_cogs_ceiling_micros", UNSET))
+
+
+        def _parse_default_task_cogs_ceiling_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        default_task_cogs_ceiling_micros = _parse_default_task_cogs_ceiling_micros(d.pop("default_task_cogs_ceiling_micros", UNSET))
 
 
         def _parse_enforcement_mode(data: object) -> None | str | Unset:
@@ -253,7 +273,8 @@ class TenantConfigIn:
             automatic_tax_enabled=automatic_tax_enabled,
             billing_mode=billing_mode,
             default_currency=default_currency,
-            default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
+            default_subtask_cogs_ceiling_micros=default_subtask_cogs_ceiling_micros,
+            default_task_cogs_ceiling_micros=default_task_cogs_ceiling_micros,
             enforcement_mode=enforcement_mode,
             live_counter_maintenance_enabled=live_counter_maintenance_enabled,
             min_balance_micros=min_balance_micros,

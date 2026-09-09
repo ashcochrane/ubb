@@ -48,9 +48,9 @@ class TaskModelTest(TestCase):
             tenant=self.tenant,
             customer=self.customer,
             balance_snapshot_micros=5_000_000,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
         )
-        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
+        self.assertEqual(task.task_cogs_ceiling_micros, 10_000_000)
         self.assertEqual(task.balance_snapshot_micros, 5_000_000)
 
     def test_task_without_limits(self):
@@ -59,7 +59,7 @@ class TaskModelTest(TestCase):
             customer=self.customer,
             balance_snapshot_micros=0,
         )
-        self.assertIsNone(task.provider_cost_limit_micros)
+        self.assertIsNone(task.task_cogs_ceiling_micros)
 
     def test_task_with_external_task_id(self):
         task = Task.objects.create(
@@ -102,7 +102,7 @@ class TheRowAssessesItsOwnCeilingTest(TestCase):
     def _row(self, *, ceiling, known=0, unresolved=0):
         return Task.objects.create(
             tenant=self.tenant, customer=self.customer,
-            balance_snapshot_micros=0, provider_cost_limit_micros=ceiling,
+            balance_snapshot_micros=0, task_cogs_ceiling_micros=ceiling,
             total_provider_cost_micros=known,
             unresolved_event_count=unresolved)
 
@@ -143,7 +143,7 @@ class TheRowAssessesItsOwnCeilingTest(TestCase):
                 self._row(ceiling=1_000, known=1_001),
                 self._row(ceiling=1_000, known=999, unresolved=5)]
         selected = set(Task.objects.filter(ceiling_reached_q(
-            "total_provider_cost_micros", "provider_cost_limit_micros")
+            "total_provider_cost_micros", "task_cogs_ceiling_micros")
         ).values_list("id", flat=True))
         reached = {row.id for row in rows
                    if row.ceiling_assessment.status == CEILING_STATUS_CEILING_REACHED}

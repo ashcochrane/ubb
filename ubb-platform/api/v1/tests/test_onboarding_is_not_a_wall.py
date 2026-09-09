@@ -52,7 +52,7 @@ def a_limited_start(tenant, customer, *, ceiling):
         "/api/v1/tasks",
         data=json.dumps({"customer_id": str(customer.id),
                          "idempotency_key": f"attempt-{uuid.uuid4()}",
-                         "provider_cost_limit_micros": ceiling}),
+                         "task_cogs_ceiling_micros": ceiling}),
         content_type="application/json",
         HTTP_AUTHORIZATION=f"Bearer {raw_key}")
 
@@ -73,18 +73,17 @@ class ALimitedStartNeedsNoCoveragePromiseTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         task = Task.objects.get(id=response.json()["task_id"])
-        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
+        self.assertEqual(task.task_cogs_ceiling_micros, 10_000_000)
 
     def test_a_tenant_default_ceiling_starts_a_task_too(self):
-        config = self.tenant.risk_config
-        config.default_task_provider_cost_limit_micros = 7_000_000
-        config.save(update_fields=["default_task_provider_cost_limit_micros"])
+        self.tenant.default_task_cogs_ceiling_micros = 7_000_000
+        self.tenant.save(update_fields=["default_task_cogs_ceiling_micros"])
 
         response = a_limited_start(self.tenant, self.customer, ceiling=None)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json()["provider_cost_limit_micros"], 7_000_000)
+            response.json()["task_cogs_ceiling_micros"], 7_000_000)
 
 
 class TheSettingIsGoneRatherThanDefaultedOffTest(TestCase):
@@ -170,8 +169,8 @@ class ASandboxAdmitsWhatItsLiveParentAdmitsTest(TestCase):
         task = Task.objects.filter(tenant=tenant).get()
         return {
             "http_status": response.status_code,
-            "ceiling_returned": response.json().get("provider_cost_limit_micros"),
-            "ceiling_on_the_task": task.provider_cost_limit_micros,
+            "ceiling_returned": response.json().get("task_cogs_ceiling_micros"),
+            "ceiling_on_the_task": task.task_cogs_ceiling_micros,
         }
 
     def test_both_admit_a_limited_start_with_no_cost_rates_declared(self):

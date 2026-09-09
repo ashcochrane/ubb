@@ -30,7 +30,7 @@ class TestTaskAnalytics:
             Task.objects.create(
                 tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,
                 task_type="invoice_batch", status="completed",
-                provider_cost_limit_micros=50_000,
+                task_cogs_ceiling_micros=50_000,
                 total_provider_cost_micros=cost, event_count=1)
         Task.objects.create(
             tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,

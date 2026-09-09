@@ -31,7 +31,7 @@ def task_type_policy(tenant_id, key, kind) -> dict | None:
     """One task type's policy, or None when the key is not declared."""
     row = TaskType.objects.filter(
         tenant_id=tenant_id, key=key, kind=kind
-    ).values("key", "pricing_mode", "default_provider_cost_limit_micros",
+    ).values("key", "pricing_mode", "task_cogs_ceiling_micros", "uncapped",
              "silence_window_seconds", "absolute_deadline_seconds",
              "required_dimensions", "retired_at").first()
     if row is None:
@@ -41,8 +41,13 @@ def task_type_policy(tenant_id, key, kind) -> dict | None:
             # it through here to decide whether a unit of work resolves one
             # agreed price at start or prices each event as it arrives.
             "pricing_mode": row["pricing_mode"],
-            "default_provider_cost_limit_micros":
-                row["default_provider_cost_limit_micros"],
+            # THE CEILING THIS KIND DECLARED, AND WHETHER IT DECLARED NONE
+            # (#453): one answer in two keys, exactly as the row holds it. The
+            # database refuses a row saying neither or both, so a reader may
+            # branch on `uncapped` and trust the figure is there otherwise.
+            "task_cogs_ceiling_micros":
+                row["task_cogs_ceiling_micros"],
+            "uncapped": row["uncapped"],
             "silence_window_seconds": row["silence_window_seconds"],
             "absolute_deadline_seconds": row["absolute_deadline_seconds"],
             "required_dimensions": row["required_dimensions"] or [],
@@ -58,8 +63,9 @@ def declared_task_types(tenant_id) -> list[dict]:
     return [
         {"key": r["key"], "kind": r["kind"],
          "pricing_mode": r["pricing_mode"],
-         "default_provider_cost_limit_micros":
-             r["default_provider_cost_limit_micros"],
+         "task_cogs_ceiling_micros":
+             r["task_cogs_ceiling_micros"],
+         "uncapped": r["uncapped"],
          "silence_window_seconds": r["silence_window_seconds"],
          "absolute_deadline_seconds": r["absolute_deadline_seconds"],
          "required_dimensions": r["required_dimensions"] or [],
@@ -76,7 +82,7 @@ def declared_task_types(tenant_id) -> list[dict]:
         for r in TaskType.objects.filter(tenant_id=tenant_id)
         .order_by("kind", "key")
         .values("key", "kind", "pricing_mode",
-                "default_provider_cost_limit_micros",
+                "task_cogs_ceiling_micros", "uncapped",
                 "silence_window_seconds", "absolute_deadline_seconds",
                 "required_dimensions", "retired_at")
     ]
@@ -119,11 +125,14 @@ def expiry_windows(tenant_id) -> dict:
     See :class:`ExpiryWindows` for what each half may hold.
 
     THE LADDER, PER WINDOW, IN THIS ORDER: the declared kind of work, then the
-    tenant's own default, then UBB's backstop. It is the ladder the COGS
-    ceiling already climbs (`RiskService.resolve_start_policy`), and for the
-    same argument the kind-of-work declaration makes about ceilings: one kind
-    of job that legitimately behaves differently from its sibling should not
-    force the tenant to loosen the rule for both.
+    tenant's own default, then UBB's backstop — for the same argument the
+    kind-of-work declaration makes about ceilings: one kind of work that
+    legitimately behaves differently from its sibling should not force the
+    tenant to loosen the rule for both. ⚠ It is NOT the COGS ceiling's ladder
+    any more (#453): a declared kind must answer the ceiling question itself,
+    so the tenant's ceiling default reaches undeclared work only, while the
+    tenant's two window rungs here sit under every declaration
+    (`RiskService.resolve_start_policy` states the ceiling's two ladders).
 
     ⚠ RESOLVED WHEN A SWEEPER RUNS, NOT PINNED AT REGISTRATION, and that is a
     decision rather than an accident. The COGS ceiling is snapshotted onto the
@@ -256,7 +265,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                 # THE ONE COMPARE in its queryset spelling (#452), so this
                 # count and the recording lane's stop agree on the boundary.
                 limit_hit_count=Count("id", filter=ceiling_reached_q(
-                    "total_provider_cost_micros", "provider_cost_limit_micros")),
+                    "total_provider_cost_micros", "task_cogs_ceiling_micros")),
             )
             .order_by("-sum_provider_cost_micros"))
 

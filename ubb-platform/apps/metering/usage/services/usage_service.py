@@ -223,7 +223,7 @@ def _result(event, *, task=None,
     if task is None and event.task_id:
         from apps.platform.work.models import Task
         task = Task.objects.filter(id=event.task_id).only(
-            "id", "parent_id", "provider_cost_limit_micros",
+            "id", "parent_id", "task_cogs_ceiling_micros",
             "total_provider_cost_micros", "unresolved_event_count").first()
     if parent_task_id is _UNRESOLVED:
         parent_task_id = task.parent_id if task is not None else None

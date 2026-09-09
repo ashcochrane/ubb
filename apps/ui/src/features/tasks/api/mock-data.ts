@@ -15,7 +15,8 @@
 //                                               higher, so the ceiling is a
 //                                               different share of each
 //   image-upscale       task     fixed          declared, never run
-//   render-frame        subtask  event priced   inherits the workspace ceiling
+//   render-frame        subtask  event priced   declared UNCAPPED — a choice,
+//                                               never an omission (#453)
 //   render-shot         subtask  fixed          the contained work under a
 //                                               video-render run, sold the way
 //                                               its parent is sold
@@ -46,9 +47,9 @@ import type { KindOfWork, RunRow, TaskStatus } from "./types";
  * reader of an `indeterminate` row must treat the percentage as a floor.
  */
 export function ceilingAssessment(
-  row: Pick<RunRow, "provider_cost_limit_micros" | "total_provider_cost_micros" | "unresolved_event_count">,
+  row: Pick<RunRow, "task_cogs_ceiling_micros" | "total_provider_cost_micros" | "unresolved_event_count">,
 ): Pick<RunRow, "ceiling_status" | "ceiling_used_percentage" | "ceiling_remaining_micros"> {
-  const ceiling = row.provider_cost_limit_micros;
+  const ceiling = row.task_cogs_ceiling_micros;
   if (ceiling === undefined || ceiling === null) {
     return { ceiling_status: "not_applicable", ceiling_used_percentage: null, ceiling_remaining_micros: null };
   }
@@ -85,7 +86,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_EVENT_PRICED_KEY,
     kind: "task",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: 2_000_000,
+    task_cogs_ceiling_micros: 2_000_000,
+    uncapped: false,
     silence_window_seconds: 600,
     absolute_deadline_seconds: null,
     required_dimensions: ["model"],
@@ -96,7 +98,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_FIXED_KEY,
     kind: "task",
     pricing_mode: "fixed",
-    default_provider_cost_limit_micros: VIDEO_RENDER_CEILING_MICROS,
+    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
+    uncapped: false,
     silence_window_seconds: 1_800,
     absolute_deadline_seconds: 7_200,
     required_dimensions: [],
@@ -107,7 +110,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_FIXED_NEGOTIATED_KEY,
     kind: "task",
     pricing_mode: "fixed",
-    default_provider_cost_limit_micros: TRANSCRIPT_CEILING_MICROS,
+    task_cogs_ceiling_micros: TRANSCRIPT_CEILING_MICROS,
+    uncapped: false,
     silence_window_seconds: 900,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -118,7 +122,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_FIXED_UNSOLD_KEY,
     kind: "task",
     pricing_mode: "fixed",
-    default_provider_cost_limit_micros: 1_500_000,
+    task_cogs_ceiling_micros: 1_500_000,
+    uncapped: false,
     silence_window_seconds: null,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -129,7 +134,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_STEP_KEY,
     kind: "subtask",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: null,
+    task_cogs_ceiling_micros: null,
+    uncapped: true,
     silence_window_seconds: null,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -140,7 +146,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_FIXED_CONTAINED_KEY,
     kind: "subtask",
     pricing_mode: "fixed",
-    default_provider_cost_limit_micros: 200_000,
+    task_cogs_ceiling_micros: 200_000,
+    uncapped: false,
     silence_window_seconds: 120,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -151,7 +158,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_RETIRED_KEY,
     kind: "task",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: 500_000,
+    task_cogs_ceiling_micros: 500_000,
+    uncapped: false,
     silence_window_seconds: 300,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -162,7 +170,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_SHARED_WORD_KEY,
     kind: "task",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: 1_000_000,
+    task_cogs_ceiling_micros: 1_000_000,
+    uncapped: false,
     silence_window_seconds: 600,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -173,7 +182,8 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
     key: KIND_SHARED_WORD_KEY,
     kind: "subtask",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: 250_000,
+    task_cogs_ceiling_micros: 250_000,
+    uncapped: false,
     silence_window_seconds: null,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -262,7 +272,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_type: KIND_FIXED_KEY,
     status: "active",
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    provider_cost_limit_micros: VIDEO_RENDER_CEILING_MICROS,
+    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
     // Everything contained in it (669,000 over 28 events, one of them never
     // costed) plus 571,000 over two events reported against the run itself.
     ...totals(incompleteTotal(1_240_000, 1), completePriceTotal(0), 30),
@@ -272,7 +282,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: "0b7d4e29-8f13-4a6c-b0d5-2e8a9c4f7b13",
     task_type: KIND_FIXED_NEGOTIATED_KEY,
     agreed_price_micros: TRANSCRIPT_HIGH_PRICE_MICROS,
-    provider_cost_limit_micros: TRANSCRIPT_CEILING_MICROS,
+    task_cogs_ceiling_micros: TRANSCRIPT_CEILING_MICROS,
     total_provider_cost_micros: 2_100_000,
     event_count: 30,
     created_at: "2026-08-31T18:40:00Z",
@@ -289,7 +299,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_DELIVERED_FIXED_ID,
     task_type: KIND_FIXED_KEY,
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    provider_cost_limit_micros: VIDEO_RENDER_CEILING_MICROS,
+    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
     total_provider_cost_micros: 2_870_000,
     event_count: 41,
     created_at: "2026-08-30T11:20:00Z",
@@ -319,7 +329,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_type: KIND_EVENT_PRICED_KEY,
     status: "killed",
     // A lower ceiling than the kind's, asked for at start, and crossed.
-    provider_cost_limit_micros: 800_000,
+    task_cogs_ceiling_micros: 800_000,
     ...totals(incompleteTotal(900_000, 2), completePriceTotal(1_500_000), 9),
     created_at: "2026-08-28T20:00:00Z",
     completed_at: "2026-08-28T20:03:00Z",
@@ -328,7 +338,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: "a1c6d9e3-5b28-4e47-8f60-9d2b7a4c1e58",
     task_type: KIND_FIXED_NEGOTIATED_KEY,
     agreed_price_micros: TRANSCRIPT_LOW_PRICE_MICROS,
-    provider_cost_limit_micros: TRANSCRIPT_CEILING_MICROS,
+    task_cogs_ceiling_micros: TRANSCRIPT_CEILING_MICROS,
     total_provider_cost_micros: 1_950_000,
     event_count: 22,
     created_at: "2026-08-28T16:00:00Z",
@@ -349,7 +359,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     status: "failed",
     outcome_reason: "upstream_provider_error",
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    provider_cost_limit_micros: VIDEO_RENDER_CEILING_MICROS,
+    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
     total_provider_cost_micros: 410_000,
     event_count: 3,
     created_at: "2026-08-27T08:30:00Z",

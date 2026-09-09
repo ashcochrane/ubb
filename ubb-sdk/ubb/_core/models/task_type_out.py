@@ -26,8 +26,12 @@ T = TypeVar("T", bound="TaskTypeOut")
 class TaskTypeOut:
     """ One declared kind of work, as UBB holds it.
 
-    Each bound is echoed back exactly as declared. `null` means this kind
-    declared none and inherits your workspace default for it.
+    The ceiling is exactly what was declared: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true` with the figure `null`. A kind of work never
+    inherits a ceiling from your workspace — the workspace defaults apply to
+    work started with no declared kind at all. Each window is echoed back as
+    declared; `null` means this kind declared none and inherits your workspace
+    default for it.
 
     `retired_at` is the instant this kind of work stopped being offered, or
     `null` while it is live.
@@ -38,10 +42,11 @@ class TaskTypeOut:
             pricing_mode (TaskTypeOutPricingMode):
             required_dimensions (list[str]):
             retired (bool):
+            uncapped (bool):
             absolute_deadline_seconds (int | None | Unset):
-            default_provider_cost_limit_micros (int | None | Unset):
             retired_at (None | str | Unset):
             silence_window_seconds (int | None | Unset):
+            task_cogs_ceiling_micros (int | None | Unset):
      """
 
     key: str
@@ -49,10 +54,11 @@ class TaskTypeOut:
     pricing_mode: TaskTypeOutPricingMode
     required_dimensions: list[str]
     retired: bool
+    uncapped: bool
     absolute_deadline_seconds: int | None | Unset = UNSET
-    default_provider_cost_limit_micros: int | None | Unset = UNSET
     retired_at: None | str | Unset = UNSET
     silence_window_seconds: int | None | Unset = UNSET
+    task_cogs_ceiling_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -72,17 +78,13 @@ class TaskTypeOut:
 
         retired = self.retired
 
+        uncapped = self.uncapped
+
         absolute_deadline_seconds: int | None | Unset
         if isinstance(self.absolute_deadline_seconds, Unset):
             absolute_deadline_seconds = UNSET
         else:
             absolute_deadline_seconds = self.absolute_deadline_seconds
-
-        default_provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.default_provider_cost_limit_micros, Unset):
-            default_provider_cost_limit_micros = UNSET
-        else:
-            default_provider_cost_limit_micros = self.default_provider_cost_limit_micros
 
         retired_at: None | str | Unset
         if isinstance(self.retired_at, Unset):
@@ -96,6 +98,12 @@ class TaskTypeOut:
         else:
             silence_window_seconds = self.silence_window_seconds
 
+        task_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.task_cogs_ceiling_micros, Unset):
+            task_cogs_ceiling_micros = UNSET
+        else:
+            task_cogs_ceiling_micros = self.task_cogs_ceiling_micros
+
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -105,15 +113,16 @@ class TaskTypeOut:
             "pricing_mode": pricing_mode,
             "required_dimensions": required_dimensions,
             "retired": retired,
+            "uncapped": uncapped,
         })
         if absolute_deadline_seconds is not UNSET:
             field_dict["absolute_deadline_seconds"] = absolute_deadline_seconds
-        if default_provider_cost_limit_micros is not UNSET:
-            field_dict["default_provider_cost_limit_micros"] = default_provider_cost_limit_micros
         if retired_at is not UNSET:
             field_dict["retired_at"] = retired_at
         if silence_window_seconds is not UNSET:
             field_dict["silence_window_seconds"] = silence_window_seconds
+        if task_cogs_ceiling_micros is not UNSET:
+            field_dict["task_cogs_ceiling_micros"] = task_cogs_ceiling_micros
 
         return field_dict
 
@@ -139,6 +148,8 @@ class TaskTypeOut:
 
         retired = d.pop("retired")
 
+        uncapped = d.pop("uncapped")
+
         def _parse_absolute_deadline_seconds(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -147,16 +158,6 @@ class TaskTypeOut:
             return cast(int | None | Unset, data)
 
         absolute_deadline_seconds = _parse_absolute_deadline_seconds(d.pop("absolute_deadline_seconds", UNSET))
-
-
-        def _parse_default_provider_cost_limit_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        default_provider_cost_limit_micros = _parse_default_provider_cost_limit_micros(d.pop("default_provider_cost_limit_micros", UNSET))
 
 
         def _parse_retired_at(data: object) -> None | str | Unset:
@@ -179,16 +180,27 @@ class TaskTypeOut:
         silence_window_seconds = _parse_silence_window_seconds(d.pop("silence_window_seconds", UNSET))
 
 
+        def _parse_task_cogs_ceiling_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        task_cogs_ceiling_micros = _parse_task_cogs_ceiling_micros(d.pop("task_cogs_ceiling_micros", UNSET))
+
+
         task_type_out = cls(
             key=key,
             kind=kind,
             pricing_mode=pricing_mode,
             required_dimensions=required_dimensions,
             retired=retired,
+            uncapped=uncapped,
             absolute_deadline_seconds=absolute_deadline_seconds,
-            default_provider_cost_limit_micros=default_provider_cost_limit_micros,
             retired_at=retired_at,
             silence_window_seconds=silence_window_seconds,
+            task_cogs_ceiling_micros=task_cogs_ceiling_micros,
         )
 
 

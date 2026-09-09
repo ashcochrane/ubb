@@ -209,7 +209,7 @@ class TestTheWorkUnitTotalIsAFloor:
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.schemas import TaskKilled
 
-        unit = self._unit(provider_cost_limit_micros=1)
+        unit = self._unit(task_cogs_ceiling_micros=1)
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
         # Re-read before touching it: `accumulate_cost` locks and mutates its
@@ -260,7 +260,7 @@ class TestTheWorkUnitTotalIsAFloor:
         """
         from apps.billing.gating.patrol import sweep_over_limit_tasks
 
-        unit = self._unit(provider_cost_limit_micros=KNOWN_COST_MICROS + 1)
+        unit = self._unit(task_cogs_ceiling_micros=KNOWN_COST_MICROS + 1)
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
         assert sweep_over_limit_tasks(self.tenant) == 0
@@ -277,7 +277,7 @@ class TestTheWorkUnitTotalIsAFloor:
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.schemas import TaskKilled
 
-        unit = self._unit(provider_cost_limit_micros=1)
+        unit = self._unit(task_cogs_ceiling_micros=1)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
         TaskService.kill_and_announce(unit.id, reasons.TASK_LIMIT,
@@ -588,7 +588,7 @@ class TestThePastLimitReportAddsUpWhatItHas:
         with transaction.atomic():
             self.unit = TaskService.create_task(
                 tenant=self.tenant, customer=self.customer,
-                balance_snapshot_micros=0, provider_cost_limit_micros=1)
+                balance_snapshot_micros=0, task_cogs_ceiling_micros=1)
         self.unit.status = "killed"
         self.unit.completed_at = timezone.now()
         self.unit.metadata = {"kill_reason": reasons.TASK_LIMIT}

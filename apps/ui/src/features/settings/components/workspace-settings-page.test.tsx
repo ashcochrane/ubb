@@ -66,15 +66,16 @@ describe("WorkspaceSettingsPage", () => {
       renderWithQuery(<WorkspaceSettingsPage />);
       expect(
         await screen.findByText(
-          /allowed-overdraft and wind-down floors below aren't used under postpaid/i,
+          /allowed-overdraft and wind-down floors aren't used under postpaid/i,
         ),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText(/Allowed overdraft/)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/Wind-down floor/)).not.toBeInTheDocument();
-      // Kept under postpaid — it's a task-level spend limit, not a wallet floor.
-      expect(
-        await screen.findByLabelText(/Default task spend limit/),
-      ).toBeInTheDocument();
+      // The default ceilings for work with no declared kind LEFT this page
+      // (#453): a ceiling is a kernel setting, edited on the Tasks page beside
+      // the declared kinds of work. Under postpaid nothing is left to edit.
+      expect(screen.queryByLabelText(/Default task spend limit/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/ceiling/i)).not.toBeInTheDocument();
     } finally {
       writeMockTenantConfig(original);
     }

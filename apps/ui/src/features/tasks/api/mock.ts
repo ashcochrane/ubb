@@ -4,6 +4,11 @@
 // you read next, and what you did not send is untouched.
 
 import { ApiProblem } from "@/api/problem";
+import {
+  applyMockUndeclaredWorkCeilings,
+  readMockTenantConfig,
+  type TenantConfig,
+} from "@/hooks/use-tenant-config";
 import { mockDelay } from "@/lib/api-provider";
 import { TASK_TYPE_KIND_VALUES } from "@/lib/vocabulary";
 
@@ -16,6 +21,7 @@ import {
   type RunDetail,
   type RunsFilters,
   type RunsPage,
+  type UndeclaredWorkCeilings,
 } from "./types";
 
 function copyOf(kind: KindOfWork): KindOfWork {
@@ -40,6 +46,8 @@ export async function listKinds(): Promise<KindOfWork[]> {
  * (`api/v1/task_type_endpoints.py::declare_task_types`):
  *
  *   - a kind the registry does not recognise → `422 validation_error`;
+ *   - a declaration stating neither a ceiling figure nor `uncapped: true`,
+ *     or both → `422 validation_error` (#453);
  *   - a regime that differs from a standing declaration's →
  *     `409 pricing_mode_frozen`, naming the regime the row holds;
  *   - an omitted regime leaves a standing declaration as it is and declares a
@@ -62,6 +70,17 @@ function apply(declaration: KindOfWorkDeclaration, now: string): void {
       code: "validation_error",
       title: "Unprocessable Content",
       detail: `invalid kind '${kind}'`,
+    });
+  }
+  const uncapped = declaration.uncapped;
+  if ((declaration.task_cogs_ceiling_micros == null) === !uncapped) {
+    throw new ApiProblem({
+      status: 422,
+      code: "validation_error",
+      title: "Unprocessable Content",
+      detail:
+        `${kind} type '${declaration.key}' must state a task_cogs_ceiling_micros figure ` +
+        `or declare uncapped: true — it states ${uncapped ? "both" : "neither"}`,
     });
   }
   const standing = kinds.find((row) => sameDeclaration(row, { kind, key: declaration.key }));
@@ -89,7 +108,8 @@ function apply(declaration: KindOfWorkDeclaration, now: string): void {
     key: declaration.key,
     kind,
     pricing_mode: standing?.pricing_mode ?? requested ?? "event_priced",
-    default_provider_cost_limit_micros: declaration.default_provider_cost_limit_micros ?? null,
+    task_cogs_ceiling_micros: declaration.task_cogs_ceiling_micros ?? null,
+    uncapped,
     silence_window_seconds: declaration.silence_window_seconds ?? null,
     absolute_deadline_seconds: declaration.absolute_deadline_seconds ?? null,
     required_dimensions: [...(declaration.required_dimensions ?? [])],
@@ -116,6 +136,28 @@ export async function declareKinds(body: DeclareKindsBody): Promise<KindOfWork[]
     throw error;
   }
   return kinds.map(copyOf);
+}
+
+/**
+ * The workspace's default ceilings for work with no declared kind, on the
+ * mock workspace config every observer of the tenant cache reads (#453).
+ * The route's one rule for them lives in the shared mirror beside that
+ * config, because the settings mock stands in for the same route.
+ */
+export async function updateUndeclaredWorkCeilings(
+  patch: UndeclaredWorkCeilings,
+): Promise<TenantConfig> {
+  await mockDelay();
+  const applied = applyMockUndeclaredWorkCeilings(patch);
+  if (applied.refused !== undefined) {
+    throw new ApiProblem({
+      status: 422,
+      code: "invalid_config",
+      title: "Unprocessable Content",
+      detail: applied.refused,
+    });
+  }
+  return readMockTenantConfig();
 }
 
 /**

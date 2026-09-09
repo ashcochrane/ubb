@@ -6,9 +6,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
+import { tenantConfigQueryOptions } from "@/hooks/use-tenant-config";
 
 import { tasksApi } from "./provider";
-import type { DeclareKindsBody, RunsFilters } from "./types";
+import type { DeclareKindsBody, RunsFilters, UndeclaredWorkCeilings } from "./types";
 
 export function useKindsOfWork() {
   return useQuery({
@@ -32,6 +33,23 @@ export function useDeclareKinds() {
     mutationFn: (body: DeclareKindsBody) => tasksApi.declareKinds(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+/**
+ * Set the workspace's default ceilings for work with no declared kind (#453).
+ *
+ * The answer is the whole workspace config, and every observer of the
+ * `["tenant", "config"]` entry reads it — so the cache is refreshed under that
+ * key rather than the tasks key, which holds nothing about it.
+ */
+export function useUpdateUndeclaredWorkCeilings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: UndeclaredWorkCeilings) => tasksApi.updateUndeclaredWorkCeilings(patch),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: tenantConfigQueryOptions.queryKey });
     },
   });
 }

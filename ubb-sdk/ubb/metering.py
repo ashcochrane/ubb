@@ -117,7 +117,7 @@ class StartedTask:
 
     ``result`` is the whole registration (a ``StartTaskResponse``);
     ``task_id``, ``task_type``, ``parent_task_id``, ``replayed``,
-    ``provider_cost_limit_micros``, ``agreed_price_micros``,
+    ``task_cogs_ceiling_micros``, ``agreed_price_micros``,
     ``external_task_id`` and ``created_at`` read straight off it. ``closed``
     is the close's acknowledgement once a declaration has landed, ``None``
     before; ``declared`` is the outcome sent through this handle, or ``None``.
@@ -157,8 +157,8 @@ class StartedTask:
         return self.result.replayed
 
     @property
-    def provider_cost_limit_micros(self) -> int | None:
-        return self.result.provider_cost_limit_micros
+    def task_cogs_ceiling_micros(self) -> int | None:
+        return self.result.task_cogs_ceiling_micros
 
     @property
     def agreed_price_micros(self) -> int | None:
@@ -489,7 +489,7 @@ class MeteringClient:
     def start_task(self, customer_id: str, idempotency_key: str, *,
                    task_type: str | None = None,
                    parent_task_id: str | None = None,
-                   provider_cost_limit_micros: int | None = None,
+                   task_cogs_ceiling_micros: int | None = None,
                    dimensions: dict | None = None,
                    external_task_id: str | None = None,
                    metadata: dict | None = None) -> StartedTask:
@@ -509,7 +509,7 @@ class MeteringClient:
         ``task_type`` names a declared kind of work, which pins its ceiling,
         its expiry windows and how it is sold. ``parent_task_id`` registers
         contained work under a running unit through this same call — there
-        is one start shape, not two. ``provider_cost_limit_micros`` caps what
+        is one start shape, not two. ``task_cogs_ceiling_micros`` caps what
         the unit may spend at the supplier, never higher than the kind of
         work allows. ``dimensions`` is the declared grouping bag at this
         altitude, under the keyword ``record_usage`` already uses because the
@@ -531,8 +531,8 @@ class MeteringClient:
             body["task_type"] = task_type
         if parent_task_id is not None:
             body["parent_task_id"] = parent_task_id
-        if provider_cost_limit_micros is not None:
-            body["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if task_cogs_ceiling_micros is not None:
+            body["task_cogs_ceiling_micros"] = task_cogs_ceiling_micros
         if dimensions is not None:
             body["dimensions"] = dimensions
         if external_task_id is not None:

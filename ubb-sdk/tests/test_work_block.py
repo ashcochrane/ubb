@@ -46,7 +46,7 @@ def _started(**overrides) -> dict:
     """What `POST /api/v1/tasks` answers for a fresh registration."""
     body = {
         "task_id": "task_1", "parent_task_id": None, "task_type": "transcode",
-        "status": "active", "provider_cost_limit_micros": 5_000_000,
+        "status": "active", "task_cogs_ceiling_micros": 5_000_000,
         "agreed_price_micros": None, "external_task_id": "",
         "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
     }
@@ -114,13 +114,13 @@ class TheStartIsOneCallTest(_ClientCase):
         _answering(mock_post, _started())
         task = self.client.start_task(
             "c1", "nightly-42", task_type="transcode",
-            provider_cost_limit_micros=5_000_000, external_task_id="run-7",
+            task_cogs_ceiling_micros=5_000_000, external_task_id="run-7",
             metadata={"report": "weekly"})
         route, body = _sent(mock_post, 0)
         self.assertEqual(route, START_ROUTE)
         self.assertEqual(body, {
             "customer_id": "c1", "idempotency_key": "nightly-42",
-            "task_type": "transcode", "provider_cost_limit_micros": 5_000_000,
+            "task_type": "transcode", "task_cogs_ceiling_micros": 5_000_000,
             "external_task_id": "run-7", "metadata": {"report": "weekly"},
         })
         self.assertIsInstance(task, StartedTask)

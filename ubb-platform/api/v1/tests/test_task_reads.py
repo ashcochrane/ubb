@@ -41,7 +41,7 @@ class TestTaskReads:
         parent = Task.objects.create(
             tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,
             task_type="invoice_batch", grouping_field_1="eu-west-1",
-            provider_cost_limit_micros=5_000_000,
+            task_cogs_ceiling_micros=5_000_000,
             total_provider_cost_micros=2_010_000,
             total_billed_cost_micros=2_480_000, event_count=412)
         Task.objects.create(

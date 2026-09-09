@@ -53,7 +53,7 @@ class LifecycleTestBase(TestCase):
     def _task(self, parent=None, limit=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=100_000_000,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=self.customer.id, parent=parent)
 
     def _force(self, task, status):

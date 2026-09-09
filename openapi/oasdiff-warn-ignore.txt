@@ -526,3 +526,36 @@ POST /api/v1/billing/pre-check removed the request property `task_metadata`
 # run and returned the same four findings.
 POST /api/v1/metering/usage removed the request property `request_id`
 POST /api/v1/metering/usage/batch removed the request property `events/items/request_id`
+# ---------------------------------------------------------------------------
+# #453 (slice 6) — the tenant-default ceiling takes its canonical name and
+# moves to the kernel; the wire gains the contained-work rung beside it
+# ---------------------------------------------------------------------------
+#
+# `default_task_provider_cost_limit_micros` becomes `default_task_cogs_ceiling_micros`
+# on the tenant configuration's read and write (#154 §3.4's name; "limit" left
+# the field vocabulary), and `default_subtask_cogs_ceiling_micros` arrives
+# beside it — additive, so it emits nothing. Both are the tenant's default
+# COGS ceilings for work started with NO declared kind; a declared kind of
+# work now states its own ceiling or declares itself uncapped.
+#
+# ⚠ WARN-LEVEL, AND FOR THE OPTIONAL REASON: the property was nullable on the
+# response and optional on the request at the launch tag, so it was never
+# required of, or promised to, a caller. The property's spelling is the only
+# thing a caller loses; sending the old key gets a `200` with the key
+# discarded (#272's ratified posture for a retired wire field).
+#
+# ⚠ THIRTEEN MORE RENAMES EMIT NOTHING HERE, AND THAT IS THE DIRECTION PEOPLE
+# FORGET. The same rename lands on the declaration (`/task-types`, moved to
+# the root after the tag by #414), the start request and its acknowledgement,
+# the unit read at three paths (`/tasks` and its two reads), and the four
+# terminal webhook payloads (split after the tag by #419) — all surfaces that
+# post-date `api-v1-launch`, so against that baseline they net to zero and the
+# cumulative run reports them nowhere. The authoring direction (`--baseline
+# HEAD`) reports sixteen; the cumulative run reports the three filed below,
+# and filing the other thirteen would record inert suppressions, which fail
+# exactly as an unreviewed break does. Both runs were taken; only the
+# cumulative one's findings are here, and the thirteen are named in the
+# commit that made them.
+GET /api/v1/tenant/config removed the optional property `default_task_provider_cost_limit_micros` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the optional property `default_task_provider_cost_limit_micros` from the response with the `200` status
+PATCH /api/v1/tenant/config removed the request property `default_task_provider_cost_limit_micros`

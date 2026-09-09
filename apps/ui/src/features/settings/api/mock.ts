@@ -7,7 +7,11 @@ import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { PRODUCTS } from "@/lib/labels";
-import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
+import {
+  applyMockUndeclaredWorkCeilings,
+  readMockTenantConfig,
+  writeMockTenantConfig,
+} from "@/hooks/use-tenant-config";
 
 import {
   AUDIT_RECORDS,
@@ -156,15 +160,13 @@ export async function updateTenantConfig(
     }
     next.soft_min_balance_micros = soft;
   }
-  if ("default_task_provider_cost_limit_micros" in patch) {
-    const limit = patch.default_task_provider_cost_limit_micros ?? null;
-    if (limit !== null && limit <= 0) {
-      throw invalidConfig("The default task spend limit must be more than zero, or empty.");
-    }
-    next.default_task_provider_cost_limit_micros = limit;
-  }
-
   writeMockTenantConfig(next);
+  // The two default ceilings for work with no declared kind are the tasks
+  // feature's to EDIT (#453), but the route is one route and honours them on
+  // any PATCH, so this mock does too — through the one shared mirror of the
+  // rule, never a second copy of it.
+  const rungs = applyMockUndeclaredWorkCeilings(patch);
+  if (rungs.refused !== undefined) throw invalidConfig(rungs.refused);
   return readMockTenantConfig();
 }
 

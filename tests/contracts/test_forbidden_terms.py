@@ -312,7 +312,14 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # the same commit. ⚠ THE RETIRED-TERM TOTALS MOVED HERE, unlike every
         # entry above: 26 terms -> 24 and 87 sites -> 80, and the ledger fell
         # by nine (two G8 and seven G7, one debt read from two sides).
-        "historical-migrations": (UNTIL_SLICE_8, 247, 19),
+        # 247 -> 250 in #453: THREE migrations across three apps, because a
+        # column moved from a product to the kernel -- the work app's rename
+        # of the ceiling at both scopes with the `uncapped` flag and its
+        # exclusive-or, the tenant app's two default rungs for undeclared
+        # work, and billing's carry-then-remove off the risk row, which names
+        # the retired spellings it migrates away from. Neither spelling is a
+        # sweep term: 24 terms in 80 sites in both directions, ledger unmoved.
+        "historical-migrations": (UNTIL_SLICE_8, 250, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

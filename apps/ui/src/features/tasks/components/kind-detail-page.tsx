@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useTenantConfig, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { pricingModeLabel } from "@/lib/pricing-mode";
@@ -23,11 +23,11 @@ import type { KindOfWork, RunRow } from "../api/types";
 import {
   altitudeLabel,
   type Ceiling,
+  declaredCeiling,
   declarationsUnderKey,
   describeCeiling,
   describeDuration,
   describeShare,
-  effectiveCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
 } from "../lib/kinds";
@@ -114,11 +114,12 @@ function KindOfWorkCard({
   runs: readonly RunRow[];
   runsSettled: boolean;
 }) {
-  const { data: config } = useTenantConfig();
   const currency = useTenantCurrency();
   const isAdmin = useHasRole("admin");
   const [reviseOpen, setReviseOpen] = useState(false);
-  const ceiling = effectiveCeiling(kind, config);
+  // What the kind DECLARED — a figure or uncapped — and nothing inherited: a
+  // declared kind of work never falls through to the workspace default (#453).
+  const ceiling = declaredCeiling(kind);
 
   return (
     <div className="space-y-4">

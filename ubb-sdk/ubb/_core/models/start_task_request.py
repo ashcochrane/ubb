@@ -40,7 +40,7 @@ class StartTaskRequest:
             external_task_id (str | Unset):  Default: ''.
             metadata (None | StartTaskRequestMetadataType0 | Unset):
             parent_task_id (None | Unset | UUID):
-            provider_cost_limit_micros (int | None | Unset):
+            task_cogs_ceiling_micros (int | None | Unset):
             task_type (None | str | Unset):
      """
 
@@ -50,7 +50,7 @@ class StartTaskRequest:
     external_task_id: str | Unset = ''
     metadata: None | StartTaskRequestMetadataType0 | Unset = UNSET
     parent_task_id: None | Unset | UUID = UNSET
-    provider_cost_limit_micros: int | None | Unset = UNSET
+    task_cogs_ceiling_micros: int | None | Unset = UNSET
     task_type: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -87,11 +87,11 @@ class StartTaskRequest:
         else:
             parent_task_id = self.parent_task_id
 
-        provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.provider_cost_limit_micros, Unset):
-            provider_cost_limit_micros = UNSET
+        task_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.task_cogs_ceiling_micros, Unset):
+            task_cogs_ceiling_micros = UNSET
         else:
-            provider_cost_limit_micros = self.provider_cost_limit_micros
+            task_cogs_ceiling_micros = self.task_cogs_ceiling_micros
 
         task_type: None | str | Unset
         if isinstance(self.task_type, Unset):
@@ -114,8 +114,8 @@ class StartTaskRequest:
             field_dict["metadata"] = metadata
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
-        if provider_cost_limit_micros is not UNSET:
-            field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if task_cogs_ceiling_micros is not UNSET:
+            field_dict["task_cogs_ceiling_micros"] = task_cogs_ceiling_micros
         if task_type is not UNSET:
             field_dict["task_type"] = task_type
 
@@ -187,14 +187,14 @@ class StartTaskRequest:
         parent_task_id = _parse_parent_task_id(d.pop("parent_task_id", UNSET))
 
 
-        def _parse_provider_cost_limit_micros(data: object) -> int | None | Unset:
+        def _parse_task_cogs_ceiling_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(int | None | Unset, data)
 
-        provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
+        task_cogs_ceiling_micros = _parse_task_cogs_ceiling_micros(d.pop("task_cogs_ceiling_micros", UNSET))
 
 
         def _parse_task_type(data: object) -> None | str | Unset:
@@ -214,7 +214,7 @@ class StartTaskRequest:
             external_task_id=external_task_id,
             metadata=metadata,
             parent_task_id=parent_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
+            task_cogs_ceiling_micros=task_cogs_ceiling_micros,
             task_type=task_type,
         )
 

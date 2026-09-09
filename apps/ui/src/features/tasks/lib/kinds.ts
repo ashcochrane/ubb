@@ -14,7 +14,11 @@
 import type { TenantConfig } from "@/hooks/use-tenant-config";
 import { formatMicros, formatPercent } from "@/lib/format";
 import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
-import { TASK_TYPE_KIND_LABEL_KEYS, type PricingMode } from "@/lib/vocabulary";
+import {
+  TASK_TYPE_KIND_LABEL_KEYS,
+  type PricingMode,
+  type TaskTypeKind,
+} from "@/lib/vocabulary";
 
 import {
   sameDeclaration,
@@ -67,52 +71,90 @@ export function declarationNotes(opts: { meteringOnly: boolean }): readonly stri
 }
 
 /**
- * The COGS ceiling a run of this kind starts under: a number, from the
- * declaration or from the workspace default, or none at all.
+ * The COGS ceiling a kind of work DECLARED: a figure, or none by declaration.
  *
- * A union rather than a nullable number, so that the two sources that always
- * carry an amount cannot be asked to render one they do not have — the `?? 0`
- * a nullable field invites is the defect `apps/ui/CLAUDE.md` names.
+ * ⚠ "UNCAPPED" MEANS DECLARED, NEVER ABSENT (#453, #150 §8). A declaration
+ * must state a figure or say `uncapped: true`, and the registry refuses one
+ * that says neither or both — so a kind of work never inherits a ceiling from
+ * the workspace, and there is no "workspace" source here any more. The
+ * workspace defaults belong to work started with NO declared kind
+ * (`undeclaredWorkCeiling` below).
+ *
+ * A union rather than a nullable number, so that the source that always
+ * carries an amount cannot be asked to render one it does not have — the
+ * `?? 0` a nullable field invites is the defect `apps/ui/CLAUDE.md` names.
  */
 export type Ceiling =
-  | { readonly source: "declaration" | "workspace"; readonly micros: number }
+  | { readonly source: "declaration"; readonly micros: number }
   | { readonly source: "uncapped" };
 
 /**
- * The ceiling a run of this kind actually starts under.
+ * What a kind of work declared about its ceiling.
  *
- * The declaration's own number when it names one; otherwise the workspace
- * default; otherwise none — and "none" is rendered as UNCAPPED rather than
- * left blank, because #150 §8 rules that uncapped is legal but never silent.
- * `null` while the workspace config has not arrived: a ceiling the console
- * does not yet know is not the same fact as no ceiling at all.
+ * `null` only for a row saying neither or both — a shape the registry refuses
+ * and the wire cannot produce, rendered as absent rather than guessed at.
  */
-export function effectiveCeiling(
-  kind: Pick<KindOfWork, "default_provider_cost_limit_micros">,
-  config: TenantConfig | undefined,
+export function declaredCeiling(
+  kind: Pick<KindOfWork, "task_cogs_ceiling_micros" | "uncapped">,
 ): Ceiling | null {
-  if (kind.default_provider_cost_limit_micros != null) {
-    return { source: "declaration", micros: kind.default_provider_cost_limit_micros };
+  if (kind.uncapped) {
+    return kind.task_cogs_ceiling_micros == null ? { source: "uncapped" } : null;
   }
-  if (config === undefined) return null;
-  const workspace = config.default_task_provider_cost_limit_micros;
-  if (workspace != null) return { source: "workspace", micros: workspace };
-  return { source: "uncapped" };
+  return kind.task_cogs_ceiling_micros == null
+    ? null
+    : { source: "declaration", micros: kind.task_cogs_ceiling_micros };
 }
 
 /**
- * The ceiling, said so that "none" and "not yet known" cannot be confused
- * with a number or with each other.
+ * The ceiling, said so that "none by declaration" and "not stated" cannot be
+ * confused with a number or with each other.
  */
 export function describeCeiling(ceiling: Ceiling | null, currency: string): string {
   if (ceiling === null) return ABSENT_LABEL;
   switch (ceiling.source) {
     case "declaration":
       return formatMicros(ceiling.micros, currency);
-    case "workspace":
-      return `${formatMicros(ceiling.micros, currency)} (workspace default)`;
     case "uncapped":
       return "Uncapped";
+  }
+}
+
+/**
+ * The workspace's default COGS ceiling for work started with NO declared kind,
+ * at one altitude — the tenant's two rungs (#453), which a declared kind of
+ * work never consults.
+ *
+ * A union rather than a nullable number for the same reason as `Ceiling`, and
+ * a DIFFERENT union: "none" here is not a declaration anybody made, so it is
+ * never rendered as "Uncapped" — that word is reserved for a kind of work
+ * that chose it. `null` while the workspace config has not arrived.
+ */
+export type UndeclaredWorkCeiling =
+  | { readonly source: "workspace"; readonly micros: number }
+  | { readonly source: "none" };
+
+export function undeclaredWorkCeiling(
+  config: TenantConfig | undefined,
+  altitude: TaskTypeKind,
+): UndeclaredWorkCeiling | null {
+  if (config === undefined) return null;
+  const micros =
+    altitude === "subtask"
+      ? config.default_subtask_cogs_ceiling_micros
+      : config.default_task_cogs_ceiling_micros;
+  return micros == null ? { source: "none" } : { source: "workspace", micros };
+}
+
+export function describeUndeclaredWorkCeiling(
+  ceiling: UndeclaredWorkCeiling | null,
+  currency: string,
+): string {
+  if (ceiling === null) return ABSENT_LABEL;
+  switch (ceiling.source) {
+    case "workspace":
+      return formatMicros(ceiling.micros, currency);
+    case "none":
+      return "No ceiling";
   }
 }
 
@@ -227,7 +269,8 @@ export function redeclare(kind: KindOfWork): KindOfWorkDeclaration {
     key: kind.key,
     kind: kind.kind,
     pricing_mode: kind.pricing_mode,
-    default_provider_cost_limit_micros: kind.default_provider_cost_limit_micros ?? null,
+    task_cogs_ceiling_micros: kind.task_cogs_ceiling_micros ?? null,
+    uncapped: kind.uncapped,
     silence_window_seconds: kind.silence_window_seconds ?? null,
     absolute_deadline_seconds: kind.absolute_deadline_seconds ?? null,
     required_dimensions: [...kind.required_dimensions],
@@ -262,7 +305,10 @@ export function declarationBody(
     key: next.key,
     kind: target.kind,
     pricing_mode: next.pricing_mode ?? matched?.pricing_mode ?? null,
-    default_provider_cost_limit_micros: next.default_provider_cost_limit_micros ?? null,
+    task_cogs_ceiling_micros: next.task_cogs_ceiling_micros ?? null,
+    // Carried exactly as stated — a declaration always says whether it is
+    // uncapped, and the route refuses one saying neither or both.
+    uncapped: next.uncapped,
     silence_window_seconds: next.silence_window_seconds ?? null,
     absolute_deadline_seconds: next.absolute_deadline_seconds ?? null,
     required_dimensions: [...(next.required_dimensions ?? [])],

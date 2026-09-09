@@ -337,7 +337,7 @@ class UsageServiceTaskTest(TestCase):
     def _task(self, balance=20_000_000, limit=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=self.customer.id,
         )
 

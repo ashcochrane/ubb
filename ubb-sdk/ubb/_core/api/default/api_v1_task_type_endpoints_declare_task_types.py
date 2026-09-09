@@ -103,8 +103,16 @@ def sync_detailed(
     declaration readable; `retired: false` brings it back. Omitting `retired`
     leaves it exactly as it is.
 
-    `422 validation_error` answers a kind this registry does not recognise or a
-    `required_dimensions` entry you have not declared as a grouping field.
+    Every kind of work states what it may spend: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true`. A declaration carrying neither, or both, is
+    refused. A start of this kind may request a lower ceiling than the figure,
+    never a higher one; an uncapped kind runs under no ceiling unless a start
+    requests one.
+
+    `422 validation_error` answers a kind this registry does not recognise, a
+    `required_dimensions` entry you have not declared as a grouping field, or
+    a declaration that neither states a ceiling nor declares itself uncapped
+    — or does both.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -154,8 +162,16 @@ def sync(
     declaration readable; `retired: false` brings it back. Omitting `retired`
     leaves it exactly as it is.
 
-    `422 validation_error` answers a kind this registry does not recognise or a
-    `required_dimensions` entry you have not declared as a grouping field.
+    Every kind of work states what it may spend: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true`. A declaration carrying neither, or both, is
+    refused. A start of this kind may request a lower ceiling than the figure,
+    never a higher one; an uncapped kind runs under no ceiling unless a start
+    requests one.
+
+    `422 validation_error` answers a kind this registry does not recognise, a
+    `required_dimensions` entry you have not declared as a grouping field, or
+    a declaration that neither states a ceiling nor declares itself uncapped
+    — or does both.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -200,8 +216,16 @@ async def asyncio_detailed(
     declaration readable; `retired: false` brings it back. Omitting `retired`
     leaves it exactly as it is.
 
-    `422 validation_error` answers a kind this registry does not recognise or a
-    `required_dimensions` entry you have not declared as a grouping field.
+    Every kind of work states what it may spend: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true`. A declaration carrying neither, or both, is
+    refused. A start of this kind may request a lower ceiling than the figure,
+    never a higher one; an uncapped kind runs under no ceiling unless a start
+    requests one.
+
+    `422 validation_error` answers a kind this registry does not recognise, a
+    `required_dimensions` entry you have not declared as a grouping field, or
+    a declaration that neither states a ceiling nor declares itself uncapped
+    — or does both.
 
     Args:
         body (TaskTypeRegistryIn):
@@ -251,8 +275,16 @@ async def asyncio(
     declaration readable; `retired: false` brings it back. Omitting `retired`
     leaves it exactly as it is.
 
-    `422 validation_error` answers a kind this registry does not recognise or a
-    `required_dimensions` entry you have not declared as a grouping field.
+    Every kind of work states what it may spend: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true`. A declaration carrying neither, or both, is
+    refused. A start of this kind may request a lower ceiling than the figure,
+    never a higher one; an uncapped kind runs under no ceiling unless a start
+    requests one.
+
+    `422 validation_error` answers a kind this registry does not recognise, a
+    `required_dimensions` entry you have not declared as a grouping field, or
+    a declaration that neither states a ceiling nor declares itself uncapped
+    — or does both.
 
     Args:
         body (TaskTypeRegistryIn):

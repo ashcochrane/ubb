@@ -74,7 +74,7 @@ class StartTestBase:
         self.client = Client()
         for key in (A_KIND_OF_WORK, ANOTHER_KIND_OF_WORK):
             TaskType.objects.create(tenant=self.tenant, key=key,
-                                    kind=TASK_TYPE_KIND_TASK)
+                                    kind=TASK_TYPE_KIND_TASK, uncapped=True)
         DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
                                  slot="grouping_field_1", scope="task")
 
@@ -286,9 +286,9 @@ class TestABillingTenantRegistersOneToo(StartTestBase):
         """Absent a request, a declared default and a tenant default, the unit
         is uncapped and no stop signal ever fires."""
         started = self._start().json()
-        assert started["provider_cost_limit_micros"] is None
+        assert started["task_cogs_ceiling_micros"] is None
         assert Task.objects.get(
-            id=started["task_id"]).provider_cost_limit_micros is None
+            id=started["task_id"]).task_cogs_ceiling_micros is None
 
     def test_a_ceiling_is_snapshotted_though_this_tenant_prices_nothing(self):
         """A LIMITED START IS ADMITTED WITH NO COST RULES DECLARED (#321), and
@@ -303,10 +303,10 @@ class TestABillingTenantRegistersOneToo(StartTestBase):
         a wall: a tenant part-way through declaring its costs starts limited
         work like anyone else. This tenant has declared no cost rules at all.
         """
-        started = self._start(provider_cost_limit_micros=10_000_000).json()
-        assert started["provider_cost_limit_micros"] == 10_000_000
+        started = self._start(task_cogs_ceiling_micros=10_000_000).json()
+        assert started["task_cogs_ceiling_micros"] == 10_000_000
         assert Task.objects.get(
-            id=started["task_id"]).provider_cost_limit_micros == 10_000_000
+            id=started["task_id"]).task_cogs_ceiling_micros == 10_000_000
 
 
 @pytest.mark.django_db
@@ -323,25 +323,25 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
 
     def test_a_repeat_returns_the_original_and_says_so(self):
         first = self._start(idempotency_key="k1", task_type=A_KIND_OF_WORK,
-                            provider_cost_limit_micros=5_000_000)
+                            task_cogs_ceiling_micros=5_000_000)
         again = self._start(idempotency_key="k1", task_type=A_KIND_OF_WORK,
-                            provider_cost_limit_micros=5_000_000)
+                            task_cogs_ceiling_micros=5_000_000)
         assert again.status_code == 200
         assert again.json()["replayed"] is True
         assert again.json()["task_id"] == first.json()["task_id"]
 
     def test_a_repeat_creates_no_second_row_no_second_ceiling_no_second_totals(self):
-        self._start(idempotency_key="k1", provider_cost_limit_micros=5_000_000)
+        self._start(idempotency_key="k1", task_cogs_ceiling_micros=5_000_000)
         unit = Task.objects.get(tenant=self.tenant)
         unit.total_provider_cost_micros = 7
         unit.event_count = 1
         unit.save(update_fields=["total_provider_cost_micros", "event_count"])
 
-        self._start(idempotency_key="k1", provider_cost_limit_micros=5_000_000)
+        self._start(idempotency_key="k1", task_cogs_ceiling_micros=5_000_000)
 
         assert Task.objects.count() == 1
         unit.refresh_from_db()
-        assert unit.provider_cost_limit_micros == 5_000_000
+        assert unit.task_cogs_ceiling_micros == 5_000_000
         assert unit.total_provider_cost_micros == 7
         assert unit.event_count == 1
 
@@ -427,13 +427,13 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
         what it is.
         """
         first = self._start(idempotency_key="k1",
-                            provider_cost_limit_micros=5_000_000)
+                            task_cogs_ceiling_micros=5_000_000)
         again = self._start(idempotency_key="k1")
 
         assert again.status_code == 200
         assert again.json()["replayed"] is True
         assert again.json()["task_id"] == first.json()["task_id"]
-        assert again.json()["provider_cost_limit_micros"] == 5_000_000
+        assert again.json()["task_cogs_ceiling_micros"] == 5_000_000
 
     def test_the_claim_survives_the_work_ending(self):
         """NO RELEASE ON TERMINAL AND NO EXPIRY WINDOW. Releasing at terminal
@@ -478,9 +478,9 @@ class TestARepeatThatContradictsIsRefused(StartTestBase):
         assert body["field"] == "task_type"
 
     def test_a_differing_ceiling_names_that_field(self):
-        self._claimed(provider_cost_limit_micros=5_000_000)
-        body = self._repeat(provider_cost_limit_micros=4_000_000)
-        assert body["field"] == "provider_cost_limit_micros"
+        self._claimed(task_cogs_ceiling_micros=5_000_000)
+        body = self._repeat(task_cogs_ceiling_micros=4_000_000)
+        assert body["field"] == "task_cogs_ceiling_micros"
 
     def test_a_differing_grouping_value_names_that_field(self):
         """⚠ THE EXPECTED NAME IS READ BACK OUT OF THE HELPER THAT OWNS THE

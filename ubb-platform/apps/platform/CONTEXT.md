@@ -403,11 +403,14 @@ _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 
 **Task limit (provider-cost limit)**:
 A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
-passed at start or defaulted from tenant config, snapshotted at creation. Only the provider total
+declared on the kind of work as a figure or as `uncapped` (a declaration must say one, #453), with
+the tenant's two default rungs (`Tenant.default_task_cogs_ceiling_micros` and its contained-work
+twin) reaching only work with no declared kind, and a start able to request lower, never higher;
+snapshotted onto the unit at creation. Only the provider total
 races it; reaching it — the known total **at or above** the line, compared in one place
 (`core/crossing.py::ceiling_reached`, #452) by the recording lane, the patrol's sweep and the
 analytics reached-count alike — is a signal point (kill + `task.killed`), never a billing wall.
-(`apps/platform/work/models.py:Task.provider_cost_limit_micros`)
+(`apps/platform/work/models.py:Task.task_cogs_ceiling_micros`)
 _Avoid_: "hard stop" — that vocabulary retired with the 429; and "exceeded" — a ceiling is
 reached, not exceeded, because the line itself stops.
 

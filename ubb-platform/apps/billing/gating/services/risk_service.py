@@ -42,8 +42,11 @@ class StartPolicy(NamedTuple):
     task_type: str
     #: The grouping values ADMITTED for this start, already bound to slots.
     grouping_slots: dict
-    #: The COGS ceiling, after the whole ladder. `None` is uncapped.
-    provider_cost_limit_micros: int | None
+    #: The COGS ceiling, after the whole ladder. `None` means no ceiling
+    #: applies to this unit — its kind declared `uncapped`, or it has no
+    #: declared kind and the tenant declares no default at its altitude — and
+    #: the unit's assessment then says `not_applicable` on every surface.
+    task_cogs_ceiling_micros: int | None
     #: HOW THIS KIND OF WORK IS SOLD (#414, #415), which a start snapshots onto
     #: the unit of work and, where it is one agreed price, resolves an amount
     #: for. `event_priced` for a tenant who declared no vocabulary: an untyped
@@ -54,10 +57,10 @@ class StartPolicy(NamedTuple):
 
 class RiskService:
     @staticmethod
-    def resolve_type_policy(tenant, *, task_type, dimensions,
-                            requested_limit_micros, is_subtask):
+    def resolve_start_policy(tenant, *, task_type, dimensions,
+                             requested_ceiling_micros, is_subtask):
         """Validate the declared kind of work + dimensions and resolve the
-        ceiling.
+        ceiling — the WHOLE ladder, in one call, for every start.
 
         ``task_type`` is the caller's declared kind of work at EITHER altitude
         (#407): a unit of work declares its kind once, and whether it has a
@@ -65,18 +68,35 @@ class RiskService:
         parent link, which is why the declaration this looks up is chosen by it
         and not by which of two fields the caller filled in.
 
-        Precedence (design D7): caller request (only if <= the declared
-        default) -> the declared default -> RiskConfig tenant default ->
-        uncapped. Returns a `StartPolicy` whose limit is None where there is
-        "no type-level opinion", and `resolve_start_policy` below applies the
-        RiskConfig rung. Start gates call THAT one — this is the top of the
-        ladder rather than the whole of it.
+        TWO LADDERS, AND WHICH ONE RUNS IS DECIDED BY WHETHER A KIND WAS
+        DECLARED (#453, slice 6 §2, #150 §8):
+
+            a declared kind      caller's request (lower only) -> the declaration
+            no declared kind     caller's request (lower only) -> the tenant's
+                                 default for this altitude -> no ceiling applies
+
+        A declared kind answers for itself — its figure, or `uncapped` — and
+        the tenant's default is never consulted for it: a declaration that
+        states nothing does not exist, because the database refuses it. The
+        tenant's rung is for work that has no declaration to answer, and where
+        the tenant declares none either, no ceiling applies and the unit's
+        assessment says `not_applicable` rather than staying silent (#150
+        §8.2). A caller may request LOWER than whichever rung answers, never
+        higher (#150 §8.3): the kind of work is declared by the platform team
+        and the start call is made by agent code that may be generated or
+        injected, and the ceiling is protection from your own agent. Where no
+        rung answers, a request is a ceiling nobody else set, and it stands.
 
         ⚠ IT ADMITS THE GROUPING VALUES, WHICH IS A WRITE. A caller that only
         needs to know what a declaration binds to — a repeated start comparing
         itself against the unit it may be replaying — must use
         `DimensionService.resolve`, or a start that is about to be refused
         permanently burns a key's cardinality for work that never began.
+
+        The ceiling is universal — a tenant who never enables billing still
+        declares kinds of work and still gets their ceilings — so the
+        composition layer asks this for every start, whatever the tenant's
+        posture, and asks the money-shaped questions below separately.
         """
         from apps.platform.grouping_fields.services import DimensionError, DimensionService
         from apps.platform.work.queries import task_type_policy
@@ -115,17 +135,26 @@ class RiskService:
                     f"{kind} type {key!r} missing required grouping field(s): "
                     f"{missing}")
 
-        type_default = policy["default_provider_cost_limit_micros"] if policy else None
-        if requested_limit_micros is not None:
-            if type_default is not None and requested_limit_micros > type_default:
-                raise ValueError(
-                    f"provider_cost_limit_micros {requested_limit_micros} exceeds "
-                    f"the {kind} type ceiling {type_default}")
-            limit = requested_limit_micros
-        elif type_default is not None:
-            limit = type_default
+        # THE RUNG A REQUEST IS HELD AGAINST. A declaration answers for itself
+        # (its figure, or none by `uncapped`); undeclared work is answered by
+        # the tenant's default for its altitude, read off the tenant row the
+        # kernel owns (#141 §6.2) — never off billing's risk row, which is
+        # exactly the row a tenant without billing does not have.
+        if policy:
+            authority = None if policy["uncapped"] else policy["task_cogs_ceiling_micros"]
+            rung = f"the {kind} type ceiling"
         else:
-            limit = None  # the existing RiskConfig fallback applies downstream
+            authority = (tenant.default_subtask_cogs_ceiling_micros if is_subtask
+                         else tenant.default_task_cogs_ceiling_micros)
+            rung = f"the tenant's default ceiling for undeclared {kind} work"
+        if requested_ceiling_micros is not None:
+            if authority is not None and requested_ceiling_micros > authority:
+                raise ValueError(
+                    f"task_cogs_ceiling_micros {requested_ceiling_micros} exceeds "
+                    f"{rung} {authority}")
+            ceiling = requested_ceiling_micros
+        else:
+            ceiling = authority
         # HOW THIS KIND OF WORK IS SOLD, READ OFF THE SAME DECLARATION THAT
         # SUPPLIED THE CEILING (#415). A tenant with no declared vocabulary
         # gets `event_priced` — not because nobody said, but because an untyped
@@ -134,40 +163,7 @@ class RiskService:
         # column existed. It is the same default the column itself carries, for
         # the same reason.
         regime = policy["pricing_mode"] if policy else PRICING_MODE_EVENT_PRICED
-        return StartPolicy(key, slot_values, limit, regime)
-
-    @staticmethod
-    def resolve_start_policy(tenant, *, task_type, dimensions,
-                             requested_limit_micros, is_subtask):
-        """``resolve_type_policy`` above plus the REST OF THE CEILING LADDER,
-        so a start gate resolves a unit's COGS ceiling in one call.
-
-        Precedence, unchanged in every particular (design D7, #37, #38): the
-        caller's request (only if at or below the declared default) -> the
-        declared kind of work's default -> the tenant's RiskConfig default for
-        this altitude -> uncapped, and no signal ever fires.
-
-        ⚠ THE LADDER IS ONE THING AND IT IS HERE BECAUSE IT WAS TWO. Its top
-        two rungs were resolved in the method above and its third was applied
-        by the caller, so the answer to *what ceiling does this unit get* was
-        assembled in two places and only ever read as a whole. The ceiling is
-        universal — a tenant who never enables billing still declares kinds of
-        work and still gets their ceilings — so the composition layer asks this
-        for every start, whatever the tenant's posture, and asks the
-        money-shaped questions below separately.
-        """
-        policy = RiskService.resolve_type_policy(
-            tenant, task_type=task_type, dimensions=dimensions,
-            requested_limit_micros=requested_limit_micros,
-            is_subtask=is_subtask)
-        limit = policy.provider_cost_limit_micros
-        if limit is None:
-            config = RiskService._config(tenant)
-            if config is not None:
-                limit = (config.default_subtask_provider_cost_limit_micros
-                         if is_subtask
-                         else config.default_task_provider_cost_limit_micros)
-        return policy._replace(provider_cost_limit_micros=limit)
+        return StartPolicy(key, slot_values, ceiling, regime)
 
     @staticmethod
     def _config(tenant):

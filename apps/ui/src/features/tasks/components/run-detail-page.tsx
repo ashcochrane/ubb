@@ -221,11 +221,15 @@ function RunDetailBody({
                 ]
               : []),
             {
+              // A null pin means NO CEILING APPLIES to this run — its kind is
+              // declared uncapped, or nothing declares one — and the wire does
+              // not say which (#453, slice 6 Out of Scope). "Uncapped" is a
+              // declaration's word, so it is not used for an absence here.
               label: "Ceiling",
               value:
-                detail.provider_cost_limit_micros != null
-                  ? formatMicros(detail.provider_cost_limit_micros, currency)
-                  : "Uncapped",
+                detail.task_cogs_ceiling_micros != null
+                  ? formatMicros(detail.task_cogs_ceiling_micros, currency)
+                  : "No ceiling",
             },
           ]}
         />

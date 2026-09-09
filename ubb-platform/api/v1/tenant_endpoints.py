@@ -23,6 +23,13 @@ from apps.platform.membership.models import Invitation, Member
 from apps.platform.membership.roles import ADMIN, READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
+#: The two default COGS ceilings for work with no declared kind, one per
+#: altitude (#453) — the tenant configuration's two rungs, read and written
+#: on the tenant row. Named once so the validation and the write cannot cover
+#: different sets.
+_DEFAULT_CEILING_RUNGS = ("default_task_cogs_ceiling_micros",
+                          "default_subtask_cogs_ceiling_micros")
+
 tenant_router = Router(auth=ApiKeyAuth())
 
 
@@ -445,9 +452,7 @@ def get_sandbox(request):
 
 
 def _config_out(t):
-    from apps.billing.gating.models import RiskConfig
     from apps.billing.queries import get_billing_config
-    rc = RiskConfig.objects.filter(tenant=t).first()
     bc = get_billing_config(t.id)
     return {
         "name": t.name,
@@ -459,8 +464,11 @@ def _config_out(t):
         "automatic_tax_enabled": t.automatic_tax_enabled,
         "enforcement_mode": t.enforcement_mode,
         "live_counter_maintenance_enabled": t.live_counter_maintenance_enabled,
-        "default_task_provider_cost_limit_micros":
-            rc.default_task_provider_cost_limit_micros if rc else None,
+        # The two default ceilings for work with no declared kind, off the
+        # tenant row the kernel owns (#453) — never off billing's risk row.
+        "default_task_cogs_ceiling_micros": t.default_task_cogs_ceiling_micros,
+        "default_subtask_cogs_ceiling_micros":
+            t.default_subtask_cogs_ceiling_micros,
         "min_balance_micros": bc.min_balance_micros,
         "soft_min_balance_micros": bc.soft_min_balance_micros,
     }
@@ -599,12 +607,18 @@ def update_tenant_config(request, payload: TenantConfigIn):
                           "at or above the hard floor's — the value cannot "
                           "exceed the effective tenant-default "
                           f"min_balance_micros ({effective_hard})")
-    if ("default_task_provider_cost_limit_micros" in fields_set
-            and payload.default_task_provider_cost_limit_micros is not None
-            and payload.default_task_provider_cost_limit_micros <= 0):
-        raise Problem("invalid_config",
-                      "default_task_provider_cost_limit_micros must be "
-                      "> 0, or null for no default")
+    # The two default ceilings for work with no declared kind (#453): kernel
+    # settings on the tenant row, beside the two deadline rungs. Validated
+    # here, before any write, and set on the row the save below commits.
+    # Explicit null clears the default; an omitted key leaves it alone.
+    for rung in _DEFAULT_CEILING_RUNGS:
+        if rung not in fields_set:
+            continue
+        declared = getattr(payload, rung)
+        if declared is not None and declared <= 0:
+            raise Problem("invalid_config",
+                          f"{rung} must be > 0, or null for no default")
+        setattr(t, rung, declared)
     enforcement_changed = False
     if payload.enforcement_mode is not None:
         from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES
@@ -626,18 +640,6 @@ def update_tenant_config(request, payload: TenantConfigIn):
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()
         )
         raise Problem("invalid_config", msg)
-    # The task-default limit lives on RiskConfig; write it only after the
-    # tenant save succeeds. Created lazily so a tenant that sets only this
-    # field gets a row.
-    if "default_task_provider_cost_limit_micros" in fields_set:
-        from apps.billing.gating.models import RiskConfig
-        rc, _ = RiskConfig.objects.get_or_create(tenant=t)
-        if (rc.default_task_provider_cost_limit_micros
-                != payload.default_task_provider_cost_limit_micros):
-            rc.default_task_provider_cost_limit_micros = (
-                payload.default_task_provider_cost_limit_micros)
-            rc.save(update_fields=["default_task_provider_cost_limit_micros",
-                                   "updated_at"])
     # The tenant-default hard floor lives on BillingTenantConfig (#52) — the
     # row get_customer_min_balance reads, like its two siblings below. No
     # reconcile is kicked on change: floors are read fresh at detection time

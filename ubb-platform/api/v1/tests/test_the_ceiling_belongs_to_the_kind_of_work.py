@@ -1,8 +1,9 @@
 """The COGS ceiling belongs to the declared KIND of work (design D7).
 
-Precedence: the caller may request LOWER than the kind of work allows, never
-higher -> the kind of work's own default -> the tenant default for this
-altitude -> uncapped.
+Precedence (#453): for a declared kind, the caller may request LOWER than
+the kind of work's own ceiling, never higher -> that ceiling, or none where the
+kind is declared uncapped. The tenant's default rungs reach only work with no
+declared kind (`CeilingResolutionAtStartTest` in `test_one_rule_pins.py`).
 
 ⚠ THIS MOVED WITH ITS SUBJECT, NOT WITH ITS OWNER (#410). Every case here used
 to drive the ceiling through a flag on the billing-gated affordability call,
@@ -54,7 +55,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
 
     def _declare(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch", kind="task",
-                                default_provider_cost_limit_micros=5_000_000)
+                                task_cogs_ceiling_micros=5_000_000)
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                      scope="task", max_cardinality=20)
 
@@ -64,22 +65,22 @@ class TestTheCeilingBelongsToTheKindOfWork:
                         dimensions={"region": "eu-west-1"})
         assert r.status_code == 200
         body = r.json()
-        assert body["provider_cost_limit_micros"] == 5_000_000
+        assert body["task_cogs_ceiling_micros"] == 5_000_000
         task = Task.objects.get(id=body["task_id"])
         assert task.task_type == "invoice_batch" and task.grouping_field_1 == "eu-west-1"
 
     def test_caller_may_request_lower(self):
         self._declare()
         r = self._start(task_type="invoice_batch",
-                        provider_cost_limit_micros=1_000_000,
+                        task_cogs_ceiling_micros=1_000_000,
                         dimensions={"region": "eu-west-1"})
         assert r.status_code == 200
-        assert r.json()["provider_cost_limit_micros"] == 1_000_000
+        assert r.json()["task_cogs_ceiling_micros"] == 1_000_000
 
     def test_caller_may_not_request_higher(self):
         self._declare()
         r = self._start(task_type="invoice_batch",
-                        provider_cost_limit_micros=99_000_000,
+                        task_cogs_ceiling_micros=99_000_000,
                         dimensions={"region": "eu-west-1"})
         assert r.status_code == 422
         assert "exceeds" in r.json()["detail"]
@@ -93,7 +94,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
 
     def test_missing_required_dimension_is_422(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch", kind="task",
-                                required_dimensions=["region"])
+                                required_dimensions=["region"], uncapped=True)
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                      scope="task")
         r = self._start(task_type="invoice_batch")

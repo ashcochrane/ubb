@@ -345,7 +345,7 @@ class TestPatrolUnaffectedByTheSwitch:
         c = _customer(t, balance_micros=10_000_000)
         task = Task.objects.create(
             tenant=t, customer=c, status="active", balance_snapshot_micros=0,
-            provider_cost_limit_micros=100, total_provider_cost_micros=150,
+            task_cogs_ceiling_micros=100, total_provider_cost_micros=150,
             billing_owner_id=c.id, metadata={})
         reconcile_live_ledgers()
         task.refresh_from_db()
