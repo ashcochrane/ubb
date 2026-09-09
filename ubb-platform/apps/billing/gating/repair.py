@@ -262,7 +262,7 @@ def _resume_if_wedge_lifted(owner_id, tenant, live_after):
     reconcile bottom line (late, never lost), never rolls back the repair's
     audit row."""
     from apps.billing.queries import get_customer_min_balance
-    from apps.billing.gating.crossing import past_floor
+    from core.crossing import past_floor
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.stop_signal_service import (
         CLEAR_BALANCE_REPAIRED)

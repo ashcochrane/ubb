@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatEventCount } from "@/lib/format";
 
-import { containedId, RUN_ACTIVE_ID } from "../api/mock-data";
+import { ceilingAssessment, containedId, RUN_ACTIVE_ID } from "../api/mock-data";
 import type { RunRow } from "../api/types";
 import { CONTAINED_ROWS_SHOWN_INLINE, type PriceApplicability } from "../lib/runs";
 import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
@@ -11,11 +11,11 @@ import { ContainedWorkTable } from "./contained-work-table";
 
 /** One piece of contained work, costed at ten thousand micros per ordinal so sums come out in whole cents. */
 function piece(ordinal: number, overrides: Partial<RunRow> = {}): RunRow {
-  return {
+  const row = {
     task_id: containedId(ordinal),
     parent_task_id: RUN_ACTIVE_ID,
     task_type: "render-shot",
-    status: "completed",
+    status: "completed" as const,
     total_provider_cost_micros: ordinal * 10_000,
     unresolved_event_count: 0,
     total_billed_cost_micros: 0,
@@ -24,6 +24,7 @@ function piece(ordinal: number, overrides: Partial<RunRow> = {}): RunRow {
     created_at: `2026-09-01T14:${String(ordinal % 60).padStart(2, "0")}:00Z`,
     ...overrides,
   };
+  return { ...row, ...ceilingAssessment(row) };
 }
 
 const THIRTY = Array.from({ length: 30 }, (_, index) => piece(index + 1));

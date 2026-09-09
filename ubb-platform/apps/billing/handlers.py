@@ -73,7 +73,7 @@ def handle_usage_recorded_billing(event_id, payload):
         # airtight caps set it low — 0 disables backfill entirely.
         from django.utils import timezone as _tz
         from django.utils.dateparse import parse_datetime
-        from apps.billing.gating.crossing import same_month
+        from core.crossing import same_month
         count_in_live = True
         raw_eff = evt.effective_at
         if raw_eff:

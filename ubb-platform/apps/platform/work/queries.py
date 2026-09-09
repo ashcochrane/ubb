@@ -7,10 +7,11 @@ expiry ladder through here. Plain data only — never ORM objects.
 from typing import NamedTuple
 
 from django.db import models
-from django.db.models import Avg, Count, F, Q, Sum
+from django.db.models import Avg, Count, Sum
 from django.db.models.aggregates import Aggregate
 
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
+from core.crossing import ceiling_reached_q
 from apps.platform.work.models import Task, TaskType
 
 #: WHAT A UNIT GETS WHEN NOBODY DECLARED ANYTHING, at either window (#412).
@@ -252,9 +253,10 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                 sum_unpriced=Sum("unpriced_event_count"),
                 avg_provider_cost_micros=Avg("total_provider_cost_micros"),
                 p95_provider_cost_micros=PercentileCont("total_provider_cost_micros"),
-                limit_hit_count=Count("id", filter=Q(
-                    provider_cost_limit_micros__isnull=False,
-                    total_provider_cost_micros__gte=F("provider_cost_limit_micros"))),
+                # THE ONE COMPARE in its queryset spelling (#452), so this
+                # count and the recording lane's stop agree on the boundary.
+                limit_hit_count=Count("id", filter=ceiling_reached_q(
+                    "total_provider_cost_micros", "provider_cost_limit_micros")),
             )
             .order_by("-sum_provider_cost_micros"))
 

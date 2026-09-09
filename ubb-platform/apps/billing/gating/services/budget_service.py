@@ -12,8 +12,8 @@ import logging
 
 from django.utils import timezone
 
-from apps.billing.gating.crossing import (budget_stop_threshold,
-                                          month_label_bounds, past_budget_stop)
+from core.crossing import (budget_stop_threshold, month_label_bounds,
+                           past_budget_stop)
 from apps.billing.gating.services.live_counter import LiveCounter
 
 logger = logging.getLogger("ubb.billing")

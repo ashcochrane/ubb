@@ -17,6 +17,7 @@ from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 # is not a surface a value set ships on" — and the hand-written client's own
 # conversion belongs to the ticket that re-cuts the SDK's task surface.
 from ubb.vocabulary import (
+    CEILING_STATUS_INDETERMINATE,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED,
 )
@@ -593,6 +594,13 @@ class MeteringClientTest(unittest.TestCase):
             "unresolved_event_count": 1, "total_billed_cost_micros": 2_500_000,
             "unpriced_event_count": 0, "event_count": 12,
             "provider_cost_limit_micros": 5_000_000, "agreed_price_micros": None,
+            # The assessment beside the totals (#452): known 1,750,000 of a
+            # 5,000,000 ceiling with one event uncosted is `indeterminate`,
+            # and the two figures are over the known total — the fixture
+            # says what its own numbers say, never a status they contradict.
+            "ceiling_status": CEILING_STATUS_INDETERMINATE,
+            "ceiling_used_percentage": 35,
+            "ceiling_remaining_micros": 3_250_000,
             "dimensions": {"grouping_field_1": "eu"},
             "created_at": "2026-09-02T09:00:00+00:00",
             "completed_at": "2026-09-02T09:30:00+00:00",

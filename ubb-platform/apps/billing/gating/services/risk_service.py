@@ -6,7 +6,7 @@ from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK,
     TASK_TYPE_KIND_TASK)
 
-from apps.billing.gating.crossing import past_floor
+from core.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
 
 

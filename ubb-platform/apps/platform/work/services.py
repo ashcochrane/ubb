@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
+from core.crossing import ceiling_reached
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     OUTCOME_REASON_PARENT_CLOSED,
@@ -885,8 +886,14 @@ class TaskService:
                                      "updated_at"])
 
         def _crossed_limit(unit):
-            limit = unit.provider_cost_limit_micros
-            return limit is not None and unit.total_provider_cost_micros > limit
+            # THE ONE COMPARE, imported rather than spelled (#452): at or
+            # above the line stops, here exactly as on the patrol's sweep and
+            # the analytics reached-count. This lane used to say strictly
+            # above, so a unit landing ON its ceiling survived the event that
+            # landed it and was killed by the patrol an hour later with no
+            # tipping event to attribute the stop to.
+            return ceiling_reached(unit.total_provider_cost_micros,
+                                   unit.provider_cost_limit_micros)
 
         was_active = task.status == TASK_STATUS_ACTIVE
         parent_was_active = (parent is not None

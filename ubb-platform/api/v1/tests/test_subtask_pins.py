@@ -128,9 +128,11 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
         # The kill executes on the recording transaction's on_commit (#112).
+        # The arithmetic lands EXACTLY on the contained unit's ceiling (#452):
+        # at or above the line stops, at both altitudes.
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(sub.id),
-                                provider_cost_micros=6_000_000,
+                                provider_cost_micros=5_000_000,
                                 bills=9_000_000)
 
         # The tipping event answers 200 and is durably recorded + billed.
@@ -159,7 +161,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         self.assertEqual(payload["subtask_id"], str(sub.id))
         self.assertEqual(payload["parent_task_id"], str(parent.id))
         self.assertEqual(payload["reason_code"], "subtask_limit")
-        self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
+        self.assertEqual(payload["total_provider_cost_micros"], 5_000_000)
         self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
 
     def test_subtask_limit_bites_at_record_time_with_nothing_deferred(self, _mock):

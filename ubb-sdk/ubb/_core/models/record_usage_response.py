@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.record_usage_response_ceiling_status_type_0 import RecordUsageResponseCeilingStatusType0
 from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from ..models.record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from ..models.record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
@@ -39,6 +40,9 @@ class RecordUsageResponse:
             pricing_status (RecordUsageResponsePricingStatus):
             suspended (bool):
             billed_cost_micros (int | None | Unset):
+            ceiling_remaining_micros (int | None | Unset):
+            ceiling_status (None | RecordUsageResponseCeilingStatusType0 | Unset):
+            ceiling_used_percentage (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
@@ -76,6 +80,9 @@ class RecordUsageResponse:
     pricing_status: RecordUsageResponsePricingStatus
     suspended: bool
     billed_cost_micros: int | None | Unset = UNSET
+    ceiling_remaining_micros: int | None | Unset = UNSET
+    ceiling_status: None | RecordUsageResponseCeilingStatusType0 | Unset = UNSET
+    ceiling_used_percentage: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     grouping_fields: RecordUsageResponseGroupingFields | Unset = UNSET
     measurements: None | RecordUsageResponseMeasurementsType0 | Unset = UNSET
@@ -120,6 +127,26 @@ class RecordUsageResponse:
             billed_cost_micros = UNSET
         else:
             billed_cost_micros = self.billed_cost_micros
+
+        ceiling_remaining_micros: int | None | Unset
+        if isinstance(self.ceiling_remaining_micros, Unset):
+            ceiling_remaining_micros = UNSET
+        else:
+            ceiling_remaining_micros = self.ceiling_remaining_micros
+
+        ceiling_status: None | str | Unset
+        if isinstance(self.ceiling_status, Unset):
+            ceiling_status = UNSET
+        elif isinstance(self.ceiling_status, RecordUsageResponseCeilingStatusType0):
+            ceiling_status = self.ceiling_status.value
+        else:
+            ceiling_status = self.ceiling_status
+
+        ceiling_used_percentage: int | None | Unset
+        if isinstance(self.ceiling_used_percentage, Unset):
+            ceiling_used_percentage = UNSET
+        else:
+            ceiling_used_percentage = self.ceiling_used_percentage
 
         claimed_provider_cost_micros: int | None | Unset
         if isinstance(self.claimed_provider_cost_micros, Unset):
@@ -268,6 +295,12 @@ class RecordUsageResponse:
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
+        if ceiling_remaining_micros is not UNSET:
+            field_dict["ceiling_remaining_micros"] = ceiling_remaining_micros
+        if ceiling_status is not UNSET:
+            field_dict["ceiling_status"] = ceiling_status
+        if ceiling_used_percentage is not UNSET:
+            field_dict["ceiling_used_percentage"] = ceiling_used_percentage
         if claimed_provider_cost_micros is not UNSET:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if grouping_fields is not UNSET:
@@ -343,6 +376,46 @@ class RecordUsageResponse:
             return cast(int | None | Unset, data)
 
         billed_cost_micros = _parse_billed_cost_micros(d.pop("billed_cost_micros", UNSET))
+
+
+        def _parse_ceiling_remaining_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        ceiling_remaining_micros = _parse_ceiling_remaining_micros(d.pop("ceiling_remaining_micros", UNSET))
+
+
+        def _parse_ceiling_status(data: object) -> None | RecordUsageResponseCeilingStatusType0 | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                ceiling_status_type_0 = RecordUsageResponseCeilingStatusType0(data)
+
+
+
+                return ceiling_status_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponseCeilingStatusType0 | Unset, data)
+
+        ceiling_status = _parse_ceiling_status(d.pop("ceiling_status", UNSET))
+
+
+        def _parse_ceiling_used_percentage(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        ceiling_used_percentage = _parse_ceiling_used_percentage(d.pop("ceiling_used_percentage", UNSET))
 
 
         def _parse_claimed_provider_cost_micros(data: object) -> int | None | Unset:
@@ -614,6 +687,9 @@ class RecordUsageResponse:
             pricing_status=pricing_status,
             suspended=suspended,
             billed_cost_micros=billed_cost_micros,
+            ceiling_remaining_micros=ceiling_remaining_micros,
+            ceiling_status=ceiling_status,
+            ceiling_used_percentage=ceiling_used_percentage,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             grouping_fields=grouping_fields,
             measurements=measurements,

@@ -171,6 +171,7 @@ from .record_usage_request_dimensions import RecordUsageRequestDimensions
 from .record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
 from .record_usage_request_metadata import RecordUsageRequestMetadata
 from .record_usage_response import RecordUsageResponse
+from .record_usage_response_ceiling_status_type_0 import RecordUsageResponseCeilingStatusType0
 from .record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
@@ -221,10 +222,12 @@ from .sync_response import SyncResponse
 from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
 from .task_detail_out import TaskDetailOut
+from .task_detail_out_ceiling_status import TaskDetailOutCeilingStatus
 from .task_detail_out_dimensions import TaskDetailOutDimensions
 from .task_detail_out_outcome_reason_type_0 import TaskDetailOutOutcomeReasonType0
 from .task_detail_out_status import TaskDetailOutStatus
 from .task_out import TaskOut
+from .task_out_ceiling_status import TaskOutCeilingStatus
 from .task_out_dimensions import TaskOutDimensions
 from .task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from .task_out_status import TaskOutStatus
@@ -480,6 +483,7 @@ __all__ = (
     "RecordUsageRequestMeasurementsType0",
     "RecordUsageRequestMetadata",
     "RecordUsageResponse",
+    "RecordUsageResponseCeilingStatusType0",
     "RecordUsageResponseCostingStatus",
     "RecordUsageResponseGroupingFields",
     "RecordUsageResponseMeasurementsType0",
@@ -530,10 +534,12 @@ __all__ = (
     "TaskAnalyticsOut",
     "TaskAnalyticsRow",
     "TaskDetailOut",
+    "TaskDetailOutCeilingStatus",
     "TaskDetailOutDimensions",
     "TaskDetailOutOutcomeReasonType0",
     "TaskDetailOutStatus",
     "TaskOut",
+    "TaskOutCeilingStatus",
     "TaskOutDimensions",
     "TaskOutOutcomeReasonType0",
     "TaskOutStatus",

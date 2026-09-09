@@ -91,12 +91,25 @@ def reconcile_live_ledgers():
     sweeps over-limit tasks into the kill flow, and records the outcome
     counters for the ops surface. With live-counter maintenance off (#46) the
     counter merges skip inside the per-owner reconcile; every durable-lane leg
-    here runs identically in both postures."""
+    here runs identically in both postures.
+
+    ⚠ EVERY TENANT IS VISITED, AND THE SWITCH DECIDES WHICH LEGS RUN (#452,
+    slice 6 §3, §10). The customer-wide family — the per-owner reconcile and
+    the patrol's signal legs — is governed by ``enforcement_mode`` and runs
+    for enforcing tenants only, as before. The ceiling's repair — the sweep
+    of work sitting at or past its ceiling and the re-mint of a stopped
+    unit's dead-lettered announcement — is NOT: declaring a ceiling is
+    itself the opt-in (#150 §11.2), the recording lane stops on it whatever
+    the switch says, so a crashed stop is repaired for every tenant. This
+    loop gates the per-owner reconcile on the switch and hands every tenant
+    to ``run_patrol``, which makes the split between its legs."""
+    from apps.platform.tenants.flags import enforcing
     from apps.platform.tenants.models import Tenant
     from apps.billing.gating import patrol
 
-    for tenant in Tenant.objects.filter(enforcement_mode="enforcing"):
-        flag_realigned = _per_owner_reconcile(tenant)
+    for tenant in Tenant.objects.iterator():
+        flag_realigned = (_per_owner_reconcile(tenant)
+                          if enforcing(tenant) else 0)
         try:
             patrol.run_patrol(tenant, flag_realigned=flag_realigned)
         except Exception:

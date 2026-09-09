@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,771 of 2,185 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,775 of 2,189 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1917,6 +1917,27 @@ measurement_key:
     # the declaration does not carry", "a quantity", "the number as sent" and
     # "measured quantities"; the count was taken after the build and re-taken
     # after the review pass.
+    #
+    # THE ONE-PLACE CEILING COMPARE MOVED BOTH DENOMINATORS BY FOUR AND LEFT
+    # THE NUMERATOR WHERE IT WAS (1,771 -> 1,775 swept, 2,185 -> 2,189
+    # tracked, `units` UNMOVED at 45 files and 123 occurrences) — BUT NOT ON
+    # THE FIRST TAKE. Four tracked files arrived and every one is swept: the
+    # walker that refuses a second spelling of the ceiling compare anywhere in
+    # production code (#452), and the three SDK enum modules the contract's
+    # first advertised spend-control concept mints, one per schema carrying
+    # `ceiling_status`. The crossing module and its tests MOVED (billing to
+    # the kernel's shared package) rather than arriving, so they count once
+    # as before. No migration — the assessment is derived on the row, never
+    # stored — so the exclusion counts hold at 247 and 414. The first
+    # measurement read 47 files and 125 occurrences, a RISE, and both
+    # occurrences were this ticket's own new prose in two files that had
+    # never carried the word: "the sweep of units sitting at or past their
+    # ceiling", once in the beat's docstring and once in the flags module's
+    # — ordinary English about work and none of the three surviving senses,
+    # the same shape as #408, #412 and #426. Both were rewritten to "the
+    # sweep of work sitting at or past its ceiling" and the count re-taken.
+    # The prose that held was "a unit of work", "contained work", "a stopped
+    # unit" and "whatever remains unresolved".
 
     - term: units
       retired_as: >-
