@@ -141,8 +141,9 @@ def close_abandoned_tasks():
 
     And it still CEDES an enforcing tenant's EMITTED work to reap_stale_tasks,
     which announces the stop to the tenant's workers; never-emitted
-    (last_event_at IS NULL) work stays eligible here — the original safety net,
-    and for enforcing tenants it frees the concurrency slot early.
+    (last_event_at IS NULL) work stays eligible here — the original safety net:
+    work that crashed before it ever reported gets a deterministic terminal
+    state, whatever the tenant's posture.
 
     ⚠ THE CEDE IS ABOUT THE ANNOUNCEMENT, NOT THE STATE. Both sweepers write
     `expired`, so which one wins the race no longer decides what the row says —

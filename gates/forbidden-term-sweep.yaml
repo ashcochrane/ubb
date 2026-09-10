@@ -296,7 +296,13 @@ exclusions:
     # spelling is a sweep term (#453 retires them by rename), so the retired-term
     # totals were unchanged in both directions, 24 terms in 80 sites, and the
     # ledger did not move.
-    files: 250
+    # 250 → 252 in #455: TWO migrations, one per app the deleted control
+    # touched — billing's `RemoveField` of the per-owner cap's column off the
+    # risk row, and the work app's `RemoveIndex` of the index that existed
+    # only for the cap's count. The billing one spells the column it drops,
+    # which is not a sweep term; the cap's VERDICT is one, and it left the
+    # tree entirely — three G7 entries gone, 24 terms → 23 and 80 sites → 77.
+    files: 252
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

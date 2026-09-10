@@ -97,12 +97,14 @@ class PreCheckResponse(Schema):
     # NEW top-level starts refuse; subtask starts under an active parent
     # pass) | rate_limit_exceeded | budget-cap reasons.
     #
-    # THREE WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and none of
-    # them was deleted: `concurrency_limit`, `parent_task_not_active` and
-    # `subtask_depth_exceeded` are refusals only a call that REGISTERS work
-    # can give, and they are given by `POST /api/v1/tasks`, which names them
-    # in its own refusal. They were unreachable here without the retired
-    # flag, so the list is shorter and the vocabulary is not.
+    # TWO WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and neither was
+    # deleted: `parent_task_not_active` and `subtask_depth_exceeded` are
+    # refusals only a call that REGISTERS work can give, and they are given by
+    # `POST /api/v1/tasks`, which names them in its own refusal. They were
+    # unreachable here without the retired flag, so the list is shorter and
+    # the vocabulary is not. A third word left with them and WAS deleted, in
+    # #455: the verdict of the per-owner cap on work already running, whose
+    # control #150 §12.5 removes outright.
     #
     # A resolved COGS ceiling used to refuse here unless the tenant promised
     # full cost coverage; #321 deleted that verdict outright rather than
@@ -2872,7 +2874,7 @@ class TaskTypeIn(Schema):
     #:
     #: `gt=0`, and a `CHECK` on the column behind it, because this bound may
     #: not be switched off at any rung: it is the guard that stops any tenant
-    #: getting an immortal unit of work holding a concurrency slot and a
+    #: getting an immortal unit of work, counted as active and holding a
     #: prepaid reservation forever. Dropping it entirely was considered and
     #: rejected. Zero is refused rather than read, because a zero-length
     #: deadline and a disabled one are two readings and only one is a window.

@@ -319,7 +319,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # work, and billing's carry-then-remove off the risk row, which names
         # the retired spellings it migrates away from. Neither spelling is a
         # sweep term: 24 terms in 80 sites in both directions, ledger unmoved.
-        "historical-migrations": (UNTIL_SLICE_8, 250, 19),
+        # 250 -> 252 in #455: TWO migrations, one per app the deleted control
+        # touched -- billing's RemoveField of the per-owner cap's column off
+        # the risk row, and the work app's RemoveIndex of the index that
+        # existed only for the cap's count. The column is not a sweep term;
+        # the cap's VERDICT is, and it left the tree entirely: three G7
+        # entries gone, 24 terms -> 23 and 80 sites -> 77.
+        "historical-migrations": (UNTIL_SLICE_8, 252, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

@@ -35,7 +35,6 @@ from django.utils import timezone
 
 from api.v1.tests.test_metering_endpoints import declared_grouping_values
 from apps.billing.gating.models import RiskConfig
-from apps.billing.gating.services.risk_service import CONCURRENCY_LIMIT
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingFieldValue
@@ -598,35 +597,31 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         assert response.json()["reason"] == "insufficient_funds"
         assert Task.objects.count() == 0
 
-    def test_the_concurrency_cap_refuses_a_start_at_this_route(self):
-        """⚠ THE CAP IS THE ONE CONTROL ONLY A START CAN BREACH, AND UNTIL THIS
-        CASE EXISTED NOTHING DROVE IT THROUGH THE ROUTE.
+    def test_work_already_running_never_refuses_a_start(self):
+        """⚠ NOTHING IN THE START COUNTS WHAT THE CUSTOMER ALREADY HAS ACTIVE
+        (#455, #150 §12.5).
 
-        It is asked by its own method rather than by the advisory check, so
-        deleting the call from the start gate leaves every service-level test
-        of the cap green — the guard would be gone and only work already
-        running would prove it had ever been there. This drives the real route
-        and asserts the refusal a caller actually receives.
+        A per-owner cap on running work used to be the third refusal in this
+        route — the one control only a start could breach — and this case
+        drove it: with the cap at one, the second start was refused. The cap
+        is deleted, not narrowed: it bounded a count of outstanding
+        operations, which converts to no amount of money, and it invited the
+        belief that UBB closes a blind window it cannot see into. So the
+        strongest posture the cap ever applied under — an enforcing tenant
+        that bills, a funded wallet, a risk row present — now admits every
+        start, however much of the same customer's work is still active, and
+        the risk row has no column left to say otherwise.
         """
         self._a_tenant_that_bills()
         Wallet.objects.create(customer=self.customer,
                               balance_micros=100_000_000)
         self.tenant.enforcement_mode = "enforcing"
         self.tenant.save(update_fields=["enforcement_mode"])
-        RiskConfig.objects.create(tenant=self.tenant, max_concurrent_requests=1)
+        RiskConfig.objects.create(tenant=self.tenant)
 
-        assert self._start().status_code == 200
-
-        refused = self._start()
-        assert refused.status_code == 409
-        assert refused.json()["code"] == "task_start_refused"
-        # ⚠ THE SYMBOL, NOT THE STRING. The word is another slice's retired
-        # term under a spread ceiling, so a literal here would be a fourth file
-        # on it — and naming the producer's own constant is the stronger
-        # assertion regardless: a private copy of the string would pass
-        # whatever `concurrency_verdict` decided to answer.
-        assert refused.json()["reason"] == CONCURRENCY_LIMIT
-        assert Task.objects.count() == 1
+        for _ in range(5):
+            assert self._start().status_code == 200
+        assert Task.objects.filter(status=TASK_STATUS_ACTIVE).count() == 5
 
 
 @pytest.mark.django_db

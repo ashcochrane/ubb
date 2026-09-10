@@ -29,8 +29,8 @@ GOVERNED by `enforcing` — the customer-wide family, all of it:
     ledger and its re-mint, the customer-wide stop flag and the suspension
     fold (`wallets/operations.py`, `gating/services/stop_signal_service.py`,
     `gating/patrol.py` leg 2);
-  - the start gate's money-shaped refusals: the stop flag, the soft floor and
-    the concurrency cap (`gating/services/risk_service.py`);
+  - the start gate's money-shaped refusals: the stop flag and the soft floor
+    (`gating/services/risk_service.py`);
   - the customer-scope entries of an event's stop context, and the replayed
     acknowledgement's customer-wide verdict
     (`usage/services/stop_context.py`, `usage_service._replay_stop`);

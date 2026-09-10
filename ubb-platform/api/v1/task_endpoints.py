@@ -133,8 +133,8 @@ def start_task(request, payload: StartTaskRequest):
     There is one start shape, not two.
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
-    new work — a wallet below its floor, a stop in force, the concurrency cap,
-    or a parent that is not a running top-level unit. `422 validation_error`
+    new work — a wallet below its floor, a stop in force, or a parent that is
+    not a running top-level unit. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -163,10 +163,10 @@ def start_task(request, payload: StartTaskRequest):
     with transaction.atomic():
         # THE KEY'S CLAIM IS READ FIRST, BEFORE ANYTHING SPENDS OR COUNTS.
         # A retry after a lost response must be answerable from what is already
-        # written down, so it never reaches the wallet checks, never counts
-        # against the concurrency cap and never records a grouping value. The
-        # uniqueness constraint underneath is still what settles two identical
-        # starts racing; this is what settles the ordinary retry.
+        # written down, so it never reaches the wallet checks and never
+        # records a grouping value. The uniqueness constraint underneath is
+        # still what settles two identical starts racing; this is what settles
+        # the ordinary retry.
         claimed = TaskService.claimed_by(tenant, customer,
                                          payload.idempotency_key)
         if claimed is not None:
@@ -210,22 +210,21 @@ def start_task(request, payload: StartTaskRequest):
                 raise _refused(verdict)
             balance = verdict["balance_micros"] or 0
 
-        # THE ORDER OF THE THREE REFUSALS BELOW IS THE ORDER THEY HAVE ALWAYS
-        # RUN IN: the customer's own standing, then the parent this start
-        # names, then the cap on work already running. It is preserved
-        # deliberately rather than tidied — each is a published verdict, and
-        # which one a caller is told about first is part of what the surface
-        # answers.
+        # THE ORDER OF THE TWO REFUSALS IS THE ORDER THEY HAVE ALWAYS RUN IN:
+        # the customer's own standing above, then the parent this start names.
+        # It is preserved deliberately rather than tidied — each is a
+        # published verdict, and which one a caller is told about first is
+        # part of what the surface answers. A third refusal used to follow the
+        # parent's — a per-owner cap on work already running — and #455
+        # deleted it outright (#150 §12.5): nothing here counts what the
+        # customer already has active, because that count converts to no
+        # amount of money.
         try:
             parent = TaskService.parent_for(
                 tenant, customer, payload.parent_task_id)
         except StartRefused as refused:
             raise Problem("task_start_refused", str(refused),
                           extensions={"reason": refused.reason})
-        if has_a_wallet:
-            verdict = RiskService.concurrency_verdict(customer, balance)
-            if not verdict["allowed"]:
-                raise _refused(verdict)
 
         # THE CEILING IS UNIVERSAL AND RESOLVES THE SAME WAY FOR EVERY TENANT
         # (design D7, #453): a declared kind answers for itself — its figure
@@ -251,8 +250,8 @@ def start_task(request, payload: StartTaskRequest):
         #
         # ⚠ IT IS THE LAST THING BEFORE THE WRITE AND EVERYTHING IT REFUSES IS
         # RAISED, which is what makes an unpriceable start cost nothing: no row,
-        # no ceiling, no concurrency slot, and the grouping values admitted just
-        # above are rolled back with the transaction. A refusal AFTER the work
+        # no ceiling, and the grouping values admitted just above are rolled
+        # back with the transaction. A refusal AFTER the work
         # ran would be the expensive one, and this is the cheapest moment it can
         # land.
         #
@@ -286,8 +285,8 @@ def start_task(request, payload: StartTaskRequest):
                 metadata=payload.metadata or {},
                 external_task_id=payload.external_task_id,
                 idempotency_key=payload.idempotency_key,
-                # Tier-2 (D4/I6): pin the resolved billing owner so the
-                # concurrency slot and both reapers never re-resolve it.
+                # Tier-2 (D4): pin the resolved billing owner so the stop
+                # announcements never re-resolve it.
                 billing_owner_id=customer.resolve_billing_owner().id,
                 task_type=policy.task_type,
                 dimension_slots=policy.grouping_slots,

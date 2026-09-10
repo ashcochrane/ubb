@@ -603,8 +603,8 @@ class TaskService:
 
         A pure read, and it is deliberately the FIRST thing the start gate
         does. Everything else a start runs — the wallet checks, the grouping
-        values it would record, the concurrency slot it would count against —
-        either spends something or reads something that moves, so a retry that
+        values it would record — either spends something or reads something
+        that moves, so a retry that
         reached them would be paying twice for an answer that is already
         written down. Answering the repeat from the claim itself is what makes
         *a replay creates nothing* a property of the gate rather than a
@@ -670,9 +670,9 @@ class TaskService:
         ``api/v1/task_endpoints.py`` — which owns the ceiling ladder, the
         money-shaped admission and the parent active/depth refusals; the depth
         guard here is defense in depth against internal misuse. Tier-2 (D4):
-        billing_owner_id is PINNED here (resolve_billing_owner) so the
-        concurrency slot + reapers never re-resolve a re-parented owner. Must
-        be called inside @transaction.atomic.
+        billing_owner_id is PINNED here (resolve_billing_owner) so the stop
+        announcements never re-resolve a re-parented owner. Must be called
+        inside @transaction.atomic.
 
         ``idempotency_key`` is the caller's claim on this attempt (#410), and
         it is pass-through like everything else here: this seam writes the key

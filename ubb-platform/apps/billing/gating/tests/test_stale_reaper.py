@@ -1,10 +1,15 @@
-"""P5: per-owner concurrency cap (COUNT active tasks) + stale-task reaper.
+"""The two sweepers: the announcing stale-work reaper and the abandoned-close.
 
-The concurrency cap is enforcing-only and counts ACTIVE tasks for the billing
-owner (pooled business shares one cap). The reaper EXPIRES stale active work of
-enforcing tenants (past its silence window or past its absolute deadline) and
-announces `task.expired`; close_abandoned_tasks stays the baseline >1h sweeper
-but skips alive (recent heartbeat) tasks.
+The reaper EXPIRES stale active work of enforcing tenants (past its silence
+window or past its absolute deadline) and announces `task.expired`;
+close_abandoned_tasks stays the baseline >1h sweeper but skips alive (recent
+heartbeat) tasks. Both give crashed work a deterministic terminal state,
+which is what they have always been for.
+
+This module was `test_concurrency_reaper.py` and also held five cases for a
+per-owner cap on work already running; #455 deleted that control outright
+(#150 §12.5) and the cases with it, and the module is renamed for what it
+still proves. Nothing below was changed by that deletion.
 
 ⚠ BOTH SWEEPERS WRITE `expired` (#408) — nobody ever told UBB how the work
 ended, which is the one thing a silence CAN say. `killed` is reserved for a
@@ -27,8 +32,6 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.billing.gating.models import RiskConfig
-from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import TaskExpired
 from apps.platform.work import reasons
@@ -50,53 +53,6 @@ def _tenant(mode="prepaid", enf="enforcing", stale=900):
 def _task(t, c, owner_id):
     return TaskService.create_task(tenant=t, customer=c, balance_snapshot_micros=0,
                                    billing_owner_id=owner_id)
-
-
-@pytest.mark.django_db
-class TestConcurrencyCap:
-    """The per-owner cap on work already running.
-
-    ⚠ IT IS ASKED THROUGH `concurrency_verdict` NOW, NOT THROUGH A FLAG ON THE
-    ADVISORY CHECK (#410). The cap is the one control only a call that
-    REGISTERS work can breach, so it stayed out of the advisory answer when
-    registering became its own route — which is what lets that answer keep
-    reporting exactly the verdicts it always has. Everything asserted here is
-    unchanged.
-    """
-
-    def setup_method(self):
-        cache.clear()
-
-    def test_blocks_new_task_at_limit(self):
-        t = _tenant()
-        RiskConfig.objects.create(tenant=t, max_concurrent_requests=2)
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        _task(t, c, c.id)
-        _task(t, c, c.id)
-        res = RiskService.concurrency_verdict(c)
-        assert res["allowed"] is False
-        assert res["reason"] == "concurrency_limit"
-
-    def test_off_tenant_not_capped(self):
-        t = _tenant(enf="off")
-        RiskConfig.objects.create(tenant=t, max_concurrent_requests=2)
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        for _ in range(3):
-            _task(t, c, c.id)
-        res = RiskService.concurrency_verdict(c)
-        assert res["allowed"] is True
-
-    def test_pooled_business_shares_cap_counted_per_owner(self):
-        t = _tenant()
-        RiskConfig.objects.create(tenant=t, max_concurrent_requests=2)
-        biz = Customer.objects.create(tenant=t, external_id="biz",
-                                      account_type="business", billing_topology="pooled")
-        s1 = Customer.objects.create(tenant=t, external_id="s1", account_type="seat", parent=biz)
-        s2 = Customer.objects.create(tenant=t, external_id="s2", account_type="seat", parent=biz)
-        _task(t, s1, biz.id)  # both tasks pin the business as billing owner
-        _task(t, s2, biz.id)
-        res = RiskService.concurrency_verdict(s1)  # 3rd task, any seat -> blocked
-        assert res["allowed"] is False and res["reason"] == "concurrency_limit"
 
 
 @pytest.mark.django_db
@@ -212,21 +168,6 @@ class TestCloseAbandonedHeartbeatSkip:
 class TestP5ReviewFixes:
     def setup_method(self):
         cache.clear()
-
-    def test_concurrency_cap_zero_disables(self):
-        t = _tenant()
-        RiskConfig.objects.create(tenant=t, max_concurrent_requests=0)
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        for _ in range(3):
-            _task(t, c, c.id)
-        assert RiskService.concurrency_verdict(c)["allowed"] is True
-
-    def test_concurrency_cap_negative_does_not_brick(self):
-        t = _tenant()
-        RiskConfig.objects.create(tenant=t, max_concurrent_requests=-1)
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        # 0 active tasks; a negative cap must NOT block (no -1 >= active=0 trap)
-        assert RiskService.concurrency_verdict(c)["allowed"] is True
 
     def test_reaper_respects_tenant_task_stale_seconds(self):
         t = _tenant(stale=1800)  # 30-min window

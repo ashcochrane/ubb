@@ -109,8 +109,8 @@ def sync_detailed(
     There is one start shape, not two.
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
-    new work — a wallet below its floor, a stop in force, the concurrency cap,
-    or a parent that is not a running top-level unit. `422 validation_error`
+    new work — a wallet below its floor, a stop in force, or a parent that is
+    not a running top-level unit. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -178,8 +178,8 @@ def sync(
     There is one start shape, not two.
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
-    new work — a wallet below its floor, a stop in force, the concurrency cap,
-    or a parent that is not a running top-level unit. `422 validation_error`
+    new work — a wallet below its floor, a stop in force, or a parent that is
+    not a running top-level unit. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -242,8 +242,8 @@ async def asyncio_detailed(
     There is one start shape, not two.
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
-    new work — a wallet below its floor, a stop in force, the concurrency cap,
-    or a parent that is not a running top-level unit. `422 validation_error`
+    new work — a wallet below its floor, a stop in force, or a parent that is
+    not a running top-level unit. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -311,8 +311,8 @@ async def asyncio(
     There is one start shape, not two.
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
-    new work — a wallet below its floor, a stop in force, the concurrency cap,
-    or a parent that is not a running top-level unit. `422 validation_error`
+    new work — a wallet below its floor, a stop in force, or a parent that is
+    not a running top-level unit. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.

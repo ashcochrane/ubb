@@ -51,7 +51,7 @@ BILLING_MODE_CHOICES = [
 # 0019).
 #   off       — byte-for-byte pre-enforcement behavior: no counters, no
 #               signals, no tagging — the live ledger / stop flag / per-task
-#               cap / concurrency cap are never touched.
+#               cap are never touched.
 #   enforcing — the full signal suite + state changes (task flips, start-gate
 #               refusals, soft-floor gate, suspension, reapers).
 # Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcing); no
