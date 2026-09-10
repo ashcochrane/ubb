@@ -24,7 +24,8 @@ const baseConfig: TenantConfig = {
   live_counter_maintenance_enabled: true,
   min_balance_micros: 25_000_000,
   soft_min_balance_micros: -10_000_000,
-  default_task_provider_cost_limit_micros: 5_000_000,
+  default_task_cogs_ceiling_micros: 5_000_000,
+  default_subtask_cogs_ceiling_micros: null,
 };
 
 describe("inputToMicros", () => {
@@ -41,7 +42,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
       buildSpendPatch(baseConfig, {
         allowedOverdraft: "25",
         softFloor: "-10",
-        taskLimit: "5",
       }),
     ).toEqual({});
   });
@@ -50,7 +50,6 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
     const patch = buildSpendPatch(baseConfig, {
       allowedOverdraft: "50",
       softFloor: "-10",
-      taskLimit: "5",
     });
     expect(patch).toEqual({ min_balance_micros: 50_000_000 });
   });
@@ -59,11 +58,9 @@ describe("buildSpendPatch — PATCH partial semantics", () => {
     const patch = buildSpendPatch(baseConfig, {
       allowedOverdraft: "25",
       softFloor: "",
-      taskLimit: "",
     });
     expect(patch).toEqual({
       soft_min_balance_micros: null,
-      default_task_provider_cost_limit_micros: null,
     });
     // Explicit nulls, not absent keys — the server treats them differently.
     expect("soft_min_balance_micros" in patch).toBe(true);
@@ -77,7 +74,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
     const result = spendControlSchema.safeParse({
       allowedOverdraft: "25",
       softFloor: "-30",
-      taskLimit: "",
     });
     expect(result.success).toBe(true);
   });
@@ -86,7 +82,6 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
     const result = spendControlSchema.safeParse({
       allowedOverdraft: "25",
       softFloor: "25",
-      taskLimit: "",
     });
     expect(result.success).toBe(true);
   });
@@ -97,27 +92,10 @@ describe("spendControlSchema — wire sign convention (soft value ≤ hard value
     const result = spendControlSchema.safeParse({
       allowedOverdraft: "25",
       softFloor: "30",
-      taskLimit: "",
     });
     expect(result.success).toBe(false);
   });
 
-  it("rejects a zero task limit but allows empty (no limit)", () => {
-    expect(
-      spendControlSchema.safeParse({
-        allowedOverdraft: "0",
-        softFloor: "",
-        taskLimit: "0",
-      }).success,
-    ).toBe(false);
-    expect(
-      spendControlSchema.safeParse({
-        allowedOverdraft: "0",
-        softFloor: "",
-        taskLimit: "",
-      }).success,
-    ).toBe(true);
-  });
 });
 
 describe("margin-alert form helpers", () => {

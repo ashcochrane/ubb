@@ -144,6 +144,31 @@ class Tenant(BaseModel):
     # backstop; it is not a way to disable it.
     task_absolute_deadline_seconds = models.PositiveIntegerField(
         null=True, blank=True, default=None)
+    # THE TENANT'S DEFAULT COGS CEILINGS FOR WORK WITH NO DECLARED KIND (#453,
+    # slice 6 §2; moved here from billing's risk row on #141 §6.2's precedent —
+    # the two rungs above, which is the argument: a ceiling is a kernel
+    # concept, and a tenant that never enables billing still gets one).
+    #
+    # ⚠ THESE APPLY TO UNDECLARED WORK ONLY, which is what the `default_`
+    # prefix says and what distinguishes them from the two rungs above. The
+    # silence window and the absolute deadline are middle rungs UNDER a
+    # declaration — a kind that says nothing about its window inherits the
+    # tenant's. A declared kind of work must state its own ceiling or declare
+    # itself uncapped (`TaskType.uncapped`), so there is nothing for it to
+    # inherit and these are never consulted for it. The ladder for work with
+    # no declared kind is: the caller's request (lower only) -> this rung, per
+    # altitude -> no ceiling applies, and where no ceiling applies the unit's
+    # assessment says `not_applicable` on every surface rather than staying
+    # silent (#150 §8.2).
+    #
+    # One per altitude, because contained work legitimately costs a fraction
+    # of the unit containing it. NULL = this tenant declares no default at that
+    # altitude. Zero is refused at the tenant configuration route rather than
+    # here, matching the declaration's own column.
+    default_task_cogs_ceiling_micros = models.BigIntegerField(
+        null=True, blank=True, default=None)
+    default_subtask_cogs_ceiling_micros = models.BigIntegerField(
+        null=True, blank=True, default=None)
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile

@@ -51,7 +51,7 @@ class StartTaskResponse:
             agreed_price_micros (int | None | Unset):
             external_task_id (str | Unset):  Default: ''.
             parent_task_id (None | str | Unset):
-            provider_cost_limit_micros (int | None | Unset):
+            task_cogs_ceiling_micros (int | None | Unset):
             task_type (str | Unset):  Default: ''.
      """
 
@@ -62,7 +62,7 @@ class StartTaskResponse:
     agreed_price_micros: int | None | Unset = UNSET
     external_task_id: str | Unset = ''
     parent_task_id: None | str | Unset = UNSET
-    provider_cost_limit_micros: int | None | Unset = UNSET
+    task_cogs_ceiling_micros: int | None | Unset = UNSET
     task_type: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -93,11 +93,11 @@ class StartTaskResponse:
         else:
             parent_task_id = self.parent_task_id
 
-        provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.provider_cost_limit_micros, Unset):
-            provider_cost_limit_micros = UNSET
+        task_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.task_cogs_ceiling_micros, Unset):
+            task_cogs_ceiling_micros = UNSET
         else:
-            provider_cost_limit_micros = self.provider_cost_limit_micros
+            task_cogs_ceiling_micros = self.task_cogs_ceiling_micros
 
         task_type = self.task_type
 
@@ -116,8 +116,8 @@ class StartTaskResponse:
             field_dict["external_task_id"] = external_task_id
         if parent_task_id is not UNSET:
             field_dict["parent_task_id"] = parent_task_id
-        if provider_cost_limit_micros is not UNSET:
-            field_dict["provider_cost_limit_micros"] = provider_cost_limit_micros
+        if task_cogs_ceiling_micros is not UNSET:
+            field_dict["task_cogs_ceiling_micros"] = task_cogs_ceiling_micros
         if task_type is not UNSET:
             field_dict["task_type"] = task_type
 
@@ -161,14 +161,14 @@ class StartTaskResponse:
         parent_task_id = _parse_parent_task_id(d.pop("parent_task_id", UNSET))
 
 
-        def _parse_provider_cost_limit_micros(data: object) -> int | None | Unset:
+        def _parse_task_cogs_ceiling_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(int | None | Unset, data)
 
-        provider_cost_limit_micros = _parse_provider_cost_limit_micros(d.pop("provider_cost_limit_micros", UNSET))
+        task_cogs_ceiling_micros = _parse_task_cogs_ceiling_micros(d.pop("task_cogs_ceiling_micros", UNSET))
 
 
         task_type = d.pop("task_type", UNSET)
@@ -181,7 +181,7 @@ class StartTaskResponse:
             agreed_price_micros=agreed_price_micros,
             external_task_id=external_task_id,
             parent_task_id=parent_task_id,
-            provider_cost_limit_micros=provider_cost_limit_micros,
+            task_cogs_ceiling_micros=task_cogs_ceiling_micros,
             task_type=task_type,
         )
 

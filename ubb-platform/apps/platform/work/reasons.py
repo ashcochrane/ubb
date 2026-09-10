@@ -60,9 +60,9 @@ from core.vocabulary import (
     TRIGGER_SOURCE_USAGE_INGEST,
 )
 
-# The task's provider-cost (COGS) limit was crossed (Task.provider_cost_limit_micros).
-# On a subtask event this means the PARENT's limit was crossed by the rolled-up
-# provider total — a parent's cap covers everything underneath it (#38).
+# The unit's COGS ceiling was reached (Task.task_cogs_ceiling_micros). On a
+# subtask event this means the PARENT's ceiling was reached by the rolled-up
+# provider total — a parent's ceiling covers everything underneath it (#38).
 TASK_LIMIT = "task_limit"
 # The subtask's OWN provider-cost limit was crossed; it is killed alone (#38).
 SUBTASK_LIMIT = "subtask_limit"

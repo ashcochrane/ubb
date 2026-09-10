@@ -287,7 +287,16 @@ exclusions:
     # ⚠ THE SWEEP'S TOTALS DID MOVE HERE, unlike the six entries above: 26
     # terms → 24 and 87 sites → 80, the two event names leaving the tree
     # entirely and taking seven G7 entries with them.
-    files: 247
+    # 247 → 250 in #453: THREE migrations across three apps, because a column
+    # moved from a product to the kernel — the work app's rename of the
+    # ceiling at both scopes with the `uncapped` flag and its exclusive-or;
+    # the tenant app's two default rungs for undeclared work; and billing's
+    # carry-then-remove off the risk row, which NAMES the two retired ceiling
+    # spellings it is migrating away from and cannot avoid it. Neither
+    # spelling is a sweep term (#453 retires them by rename), so the retired-term
+    # totals were unchanged in both directions, 24 terms in 80 sites, and the
+    # ledger did not move.
+    files: 250
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

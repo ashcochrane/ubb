@@ -6511,7 +6511,7 @@
             ],
             "title": "Parent Task Id"
           },
-          "provider_cost_limit_micros": {
+          "task_cogs_ceiling_micros": {
             "anyOf": [
               {
                 "exclusiveMinimum": 0,
@@ -6521,7 +6521,7 @@
                 "type": "null"
               }
             ],
-            "title": "Provider Cost Limit Micros"
+            "title": "Task Cogs Ceiling Micros"
           },
           "task_type": {
             "anyOf": [
@@ -6577,17 +6577,6 @@
             ],
             "title": "Parent Task Id"
           },
-          "provider_cost_limit_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Cost Limit Micros"
-          },
           "replayed": {
             "title": "Replayed",
             "type": "boolean"
@@ -6604,6 +6593,17 @@
             "title": "Status",
             "type": "string",
             "x-ubb-concept": "task_status"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
           },
           "task_id": {
             "title": "Task Id",
@@ -6972,17 +6972,6 @@
             ],
             "title": "Parent Task Id"
           },
-          "provider_cost_limit_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Cost Limit Micros"
-          },
           "reason_detail": {
             "anyOf": [
               {
@@ -7013,6 +7002,17 @@
             },
             "title": "Subtasks",
             "type": "array"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
           },
           "task_id": {
             "title": "Task Id",
@@ -7158,17 +7158,6 @@
             ],
             "title": "Parent Task Id"
           },
-          "provider_cost_limit_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Cost Limit Micros"
-          },
           "reason_detail": {
             "anyOf": [
               {
@@ -7192,6 +7181,17 @@
             "title": "Status",
             "type": "string",
             "x-ubb-concept": "task_status"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
           },
           "task_id": {
             "title": "Task Id",
@@ -7234,7 +7234,7 @@
         "type": "object"
       },
       "TaskTypeIn": {
-        "description": "One declared kind of work, and the policy that comes with it.\n\nThree of these fields are bounds: a spending ceiling, a silence window and\nan absolute deadline. Omit one and this kind inherits your workspace\ndefault for it; there is no value that removes the absolute deadline.\n\n`pricing_mode` is not a bound and is not revisable: it is fixed when the\nkind of work is first declared. `retired` is the two-way switch that takes\na kind of work out of use without deleting the record of it.",
+        "description": "One declared kind of work, and the policy that comes with it.\n\nThree of these fields are bounds: a spending ceiling, a silence window and\nan absolute deadline. The ceiling must be answered \u2014 a figure, or\n`uncapped: true` \u2014 and is never inherited. Omit a window and this kind\ninherits your workspace default for it; there is no value that removes\nthe absolute deadline.\n\n`pricing_mode` is not a bound and is not revisable: it is fixed when the\nkind of work is first declared. `retired` is the two-way switch that takes\na kind of work out of use without deleting the record of it.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -7247,18 +7247,6 @@
               }
             ],
             "title": "Absolute Deadline Seconds"
-          },
-          "default_provider_cost_limit_micros": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Provider Cost Limit Micros"
           },
           "key": {
             "maxLength": 64,
@@ -7321,6 +7309,23 @@
               }
             ],
             "title": "Silence Window Seconds"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
+          },
+          "uncapped": {
+            "default": false,
+            "title": "Uncapped",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7330,7 +7335,7 @@
         "type": "object"
       },
       "TaskTypeOut": {
-        "description": "One declared kind of work, as UBB holds it.\n\nEach bound is echoed back exactly as declared. `null` means this kind\ndeclared none and inherits your workspace default for it.\n\n`retired_at` is the instant this kind of work stopped being offered, or\n`null` while it is live.",
+        "description": "One declared kind of work, as UBB holds it.\n\nThe ceiling is exactly what was declared: a `task_cogs_ceiling_micros`\nfigure, or `uncapped: true` with the figure `null`. A kind of work never\ninherits a ceiling from your workspace \u2014 the workspace defaults apply to\nwork started with no declared kind at all. Each window is echoed back as\ndeclared; `null` means this kind declared none and inherits your workspace\ndefault for it.\n\n`retired_at` is the instant this kind of work stopped being offered, or\n`null` while it is live.",
         "properties": {
           "absolute_deadline_seconds": {
             "anyOf": [
@@ -7342,17 +7347,6 @@
               }
             ],
             "title": "Absolute Deadline Seconds"
-          },
-          "default_provider_cost_limit_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Provider Cost Limit Micros"
           },
           "key": {
             "title": "Key",
@@ -7408,12 +7402,28 @@
               }
             ],
             "title": "Silence Window Seconds"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
+          },
+          "uncapped": {
+            "title": "Uncapped",
+            "type": "boolean"
           }
         },
         "required": [
           "key",
           "kind",
           "pricing_mode",
+          "uncapped",
           "required_dimensions",
           "retired"
         ],
@@ -7566,7 +7576,7 @@
             ],
             "title": "Default Currency"
           },
-          "default_task_provider_cost_limit_micros": {
+          "default_subtask_cogs_ceiling_micros": {
             "anyOf": [
               {
                 "type": "integer"
@@ -7575,7 +7585,18 @@
                 "type": "null"
               }
             ],
-            "title": "Default Task Provider Cost Limit Micros"
+            "title": "Default Subtask Cogs Ceiling Micros"
+          },
+          "default_task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Task Cogs Ceiling Micros"
           },
           "enforcement_mode": {
             "anyOf": [
@@ -7659,7 +7680,7 @@
             "title": "Default Currency",
             "type": "string"
           },
-          "default_task_provider_cost_limit_micros": {
+          "default_subtask_cogs_ceiling_micros": {
             "anyOf": [
               {
                 "type": "integer"
@@ -7668,7 +7689,18 @@
                 "type": "null"
               }
             ],
-            "title": "Default Task Provider Cost Limit Micros"
+            "title": "Default Subtask Cogs Ceiling Micros"
+          },
+          "default_task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Task Cogs Ceiling Micros"
           },
           "enforcement_mode": {
             "default": "off",
@@ -16498,7 +16530,7 @@
         "summary": "List Task Types"
       },
       "put": {
-        "description": "Declare the kinds of work you meter, and the policy each one carries.\n\nIdempotent: send the whole vocabulary every time. A kind of work you have\nalready declared has its ceiling, its two windows and its\n`required_dimensions` updated in place.\n\n`pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a\ndifferent one answers `409 pricing_mode_frozen`; to change how a kind of\nwork is sold, retire it with `retired: true` and declare a replacement under\na new key. A key change is an integration change for you, so choose the\nregime with that in mind. Omitting it leaves an existing kind of work\nexactly as it is, and declares a new one `event_priced`.\n\n`retired: true` stops new work of that kind being started and leaves the\ndeclaration readable; `retired: false` brings it back. Omitting `retired`\nleaves it exactly as it is.\n\n`422 validation_error` answers a kind this registry does not recognise or a\n`required_dimensions` entry you have not declared as a grouping field.",
+        "description": "Declare the kinds of work you meter, and the policy each one carries.\n\nIdempotent: send the whole vocabulary every time. A kind of work you have\nalready declared has its ceiling, its two windows and its\n`required_dimensions` updated in place.\n\n`pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a\ndifferent one answers `409 pricing_mode_frozen`; to change how a kind of\nwork is sold, retire it with `retired: true` and declare a replacement under\na new key. A key change is an integration change for you, so choose the\nregime with that in mind. Omitting it leaves an existing kind of work\nexactly as it is, and declares a new one `event_priced`.\n\n`retired: true` stops new work of that kind being started and leaves the\ndeclaration readable; `retired: false` brings it back. Omitting `retired`\nleaves it exactly as it is.\n\nEvery kind of work states what it may spend: a `task_cogs_ceiling_micros`\nfigure, or `uncapped: true`. A declaration carrying neither, or both, is\nrefused. A start of this kind may request a lower ceiling than the figure,\nnever a higher one; an uncapped kind runs under no ceiling unless a start\nrequests one.\n\n`422 validation_error` answers a kind this registry does not recognise, a\n`required_dimensions` entry you have not declared as a grouping field, or\na declaration that neither states a ceiling nor declares itself uncapped\n\u2014 or does both.",
         "operationId": "api_v1_task_type_endpoints_declare_task_types",
         "parameters": [],
         "requestBody": {
@@ -20580,11 +20612,6 @@
                         "title": "Parent Task Id",
                         "type": "string"
                       },
-                      "provider_cost_limit_micros": {
-                        "default": 0,
-                        "title": "Provider Cost Limit Micros",
-                        "type": "integer"
-                      },
                       "re_announcement": {
                         "default": false,
                         "title": "Re Announcement",
@@ -20599,6 +20626,11 @@
                         "default": "",
                         "title": "Subtask Id",
                         "type": "string"
+                      },
+                      "task_cogs_ceiling_micros": {
+                        "default": 0,
+                        "title": "Task Cogs Ceiling Micros",
+                        "type": "integer"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -20742,11 +20774,6 @@
                         "title": "Parent Task Id",
                         "type": "string"
                       },
-                      "provider_cost_limit_micros": {
-                        "default": 0,
-                        "title": "Provider Cost Limit Micros",
-                        "type": "integer"
-                      },
                       "re_announcement": {
                         "default": false,
                         "title": "Re Announcement",
@@ -20761,6 +20788,11 @@
                         "default": "",
                         "title": "Subtask Id",
                         "type": "string"
+                      },
+                      "task_cogs_ceiling_micros": {
+                        "default": 0,
+                        "title": "Task Cogs Ceiling Micros",
+                        "type": "integer"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -20899,11 +20931,6 @@
                         "title": "External Task Id",
                         "type": "string"
                       },
-                      "provider_cost_limit_micros": {
-                        "default": 0,
-                        "title": "Provider Cost Limit Micros",
-                        "type": "integer"
-                      },
                       "re_announcement": {
                         "default": false,
                         "title": "Re Announcement",
@@ -20913,6 +20940,11 @@
                         "default": "",
                         "title": "Reason Code",
                         "type": "string"
+                      },
+                      "task_cogs_ceiling_micros": {
+                        "default": 0,
+                        "title": "Task Cogs Ceiling Micros",
+                        "type": "integer"
                       },
                       "task_id": {
                         "default": "",
@@ -21056,11 +21088,6 @@
                         "title": "External Task Id",
                         "type": "string"
                       },
-                      "provider_cost_limit_micros": {
-                        "default": 0,
-                        "title": "Provider Cost Limit Micros",
-                        "type": "integer"
-                      },
                       "re_announcement": {
                         "default": false,
                         "title": "Re Announcement",
@@ -21070,6 +21097,11 @@
                         "default": "",
                         "title": "Reason Code",
                         "type": "string"
+                      },
+                      "task_cogs_ceiling_micros": {
+                        "default": 0,
+                        "title": "Task Cogs Ceiling Micros",
+                        "type": "integer"
                       },
                       "task_id": {
                         "default": "",

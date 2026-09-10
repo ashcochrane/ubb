@@ -22,7 +22,6 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import TestCase, TransactionTestCase, Client
 
-from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
@@ -70,7 +69,7 @@ class SubtaskPinMixin:
     def _task(self, limit=None, parent=None, balance=100_000_000):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=self.customer.id, parent=parent)
 
     def _record(self, **extra):
@@ -162,7 +161,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         self.assertEqual(payload["parent_task_id"], str(parent.id))
         self.assertEqual(payload["reason_code"], "subtask_limit")
         self.assertEqual(payload["total_provider_cost_micros"], 5_000_000)
-        self.assertEqual(payload["provider_cost_limit_micros"], 5_000_000)
+        self.assertEqual(payload["task_cogs_ceiling_micros"], 5_000_000)
 
     def test_subtask_limit_bites_at_record_time_with_nothing_deferred(self, _mock):
         """Preserves: the Subtask COGS ceiling kills the subtask alone, and
@@ -385,28 +384,37 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
         # The SUBTASK default (not the task default) is the fallback for a
         # subtask start, and it resolves on a tenant that has declared no cost
         # rates: #321 deleted the coverage gate that refused a limited start
-        # here, subtask and task alike, with nothing in its place.
-        RiskConfig.objects.create(
-            tenant=self.tenant,
-            default_subtask_provider_cost_limit_micros=3_000_000)
+        # here, subtask and task alike, with nothing in its place. The rung
+        # is a kernel setting on the tenant row since #453.
+        self.tenant.default_subtask_cogs_ceiling_micros = 3_000_000
+        self.tenant.save(update_fields=["default_subtask_cogs_ceiling_micros"])
         parent = self._task()
         body = self._started(parent_task_id=str(parent.id))
-        self.assertEqual(body["provider_cost_limit_micros"], 3_000_000)
+        self.assertEqual(body["task_cogs_ceiling_micros"], 3_000_000)
 
         # A top-level start ignores the subtask default (no task default set
-        # -> uncapped).
+        # -> no ceiling applies).
         body = self._started()
-        self.assertIsNone(body["provider_cost_limit_micros"])
+        self.assertIsNone(body["task_cogs_ceiling_micros"])
 
-    def test_explicit_subtask_limit_wins_over_default(self):
-        RiskConfig.objects.create(
-            tenant=self.tenant,
-            default_subtask_provider_cost_limit_micros=3_000_000)
+    def test_a_request_above_the_subtask_default_is_refused(self):
+        # INVERTED at its own address by #453 (#150 §8.3, slice 6 §2): this
+        # case used to pin a 7M request over a 3M tenant default. A start may
+        # request LOWER than whichever rung answers, never higher — the rung
+        # is the platform team's, the start call is the agent's.
+        self.tenant.default_subtask_cogs_ceiling_micros = 3_000_000
+        self.tenant.save(update_fields=["default_subtask_cogs_ceiling_micros"])
         parent = self._task()
+        refused = self._start(parent_task_id=str(parent.id),
+                              task_cogs_ceiling_micros=7_000_000)
+        self.assertEqual(refused.status_code, 422, refused.json())
+        self.assertIn("exceeds", refused.json()["detail"])
+        self.assertEqual(Task.objects.filter(parent=parent).count(), 0)
+
         body = self._started(parent_task_id=str(parent.id),
-                             provider_cost_limit_micros=7_000_000)
+                             task_cogs_ceiling_micros=2_000_000)
         sub = Task.objects.get(id=body["task_id"])
-        self.assertEqual(sub.provider_cost_limit_micros, 7_000_000)
+        self.assertEqual(sub.task_cogs_ceiling_micros, 2_000_000)
 
 
 class CloseCascadeTest(SubtaskPinTestBase):

@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,775 of 2,189 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,778 of 2,195 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    45 files, 123 occurrences
+    #     units    44 files, 122 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -1938,6 +1938,26 @@ measurement_key:
     # sweep of work sitting at or past its ceiling" and the count re-taken.
     # The prose that held was "a unit of work", "contained work", "a stopped
     # unit" and "whatever remains unresolved".
+    #
+    # THE DECLARED CEILING MOVED BOTH DENOMINATORS BY THREE AND SIX AND THE
+    # NUMERATOR DOWN BY ONE (1,775 -> 1,778 swept, 2,189 -> 2,195 tracked,
+    # `units` 45/123 -> 44/122). Six tracked files arrived, three of them
+    # swept: the three-door module holding the declaration's exclusive-or at
+    # the database (#453), and the console's standing row for work with no
+    # declared kind — its editing dialog and the form module behind it. The
+    # other three are migrations, excluded under `historical-migrations`
+    # (247 -> 250, 414 -> 417 excluded): the rename of the ceiling at both
+    # scopes with the `uncapped` flag, the tenant's two default rungs, and
+    # the risk row's carry-then-remove. THE FALL OWES AN ACCOUNT, AND THE
+    # HONEST ANSWER IS "NONE OF THE THREE" (#407's rule): the one occurrence
+    # that left was the risk row's own comment on the column this ticket
+    # removed — "the same fallback for units registered with a parent" —
+    # ordinary English about work in `apps/billing/gating/models.py`, gone
+    # because the column it described moved to the tenant row, not because
+    # any surviving sense was paid. The sense is exactly as alive as it was.
+    # The prose that held was "a whole unit of work", "contained work",
+    # "work with no declared kind" and "the rung that answers"; the count
+    # was taken after the build and re-taken after the review pass.
 
     - term: units
       retired_as: >-

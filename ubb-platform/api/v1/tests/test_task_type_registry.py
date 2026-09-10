@@ -75,16 +75,16 @@ class TestTaskTypeRegistry:
     def test_put_declares_types(self):
         r = self._declare(
             {"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-             "default_provider_cost_limit_micros": 5_000_000,
+             "task_cogs_ceiling_micros": 5_000_000,
              "required_dimensions": ["region"]},
             {"key": "ocr", "kind": TASK_TYPE_KIND_SUBTASK,
-             "default_provider_cost_limit_micros": 2_000_000})
+             "task_cogs_ceiling_micros": 2_000_000})
         assert r.status_code == 200
         assert TaskType.objects.filter(tenant=self.tenant).count() == 2
 
     def test_put_is_idempotent(self):
         body = {"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-                "default_provider_cost_limit_micros": 5_000_000}
+                "task_cogs_ceiling_micros": 5_000_000}
         self._declare(body)
         self._declare(body)
         assert TaskType.objects.filter(tenant=self.tenant).count() == 1
@@ -92,24 +92,24 @@ class TestTaskTypeRegistry:
     def test_put_updates_the_ceiling(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch",
                                 kind=TASK_TYPE_KIND_TASK,
-                                default_provider_cost_limit_micros=1_000_000)
+                                task_cogs_ceiling_micros=1_000_000)
         self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-                       "default_provider_cost_limit_micros": 9_000_000})
+                       "task_cogs_ceiling_micros": 9_000_000})
         assert TaskType.objects.get(
             tenant=self.tenant, key="invoice_batch"
-        ).default_provider_cost_limit_micros == 9_000_000
+        ).task_cogs_ceiling_micros == 9_000_000
 
     def test_undeclared_required_dimension_is_422(self):
         # "region" is pre-declared in setup_method; "customer_tier" is not —
         # the point of this test is that an UNdeclared key is rejected.
         r = self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-                           "required_dimensions": ["customer_tier"]})
+                           "required_dimensions": ["customer_tier"], "uncapped": True})
         assert r.status_code == 422
         assert "not declared" in r.json()["detail"]
 
     def test_get_lists_types(self):
         TaskType.objects.create(tenant=self.tenant, key="ocr",
-                                kind=TASK_TYPE_KIND_SUBTASK)
+                                kind=TASK_TYPE_KIND_SUBTASK, uncapped=True)
         r = self._get(REGISTRY)
         assert r.status_code == 200
         assert r.json()["task_types"][0]["key"] == "ocr"
@@ -120,9 +120,9 @@ class TestTaskTypeRegistry:
         audit write happen inside one transaction.atomic()."""
         r = self._declare(
             {"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-             "default_provider_cost_limit_micros": 5_000_000},
+             "task_cogs_ceiling_micros": 5_000_000},
             {"key": "ocr", "kind": TASK_TYPE_KIND_SUBTASK,
-             "required_dimensions": ["undeclared_dim"]})
+             "required_dimensions": ["undeclared_dim"], "uncapped": True})
         assert r.status_code == 422
         assert TaskType.objects.filter(tenant=self.tenant).count() == 0
 
@@ -132,13 +132,13 @@ class TestTaskTypeRegistry:
         """Every kind of work declared before this field existed was declared
         when per-event was the only regime there was, so the field's absence
         means that and not *nobody said*."""
-        self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK})
+        self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
         assert self._held("invoice_batch")["pricing_mode"] == (
             PRICING_MODE_EVENT_PRICED)
 
     def test_a_kind_of_work_can_be_sold_at_one_agreed_price(self):
         self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                       "pricing_mode": PRICING_MODE_FIXED})
+                       "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         assert self._held("transcode")["pricing_mode"] == PRICING_MODE_FIXED
 
     def test_changing_how_a_kind_of_work_is_sold_is_refused(self):
@@ -150,9 +150,9 @@ class TestTaskTypeRegistry:
         unrelated things, and a caller cannot act on a code that means three.
         """
         self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                       "pricing_mode": PRICING_MODE_FIXED})
+                       "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         r = self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                           "pricing_mode": PRICING_MODE_EVENT_PRICED})
+                           "pricing_mode": PRICING_MODE_EVENT_PRICED, "uncapped": True})
         body = r.json()
         assert r.status_code == PROBLEMS["pricing_mode_frozen"]["status"] == 409
         assert body["code"] == "pricing_mode_frozen"
@@ -168,11 +168,11 @@ class TestTaskTypeRegistry:
         state no request asked for.
         """
         self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                       "pricing_mode": PRICING_MODE_FIXED})
+                       "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         r = self._declare(
-            {"key": "brand-new", "kind": TASK_TYPE_KIND_TASK},
+            {"key": "brand-new", "kind": TASK_TYPE_KIND_TASK, "uncapped": True},
             {"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_EVENT_PRICED})
+             "pricing_mode": PRICING_MODE_EVENT_PRICED, "uncapped": True})
         assert r.status_code == 409
         assert not TaskType.objects.filter(tenant=self.tenant,
                                            key="brand-new").exists()
@@ -194,19 +194,19 @@ class TestTaskTypeRegistry:
         not.
         """
         self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                       "pricing_mode": PRICING_MODE_FIXED})
+                       "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         r = self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-                           "default_provider_cost_limit_micros": 6_000_000})
+                           "task_cogs_ceiling_micros": 6_000_000})
         assert r.status_code == 200
         held = self._held("transcode")
         assert held["pricing_mode"] == PRICING_MODE_FIXED
-        assert held["default_provider_cost_limit_micros"] == 6_000_000
+        assert held["task_cogs_ceiling_micros"] == 6_000_000
 
     def test_a_new_kind_of_work_that_names_no_regime_is_event_priced(self):
         """The other half of the same field, and the column's own default is
         what answers — every declaration made before this field existed was
         made when per-event was the only regime there was."""
-        self._declare({"key": "brand-new", "kind": TASK_TYPE_KIND_TASK})
+        self._declare({"key": "brand-new", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
         assert self._held("brand-new")["pricing_mode"] == (
             PRICING_MODE_EVENT_PRICED)
 
@@ -221,7 +221,7 @@ class TestTaskTypeRegistry:
         carrying a key the declaration does not have is the same defect read
         the other way.
         """
-        self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK})
+        self._declare({"key": "transcode", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
         entry = AuditRecord.objects.filter(tenant_id=self.tenant.id).latest(
             "created_at")
         assert set(entry.metadata["task_types"][0]) == set(
@@ -241,9 +241,9 @@ class TestTaskTypeRegistry:
         """
         r = self._declare(
             {"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_FIXED},
+             "pricing_mode": PRICING_MODE_FIXED, "uncapped": True},
             {"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_EVENT_PRICED})
+             "pricing_mode": PRICING_MODE_EVENT_PRICED, "uncapped": True})
         assert r.status_code == 409
         assert r.json()["code"] == "pricing_mode_frozen"
         assert not TaskType.objects.filter(tenant=self.tenant).exists()
@@ -254,23 +254,23 @@ class TestTaskTypeRegistry:
         database, which is why this asserts a 200 rather than merely no 409."""
         body = {"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
                 "pricing_mode": PRICING_MODE_FIXED,
-                "default_provider_cost_limit_micros": 4_000_000}
+                "task_cogs_ceiling_micros": 4_000_000}
         assert self._declare(body).status_code == 200
         assert self._declare(
-            {**body, "default_provider_cost_limit_micros": 8_000_000}
+            {**body, "task_cogs_ceiling_micros": 8_000_000}
         ).status_code == 200
         assert self._held("transcode")["pricing_mode"] == PRICING_MODE_FIXED
         assert self._held("transcode")[
-            "default_provider_cost_limit_micros"] == 8_000_000
+            "task_cogs_ceiling_micros"] == 8_000_000
 
     def test_the_two_altitudes_are_sold_independently(self):
         """One word at two altitudes is two declarations, so the frozen rule
         binds each row and never the key."""
         assert self._declare(
             {"key": "transcode", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_FIXED},
+             "pricing_mode": PRICING_MODE_FIXED, "uncapped": True},
             {"key": "transcode", "kind": TASK_TYPE_KIND_SUBTASK,
-             "pricing_mode": PRICING_MODE_EVENT_PRICED}).status_code == 200
+             "pricing_mode": PRICING_MODE_EVENT_PRICED, "uncapped": True}).status_code == 200
         assert self._held("transcode", TASK_TYPE_KIND_TASK)[
             "pricing_mode"] == PRICING_MODE_FIXED
         assert self._held("transcode", TASK_TYPE_KIND_SUBTASK)[
@@ -288,12 +288,12 @@ class TestTaskTypeRegistry:
         exists to answer.
         """
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "pricing_mode": PRICING_MODE_EVENT_PRICED})
+                       "pricing_mode": PRICING_MODE_EVENT_PRICED, "uncapped": True})
         r = self._declare(
             {"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_EVENT_PRICED, "retired": True},
+             "pricing_mode": PRICING_MODE_EVENT_PRICED, "retired": True, "uncapped": True},
             {"key": "transcode-v2", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_FIXED})
+             "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         assert r.status_code == 200
 
         old, new = self._held("transcode-v1"), self._held("transcode-v2")
@@ -306,9 +306,9 @@ class TestTaskTypeRegistry:
         """Retire-never-delete: work already done under it still refers to it,
         and a replacement beside it is only a record of a change if the retired
         row can still be read."""
-        self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK})
+        self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": True})
+                       "retired": True, "uncapped": True})
         listed = self._get(REGISTRY).json()["task_types"]
         assert [row["key"] for row in listed] == ["transcode-v1"]
         assert listed[0]["retired"] is True
@@ -321,12 +321,12 @@ class TestTaskTypeRegistry:
         anything was actually retired — which is the fact the frozen regime
         leans on.
         """
-        self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK})
+        self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": True})
+                       "retired": True, "uncapped": True})
         stamped = self._held("transcode-v1")["retired_at"]
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": True})
+                       "retired": True, "uncapped": True})
         assert self._held("transcode-v1")["retired_at"] == stamped
 
     def test_saying_nothing_about_retirement_leaves_it_alone(self):
@@ -337,17 +337,17 @@ class TestTaskTypeRegistry:
         bring every retired kind of work back into use.
         """
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": True})
+                       "retired": True, "uncapped": True})
         stamped = self._held("transcode-v1")["retired_at"]
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "default_provider_cost_limit_micros": 3_000_000})
+                       "task_cogs_ceiling_micros": 3_000_000})
         assert self._held("transcode-v1")["retired_at"] == stamped
 
     def test_a_kind_of_work_can_be_brought_back(self):
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": True})
+                       "retired": True, "uncapped": True})
         self._declare({"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-                       "retired": False})
+                       "retired": False, "uncapped": True})
         held = self._held("transcode-v1")
         assert held["retired"] is False and held["retired_at"] is None
 
@@ -362,9 +362,9 @@ class TestTaskTypeRegistry:
         """
         self._declare(
             {"key": "transcode-v1", "kind": TASK_TYPE_KIND_TASK,
-             "retired": True},
+             "retired": True, "uncapped": True},
             {"key": "transcode-v2", "kind": TASK_TYPE_KIND_TASK,
-             "pricing_mode": PRICING_MODE_FIXED})
+             "pricing_mode": PRICING_MODE_FIXED, "uncapped": True})
         entry = AuditRecord.objects.filter(tenant_id=self.tenant.id).latest(
             "created_at")
         assert entry.action == "task_type.declared"
@@ -385,7 +385,7 @@ class TestTaskTypeRegistry:
         assert self._get(RETIRED_PATH).status_code == 404
         assert self._put(RETIRED_PATH,
                          {"task_types": [{"key": "x",
-                                          "kind": TASK_TYPE_KIND_TASK}]}
+                                          "kind": TASK_TYPE_KIND_TASK, "uncapped": True}]}
                          ).status_code == 404
 
     def test_job_analytics_stays_behind_the_metering_prefix(self):
@@ -409,7 +409,7 @@ class TestTaskTypeRegistry:
         """
         Tenant.objects.filter(id=self.tenant.id).update(products=["billing"])
         assert self._get(REGISTRY).status_code == 403
-        assert self._declare({"key": "x", "kind": TASK_TYPE_KIND_TASK}
+        assert self._declare({"key": "x", "kind": TASK_TYPE_KIND_TASK, "uncapped": True}
                              ).status_code == 403
 
     def test_no_tenant_can_reach_that_state_through_the_model(self):
@@ -430,7 +430,7 @@ class TestTaskTypeRegistry:
         writer.save(update_fields=["role"])
 
         assert self.key.role == ADMIN
-        assert self._declare({"key": "x", "kind": TASK_TYPE_KIND_TASK},
+        assert self._declare({"key": "x", "kind": TASK_TYPE_KIND_TASK, "uncapped": True},
                              raw=raw).status_code == 403
         assert self._get(REGISTRY, raw=raw).status_code == 200
 
@@ -442,8 +442,91 @@ class TestTaskTypeRegistry:
     def test_one_tenants_vocabulary_is_invisible_to_another(self):
         other = Tenant.objects.create(name="Other", products=["metering"])
         TaskType.objects.create(tenant=other, key="theirs",
-                                kind=TASK_TYPE_KIND_TASK)
+                                kind=TASK_TYPE_KIND_TASK, uncapped=True)
         assert self._get(REGISTRY).json()["task_types"] == []
+
+
+@pytest.mark.django_db
+class TestADeclarationAnswersTheCeilingQuestionExactlyOnce:
+    """#453 (slice 6 §2, #150 §8): a figure, or `uncapped: true` — never
+    neither, never both — refused at the route with a validation problem.
+
+    The route's refusal is the courtesy; the database holds the same
+    exclusive-or as `ck_task_type_ceiling_or_uncapped`, driven past the
+    serializer in
+    `apps/platform/work/tests/test_a_kind_of_work_declares_its_ceiling_or_declares_itself_uncapped.py`.
+    """
+
+    def setup_method(self):
+        self.tenant = Tenant.objects.create(name="T", products=["metering"])
+        self.key, self.raw_key = TenantApiKey.create_key(self.tenant)
+        self.client = Client()
+
+    def _declare(self, *items):
+        return self.client.put(REGISTRY, data={"task_types": list(items)},
+                               content_type="application/json",
+                               HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def _held(self, key):
+        listed = self.client.get(
+            REGISTRY, HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
+        return next(row for row in listed["task_types"] if row["key"] == key)
+
+    def test_a_declaration_stating_neither_is_refused(self):
+        r = self._declare({"key": "silent", "kind": TASK_TYPE_KIND_TASK})
+        assert r.status_code == 422, r.json()
+        assert r.json()["code"] == "validation_error"
+        assert "neither" in r.json()["detail"]
+        assert "uncapped" in r.json()["detail"]
+        assert TaskType.objects.filter(tenant=self.tenant).count() == 0
+
+    def test_a_declaration_stating_both_is_refused(self):
+        r = self._declare({"key": "greedy", "kind": TASK_TYPE_KIND_TASK,
+                           "task_cogs_ceiling_micros": 5_000_000,
+                           "uncapped": True})
+        assert r.status_code == 422, r.json()
+        assert r.json()["code"] == "validation_error"
+        assert "both" in r.json()["detail"]
+        assert TaskType.objects.filter(tenant=self.tenant).count() == 0
+
+    def test_a_refused_item_takes_the_whole_body_with_it(self):
+        """One transaction: the good declaration before the bad one does not
+        land either, which is the route's standing rule for every refusal."""
+        r = self._declare({"key": "fine", "kind": TASK_TYPE_KIND_TASK,
+                           "task_cogs_ceiling_micros": 1_000_000},
+                          {"key": "silent", "kind": TASK_TYPE_KIND_TASK})
+        assert r.status_code == 422
+        assert TaskType.objects.filter(tenant=self.tenant).count() == 0
+
+    def test_uncapped_is_read_back_as_declared(self):
+        self._declare({"key": "free", "kind": TASK_TYPE_KIND_TASK,
+                       "uncapped": True})
+        held = self._held("free")
+        assert held["uncapped"] is True
+        assert held["task_cogs_ceiling_micros"] is None
+
+    def test_a_figure_is_read_back_with_uncapped_false(self):
+        """Omitting `uncapped` beside a figure is the ordinary declaration,
+        and the answer says so in both keys rather than leaving one implied."""
+        self._declare({"key": "capped", "kind": TASK_TYPE_KIND_TASK,
+                       "task_cogs_ceiling_micros": 5_000_000})
+        held = self._held("capped")
+        assert held["uncapped"] is False
+        assert held["task_cogs_ceiling_micros"] == 5_000_000
+
+    def test_a_kind_of_work_may_be_revised_from_a_figure_to_uncapped_and_back(self):
+        """Both columns are ordinary mutable columns (ADR-0012's Consequences):
+        the whole-vocabulary PUT moves a kind between the two answers freely,
+        as it moves its windows."""
+        self._declare({"key": "k", "kind": TASK_TYPE_KIND_TASK,
+                       "task_cogs_ceiling_micros": 5_000_000})
+        self._declare({"key": "k", "kind": TASK_TYPE_KIND_TASK, "uncapped": True})
+        assert self._held("k") == {**self._held("k"), "uncapped": True,
+                                   "task_cogs_ceiling_micros": None}
+        self._declare({"key": "k", "kind": TASK_TYPE_KIND_TASK,
+                       "task_cogs_ceiling_micros": 2_000_000})
+        assert self._held("k") == {**self._held("k"), "uncapped": False,
+                                   "task_cogs_ceiling_micros": 2_000_000}
 
 
 @pytest.mark.django_db
@@ -468,12 +551,12 @@ class TestTheRegistryMintsNoThirdPublishMechanism:
 
     def test_the_declaration_carries_exactly_these_fields(self):
         assert set(TaskTypeIn.model_fields) == {
-            "key", "kind", "pricing_mode", "default_provider_cost_limit_micros",
-            "silence_window_seconds", "absolute_deadline_seconds",
+            "key", "kind", "pricing_mode", "task_cogs_ceiling_micros",
+            "uncapped", "silence_window_seconds", "absolute_deadline_seconds",
             "required_dimensions", "retired"}
         assert set(TaskTypeOut.model_fields) == {
-            "key", "kind", "pricing_mode", "default_provider_cost_limit_micros",
-            "silence_window_seconds", "absolute_deadline_seconds",
+            "key", "kind", "pricing_mode", "task_cogs_ceiling_micros",
+            "uncapped", "silence_window_seconds", "absolute_deadline_seconds",
             "required_dimensions", "retired", "retired_at"}
 
     def test_the_registry_is_mounted_at_the_root(self):

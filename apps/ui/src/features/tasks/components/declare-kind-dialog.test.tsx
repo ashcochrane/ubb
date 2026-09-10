@@ -11,6 +11,7 @@ import {
 import { listKinds, resetTasksMockState } from "../api/mock";
 import { KIND_EVENT_PRICED_KEY, KIND_FIXED_KEY, MOCK_KINDS } from "../api/mock-data";
 import type { KindOfWork } from "../api/types";
+import { CEILING_BOTH, CEILING_NEITHER } from "../lib/declaration-form";
 import { REGIME_CANNOT_CHANGE, REGIME_IS_INERT_UNTIL_BILLING } from "../lib/kinds";
 import { renderWithProviders } from "../test-utils";
 import { DeclareKindDialog } from "./declare-kind-dialog";
@@ -84,7 +85,7 @@ describe("DeclareKindDialog", () => {
     for (const radio of altitude.getAllByRole("radio")) expect(radio).toBeDisabled();
   });
 
-  it("offers exactly these controls: an absolute ceiling, two windows, and no cap scoped to a grouping field or expressed as a share of the price", async () => {
+  it("offers exactly these controls: an absolute ceiling or the declared choice of none, two windows, and no cap scoped to a grouping field or expressed as a share of the price", async () => {
     renderWithProviders(<Harness />);
     const dialog = within(await screen.findByRole("dialog"));
     const textboxes = dialog.getAllByRole("textbox").map((box) => box.getAttribute("id"));
@@ -97,8 +98,56 @@ describe("DeclareKindDialog", () => {
     expect(radios).toEqual(["task", "subtask", "event_priced", "fixed"]);
     expect(dialog.queryAllByRole("spinbutton")).toHaveLength(0);
     expect(dialog.queryAllByRole("combobox")).toHaveLength(0);
-    expect(dialog.queryAllByRole("checkbox")).toHaveLength(0);
+    // The one checkbox is the uncapped choice (#453): a declaration, never an
+    // inference from an empty amount.
+    expect(dialog.getAllByRole("checkbox")).toHaveLength(1);
+    expect(dialog.getByRole("checkbox", { name: /^Uncapped/ })).not.toBeChecked();
     expect(dialog.queryAllByRole("switch")).toHaveLength(0);
+  });
+
+  it("refuses, before the route does, a declaration that states neither an amount nor uncapped", async () => {
+    renderWithProviders(<Harness />);
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Key$/ }), {
+      target: { value: "podcast-cut" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "Declare" }));
+    expect(await dialog.findByText(CEILING_NEITHER)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(await listKinds()).toHaveLength(MOCK_KINDS.length);
+  });
+
+  it("refuses one that states both", async () => {
+    renderWithProviders(<Harness />);
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Key$/ }), {
+      target: { value: "podcast-cut" },
+    });
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Ceiling/ }), {
+      target: { value: "2.50" },
+    });
+    fireEvent.click(dialog.getByRole("checkbox", { name: /^Uncapped/ }));
+    fireEvent.click(dialog.getByRole("button", { name: "Declare" }));
+    expect(await dialog.findByText(CEILING_BOTH)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(await listKinds()).toHaveLength(MOCK_KINDS.length);
+  });
+
+  it("declares a kind of work uncapped as a choice, carrying no figure beside it", async () => {
+    renderWithProviders(<Harness />);
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Key$/ }), {
+      target: { value: "batch-ocr" },
+    });
+    fireEvent.click(dialog.getByRole("checkbox", { name: /^Uncapped/ }));
+    fireEvent.click(dialog.getByRole("button", { name: "Declare" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const after = await listKinds();
+    expect(after.find((kind) => kind.key === "batch-ocr")).toMatchObject({
+      task_cogs_ceiling_micros: null,
+      uncapped: true,
+    });
   });
 
   it("refuses a key already declared at that altitude, so a blank form never replaces a standing kind", async () => {
@@ -106,6 +155,11 @@ describe("DeclareKindDialog", () => {
     const dialog = within(await screen.findByRole("dialog"));
     fireEvent.change(dialog.getByRole("textbox", { name: /^Key$/ }), {
       target: { value: KIND_FIXED_KEY },
+    });
+    // A ceiling, so the form is otherwise valid and the identity guard is
+    // what refuses it (#453 made an empty ceiling its own refusal).
+    fireEvent.change(dialog.getByRole("textbox", { name: /^Ceiling/ }), {
+      target: { value: "1" },
     });
     fireEvent.click(dialog.getByRole("button", { name: "Declare" }));
     expect(
@@ -136,13 +190,14 @@ describe("DeclareKindDialog", () => {
     expect(after.find((kind) => kind.key === "podcast-cut")).toMatchObject({
       kind: "task",
       pricing_mode: "fixed",
-      default_provider_cost_limit_micros: 2_500_000,
+      task_cogs_ceiling_micros: 2_500_000,
+      uncapped: false,
       silence_window_seconds: null,
       retired: false,
     });
     // The whole vocabulary went back verbatim: a standing kind kept what it had.
     expect(after.find((kind) => kind.key === KIND_EVENT_PRICED_KEY)).toMatchObject({
-      default_provider_cost_limit_micros: 2_000_000,
+      task_cogs_ceiling_micros: 2_000_000,
       silence_window_seconds: 600,
       required_dimensions: ["model"],
     });
@@ -161,7 +216,7 @@ describe("DeclareKindDialog", () => {
     expect(after).toHaveLength(MOCK_KINDS.length);
     expect(after.find((kind) => kind.key === KIND_FIXED_KEY)).toMatchObject({
       pricing_mode: "fixed",
-      default_provider_cost_limit_micros: 4_000_000,
+      task_cogs_ceiling_micros: 4_000_000,
       silence_window_seconds: FIXED.silence_window_seconds,
       absolute_deadline_seconds: FIXED.absolute_deadline_seconds,
     });

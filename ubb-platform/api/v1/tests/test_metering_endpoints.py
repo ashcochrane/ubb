@@ -502,7 +502,7 @@ class MeteringTaskEndpointTest(TestCase):
         return TaskService.create_task(
             tenant or self.tenant, customer or self.customer,
             balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=(customer or self.customer).id,
         )
 

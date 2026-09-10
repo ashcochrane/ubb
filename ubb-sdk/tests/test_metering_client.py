@@ -571,7 +571,7 @@ class MeteringClientTest(unittest.TestCase):
         start's answer never echoes it back (`StartTaskResponse`)."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "task_id": "task_1", "parent_task_id": None, "task_type": "render",
-            "status": "active", "provider_cost_limit_micros": None,
+            "status": "active", "task_cogs_ceiling_micros": None,
             "agreed_price_micros": None, "external_task_id": "",
             "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
         })
@@ -593,7 +593,7 @@ class MeteringClientTest(unittest.TestCase):
             "reason_detail": None, "total_provider_cost_micros": 1_750_000,
             "unresolved_event_count": 1, "total_billed_cost_micros": 2_500_000,
             "unpriced_event_count": 0, "event_count": 12,
-            "provider_cost_limit_micros": 5_000_000, "agreed_price_micros": None,
+            "task_cogs_ceiling_micros": 5_000_000, "agreed_price_micros": None,
             # The assessment beside the totals (#452): known 1,750,000 of a
             # 5,000,000 ceiling with one event uncosted is `indeterminate`,
             # and the two figures are over the known total — the fixture

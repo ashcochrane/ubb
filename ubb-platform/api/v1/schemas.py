@@ -1338,7 +1338,7 @@ class TaskOut(Schema):
     #: missing information, and a caveat that is always on is one nobody reads.
     unpriced_event_count: int
     event_count: int
-    provider_cost_limit_micros: Optional[int] = None
+    task_cogs_ceiling_micros: Optional[int] = None
     #: THE AGREED PRICE THIS UNIT OF WORK PINNED WHEN IT STARTED, where its
     #: kind of work is sold at one agreed price rather than per event (#415).
     #:
@@ -1386,7 +1386,7 @@ def task_out(t):
         "total_billed_cost_micros": t.total_billed_cost_micros,
         "unpriced_event_count": t.unpriced_event_count,
         "event_count": t.event_count,
-        "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "task_cogs_ceiling_micros": t.task_cogs_ceiling_micros,
         "agreed_price_micros": t.agreed_price_micros,
         # Derived on the row, read here — one derivation, not a second.
         **ceiling_fields(t.ceiling_assessment),
@@ -1443,11 +1443,14 @@ class StartTaskRequest(Schema):
     #: also rolls up into the parent's totals.
     parent_task_id: Optional[UUID] = None
     #: COGS-denominated ceiling for this unit (what the work burns). A REQUEST
-    #: for a lower ceiling than the declared kind of work already carries — a
-    #: value above that ceiling is refused rather than granted. Omitted, the
-    #: kind of work's default applies, then the tenant default for this
-    #: altitude; absent all three the unit is uncapped and no signal ever fires.
-    provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    #: for a LOWER ceiling than the one that would otherwise apply — the
+    #: declared kind of work's own, or for work with no declared kind the
+    #: workspace default at this altitude; a value above it is refused rather
+    #: than granted. Omitted, that ceiling applies as it stands; where none
+    #: does (an uncapped kind, or no declared kind and no workspace default)
+    #: the unit runs under no ceiling and its `ceiling_status` on the unit
+    #: read says `not_applicable`.
+    task_cogs_ceiling_micros: Optional[int] = Field(default=None, gt=0)
     #: The declared KIND of work, at EITHER altitude: a unit declares its kind
     #: once and `parent_task_id` above is what says whether that kind is being
     #: used for a whole unit or a contained one (#407).
@@ -1474,7 +1477,7 @@ class StartTaskRequest(Schema):
 PINNED_FIELD_ON_THE_WIRE = {
     work_services.PINNED_PARENT: "parent_task_id",
     work_services.PINNED_TASK_TYPE: "task_type",
-    work_services.PINNED_COST_CEILING: "provider_cost_limit_micros",
+    work_services.PINNED_COST_CEILING: "task_cogs_ceiling_micros",
     work_services.PINNED_GROUPING_VALUES: "dimensions",
 }
 
@@ -1511,11 +1514,14 @@ class StartTaskResponse(Schema):
     #: second thing (#407).
     task_type: str = ""
     status: TaskStatus
-    #: The COGS ceiling this unit pinned, after the whole ladder resolved it:
-    #: the caller's own request, then the declared kind of work's default, then
-    #: the tenant default for this altitude. Null means uncapped, and no stop
-    #: signal will ever fire for spend on this unit.
-    provider_cost_limit_micros: Optional[int] = None
+    #: The COGS ceiling this unit pinned, after the ladder resolved it: the
+    #: caller's own request where it made one, otherwise the declared kind of
+    #: work's own ceiling — or, for work with no declared kind, the workspace
+    #: default for this altitude. Null means no ceiling applies to this unit
+    #: (its kind is declared uncapped, or nothing declares one), so no stop
+    #: signal will ever fire for its spend and the unit read says
+    #: `not_applicable`.
+    task_cogs_ceiling_micros: Optional[int] = None
     #: THE AGREED PRICE THIS UNIT OF WORK PINNED, where its kind of work is
     #: sold at one agreed price rather than per event (#415). It is resolved
     #: from this customer's pricing book at this moment and does not move
@@ -1552,7 +1558,7 @@ def start_task_out(t, *, replayed):
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
         "task_type": t.task_type,
         "status": t.status,
-        "provider_cost_limit_micros": t.provider_cost_limit_micros,
+        "task_cogs_ceiling_micros": t.task_cogs_ceiling_micros,
         "agreed_price_micros": t.agreed_price_micros,
         "external_task_id": t.external_task_id,
         "created_at": t.created_at.isoformat(),
@@ -2805,8 +2811,10 @@ class TaskTypeIn(Schema):
     """One declared kind of work, and the policy that comes with it.
 
     Three of these fields are bounds: a spending ceiling, a silence window and
-    an absolute deadline. Omit one and this kind inherits your workspace
-    default for it; there is no value that removes the absolute deadline.
+    an absolute deadline. The ceiling must be answered — a figure, or
+    `uncapped: true` — and is never inherited. Omit a window and this kind
+    inherits your workspace default for it; there is no value that removes
+    the absolute deadline.
 
     `pricing_mode` is not a bound and is not revisable: it is fixed when the
     kind of work is first declared. `retired` is the two-way switch that takes
@@ -2838,7 +2846,15 @@ class TaskTypeIn(Schema):
     #: server's own response, with every gate green
     #: (`docs/conventions/api-contract.md`).
     pricing_mode: Optional[PricingMode] = None
-    default_provider_cost_limit_micros: Optional[int] = Field(default=None, gt=0)
+    #: THE COGS CEILING THIS KIND OF WORK DECLARES, or `uncapped: true` — and
+    #: exactly one of the two (#453, #150 §8). Neither is a refused
+    #: declaration, not a fall-through: there is no rung under a declaration,
+    #: so "I configured nothing" can never mean "no spend control". A start of
+    #: this kind may request lower than the figure, never higher.
+    task_cogs_ceiling_micros: Optional[int] = Field(default=None, gt=0)
+    #: This kind of work runs under no ceiling, by declaration. `false` with
+    #: no figure beside it, or `true` with one, is refused.
+    uncapped: bool = False
     #: The top rung of the silence ladder: this declaration, then the tenant's
     #: own default, then UBB's backstop. Nullable with NO default here because
     #: omitting a bound and setting it low are different declarations — an
@@ -2881,24 +2897,30 @@ class TaskTypeRegistryIn(Schema):
 class TaskTypeOut(Schema):
     """One declared kind of work, as UBB holds it.
 
-    Each bound is echoed back exactly as declared. `null` means this kind
-    declared none and inherits your workspace default for it.
+    The ceiling is exactly what was declared: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true` with the figure `null`. A kind of work never
+    inherits a ceiling from your workspace — the workspace defaults apply to
+    work started with no declared kind at all. Each window is echoed back as
+    declared; `null` means this kind declared none and inherits your workspace
+    default for it.
 
     `retired_at` is the instant this kind of work stopped being offered, or
     `null` while it is live.
     """
-    # ⚠ WHY THE RESPONSE DOES NOT RESOLVE THE LADDER FIRST, kept out of the
-    # docstring above for the reason stated on `TaskTypeIn`: a reader has to be
-    # able to tell *this kind declared nothing and inherits* from *this kind
-    # declared the same number the tenant did*, and an answer that resolved the
-    # rungs before replying would collapse the two into one number with no way
-    # back. The resolved answer is not a fact about the declaration; it is a
-    # fact about the declaration AND the tenant AND UBB at the instant a
-    # sweeper asks, and it can change without this row changing.
+    # ⚠ WHY THE RESPONSE DOES NOT RESOLVE THE WINDOW LADDERS FIRST, kept out
+    # of the docstring above for the reason stated on `TaskTypeIn`: a reader
+    # has to be able to tell *this kind declared nothing and inherits* from
+    # *this kind declared the same number the tenant did*, and an answer that
+    # resolved the rungs before replying would collapse the two into one number
+    # with no way back. The resolved answer is not a fact about the
+    # declaration; it is a fact about the declaration AND the tenant AND UBB at
+    # the instant a sweeper asks, and it can change without this row changing.
+    # The ceiling has no such ladder since #453 — the row IS the answer.
     key: str
     kind: TaskTypeKind
     pricing_mode: PricingMode
-    default_provider_cost_limit_micros: Optional[int] = None
+    task_cogs_ceiling_micros: Optional[int] = None
+    uncapped: bool
     silence_window_seconds: Optional[int] = None
     absolute_deadline_seconds: Optional[int] = None
     required_dimensions: list[str]
@@ -2957,9 +2979,13 @@ class TenantConfigOut(Schema):
     # positive floor. BillingTenantConfig-backed (#52) — the row
     # get_customer_min_balance reads.
     min_balance_micros: int = 0
-    # Default COGS limit for new tasks (RiskConfig); null = no default —
-    # absent an explicit start-call limit too, the task is uncapped.
-    default_task_provider_cost_limit_micros: Optional[int] = None
+    #: THE DEFAULT COGS CEILINGS FOR WORK STARTED WITH NO DECLARED KIND, one
+    #: per altitude (#453). A declared kind of work never inherits these — it
+    #: states its own ceiling or declares itself uncapped. Null = no default
+    #: at that altitude, so such work runs under no ceiling unless the start
+    #: requests one, and its `ceiling_status` says `not_applicable`.
+    default_task_cogs_ceiling_micros: Optional[int] = None
+    default_subtask_cogs_ceiling_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): the wind-down
     # line (-value; negative places it above zero); null = no soft floor.
     soft_min_balance_micros: Optional[int] = None
@@ -2986,9 +3012,11 @@ class TenantConfigIn(Schema):
     # the default (distinguished from "omitted" via model_fields_set in the
     # endpoint); a value sets it.
     min_balance_micros: Optional[int] = None
-    # Default COGS limit for new tasks (RiskConfig). Omit = unchanged;
-    # null = no default.
-    default_task_provider_cost_limit_micros: Optional[int] = None
+    #: The default COGS ceilings for work started with no declared kind, one
+    #: per altitude (#453); a declared kind of work never inherits them. Omit
+    #: = unchanged; null = no default at that altitude; a figure must be > 0.
+    default_task_cogs_ceiling_micros: Optional[int] = None
+    default_subtask_cogs_ceiling_micros: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): may be negative
     # (a wind-down line above zero); must keep the soft line at or above the
     # hard floor's. Omit = unchanged; null = no soft floor.

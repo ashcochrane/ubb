@@ -29,11 +29,11 @@ class TaskServiceCreateTest(TestCase):
     def test_create_task_with_explicit_limits(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=3_000_000,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
         )
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
         self.assertEqual(task.balance_snapshot_micros, 3_000_000)
-        self.assertEqual(task.provider_cost_limit_micros, 10_000_000)
+        self.assertEqual(task.task_cogs_ceiling_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 0)
         self.assertEqual(task.total_provider_cost_micros, 0)
         self.assertEqual(task.event_count, 0)
@@ -44,7 +44,7 @@ class TaskServiceCreateTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
         )
-        self.assertIsNone(task.provider_cost_limit_micros)
+        self.assertIsNone(task.task_cogs_ceiling_micros)
 
     def test_create_task_with_metadata_and_external_id(self):
         task = TaskService.create_task(
@@ -69,7 +69,7 @@ class TaskServiceAccumulateTest(TestCase):
     def _task(self, balance=20_000_000, limit=None):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
         )
 
     def test_accumulate_cost_increments_both_totals_and_count(self):
@@ -308,7 +308,7 @@ class KillAndAnnounceTest(TestCase):
     def test_emits_limit_event_exactly_once(self):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
             billing_owner_id=self.customer.id,
         )
         TaskService.accumulate_cost(
@@ -331,7 +331,7 @@ class KillAndAnnounceTest(TestCase):
         self.assertEqual(payload["billing_owner_id"], str(self.customer.id))
         self.assertEqual(payload["total_billed_cost_micros"], 15_000_000)
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
-        self.assertEqual(payload["provider_cost_limit_micros"], 10_000_000)
+        self.assertEqual(payload["task_cogs_ceiling_micros"], 10_000_000)
         self.assertNotIn("scope", payload)
 
         # Second call: the transition already happened — no second event.
@@ -353,7 +353,7 @@ class KillAndAnnounceTest(TestCase):
         are one atomic unit — the stamped id IS the emitted event's row."""
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
             billing_owner_id=self.customer.id,
         )
         TaskService.kill_and_announce(
@@ -377,7 +377,7 @@ class KillAndAnnounceTest(TestCase):
         )
         sub = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=1_000_000,
+            task_cogs_ceiling_micros=1_000_000,
             billing_owner_id=self.customer.id, parent=parent,
         )
         TaskService.kill_and_announce(
@@ -410,7 +410,7 @@ class KillAndAnnounceTest(TestCase):
 
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
             billing_owner_id=self.customer.id,
         )
         with patch.object(OutboxEvent.objects, "create", _create):
@@ -430,7 +430,7 @@ class KillAndAnnounceTest(TestCase):
         stamp + kill_reason=parent_killed marks it as nothing-to-announce."""
         parent = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=10_000_000,
+            task_cogs_ceiling_micros=10_000_000,
             billing_owner_id=self.customer.id,
         )
         child = TaskService.create_task(

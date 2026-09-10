@@ -158,9 +158,9 @@ class TestTaskTyping:
         """
         t, _ = self._tc()
         whole = TaskType.objects.create(tenant=t, key="ocr",
-                                        kind=TASK_TYPE_KIND_TASK)
+                                        kind=TASK_TYPE_KIND_TASK, uncapped=True)
         contained = TaskType.objects.create(tenant=t, key="ocr",
-                                            kind=TASK_TYPE_KIND_SUBTASK)
+                                            kind=TASK_TYPE_KIND_SUBTASK, uncapped=True)
         assert whole.id != contained.id
         assert {tt.kind for tt in TaskType.objects.filter(tenant=t, key="ocr")} \
             == TASK_TYPE_KIND_VALUES

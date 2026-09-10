@@ -325,7 +325,7 @@ class TestCloseTaskSignatureParity:
 
         result = client.start_task("c1", "nightly-42", task_type="render",
                                    parent_task_id="task_0",
-                                   provider_cost_limit_micros=5_000_000,
+                                   task_cogs_ceiling_micros=5_000_000,
                                    external_task_id="run-7",
                                    metadata={"report": "weekly"})
 
@@ -334,7 +334,7 @@ class TestCloseTaskSignatureParity:
         assert args == ("c1", "nightly-42")
         assert kwargs["task_type"] == "render"
         assert kwargs["parent_task_id"] == "task_0"
-        assert kwargs["provider_cost_limit_micros"] == 5_000_000
+        assert kwargs["task_cogs_ceiling_micros"] == 5_000_000
         assert kwargs["external_task_id"] == "run-7"
         assert kwargs["metadata"] == {"report": "weekly"}
         client.close()

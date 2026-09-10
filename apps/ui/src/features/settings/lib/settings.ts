@@ -50,7 +50,9 @@ export function microsToInput(micros: number | null | undefined): string {
 
 // ---------------------------------------------------------------------------
 // Spend-control form. All fields are entered as currency-unit strings; empty
-// means "no value" for the clearable fields.
+// means "no value" for the clearable fields. The workspace's default ceilings
+// for work with no declared kind are NOT here (#453): they are edited on the
+// Tasks page beside the declared kinds of work they stand in for.
 //
 // Sign convention — the form value IS the wire value, for both floors:
 // `min_balance_micros` is the allowed overdraft MAGNITUDE (≥ 0; the hard stop
@@ -78,12 +80,6 @@ export const spendControlSchema = z
         message: "The allowed overdraft can't be negative.",
       }),
     softFloor: numericOrEmpty("Enter an amount, or leave empty for no wind-down floor."),
-    taskLimit: z
-      .string()
-      .trim()
-      .refine((v) => v === "" || (!Number.isNaN(Number(v)) && Number(v) > 0), {
-        message: "Must be more than zero, or empty for no default limit.",
-      }),
   })
   .superRefine((values, ctx) => {
     if (values.softFloor === "") return;
@@ -107,7 +103,6 @@ export function configToSpendValues(config: TenantConfig): SpendControlValues {
   return {
     allowedOverdraft: microsToInput(config.min_balance_micros ?? 0),
     softFloor: microsToInput(config.soft_min_balance_micros),
-    taskLimit: microsToInput(config.default_task_provider_cost_limit_micros),
   };
 }
 
@@ -130,11 +125,6 @@ export function buildSpendPatch(
   const soft = values.softFloor === "" ? null : inputToMicros(values.softFloor);
   if (soft !== (config.soft_min_balance_micros ?? null)) {
     patch.soft_min_balance_micros = soft;
-  }
-
-  const taskLimit = values.taskLimit === "" ? null : inputToMicros(values.taskLimit);
-  if (taskLimit !== (config.default_task_provider_cost_limit_micros ?? null)) {
-    patch.default_task_provider_cost_limit_micros = taskLimit;
   }
 
   return patch;

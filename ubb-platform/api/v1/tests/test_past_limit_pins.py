@@ -20,6 +20,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import Client, TestCase
 
+from api.v1.past_limit import UNIT_CEILING_ROW_KEY
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
@@ -66,7 +67,7 @@ class PastLimitPinTestBase(TestCase):
     def _task(self, limit=10_000_000):
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=20_000_000,
-            provider_cost_limit_micros=limit,
+            task_cogs_ceiling_micros=limit,
             billing_owner_id=self.customer.id)
 
     def _record(self, **extra):
@@ -251,7 +252,9 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         self.assertEqual(ep["stop_scope"], "task")
         self.assertEqual(ep["task_id"], str(task.id))
         self.assertIsNone(ep["subtask_id"])
-        self.assertEqual(ep["provider_cost_limit_micros"], 10_000_000)
+        # The retired report keeps its own row key (#453 renamed the column,
+        # not this report — ticket 15 retires it); asserted as the symbol.
+        self.assertEqual(ep[UNIT_CEILING_ROW_KEY], 10_000_000)
         self.assertEqual(ep["tripped_at"], task.completed_at.isoformat())
         self.assertIsNone(ep["resumed_at"])
         self.assertEqual([e["arrived_after"] for e in ep["events"]],

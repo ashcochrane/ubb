@@ -7,15 +7,11 @@ class RiskConfig(BaseModel):
     max_requests_per_minute = models.IntegerField(default=60)
     max_concurrent_requests = models.IntegerField(default=10)
     gate_fail_closed = models.BooleanField(default=False)
-    # One-rule (#37): tenant default for Task.provider_cost_limit_micros —
-    # COGS-denominated (what the job burns), applied at the start-gate when a
-    # start call names no explicit limit. NULL = no default: absent both, the
-    # task is uncapped and no signal ever fires.
-    default_task_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
-    # Subtasks (#38): the same fallback for units registered with a parent
-    # (parent_task_id at the start-gate). Same denomination, same NULL = no
-    # default, same coverage gate.
-    default_subtask_provider_cost_limit_micros = models.BigIntegerField(null=True, blank=True)
+    # The two tenant-default COGS ceilings that used to sit here (#37, #38)
+    # left for the kernel in #453 — `Tenant.default_task_cogs_ceiling_micros`
+    # and its contained-work twin — because a ceiling is a kernel concept a
+    # tenant without billing still gets (#141 §6.2, slice 6 §1). Their values
+    # were carried onto the tenant row by `gating/migrations/0011`.
 
     class Meta:
         db_table = "ubb_risk_config"

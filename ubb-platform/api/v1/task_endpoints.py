@@ -184,7 +184,7 @@ def start_task(request, payload: StartTaskRequest):
                     parent_task_id=payload.parent_task_id,
                     task_type=payload.task_type,
                     grouping_values=payload.dimensions,
-                    provider_cost_limit_micros=payload.provider_cost_limit_micros,
+                    task_cogs_ceiling_micros=payload.task_cogs_ceiling_micros,
                 ).conflicting_field_on(claimed, tenant)
             except DimensionError as exc:
                 raise Problem("validation_error", str(exc))
@@ -228,14 +228,15 @@ def start_task(request, payload: StartTaskRequest):
                 raise _refused(verdict)
 
         # THE CEILING IS UNIVERSAL AND RESOLVES THE SAME WAY FOR EVERY TENANT
-        # (design D7): the caller may request lower than the declared kind of
-        # work allows, never higher, then the kind of work's own default, then
-        # the tenant default for this altitude, then uncapped.
+        # (design D7, #453): a declared kind answers for itself — its figure
+        # or `uncapped` — and work with no declared kind is answered by the
+        # tenant's default for this altitude, then by no ceiling at all; the
+        # caller may request lower than whichever rung answers, never higher.
         try:
             policy = RiskService.resolve_start_policy(
                 tenant, task_type=payload.task_type,
                 dimensions=payload.dimensions,
-                requested_limit_micros=payload.provider_cost_limit_micros,
+                requested_ceiling_micros=payload.task_cogs_ceiling_micros,
                 is_subtask=parent is not None)
         except ValueError as exc:
             raise Problem("validation_error", str(exc))
@@ -281,7 +282,7 @@ def start_task(request, payload: StartTaskRequest):
                 customer=customer,
                 parent=parent,
                 balance_snapshot_micros=balance,
-                provider_cost_limit_micros=policy.provider_cost_limit_micros,
+                task_cogs_ceiling_micros=policy.task_cogs_ceiling_micros,
                 metadata=payload.metadata or {},
                 external_task_id=payload.external_task_id,
                 idempotency_key=payload.idempotency_key,

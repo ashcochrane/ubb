@@ -32,7 +32,8 @@ class TenantConfigOut:
             name (str):
             products (list[TenantConfigOutProductsItem]):
             stripe_connected_account_id (str):
-            default_task_provider_cost_limit_micros (int | None | Unset):
+            default_subtask_cogs_ceiling_micros (int | None | Unset):
+            default_task_cogs_ceiling_micros (int | None | Unset):
             enforcement_mode (str | Unset):  Default: 'off'.
             live_counter_maintenance_enabled (bool | Unset):  Default: True.
             min_balance_micros (int | Unset):  Default: 0.
@@ -46,7 +47,8 @@ class TenantConfigOut:
     name: str
     products: list[TenantConfigOutProductsItem]
     stripe_connected_account_id: str
-    default_task_provider_cost_limit_micros: int | None | Unset = UNSET
+    default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
+    default_task_cogs_ceiling_micros: int | None | Unset = UNSET
     enforcement_mode: str | Unset = 'off'
     live_counter_maintenance_enabled: bool | Unset = True
     min_balance_micros: int | Unset = 0
@@ -77,11 +79,17 @@ class TenantConfigOut:
 
         stripe_connected_account_id = self.stripe_connected_account_id
 
-        default_task_provider_cost_limit_micros: int | None | Unset
-        if isinstance(self.default_task_provider_cost_limit_micros, Unset):
-            default_task_provider_cost_limit_micros = UNSET
+        default_subtask_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.default_subtask_cogs_ceiling_micros, Unset):
+            default_subtask_cogs_ceiling_micros = UNSET
         else:
-            default_task_provider_cost_limit_micros = self.default_task_provider_cost_limit_micros
+            default_subtask_cogs_ceiling_micros = self.default_subtask_cogs_ceiling_micros
+
+        default_task_cogs_ceiling_micros: int | None | Unset
+        if isinstance(self.default_task_cogs_ceiling_micros, Unset):
+            default_task_cogs_ceiling_micros = UNSET
+        else:
+            default_task_cogs_ceiling_micros = self.default_task_cogs_ceiling_micros
 
         enforcement_mode = self.enforcement_mode
 
@@ -107,8 +115,10 @@ class TenantConfigOut:
             "products": products,
             "stripe_connected_account_id": stripe_connected_account_id,
         })
-        if default_task_provider_cost_limit_micros is not UNSET:
-            field_dict["default_task_provider_cost_limit_micros"] = default_task_provider_cost_limit_micros
+        if default_subtask_cogs_ceiling_micros is not UNSET:
+            field_dict["default_subtask_cogs_ceiling_micros"] = default_subtask_cogs_ceiling_micros
+        if default_task_cogs_ceiling_micros is not UNSET:
+            field_dict["default_task_cogs_ceiling_micros"] = default_task_cogs_ceiling_micros
         if enforcement_mode is not UNSET:
             field_dict["enforcement_mode"] = enforcement_mode
         if live_counter_maintenance_enabled is not UNSET:
@@ -147,14 +157,24 @@ class TenantConfigOut:
 
         stripe_connected_account_id = d.pop("stripe_connected_account_id")
 
-        def _parse_default_task_provider_cost_limit_micros(data: object) -> int | None | Unset:
+        def _parse_default_subtask_cogs_ceiling_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(int | None | Unset, data)
 
-        default_task_provider_cost_limit_micros = _parse_default_task_provider_cost_limit_micros(d.pop("default_task_provider_cost_limit_micros", UNSET))
+        default_subtask_cogs_ceiling_micros = _parse_default_subtask_cogs_ceiling_micros(d.pop("default_subtask_cogs_ceiling_micros", UNSET))
+
+
+        def _parse_default_task_cogs_ceiling_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        default_task_cogs_ceiling_micros = _parse_default_task_cogs_ceiling_micros(d.pop("default_task_cogs_ceiling_micros", UNSET))
 
 
         enforcement_mode = d.pop("enforcement_mode", UNSET)
@@ -181,7 +201,8 @@ class TenantConfigOut:
             name=name,
             products=products,
             stripe_connected_account_id=stripe_connected_account_id,
-            default_task_provider_cost_limit_micros=default_task_provider_cost_limit_micros,
+            default_subtask_cogs_ceiling_micros=default_subtask_cogs_ceiling_micros,
+            default_task_cogs_ceiling_micros=default_task_cogs_ceiling_micros,
             enforcement_mode=enforcement_mode,
             live_counter_maintenance_enabled=live_counter_maintenance_enabled,
             min_balance_micros=min_balance_micros,

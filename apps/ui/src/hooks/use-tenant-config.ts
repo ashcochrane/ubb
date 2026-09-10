@@ -30,7 +30,8 @@ let mockTenantConfig: TenantConfig = {
   live_counter_maintenance_enabled: true,
   min_balance_micros: 0,
   soft_min_balance_micros: null,
-  default_task_provider_cost_limit_micros: null,
+  default_task_cogs_ceiling_micros: null,
+  default_subtask_cogs_ceiling_micros: null,
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */
@@ -41,6 +42,40 @@ export function readMockTenantConfig(): TenantConfig {
 /** Mock-mode only: replace the mock workspace config (used by feature mocks). */
 export function writeMockTenantConfig(next: TenantConfig): void {
   mockTenantConfig = { ...next };
+}
+
+/** The two default COGS ceilings for work with no declared kind, one per altitude (#453). */
+export const UNDECLARED_WORK_CEILING_RUNGS = [
+  "default_task_cogs_ceiling_micros",
+  "default_subtask_cogs_ceiling_micros",
+] as const;
+
+export type UndeclaredWorkCeilingRung = (typeof UNDECLARED_WORK_CEILING_RUNGS)[number];
+
+/**
+ * Mock-mode only: apply a PATCH's two default-ceiling rungs to the mock
+ * workspace config, mirroring the one rule `PATCH /tenant/config` holds for
+ * them — a figure must be above zero, or null clears the rung. Here rather
+ * than in a feature, because two features' mocks stand in for that one route
+ * (settings for the rest of the config, tasks for these two rungs) and the
+ * rule must not exist twice. An omitted or `undefined` key leaves the rung
+ * alone, as JSON serialisation would drop it before the route saw it; the
+ * caller renders the refusal in its own dialect.
+ */
+export function applyMockUndeclaredWorkCeilings(
+  patch: Partial<Pick<TenantConfig, UndeclaredWorkCeilingRung>>,
+): { refused: string } | { refused?: undefined } {
+  const next = readMockTenantConfig();
+  for (const rung of UNDECLARED_WORK_CEILING_RUNGS) {
+    const declared = patch[rung];
+    if (declared === undefined) continue;
+    if (declared !== null && declared <= 0) {
+      return { refused: `${rung} must be > 0, or null for no default` };
+    }
+    next[rung] = declared;
+  }
+  writeMockTenantConfig(next);
+  return {};
 }
 
 async function fetchTenantConfig(): Promise<TenantConfig> {

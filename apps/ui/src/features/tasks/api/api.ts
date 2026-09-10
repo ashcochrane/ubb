@@ -1,8 +1,9 @@
 // Real API adapter for the tasks feature. Every call is `unwrap`ed so a
 // non-2xx surfaces as an `ApiProblem` the components can branch on.
 
-import { rootApi } from "@/api/client";
+import { rootApi, tenantApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
+import type { TenantConfig } from "@/hooks/use-tenant-config";
 
 import type {
   DeclareKindsBody,
@@ -10,6 +11,7 @@ import type {
   RunDetail,
   RunsFilters,
   RunsPage,
+  UndeclaredWorkCeilings,
 } from "./types";
 
 /**
@@ -35,6 +37,19 @@ export async function listKinds(): Promise<KindOfWork[]> {
  */
 export async function declareKinds(body: DeclareKindsBody): Promise<KindOfWork[]> {
   return unwrap(await rootApi.PUT("/task-types", { body })).task_types;
+}
+
+/**
+ * The workspace's default ceilings for work with no declared kind (#453).
+ *
+ * A PATCH on the tenant configuration carrying only the two rungs: an
+ * explicit null clears one, an omitted key preserves it, exactly as the
+ * settings feature's own PATCH does for the balance floors. Admin floor.
+ */
+export async function updateUndeclaredWorkCeilings(
+  patch: UndeclaredWorkCeilings,
+): Promise<TenantConfig> {
+  return unwrap(await tenantApi.PATCH("/config", { body: patch }));
 }
 
 /** Top-level runs, newest first; contained work belongs to its parent. */

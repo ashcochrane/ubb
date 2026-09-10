@@ -115,10 +115,10 @@ class AgreedPriceTestBase:
         for key in (SOLD_WHOLE, ALSO_SOLD_WHOLE):
             for kind in (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK):
                 TaskType.objects.create(tenant=self.tenant, key=key, kind=kind,
-                                        pricing_mode=PRICING_MODE_FIXED)
+                                        pricing_mode=PRICING_MODE_FIXED, uncapped=True)
         for kind in (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK):
             TaskType.objects.create(tenant=self.tenant, key=SOLD_PER_EVENT,
-                                    kind=kind)
+                                    kind=kind, uncapped=True)
         if self.PRODUCTS != ["metering"]:
             Wallet.objects.create(customer=self.customer,
                                   balance_micros=1_000_000_000)

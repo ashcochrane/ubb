@@ -31,7 +31,7 @@ admitted moves go through the same three doors, and so does the equal-value
 write, because the trigger's `WHEN` clause is the thing that keeps an
 idempotent re-declaration free.
 """
-from django.db import IntegrityError, connection, models, transaction
+from django.db import connection
 from django.test import TestCase
 
 from apps.platform.tenants.models import Tenant
@@ -39,13 +39,14 @@ from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from apps.platform.work.models import TaskType
 from apps.platform.work.queries import declared_task_types, task_type_policy
+from apps.platform.work.tests._helpers import DOORS, refusal_from
 from core.transitions import FROZEN, columns_declared_into_defended_classes
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_MODE_FIXED, PRICING_MODE_VALUES,
     TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 PRICING_MODE = "pricing_mode"
-CEILING = "default_provider_cost_limit_micros"
+CEILING = "task_cogs_ceiling_micros"
 TABLE = TaskType._meta.db_table
 
 #: The rule this module's refusals belong to, addressed BY NAME. `ubb_task_type`
@@ -54,46 +55,9 @@ TABLE = TaskType._meta.db_table
 #: toss between two rules holding completely different things (#352).
 TRANSITION_TRIGGER = "trg_task_type_declared_transitions"
 
-
-def through_the_queryset(kind_of_work, **columns):
-    TaskType.objects.filter(pk=kind_of_work.pk).update(**columns)
-
-
-def through_save(kind_of_work, **columns):
-    """`save()`, called on the base so no model-level override can answer first.
-
-    `TaskType` has no `save()` guard of its own, so a plain `save()` would reach
-    the database today. Calling the base implementation is what a writer that
-    bypasses an override looks like — a `bulk_update`, a data migration, a shell
-    session — and it is the door ADR-0007 §2 means, so this case stays honest on
-    the day somebody adds one.
-    """
-    for name, value in columns.items():
-        setattr(kind_of_work, name, value)
-    models.Model.save(kind_of_work)
-
-
-def through_raw_sql(kind_of_work, **columns):
-    """Raw SQL, around the ORM entirely, each value prepared as its column takes it.
-
-    The door is *raw SQL*, not *raw Python objects*: `get_db_prep_value` is the
-    model field's own answer to how a value reaches the driver, so this writes
-    exactly what the ORM writes and differs from the other two doors only in
-    going around them — which is the whole point of it.
-    """
-    assignments = ", ".join(f"{name} = %s" for name in columns)
-    values = [TaskType._meta.get_field(name).get_db_prep_value(value, connection)
-              for name, value in columns.items()]
-    with connection.cursor() as cursor:
-        cursor.execute(f"UPDATE {TABLE} SET {assignments} WHERE id = %s",
-                       [*values, str(kind_of_work.pk)])
-
-
-#: All three, every time. A guard only one of them respects is the defect
-#: ADR-0007 §2's two-layer rule exists to catch.
-DOORS = (("QuerySet.update()", through_the_queryset),
-         ("save()", through_save),
-         ("raw SQL", through_raw_sql))
+# The three doors — `save()`, `QuerySet.update()`, raw SQL — live in
+# `_helpers.py` since #453 put a second rule on this table and needed them
+# too (`test_a_kind_of_work_declares_its_ceiling_or_declares_itself_uncapped`).
 
 
 class KindOfWorkTestBase(TestCase):
@@ -102,6 +66,11 @@ class KindOfWorkTestBase(TestCase):
         self.tenant = Tenant.objects.create(name="Sold", products=["metering"])
 
     def _kind(self, key="transcode", *, kind=TASK_TYPE_KIND_TASK, **columns):
+        # A declaration answers the ceiling question exactly once (#453): a
+        # case that names no figure is declaring the kind uncapped, and says
+        # so, because the database refuses a row that says neither.
+        if CEILING not in columns:
+            columns.setdefault("uncapped", True)
         return TaskType.objects.create(tenant=self.tenant, key=key, kind=kind,
                                        **columns)
 
@@ -187,12 +156,7 @@ class TheRegimeIsFrozenTest(KindOfWorkTestBase):
 
     def _refusal(self, door, kind_of_work, **columns):
         """What Postgres refused with, or `None` where it admitted the write."""
-        try:
-            with transaction.atomic():
-                door(kind_of_work, **columns)
-        except IntegrityError as refused:
-            return str(refused)
-        return None
+        return refusal_from(door, kind_of_work, **columns)
 
     def _refused_through_every_door(self, make, **columns):
         """`make` takes the door's name so each case gets its OWN row.
@@ -235,7 +199,10 @@ class TheRegimeIsFrozenTest(KindOfWorkTestBase):
         self._refused_through_every_door(
             lambda door: self._kind(f"ride-{door}"),
             pricing_mode=PRICING_MODE_FIXED,
-            **{CEILING: 9_000_000})
+            # Both ceiling columns move together, so the only rule this
+            # statement breaks is the frozen one (#453 put a second on the
+            # table, and a refusal from THAT one would not be this case's).
+            uncapped=False, **{CEILING: 9_000_000})
 
     def test_re_declaring_the_same_regime_is_not_a_change(self):
         """The `WHEN` clause, load-bearing rather than an optimisation.
@@ -270,7 +237,9 @@ class TheRegimeIsFrozenTest(KindOfWorkTestBase):
                     self._refusal(door, kind_of_work,
                                   silence_window_seconds=1200,
                                   absolute_deadline_seconds=7200,
-                                  **{CEILING: 7_000_000}))
+                                  # A figure arrives with `uncapped` cleared
+                                  # (#453): the two are one answer.
+                                  uncapped=False, **{CEILING: 7_000_000}))
                 kind_of_work.refresh_from_db()
                 self.assertEqual(getattr(kind_of_work, CEILING), 7_000_000)
 

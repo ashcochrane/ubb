@@ -73,7 +73,7 @@ class WindowTestBase(TestCase):
         return TaskType.objects.create(
             tenant=self.tenant, key=key, kind=kind,
             silence_window_seconds=silence,
-            absolute_deadline_seconds=deadline)
+            absolute_deadline_seconds=deadline, uncapped=True)
 
     def _unit(self, *, task_type="", parent=None):
         return TaskService.create_task(

@@ -11,22 +11,31 @@ import {
   declarationBody,
   declarationNotes,
   declarationsUnderKey,
+  declaredCeiling,
   describeCeiling,
   describeDuration,
   describeShare,
-  effectiveCeiling,
+  describeUndeclaredWorkCeiling,
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
   REGIME_CANNOT_CHANGE,
   REGIME_IS_INERT_UNTIL_BILLING,
   sortedKinds,
+  undeclaredWorkCeiling,
 } from "./kinds";
 
+/**
+ * A declaration answers the ceiling question exactly once (#453): a fixture
+ * naming no figure is one declared UNCAPPED, and one naming a figure is not —
+ * unless a case says otherwise, which the two refusal cases below do.
+ */
 function kind(overrides: Partial<KindOfWork> & Pick<KindOfWork, "key">): KindOfWork {
+  const figure = overrides.task_cogs_ceiling_micros ?? null;
   return {
     kind: "task",
     pricing_mode: "event_priced",
-    default_provider_cost_limit_micros: null,
+    task_cogs_ceiling_micros: figure,
+    uncapped: figure === null,
     silence_window_seconds: null,
     absolute_deadline_seconds: null,
     required_dimensions: [],
@@ -36,7 +45,7 @@ function kind(overrides: Partial<KindOfWork> & Pick<KindOfWork, "key">): KindOfW
   };
 }
 
-function config(defaultCeiling: number | null): TenantConfig {
+function config(defaultCeiling: number | null, containedDefault: number | null = null): TenantConfig {
   return {
     name: "Acme AI",
     billing_mode: "prepaid",
@@ -49,7 +58,8 @@ function config(defaultCeiling: number | null): TenantConfig {
     live_counter_maintenance_enabled: true,
     min_balance_micros: 0,
     soft_min_balance_micros: null,
-    default_task_provider_cost_limit_micros: defaultCeiling,
+    default_task_cogs_ceiling_micros: defaultCeiling,
+    default_subtask_cogs_ceiling_micros: containedDefault,
   };
 }
 
@@ -93,32 +103,60 @@ describe("what a tenant is told at declaration time", () => {
   });
 });
 
-describe("the ceiling a kind of work actually runs under", () => {
-  it("is the declaration's own when it names one", () => {
-    expect(
-      effectiveCeiling(kind({ key: "k", default_provider_cost_limit_micros: 3_000_000 }), config(9_000_000)),
-    ).toEqual({ source: "declaration", micros: 3_000_000 });
+describe("the ceiling a kind of work declared", () => {
+  it("is the figure it named", () => {
+    expect(declaredCeiling(kind({ key: "k", task_cogs_ceiling_micros: 3_000_000 }))).toEqual({
+      source: "declaration",
+      micros: 3_000_000,
+    });
   });
 
-  it("falls back to the workspace default, then to uncapped — never silently", () => {
-    expect(effectiveCeiling(kind({ key: "k" }), config(9_000_000))).toEqual({
+  it("is uncapped only because the kind DECLARED it — never because a figure is absent", () => {
+    expect(declaredCeiling(kind({ key: "k", uncapped: true }))).toEqual({ source: "uncapped" });
+    // The two shapes the registry refuses: a reader gets no answer, not a guess.
+    expect(declaredCeiling(kind({ key: "k", uncapped: false }))).toBeNull();
+    expect(
+      declaredCeiling(kind({ key: "k", task_cogs_ceiling_micros: 3_000_000, uncapped: true })),
+    ).toBeNull();
+  });
+
+  it("never reaches for the workspace default", () => {
+    // No config argument exists to reach for: the signature is the claim.
+    expect(declaredCeiling.length).toBe(1);
+  });
+
+  it("is described so that a declared none, an unstated one and a number read differently", () => {
+    expect(describeCeiling({ source: "declaration", micros: 3_000_000 }, "usd")).toBe("$3.00");
+    expect(describeCeiling({ source: "uncapped" }, "usd")).toBe("Uncapped");
+    expect(describeCeiling(null, "usd")).toBe("—");
+  });
+});
+
+describe("the workspace's default ceiling for work with no declared kind", () => {
+  it("is the rung for the altitude asked about", () => {
+    expect(undeclaredWorkCeiling(config(9_000_000, 250_000), "task")).toEqual({
       source: "workspace",
       micros: 9_000_000,
     });
-    expect(effectiveCeiling(kind({ key: "k" }), config(null))).toEqual({ source: "uncapped" });
+    expect(undeclaredWorkCeiling(config(9_000_000, 250_000), "subtask")).toEqual({
+      source: "workspace",
+      micros: 250_000,
+    });
   });
 
-  it("is unknown while the workspace config has not arrived, rather than uncapped", () => {
-    expect(effectiveCeiling(kind({ key: "k" }), undefined)).toBeNull();
+  it("is none where the workspace declares none, and unknown while the config has not arrived", () => {
+    expect(undeclaredWorkCeiling(config(null), "task")).toEqual({ source: "none" });
+    expect(undeclaredWorkCeiling(config(9_000_000, null), "subtask")).toEqual({ source: "none" });
+    expect(undeclaredWorkCeiling(undefined, "task")).toBeNull();
   });
 
-  it("is described so that none, not-yet-known and a number read differently", () => {
-    expect(describeCeiling({ source: "declaration", micros: 3_000_000 }, "usd")).toBe("$3.00");
-    expect(describeCeiling({ source: "workspace", micros: 9_000_000 }, "usd")).toBe(
-      "$9.00 (workspace default)",
+  it("says 'No ceiling' for none — and never 'Uncapped', which is a declaration's word", () => {
+    expect(describeUndeclaredWorkCeiling({ source: "workspace", micros: 9_000_000 }, "usd")).toBe(
+      "$9.00",
     );
-    expect(describeCeiling({ source: "uncapped" }, "usd")).toBe("Uncapped");
-    expect(describeCeiling(null, "usd")).toBe("—");
+    expect(describeUndeclaredWorkCeiling({ source: "none" }, "usd")).toBe("No ceiling");
+    expect(describeUndeclaredWorkCeiling({ source: "none" }, "usd")).not.toMatch(/uncapped/i);
+    expect(describeUndeclaredWorkCeiling(null, "usd")).toBe("—");
   });
 });
 
@@ -193,7 +231,7 @@ describe("whether a declaration already stands", () => {
 describe("a declaration body", () => {
   const standingA = kind({
     key: "document-summary",
-    default_provider_cost_limit_micros: 2_000_000,
+    task_cogs_ceiling_micros: 2_000_000,
     silence_window_seconds: 600,
     required_dimensions: ["model"],
   });
@@ -207,20 +245,23 @@ describe("a declaration body", () => {
   it("re-declares every standing kind verbatim beside the new one", () => {
     const body = declarationBody(
       [standingA, standingB],
-      { key: "video-render", kind: "task", pricing_mode: "fixed", required_dimensions: [] },
+      { key: "video-render", kind: "task", pricing_mode: "fixed", uncapped: true, required_dimensions: [] },
     );
     expect(body.task_types).toHaveLength(3);
     expect(body.task_types[0]).toEqual({
       key: "document-summary",
       kind: "task",
       pricing_mode: "event_priced",
-      default_provider_cost_limit_micros: 2_000_000,
+      task_cogs_ceiling_micros: 2_000_000,
+      uncapped: false,
       silence_window_seconds: 600,
       absolute_deadline_seconds: null,
       required_dimensions: ["model"],
       retired: false,
     });
-    expect(body.task_types[1]).toMatchObject({ key: "legacy-ocr", retired: true });
+    // The standing kind that declared no figure goes back as what it is —
+    // uncapped by declaration — never as a figure-less row the route refuses.
+    expect(body.task_types[1]).toMatchObject({ key: "legacy-ocr", retired: true, uncapped: true });
     expect(body.task_types[1]).not.toHaveProperty("retired_at");
     expect(body.task_types[2]).toMatchObject({ key: "video-render", pricing_mode: "fixed" });
   });
@@ -229,15 +270,31 @@ describe("a declaration body", () => {
     const body = declarationBody([standingA, standingB], {
       key: "document-summary",
       kind: "task",
-      default_provider_cost_limit_micros: 4_000_000,
+      task_cogs_ceiling_micros: 4_000_000,
+      uncapped: false,
       required_dimensions: ["model"],
     });
     expect(body.task_types).toHaveLength(2);
     expect(body.task_types[0]).toMatchObject({
       key: "document-summary",
       pricing_mode: "event_priced",
-      default_provider_cost_limit_micros: 4_000_000,
+      task_cogs_ceiling_micros: 4_000_000,
+      uncapped: false,
       silence_window_seconds: null,
+    });
+  });
+
+  it("carries an uncapped revision as the declaration it is, with no figure beside it", () => {
+    const body = declarationBody([standingA], {
+      key: "document-summary",
+      kind: "task",
+      uncapped: true,
+      required_dimensions: ["model"],
+    });
+    expect(body.task_types[0]).toMatchObject({
+      key: "document-summary",
+      task_cogs_ceiling_micros: null,
+      uncapped: true,
     });
   });
 
@@ -246,12 +303,13 @@ describe("a declaration body", () => {
     const body = declarationBody([standingA, contained], {
       key: "document-summary",
       kind: "subtask",
-      default_provider_cost_limit_micros: 250_000,
+      task_cogs_ceiling_micros: 250_000,
+      uncapped: false,
       required_dimensions: [],
     });
     expect(body.task_types).toHaveLength(2);
-    expect(body.task_types[0]).toMatchObject({ kind: "task", default_provider_cost_limit_micros: 2_000_000 });
-    expect(body.task_types[1]).toMatchObject({ kind: "subtask", default_provider_cost_limit_micros: 250_000 });
+    expect(body.task_types[0]).toMatchObject({ kind: "task", task_cogs_ceiling_micros: 2_000_000 });
+    expect(body.task_types[1]).toMatchObject({ kind: "subtask", task_cogs_ceiling_micros: 250_000 });
   });
 });
 

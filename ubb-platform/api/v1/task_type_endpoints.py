@@ -124,8 +124,16 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     declaration readable; `retired: false` brings it back. Omitting `retired`
     leaves it exactly as it is.
 
-    `422 validation_error` answers a kind this registry does not recognise or a
-    `required_dimensions` entry you have not declared as a grouping field.
+    Every kind of work states what it may spend: a `task_cogs_ceiling_micros`
+    figure, or `uncapped: true`. A declaration carrying neither, or both, is
+    refused. A start of this kind may request a lower ceiling than the figure,
+    never a higher one; an uncapped kind runs under no ceiling unless a start
+    requests one.
+
+    `422 validation_error` answers a kind this registry does not recognise, a
+    `required_dimensions` entry you have not declared as a grouping field, or
+    a declaration that neither states a ceiling nor declares itself uncapped
+    — or does both.
     """
     # THE WHOLE BODY IS ONE TRANSACTION, so a request whose fourth declaration
     # is refused leaves none of the first three behind. That was true before
@@ -149,6 +157,18 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
             if missing:
                 raise Problem("validation_error",
                               f"required_dimensions not declared: {missing}")
+            # A DECLARATION ANSWERS THE CEILING QUESTION EXACTLY ONCE (#453,
+            # #150 §8.1). The database holds the same exclusive-or as
+            # `ck_task_type_ceiling_or_uncapped`; this is the courtesy that
+            # names the field pair rather than leaving an integrity error to
+            # do it, raised inside the transaction like every refusal here.
+            if (tt.task_cogs_ceiling_micros is None) == (not tt.uncapped):
+                raise Problem(
+                    "validation_error",
+                    f"{tt.kind} type {tt.key!r} must state a "
+                    "task_cogs_ceiling_micros figure or declare uncapped: "
+                    "true — " + ("it states both" if tt.uncapped
+                                 else "it states neither"))
             standing = held.get((tt.kind, tt.key))
             # THE RULE IS THE PRODUCT'S AND THE DIALECT IS THIS LAYER'S — #409's
             # sentence, unchanged. What an omitted regime means, and when a
@@ -177,8 +197,9 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
                     # named no regime, so the COLUMN's own default answers
                     # rather than a value invented one layer above it.
                     **({} if regime is None else {"pricing_mode": regime}),
-                    "default_provider_cost_limit_micros":
-                        tt.default_provider_cost_limit_micros,
+                    "task_cogs_ceiling_micros":
+                        tt.task_cogs_ceiling_micros,
+                    "uncapped": tt.uncapped,
                     "silence_window_seconds": tt.silence_window_seconds,
                     "absolute_deadline_seconds": tt.absolute_deadline_seconds,
                     "required_dimensions": tt.required_dimensions,

@@ -42,6 +42,13 @@ from core.cost_totals import (
 
 _UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
 
+#: THE RETIRED REPORT'S OWN ROW KEY FOR A UNIT'S CEILING. The unit's column was
+#: renamed by #453 (`Task.task_cogs_ceiling_micros`); this untyped row keeps its
+#: published spelling until the report retires with this module (slice 6 §14,
+#: ticket 15), and names it once so a test asserts the symbol rather than the
+#: string — this module is the one living file licensed to spell it.
+UNIT_CEILING_ROW_KEY = "provider_cost_limit_micros"
+
 
 def _iso(dt):
     return dt.isoformat() if dt is not None else None
@@ -178,7 +185,7 @@ def _episode_row(*, family, limit, stop_scope, episode_seq, task_id,
         "family": family, "limit": limit, "stop_scope": stop_scope,
         "episode_seq": episode_seq,
         "task_id": task_id, "subtask_id": subtask_id,
-        "provider_cost_limit_micros": provider_cost_limit_micros,
+        UNIT_CEILING_ROW_KEY: provider_cost_limit_micros,
         "tripped_at": _iso(tripped_at), "resumed_at": _iso(resumed_at),
         "events": events,
         "event_count": len(events),
@@ -284,7 +291,9 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             episode_seq=None,
             task_id=str(unit.parent_id) if is_subtask else str(unit.id),
             subtask_id=str(unit.id) if is_subtask else None,
-            provider_cost_limit_micros=unit.provider_cost_limit_micros,
+            # The retired report's own row key, read off the unit's renamed
+            # column (#453). The key retires with this module (slice 6 §14).
+            provider_cost_limit_micros=unit.task_cogs_ceiling_micros,
             tripped_at=unit.completed_at, resumed_at=None,
             bucket=buckets.get(("unit", str(unit.id))))
         _count(limit, row["events"])

@@ -61,7 +61,7 @@ class UnitContextTest(StopContextTestBase):
         self.assertIsNone(self._build(None, None))
 
     def test_tipping_event_task_limit(self):
-        task = self._task(provider_cost_limit_micros=10)
+        task = self._task(task_cogs_ceiling_micros=10)
         ctx = self._build(task, dict(NO_VERDICTS, crossed_task_limit=True))
         self.assertEqual(ctx, [{
             "limit": "task_limit", "stop_scope": "task",
@@ -71,8 +71,8 @@ class UnitContextTest(StopContextTestBase):
         }])
 
     def test_subtask_double_crossing_carries_both_contexts(self):
-        parent = self._task(provider_cost_limit_micros=100)
-        sub = self._task(parent=parent, provider_cost_limit_micros=10)
+        parent = self._task(task_cogs_ceiling_micros=100)
+        sub = self._task(parent=parent, task_cogs_ceiling_micros=10)
         ctx = self._build(sub, dict(NO_VERDICTS, crossed_task_limit=True,
                                     crossed_subtask_limit=True))
         self.assertEqual(len(ctx), 2)
@@ -86,7 +86,7 @@ class UnitContextTest(StopContextTestBase):
         self.assertEqual(by_limit["subtask_limit"]["subtask_id"], str(sub.id))
 
     def test_late_event_on_limit_killed_task(self):
-        task = self._task(provider_cost_limit_micros=10)
+        task = self._task(task_cogs_ceiling_micros=10)
         TaskService.kill_task(task.id, reason=reasons.TASK_LIMIT)
         task.refresh_from_db()
         ctx = self._build(task, dict(NO_VERDICTS, task_not_active=True))
@@ -98,7 +98,7 @@ class UnitContextTest(StopContextTestBase):
         }])
 
     def test_late_event_on_cascade_killed_subtask_points_at_parent_episode(self):
-        parent = self._task(provider_cost_limit_micros=10)
+        parent = self._task(task_cogs_ceiling_micros=10)
         sub = self._task(parent=parent)
         TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
         sub.refresh_from_db()
@@ -136,8 +136,8 @@ class UnitContextTest(StopContextTestBase):
         # A late event on a killed subtask still rolls up and can tip the
         # PARENT's limit: both the fresh parent crossing and the subtask's
         # own late context ride the array.
-        parent = self._task(provider_cost_limit_micros=10)
-        sub = self._task(parent=parent, provider_cost_limit_micros=5)
+        parent = self._task(task_cogs_ceiling_micros=10)
+        sub = self._task(parent=parent, task_cogs_ceiling_micros=5)
         TaskService.kill_task(sub.id, reason=reasons.SUBTASK_LIMIT)
         sub.refresh_from_db()
         ctx = self._build(sub, dict(NO_VERDICTS, crossed_task_limit=True,
@@ -207,7 +207,7 @@ class CustomerContextTest(StopContextTestBase):
 
     def test_unit_and_customer_contexts_compose(self):
         self._open_episode(seq=7)
-        task = self._task(provider_cost_limit_micros=10)
+        task = self._task(task_cogs_ceiling_micros=10)
         ctx = self._build(task, dict(NO_VERDICTS, crossed_task_limit=True))
         by_limit = {c["limit"]: c for c in ctx}
         self.assertEqual(set(by_limit), {"task_limit", "customer_wide_stop"})

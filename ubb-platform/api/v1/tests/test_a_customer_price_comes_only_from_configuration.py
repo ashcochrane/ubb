@@ -166,7 +166,7 @@ class APriceIsSuppliedThroughConfigurationTest(_ARecordingTenant):
         self.a_direct_price_rule()
         job = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
-            provider_cost_limit_micros=None,
+            task_cogs_ceiling_micros=None,
             billing_owner_id=self.customer.id)
 
         ack = self.record("four-surfaces", task_id=str(job.id),

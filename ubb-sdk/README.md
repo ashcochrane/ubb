@@ -497,7 +497,7 @@ client.record_batch(events: list[dict])
 # start_task  → StartedTask  (a context manager: complete() / fail(outcome_reason) / cancel();
 #                             a clean exit with no declaration raises TaskOutcomeRequired)
 client.start_task(customer_id: str, idempotency_key: str, *,
-    task_type=None, parent_task_id=None, provider_cost_limit_micros=None,
+    task_type=None, parent_task_id=None, task_cogs_ceiling_micros=None,
     dimensions=None, external_task_id=None, metadata=None)
 
 # close_task  → CloseTaskResponse  (the primitive the handle's three methods delegate to)
