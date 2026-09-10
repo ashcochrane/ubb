@@ -574,8 +574,8 @@ How long a task may run at all, measured from registration and regardless of act
 rungs — the declared **Task type**, then `Tenant.task_absolute_deadline_seconds`, then UBB's
 backstop of six hours. **It cannot be switched off at any rung**, and a `CHECK` on each of the two
 columns is what makes that a property of the database: dropping it entirely was considered and
-rejected, because it is the guard that stops any tenant getting an immortal task holding a
-concurrency slot and a prepaid reservation forever. Its stop is `stale_max_age`, which stays this
+rejected, because it is the guard that stops any tenant getting an immortal task, counted as active
+and holding a prepaid reservation forever. Its stop is `stale_max_age`, which stays this
 backend's own word — the registry declares no known value for it and `reason_code` is open, so it
 travels legally rather than being coined here.
 (`apps/platform/work/queries.py:expiry_windows`)

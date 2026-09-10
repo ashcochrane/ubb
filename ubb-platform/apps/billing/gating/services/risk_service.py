@@ -3,24 +3,10 @@ from typing import NamedTuple
 from django.core.cache import cache
 
 from core.vocabulary import (
-    PRICING_MODE_EVENT_PRICED, TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK,
-    TASK_TYPE_KIND_TASK)
+    PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
-
-
-#: THE VERDICT THE PER-OWNER CAP GIVES, named rather than spelled at each
-#: caller.
-#:
-#: ⚠ THE WORD IS A RETIRED TERM UNDER A THREE-FILE SPREAD CEILING slice 6 owns
-#: (it deletes the control outright when admission control is rebuilt), so a
-#: test asserting the literal would put it in a fourth file and fail the sweep.
-#: Naming it here — in the file that PRODUCES the verdict, and one of the three
-#: already counted — lets a caller say what it means, which is `reasons.TASK_LIMIT`'s
-#: pattern and the stronger assertion anyway: a test comparing against its own
-#: copy of the string passes whatever this module decides to answer.
-CONCURRENCY_LIMIT = "concurrency_limit"
 
 
 class StartPolicy(NamedTuple):
@@ -173,50 +159,6 @@ class RiskService:
             return None
 
     @staticmethod
-    def concurrency_verdict(customer, balance_micros=None):
-        """The ONE control only a call that registers work can breach.
-
-        ``check`` below answers the advisory question — *is this customer in a
-        state where UBB would let work proceed* — and every verdict it gives is
-        a verdict for a start too. This is the remainder: a per-owner cap on
-        work ALREADY RUNNING, which has nothing to say to a caller that is not
-        about to add to it.
-
-        ⚠ IT IS ITS OWN METHOD RATHER THAN A FLAG ON `check`, because the two
-        questions have different answers and both are published. Folding the
-        cap in would make the advisory endpoint start reporting a verdict it
-        has never reported, on a surface slice 6 owns and this commit is not
-        rebuilding. Keeping them apart is also what lets the start gate run
-        them in the order it has always run them, with the parent's own
-        liveness checked between the two.
-
-        Tier-2 P5 (D11/I6): the slot count is simply how much work is ACTIVE
-        for the billing owner — accurate and leak-free, with no Redis slot to
-        leak, and the reaper frees capacity by terminating stale work. A pooled
-        business shares one cap because every seat's work pins it as billing
-        owner. The bounded over-admit on the read-then-create race is accepted.
-        Contained work holds a slot like anything else — a contained unit is
-        still parallel work.
-        """
-        from apps.platform.tenants.flags import enforcing
-        from apps.billing.accounts import resolve_billing_owner
-        config = RiskService._config(customer.tenant)
-        # > 0 (not truthiness): 0/NULL = no concurrency cap, and a negative
-        # mis-config can never block every start (mirrors the rpm > 0 guard).
-        if (enforcing(customer.tenant) and config
-                and config.max_concurrent_requests
-                and config.max_concurrent_requests > 0):
-            from apps.platform.work.models import Task
-            owner = resolve_billing_owner(customer)
-            running = Task.objects.filter(
-                billing_owner_id=owner.id, status=TASK_STATUS_ACTIVE).count()
-            if running >= config.max_concurrent_requests:
-                return {"allowed": False, "reason": CONCURRENCY_LIMIT,
-                        "balance_micros": balance_micros}
-        return {"allowed": True, "reason": None,
-                "balance_micros": balance_micros}
-
-    @staticmethod
     def check(customer, parent_task_id=None):
         """The advisory answer: may work proceed for this customer?
 
@@ -225,6 +167,12 @@ class RiskService:
         call at the root (`POST /api/v1/tasks`, #410): a money-shaped
         admission check and the registration of a unit of work were one call
         answering two questions, and only one of them was ever about money.
+
+        Every verdict this gives is a verdict for a start too, and since #455
+        it is the WHOLE money-shaped answer: the per-owner cap on work already
+        running, which used to be the one control only a start could breach,
+        is deleted (#150 §12.5) — it bounded a count of outstanding operations
+        and converted to no amount of money.
 
         ``parent_task_id`` is still read, and only for the soft floor: past the
         wind-down line NEW top-level work is refused while a contained start

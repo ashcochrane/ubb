@@ -201,7 +201,6 @@ export const preCheckReasonLabel = legacyLabelMap({
   budget_unavailable: "Budget state unavailable",
   parent_task_not_active: "Parent task not active",
   subtask_depth_exceeded: "Subtask depth exceeded",
-  concurrency_limit: "Concurrency limit reached",
 });
 
 // ---------------------------------------------------------------------------

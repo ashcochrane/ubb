@@ -11,7 +11,7 @@ flag-stopped owner in enforcing mode.
 ⚠ THIS LANE ANNOUNCES THE SPEND STOP AND NEVER THE EXPIRY, which is what the
 terminal-event split bought (#140 §4.3): it holds a crossing, so the state it
 writes is `killed` and the event is named for that state. The expiry half is
-the sweepers', in `test_concurrency_reaper.py`.
+the sweepers', in `test_stale_reaper.py`.
 """
 import json
 from unittest import mock

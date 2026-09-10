@@ -427,15 +427,12 @@ entries:
   #   * `ubb-platform/docs/CHANGELOG-pricing-api.md` — the 2026-07-03 entry,
   #     carried forward under that file's own header rule.
 
-  - id: g7-backend-concurrency_limit
-    gate: G7
-    site: backend::concurrency_limit
-    expected: affordability_reason
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict for a control slice 6 DELETES outright —
-      `max_concurrent_requests` goes with admission control's rebuild.
+  # ⚠ THE PER-OWNER CAP'S VERDICT REACHED ZERO ON EVERY SURFACE IN #455 and its
+  # three entries (backend, console, openapi) are deleted: the control itself
+  # is gone (#150 §12.5), so the word has no producer, no label and no
+  # published list to sit in. The `retired_aliases` seat in the registry stays
+  # — that is what keeps the word REFUSED in every swept file rather than
+  # counted in N.
 
   - id: g7-backend-cost_limit_exceeded
     gate: G7
@@ -771,16 +768,6 @@ entries:
   # needs a word for which of two a book is. #367 left the remainder as "the
   # book's, which ticket 21 splits into two entities"; that split landed, and
   # this is the console catching up with it.
-
-  - id: g7-console-concurrency_limit
-    gate: G7
-    site: console::concurrency_limit
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict for a control slice 6 DELETES outright —
-      `max_concurrent_requests` goes with admission control's rebuild.
 
   # ⚠ `cost_card` REACHED ZERO ON THE CONSOLE IN #371 and its entry is deleted,
   # alongside the price half it said it would go with. Both lived in exactly one
@@ -1194,16 +1181,6 @@ entries:
     owner_slice: slice_6
     reason: >-
       The same, for the case where the family's state could not be read.
-
-  - id: g7-openapi-concurrency_limit
-    gate: G7
-    site: openapi::concurrency_limit
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict for a control slice 6 DELETES outright —
-      `max_concurrent_requests` goes with admission control's rebuild.
 
   - id: g7-openapi-customer_wide_stop
     gate: G7

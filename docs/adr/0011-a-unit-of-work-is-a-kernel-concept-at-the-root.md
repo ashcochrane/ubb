@@ -65,7 +65,8 @@ answer is *about* — metering hangs postings off it and writes the charge that 
 billing draws that charge down, spend control stops it — so there is no product whose absence makes
 these calls meaningless, and no product to gate them on.
 
-The money-shaped checks inside the start — affordability, the floor, the concurrency cap — are
+The money-shaped checks inside the start — affordability and the floor (a per-owner cap on work
+already running sat beside them until #455 deleted it under #150 §12.5) — are
 conditioned **inside the call** on whether the tenant has a wallet to test, never on a product flag
 at the door. A metering-only caller is not refused them; they do not apply. *Has a wallet* — the
 spec's phrase and the test class's — means a wallet **regime**, not a wallet **row**: the condition

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,782 of 2,199 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,782 of 2,201 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1968,6 +1968,16 @@ measurement_key:
     # prose that held was "a unit of work", "a run", "contained work" and
     # "what the known total left out"; the count was taken after the build
     # and re-taken after the review pass.
+    #
+    # DELETING THE PER-OWNER CAP MOVED THE TRACKED DENOMINATOR BY TWO AND
+    # NOTHING ELSE (1,782 swept unchanged, 2,199 -> 2,201 tracked, `units`
+    # 44/122 unchanged). Two migrations arrived, both excluded (417 -> 419):
+    # billing's removal of the cap's column and the work app's removal of
+    # the index that counted for it (#455). One test module was renamed for
+    # what it still proves, which moves neither number. The prose that held
+    # was "work already running", "anything still active", "counted as
+    # active" and "a count of outstanding operations"; the count was taken
+    # after the build and re-taken after the review pass.
 
     - term: units
       retired_as: >-

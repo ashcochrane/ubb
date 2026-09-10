@@ -5,8 +5,12 @@ from core.models import BaseModel
 class RiskConfig(BaseModel):
     tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="risk_config")
     max_requests_per_minute = models.IntegerField(default=60)
-    max_concurrent_requests = models.IntegerField(default=10)
     gate_fail_closed = models.BooleanField(default=False)
+    # A per-owner cap on work already running sat here until #455 and is
+    # DELETED, not moved (#150 §12.5): it bounded a count of outstanding
+    # operations, converted to no amount of money, and invited the belief
+    # that UBB closes a blind window it cannot see into. Admission control
+    # bounds the RATE of new work (the column above) and nothing else.
     # The two tenant-default COGS ceilings that used to sit here (#37, #38)
     # left for the kernel in #453 — `Tenant.default_task_cogs_ceiling_micros`
     # and its contained-work twin — because a ceiling is a kernel concept a
@@ -17,7 +21,7 @@ class RiskConfig(BaseModel):
         db_table = "ubb_risk_config"
 
     def __str__(self):
-        return f"RiskConfig({self.tenant.name}: {self.max_requests_per_minute}rpm, {self.max_concurrent_requests}concurrent)"
+        return f"RiskConfig({self.tenant.name}: {self.max_requests_per_minute}rpm)"
 
 
 def default_alert_levels():

@@ -158,7 +158,12 @@ un-spend calls already dispatched to the provider** when the line was crossed
 (report-after-the-fact metering), and under the one rule it records and bills
 that overshoot honestly instead of refusing to see it. Residual overshoot ≈
 (concurrent in-flight calls) × (per-call cost), bounded by your **per-task
-limit** and **concurrency limit**, and by how frequently you report (per-step
-beats per-task). It is deterministic, not a guessed buffer. Both are detected
+limit** and by how frequently you report (per-step beats per-task). It is
+deterministic, not a guessed buffer. Both are detected
 on the one recording path; with live counter maintenance off, the wallet floor
 is detected on the durable path instead, at its latency.
+
+How many calls you have in flight is yours to bound, on your side: UBB does
+not cap it, because a count of outstanding calls converts to no amount of
+money, and a cap on it would only pretend to close a window UBB cannot see
+into.

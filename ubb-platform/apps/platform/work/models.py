@@ -246,7 +246,7 @@ class TaskType(BaseModel):
     # MAKES THAT TRUE RATHER THAN CUSTOMARY. Dropping the absolute ceiling was
     # considered and rejected: it is the guard that stops any tenant getting an
     # immortal unit, and a tenant with no reaper of its own would otherwise have
-    # stuck work living forever holding a concurrency slot and a prepaid
+    # stuck work living forever, counted as active and holding a prepaid
     # reservation. NULL falls through to the tenant default and then to UBB's
     # backstop; zero is refused, because a zero-length deadline and a disabled
     # one are the two readings a reader would have to choose between and only
@@ -559,11 +559,12 @@ class Task(BaseModel):
     # table.
     agreed_price_book_version = models.PositiveIntegerField(null=True, blank=True)
 
-    # Tier-2 (D4/I6): the billing owner PINNED at task creation
-    # (resolve_billing_owner), exactly like Posting.billing_owner_id. The
-    # concurrency-slot acquire/release and both reapers read this — they MUST
-    # NOT re-resolve the owner (re-parenting would otherwise split the counter
-    # or leak the slot). Nullable for back-compat with pre-Tier-2 rows.
+    # Tier-2 (D4): the billing owner PINNED at task creation
+    # (resolve_billing_owner), exactly like Posting.billing_owner_id. The stop
+    # announcements (`gating/patrol.py`, `TaskService` cascades) read this and
+    # MUST NOT re-resolve the owner: re-parenting the seat mid-run would
+    # otherwise announce a stop under an owner the work was never pinned to.
+    # Nullable for back-compat with pre-Tier-2 rows.
     billing_owner_id = models.UUIDField(null=True, blank=True, db_index=True)
     # Tier-2 (D10): heartbeat for the stale-task reaper. Stamped on every
     # accumulate_cost. Null until the first metered event.
@@ -786,11 +787,10 @@ class Task(BaseModel):
                 fields=["status", "last_event_at"],
                 name="idx_task_status_heartbeat",
             ),
-            # Tier-2 (P5): the concurrency cap counts active tasks per owner.
-            models.Index(
-                fields=["billing_owner_id", "status"],
-                name="idx_task_owner_status",
-            ),
+            # An index over (billing owner, status) sat here for the per-owner
+            # cap's count of active work; the cap is deleted (#455, #150
+            # §12.5) and nothing else scans by that pair, so the index went
+            # with it (`migrations/0025`).
             # #44 (delivery spec §C.4): the patrol's task sweep scans active
             # LIMITED tasks per tenant every hour — the partial index keeps
             # that scan proportional to the small set of tasks that can still

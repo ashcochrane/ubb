@@ -42,8 +42,9 @@ class UBBConnectionError(UBBError):
 # not only in development, because both quiet options were rejected: closing
 # as `cancelled` puts a tenant-declared word onto work nobody declared
 # anything about (and strips a charge that may have been earned), and leaving
-# the work open silently holds a concurrency slot and any prepaid reservation
-# until expiry, with no signal at all for a tenant that is not enforcing.
+# the work open silently keeps it counted as active, holding any prepaid
+# reservation until expiry, with no signal at all for a tenant that is not
+# enforcing.
 # Raising while leaving the work open is truthful about the unknown ending,
 # visible at once, and recoverable.
 #

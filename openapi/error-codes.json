@@ -162,7 +162,6 @@
       "account_closed",
       "budget_exceeded",
       "budget_unavailable",
-      "concurrency_limit",
       "customer_stopped",
       "insufficient_funds",
       "parent_task_not_active",

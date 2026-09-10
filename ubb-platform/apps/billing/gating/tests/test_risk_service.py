@@ -11,7 +11,7 @@ class RiskServiceTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
-        RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10, max_concurrent_requests=3)
+        RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10)
 
     def test_active_customer_passes(self):
         result = RiskService.check(self.customer)
