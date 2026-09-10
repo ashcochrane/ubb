@@ -41,6 +41,11 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   editing `src/locales/en.json`, never by writing a map. **This reverses the old "never render a
   raw snake_case token" rule** — that rule was right when the alternative was humanising it; now
   the alternative is a placeholder that discards what the server sent. Branch on `kind` to style it.
+- **A value of an OPEN concept renders through `components/shared/open-set-value.tsx`**, the one
+  place the console's rule for an open set lives (#454, slice 6 §18): a known value renders its
+  catalogue word; an unknown one renders as the token it is, visibly marked unrecognised, never
+  humanised. Hand it the concept's generated `*_LABEL_KEYS` map. A second rendering of that rule
+  inside a feature is a defect — two copies drift, and one of them will humanise.
 - **A value the TENANT authored** — an Event Type key, a metadata key — takes `tenantDefinedLabel`
   from the same module. The registry declares such a concept `tenant_defined` and generates no label
   keys for it (UBB must never ship a catalogue of its tenants' vocabulary), so every value resolves

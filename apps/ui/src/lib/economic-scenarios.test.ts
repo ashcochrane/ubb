@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   availableMeasurements,
+  ceilingAssessment,
   chargeReceipt,
   completePriceTotal,
   completeTotal,
@@ -19,6 +20,7 @@ import {
 } from "./economic-scenarios";
 import { isPartial, supplierCostTotal } from "./supplier-cost";
 import {
+  CEILING_STATUS_VALUES,
   COSTING_STATUS_VALUES,
   MEASUREMENTS_STATUS_VALUES,
   NOT_APPLICABLE_REASON_VALUES,
@@ -433,5 +435,123 @@ describe("the receipt whose subject is a Charge", () => {
 
     expect(first.pricing_receipt).not.toBe(second.pricing_receipt);
     expect(first.pricing_receipt.provenance).not.toBe(second.pricing_receipt.provenance);
+  });
+});
+
+describe("the ceiling assessment", () => {
+  // The four values the registry declares, each composed from the terms that
+  // fix it, and the numbers checked against the kernel's own arithmetic
+  // (`core/crossing.py`): a whole percent rounded DOWN over the KNOWN total,
+  // and headroom that never goes below zero.
+  it("says nothing was evaluated when no ceiling applies, and carries no figures", () => {
+    const scenario = ceilingAssessment("not_applicable", { cost: incompleteTotal(900_000, 2) });
+
+    expect(scenario.task_cogs_ceiling_micros).toBeNull();
+    expect(scenario.ceiling_status).toBe("not_applicable");
+    expect(scenario.ceiling_used_percentage).toBeNull();
+    expect(scenario.ceiling_remaining_micros).toBeNull();
+    // The row's own totals still travel — they are the same columns the
+    // kernel reads, and a consumer takes all of them from here.
+    expect(scenario.total_provider_cost_micros).toBe(900_000);
+    expect(scenario.unresolved_event_count).toBe(2);
+  });
+
+  it("says within when every cost is known and the total is below the line", () => {
+    const scenario = ceilingAssessment("within_ceiling", {
+      ceiling_micros: 3_000_000,
+      cost: completeTotal(2_870_000),
+    });
+
+    expect(scenario.ceiling_status).toBe("within_ceiling");
+    expect(scenario.task_cogs_ceiling_micros).toBe(3_000_000);
+    expect(scenario.ceiling_used_percentage).toBe(95); // 95.67, rounded down
+    expect(scenario.ceiling_remaining_micros).toBe(130_000);
+  });
+
+  it("says indeterminate when the known total is below the line and something is unresolved", () => {
+    const scenario = ceilingAssessment("indeterminate", {
+      ceiling_micros: 3_000_000,
+      cost: incompleteTotal(1_240_000, 1),
+    });
+
+    expect(scenario.ceiling_status).toBe("indeterminate");
+    expect(scenario.ceiling_used_percentage).toBe(41);
+    expect(scenario.ceiling_remaining_micros).toBe(1_760_000);
+  });
+
+  it("says reached at the line as well as over it, whatever remains unresolved", () => {
+    const over = ceilingAssessment("ceiling_reached", {
+      ceiling_micros: 800_000,
+      cost: incompleteTotal(900_000, 2),
+    });
+    expect(over.ceiling_status).toBe("ceiling_reached");
+    expect(over.ceiling_used_percentage).toBe(112);
+    expect(over.ceiling_remaining_micros).toBe(0);
+
+    // `>=`: a ceiling is reached rather than exceeded (the registry's rule).
+    const at = ceilingAssessment("ceiling_reached", {
+      ceiling_micros: 800_000,
+      cost: completeTotal(800_000),
+    });
+    expect(at.ceiling_status).toBe("ceiling_reached");
+    expect(at.ceiling_used_percentage).toBe(100);
+    expect(at.ceiling_remaining_micros).toBe(0);
+  });
+
+  it("says a share of a zero ceiling is no share, while the ceiling is still reached", () => {
+    const scenario = ceilingAssessment("ceiling_reached", {
+      ceiling_micros: 0,
+      cost: completeTotal(0),
+    });
+
+    expect(scenario.ceiling_used_percentage).toBeNull();
+    expect(scenario.ceiling_remaining_micros).toBe(0);
+  });
+
+  // THE PROPERTY THE COMPOSER EXISTS FOR. A fixture names the state it means
+  // and hands over the terms; if the registry's rule would conclude something
+  // else from those terms, the fixture is describing a row the backend cannot
+  // write, and it is refused at composition rather than rendered as a
+  // contradiction.
+  it("refuses a status the terms do not fix", () => {
+    expect(() =>
+      ceilingAssessment("within_ceiling", { ceiling_micros: 1_000_000, cost: incompleteTotal(1, 1) }),
+    ).toThrow(/indeterminate/);
+    expect(() =>
+      ceilingAssessment("indeterminate", { ceiling_micros: 1_000_000, cost: completeTotal(1) }),
+    ).toThrow(/within_ceiling/);
+    expect(() =>
+      ceilingAssessment("within_ceiling", { ceiling_micros: 1_000_000, cost: completeTotal(1_000_000) }),
+    ).toThrow(/ceiling_reached/);
+    expect(() =>
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 1_000_000, cost: completeTotal(999_999) }),
+    ).toThrow(/within_ceiling/);
+  });
+
+  it("covers every status the registry declares, one composition each", () => {
+    const produced = [
+      ceilingAssessment("not_applicable", { cost: completeTotal(0) }),
+      ceilingAssessment("within_ceiling", { ceiling_micros: 10, cost: completeTotal(1) }),
+      ceilingAssessment("indeterminate", { ceiling_micros: 10, cost: incompleteTotal(1, 1) }),
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 10, cost: completeTotal(10) }),
+    ].map((scenario) => scenario.ceiling_status);
+
+    expect([...produced].sort()).toEqual([...CEILING_STATUS_VALUES].sort());
+  });
+
+  it("never yields a status without the three columns it was concluded from", () => {
+    for (const scenario of [
+      ceilingAssessment("not_applicable", { cost: completeTotal(0) }),
+      ceilingAssessment("within_ceiling", { ceiling_micros: 10, cost: completeTotal(1) }),
+    ]) {
+      expect(Object.keys(scenario).sort()).toEqual([
+        "ceiling_remaining_micros",
+        "ceiling_status",
+        "ceiling_used_percentage",
+        "task_cogs_ceiling_micros",
+        "total_provider_cost_micros",
+        "unresolved_event_count",
+      ]);
+    }
   });
 });

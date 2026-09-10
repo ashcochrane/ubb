@@ -30,6 +30,7 @@
 // deliberate generic form, never a title-cased guess at English.
 
 import {
+  CEILING_STATUS_VALUES,
   COSTING_METHOD_VALUES,
   COSTING_STATUS_VALUES,
   PRICING_METHOD_VALUES,
@@ -38,6 +39,7 @@ import {
   RATE_STRUCTURE_VALUES,
   TASK_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
+  TRIGGER_SOURCE_KNOWN_VALUES,
   USAGE_EVENT_KIND_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
@@ -364,6 +366,31 @@ export const TASK_STATUSES = TASK_STATUS_VALUES;
 // adapter, and a concept that has been migrated leaves behind its value list
 // and nothing else.
 export const USAGE_EVENT_KINDS = USAGE_EVENT_KIND_VALUES;
+
+// What a ceiling assessment concluded — the registry's four, held BY
+// REFERENCE (#454), on the same terms as the lists above. `domain-vocabulary/`
+// names this file as the console's consumer of `ceiling_status`, and until
+// now it held none of the four, which is what `g2-console-ceiling_status`
+// recorded and what this line pays off. There was never a map to delete: the
+// status reached the wire in #452 and the console's first sight of it is the
+// migrated shape, as `USAGE_EVENT_KINDS` above. The WORDS have been in the
+// catalogue under `ceiling_status.*` since the concept was coined, and the
+// binding is `features/tasks/lib/ceiling.ts` — the run page is the surface
+// that renders them.
+export const CEILING_STATUSES = CEILING_STATUS_VALUES;
+
+// The mechanism that applied a stop — the registry's five KNOWN values of an
+// OPEN concept, held BY REFERENCE (#454). `domain-vocabulary/` names this file
+// as the console's consumer of `trigger_source`; `g3-console-trigger_source`
+// recorded that it held none, and this line pays it off. The concept is open
+// (ADR-0003), so the generated list is `_KNOWN_VALUES` and a value outside it
+// is legal on the wire — the console's rule for such a value is set in
+// `components/shared/open-set-value.tsx` and proved there on these keys. No
+// map, no binding beyond that helper: no read this console makes publishes
+// the field today (it travels on the terminal webhook payloads only), and
+// the words are in the catalogue under `trigger_source.*` for the surface
+// that first does.
+export const TRIGGER_SOURCES = TRIGGER_SOURCE_KNOWN_VALUES;
 
 export const pastLimitFamilyLabel = legacyLabelMap({
   floor_stop: "Balance floor stop",

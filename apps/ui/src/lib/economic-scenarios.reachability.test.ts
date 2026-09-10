@@ -50,6 +50,7 @@ import { describe, expect, it } from "vitest";
 
 import * as scenarios from "./economic-scenarios";
 import {
+  CEILING_STATUS_VALUES,
   NOT_APPLICABLE_REASON_VALUES,
   PRICING_STATUS_VALUES,
   type PricingStatus,
@@ -164,6 +165,23 @@ describe("the scenario module is wired to something that renders", () => {
   it("composes BOTH not-applicable causes somewhere that renders", () => {
     for (const reason of NOT_APPLICABLE_REASON_VALUES) {
       const call = `priceNotApplicable("${reason}")`;
+      const where = CONSUMERS.filter((consumer) =>
+        consumer.source.includes(call),
+      ).map((consumer) => consumer.path);
+
+      expect(where, `nothing that renders composes ${call}`).not.toEqual([]);
+    }
+  });
+
+  // The ceiling assessment's four statuses (#454, slice 6 §18), which the
+  // import list cannot tell apart either: one composer, four states, and a
+  // commit that wired two of them would satisfy the orphan check above while
+  // leaving the other two with nothing that renders them. Driven off the
+  // generated list, so a fifth status the registry adds fails here until
+  // something composes it.
+  it("composes every ceiling status somewhere that renders", () => {
+    for (const status of CEILING_STATUS_VALUES) {
+      const call = `ceilingAssessment("${status}"`;
       const where = CONSUMERS.filter((consumer) =>
         consumer.source.includes(call),
       ).map((consumer) => consumer.path);

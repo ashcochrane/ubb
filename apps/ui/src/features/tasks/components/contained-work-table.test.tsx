@@ -1,30 +1,35 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { ceilingAssessment, completeTotal } from "@/lib/economic-scenarios";
 import { formatEventCount } from "@/lib/format";
 
-import { ceilingAssessment, containedId, RUN_ACTIVE_ID } from "../api/mock-data";
+import { containedId, RUN_ACTIVE_ID } from "../api/mock-data";
 import type { RunRow } from "../api/types";
 import { CONTAINED_ROWS_SHOWN_INLINE, type PriceApplicability } from "../lib/runs";
 import { DRAWN_AS_FAILURE, renderWithProviders } from "../test-utils";
 import { ContainedWorkTable } from "./contained-work-table";
 
-/** One piece of contained work, costed at ten thousand micros per ordinal so sums come out in whole cents. */
+/**
+ * One piece of contained work, costed at ten thousand micros per ordinal so
+ * sums come out in whole cents. No ceiling applies to any of them, so a case
+ * that overrides the cost totals stays consistent with the assessment: the
+ * table renders no ceiling, and `not_applicable` is the one status the rule
+ * concludes from the ceiling alone.
+ */
 function piece(ordinal: number, overrides: Partial<RunRow> = {}): RunRow {
-  const row = {
+  return {
     task_id: containedId(ordinal),
     parent_task_id: RUN_ACTIVE_ID,
     task_type: "render-shot",
     status: "completed" as const,
-    total_provider_cost_micros: ordinal * 10_000,
-    unresolved_event_count: 0,
+    ...ceilingAssessment("not_applicable", { cost: completeTotal(ordinal * 10_000) }),
     total_billed_cost_micros: 0,
     unpriced_event_count: 0,
     event_count: (ordinal % 3) + 1,
     created_at: `2026-09-01T14:${String(ordinal % 60).padStart(2, "0")}:00Z`,
     ...overrides,
   };
-  return { ...row, ...ceilingAssessment(row) };
 }
 
 const THIRTY = Array.from({ length: 30 }, (_, index) => piece(index + 1));

@@ -15,6 +15,7 @@ import {
   RUN_DELIVERED_FIXED_ID,
   RUN_EXPIRED_ID,
   RUN_FAILED_ID,
+  RUN_KILLED_ID,
   RUN_UNKNOWN_COST_ID,
 } from "../api/mock-data";
 import {
@@ -66,7 +67,7 @@ describe("RunDetailPage", () => {
     expect(
       within(rowBeside(money, "Agreed price")).getByText("$5.00 — owed if the run delivers."),
     ).toBeInTheDocument();
-    expect(within(rowBeside(money, "Ceiling")).getByText("$3.00")).toBeInTheDocument();
+    expect(readingBeside(money, "Ceiling")).toHaveTextContent("$3.00 ceiling");
 
     const contained = region("Contained work");
     expect(contained.querySelectorAll("tbody tr[data-contained-row]")).toHaveLength(
@@ -101,6 +102,72 @@ describe("RunDetailPage", () => {
     expect(readingBeside(money, "Supplier cost")).toHaveTextContent(/missing, not zero/);
     expect(readingBeside(money, "Customer price")).toHaveTextContent("Unknown");
     expect(money).not.toHaveTextContent("$0.00");
+  });
+
+  // The four things a ceiling assessment can say (#454; slice 6 §3, §18;
+  // Testing Decisions claim 15; #155 §9.2), one run each, every assertion
+  // scoped to the Ceiling row. The words are the catalogue's
+  // (`ceiling_status.*`), spelled here rather than asked of the binding, so a
+  // binding pointed at the wrong concept's keys goes red rather than green.
+  describe("the ceiling", () => {
+    // `not_applicable` is nothing evaluated — never a ceiling held, never one
+    // UBB could not assess — and the two figures beside it are null on the
+    // wire, so nothing here may render as a share or as `$0.00`.
+    it("says Not applicable where no ceiling applies — never Within ceiling, never Indeterminate, and no amount", async () => {
+      await opened(RUN_UNKNOWN_COST_ID);
+      const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
+      expect(ceiling).toHaveAttribute("data-reading", "not_applicable");
+      expect(within(ceiling).getByText("Not applicable")).toBeInTheDocument();
+      expect(ceiling).not.toHaveTextContent(/within/i);
+      expect(ceiling).not.toHaveTextContent(/indeterminate/i);
+      expect(ceiling).not.toHaveTextContent(/\$\d/);
+      expect(ceiling).not.toHaveTextContent(/%/);
+      expect(ceiling).toHaveTextContent(/No ceiling applies to this run/);
+    });
+
+    // Under `indeterminate` the percentage is a floor and the headroom a
+    // most, over what is known: "at least" and "at most", and never "under"
+    // anything — a run UBB cannot place inside its ceiling must not read as
+    // one that is.
+    it("says Indeterminate with at least on the percentage and at most on the headroom, never under", async () => {
+      await opened(RUN_ACTIVE_ID);
+      const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
+      expect(ceiling).toHaveAttribute("data-reading", "indeterminate");
+      expect(within(ceiling).getByText("Indeterminate")).toBeInTheDocument();
+      expect(ceiling).toHaveTextContent("$3.00 ceiling");
+      expect(ceiling).toHaveTextContent("at least 41% used");
+      expect(ceiling).toHaveTextContent("at most $1.76 headroom");
+      expect(ceiling).not.toHaveTextContent(/\bunder\b/i);
+      expect(ceiling).not.toHaveTextContent(/within/i);
+      expect(ceiling).toHaveTextContent(/1 event has a supplier cost UBB has not learned/);
+    });
+
+    it("says Ceiling reached on the known total alone, past the line, whatever remains unresolved", async () => {
+      await opened(RUN_KILLED_ID);
+      const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
+      expect(ceiling).toHaveAttribute("data-reading", "ceiling_reached");
+      expect(within(ceiling).getByText("Ceiling reached")).toBeInTheDocument();
+      expect(ceiling).toHaveTextContent("$0.80 ceiling");
+      expect(ceiling).toHaveTextContent("112% used");
+      // A SETTLED zero, not an unknown one: past the line the wire clamps the
+      // headroom at nothing (`core/crossing.py`), and the percentage beside
+      // it is what says by how much.
+      expect(ceiling).toHaveTextContent("$0.00 headroom");
+      expect(ceiling).not.toHaveTextContent(/at least/);
+      expect(ceiling).toHaveTextContent(/2 events have a supplier cost UBB has not learned/);
+      expect(ceiling).toHaveTextContent(/can only add to it/);
+    });
+
+    it("says Within ceiling with the figures as figures", async () => {
+      await opened(RUN_DELIVERED_FIXED_ID);
+      const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
+      expect(ceiling).toHaveAttribute("data-reading", "within_ceiling");
+      expect(within(ceiling).getByText("Within ceiling")).toBeInTheDocument();
+      expect(ceiling).toHaveTextContent("$3.00 ceiling");
+      expect(ceiling).toHaveTextContent("95% used");
+      expect(ceiling).toHaveTextContent("$0.13 headroom");
+      expect(ceiling).not.toHaveTextContent(/at least|at most/);
+    });
   });
 
   it("says a delivered fixed-price run's agreed price is owed", async () => {

@@ -1832,19 +1832,6 @@ entries:
       slice 7 rebuilds the analytics surface around (#145, #141's
       unknown-revenue rule).
 
-  - id: g2-console-ceiling_status
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::ceiling_status
-    expected: ceiling_status
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #146 made a ceiling three-valued and #148 added the
-      fourth; a status that cannot honestly say `indeterminate` is a
-      spend-control defect, not a naming one. Slice 6 rebuilds it.
-
   - id: g2-console-control_family
     gate: G2
     site: apps/ui/src/lib/labels.ts::control_family
@@ -2057,19 +2044,6 @@ entries:
       #210 splits the two. The stop reasons are rewritten under #150's four
       families. Slice 6 owns them, and one value is already held by reference
       here (#200).
-
-  - id: g3-console-trigger_source
-    gate: G3
-    site: apps/ui/src/lib/labels.ts::trigger_source
-    expected: trigger_source
-    found: 0 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. The mechanism that applied a transition, travelling
-      as a structured field so a webhook never carries it in its name
-      (ADR-0006 §5). Slice 6 rebuilds the enforcement paths that populate it.
 
   - id: g3-sdk-reason_code
     gate: G3
