@@ -611,6 +611,11 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         that bills, a funded wallet, a risk row present — now admits every
         start, however much of the same customer's work is still active, and
         the risk row has no column left to say otherwise.
+
+        Eleven starts, not a handful: the deleted column's default was ten,
+        so a cap quietly re-added at its old default would admit ten and
+        refuse the eleventh — a sample below that would stay green over the
+        likeliest regression.
         """
         self._a_tenant_that_bills()
         Wallet.objects.create(customer=self.customer,
@@ -619,9 +624,9 @@ class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
         self.tenant.save(update_fields=["enforcement_mode"])
         RiskConfig.objects.create(tenant=self.tenant)
 
-        for _ in range(5):
+        for _ in range(11):
             assert self._start().status_code == 200
-        assert Task.objects.filter(status=TASK_STATUS_ACTIVE).count() == 5
+        assert Task.objects.filter(status=TASK_STATUS_ACTIVE).count() == 11
 
 
 @pytest.mark.django_db
