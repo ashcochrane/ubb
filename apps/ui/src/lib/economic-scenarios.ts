@@ -27,17 +27,20 @@
 // alternative looks tidier. A scenario returns the ambiguous fact and the fact
 // that DISAMBIGUATES IT as one object, so a fixture cannot take half.
 //
-// §9.4 names six scenarios and this module now holds five of them by those
+// §9.4 names six scenarios and this module now holds all six by those
 // names. `known_economics` is the ordinary case every existing fixture already
 // is; slice 3 owns `unknown_cost` and `incomplete_total` and both arrive below;
 // slice 4 owns `waived_revenue` and `pricing_not_applicable` and both are here
-// too. `indeterminate_ceiling`'s STATE is on the wire since #452 (`ceiling_status`
-// on the acknowledgement and the unit read, slice 6 §3); the scenario arrives
-// with the console surface that renders it (slice 6 §18), because a scenario
-// with no consumer fails the reachability gate on the commit that adds it —
-// until then the tasks mock composes the assessment from each fixture's own
-// numbers. The measurement trio below is a seventh the list
-// does not name, which is the whole reason slice 2 owed a fixture at all.
+// too. `indeterminate_ceiling` is slice 6's: its STATE reached the wire in #452
+// (`ceiling_status` on the acknowledgement and the unit read, slice 6 §3) and
+// the scenario arrived with the console surface that renders it (#454, slice
+// 6 §18), because a scenario with no consumer fails the reachability gate on
+// the commit that adds it. It arrives as ONE composer over all four statuses
+// rather than one for the indeterminate case, because the indeterminate case
+// is only meaningful against the three it must render differently from — the
+// measurement trio's argument, one concept over. The trio itself is a seventh
+// the list does not name, which is the whole reason slice 2 owed a fixture at
+// all.
 //
 // `pricing_not_applicable` IS TWO STATES RATHER THAN ONE, and it is the only
 // entry on that list that is. The registry reads a `not_applicable_reason`
@@ -46,7 +49,8 @@
 // `priceNotApplicable` below for why fixing one would leave the other with no
 // fixture for anything to render.
 //
-// THE RECEIPT WHOSE SUBJECT IS A CHARGE is the last arrival (#425, spec §29).
+// THE RECEIPT WHOSE SUBJECT IS A CHARGE arrived in #425 (spec §29), the last
+// arrival before the ceiling assessment above.
 // `pricing_receipt_subject_type.charge` shipped with the value set and became
 // producible by the backend in #418, when a delivered unit of work sold at one
 // agreed price first projected onto a posting; until this commit nothing in
@@ -70,6 +74,7 @@
 // to read a number from. Do not merge them here on the strength of the names.
 
 import type {
+  CeilingStatus,
   CostingStatus,
   MeasurementsStatus,
   NotApplicableReason,
@@ -334,6 +339,112 @@ export function incompleteTotal(
   unresolvedEventCount: number,
 ): CostTotalScenario {
   return { micros, unresolved_event_count: unresolvedEventCount };
+}
+
+// ---------------------------------------------------------------------------
+// `indeterminate_ceiling` — what a unit's ceiling assessment concluded, and
+// the three columns it was concluded from (#454, slice 6 §3, §18).
+
+/**
+ * A unit of work's ceiling assessment, with the columns that fix it.
+ *
+ * SIX FIELDS TRAVEL TOGETHER because the backend derives the status rather
+ * than storing it (ADR-0006 R4): `core/crossing.py` reads the pinned ceiling,
+ * the known supplier total and the unresolved count off the row and concludes
+ * one of the registry's four values, and the two figures beside the status are
+ * computed over the KNOWN total in every evaluated state. A fixture that stated
+ * a status beside totals the rule would conclude differently from would be
+ * describing a row the backend cannot write — so the status is composed with
+ * its terms and refused without them.
+ *
+ * ⚠ THE TWO FIGURES ARE NULL UNDER `not_applicable` AND A FLOOR UNDER
+ * `indeterminate`. Nothing was evaluated in the first case, so there is no
+ * share of anything to report; in the second the percentage can only rise and
+ * the headroom only fall as unresolved costs settle. A reader that renders
+ * either as a confident number — or the null as `$0.00` — has the defect this
+ * module exists to make unwritable.
+ */
+export interface CeilingAssessmentScenario {
+  readonly task_cogs_ceiling_micros: number | null;
+  readonly total_provider_cost_micros: number;
+  readonly unresolved_event_count: number;
+  readonly ceiling_status: CeilingStatus;
+  readonly ceiling_used_percentage: number | null;
+  readonly ceiling_remaining_micros: number | null;
+}
+
+/** The terms an evaluated status is concluded from: a ceiling, and the total held against it. */
+export interface CeilingTerms {
+  readonly ceiling_micros: number;
+  readonly cost: CostTotalScenario;
+}
+
+/**
+ * The registry's decision rule, as `core/crossing.py::ceiling_status` applies
+ * it (`spend-controls.yaml`, `ceiling_status.value_semantics`): no ceiling →
+ * nothing evaluated; the known total at or over the line → reached, whatever
+ * remains unresolved; below the line with something unresolved → cannot tell;
+ * below with everything resolved → within. Kept beside the composer so the
+ * composer can refuse a status the terms do not fix.
+ */
+function concludedStatus(ceiling: number | null, cost: CostTotalScenario): CeilingStatus {
+  if (ceiling === null) return "not_applicable";
+  if (cost.micros >= ceiling) return "ceiling_reached";
+  if (cost.unresolved_event_count > 0) return "indeterminate";
+  return "within_ceiling";
+}
+
+/**
+ * Compose one ceiling assessment: the status a fixture means, and the terms
+ * that fix it.
+ *
+ * The status comes FIRST and is required, on the not-applicable-reason
+ * precedent (`priceNotApplicable`): a fixture says the state it means out
+ * loud, rather than leaving a reader to work it out from three numbers. The
+ * terms are the columns the kernel reads — under `not_applicable` there is no
+ * ceiling to state, so the overload takes none; under the three evaluated
+ * statuses the ceiling is required. The composer applies the registry's rule
+ * to the terms and THROWS where it concludes something other than the status
+ * asked for, so the contradiction fails the fixture rather than the page.
+ *
+ * The figures mirror the kernel's arithmetic exactly: a whole percent of the
+ * ceiling the known total has used, rounded down so it never overstates and
+ * running past 100 once the line is crossed; `null` for a ceiling of zero,
+ * because a share of nothing is not a share (the compare still says such a
+ * ceiling is reached); and headroom clamped at zero, because past the line
+ * there is none and the percentage is what says by how much.
+ */
+export function ceilingAssessment(
+  status: "not_applicable",
+  terms: { readonly cost: CostTotalScenario },
+): CeilingAssessmentScenario;
+export function ceilingAssessment(
+  status: Exclude<CeilingStatus, "not_applicable">,
+  terms: CeilingTerms,
+): CeilingAssessmentScenario;
+export function ceilingAssessment(
+  status: CeilingStatus,
+  terms: { readonly ceiling_micros?: number; readonly cost: CostTotalScenario },
+): CeilingAssessmentScenario {
+  const ceiling = status === "not_applicable" ? null : (terms.ceiling_micros ?? null);
+  const concluded = concludedStatus(ceiling, terms.cost);
+  if (concluded !== status) {
+    throw new Error(
+      `ceilingAssessment("${status}") was handed terms the registry's rule concludes ` +
+        `"${concluded}" from (ceiling ${ceiling}, known ${terms.cost.micros}, ` +
+        `${terms.cost.unresolved_event_count} unresolved) — a row the backend cannot write`,
+    );
+  }
+  const known = terms.cost.micros;
+  return {
+    task_cogs_ceiling_micros: ceiling,
+    total_provider_cost_micros: known,
+    unresolved_event_count: terms.cost.unresolved_event_count,
+    ceiling_status: status,
+    ceiling_used_percentage:
+      ceiling === null || ceiling <= 0 ? null : Math.floor((known * 100) / ceiling),
+    ceiling_remaining_micros: ceiling === null ? null : Math.max(ceiling - known, 0),
+  };
 }
 
 // ---------------------------------------------------------------------------

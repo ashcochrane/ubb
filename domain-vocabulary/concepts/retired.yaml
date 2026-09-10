@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,778 of 2,195 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,782 of 2,199 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1958,6 +1958,16 @@ measurement_key:
     # The prose that held was "a whole unit of work", "contained work",
     # "work with no declared kind" and "the rung that answers"; the count
     # was taken after the build and re-taken after the review pass.
+    #
+    # THE FOUR CEILING STATUSES MOVED BOTH DENOMINATORS BY FOUR AND THE
+    # NUMERATOR NOT AT ALL (1,778 -> 1,782 swept, 2,195 -> 2,199 tracked,
+    # `units` 44/122 unchanged). Four console files arrived, all swept and
+    # none excluded: the run page's ceiling reading and its test (#454), and
+    # the shared open-set helper with the test that proves the rule on
+    # `trigger_source`. No migration, so the excluded set held at 417. The
+    # prose that held was "a unit of work", "a run", "contained work" and
+    # "what the known total left out"; the count was taken after the build
+    # and re-taken after the review pass.
 
     - term: units
       retired_as: >-

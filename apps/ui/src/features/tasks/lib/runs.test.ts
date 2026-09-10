@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { ceilingAssessment, MOCK_KINDS } from "../api/mock-data";
+import { ceilingAssessment, completeTotal } from "@/lib/economic-scenarios";
+
+import { MOCK_KINDS } from "../api/mock-data";
 import type { RunRow } from "../api/types";
 import {
   CONTAINED_ROWS_SHOWN_INLINE,
@@ -22,20 +24,22 @@ import {
 
 const BILLS = { meteringOnly: false, soldAtOnePrice: false } as const;
 
+// A row with NO ceiling, so the cost totals the cases below override stay
+// consistent with its assessment whatever they are: `not_applicable` is the
+// one status the registry's rule concludes from the ceiling alone. The cases
+// here are about what a total may be SAID to be, never about the ceiling.
 function row(overrides: Partial<RunRow> = {}): RunRow {
-  const base = {
+  return {
     task_id: "00000000-0000-4000-8000-000000000000",
     task_type: "document-summary",
     status: "completed" as const,
-    total_provider_cost_micros: 0,
-    unresolved_event_count: 0,
+    ...ceilingAssessment("not_applicable", { cost: completeTotal(0) }),
     total_billed_cost_micros: 0,
     unpriced_event_count: 0,
     event_count: 0,
     created_at: "2026-09-01T00:00:00Z",
     ...overrides,
   };
-  return { ...base, ...ceilingAssessment(base) };
 }
 
 describe("a supplier-cost total", () => {

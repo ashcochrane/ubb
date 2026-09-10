@@ -131,7 +131,8 @@ export function describeTotal(reading: TotalReading, currency: string): string {
   }
 }
 
-function eventsHave(count: number): string {
+/** "2 events have" / "1 event has" — the subject of every sentence about what a total left out. */
+export function eventsHave(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "event has" : "events have"}`;
 }
 

@@ -11,12 +11,13 @@ import { Section } from "@/components/shared/section";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
-import { formatDate, formatEventCount, formatMicros, shortId } from "@/lib/format";
+import { formatDate, formatEventCount, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { TASK_STATUS_EXPLANATIONS } from "@/lib/task-status";
 
 import { useRun } from "../api/queries";
 import type { RunDetail } from "../api/types";
+import { readCeiling } from "../lib/ceiling";
 import {
   CONTAINED_ROWS_SHOWN_INLINE,
   describeAgreedPrice,
@@ -28,7 +29,11 @@ import {
   soldAtOnePrice,
   type PriceApplicability,
 } from "../lib/runs";
-import { CustomerPriceReadingView, SupplierCostReadingView } from "./amount-reading";
+import {
+  CeilingReadingView,
+  CustomerPriceReadingView,
+  SupplierCostReadingView,
+} from "./amount-reading";
 import { ContainedWorkTable } from "./contained-work-table";
 import { RunStatusBadge } from "./run-status-badge";
 
@@ -221,15 +226,20 @@ function RunDetailBody({
                 ]
               : []),
             {
-              // A null pin means NO CEILING APPLIES to this run — its kind is
-              // declared uncapped, or nothing declares one — and the wire does
-              // not say which (#453, slice 6 Out of Scope). "Uncapped" is a
-              // declaration's word, so it is not used for an absence here.
+              // What the kernel concluded about this run's ceiling, read off
+              // the wire and never re-derived (#454). Where no ceiling applies
+              // — its kind is declared uncapped, or nothing declares one, and
+              // the wire does not say which (#453, slice 6 Out of Scope) — the
+              // reading says so in the registry's own word, never "Uncapped",
+              // which is a declaration's.
               label: "Ceiling",
-              value:
-                detail.task_cogs_ceiling_micros != null
-                  ? formatMicros(detail.task_cogs_ceiling_micros, currency)
-                  : "No ceiling",
+              value: (
+                <CeilingReadingView
+                  reading={readCeiling(detail)}
+                  currency={currency}
+                  layout="detail"
+                />
+              ),
             },
           ]}
         />

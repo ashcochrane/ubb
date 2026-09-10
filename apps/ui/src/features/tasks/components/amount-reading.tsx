@@ -1,6 +1,12 @@
 import { notApplicableReasonLabel } from "@/lib/customer-price";
 
 import {
+  ceilingStatusLabel,
+  describeCeilingFigures,
+  explainCeiling,
+  type CeilingReading,
+} from "../lib/ceiling";
+import {
   describeCustomerPrice,
   describeTotal,
   explainCustomerPrice,
@@ -27,7 +33,8 @@ function Reading({
   note,
   layout,
 }: {
-  kind: CustomerPriceReading["kind"];
+  /** The reading's discriminant, whichever reading it is — it is written to `data-reading` and read by nothing else here but the `unknown` test below. */
+  kind: string;
   text: string;
   qualifier?: string;
   note: string | null;
@@ -93,6 +100,34 @@ export function CustomerPriceReadingView({
         reading.kind === "not_applicable" ? notApplicableReasonLabel(reading.reason) : undefined
       }
       note={explainCustomerPrice(reading)}
+      layout={layout}
+    />
+  );
+}
+
+/**
+ * What a run's ceiling assessment concluded, drawn so the four conclusions
+ * stay visibly different things (#454): the catalogue's word for the status,
+ * the figures it was concluded over as the qualifier — with "at least" and
+ * "at most" where they are a floor and a most — and the sentence saying what
+ * it means. `data-reading` is the status, as it is the reading's kind on the
+ * two amounts above.
+ */
+export function CeilingReadingView({
+  reading,
+  currency,
+  layout = "cell",
+}: {
+  reading: CeilingReading;
+  currency: string;
+  layout?: "cell" | "detail";
+}) {
+  return (
+    <Reading
+      kind={reading.kind}
+      text={ceilingStatusLabel(reading.kind)}
+      qualifier={describeCeilingFigures(reading, currency) ?? undefined}
+      note={explainCeiling(reading)}
       layout={layout}
     />
   );

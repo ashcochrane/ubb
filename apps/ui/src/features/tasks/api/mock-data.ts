@@ -24,44 +24,16 @@
 //   translate           BOTH altitudes share the word — two declarations
 
 import {
+  ceilingAssessment,
   completePriceTotal,
   completeTotal,
   incompletePriceTotal,
   incompleteTotal,
-  type CostTotalScenario,
+  type CeilingAssessmentScenario,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
-import type { CeilingStatus } from "@/lib/vocabulary";
-
 import type { KindOfWork, RunRow, TaskStatus } from "./types";
-
-/**
- * The ceiling assessment a run row carries (#452), composed from the row's
- * OWN three numbers so a fixture can never say a status its totals
- * contradict — the same reason `totals()` below takes a scenario rather
- * than a bare amount. FIXTURE COMPOSITION ONLY: the backend derives this on
- * the row (`core/crossing.py`, the registry's four-way rule) and the
- * console reads it off the wire; nothing rendering a run may re-derive it
- * from here. The two figures are over the KNOWN total, which is why a
- * reader of an `indeterminate` row must treat the percentage as a floor.
- */
-export function ceilingAssessment(
-  row: Pick<RunRow, "task_cogs_ceiling_micros" | "total_provider_cost_micros" | "unresolved_event_count">,
-): Pick<RunRow, "ceiling_status" | "ceiling_used_percentage" | "ceiling_remaining_micros"> {
-  const ceiling = row.task_cogs_ceiling_micros;
-  if (ceiling === undefined || ceiling === null) {
-    return { ceiling_status: "not_applicable", ceiling_used_percentage: null, ceiling_remaining_micros: null };
-  }
-  const known = row.total_provider_cost_micros;
-  const status: CeilingStatus =
-    known >= ceiling ? "ceiling_reached" : row.unresolved_event_count > 0 ? "indeterminate" : "within_ceiling";
-  return {
-    ceiling_status: status,
-    ceiling_used_percentage: ceiling > 0 ? Math.floor((known * 100) / ceiling) : null,
-    ceiling_remaining_micros: Math.max(ceiling - known, 0),
-  };
-}
 
 export const KIND_EVENT_PRICED_KEY = "document-summary";
 export const KIND_FIXED_KEY = "video-render";
@@ -192,57 +164,83 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
   },
 ];
 
-function run(
-  overrides: Partial<RunRow> & Pick<RunRow, "task_id" | "task_type" | "created_at">,
-): RunRow {
-  const row = {
-    status: "completed" as const,
-    total_provider_cost_micros: 0,
-    unresolved_event_count: 0,
-    total_billed_cost_micros: 0,
-    unpriced_event_count: 0,
-    event_count: 0,
-    ...overrides,
-  };
-  return { ...row, ...ceilingAssessment(row) };
-}
-
 /**
- * The five wire totals a run row carries, composed from the canonical
- * scenarios (`@/lib/economic-scenarios`, #155 §9.4) so a fixture cannot take
- * an amount without the count that says what it means. The scenarios spell
- * the amount `micros`; the wire spells each side's own name.
+ * The totals and the ceiling assessment a run row carries, composed from the
+ * canonical scenarios (`@/lib/economic-scenarios`, #155 §9.4) so a fixture
+ * cannot take an amount without the count that says what it means, nor a
+ * ceiling status without the three columns the kernel concluded it from.
+ *
+ * The supplier-cost side is INSIDE the assessment rather than beside it: the
+ * known total and the unresolved count are two of the assessment's own terms
+ * (`ceilingAssessment(status, { ceiling_micros, cost })`), so a row takes
+ * them from there and never states a cost the status was not concluded from.
+ * The price side has no part in a ceiling and travels under its own scenario.
+ * The scenarios spell an amount `micros`; the wire spells each side's own
+ * name.
  */
-function totals(cost: CostTotalScenario, price: PriceTotalScenario, eventCount: number) {
+function totals(
+  assessment: CeilingAssessmentScenario,
+  price: PriceTotalScenario,
+  eventCount: number,
+): Pick<
+  RunRow,
+  | "task_cogs_ceiling_micros"
+  | "total_provider_cost_micros"
+  | "unresolved_event_count"
+  | "ceiling_status"
+  | "ceiling_used_percentage"
+  | "ceiling_remaining_micros"
+  | "total_billed_cost_micros"
+  | "unpriced_event_count"
+  | "event_count"
+> {
   return {
-    total_provider_cost_micros: cost.micros,
-    unresolved_event_count: cost.unresolved_event_count,
+    ...assessment,
     total_billed_cost_micros: price.micros,
     unpriced_event_count: price.unpriced_event_count,
     event_count: eventCount,
   };
 }
 
+/**
+ * One run. The totals are REQUIRED, not defaulted: a row that could omit
+ * them would get a status from nowhere, which is the half-taken fixture the
+ * scenario module exists to make unwritable. Every row below spells
+ * `...totals(ceilingAssessment(<status>, …), <price>, <events>)`.
+ */
+function run(
+  overrides: Partial<RunRow> &
+    Pick<RunRow, "task_id" | "task_type" | "created_at"> &
+    ReturnType<typeof totals>,
+): RunRow {
+  return { status: "completed", ...overrides };
+}
+
 // --- Runs ------------------------------------------------------------------
 //
 // The runs beneath those kinds tell the second story, the one the runs surface
-// renders (#424): every lifecycle state at least once, and every reading a
-// total can have — a figure, a floor, nothing UBB knows, and nothing that
-// applies. Newest first, which is the order the route answers in.
+// renders (#424): every lifecycle state at least once, every reading a total
+// can have — a figure, a floor, nothing UBB knows, and nothing that applies —
+// and, since #454, every one of the four things a ceiling assessment can say.
+// Newest first, which is the order the route answers in.
 //
 //   6e1f2c8a  video-render        active     28 pieces of contained work, one of
 //                                            them costed by nobody yet, so the
-//                                            run's own total is a FLOOR
-//   0b7d4e29  transcript-cleanup  completed  quoted $8.00 by the customer's book
+//                                            run's own total is a FLOOR and its
+//                                            ceiling is INDETERMINATE
+//   0b7d4e29  transcript-cleanup  completed  quoted $8.00 by the customer's book;
+//                                            within its ceiling
 //   3f0c9d2e  translate           completed  three events, none costed and none
-//                                            priced: both totals UNKNOWN
-//   9c3a5f71  video-render        completed  delivered at $5.00
+//                                            priced: both totals UNKNOWN; no
+//                                            ceiling applies
+//   9c3a5f71  video-render        completed  delivered at $5.00; within its ceiling
 //   7a2e5b1c  document-summary    expired    nobody said how it ended — NOT a
 //                                            failure
 //   d4e8b2a6  document-summary    completed  two pieces of contained work under
 //                                            an event-priced run
-//   4d7b1e9f  document-summary    killed     UBB stopped it past its ceiling;
-//                                            two events still uncosted
+//   4d7b1e9f  document-summary    killed     UBB stopped it at its ceiling —
+//                                            REACHED on what is known, with two
+//                                            events still uncosted
 //   a1c6d9e3  transcript-cleanup  completed  quoted $4.00
 //   b8e2f4a1  translate           cancelled  withdrawn before anything ran: a
 //                                            REAL zero
@@ -272,26 +270,42 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_type: KIND_FIXED_KEY,
     status: "active",
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
     // Everything contained in it (669,000 over 28 events, one of them never
-    // costed) plus 571,000 over two events reported against the run itself.
-    ...totals(incompleteTotal(1_240_000, 1), completePriceTotal(0), 30),
+    // costed) plus 571,000 over two events reported against the run itself —
+    // below the kind's ceiling on what is known, with one cost still open.
+    ...totals(
+      ceilingAssessment("indeterminate", {
+        ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
+        cost: incompleteTotal(1_240_000, 1),
+      }),
+      completePriceTotal(0),
+      30,
+    ),
     created_at: "2026-09-01T14:05:00Z",
   }),
   run({
     task_id: "0b7d4e29-8f13-4a6c-b0d5-2e8a9c4f7b13",
     task_type: KIND_FIXED_NEGOTIATED_KEY,
     agreed_price_micros: TRANSCRIPT_HIGH_PRICE_MICROS,
-    task_cogs_ceiling_micros: TRANSCRIPT_CEILING_MICROS,
-    total_provider_cost_micros: 2_100_000,
-    event_count: 30,
+    ...totals(
+      ceilingAssessment("within_ceiling", {
+        ceiling_micros: TRANSCRIPT_CEILING_MICROS,
+        cost: completeTotal(2_100_000),
+      }),
+      completePriceTotal(0),
+      30,
+    ),
     created_at: "2026-08-31T18:40:00Z",
     completed_at: "2026-08-31T18:52:00Z",
   }),
   run({
     task_id: RUN_UNKNOWN_COST_ID,
     task_type: KIND_SHARED_WORD_KEY,
-    ...totals(incompleteTotal(0, 3), incompletePriceTotal(0, 3), 3),
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: incompleteTotal(0, 3) }),
+      incompletePriceTotal(0, 3),
+      3,
+    ),
     created_at: "2026-08-31T09:00:00Z",
     completed_at: "2026-08-31T09:04:00Z",
   }),
@@ -299,9 +313,14 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_DELIVERED_FIXED_ID,
     task_type: KIND_FIXED_KEY,
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
-    total_provider_cost_micros: 2_870_000,
-    event_count: 41,
+    ...totals(
+      ceilingAssessment("within_ceiling", {
+        ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
+        cost: completeTotal(2_870_000),
+      }),
+      completePriceTotal(0),
+      41,
+    ),
     created_at: "2026-08-30T11:20:00Z",
     completed_at: "2026-08-30T11:31:00Z",
   }),
@@ -309,9 +328,11 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_EXPIRED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "expired",
-    total_provider_cost_micros: 95_000,
-    total_billed_cost_micros: 190_000,
-    event_count: 2,
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(95_000) }),
+      completePriceTotal(190_000),
+      2,
+    ),
     created_at: "2026-08-30T02:00:00Z",
     completed_at: "2026-08-30T02:12:00Z",
   }),
@@ -320,7 +341,11 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_type: KIND_EVENT_PRICED_KEY,
     // Two pieces of contained work (175,000 / 350,000 over three events) plus
     // one event reported against the run itself.
-    ...totals(completeTotal(310_000), completePriceTotal(620_000), 4),
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(310_000) }),
+      completePriceTotal(620_000),
+      4,
+    ),
     created_at: "2026-08-29T09:12:00Z",
     completed_at: "2026-08-29T09:13:00Z",
   }),
@@ -328,9 +353,16 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_KILLED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "killed",
-    // A lower ceiling than the kind's, asked for at start, and crossed.
-    task_cogs_ceiling_micros: 800_000,
-    ...totals(incompleteTotal(900_000, 2), completePriceTotal(1_500_000), 9),
+    // A lower ceiling than the kind's, asked for at start, and reached on the
+    // known total alone — the two uncosted events could only add to it.
+    ...totals(
+      ceilingAssessment("ceiling_reached", {
+        ceiling_micros: 800_000,
+        cost: incompleteTotal(900_000, 2),
+      }),
+      completePriceTotal(1_500_000),
+      9,
+    ),
     created_at: "2026-08-28T20:00:00Z",
     completed_at: "2026-08-28T20:03:00Z",
   }),
@@ -338,9 +370,14 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: "a1c6d9e3-5b28-4e47-8f60-9d2b7a4c1e58",
     task_type: KIND_FIXED_NEGOTIATED_KEY,
     agreed_price_micros: TRANSCRIPT_LOW_PRICE_MICROS,
-    task_cogs_ceiling_micros: TRANSCRIPT_CEILING_MICROS,
-    total_provider_cost_micros: 1_950_000,
-    event_count: 22,
+    ...totals(
+      ceilingAssessment("within_ceiling", {
+        ceiling_micros: TRANSCRIPT_CEILING_MICROS,
+        cost: completeTotal(1_950_000),
+      }),
+      completePriceTotal(0),
+      22,
+    ),
     created_at: "2026-08-28T16:00:00Z",
     completed_at: "2026-08-28T16:09:00Z",
   }),
@@ -350,6 +387,11 @@ export const MOCK_RUNS: readonly RunRow[] = [
     status: "cancelled",
     outcome_reason: "customer_cancelled",
     reason_detail: "Closed before any work ran",
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(0) }),
+      completePriceTotal(0),
+      0,
+    ),
     created_at: "2026-08-27T15:00:00Z",
     completed_at: "2026-08-27T15:00:40Z",
   }),
@@ -359,18 +401,25 @@ export const MOCK_RUNS: readonly RunRow[] = [
     status: "failed",
     outcome_reason: "upstream_provider_error",
     agreed_price_micros: VIDEO_RENDER_PRICE_MICROS,
-    task_cogs_ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
-    total_provider_cost_micros: 410_000,
-    event_count: 3,
+    ...totals(
+      ceilingAssessment("within_ceiling", {
+        ceiling_micros: VIDEO_RENDER_CEILING_MICROS,
+        cost: completeTotal(410_000),
+      }),
+      completePriceTotal(0),
+      3,
+    ),
     created_at: "2026-08-27T08:30:00Z",
     completed_at: "2026-08-27T08:31:00Z",
   }),
   run({
     task_id: "2e9a7c4b-6d03-4f58-a1b7-8c5d0e3f6a12",
     task_type: KIND_EVENT_PRICED_KEY,
-    total_provider_cost_micros: 275_000,
-    total_billed_cost_micros: 550_000,
-    event_count: 3,
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(275_000) }),
+      completePriceTotal(550_000),
+      3,
+    ),
     created_at: "2026-08-26T13:45:00Z",
     completed_at: "2026-08-26T13:46:00Z",
   }),
@@ -405,9 +454,12 @@ const CONTAINED_UNDER_ACTIVE: readonly RunRow[] = Array.from(
       ...(status === "failed"
         ? { outcome_reason: "upstream_provider_error" as const, reason_detail: "Renderer answered 502" }
         : {}),
-      // Whole cents each, so no piece reads as a zero it is not.
+      // Whole cents each, so no piece reads as a zero it is not. No piece
+      // pins a ceiling of its own, so no ceiling applies to any of them.
       ...totals(
-        uncosted ? incompleteTotal(0, 1) : completeTotal(10_000 + ordinal * 1_000),
+        ceilingAssessment("not_applicable", {
+          cost: uncosted ? incompleteTotal(0, 1) : completeTotal(10_000 + ordinal * 1_000),
+        }),
         completePriceTotal(0),
         1,
       ),
@@ -423,9 +475,11 @@ const CONTAINED_UNDER_EVENT_PRICED: readonly RunRow[] = [
     task_id: "e5a1c7d3-4b29-4f86-9d05-7c3e1a8b2f60",
     parent_task_id: RUN_DELIVERED_EVENT_PRICED_ID,
     task_type: KIND_SHARED_WORD_KEY,
-    total_provider_cost_micros: 100_000,
-    total_billed_cost_micros: 200_000,
-    event_count: 2,
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(100_000) }),
+      completePriceTotal(200_000),
+      2,
+    ),
     created_at: "2026-08-29T09:12:10Z",
     completed_at: "2026-08-29T09:12:40Z",
   }),
@@ -433,9 +487,11 @@ const CONTAINED_UNDER_EVENT_PRICED: readonly RunRow[] = [
     task_id: "f2b8d4e6-1c57-4a93-8e20-5d9f3b7c1a84",
     parent_task_id: RUN_DELIVERED_EVENT_PRICED_ID,
     task_type: KIND_SHARED_WORD_KEY,
-    total_provider_cost_micros: 75_000,
-    total_billed_cost_micros: 150_000,
-    event_count: 1,
+    ...totals(
+      ceilingAssessment("not_applicable", { cost: completeTotal(75_000) }),
+      completePriceTotal(150_000),
+      1,
+    ),
     created_at: "2026-08-29T09:12:45Z",
     completed_at: "2026-08-29T09:12:58Z",
   }),
