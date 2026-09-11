@@ -98,12 +98,12 @@ def _reason_for(task, windows, now):
     had in fact run out of time.
     """
     from apps.platform.work.queries import EXPIRY_LADDER_FALLBACK
-    from apps.platform.work.reasons import SILENCE_WINDOW, STALE_MAX_AGE
+    from apps.platform.work.reasons import ABSOLUTE_DEADLINE, SILENCE_WINDOW
 
     pair = windows.get(_declaration_of(task),
                        windows[EXPIRY_LADDER_FALLBACK])
     past_deadline = task.created_at < _deadline_instant(pair.absolute, now)
-    return STALE_MAX_AGE if past_deadline else SILENCE_WINDOW
+    return ABSOLUTE_DEADLINE if past_deadline else SILENCE_WINDOW
 
 
 @shared_task(

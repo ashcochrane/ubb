@@ -1,6 +1,8 @@
 # ubb-platform/apps/platform/events/tests/test_schemas.py
 from dataclasses import asdict
 
+from apps.platform.work import reasons
+
 
 class TestUsageRecordedSchema:
     def test_create_with_required_fields(self):
@@ -135,10 +137,10 @@ class TestCustomerSuspendedSchema:
         event = CustomerSuspended(
             tenant_id="t1",
             customer_id="c1",
-            reason="min_balance_exceeded",
+            reason=reasons.HARD_FLOOR,
             balance_micros=-5100000,
         )
-        assert event.reason == "min_balance_exceeded"
+        assert event.reason == reasons.HARD_FLOOR
 
 
 class TestMarginEventContracts:

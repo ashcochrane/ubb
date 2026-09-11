@@ -344,11 +344,14 @@ entries:
     gate: G7
     site: backend::balance_floor_exceeded
     expected: reason_code
-    found: 2 files
+    found: 1 files
     owner_slice: slice_6
     reason: >-
       A refusal reason named for a wallet-policy floor. Slice 6 rebuilds
-      wallet policy and the reason takes the family's vocabulary.
+      wallet policy and the reason takes the family's vocabulary. 2 → 1 in
+      #457: the reason module's docstring stopped citing the 429-era codes
+      by name (the registry's `retired_aliases` list them); the one-rule
+      pin module still names it as the thing no route may answer.
 
   - id: g7-backend-budget
     gate: G7
@@ -385,11 +388,17 @@ entries:
     gate: G7
     site: backend::budget_exceeded
     expected: affordability_reason
-    found: 10 files
+    found: 4 files
     owner_slice: slice_6
     reason: >-
       An affordability verdict named after the retired family. Slice 6's
-      four families give the refusal its own noun.
+      four families give the refusal its own noun. 10 → 4 in #457: the
+      word was ALSO the postpaid suspension's reason, and that sense left
+      six files when the suspension fold started recording the stop that
+      opened the episode (`reasons.CUSTOMER_SPEND_POOL`, §9) and the
+      migration rewrote the stored column. What survives is the
+      affordability sense alone — the pool service's refusal and its three
+      test modules — which the affordability ticket (#463) renames.
 
   - id: g7-backend-budget_unavailable
     gate: G7
@@ -436,21 +445,30 @@ entries:
     gate: G7
     site: backend::cost_limit_exceeded
     expected: reason_code
-    found: 2 files
+    found: 1 files
     owner_slice: slice_6
     reason: >-
       A refusal reason spelling the retired field word. Slice 6's
-      ceiling family is what it becomes.
+      ceiling family is what it becomes. 2 → 1 in #457, on the same terms
+      as `balance_floor_exceeded` above: the reason module's docstring
+      stopped citing it, and the one-rule pin module still names it.
 
   - id: g7-backend-customer_wide_stop
     gate: G7
     site: backend::customer_wide_stop
     expected: reason_code
-    found: 18 files
+    found: 3 files
     owner_slice: slice_6
     reason: >-
       A refusal reason naming a mechanism rather than the customer whose
       spend was stopped. Slice 6 rebuilds the four families it spans.
+      18 → 3 in #457: the code side is paid — the word split into the pool's
+      and the hard floor's (`reasons.CUSTOMER_SPEND_POOL` / `HARD_FLOOR`,
+      by the owner's tenant billing mode), every producer, reader, test and
+      comment took the constants, and the stored rows were migrated
+      (`work/0026`). What survives is the three glossaries' entries, which
+      the slice's fold ticket rewrites (#469 — "the glossary is where the
+      backend stop-word G7 entries die").
 
   - id: g7-backend-dimensions
     gate: G7
@@ -661,11 +679,15 @@ entries:
     gate: G7
     site: backend::subtask_limit
     expected: reason_code
-    found: 8 files
+    found: 2 files
     owner_slice: slice_6
     reason: >-
       A refusal reason spelling the retired field word. Slice 6's
-      ceiling family replaces it.
+      ceiling family replaces it. 8 → 2 in #457: collapsed with its
+      whole-unit twin onto `reasons.TASK_COGS_CEILING` (altitude travels as
+      `stop_scope` alone), every producer, reader, test and comment took the
+      constant, and the stored rows were migrated (`work/0026`). What
+      survives is two glossaries' entries, the fold ticket's (#469).
 
   - id: g7-backend-tag_key
     gate: G7
@@ -690,20 +712,25 @@ entries:
     gate: G7
     site: backend::task_limit
     expected: reason_code
-    found: 14 files
+    found: 2 files
     owner_slice: slice_6
     reason: >-
       The same, at Task granularity. Slice 6's ceiling family replaces
-      it.
+      it. 14 → 2 in #457, on the same terms as its contained-work twin
+      above: the code side is paid and two glossaries' entries survive for
+      the fold ticket (#469).
 
   - id: g7-backend-task_limit_exceeded
     gate: G7
     site: backend::task_limit_exceeded
     expected: reason_code
-    found: 2 files
+    found: 1 files
     owner_slice: slice_6
     reason: >-
       The exceeded form of the same retired reason, replaced with it.
+      2 → 1 in #457: the reason module's docstring stopped listing the
+      429-era codes by name (the registry's `retired_aliases` list them),
+      so the word left a file it had only ever been cited in.
 
   - id: g7-backend-usage_line_item_group_by
     gate: G7
@@ -1185,15 +1212,6 @@ entries:
     reason: >-
       The same, for the case where the family's state could not be read.
 
-  - id: g7-openapi-customer_wide_stop
-    gate: G7
-    site: openapi::customer_wide_stop
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason naming a mechanism rather than the customer whose
-      spend was stopped. Slice 6 rebuilds the four families it spans.
 
   - id: g7-openapi-dimensions
     gate: G7
@@ -1266,15 +1284,6 @@ entries:
   # wholly from the payload classes, so it took the four successors by
   # regeneration rather than by an edit.
 
-  - id: g7-openapi-subtask_limit
-    gate: G7
-    site: openapi::subtask_limit
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason spelling the retired field word. Slice 6's
-      ceiling family replaces it.
 
   - id: g7-openapi-tag_key
     gate: G7
@@ -1291,15 +1300,6 @@ entries:
   # split), at the same 1 file and by the same regeneration as its
   # contained-work twin above.
 
-  - id: g7-openapi-task_limit
-    gate: G7
-    site: openapi::task_limit
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The same, at Task granularity. Slice 6's ceiling family replaces
-      it.
 
   - id: g7-openapi-usage_line_item_group_by
     gate: G7
@@ -1360,15 +1360,6 @@ entries:
   # is — the path already said it. Renaming the field would have kept a shape
   # no server produces.
 
-  - id: g7-sdk-customer_wide_stop
-    gate: G7
-    site: sdk::customer_wide_stop
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason naming a mechanism rather than the customer whose
-      spend was stopped. Slice 6 rebuilds the four families it spans.
 
   - id: g7-sdk-dimensions
     gate: G7
@@ -1491,15 +1482,6 @@ entries:
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
 
-  - id: g7-sdk-task_limit
-    gate: G7
-    site: sdk::task_limit
-    expected: reason_code
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      The same, at Task granularity. Slice 6's ceiling family replaces
-      it.
 
   - id: g7-sdk-usage_line_item_group_by
     gate: G7
@@ -1947,23 +1929,6 @@ entries:
       controls into four families, and slice 6 is where a refusal reason takes
       the vocabulary of the control that produced it.
 
-  - id: g3-backend-reason_code
-    gate: G3
-    site: ubb-platform/apps/platform/work/reasons.py::reason_code
-    expected: reason_code
-    found: 2 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      Partly paid: 2 of 5 values now come from the registry. This consumer
-      spells the rest inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. The stop reasons are
-      rewritten under #150's four families. Slice 6 owns them. One value was
-      already held by reference here (#200) and a second joined it in #412,
-      which built the expiry paths that produce the silence window's stop —
-      the rule being that a value is imported when a path here can produce it.
-      The remaining three are end-state names for mechanisms slice 6 builds,
-      so importing them now would rename paths that do not exist yet.
 
   # g3-backend-trigger_source WAS HERE AND IS PAID (#412, slice 5). All five
   # mechanisms are held by reference in that module, which is what the census
@@ -1986,31 +1951,39 @@ entries:
       families, and slice 6 is where a refusal reason takes the vocabulary of
       the control that produced it.
 
+  # g3-backend-reason_code WAS HERE AND IS PAID (#457, slice 6). All seven
+  # known values are held by reference in `work/reasons.py` after §7's
+  # collapse (two ceiling words to one, altitude in the scope alone), split
+  # (the customer-wide word into the pool's and the hard floor's) and two
+  # coinages (`absolute_deadline`, `parent_expired`); the stored rows moved
+  # onto them in one migration (`work/0026`), so no reader carries a legacy
+  # map. Its G4 twin and its SDK twin died in the same commit: three entries,
+  # one debt read from three sides.
+
   - id: g3-console-reason_code
     gate: G3
     site: apps/ui/src/lib/labels.ts::reason_code
     expected: reason_code
-    found: 0 of 5 values
+    found: 0 of 7 values
     owner_slice: slice_6
     reason: >-
       `labels.ts` is both identity and expression (#158 §16): it holds its own
       `as const` arrays and label maps rather than importing `vocabulary.ts`.
       #210 splits the two. The stop reasons are rewritten under #150's four
       families. Slice 6 owns them, and one value is already held by reference
-      here (#200).
+      here (#200). Relabelled 0 of 5 → 0 of 7 in #457, when the registry
+      gained its two coinages — a relabel, neither a payment nor a new debt;
+      the console ticket that renders the stop reasons through the registry's
+      map (#466) pays it.
 
-  - id: g3-sdk-reason_code
-    gate: G3
-    site: ubb-sdk/ubb/metering.py::reason_code
-    expected: reason_code
-    found: 0 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      The SDK names no value here at all — the field is a bare string, so an
-      integrator has no constant to branch on, which is the whole reason #207
-      generated `ubb/vocabulary.py`. The stop reasons are rewritten under
-      #150's four families. Slice 6 owns them, and one value is already held
-      by reference here (#200).
+  # g3-sdk-reason_code WAS HERE AND IS PAID (#457, slice 6). `ubb/metering.py`
+  # re-exports the seven from the generated vocabulary as `STOP_REASON_CODES`
+  # and the `REASON_CODE_*` constants beside it, and documents the stop
+  # signal's reason against them; the value stays a string on the wire and an
+  # unknown one still travels. The two test fixtures that spelled retired
+  # words (`sdk::task_limit`, `sdk::customer_wide_stop`) took the constants,
+  # and those two G7 entries left with this one.
+
 
   # --- G4: the published contract advertises only what the backend serves ---
   #
@@ -2038,8 +2011,9 @@ entries:
   # `found` is the extent the generated document records, checked in BOTH
   # directions against it — too low and the consumer regressed, too high and
   # the entry is an excuse the ratchet could never see, since it compares entry
-  # identities rather than their contents. Two entries are already part-paid
-  # from #200: `customer_billing_mode` at 2 of 3 and `reason_code` at 1 of 5.
+  # identities rather than their contents. `customer_billing_mode` has been
+  # part-paid at 2 of 3 since #200; `reason_code` was part-paid from #200 too
+  # (1 of 5, then 2 of 5 in #412) until #457 paid it in full.
   #
   # THE OWNER IS THE SLICE THAT REBUILDS THE CONCEPT'S SUBJECT, and it is the
   # same owner #227 gave the same concept — one concept, one removal slice,
@@ -2214,22 +2188,18 @@ entries:
   # string member of a nullable union because a receipt written before the
   # subject was typed answers null.
 
-  - id: g4-openapi-reason_code
-    gate: G4
-    site: openapi/v1.json::reason_code
-    expected: reason_code
-    found: 2 of 5 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 2 of 5 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control, where #150's four families rewrite
-      the stop reasons. Two values are now held by reference in the backend —
-      `parent_killed` (#200) and the silence window's stop, added by #412 when
-      the expiry paths that produce it were built. The remaining three are the
-      end-state names for mechanisms slice 6 builds, so importing them earlier
-      would name paths that do not exist. The metadata appears in that slice.
+
+  # g4-openapi-reason_code WAS HERE AND IS PAID (#457, slice 6). The backend
+  # consumer holds all seven values by reference, so the acknowledgement's
+  # `stop_reason` (no rename — #180 §11's exit-20 contract) and the four
+  # terminal stop events' `reason_code` publish the set as
+  # `x-ubb-known-values` metadata beside an untouched `type: string` — an
+  # OPEN concept's shape, never an enum, because a stop can originate outside
+  # UBB and the acknowledgement also carries one UBB-produced verdict the
+  # registry deliberately does not list. Its G3 twin died in the same commit.
+  # The three `g7-openapi-*` entries for the retired stop words left with it:
+  # the published verdicts list is now `reason_codes`, pinned to the
+  # generated vocabulary by `api/v1/tests/test_problem_contract.py`.
 
   - id: g4-openapi-tenant_posture
     gate: G4

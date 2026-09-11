@@ -103,6 +103,25 @@ disagree with the shipped bytes.
   have ended in. (The `start_task` that stood on `UBBClient` before #410
   wrapped a flag on the affordability call, which is gone; this one is
   written against the route that registers work.)
+- **A stop says which bound was reached, and the client names the bounds
+  (#457).** `stop_reason` — on the acknowledgement, on each batch item and
+  on `UBBStopRequested` — carries one of the registry's seven `reason_code`
+  values: the unit's own COGS ceiling at either altitude
+  (`task_cogs_ceiling`; `stop_scope` says which), the customer's spend pool
+  (`customer_spend_pool`), the wallet's hard floor (`hard_floor`), a silence
+  window (`silence_window`), the absolute deadline (`absolute_deadline`) or a
+  parent's end (`parent_killed`, `parent_expired`) — plus `task_not_active`,
+  a verdict on a late event rather than a bound. Reach the constants by
+  module (`from ubb import vocabulary`, then `vocabulary.REASON_CODE_*`);
+  `ubb.metering.STOP_REASON_CODES` is everything an acknowledgement's
+  `stop_reason` can say that UBB produces — the seven plus the verdict — so
+  an integrator branches on a constant and never on a string. The set is open:
+  the value stays a plain string on the wire, an unknown one still travels,
+  and the client validates nothing. The three words the ack used to send
+  for these stops are gone: the two altitude-specific ceiling words
+  collapsed onto the one ceiling word with the altitude in `stop_scope`, and
+  the one customer-wide word split into the pool's and the floor's — and the
+  server's stored rows were migrated, so no reader needs a legacy map.
 
 ### Retained (not shims)
 

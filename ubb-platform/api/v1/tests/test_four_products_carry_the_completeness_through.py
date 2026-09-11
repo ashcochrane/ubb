@@ -54,6 +54,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.platform.work.services import TaskService
+from apps.platform.work.services import STOP_CAUSE_KEY
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
@@ -217,7 +218,7 @@ class TestTheWorkUnitTotalIsAFloor:
         # back to zero and this test would assert against a unit that never
         # accumulated anything.
         unit.refresh_from_db()
-        unit.metadata = {"kill_reason": reasons.TASK_LIMIT}
+        unit.metadata = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING}
         unit.status = "killed"
         unit.save()
         _remint_kill(unit, self.tenant)
@@ -280,7 +281,7 @@ class TestTheWorkUnitTotalIsAFloor:
         unit = self._unit(task_cogs_ceiling_micros=1)
         self._accumulate(unit, status=COSTING_STATUS_UNRESOLVED)
         self._accumulate(unit, status=COSTING_STATUS_KNOWN)
-        TaskService.kill_and_announce(unit.id, reasons.TASK_LIMIT,
+        TaskService.kill_and_announce(unit.id, reasons.TASK_COGS_CEILING,
                                       tenant_id=self.tenant.id,
                                       customer_id=self.customer.id)
         # Addressed through the schema's own constant rather than by spelling
@@ -591,9 +592,9 @@ class TestThePastLimitReportAddsUpWhatItHas:
                 balance_snapshot_micros=0, task_cogs_ceiling_micros=1)
         self.unit.status = "killed"
         self.unit.completed_at = timezone.now()
-        self.unit.metadata = {"kill_reason": reasons.TASK_LIMIT}
+        self.unit.metadata = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING}
         self.unit.save()
-        ctx = [{"limit": reasons.TASK_LIMIT, "stop_scope": "task",
+        ctx = [{"limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",
                 "task_id": str(self.unit.id),
                 "tripped_at": self.unit.completed_at.isoformat()}]
         _posting(self.tenant, self.customer, "k1",
@@ -613,7 +614,7 @@ class TestThePastLimitReportAddsUpWhatItHas:
         assert episode[UNRESOLVED_EVENT_COUNT_KEY] == 1
 
     def test_the_per_limit_totals_carry_the_same_count(self):
-        totals = self._report()["totals_per_limit"][reasons.TASK_LIMIT]
+        totals = self._report()["totals_per_limit"][reasons.TASK_COGS_CEILING]
         assert totals["provider_cost_micros"] == KNOWN_COST_MICROS
         assert totals[UNRESOLVED_EVENT_COUNT_KEY] == 1
 

@@ -1117,6 +1117,8 @@ export const REASON_CODE_KNOWN_VALUES = [
   "parent_killed",
   "silence_window",
   "hard_floor",
+  "absolute_deadline",
+  "parent_expired",
 ] as const;
 
 export type ReasonCodeKnown = (typeof REASON_CODE_KNOWN_VALUES)[number];
@@ -1132,6 +1134,8 @@ export const REASON_CODE_LABEL_KEYS = {
   "parent_killed": "reason_code.parent_killed",
   "silence_window": "reason_code.silence_window",
   "hard_floor": "reason_code.hard_floor",
+  "absolute_deadline": "reason_code.absolute_deadline",
+  "parent_expired": "reason_code.parent_expired",
 } as const satisfies Record<ReasonCodeKnown, string>;
 
 

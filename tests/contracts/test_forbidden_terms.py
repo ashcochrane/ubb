@@ -330,7 +330,15 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # old name is not a sweep term; the family word it carried IS, and
         # the backend area's count fell 36 -> 7 while two entries left the
         # ledger outright: 23 terms -> 22 and 77 sites -> 75.
-        "historical-migrations": (UNTIL_SLICE_8, 253, 19),
+        # 253 -> 254 in #457: ONE data migration, the work app's RunPython
+        # that moves the stored stop cause onto the registry's words -- key
+        # and values, on unit rows, outbox payloads and the suspension
+        # column. It spells every retired stop word it rewrites, which is
+        # what a historical migration is excluded for; the three backend
+        # stop-word entries fell to the glossaries alone (14/8/18 -> 2/2/3),
+        # five openapi and sdk entries left the ledger outright, and the
+        # sites fell 75 -> 70 with the terms unmoved at 22.
+        "historical-migrations": (UNTIL_SLICE_8, 254, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

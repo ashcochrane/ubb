@@ -73,6 +73,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.work import reasons
 
 
 def _tenant(enf="enforcing", mode="prepaid"):
@@ -251,8 +252,8 @@ class TestPin7TwoPassRepair:
         # that raised it; the durable lane records the wedge on its next pass
         # (patrol job 1 — the missed-transition drive), and from here on the
         # owner is stopped and suspended off a balance that is a fiction.
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        LiveCounter.ensure_stop_flag(c.id, "customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        LiveCounter.ensure_stop_flag(c.id, reasons.customer_stop_reason(t.billing_mode))
         c.refresh_from_db()
         assert c.status == "suspended"
 
@@ -282,7 +283,7 @@ class TestPin7TwoPassRepair:
         t = _tenant()
         c = _customer(t, balance_micros=-2_000_000)
         _set_live(c.id, -3_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
 
         repair.repair_live_balances(t)
         repair.repair_live_balances(t)

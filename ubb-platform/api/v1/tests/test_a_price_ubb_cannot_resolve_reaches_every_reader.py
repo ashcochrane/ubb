@@ -100,7 +100,11 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
-        self.stop = [{"limit": reasons.CUSTOMER_WIDE_STOP,
+        # The customer-wide stop this tenant's lane names (slice 6 §7): the
+        # report keys the episode on SCOPE and labels it by the tenant's mode.
+        self.customer_stop = reasons.customer_stop_reason(
+            self.tenant.billing_mode)
+        self.stop = [{"limit": self.customer_stop,
                       "stop_scope": "customer", "episode_seq": 1,
                       "tripped_at": timezone.now().isoformat(),
                       "arrived_after": True}]
@@ -132,12 +136,12 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
         body = self._report().json()
 
         episode, = [e for e in body["episodes"]
-                    if e["limit"] == reasons.CUSTOMER_WIDE_STOP]
+                    if e["limit"] == self.customer_stop]
         assert episode["total_billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert episode[UNPRICED_EVENT_COUNT_KEY] == 1
         assert episode["event_count"] == 2
 
-        totals = body["totals_per_limit"][reasons.CUSTOMER_WIDE_STOP]
+        totals = body["totals_per_limit"][self.customer_stop]
         assert totals["billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert totals[UNPRICED_EVENT_COUNT_KEY] == 1
 
@@ -157,7 +161,7 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
                  stop_context=self.stop)
         body = self._report().json()
         episode, = [e for e in body["episodes"]
-                    if e["limit"] == reasons.CUSTOMER_WIDE_STOP]
+                    if e["limit"] == self.customer_stop]
         assert episode["total_billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert episode[UNPRICED_EVENT_COUNT_KEY] == 0
         assert episode["event_count"] == 2

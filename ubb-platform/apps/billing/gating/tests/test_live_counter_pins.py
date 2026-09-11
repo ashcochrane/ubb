@@ -23,6 +23,7 @@ from apps.billing.gating.services.live_counter import (Door, LiveCounter,
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from apps.platform.work import reasons
 
 pytestmark = pytest.mark.django_db
 
@@ -76,8 +77,8 @@ def test_postpaid_livespend_key_format():
 
 def test_stop_flag_key_format(tenant, owner):
     LiveCounter.debit(owner.id, tenant, 21_000_000)  # crosses the (0) floor
-    assert _raw().get(f"ubb:stop:{owner.id}") == b"customer_wide_stop"
-    assert Door.stop_reason(owner.id) == "customer_wide_stop"
+    assert _raw().get(f"ubb:stop:{owner.id}") == reasons.HARD_FLOOR.encode()
+    assert Door.stop_reason(owner.id) == reasons.HARD_FLOOR
 
 
 def test_stop_channel_format(owner):

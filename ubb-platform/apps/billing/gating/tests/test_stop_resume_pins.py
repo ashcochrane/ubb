@@ -26,6 +26,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
+from apps.platform.work import reasons
 
 FLOOR = 5_000_000  # configured min balance: the stop line is -5_000_000
 
@@ -88,12 +89,12 @@ class TestPin4DurableLane:
         assert _fired().count() == 1
         payload = _fired().get().payload
         assert payload["episode_seq"] == 1
-        assert payload["reason"] == "customer_wide_stop"
+        assert payload["reason"] == reasons.HARD_FLOOR
         row = StopSignalState.objects.get(owner=c, family="floor_stop")
         assert row.state == "stopped" and row.episode_seq == 1
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
 
     def test_durable_lane_watches_the_configured_floor_not_zero(self, monkeypatch):
         _break_redis(monkeypatch)
@@ -260,5 +261,5 @@ class TestPin11EarlyWarningUnaffected:
         assert not StopSignalState.objects.filter(owner=c).exists()
         c.refresh_from_db()
         assert c.status == "suspended"            # Tier-1 baseline suspension
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
         assert _suspended_events().count() == 1

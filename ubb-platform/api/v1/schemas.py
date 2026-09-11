@@ -524,6 +524,22 @@ RateStructure = Annotated[
 CeilingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "ceiling_status"})]
 
+#: WHY A STOP FIRED — the `reason_code` concept, on the acknowledgement's
+#: `stop_reason` (slice 6 §7/§13, #457). The field keeps its name and position:
+#: #180 §11 makes `stop` / `stop_reason` / `stop_scope` the shell target's
+#: exit-20 contract, so the marker arrives WITHOUT a rename, exactly as the
+#: terminal payloads' `reason_code` gained it (`events/schemas.py::ReasonCode`,
+#: spelled again there because a product may not import this layer).
+#:
+#: ⚠ OPEN, NOT CLOSED — the marker renders `x-ubb-known-values` documentation
+#: metadata beside an untouched `type: string`, never an `enum`: a stop can
+#: originate outside UBB, and the acknowledgement also carries one UBB-produced
+#: verdict the registry deliberately does not list (`task_not_active`, argued
+#: in `work/reasons.py`). Nullable here — no stop, no reason — so the marker
+#: sits on the string member, `CeilingStatus`'s argument above.
+ReasonCode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "reason_code"})]
+
 
 class RecordUsageResponse(Schema):
     event_id: str
@@ -580,13 +596,15 @@ class RecordUsageResponse(Schema):
     # simultaneous customer-wide stop, and among unit verdicts the WIDEST
     # tripped scope wins (a parent trip beats a subtask trip — stop the whole
     # tree); the losers surface on the next ack and via the pushed events.
-    # stop_reason ∈ task_limit | subtask_limit |
-    # task_not_active | customer_wide_stop; stop_scope ∈ task | subtask |
-    # customer. On a subtask's ack, scope `task` names the PARENT
+    # stop_reason says WHICH BOUND was reached, in the registry's words (the
+    # known values ride the contract as metadata) plus the one verdict that is
+    # not a bound, `task_not_active`; stop_scope ∈ task | subtask | customer,
+    # and it is the scope alone that says which altitude a ceiling crossing
+    # was at. On a subtask's ack, scope `task` names the PARENT
     # (parent_task_id above) — the whole tree is stopped, not just the named
     # unit. `suspended` stays the durable owner status.
     stop: bool = False
-    stop_reason: Optional[str] = None
+    stop_reason: Optional[ReasonCode] = None
     stop_scope: Optional[str] = None
     # WHAT THE NAMED UNIT'S CEILING ASSESSMENT CONCLUDED, and the utilisation
     # beside it (#452, slice 6 §3). The stop above is the verdict; this is

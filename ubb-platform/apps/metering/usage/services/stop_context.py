@@ -18,9 +18,12 @@ The rules:
   trip). Non-limit terminal states (completed, failed, reaped) tag
   ``task_not_active``.
 - Customer scope reads the durable ledger, never the Redis flag: an open
-  ``floor_stop`` episode marks ``customer_wide_stop`` carrying the episode id;
-  the entry is the tipping one (``arrived_after=false``) only when THIS
-  event's live debit won the stop transition (``opened_episode_seq``).
+  ``floor_stop`` episode marks the customer-wide stop that opened it — the
+  pool's word or the hard floor's, told apart the way the producers are
+  (``reasons.customer_stop_reason``, by the owner's tenant billing mode) —
+  carrying the episode id; the entry is the tipping one
+  (``arrived_after=false``) only when THIS event's live debit won the stop
+  transition (``opened_episode_seq``).
   An owner suspended with NO open episode (admin/fraud) marks ``suspended``
   — with a null ``tripped_at``: suspension carries no durable timestamp,
   and inventing one would be a lie. The soft-floor family never marks (§F —
@@ -34,10 +37,14 @@ Timestamps are stored as ISO-8601 strings, ids as strings — the array must
 be JSON-storable and byte-stable on replay reads.
 """
 from apps.platform.work import reasons
+from apps.platform.work.services import STOP_CAUSE_KEY
 from core.vocabulary import TASK_STATUS_KILLED
 
-# Kill reasons that name a limit episode a late event should point back at.
-_EPISODE_KILL_REASONS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
+# Kill reasons that name a limit episode a late event should point back at —
+# the reason module's own crossing set, one word at either altitude since the
+# collapse (slice 6 §7): the scope is read off the row's altitude, never off
+# which constant fired.
+_EPISODE_KILL_REASONS = reasons.CROSSING_REASONS
 
 
 def _iso(dt):
@@ -57,19 +64,21 @@ def _entry(*, limit, stop_scope, tripped_at, episode_seq, task_id,
 
 def _unit_contexts(task, verdicts, now):
     is_subtask = task.parent_id is not None
-    unit_scope = "subtask" if is_subtask else "task"
+    unit_scope = reasons.unit_scope(is_subtask=is_subtask)
     top_id = task.parent_id if is_subtask else task.id
     sub_id = task.id if is_subtask else None
     out = []
 
     # Fresh crossings — this event is the tipping event for each limit it
-    # pushed over while the governing unit was still active.
+    # pushed over while the governing unit was still active. Both carry the
+    # one ceiling word; the flag that fired says which altitude's ceiling it
+    # was, and that is the scope.
     tip = dict(tripped_at=_iso(now), episode_seq=None, arrived_after=False)
     if verdicts.get("crossed_task_limit"):
-        out.append(_entry(limit=reasons.TASK_LIMIT, stop_scope="task",
+        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope="task",
                           task_id=top_id, subtask_id=sub_id, **tip))
     if verdicts.get("crossed_subtask_limit"):
-        out.append(_entry(limit=reasons.SUBTASK_LIMIT, stop_scope="subtask",
+        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope="subtask",
                           task_id=top_id, subtask_id=sub_id, **tip))
 
     # Late arrival on a non-active unit: point back at the episode that
@@ -80,16 +89,16 @@ def _unit_contexts(task, verdicts, now):
         # event can point back at; a sweeper's `expired` carries a reason in
         # the same metadata key and must NOT be read as one, which is exactly
         # what this gate keeps out.
-        kill_reason = (task.metadata or {}).get("kill_reason") \
+        stored_cause = (task.metadata or {}).get(STOP_CAUSE_KEY) \
             if task.status == TASK_STATUS_KILLED else None
-        if kill_reason == reasons.PARENT_KILLED:
+        if stored_cause == reasons.PARENT_KILLED:
             # The cascade was the PARENT's trip — chase one level up. A
             # parent reaped/completed for a non-limit reason falls through
             # to the generic task_not_active entry.
             from apps.platform.work.models import Task
             parent = Task.objects.filter(id=task.parent_id).only(
                 "id", "status", "metadata", "completed_at").first()
-            parent_reason = (parent.metadata or {}).get("kill_reason") \
+            parent_reason = (parent.metadata or {}).get(STOP_CAUSE_KEY) \
                 if parent is not None \
                 and parent.status == TASK_STATUS_KILLED else None
             if parent_reason in _EPISODE_KILL_REASONS:
@@ -99,9 +108,10 @@ def _unit_contexts(task, verdicts, now):
                     task_id=parent.id, subtask_id=task.id,
                     arrived_after=True))
                 return out
-        if kill_reason in _EPISODE_KILL_REASONS:
-            scope = reasons.kill_scope(kill_reason, is_subtask=is_subtask)
-            out.append(_entry(limit=kill_reason, stop_scope=scope,
+        if stored_cause in _EPISODE_KILL_REASONS:
+            # The row's own altitude is its scope: a parent's crossing is
+            # recorded on the parent, a contained unit's own on itself.
+            out.append(_entry(limit=stored_cause, stop_scope=unit_scope,
                               tripped_at=_iso(task.completed_at),
                               episode_seq=None, task_id=top_id,
                               subtask_id=sub_id, arrived_after=True))
@@ -121,8 +131,12 @@ def _customer_contexts(owner, tenant, opened_episode_seq, task_id, subtask_id):
     from apps.billing.queries import get_stop_signal_state
     state = get_stop_signal_state(owner.id, tenant.id)
     if state is not None and state["state"] == "stopped":
+        # WHICH customer-wide stop opened the episode — the pool's or the
+        # floor's — the way the producers know it (slice 6 §7): by the
+        # owner's tenant billing mode, until the ledger carries its own line.
         return [_entry(
-            limit=reasons.CUSTOMER_WIDE_STOP, stop_scope="customer",
+            limit=reasons.customer_stop_reason(tenant.billing_mode),
+            stop_scope="customer",
             tripped_at=_iso(state["transitioned_at"]),
             episode_seq=state["episode_seq"],
             task_id=task_id, subtask_id=subtask_id,

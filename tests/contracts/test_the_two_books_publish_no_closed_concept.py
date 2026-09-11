@@ -83,6 +83,13 @@ THE_MECHANISM_MARKER = "trigger_source"
 THE_POOL_ENFORCE_MODE_MARKER = "spend_pool_enforce_mode"
 THE_POOL_ENFORCE_MODE_FIELD = "enforce_mode"
 
+#: And the third arrival (#457): WHY a stop fired, beside the mechanism that
+#: applied it, on the same four stop events — the `reason_code` concept, open,
+#: so its marker is documentation metadata and never an enum. Kept apart for
+#: the reason the two above are: each set names WHEN its markers arrived, and
+#: the events are derived off the payload field they declare.
+THE_CAUSE_MARKER = "reason_code"
+
 
 @pytest.fixture(scope="module")
 def spec():
@@ -172,8 +179,16 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     assert len(arrived_with_the_pool) == 1, (
         "exactly one payload class declares the pool's enforce mode (#456); "
         "a second one is a deliberate act that owes this module a sentence")
+    arrived_with_the_cause = {
+        (event, THE_CAUSE_MARKER) for event
+        in events_whose_payload_declares(THE_CAUSE_MARKER)}
+    assert {event for event, _ in arrived_with_the_cause} == {
+        event for event, _ in arrived_since}, (
+        "the cause and the mechanism ride the same stop events (#457); a "
+        "payload declaring one without the other owes this module a sentence")
     assert seen == (THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
-                    | arrived_since | arrived_with_the_pool)
+                    | arrived_since | arrived_with_the_pool
+                    | arrived_with_the_cause)
 
 
 def test_no_webhook_marker_names_a_book(spec):

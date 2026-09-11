@@ -25,6 +25,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.work import reasons
 
 
 def _tenant(mode="prepaid", enf="off"):
@@ -122,7 +123,7 @@ class TestOffIsByteForBytePreEnforcement:
         assert w.balance_micros == -3_000_000                     # billed
         c.refresh_from_db()
         assert c.status == "suspended"                            # baseline
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
         assert OutboxEvent.objects.filter(
             event_type="wallet.balance_overage").count() == 1    # early warning
         assert OutboxEvent.objects.filter(

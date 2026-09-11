@@ -167,6 +167,13 @@ reason_code:
     - parent_killed
     - silence_window
     - hard_floor
+    # Slice 6 §7's two coinages (#457). The unit that passed its OWN absolute
+    # deadline, and contained work ended by its PARENT's expiry — so the three
+    # cascades each name themselves (`parent_closed` is the caller's outcome
+    # reason, a different concept; `parent_killed` and this are UBB's), and
+    # the two rows of one expired tree no longer disagree.
+    - absolute_deadline
+    - parent_expired
   allow_unknown: true
   label_key_prefix: reason_code
   retired_aliases:

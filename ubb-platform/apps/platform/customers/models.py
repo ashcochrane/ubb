@@ -33,9 +33,12 @@ class Customer(SoftDeleteMixin, BaseModel):
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
     # Tier-2 P6b (D15): why the customer was suspended. Set on every suspend;
-    # only a MONETARY reason (min_balance_exceeded / budget_exceeded) is
-    # auto-cleared on recovery, so a top-up never silently un-suspends an
-    # admin/fraud suspension. "" when active / suspended for an unrecorded reason.
+    # only a MONETARY reason is auto-cleared on recovery, so a top-up never
+    # silently un-suspends an admin/fraud suspension. A monetary reason is the
+    # stop that opened the episode, in that stop's own word (slice 6 §9,
+    # `reasons.HARD_FLOOR` / `reasons.CUSTOMER_SPEND_POOL`; the pair is
+    # `LiveCounter._MONEY_SUSPEND_REASONS`). "" when active / suspended for an
+    # unrecorded reason.
     suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:

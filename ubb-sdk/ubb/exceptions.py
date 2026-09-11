@@ -106,10 +106,12 @@ class UBBStopRequested(BaseException):
     """UBB recorded the event and is asking you to stop spending for a scope.
 
     Raised by ``record_usage`` BY DEFAULT when the acknowledgement carries a
-    stop verdict (``stop=True``): the work crossed its supplier-cost ceiling
-    or floor snapshot (scope "task"), the event landed on work that is no
-    longer active, or the customer crossed a floor or ceiling of their own
-    (scope "customer"). THE EVENT WAS RECORDED AND CHARGED. The write
+    stop verdict (``stop=True``): the work reached its own COGS ceiling
+    (scope "task" or "subtask" — the scope says which altitude), the event
+    landed on work that is no longer active, or the customer's spend pool or
+    wallet floor was reached (scope "customer"). ``stop_reason`` says which,
+    in the words of ``ubb.metering.STOP_REASON_CODES`` — branch on those
+    constants, never on a string. THE EVENT WAS RECORDED AND CHARGED. The write
     committed, the acknowledgement was built, and only then was this raised,
     carrying it — so it is a control signal about the NEXT call and never a
     failed submission. Do not resend the event; stop sending work for

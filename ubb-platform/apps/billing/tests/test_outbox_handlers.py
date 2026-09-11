@@ -6,6 +6,7 @@ from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.work import reasons
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod
 
@@ -535,7 +536,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
             event_type="customer.suspended"
         ).first()
         assert suspended_event is not None
-        assert suspended_event.payload["reason"] == "min_balance_exceeded"
+        assert suspended_event.payload["reason"] == reasons.HARD_FLOOR
         assert suspended_event.payload["balance_micros"] == -2_000_000
 
     @pytest.mark.django_db

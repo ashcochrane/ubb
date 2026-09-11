@@ -328,8 +328,9 @@ class Posting(BaseModel):
     # Null = the event landed past nothing. Non-null = a JSON ARRAY of
     # contexts (an event crossing several limits simultaneously carries one
     # entry per limit), each:
-    #   {"limit": task_limit|subtask_limit|customer_wide_stop|suspended|
-    #             task_not_active,
+    #   {"limit": a `reasons.py` word — the unit's ceiling at either
+    #             altitude, the pool's or the hard floor's customer-wide
+    #             stop, `suspended`, or the not-active verdict,
     #    "stop_scope": task|subtask|customer,
     #    "tripped_at": ISO8601|null, "episode_seq": int|null (customer only),
     #    "task_id": uuid|null, "subtask_id": uuid|null,

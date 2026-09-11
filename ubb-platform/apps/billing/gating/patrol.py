@@ -220,7 +220,7 @@ def sweep_over_limit_tasks(tenant):
     the kill announcement, so a limit that has not fired is visibly not the same
     as one that has been shown to be safe."""
     from apps.platform.work.models import Task
-    from apps.platform.work.reasons import SUBTASK_LIMIT, TASK_LIMIT
+    from apps.platform.work.reasons import TASK_COGS_CEILING
     from apps.platform.work.services import TaskService
 
     swept = 0
@@ -232,7 +232,10 @@ def sweep_over_limit_tasks(tenant):
         ceiling_reached_q("total_provider_cost_micros",
                           "task_cogs_ceiling_micros"))
     for task in over.iterator():
-        reason = SUBTASK_LIMIT if task.parent_id is not None else TASK_LIMIT
+        # ONE WORD AT EITHER ALTITUDE (slice 6 §7, #457): the unit's own
+        # ceiling was reached, and which altitude it sits at travels as the
+        # stop's scope, never as a second reason.
+        #
         # kill_and_announce never raises; a lost race (already terminal)
         # returns False and is simply not counted.
         #
@@ -242,7 +245,7 @@ def sweep_over_limit_tasks(tenant):
         # alerting on ceiling crossings can tell a live trip from a repair
         # only because the two lanes say which they are.
         if TaskService.kill_and_announce(
-                task.id, reason, tenant_id=tenant.id,
+                task.id, TASK_COGS_CEILING, tenant_id=tenant.id,
                 customer_id=task.customer_id,
                 trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL):
             swept += 1

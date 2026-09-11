@@ -307,7 +307,15 @@ exclusions:
     # old class name is not a sweep term; the family word it carried is, and
     # the backend area fell 36 → 7 files while two entries left the ledger
     # outright — 23 terms → 22 and 77 sites → 75.
-    files: 253
+    # 253 → 254 in #457: ONE data migration, the work app's `RunPython` that
+    # moves the stored stop cause onto the registry's words — key and values,
+    # on unit rows, outbox payloads and the customer's suspension column. It
+    # spells every retired stop word it rewrites, which is what a historical
+    # migration is excluded for; the three backend stop-word entries fell to
+    # the glossaries alone (14/8/18 → 2/2/3 files), five entries on the
+    # openapi and sdk surfaces left the ledger outright, and the sites fell
+    # 75 → 70 with the terms unmoved at 22.
+    files: 254
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

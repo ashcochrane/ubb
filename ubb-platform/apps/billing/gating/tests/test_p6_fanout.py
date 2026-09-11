@@ -29,6 +29,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.services import TaskService
+from apps.platform.work import reasons
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
@@ -88,13 +89,13 @@ class TestTaskLimitFanout:
         assert resp.status_code == 200
         body = resp.json()
         assert body["stop"] is True
-        assert body["stop_reason"] == "task_limit"
+        assert body["stop_reason"] == reasons.TASK_COGS_CEILING
         assert body["stop_scope"] == "task"
         task.refresh_from_db()
         assert task.status == "killed"
         assert _stop_events(task.id).count() == 1
         payload = _stop_events(task.id).get().payload
-        assert payload["reason_code"] == "task_limit"
+        assert payload["reason_code"] == reasons.TASK_COGS_CEILING
         assert "scope" not in payload
 
         # A late event on the killed task still lands (200) but never

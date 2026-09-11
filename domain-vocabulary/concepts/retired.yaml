@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,784 of 2,204 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,786 of 2,207 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -1991,6 +1991,18 @@ measurement_key:
     # customer's period charges", "the known figure", "the durable pair" and
     # "a lower bound"; the count was taken after the last core regeneration
     # and re-taken after the review pass.
+    #
+    # THE STOP CAUSE'S MIGRATION MOVED BOTH DENOMINATORS AND THE NUMERATOR
+    # NOT AT ALL (1,784 -> 1,786 swept, 2,204 -> 2,207 tracked, `units`
+    # 44/122 unchanged). Three tracked files arrived (#457): one migration,
+    # excluded (420 -> 421) — the work app's RunPython that moves the stored
+    # stop cause onto the registry's words — and two swept test modules, the
+    # migration's own and the SDK's for the seven stop-reason constants. An
+    # open concept's marker mints no generated SDK module, which is why the
+    # spec gaining five marked nodes moved nothing here. The prose that held
+    # was "a whole unit of work", "contained work", "the unit's own ceiling"
+    # and "at either altitude"; the count was taken after the last core
+    # regeneration.
 
     - term: units
       retired_as: >-

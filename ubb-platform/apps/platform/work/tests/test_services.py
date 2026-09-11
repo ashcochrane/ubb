@@ -9,8 +9,9 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
-from apps.platform.work.reasons import PARENT_KILLED, SUBTASK_LIMIT, TASK_LIMIT
-from apps.platform.work.services import CloseDeclaration, TaskService
+from apps.platform.work.reasons import PARENT_KILLED, TASK_COGS_CEILING
+from apps.platform.work.services import (
+    STOP_CAUSE_KEY, CloseDeclaration, TaskService)
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED)
@@ -203,10 +204,10 @@ class TaskServiceKillTest(TestCase):
         task = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0
         )
-        killed, _ = TaskService.kill_task(task.id, reason=TASK_LIMIT)
+        killed, _ = TaskService.kill_task(task.id, reason=TASK_COGS_CEILING)
         self.assertEqual(killed.status, TASK_STATUS_KILLED)
         self.assertIsNotNone(killed.completed_at)
-        self.assertEqual(killed.metadata["kill_reason"], TASK_LIMIT)
+        self.assertEqual(killed.metadata[STOP_CAUSE_KEY], TASK_COGS_CEILING)
 
     def test_kill_task_idempotent(self):
         task = TaskService.create_task(
@@ -315,17 +316,17 @@ class KillAndAnnounceTest(TestCase):
             task.id, billed_cost_micros=15_000_000, provider_cost_micros=11_000_000)
 
         transitioned = TaskService.kill_and_announce(
-            task.id, TASK_LIMIT,
+            task.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_KILLED)
-        self.assertEqual(task.metadata["kill_reason"], TASK_LIMIT)
+        self.assertEqual(task.metadata[STOP_CAUSE_KEY], TASK_COGS_CEILING)
 
         self.assertEqual(self._events().count(), 1)
         payload = self._events().get().payload
         self.assertEqual(payload["task_id"], str(task.id))
-        self.assertEqual(payload["reason_code"], TASK_LIMIT)
+        self.assertEqual(payload["reason_code"], TASK_COGS_CEILING)
         self.assertEqual(payload["tenant_id"], str(self.tenant.id))
         self.assertEqual(payload["customer_id"], str(self.customer.id))
         self.assertEqual(payload["billing_owner_id"], str(self.customer.id))
@@ -336,14 +337,14 @@ class KillAndAnnounceTest(TestCase):
 
         # Second call: the transition already happened — no second event.
         transitioned = TaskService.kill_and_announce(
-            task.id, TASK_LIMIT,
+            task.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertFalse(transitioned)
         self.assertEqual(self._events().count(), 1)
 
     def test_never_raises_on_bogus_task_id(self):
         transitioned = TaskService.kill_and_announce(
-            uuid.uuid4(), TASK_LIMIT,
+            uuid.uuid4(), TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertFalse(transitioned)
         self.assertEqual(self._events().count(), 0)
@@ -357,7 +358,7 @@ class KillAndAnnounceTest(TestCase):
             billing_owner_id=self.customer.id,
         )
         TaskService.kill_and_announce(
-            task.id, TASK_LIMIT,
+            task.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         task.refresh_from_db()
         event = self._events().get()
@@ -365,7 +366,7 @@ class KillAndAnnounceTest(TestCase):
         self.assertIs(event.payload["re_announcement"], False)
         # The losing replay never touches the stamp.
         TaskService.kill_and_announce(
-            task.id, TASK_LIMIT,
+            task.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         task.refresh_from_db()
         self.assertEqual(task.announce_outbox_id, event.id)
@@ -381,7 +382,7 @@ class KillAndAnnounceTest(TestCase):
             billing_owner_id=self.customer.id, parent=parent,
         )
         TaskService.kill_and_announce(
-            sub.id, SUBTASK_LIMIT,
+            sub.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         sub.refresh_from_db()
         parent.refresh_from_db()
@@ -415,7 +416,7 @@ class KillAndAnnounceTest(TestCase):
         )
         with patch.object(OutboxEvent.objects, "create", _create):
             transitioned = TaskService.kill_and_announce(
-                task.id, TASK_LIMIT,
+                task.id, TASK_COGS_CEILING,
                 tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertFalse(transitioned)
         task.refresh_from_db()
@@ -427,7 +428,8 @@ class KillAndAnnounceTest(TestCase):
         """A cascaded child's flip is a silent state change (the parent's
         event is the one signal) — it must never look unannounced to the
         patrol, which is what a stamp of its own would fix; instead the null
-        stamp + kill_reason=parent_killed marks it as nothing-to-announce."""
+        stamp + a stored cause of `parent_killed` marks it as
+        nothing-to-announce."""
         parent = TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=0,
             task_cogs_ceiling_micros=10_000_000,
@@ -438,11 +440,11 @@ class KillAndAnnounceTest(TestCase):
             billing_owner_id=self.customer.id, parent=parent,
         )
         TaskService.kill_and_announce(
-            parent.id, TASK_LIMIT,
+            parent.id, TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         parent.refresh_from_db()
         child.refresh_from_db()
         self.assertEqual(parent.announce_outbox_id, self._events().get().id)
         self.assertEqual(child.status, TASK_STATUS_KILLED)
         self.assertIsNone(child.announce_outbox_id)
-        self.assertEqual(child.metadata["kill_reason"], PARENT_KILLED)
+        self.assertEqual(child.metadata[STOP_CAUSE_KEY], PARENT_KILLED)

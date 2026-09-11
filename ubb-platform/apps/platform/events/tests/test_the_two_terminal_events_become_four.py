@@ -46,6 +46,19 @@ from apps.platform.work import reasons
 MIGRATION = importlib.import_module(
     "apps.platform.events.migrations."
     "0008_the_two_terminal_task_events_become_four")
+#: The migration that later rewrote the stored spellings this one routed by
+#: (#457, slice 6 §8). `0008` is frozen history: its routing set names the
+#: spellings as they stood when it ran, and the cases below hold that set to
+#: `0026`'s map rather than to constants two of them no longer are.
+THE_STOP_CAUSE_MIGRATION = importlib.import_module(
+    "apps.platform.work.migrations.0026_a_stop_says_which_bound_was_reached")
+
+
+def as_it_was_spelled(current):
+    """The spelling a pre-`0026` row carried for one of today's words — the
+    word itself where `0026` rewrote nothing to it."""
+    return {new: old for old, new in THE_STOP_CAUSE_MIGRATION.BY_VALUE.items()
+            }.get(current, current)
 
 #: The whole-unit pair and the contained-work pair, read off the map. Sorted so
 #: `killed` comes before `expired` whichever order the map declares them in —
@@ -93,25 +106,26 @@ def test_every_successor_is_a_published_event():
     assert not missing, f"{missing} are not events UBB publishes"
 
 
-def test_the_reaper_reasons_are_the_ones_the_expiry_paths_produce():
+def test_the_reaper_reasons_are_the_ones_the_expiry_paths_produced():
     """The migration cannot import `reasons` — a migration must keep working
     when the code has moved on — so this holds its second encoding to the
-    first.
+    first, AS THE FIRST STOOD WHEN THE MIGRATION RAN.
 
-    ⚠ IT IS A SUPERSET BY EXACTLY ONE, and that one is the point. The silence
-    window's stop was spelled `stale` until it was sourced from the registry
-    (#412), and the rows written before that are exactly the rows this
-    migration exists for — so the set has to name the older spelling too or a
-    pre-#412 expiry is routed as a spend stop. That extra member is asserted to
-    be the ONLY extra one, which is what stops the set drifting into a
-    catch-all.
+    ⚠ THE SET IS FROZEN HISTORY AND TWO OF ITS THREE MEMBERS ARE NOW RETIRED
+    SPELLINGS. The silence window's stop was spelled `stale` until #412
+    sourced it from the registry, and the absolute deadline's kept this app's
+    own word until slice 6 coined the registry's (#457) — and `0026` rewrote
+    every stored row that carried either. So the set is held to `0026`'s map:
+    each of the two expiry words as it was spelled before that migration,
+    plus the silence window's current spelling, which `0008` already named.
+    Nothing else — which is what stops the set drifting into a catch-all.
     """
-    from_the_module = {reasons.SILENCE_WINDOW, reasons.STALE_MAX_AGE}
-    assert from_the_module <= set(MIGRATION.REAPER_REASONS)
-    superseded = set(MIGRATION.REAPER_REASONS) - from_the_module
-    assert len(superseded) == 1, (
-        f"{sorted(superseded)} are spellings no current constant carries; "
-        f"exactly one — the pre-registry silence window — is expected")
+    expiries = {reasons.SILENCE_WINDOW, reasons.ABSOLUTE_DEADLINE}
+    as_routed = {reasons.SILENCE_WINDOW} | {
+        old for old, new in THE_STOP_CAUSE_MIGRATION.BY_VALUE.items()
+        if new in expiries}
+    assert set(MIGRATION.REAPER_REASONS) == as_routed
+    assert len(MIGRATION.REAPER_REASONS) == 3
 
 
 def test_the_reverse_covers_every_successor_and_strands_none():
@@ -143,9 +157,14 @@ def test_no_reason_that_is_not_a_reaper_reason_is_named_as_one():
     """The negative half: every OTHER reason UBB produces must fall to the
     default, so a case that only checked membership above would miss a set that
     had quietly grown to include a ceiling."""
-    not_an_expiry = {reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT,
-                     reasons.CUSTOMER_WIDE_STOP, reasons.PARENT_KILLED,
+    not_an_expiry = {reasons.TASK_COGS_CEILING, reasons.HARD_FLOOR,
+                     reasons.CUSTOMER_SPEND_POOL, reasons.PARENT_KILLED,
                      reasons.TASK_NOT_ACTIVE}
+    # And the spellings those had before `0026`, since a pre-split row
+    # carried one of them and must not have been routed as an expiry.
+    not_an_expiry |= {
+        old for old, new in THE_STOP_CAUSE_MIGRATION.BY_VALUE.items()
+        if new in not_an_expiry} | {THE_STOP_CAUSE_MIGRATION.CUSTOMER_WIDE}
     overlap = not_an_expiry & set(MIGRATION.REAPER_REASONS)
     assert not overlap, (
         f"{sorted(overlap)} would route a stop UBB applied to the event that "
@@ -313,7 +332,8 @@ class TestAPendingRowRoutesByItsOwnRecordedReason:
         """Both sweeper reasons, because they are two rungs of one ladder and
         a set holding only the first would route the other as a spend stop."""
         _, expired = _successors(WHOLE_UNIT)
-        row = self._row(WHOLE_UNIT, reason=reasons.STALE_MAX_AGE)
+        row = self._row(WHOLE_UNIT,
+                        reason=as_it_was_spelled(reasons.ABSOLUTE_DEADLINE))
 
         assert self._routed(row) == expired
 
@@ -321,7 +341,7 @@ class TestAPendingRowRoutesByItsOwnRecordedReason:
         """A ceiling crossing is a stop UBB applied, which is what `killed`
         claims — and the retired event is documented as the kill fan-out."""
         killed, _ = _successors(WHOLE_UNIT)
-        row = self._row(WHOLE_UNIT, reason=reasons.TASK_LIMIT)
+        row = self._row(WHOLE_UNIT, reason=reasons.TASK_COGS_CEILING)
 
         assert self._routed(row) == killed
 
@@ -331,7 +351,7 @@ class TestAPendingRowRoutesByItsOwnRecordedReason:
         claim about EVERY other reason, and a case exercising one of them
         proves the branch rather than the rule."""
         killed, _ = _successors(WHOLE_UNIT)
-        wide = self._row(WHOLE_UNIT, reason=reasons.CUSTOMER_WIDE_STOP)
+        wide = self._row(WHOLE_UNIT, reason=reasons.HARD_FLOOR)
         cascaded = self._row(WHOLE_UNIT, reason=reasons.PARENT_KILLED)
 
         MIGRATION.split_the_terminal_events(global_apps, None)
@@ -365,7 +385,7 @@ class TestAPendingRowRoutesByItsOwnRecordedReason:
     def test_contained_works_rows_route_on_the_same_rule(self):
         killed, expired = _successors(CONTAINED_WORK)
         reaped = self._row(CONTAINED_WORK, reason=reasons.SILENCE_WINDOW)
-        stopped = self._row(CONTAINED_WORK, reason=reasons.SUBTASK_LIMIT)
+        stopped = self._row(CONTAINED_WORK, reason=reasons.TASK_COGS_CEILING)
 
         MIGRATION.split_the_terminal_events(global_apps, None)
 
@@ -378,7 +398,7 @@ class TestAPendingRowRoutesByItsOwnRecordedReason:
         """A pending row is one past event about one unit of work. Duplicating
         it — the subscription rule, applied to the wrong table — would deliver
         a stop twice that happened once."""
-        self._row(WHOLE_UNIT, reason=reasons.TASK_LIMIT)
+        self._row(WHOLE_UNIT, reason=reasons.TASK_COGS_CEILING)
 
         MIGRATION.split_the_terminal_events(global_apps, None)
 

@@ -262,10 +262,19 @@
       ]
     },
     "reason_code": {
-      "advertised": false,
-      "backend_serves": "2 of 5 values",
+      "advertised": true,
+      "backend_serves": "7 of 7 values",
       "kind": "open",
-      "representation": "known_values"
+      "representation": "known_values",
+      "values": [
+        "task_cogs_ceiling",
+        "customer_spend_pool",
+        "parent_killed",
+        "silence_window",
+        "hard_floor",
+        "absolute_deadline",
+        "parent_expired"
+      ]
     },
     "reason_detail": {
       "advertised": false,

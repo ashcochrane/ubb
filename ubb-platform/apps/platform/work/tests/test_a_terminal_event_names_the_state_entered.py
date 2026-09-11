@@ -87,7 +87,7 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
     def test_a_whole_unit_stopped_on_a_spend_signal_announces_task_killed(self):
         unit = self._task(limit=5_000_000)
         TaskService.kill_and_announce(
-            unit.id, reasons.TASK_LIMIT, tenant_id=self.tenant.id,
+            unit.id, reasons.TASK_COGS_CEILING, tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
 
@@ -107,7 +107,7 @@ class ATerminalEventNamesTheStateEnteredTest(WorkTestBase):
         parent, contained = self._a_parent_and_its_contained_work(
             limit=50_000_000)
         TaskService.kill_and_announce(
-            contained.id, reasons.SUBTASK_LIMIT, tenant_id=self.tenant.id,
+            contained.id, reasons.TASK_COGS_CEILING, tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
 
@@ -142,7 +142,7 @@ class TheStoppedPayloadCarriesCauseAndMechanismTest(WorkTestBase):
         super().setUp()
         self.unit = self._task(limit=5_000_000)
         TaskService.kill_and_announce(
-            self.unit.id, reasons.TASK_LIMIT, tenant_id=self.tenant.id,
+            self.unit.id, reasons.TASK_COGS_CEILING, tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         self.payload = self._events(TaskKilled.EVENT_TYPE).get().payload
@@ -152,7 +152,7 @@ class TheStoppedPayloadCarriesCauseAndMechanismTest(WorkTestBase):
         value sets, so two keys and never one. Asserted by constant identity;
         both words belong to vocabularies another slice owns.
         """
-        self.assertEqual(self.payload["reason_code"], reasons.TASK_LIMIT)
+        self.assertEqual(self.payload["reason_code"], reasons.TASK_COGS_CEILING)
         self.assertEqual(self.payload["trigger_source"],
                          TRIGGER_SOURCE_USAGE_INGEST)
 
