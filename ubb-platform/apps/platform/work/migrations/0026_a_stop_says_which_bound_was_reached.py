@@ -57,13 +57,16 @@ reader keys on scope and intent, never on a literal — so the retired report
 buckets those entries by scope. The signal ledger's `reason` column is ticket
 7's, which gives the ledger its own line and unique key.
 
-**The reverse is provided and is LOSSY in three named places**, stated rather
+**The reverse is provided and is LOSSY in four named places**, stated rather
 than pretended: the pre-registry silence spelling does not come back (it was
 one word's older spelling and the current word is what the reverted code
 reads); contained work that expired with its parent goes back to the silence
-window, so the two rows of one expired tree disagree again; and a suspension
+window, so the two rows of one expired tree disagree again; a suspension
 recorded as a stop word goes back to the suspension word the reverted code
-clears on. The ceiling word goes back to its altitude's spelling off the row
+clears on; and a suspension word stored under a UNIT's cause key — which no
+producer ever wrote, and which the forward maps anyway because the map is
+one map — comes back as the customer-wide word rather than as itself. The
+ceiling word goes back to its altitude's spelling off the row
 (`parent_id` on a unit, `subtask_id` on a payload), and the two customer-wide
 words collapse back onto the one, which round-trips exactly because the
 forward is a function of the tenant's mode.
@@ -78,6 +81,16 @@ CAUSE_KEY = "reason_code"
 #: since the split (`events/0008`), and the older bare `reason` on the rows
 #: that predate it and on the customer stop pair and the suspension event.
 PAYLOAD_CAUSE_KEYS = (CAUSE_KEY, "reason")
+
+#: The events whose payload carries a stop cause or a suspension word — the
+#: only rows the outbox pass reads. `reason` is a key other events use for
+#: free text (a refund's, for one), and a free-text reason that happened to
+#: spell a retired word must not be rewritten as if it were a stop cause.
+#: Spelled rather than imported, as everything here is.
+PAYLOAD_CAUSE_EVENTS = (
+    "task.killed", "task.expired", "subtask.killed", "subtask.expired",
+    "stop.fired", "customer.suspended",
+)
 
 #: A second encoding of names the registry declares, necessarily so: a
 #: migration must not import application code. `apps/platform/work/tests/
@@ -159,7 +172,8 @@ def _move_the_stored_cause(apps, schema_editor):
 
     for key in PAYLOAD_CAUSE_KEYS:
         for row in (OutboxEvent.objects
-                    .filter(**{f"payload__{key}__in": sorted(RETIRED)})
+                    .filter(event_type__in=PAYLOAD_CAUSE_EVENTS,
+                            **{f"payload__{key}__in": sorted(RETIRED)})
                     .only("id", "tenant_id", "payload").iterator()):
             payload = {**row.payload,
                        key: current_word(row.payload[key],
@@ -189,7 +203,8 @@ def _put_the_stored_cause_back(apps, schema_editor):
     current = sorted({*BY_VALUE.values(), PARENT_EXPIRED})
     for key in PAYLOAD_CAUSE_KEYS:
         for row in (OutboxEvent.objects
-                    .filter(**{f"payload__{key}__in": current})
+                    .filter(event_type__in=PAYLOAD_CAUSE_EVENTS,
+                            **{f"payload__{key}__in": current})
                     .only("id", "event_type", "payload").iterator()):
             payload = {**row.payload, key: retired_word(
                 row.payload[key],

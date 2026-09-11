@@ -1,10 +1,12 @@
-"""The metering client exposes the seven known stop reasons from the generated
-vocabulary, and the stop signal's reason is documented against them (#457,
-slice 6 §17 — the `reason_code` SDK payment).
+"""The metering client holds the registry's seven stop reasons by reference
+from the generated vocabulary, and the stop signal's reason is documented
+against them (#457, slice 6 §17 — the `reason_code` SDK payment).
 
-An integrator branches on a constant and never parses a string. The value
-stays a string on the wire and an unknown one still travels: the set is open,
-and the client validates nothing.
+An integrator branches on a constant, reached BY MODULE
+(`docs/conventions/sdk-wrap.md` §Canonical vocabulary: `from ubb import
+vocabulary`), and never parses a string. The value stays a string on the wire
+and an unknown one still travels: the set is open, and the client validates
+nothing.
 """
 import ast
 import unittest
@@ -25,32 +27,48 @@ REASON_CODE_NAMES = frozenset(
 
 
 class TheClientHoldsTheSevenTest(unittest.TestCase):
-    def test_every_known_reason_is_reachable_from_the_metering_module(self):
-        for name in REASON_CODE_NAMES:
-            self.assertIs(getattr(metering, name), getattr(vocabulary, name),
-                          name)
-
-    def test_the_set_is_the_generated_whole_set(self):
-        self.assertIs(metering.STOP_REASON_CODES,
-                      vocabulary.REASON_CODE_KNOWN_VALUES)
+    def test_the_set_is_the_seven_bounds_plus_the_one_verdict(self):
+        """Not an alias of the generated set: what the ACKNOWLEDGEMENT can
+        say is the seven bounds plus the verdict on a late event, which the
+        registry deliberately does not list."""
+        bounds = {getattr(vocabulary, n) for n in REASON_CODE_NAMES}
+        self.assertEqual(bounds, vocabulary.REASON_CODE_KNOWN_VALUES)
         self.assertEqual(metering.STOP_REASON_CODES,
-                         {getattr(vocabulary, n) for n in REASON_CODE_NAMES})
-        self.assertGreater(len(metering.STOP_REASON_CODES), 0)
+                         bounds | {metering.TASK_NOT_ACTIVE})
+        self.assertNotIn(metering.TASK_NOT_ACTIVE,
+                         vocabulary.REASON_CODE_KNOWN_VALUES)
+        self.assertGreater(len(bounds), 0)
 
-    def test_the_module_imports_them_by_reference(self):
-        """Read the import statement, not the values: a literal that happened
-        to agree would satisfy an equality and is exactly the debt this pays."""
+    def test_the_module_reaches_the_vocabulary_by_module_and_re_exports_nothing(
+            self):
+        """Read the import statements, not the values: a literal that
+        happened to agree would satisfy an equality and is exactly the debt
+        this pays, and a `from ubb.vocabulary import REASON_CODE_*` here
+        would be the re-export layer the wrap convention refuses."""
         tree = ast.parse(Path(metering.__file__).read_text(encoding="utf-8"))
-        imported = {
+        by_name = {
             alias.name for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom)
             and node.module == "ubb.vocabulary"
             for alias in node.names if alias.name.startswith("REASON_CODE_")}
-        self.assertEqual(imported,
-                         REASON_CODE_NAMES | {"REASON_CODE_KNOWN_VALUES"})
+        self.assertEqual(by_name, set())
+        by_module = any(
+            isinstance(node, ast.ImportFrom) and node.module == "ubb"
+            and any(alias.name == "vocabulary" for alias in node.names)
+            for node in ast.walk(tree))
+        self.assertTrue(by_module)
+        reached = {
+            node.attr for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "vocabulary"
+            and node.attr.startswith("REASON_CODE_")}
+        # The whole-set handle carries every value the generator names.
+        self.assertIn("REASON_CODE_KNOWN_VALUES", reached)
 
     def test_the_stop_signal_is_documented_against_them(self):
         self.assertIn("STOP_REASON_CODES", MeteringClient.record_usage.__doc__)
+        self.assertIn("REASON_CODE_", MeteringClient.record_usage.__doc__)
         self.assertIn("STOP_REASON_CODES", UBBStopRequested.__doc__)
 
 
@@ -86,7 +104,7 @@ class AnUnknownReasonStillTravelsTest(unittest.TestCase):
         with self.assertRaises(UBBStopRequested) as cm:
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertEqual(cm.exception.stop_reason,
-                         metering.REASON_CODE_TASK_COGS_CEILING)
+                         vocabulary.REASON_CODE_TASK_COGS_CEILING)
         self.assertIn(cm.exception.stop_reason, metering.STOP_REASON_CODES)
 
 

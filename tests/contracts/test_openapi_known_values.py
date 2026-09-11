@@ -1565,9 +1565,11 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
 #: is not the stop cause, it has no registry concept, and marking it with the
 #: stop cause's concept would publish the seven bounds on a field that
 #: admits none of them. ONE NAME FOR TWO CONCEPTS IS ADR-0006 §2's smell IN
-#: REVERSE, and it is nobody's residual yet: renaming the wallet field is a
-#: contract break on a surface no slice rebuilds, so it is recorded here and
-#: in #457's commit rather than taken in a ticket about the stop cause.
+#: REVERSE, and it is raised as #479 (`needs-triage`): renaming the wallet
+#: field is a contract break on a surface no slice rebuilds, and giving the
+#: movement's categorisation a registry concept is a decision, so neither is
+#: taken in a ticket about the stop cause. This inventory is the record until
+#: #479 lands.
 PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {
     "/components/schemas/CreditRequest/properties/reason_code":
         "The wallet movement's own categorisation, a hand-validated closed set "

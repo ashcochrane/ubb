@@ -265,9 +265,8 @@ class LiveCounter:
             if LiveCounter._crossed(mode, v, owner_id, tenant):
                 # WHICH BOUND WAS REACHED — the pool's or the wallet floor's
                 # — is the same fork as the branch above (slice 6 §7).
-                from apps.platform.work.reasons import customer_stop_reason
                 opened = LiveCounter._set_stop(
-                    owner_id, customer_stop_reason(tenant.billing_mode),
+                    owner_id, reasons.customer_stop_reason(tenant.billing_mode),
                     tenant=tenant,
                     balance_micros=v if mode == "prepaid" else 0)
                 if opened is not None:
@@ -627,11 +626,10 @@ class LiveCounter:
         fast-lane flag is re-aligned best-effort either way (patrol job
         §C.2: durable truth owns the verdict cache); returns True when the
         flag actually changed — the #44 flag-realignment outcome."""
-        from apps.platform.work.reasons import customer_stop_reason
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService)
         if crossed:
-            reason = customer_stop_reason(tenant.billing_mode)
+            reason = reasons.customer_stop_reason(tenant.billing_mode)
             StopSignalService.drive_stop(owner_id, tenant, reason=reason,
                                          balance_micros=basis_micros)
             return LiveCounter.ensure_stop_flag(owner_id, reason)

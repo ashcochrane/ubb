@@ -28,17 +28,13 @@ from ubb.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE,
     TASK_STATUS_VALUES,
 )
-# WHY A STOP FIRED — the bounds the registry knows, held here by reference so
-# an integrator branches on a name rather than parsing a string (#457, slice 6
-# §17). Re-exported from this module because this is where the stop arrives:
-# `record_usage` raises `UBBStopRequested` carrying `stop_reason`, and
-# `record_batch` reports it per item.
-from ubb.vocabulary import (  # noqa: F401 — re-exported for integrators
-    REASON_CODE_ABSOLUTE_DEADLINE, REASON_CODE_CUSTOMER_SPEND_POOL,
-    REASON_CODE_HARD_FLOOR, REASON_CODE_KNOWN_VALUES,
-    REASON_CODE_PARENT_EXPIRED, REASON_CODE_PARENT_KILLED,
-    REASON_CODE_SILENCE_WINDOW, REASON_CODE_TASK_COGS_CEILING,
-)
+# WHY A STOP FIRED — the bounds the registry knows are reached BY MODULE
+# (`vocabulary.REASON_CODE_*`, the spelling `docs/conventions/sdk-wrap.md`
+# prescribes; a re-export here would be a second copy of every name), and
+# this module holds the whole set once, in `STOP_REASON_CODES` below, because
+# this is where a stop arrives: `record_usage` raises `UBBStopRequested`
+# carrying `stop_reason`, and `record_batch` reports it per item (#457).
+from ubb import vocabulary
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -83,19 +79,27 @@ logger = logging.getLogger("ubb.metering")
 #: named on the handle's three methods.
 TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES - {TASK_STATUS_ACTIVE})
 
-#: WHICH BOUND A STOP SAYS WAS REACHED — the seven the registry knows, as one
-#: set, beside the constant for each above: the unit's own COGS ceiling at
-#: either altitude (`REASON_CODE_TASK_COGS_CEILING`; `stop_scope` says which
+#: THE ONE VERDICT A STOP CAN CARRY THAT IS NOT A BOUND: a late event on work
+#: that had already ended. UBB-produced and deliberately not a registry value
+#: (the registry names bounds), so it is spelled here as the server spells it.
+TASK_NOT_ACTIVE = "task_not_active"
+
+#: EVERYTHING A `stop_reason` CAN SAY THAT UBB PRODUCES — the seven bounds the
+#: registry knows, reached by module, plus the one verdict above. The bounds:
+#: the unit's own COGS ceiling at either altitude
+#: (`vocabulary.REASON_CODE_TASK_COGS_CEILING`; `stop_scope` says which
 #: altitude), the customer's spend pool (`REASON_CODE_CUSTOMER_SPEND_POOL`),
 #: the wallet's hard floor (`REASON_CODE_HARD_FLOOR`), a silence window
 #: (`REASON_CODE_SILENCE_WINDOW`), the absolute deadline
 #: (`REASON_CODE_ABSOLUTE_DEADLINE`), and a parent's end
-#: (`REASON_CODE_PARENT_KILLED`, `REASON_CODE_PARENT_EXPIRED`). An
-#: acknowledgement can also carry `task_not_active` — a verdict on a late
-#: event, not a bound — and the set is OPEN: a stop can originate outside UBB,
-#: so a reason not in this set still travels as a plain string, and a switch
-#: over it needs a default branch. The value is never validated client-side.
-STOP_REASON_CODES = REASON_CODE_KNOWN_VALUES
+#: (`REASON_CODE_PARENT_KILLED`, `REASON_CODE_PARENT_EXPIRED`). Not the same
+#: set as `vocabulary.REASON_CODE_KNOWN_VALUES` — this is what the
+#: ACKNOWLEDGEMENT can say, the published verdicts list's mirror — and OPEN
+#: either way: a stop can originate outside UBB, so a reason not in this set
+#: still travels as a plain string, a switch over it needs a default branch,
+#: and the value is never validated client-side.
+STOP_REASON_CODES = frozenset(
+    vocabulary.REASON_CODE_KNOWN_VALUES | {TASK_NOT_ACTIVE})
 
 
 def _attach(exc: BaseException, note: str) -> None:
@@ -426,11 +430,12 @@ class MeteringClient:
         raises.
 
         ``stop_reason`` on the acknowledgement — and on the signal — says
-        WHICH BOUND was reached, in the words of ``STOP_REASON_CODES`` (the
-        module-level constants ``REASON_CODE_*`` beside it), plus the one
-        verdict that is not a bound, ``task_not_active``. Branch on the
-        constants, never on a string you typed; the set is open, so keep a
-        default branch for a reason this client has not heard of.
+        WHICH BOUND was reached, in the words of ``ubb.vocabulary``'s
+        ``REASON_CODE_*`` constants, plus the one verdict that is not a bound
+        (``task_not_active``); ``STOP_REASON_CODES`` is the whole of what it
+        can say. Branch on the constants, never on a string you typed; the
+        set is open, so keep a default branch for a reason this client has
+        not heard of.
         """
         body: dict = {
             "customer_id": customer_id,

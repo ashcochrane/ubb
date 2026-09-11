@@ -40,10 +40,11 @@ from apps.platform.work import reasons
 from apps.platform.work.services import STOP_CAUSE_KEY
 from core.vocabulary import TASK_STATUS_KILLED
 
-# Kill reasons that name a limit episode a late event should point back at.
-# One word at either altitude since the collapse (slice 6 §7): the scope is
-# read off the row's altitude, never off which constant fired.
-_EPISODE_KILL_REASONS = (reasons.TASK_COGS_CEILING,)
+# Kill reasons that name a limit episode a late event should point back at —
+# the reason module's own crossing set, one word at either altitude since the
+# collapse (slice 6 §7): the scope is read off the row's altitude, never off
+# which constant fired.
+_EPISODE_KILL_REASONS = reasons.CROSSING_REASONS
 
 
 def _iso(dt):

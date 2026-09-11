@@ -54,6 +54,8 @@ from dataclasses import dataclass
 
 from django.db import IntegrityError, transaction
 
+from apps.platform.work import reasons
+
 logger = logging.getLogger("ubb.billing")
 
 # Refusal codes (decision 3). Handlers map these to their HTTP problems.
@@ -555,19 +557,18 @@ def _drawdown_tail(tenant):
                 # This lane crosses the wallet's CONFIGURED floor and nothing
                 # else, so the bound it names is the hard floor's (slice 6
                 # §7, the split of the one customer-wide word).
-                from apps.platform.work.reasons import HARD_FLOOR
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
                 from apps.billing.gating.services.live_counter import (
                     LiveCounter)
                 try:
                     StopSignalService.drive_stop(
-                        owner.id, tenant, reason=HARD_FLOOR,
+                        owner.id, tenant, reason=reasons.HARD_FLOOR,
                         balance_micros=new_balance)
                 except Exception:
                     logger.warning("billing.floor_stop_transition_failed",
                                    extra={"data": {"owner_id": str(owner.id)}})
-                LiveCounter.ensure_stop_flag(owner.id, HARD_FLOOR)
+                LiveCounter.ensure_stop_flag(owner.id, reasons.HARD_FLOOR)
             # #40 §F — the soft floor's ONLY crossing detector (no fast lane,
             # no Redis threshold: signal latency is outbox latency). Crossing
             # the resolved soft line drives the soft_floor family of the same
@@ -590,13 +591,12 @@ def _drawdown_tail(tenant):
             # enforcement off: Tier-1 baseline suspension, byte-for-byte
             # (no signal suite, no ledger). The suspension records the bound
             # that was reached — the hard floor's word (slice 6 §9).
-            from apps.platform.work.reasons import HARD_FLOOR
             owner.status = "suspended"
-            owner.suspension_reason = HARD_FLOOR  # P6b/D15
+            owner.suspension_reason = reasons.HARD_FLOOR  # P6b/D15
             owner.save(update_fields=["status", "suspension_reason", "updated_at"])
             write_event(CustomerSuspended(
                 tenant_id=str(tenant.id), customer_id=str(owner.id),
-                reason=HARD_FLOOR, balance_micros=new_balance))
+                reason=reasons.HARD_FLOOR, balance_micros=new_balance))
         try:
             config = AutoTopUpConfig.objects.get(customer=owner, is_enabled=True)
         except AutoTopUpConfig.DoesNotExist:

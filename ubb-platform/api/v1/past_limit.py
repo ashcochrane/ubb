@@ -41,9 +41,10 @@ from core.cost_totals import (
     UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, cost_total,
     counts_as_unresolved)
 
-#: The one ceiling word at either altitude (slice 6 §7): the row's altitude
-#: says whether it was a whole unit's ceiling or contained work's.
-_UNIT_LIMITS = (reasons.TASK_COGS_CEILING,)
+#: The causes a killed unit's row may carry that name an episode — the reason
+#: module's own set, one word at either altitude since the collapse (slice 6
+#: §7); the row's altitude says which altitude's ceiling it was.
+_UNIT_LIMITS = reasons.CROSSING_REASONS
 
 #: THE RETIRED REPORT'S OWN ROW KEY FOR A UNIT'S CEILING. The unit's column was
 #: renamed by #453 (`Task.task_cogs_ceiling_micros`); this untyped row keeps its

@@ -2,6 +2,8 @@ import logging
 
 from celery import shared_task
 
+from apps.platform.work import reasons
+
 logger = logging.getLogger("ubb.billing")
 
 
@@ -56,10 +58,9 @@ def _per_owner_reconcile(tenant):
             # get_customer_ids_with_usage — and reconcile_postpaid (its only
             # un-suspend path; credit() is a postpaid no-op) would never run,
             # stranding it suspended forever past month rollover.
-            from apps.platform.work.reasons import CUSTOMER_SPEND_POOL
             owners |= set(Customer.all_objects.filter(
                 tenant=tenant, status="suspended",
-                suspension_reason=CUSTOMER_SPEND_POOL,
+                suspension_reason=reasons.CUSTOMER_SPEND_POOL,
             ).values_list("id", flat=True))
             for owner_id in owners:
                 flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))

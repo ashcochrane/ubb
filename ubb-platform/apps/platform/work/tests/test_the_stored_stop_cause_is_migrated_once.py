@@ -24,8 +24,8 @@ from django.test.utils import CaptureQueriesContext
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSuspended, StopCleared, StopFired, SubtaskKilled, TaskExpired,
-    TaskKilled)
+    CustomerSuspended, RefundRequested, StopCleared, StopFired, SubtaskExpired,
+    SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
@@ -295,6 +295,26 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self.assertEqual(self._payload(floor)["reason"], reasons.HARD_FLOOR)
         self.assertEqual(self._payload(pool)["reason"],
                          reasons.CUSTOMER_SPEND_POOL)
+
+    def test_the_events_it_reads_are_exactly_the_ones_that_carry_a_cause(self):
+        """Held to the producers: the four terminal stop events, the customer
+        stop's opening half and the suspension event, and nothing else."""
+        self.assertEqual(set(MIGRATION.PAYLOAD_CAUSE_EVENTS), {
+            TaskKilled.EVENT_TYPE, TaskExpired.EVENT_TYPE,
+            SubtaskKilled.EVENT_TYPE, SubtaskExpired.EVENT_TYPE,
+            StopFired.EVENT_TYPE, CustomerSuspended.EVENT_TYPE})
+
+    def test_a_free_text_reason_on_another_event_is_left_as_written(self):
+        """`reason` is free text on a refund, and a refund whose reason
+        happened to spell a retired stop word is not a stop — found by the
+        review pass, which is why the outbox pass is scoped by event type."""
+        spelling = a_retired_spelling_of(reasons.SILENCE_WINDOW)
+        refund = self._row(self.prepaid, RefundRequested.EVENT_TYPE,
+                           reason=spelling, amount_micros=1)
+
+        self._forward()
+
+        self.assertEqual(self._payload(refund)["reason"], spelling)
 
     def test_a_payload_carrying_no_retired_spelling_is_not_written(self):
         self._row(self.prepaid, "usage.recorded", event_id="e1")

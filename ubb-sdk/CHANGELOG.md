@@ -111,9 +111,11 @@ disagree with the shipped bytes.
   (`customer_spend_pool`), the wallet's hard floor (`hard_floor`), a silence
   window (`silence_window`), the absolute deadline (`absolute_deadline`) or a
   parent's end (`parent_killed`, `parent_expired`) — plus `task_not_active`,
-  a verdict on a late event rather than a bound. `ubb.metering` re-exports
-  the seven as `REASON_CODE_*` and the set as `STOP_REASON_CODES`, so an
-  integrator branches on a constant and never on a string. The set is open:
+  a verdict on a late event rather than a bound. Reach the constants by
+  module (`from ubb import vocabulary`, then `vocabulary.REASON_CODE_*`);
+  `ubb.metering.STOP_REASON_CODES` is everything an acknowledgement's
+  `stop_reason` can say that UBB produces — the seven plus the verdict — so
+  an integrator branches on a constant and never on a string. The set is open:
   the value stays a plain string on the wire, an unknown one still travels,
   and the client validates nothing. The three words the ack used to send
   for these stops are gone: the two altitude-specific ceiling words
