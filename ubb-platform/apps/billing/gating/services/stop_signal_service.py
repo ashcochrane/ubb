@@ -204,7 +204,13 @@ class StopSignalService:
            the postpaid ``enforcing`` re-check is defense against a mode
            flip racing an in-flight drive. An owner the OTHER stop line
            already suspended keeps that line's word: the suspension records
-           the stop that opened it.
+           the stop that opened it;
+        4. on the POOL's line, registers the kill of every active unit of the
+           owner on the transaction's commit (slice 6 §1, §4, #459): the
+           stop reaches `killed` only through the kernel, after the crossing
+           charge and this transition are durable, and only the winner
+           registers it — so racing lanes kill once. The pool service owns
+           the sweep; this seam owns WHEN it runs.
 
         ``balance_micros`` rides CustomerSuspended (the balance at the
         crossing, best available to the detecting lane; postpaid passes 0).
@@ -237,6 +243,12 @@ class StopSignalService:
                 write_event(CustomerSuspended(
                     tenant_id=str(tenant.id), customer_id=str(owner.id),
                     reason=owner.suspension_reason, balance_micros=int(balance_micros)))
+            if line == LINE_CUSTOMER_SPEND_POOL:
+                from apps.billing.gating.services.customer_spend_pool_service import (
+                    CustomerSpendPoolService)
+                transaction.on_commit(
+                    lambda: CustomerSpendPoolService.stop_active_work(
+                        owner_id, tenant, control_id))
             return row.episode_seq
 
     @staticmethod

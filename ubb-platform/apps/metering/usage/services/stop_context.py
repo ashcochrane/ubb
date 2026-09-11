@@ -22,7 +22,8 @@ The rules:
   pool's word or the hard floor's, the ledger line's own name (slice 6 §9)
   — carrying that line's episode id, one entry per open line; the entry is
   the tipping one (``arrived_after=false``) only when THIS event's live
-  debit won that line's stop transition (``opened_episode_seq``).
+  debit won that line's stop transition (``opened_episodes``, keyed by
+  line — one report can tip both lines, #459).
   An owner suspended with NO open episode (admin/fraud) marks ``suspended``
   — with a null ``tripped_at``: suspension carries no durable timestamp,
   and inventing one would be a lie. The soft-floor line never marks (§F —
@@ -123,8 +124,7 @@ def _unit_contexts(task, verdicts, now):
     return out
 
 
-def _customer_contexts(owner, tenant, opened_episode_seq, opened_line,
-                       task_id, subtask_id):
+def _customer_contexts(owner, tenant, opened_episodes, task_id, subtask_id):
     from apps.platform.tenants.flags import enforcing
     if owner is None or not enforcing(tenant):
         return []
@@ -134,18 +134,18 @@ def _customer_contexts(owner, tenant, opened_episode_seq, opened_line,
         # WHICH customer-wide stop opened each episode is the ledger line's
         # own word (slice 6 §9, #458) — the pool's or the floor's — and a
         # customer held by both carries one entry per open line, each with
-        # its own episode id. The tipping entry is the one whose episode
-        # THIS event's live debit opened — matched on the LINE and the id
+        # its own episode id. A tipping entry is one whose episode THIS
+        # event's live debit opened — matched on the LINE and the id
         # together, because the two lines number their episodes
-        # independently and a bare number is ambiguous between them; every
-        # other open line's entry is late.
+        # independently and a bare number is ambiguous between them, and one
+        # report can tip both (#459); every other open line's entry is late.
+        opened = opened_episodes or {}
         return [_entry(
             limit=state["reason"], stop_scope="customer",
             tripped_at=_iso(state["transitioned_at"]),
             episode_seq=state["episode_seq"],
             task_id=task_id, subtask_id=subtask_id,
-            arrived_after=not (state["reason"] == opened_line
-                               and state["episode_seq"] == opened_episode_seq))
+            arrived_after=opened.get(state["reason"]) != state["episode_seq"])
             for state in open_stops]
     if owner.status == "suspended":
         # Suspension without an open floor episode — admin/fraud, or a
@@ -159,19 +159,19 @@ def _customer_contexts(owner, tenant, opened_episode_seq, opened_line,
 
 
 def build_stop_context(*, task, verdicts, now, owner, tenant,
-                       opened_episode_seq=None, opened_line=None):
+                       opened_episodes=None):
     """Build the stop-context array for one recorded event, or None when the
     event landed past nothing (the overwhelmingly common case — None keeps
     the column null and the partial GIN index tiny).
 
     ``task``/``verdicts`` are the accumulate primitive's outputs (both None
     for an unattributed event); ``owner`` is the resolved billing owner ROW
-    (status already in hand — no extra query); ``opened_episode_seq`` and
-    ``opened_line`` name the stop episode THIS event's live debit opened —
-    the id and the line it is on, since two lines number their episodes
-    independently (#458) — when the fast lane won the transition (sync path
-    only — async settle never tips a customer-wide line, its crossing is
-    detected at accept/drawdown time).
+    (status already in hand — no extra query); ``opened_episodes`` names
+    the stop episodes THIS event's live debit opened, ``{line: episode_seq}``
+    — keyed by line since two lines number their episodes independently
+    (#458) and one report can tip both (#459) — when the fast lane won a
+    transition (sync path only — async settle never tips a customer-wide
+    line, its crossing is detected at accept/drawdown time).
     """
     out = []
     task_id = subtask_id = None
@@ -180,6 +180,6 @@ def build_stop_context(*, task, verdicts, now, owner, tenant,
         is_subtask = task.parent_id is not None
         task_id = task.parent_id if is_subtask else task.id
         subtask_id = task.id if is_subtask else None
-    out.extend(_customer_contexts(owner, tenant, opened_episode_seq, opened_line,
+    out.extend(_customer_contexts(owner, tenant, opened_episodes,
                                   task_id, subtask_id))
     return out or None

@@ -5,6 +5,9 @@ from apps.platform.customers.models import Customer
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import LiveCounter
+from core.vocabulary import (
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE)
 
 
 @pytest.mark.django_db
@@ -63,7 +66,8 @@ class TestCustomerSpendPoolService:
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
             res = CustomerSpendPoolService.check(c)
-        assert res["allowed"] is False and res["reason"] == "budget_unavailable"
+        assert res["allowed"] is False
+        assert res["reason"] == AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE
 
     def test_check_zero_cap_inert(self):
         c = self._cust(cap_micros=0, enforce_mode="blocking")
@@ -82,7 +86,8 @@ class TestCustomerSpendPoolService:
         assert CustomerSpendPoolService.check(c)["allowed"] is True   # 999 < 1000
         LiveCounter.spend_pool_incr(c.tenant_id, c.id, 1)   # incr → 1000 == cap
         res = CustomerSpendPoolService.check(c)
-        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+        assert res["allowed"] is False
+        assert res["reason"] == AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
 
     def test_threshold_alert_emitted_once_on_crossing(self):
         from apps.platform.events.models import OutboxEvent

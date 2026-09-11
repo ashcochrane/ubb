@@ -1,14 +1,17 @@
 """Shared setup for the gating app's signal-ledger tests
 (`docs/conventions/testing.md`).
 
-WHICH STOP LINE A FIXTURE'S TENANT DRIVES. Until #458 the producers forked on
-the owner's tenant billing mode to name the customer-wide stop, and every
-test here reached for that fork to say what it EXPECTED. The fork is gone
-from production — each lane names its own line now, and the ledger keys by
-it — so the expectation lives here, in the tests' own words: a fixture that
-chose `postpaid` is driving the pool's line and every other mode the wallet
-floor's, because that is which lane the mode's counter feeds. If a lane ever
-drives a different line for a mode, this is the statement that goes red.
+WHICH STOP LINE A FIXTURE'S BARE CROSSING DRIVES. Until #458 the producers
+forked on the owner's tenant billing mode to name the customer-wide stop, and
+every test here reached for that fork to say what it EXPECTED. The fork is
+gone from production — each lane names its own line now, and the ledger keys
+by it — and since #459 the pool's line is driven in EVERY mode, so the mode
+decides nothing in production at all. What the mode still decides in a
+FIXTURE is which line a bare over-limit debit with no pool declared and a
+wallet of nothing reaches: a `postpaid` fixture with a pool is driving the
+pool's line, and every other mode's fixture with a wallet the wallet floor's.
+The expectation lives here, in the tests' own words; a case about the OTHER
+line on a mode names it outright rather than asking this.
 """
 from apps.billing.gating.services.stop_signal_service import (
     StopSignalService, control_id_of)

@@ -160,8 +160,8 @@
     ],
     "pre_check_reasons": [
       "account_closed",
-      "budget_exceeded",
-      "budget_unavailable",
+      "customer_spend_pool_exceeded",
+      "customer_spend_pool_unavailable",
       "customer_stopped",
       "insufficient_funds",
       "parent_task_not_active",

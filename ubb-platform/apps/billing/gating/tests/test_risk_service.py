@@ -5,6 +5,7 @@ from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
+from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
 
 
 class RiskServiceTest(TestCase):
@@ -165,7 +166,8 @@ class TestRiskServiceCustomerSpendPool:
         c = self._funded(cap_micros=1_000, enforce_mode="blocking", hard_stop_pct=100)
         self._spend(c, 1_000)  # at cap
         res = RiskService.check(c)
-        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+        assert res["allowed"] is False
+        assert res["reason"] == AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
 
     def test_alert_only_over_cap_allows(self):
         c = self._funded(cap_micros=1_000, enforce_mode="alert_only")
@@ -202,7 +204,8 @@ class TestRiskServiceCustomerSpendPool:
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
         LiveCounter.spend_pool_incr(t.id, c.id, 1_000)
         res = RiskService.check(c)
-        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+        assert res["allowed"] is False
+        assert res["reason"] == AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
 
     def test_suspended_business_gates_its_seat(self):
         from apps.platform.tenants.models import Tenant

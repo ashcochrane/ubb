@@ -39,11 +39,12 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros is not None and billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
-        # Postpaid has no wallet to draw down, and (#39) its spend-pool
-        # stop/suspension rides the StopSignalState transition guard from the
-        # fast lane at the crossing plus the hourly reconcile's SET power —
-        # this handler no longer reads the stop flag (the old D13 shape), so
-        # floor-stop and suspension cannot double-fire.
+        # Postpaid has no wallet to draw down. The pool's stop/suspension —
+        # in every mode since #459 — rides the StopSignalState transition
+        # guard from the fast lane at the crossing, the seat-level compare in
+        # the shared tail below, and the hourly reconcile's SET power; this
+        # handler never reads the stop flag (the old D13 shape), so a stop
+        # and its suspension cannot double-fire.
         if tenant.billing_mode != "postpaid":
             from apps.billing.wallets import operations as wallet_ops
 
@@ -60,7 +61,12 @@ def handle_usage_recorded_billing(event_id, payload):
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
-        # Pool policy: a pool is EFFECTIVE-month basis; the live Redis
+        # Pool policy, the SEAT level (slice 6 §4): the seat's counter is
+        # incremented once per posting in EVERY mode — a delivered
+        # fixed-price unit's Charge reaches this tail as one posting and is
+        # counted exactly once — and the pool service compares it against
+        # the seat's pool on the durable lane (#459).
+        # A pool is EFFECTIVE-month basis; the live Redis
         # counter tracks the CURRENT wall-clock month only. A backdated event
         # whose effective month is a PRIOR month must NOT inflate this month's
         # counter (the hourly reconcile_customer_spend_pool_counters rebuild — already

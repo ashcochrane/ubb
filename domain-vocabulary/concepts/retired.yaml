@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,792 of 2,215 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,794 of 2,217 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2019,6 +2019,20 @@ measurement_key:
     # -- which is why six marked nodes moved nothing here. The prose that
     # held was "a unit of work", "contained work", "the work" and "a
     # stopped unit"; the count was taken after the last core regeneration.
+    #
+    # 2026-09-12, #459 (a blocking pool stops prepaid work as it stops
+    # postpaid, at two declared levels): 1,792 of 2,215 -> 1,794 of 2,217
+    # tracked files (`units` 44 files / 122 occurrences unchanged after one
+    # re-take). Two tracked files arrived, both swept and both test modules
+    # in the gating app: the route-driven one for the pool's two postures,
+    # its two levels, the counted-once Charge and the two lines at once, and
+    # the pin that the pool's stop line is compared only through the shared
+    # predicate. No migration, no generated module: the contract is
+    # byte-identical. The first take rose to 46/124 on "the number of units
+    # stopped" in two docstrings that had never carried the word -- the
+    # thirteenth window the plural arrived through ordinary prose about
+    # work -- and the prose that held is "how many pieces of work", "active
+    # work", "a unit of work" and "the work".
 
     - term: units
       retired_as: >-

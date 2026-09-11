@@ -155,14 +155,15 @@ CROSSING_REASONS = frozenset({TASK_COGS_CEILING})
 # ingest or by the patrol, and the same mechanism can find several causes —
 # so the producer names its own mechanism at the point it acts.
 #
-# ⚠ FOUR OF THE FIVE ARE PRODUCED TODAY AND ONE IS NOT, WHICH IS WHAT AN OPEN
-# SET IS FOR. The terminal stop events carry the mechanism, and the three paths
-# that APPLY a stop each name themselves on the event: the usage-ingest lane,
-# the enforcement patrol, and the sweeper. `pool_crossing` waits on the
-# mechanism that produces it. `parent_cascade` is produced too, since #413, but
-# it reaches no PAYLOAD and never will while a cascade stays silent — a cascade
-# announces nothing because its parent's event is the one signal, so the
-# mechanism is recorded on each stopped row instead
+# ⚠ ALL FIVE ARE PRODUCED TODAY, AND THE SET STAYS OPEN ANYWAY. The terminal
+# stop events carry the mechanism, and the four paths that APPLY a stop each
+# name themselves on the event: the usage-ingest lane, the enforcement patrol,
+# the sweeper, and — since #459 — the customer spend pool's crossing, which
+# kills every active unit of the stopped customer through billing's own call
+# into `kill_and_announce` (slice 6 §1, §4). `parent_cascade` is produced too,
+# since #413, but it reaches no PAYLOAD and never will while a cascade stays
+# silent — a cascade announces nothing because its parent's event is the one
+# signal, so the mechanism is recorded on each stopped row instead
 # (`services.TaskService._cascade`).
 #
 # The whole five are held here anyway, because the registry names this module as

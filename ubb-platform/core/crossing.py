@@ -29,7 +29,7 @@ The three orientations:
   itself). A None floor (an unconfigured soft floor) has no line: never
   past, never crossed, always recovered.
 
-  CUSTOMER SPEND POOL (postpaid — the spend RISES). The stop line is
+  CUSTOMER SPEND POOL (every mode — the spend RISES). The stop line is
   ``cap_micros * hard_stop_pct // 100`` and past = spend AT/OVER it.
   ``spend_pool_stop_threshold`` resolves the line from a CustomerSpendPool and owns
   the ``enforce_mode`` semantics: an ``alert_only`` (non-blocking) pool can
@@ -37,13 +37,17 @@ The three orientations:
   level-based and deliberately not this module's concern) but never stops.
   Pre-#110 the live lanes ignored ``enforce_mode`` (the drift this module
   retires); every lane now shares the ``CustomerSpendPoolService.check`` semantics.
+  Until #459 the live lanes compared it for postpaid owners only and a
+  mode-keyed dispatcher here chose between the two orientations; enforcement
+  is payment-mode independent (slice 6 §4), so each lane now names the line
+  it compares and the dispatcher is gone.
 
   CEILING (a unit of work's COGS bound — the known total RISES). Reached =
   known total AT/OVER the pinned ceiling, and the four-way assessment
   (``ceiling_status``) is the registry's own decision rule. See the section
   at the foot of the module for why the boundary is the whole subject.
 
-Month math rides along because the postpaid crossing is month-scoped: the
+Month math rides along because the pool's crossing is month-scoped: the
 ``YYYY-MM`` label/bounds and the effective-month guard were re-derived in
 three places with their own tz handling; this is the one copy.
 
@@ -58,8 +62,8 @@ from typing import NamedTuple
 
 def floor_line(min_balance_micros):
     """The comparable wallet line: a balance below ``-min_balance`` is past
-    the floor. This is the value the live counter's ``_threshold``
-    pre-resolves for the batch/live compare (``crossed_live``)."""
+    the floor — the level ``past_floor`` compares against, spelled once for
+    a caller that wants the line itself."""
     return -int(min_balance_micros)
 
 
@@ -91,11 +95,11 @@ def recovered_floor(balance_micros, min_balance_micros) -> bool:
     return balance_micros >= -min_balance_micros
 
 
-# --- spend-pool stop (postpaid; spend RISES across the stop line) ----------
+# --- spend-pool stop (every mode; spend RISES across the stop line) --------
 
 def spend_pool_stop_threshold(cfg):
-    """The postpaid stop line for a resolved CustomerSpendPool, or None when the
-    owner can never cross: no config, cap <= 0, or — the #110 unification —
+    """The pool's stop line for a resolved CustomerSpendPool, or None when the
+    customer can never cross: no config, cap <= 0, or — the #110 unification —
     ``enforce_mode`` not 'blocking' (an alert_only pool alerts, never
     stops; the ``CustomerSpendPoolService.check`` semantics, now shared by every lane)."""
     from core.vocabulary import SPEND_POOL_ENFORCE_MODE_BLOCKING
@@ -155,27 +159,7 @@ def spend_pool_assessment(cfg, known_micros):
             known_micros, spend_pool_stop_threshold(cfg)))
 
 
-# --- the live-counter dispatch (fast lane / reconcile) ---------------------
-
-def crossed_live(mode, value_micros, threshold_micros) -> bool:
-    """The live-counter compare, one orientation per mode, against a
-    threshold pre-resolved ONCE per owner (the live counter's ``_threshold``
-    — so a batch caller pays one ORM lookup, not one per item):
-
-      postpaid -> ``threshold`` is the pool's stop line; spend at/over it.
-      prepaid  -> ``threshold`` is ``floor_line(min_balance)``; balance
-                  strictly below it (same convention as ``past_floor`` —
-                  test_crossing cross-pins the two forms).
-
-    None threshold = can never cross."""
-    if threshold_micros is None:
-        return False
-    if mode == "postpaid":
-        return past_spend_pool_stop(value_micros, threshold_micros)
-    return value_micros < threshold_micros
-
-
-# --- month scope (the postpaid crossing is month-keyed) --------------------
+# --- month scope (the pool's crossing is month-keyed) ----------------------
 
 def month_label_bounds(now):
     """(label 'YYYY-MM', start date, end date exclusive) for now's month."""

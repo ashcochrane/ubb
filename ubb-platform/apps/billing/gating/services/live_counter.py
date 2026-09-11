@@ -15,11 +15,12 @@ unchanged. The live-counter-maintenance switch (#46) turns the real-time
 counter WRITES off as one unit; the durable-lane legs (verdict reads, signal
 catch-up, flag re-alignment) never switch off.
 
-Two parallel live counters, one per billing mode, both keyed on the resolved
-billing OWNER (``resolve_billing_owner``) so a pooled business is one counter
-across all its seats and an allocated/individual owner is its own:
+Two owner-keyed live counters, both keyed on the resolved billing OWNER
+(``resolve_billing_owner``) so a pooled business is one counter across all
+its seats and an allocated/individual owner is its own:
 
-  PREPAID  ``ubb:livebal:{owner}``        = micros of spendable balance.
+  THE WALLET (every mode but postpaid — the tenant holds the money)
+           ``ubb:livebal:{owner}``        = micros of spendable balance.
            DECRBY on usage, INCRBY on credit. Tracks (credits − recorded
            usage), which is ``durable_balance − undebited_usage`` ≤ durable
            balance, so the live view is the CONSERVATIVE (lower) one.
@@ -28,22 +29,29 @@ across all its seats and an allocated/individual owner is its own:
            reconcile — therefore EVERY credit site MUST call ``credit()``
            (the three mandatory hooks in P2.3). A missed credit fails SAFE
            (over-restrictive), a missed debit is absorbed by the MIN-merge.
+           It races the wallet policy's hard floor.
 
-  POSTPAID ``ubb:livespend:{owner}:{YYYY-MM}`` = micros of month-to-date
+  THE POOL, OWNER LEVEL (EVERY mode — slice 6 §4, #459)
+           ``ubb:livespend:{owner}:{YYYY-MM}`` = micros of month-to-date
            spend. INCRBY on usage. Reconcile MAX-merges toward the durable
            owner-aggregated billed total (only RAISES), catching the
            first-use under-count (the counter is born at the first event,
-           not the month-to-date total) within one reconcile cycle.
+           not the month-to-date total) within one reconcile cycle. It
+           races the OWNER's declared customer spend pool. Until #459 this
+           counter was the postpaid lane's alone and the pool's stop with
+           it; enforcement is payment-mode independent (#150 §7.1), so the
+           recording lane maintains it and compares it for every owner.
 
-The SPEND-POOL counter (D3/D3b of the #111 grilling) is the seat-keyed sibling:
-``ubb:spend_pool:{customer_id}:{YYYY-MM}`` = micros of the seat's month-to-date
-billed spend, INCRBY'd by the drawdown tail and MAX-merged toward the durable
-ledger by the hourly rebuild. One client dialect: like every other key here
-it lives on the raw client with the module's TTL discipline — the old
-two-dialect hack (Django-cache counter ops + a raw-client Lua aimed at the
-cache-prefixed physical key) is retired. Pool POLICY — config resolution,
-threshold alerts, the fail-open/fail-closed gate — stays in CustomerSpendPoolService;
-only the counter mechanics live here.
+The SPEND-POOL counter (D3/D3b of the #111 grilling) is the seat-keyed sibling
+and the pool's SEAT level: ``ubb:spend_pool:{customer_id}:{YYYY-MM}`` = micros
+of the seat's month-to-date billed spend, INCRBY'd by the drawdown tail and
+MAX-merged toward the durable ledger by the hourly rebuild. One client
+dialect: like every other key here it lives on the raw client with the
+module's TTL discipline — the old two-dialect hack (Django-cache counter ops +
+a raw-client Lua aimed at the cache-prefixed physical key) is retired. Pool
+POLICY — config resolution, threshold alerts, the fail-open/fail-closed gate,
+the seat level's durable-lane compare and the kill the pool's stop registers
+— stays in CustomerSpendPoolService; only the counter mechanics live here.
 
 SEEDING (the one deliberate over-permissive window): the prepaid counter
 seeds from the DURABLE wallet balance, which at first-use may still be high
@@ -68,9 +76,9 @@ import logging
 
 from django.conf import settings
 
-from core.crossing import (spend_pool_stop_threshold, crossed_live, floor_line,
-                           month_label_bounds, past_floor, recovered_floor,
-                           same_month)
+from core.crossing import (month_label_bounds, past_floor,
+                           past_spend_pool_stop, recovered_floor, same_month,
+                           spend_pool_stop_threshold)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
@@ -146,7 +154,7 @@ return v
 
 # Reconcile MAX-merge: only RAISES toward the durable month total (catches
 # the first-use under-count / a lost INCR). ONE script for both month-scoped
-# counters — the postpaid owner livespend and the seat spend-pool counter (D3b
+# counters — the owner-level livespend and the seat spend-pool counter (D3b
 # retired the pool service's mirror copy). Within a month real spend only
 # rises and the durable ledger is the truth, so raising-toward-durable is the
 # correct discipline; the only legitimate decrease is at month rollover,
@@ -204,20 +212,30 @@ class LiveCounter:
     # ---- synchronous usage hook (called from record_usage) ----
     @staticmethod
     def debit(owner_id, tenant, billed_cost_micros, *, effective_at=None, now=None):
-        """Apply this event to the owner's live counter, synchronously, and
+        """Apply this event to the owner's live counters, synchronously, and
         return the customer-wide stop verdict.
 
-        P3: if this event drives the counter across the threshold (prepaid
-        wallet floor / postpaid spend pool) the owner-keyed stop flag is SET
+        P3: if this event drives a counter across its line — the wallet
+        below the hard floor, or the owner's month spend at or over the
+        owner's pool's stop line — the owner-keyed stop flag is SET
         (cooperative — never rolls back this event; I3). The returned dict
-        carries {mode, balance_micros|spend_micros, stop, stop_reason,
+        carries {mode, balance_micros, spend_micros, stop, stop_reason,
         stop_scope} (the stop fields reflect the flag AFTER this event, so a
-        flag a sibling run set is surfaced too), plus ``stop_episode_opened``
-        (the new episode_seq) when THIS debit won the stop transition — the
-        #41 tipping-event attribution. Returns None when disabled /
-        zero-cost / (postpaid) backdated to a prior month. NEVER raises — a
-        Redis failure logs and returns None (fail-open; the durable start-gate
-        remains the backstop).
+        flag a sibling run set is surfaced too), plus
+        ``stop_episodes_opened`` — ``{line: episode_seq}`` for every stop
+        line THIS debit won the transition on, the #41 tipping-event
+        attribution; two lines number their episodes independently (#458)
+        and one report can tip both (#459), so the map is keyed by line.
+        Returns None when disabled / zero-cost / (postpaid) backdated to a
+        prior month. NEVER raises — a Redis failure logs and returns None
+        (fail-open; the durable start-gate remains the backstop).
+
+        THE POOL LEG RUNS IN EVERY MODE (slice 6 §4, #459 — payment mode
+        decides who invoices, nothing else): the owner's month spend counter
+        is incremented and compared against the OWNER's declared pool
+        whatever the tenant's billing mode; the wallet leg runs for every
+        mode that holds a wallet. A prior-month backdated event never
+        inflates this month's spend (I9), while it still lowers the wallet.
 
         Live-counter maintenance OFF (#46, §E — enforcing, switch off): no
         counter debit, no crossing check — real-time counter maintenance is off
@@ -239,50 +257,67 @@ class LiveCounter:
         if not live_counter_maintenance_on(tenant):
             return LiveCounter.read(owner_id, tenant)
         try:
-            if tenant.billing_mode == "postpaid":
-                from django.utils import timezone
-                now = now or timezone.now()
-                # I9: a prior-month backdated event must not inflate THIS
-                # month's live counter (mirrors handlers.py's spend-pool tail).
-                if not same_month(effective_at, now):
-                    return None
-                label, _, _ = month_label_bounds(now)
-                key = _livespend_key(owner_id, label)
-                v = int(_client().eval(_SPEND_INCR, 1, key, int(billed_cost_micros), COUNTER_TTL_SECONDS))
-                base = {"mode": "postpaid", "spend_micros": v}
-                mode = "postpaid"
-            else:
-                # prepaid / meter_only: mirror the async wallet drawdown branch.
+            from django.utils import timezone
+            now = now or timezone.now()
+            postpaid = tenant.billing_mode == "postpaid"
+            # I9: a prior-month backdated event must not inflate THIS month's
+            # spend counter (mirrors handlers.py's spend-pool tail). Postpaid
+            # has no wallet to lower, so there is nothing else to apply.
+            in_this_month = same_month(effective_at, now)
+            if postpaid and not in_this_month:
+                return None
+            base = {"mode": "postpaid" if postpaid else "prepaid",
+                    "balance_micros": None, "spend_micros": None}
+            opened = {}
+            balance = None
+            if not postpaid:
+                # The wallet leg — mirror the async wallet drawdown branch.
                 from apps.billing.queries import get_customer_balance
-                key = _livebal_key(owner_id)
                 seed = int(get_customer_balance(owner_id))
-                v = int(_client().eval(_SEED_AND_DECR, 1, key, seed, int(billed_cost_micros), COUNTER_TTL_SECONDS))
-                base = {"mode": "prepaid", "balance_micros": v}
-                mode = "prepaid"
-            # Set (never clear) the cooperative stop flag on a crossing; a
-            # non-crossing event must not clear a flag a sibling run set — the
-            # flag lifts only on recovery (credit / reconcile).
-            if LiveCounter._crossed(mode, v, owner_id, tenant):
-                # WHICH LINE WAS CROSSED is the branch above's own fact: the
-                # postpaid branch debits the pool, every other mode a wallet
-                # (slice 6 §7, §9). The line names the control's family and
-                # the control's row is resolved here, at the crossing.
-                from apps.billing.gating.services.stop_signal_service import (
-                    control_id_of)
-                line = (reasons.CUSTOMER_SPEND_POOL if mode == "postpaid"
-                        else reasons.HARD_FLOOR)
-                opened = LiveCounter._set_stop(
-                    owner_id, line, tenant=tenant,
-                    control_id=control_id_of(line, owner_id, tenant),
-                    balance_micros=v if mode == "prepaid" else 0)
-                if opened is not None:
-                    # THIS debit won the stop transition — the caller's event
-                    # is the episode's tipping event (#41 stop-context). The
-                    # LINE rides beside the episode id: two lines number
-                    # their episodes independently (#458), so a bare number
-                    # cannot say which line's episode this event opened.
-                    base["stop_episode_opened"] = opened
-                    base["stop_line_opened"] = line
+                balance = int(_client().eval(
+                    _SEED_AND_DECR, 1, _livebal_key(owner_id), seed,
+                    int(billed_cost_micros), COUNTER_TTL_SECONDS))
+                base["balance_micros"] = balance
+                # Set (never clear) the cooperative stop flag on a crossing;
+                # a non-crossing event must not clear a flag a sibling run
+                # set — the flag lifts only on recovery (credit / reconcile).
+                if LiveCounter._floor_crossed(balance, owner_id, tenant):
+                    # This leg crosses the wallet's floor and nothing else,
+                    # so the line is the hard floor's (slice 6 §7, §9) and
+                    # the control is the row that carried the floor.
+                    from apps.billing.gating.services.stop_signal_service import (
+                        control_id_of)
+                    won = LiveCounter._set_stop(
+                        owner_id, reasons.HARD_FLOOR, tenant=tenant,
+                        control_id=control_id_of(reasons.HARD_FLOOR, owner_id, tenant),
+                        balance_micros=balance)
+                    if won is not None:
+                        opened[reasons.HARD_FLOOR] = won
+            if in_this_month:
+                # The pool leg, owner level, in every mode (slice 6 §4).
+                label, _, _ = month_label_bounds(now)
+                spend = int(_client().eval(
+                    _SPEND_INCR, 1, _livespend_key(owner_id, label),
+                    int(billed_cost_micros), COUNTER_TTL_SECONDS))
+                base["spend_micros"] = spend
+                pool = LiveCounter._owner_pool(owner_id, tenant)
+                LiveCounter._alert_owner_level(
+                    owner_id, tenant, pool, spend - int(billed_cost_micros),
+                    spend, label)
+                if past_spend_pool_stop(spend, spend_pool_stop_threshold(pool)):
+                    # The line is the pool's and the control is the pool row
+                    # the line was resolved from — no second lookup.
+                    won = LiveCounter._set_stop(
+                        owner_id, reasons.CUSTOMER_SPEND_POOL, tenant=tenant,
+                        control_id=pool.id,
+                        balance_micros=balance if balance is not None else 0)
+                    if won is not None:
+                        opened[reasons.CUSTOMER_SPEND_POOL] = won
+            if opened:
+                # THIS debit won a stop transition — the caller's event is
+                # that episode's tipping event (#41 stop-context), keyed by
+                # the LINE it is on.
+                base["stop_episodes_opened"] = opened
             base.update(LiveCounter.read(owner_id, tenant))
             return base
         except Exception:
@@ -290,38 +325,48 @@ class LiveCounter:
                            extra={"data": {"owner_id": str(owner_id)}})
             return None
 
-    # ---- customer-wide stop flag (P3) ----
+    # ---- the two lines an owner can cross (P3; two levels since #459) ----
     @staticmethod
-    def _threshold(mode, owner_id, tenant):
-        """Resolve the ONE comparable crossing bound for this (mode, owner):
-        postpaid -> ``crossing.spend_pool_stop_threshold`` over the resolved
-        CustomerSpendPool (None = can never cross: no config, cap <= 0, or an
-        alert_only ``enforce_mode`` — #110 unified every lane on the
-        CustomerSpendPoolService.check semantics); prepaid -> ``crossing.floor_line``
-        (the wallet floor). Exactly ONE ORM lookup (CustomerSpendPool via
-        CustomerSpendPoolService.resolve_config_for, or CustomerBillingProfile/
-        BillingTenantConfig via get_customer_min_balance).
-
-        Separate from ``_crossed`` — resolving the line and comparing against
-        it are two jobs, and the billing glossary names this one as the seam
-        that answers "which line does this owner cross?". ``_crossed`` is its
-        only caller."""
-        if mode == "postpaid":
-            from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
-            return spend_pool_stop_threshold(
-                CustomerSpendPoolService.resolve_config_for(tenant.id, owner_id))
+    def _floor_crossed(balance_micros, owner_id, tenant) -> bool:
+        """True when the owner's live balance is past the wallet policy's
+        hard floor — strictly below the negated floor magnitude, the one
+        orientation ``core.crossing.past_floor`` owns. ONE ORM lookup
+        (CustomerBillingProfile / BillingTenantConfig via
+        ``get_customer_min_balance``). Until #459 this and the pool's compare
+        were one mode-keyed pair (``_threshold`` / ``_crossed``); the pool
+        runs in every mode now, so each line resolves and compares as
+        itself."""
         from apps.billing.queries import get_customer_min_balance
-        return floor_line(get_customer_min_balance(owner_id, tenant.id))
+        return past_floor(balance_micros, get_customer_min_balance(owner_id, tenant.id))
 
     @staticmethod
-    def _crossed(mode, value, owner_id, tenant) -> bool:
-        """True if the live counter has crossed the owner's threshold:
-        prepaid balance below the wallet floor (-min_balance), or postpaid
-        month-to-date spend at/over the pool's stop line. Resolves the
-        threshold via ``_threshold`` (ONE ORM query per call) and compares
-        via ``crossing.crossed_live`` — the one owner of both orientations."""
-        return crossed_live(
-            mode, value, LiveCounter._threshold(mode, owner_id, tenant))
+    def _owner_pool(owner_id, tenant):
+        """The OWNER's declared customer spend pool, or None (slice 6 §4):
+        the owner's own row, else the tenant default for a customer that is
+        its own seat, never for a business — ``CustomerSpendPoolService.
+        resolve_config_for`` is the one resolution and answers the level's
+        rule. Its stop line is ``core.crossing.spend_pool_stop_threshold``
+        (None = can never cross: no row, cap <= 0, or ``alert_only``)."""
+        from apps.billing.gating.services.customer_spend_pool_service import (
+            CustomerSpendPoolService)
+        return CustomerSpendPoolService.resolve_config_for(tenant.id, owner_id)
+
+    @staticmethod
+    def _alert_owner_level(owner_id, tenant, pool, old, new, label):
+        """The owner level's threshold alerts (slice 6 §4 — both levels
+        alert): the pool service's level rule over the owner's counter move,
+        best-effort, deduplicated per (owner, period, level) there."""
+        if pool is None:
+            return
+        from apps.platform.customers.models import Customer
+        from apps.billing.gating.services.customer_spend_pool_service import (
+            CustomerSpendPoolService)
+        try:
+            owner = Customer.all_objects.only("id", "tenant_id").get(id=owner_id)
+            CustomerSpendPoolService.emit_threshold_alerts(owner, pool, old, new, label)
+        except Exception:
+            logger.warning("live_counter.owner_level_alert_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
     def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
@@ -337,12 +382,18 @@ class LiveCounter:
         signaled loses the ledger transition here and emits nothing, so the
         two lanes together fire exactly one stop per episode.
 
-        A repeat crossing while the flag is already set (was_new falsy) only
-        refreshes the TTL — no re-publish/re-drive (no spam). ``_clear_stop``
-        deletes the key outright, so the NEXT ``_set_stop`` naturally re-arms
-        the fast lane's transition detector; the ledger guard, not the flag,
-        is what dedups emission (a re-set after a Redis flush or blind window
-        drives the ledger again and simply loses).
+        A repeat crossing of the line the flag already names (was_new falsy,
+        same word) only refreshes the TTL — no re-publish/re-drive (no
+        spam). ⚠ TWO LINES SHARE ONE FLAG (#458, #459): a crossing of the
+        OTHER line while the flag names the first still drives the ledger for
+        its own line — the flag is the owner's verdict cache and cannot say
+        whether that line's episode is open, only the ledger can — and it
+        leaves the flag's word alone, so the ack keeps naming the stop that
+        opened it (``ensure_stop_flag``'s rule). ``_clear_stop`` deletes the
+        key outright, so the NEXT ``_set_stop`` naturally re-arms the fast
+        lane's transition detector; the ledger guard, not the flag, is what
+        dedups emission (a re-set after a Redis flush or blind window drives
+        the ledger again and simply loses).
 
         NEVER raises into the caller — this runs on the recording money
         path (``debit``). The pub/sub publish is guarded by try/except
@@ -374,12 +425,16 @@ class LiveCounter:
         was_new = client.set(_stop_key(owner_id), reason, ex=COUNTER_TTL_SECONDS, nx=True)
         if not was_new:
             client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
-            return None
-        try:
-            client.publish(stop_channel(owner_id), reason)
-        except Exception:
-            logger.warning("live_counter.stop_publish_failed",
-                           extra={"data": {"owner_id": str(owner_id)}})
+            held = client.get(_stop_key(owner_id))
+            held = held.decode() if isinstance(held, bytes) else held
+            if held == reason:
+                return None
+        else:
+            try:
+                client.publish(stop_channel(owner_id), reason)
+            except Exception:
+                logger.warning("live_counter.stop_publish_failed",
+                               extra={"data": {"owner_id": str(owner_id)}})
         if tenant is not None:
             try:
                 from apps.billing.gating.services.stop_signal_service import StopSignalService
@@ -539,7 +594,7 @@ class LiveCounter:
         absent, because an absent key means "seeds from durable at first
         use, nothing to measure" while blind means "cannot measure at all").
         The upward repair keys its candidate lifecycle on that distinction.
-        ``now`` scopes the postpaid month (defaults to wall clock)."""
+        ``now`` scopes the pool's month (defaults to wall clock)."""
         verdict = {"stop": False, "stop_reason": None, "stop_scope": None}
         if not enforcing(tenant):
             if counter:
@@ -666,7 +721,7 @@ class LiveCounter:
         """The bottom-line catch-up both reconcile paths share (#39 §D/§E):
         drive the signal-ledger transition the reconciled position demands on
         ``line`` — the line the calling pass reconciles: the floor's for the
-        prepaid wallet pass, the pool's for the postpaid month pass — at
+        wallet pass, the pool's for the owner-level pool pass — at
         most one net stop/resume per owner per line per run, and only a
         WINNING transition emits (a position the lanes already signaled is a
         silent no-op). SET power: a crossing the fast lane missed (Redis
@@ -688,15 +743,22 @@ class LiveCounter:
 
     @staticmethod
     def reconcile(owner_id, tenant, *, now=None):
-        """MIN/MAX-merge the owner's live counter toward the durable ledger
-        and drive the bottom-line signal catch-up — ONE op, dispatching on
-        the tenant's billing mode (prepaid wallet MIN-merge / postpaid month
-        MAX-merge). Returns ``{"flag_realigned": bool}`` (the #44 §C.2 patrol
-        outcome) on a completed pass, None on failure. ``now`` scopes the
-        postpaid month (beat callers omit it)."""
-        if tenant.billing_mode == "postpaid":
-            return LiveCounter._reconcile_postpaid(owner_id, tenant, now=now)
-        return LiveCounter._reconcile_prepaid(owner_id, tenant)
+        """MIN/MAX-merge the owner's live counters toward the durable ledger
+        and drive the bottom-line signal catch-up — ONE op: the wallet pass
+        (MIN-merge, the floor's line, the soft line) for every mode that
+        holds a wallet, then the owner-level pool pass (month MAX-merge, the
+        pool's line) for EVERY mode (slice 6 §4, #459). Returns
+        ``{"flag_realigned": bool}`` (the #44 §C.2 patrol outcome) on a
+        completed pass, None when neither pass completed. ``now`` scopes the
+        pool's month (beat callers omit it)."""
+        passes = []
+        if tenant.billing_mode != "postpaid":
+            passes.append(LiveCounter._reconcile_prepaid(owner_id, tenant))
+        passes.append(LiveCounter._reconcile_pool(owner_id, tenant, now=now))
+        completed = [p for p in passes if p is not None]
+        if not completed:
+            return None
+        return {"flag_realigned": any(p["flag_realigned"] for p in completed)}
 
     @staticmethod
     def _reconcile_prepaid(owner_id, tenant):
@@ -756,7 +818,7 @@ class LiveCounter:
                 basis = v if v is not None else durable
                 realigned = LiveCounter._reconcile_transitions(
                     owner_id, tenant,
-                    LiveCounter._crossed("prepaid", basis, owner_id, tenant),
+                    LiveCounter._floor_crossed(basis, owner_id, tenant),
                     basis, line=reasons.HARD_FLOOR)
                 from apps.billing.gating.services.stop_signal_service import (
                     CLEAR_RECONCILED, StopSignalService)
@@ -776,17 +838,21 @@ class LiveCounter:
             return None
 
     @staticmethod
-    def _reconcile_postpaid(owner_id, tenant, now=None):
-        """MAX-merge the postpaid live spend toward the durable owner-aggregated
-        month-to-date billed total.
+    def _reconcile_pool(owner_id, tenant, now=None):
+        """The OWNER-LEVEL pool pass, for every mode (slice 6 §4, #459):
+        MAX-merge the owner's live month spend toward the durable
+        owner-aggregated month-to-date billed total, fire any not-yet-sent
+        owner-level alert, and drive the pool's line both ways.
 
-        Signal catch-up (#39): mirrors the prepaid pass — the merged spend
+        Signal catch-up (#39): mirrors the wallet pass — the merged spend
         (or the durable month total when Redis is blind) drives the ledger
-        both ways, so a spend-pool stop missed by the fast lane is SET here
-        and a stale one (incl. MONTH ROLLOVER: the new month's livespend is
-        low, and the stop flag is NOT month-scoped) is cleared within one
-        cycle. No soft-family leg: the soft floor is a wallet line,
-        prepaid-only.
+        both ways, so a pool stop missed by the fast lane is SET here and a
+        stale one (incl. MONTH ROLLOVER: the new month's livespend is low,
+        and the stop flag is NOT month-scoped) is cleared within one cycle.
+        A kill that crashed between the stop transition and its commit is
+        retried while the line holds — the sweep is idempotent. No
+        soft-family leg: the soft floor is a wallet line and the wallet
+        pass's. Until #459 this pass was the postpaid lane's alone.
 
         Live-counter maintenance OFF (#46, §E): the counter jobs (drift read,
         MAX-merge) are real-time counter maintenance and skip; the
@@ -815,7 +881,7 @@ class LiveCounter:
                 # to the slice that owns ceilings, and until then the one thing
                 # this lane must not do is be silent about it.
                 logger.warning("live_counter.durable_basis_incomplete", extra={
-                    "data": {"owner_id": str(owner_id), "mode": "postpaid",
+                    "data": {"owner_id": str(owner_id), "mode": "pool",
                              "unpriced_event_count":
                                  billed[UNPRICED_EVENT_COUNT_KEY]}})
             before = None
@@ -826,7 +892,7 @@ class LiveCounter:
                     pass  # Redis blind — the durable bottom line below still runs
             if before is not None and abs(before - durable) > DRIFT_ALERT_MICROS:
                 logger.error("live_counter.drift_spike", extra={"data": {
-                    "owner_id": str(owner_id), "mode": "postpaid",
+                    "owner_id": str(owner_id), "mode": "pool",
                     "live_micros": before, "durable_micros": durable}})
             v = None
             if maintenance_on:
@@ -836,16 +902,22 @@ class LiveCounter:
                 except Exception:
                     logger.warning("live_counter.reconcile_redis_blind",
                                    extra={"data": {"owner_id": str(owner_id),
-                                                   "mode": "postpaid"}})
+                                                   "mode": "pool"}})
             basis = v if v is not None else durable
+            pool = LiveCounter._owner_pool(owner_id, tenant)
+            LiveCounter._alert_owner_level(owner_id, tenant, pool, 0, basis, label)
+            crossed = past_spend_pool_stop(basis, spend_pool_stop_threshold(pool))
             realigned = LiveCounter._reconcile_transitions(
-                owner_id, tenant,
-                LiveCounter._crossed("postpaid", basis, owner_id, tenant),
-                0,  # postpaid has no balance; spend never rides balance fields
+                owner_id, tenant, crossed,
+                0,  # spend never rides balance fields
                 line=reasons.CUSTOMER_SPEND_POOL)
+            if crossed:
+                from apps.billing.gating.services.customer_spend_pool_service import (
+                    CustomerSpendPoolService)
+                CustomerSpendPoolService.stop_active_work(owner_id, tenant, pool.id)
             return {"flag_realigned": realigned}
         except Exception:
-            logger.warning("live_counter.reconcile_postpaid_failed",
+            logger.warning("live_counter.reconcile_pool_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
             return None
 
@@ -926,7 +998,7 @@ class LiveCounter:
         # through the shared helper; it cannot now, and a coalesce left in front
         # of a value that is already an int reads as though it were still doing
         # something. The completeness this total leaves out is reported by the
-        # postpaid reconcile above, which is the lane that owns this basis.
+        # owner-level pool pass above, which is the lane that owns this basis.
         totals = get_customer_cost_totals(tenant_id, customer_id, start, end)
         total = int(totals["billed_cost_micros"])
         _client().eval(_RECONCILE_MAX, 1, _spend_pool_key(customer_id, label),
@@ -993,7 +1065,7 @@ class Door:
     def balance(owner_id):
         return LiveCounter._read_livebal(owner_id)
 
-    # -- postpaid month-to-date live spend --
+    # -- owner-level month-to-date live spend (the pool's owner level) --
     @staticmethod
     def set_spend(owner_id, micros, *, now=None):
         from django.utils import timezone
