@@ -56,7 +56,7 @@ from django.utils import timezone
 
 from api.v1.schemas import RecordUsageRequest
 from apps.billing.gating import repair
-from apps.billing.gating.models import LiveBalanceRepair
+from apps.billing.gating.models import LiveBalanceRepair, StopSignalState
 from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     CLEAR_BALANCE_REPAIRED,
@@ -74,6 +74,7 @@ from apps.platform.event_types.tests._helpers import (
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
+from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 
 
 def _tenant(enf="enforcing", mode="prepaid"):
@@ -252,8 +253,8 @@ class TestPin7TwoPassRepair:
         # that raised it; the durable lane records the wedge on its next pass
         # (patrol job 1 — the missed-transition drive), and from here on the
         # owner is stopped and suspended off a balance that is a fiction.
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        LiveCounter.ensure_stop_flag(c.id, reasons.customer_stop_reason(t.billing_mode))
+        drive_a_stop(c.id, t)
+        LiveCounter.ensure_stop_flag(c.id, stop_line(t))
         c.refresh_from_db()
         assert c.status == "suspended"
 
@@ -266,7 +267,11 @@ class TestPin7TwoPassRepair:
         cleared = _events("stop.cleared")
         assert cleared.count() == 1
         assert cleared.get().payload["episode_seq"] == 1
-        assert cleared.get().payload["reason"] == CLEAR_BALANCE_REPAIRED
+        # The pair names the line that lifted (#458); the repair's own word is
+        # the ledger row's clear cause.
+        assert cleared.get().payload["reason_code"] == stop_line(t)
+        assert StopSignalState.objects.get(
+            owner=c, reason=stop_line(t)).clear_reason == CLEAR_BALANCE_REPAIRED
         assert LiveCounter.read(c.id, t)["stop"] is False
         c.refresh_from_db()
         assert c.status == "active"  # durable balance is healthy -> unsuspended
@@ -283,7 +288,7 @@ class TestPin7TwoPassRepair:
         t = _tenant()
         c = _customer(t, balance_micros=-2_000_000)
         _set_live(c.id, -3_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        drive_a_stop(c.id, t)
 
         repair.repair_live_balances(t)
         repair.repair_live_balances(t)

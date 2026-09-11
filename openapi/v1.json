@@ -20417,12 +20417,27 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``stop.fired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the stop.fired\n                 that opened it).\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
+                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``stop.fired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the stop.fired\n                 that opened it).\nreason_code / control_family / control_id\n               = WHICH stop line cleared, its family and the row that\n                 declares the control \u2014 the same three the opening half\n                 carried (#458). What CAUSED the clear (a balance that\n                 recovered, the hourly reconcile, an upward repair) is\n                 the ledger row's own bookkeeping (`clear_reason`) and\n                 no longer rides this event: a subscriber is told which\n                 stop lifted, which is the question the pair answers.\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
                     "properties": {
                       "balance_micros": {
                         "default": 0,
                         "title": "Balance Micros",
                         "type": "integer"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "title": "Control Id",
+                        "type": "string"
                       },
                       "episode_seq": {
                         "default": 0,
@@ -20438,9 +20453,19 @@
                         "title": "Re Announcement",
                         "type": "boolean"
                       },
-                      "reason": {
-                        "title": "Reason",
-                        "type": "string"
+                      "reason_code": {
+                        "title": "Reason Code",
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "scope": {
                         "default": "customer",
@@ -20455,7 +20480,9 @@
                     "required": [
                       "tenant_id",
                       "owner_id",
-                      "reason"
+                      "reason_code",
+                      "control_family",
+                      "control_id"
                     ],
                     "title": "StopCleared",
                     "type": "object"
@@ -20541,8 +20568,23 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);\n              the paired ``stop.cleared`` carries the same id, and the\n              stop-context tagging / past-limit report (#41) key on it.",
+                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nreason_code = WHICH customer-wide stop opened the episode \u2014 the wallet's\n              hard floor or the customer spend pool (#458, slice 6 \u00a79):\n              the ledger line's own word, one of the stop reasons the\n              registry names. Both controls open this same state, and\n              a subscriber is told which by reading, never by parsing.\ncontrol_family / control_id\n            = the family that word belongs to, and the row that declares\n              the control \u2014 the billing profile or tenant configuration\n              that carried the floor, the pool row \u2014 so every stop can\n              be routed to the control that caused it (\u00a715).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq\n              \u2014 per owner per line since #458, so a customer stopped by\n              its pool and by its floor at once holds two independent\n              episodes); the paired ``stop.cleared`` carries the same id\n              and the same word, and the stop-context tagging / past-limit\n              report (#41) key on it.",
                     "properties": {
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "title": "Control Id",
+                        "type": "string"
+                      },
                       "episode_seq": {
                         "default": 0,
                         "title": "Episode Seq",
@@ -20557,9 +20599,19 @@
                         "title": "Re Announcement",
                         "type": "boolean"
                       },
-                      "reason": {
-                        "title": "Reason",
-                        "type": "string"
+                      "reason_code": {
+                        "title": "Reason Code",
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "scope": {
                         "default": "customer",
@@ -20574,7 +20626,9 @@
                     "required": [
                       "tenant_id",
                       "owner_id",
-                      "reason"
+                      "reason_code",
+                      "control_family",
+                      "control_id"
                     ],
                     "title": "StopFired",
                     "type": "object"
@@ -20667,6 +20721,39 @@
                         "title": "Billing Owner Id",
                         "type": "string"
                       },
+                      "ceiling_basis": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "cost",
+                              "time"
+                            ],
+                            "type": "string",
+                            "x-ubb-concept": "ceiling_basis"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Ceiling Basis"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "default": "",
+                        "title": "Control Id",
+                        "type": "string"
+                      },
                       "customer_id": {
                         "default": "",
                         "title": "Customer Id",
@@ -20746,7 +20833,8 @@
                       }
                     },
                     "required": [
-                      "tenant_id"
+                      "tenant_id",
+                      "control_family"
                     ],
                     "title": "SubtaskExpired",
                     "type": "object"
@@ -20839,6 +20927,39 @@
                         "title": "Billing Owner Id",
                         "type": "string"
                       },
+                      "ceiling_basis": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "cost",
+                              "time"
+                            ],
+                            "type": "string",
+                            "x-ubb-concept": "ceiling_basis"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Ceiling Basis"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "default": "",
+                        "title": "Control Id",
+                        "type": "string"
+                      },
                       "customer_id": {
                         "default": "",
                         "title": "Customer Id",
@@ -20918,7 +21039,8 @@
                       }
                     },
                     "required": [
-                      "tenant_id"
+                      "tenant_id",
+                      "control_family"
                     ],
                     "title": "SubtaskKilled",
                     "type": "object"
@@ -21011,6 +21133,39 @@
                         "title": "Billing Owner Id",
                         "type": "string"
                       },
+                      "ceiling_basis": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "cost",
+                              "time"
+                            ],
+                            "type": "string",
+                            "x-ubb-concept": "ceiling_basis"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Ceiling Basis"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "default": "",
+                        "title": "Control Id",
+                        "type": "string"
+                      },
                       "customer_id": {
                         "default": "",
                         "title": "Customer Id",
@@ -21085,7 +21240,8 @@
                       }
                     },
                     "required": [
-                      "tenant_id"
+                      "tenant_id",
+                      "control_family"
                     ],
                     "title": "TaskExpired",
                     "type": "object"
@@ -21178,6 +21334,39 @@
                         "title": "Billing Owner Id",
                         "type": "string"
                       },
+                      "ceiling_basis": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "cost",
+                              "time"
+                            ],
+                            "type": "string",
+                            "x-ubb-concept": "ceiling_basis"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Ceiling Basis"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "default": "",
+                        "title": "Control Id",
+                        "type": "string"
+                      },
                       "customer_id": {
                         "default": "",
                         "title": "Customer Id",
@@ -21252,7 +21441,8 @@
                       }
                     },
                     "required": [
-                      "tenant_id"
+                      "tenant_id",
+                      "control_family"
                     ],
                     "title": "TaskKilled",
                     "type": "object"

@@ -43,10 +43,14 @@
       "representation": "enum"
     },
     "ceiling_basis": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "cost",
+        "time"
+      ]
     },
     "ceiling_status": {
       "advertised": true,
@@ -61,10 +65,16 @@
       ]
     },
     "control_family": {
-      "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "ceiling",
+        "customer_spend_pool",
+        "wallet_policy",
+        "admission_control"
+      ]
     },
     "costing_method": {
       "advertised": true,

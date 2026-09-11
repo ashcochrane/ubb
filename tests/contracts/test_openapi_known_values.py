@@ -1048,8 +1048,28 @@ CONCEPTS_IN_THE_CONTRACT = {
     # UBB-produced verdict the registry deliberately does not list. The
     # backend twin was the seven held by reference in `work/reasons.py` after a
     # collapse, a split and two coinages; the G4 twin and the SDK twin died in
+    # the same commit (§19 coupling 1). Five nodes until #458 renamed the
+    # customer stop pair's bare `reason` to the concept's own name: SEVEN.
+    "reason_code": Published(7, KNOWN_VALUES),
+    # WHICH CONTROL A STOP CAME FROM (#458, slice 6 §1, §15) — SIX nodes: the
+    # four terminal stop events and the customer stop pair, all in the
+    # `webhooks` section, because a control's family is a fact about a stop
+    # and every stop UBB announces is one of those six. Closed, so a real
+    # `enum` of the four families. The backend twin was CREATION at the site
+    # the registry declares — billing's signal ledger keys its lines by the
+    # column and holds all four by reference, while the kernel stamps the
+    # word on a unit's stop from the one map in `core.controls` (a consumer
+    # holds the vocabulary; a producer stamps it — §1); the G4 twin died in
     # the same commit (§19 coupling 1).
-    "reason_code": Published(5, KNOWN_VALUES),
+    "control_family": Published(6, ENUM),
+    # WHAT THE CEILING THAT FIRED BOUNDS (#458, slice 6 §15) — FOUR nodes, the
+    # four terminal stop events, because only a UNIT's stop can be a ceiling's;
+    # the customer pair does not carry it. Closed, and NULLABLE: the marker
+    # sits on the string member of the union so the `enum` constrains the two
+    # words and leaves the null — a stop that was not a ceiling's — alone. The
+    # backend twin is the work model's two values on `CEILING_STATUS_CHOICES`'s
+    # footing, read by the admin and by the row's own derived property.
+    "ceiling_basis": Published(4, ENUM),
 }
 
 
@@ -1433,13 +1453,20 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
            {"CustomerSpendPoolIn", "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut"}
            | events_whose_payload_declares("enforce_mode"))
     # WHY A STOP FIRED (#457): on the acknowledgement under the stop trio's
-    # own field name, and on the four terminal stop events — derived off the
-    # payload classes, the `trigger_source` line's reason. NOT on the unit
-    # read (`TaskOut` / `TaskDetailOut` carry no stop cause — #454 named that
-    # gap as nobody's) and NOT on the customer stop pair, whose `reason` is
-    # the ledger's own line and ticket 7's to rename.
+    # own field name, and on the SIX stop events — the four terminal stops
+    # and, since #458 renamed its bare `reason`, the customer stop pair — all
+    # derived off the payload classes, the `trigger_source` line's reason.
+    # NOT on the unit read (`TaskOut` / `TaskDetailOut` carry no stop cause —
+    # #454 named that gap as nobody's).
     placed("reason_code",
            {"RecordUsageResponse"} | events_whose_payload_declares("reason_code"))
+    # WHICH CONTROL FIRED (#458): on every stop event and nowhere else — the
+    # same six the cause rides, derived the same way. A control's family is
+    # a fact about a stop, and no read surface publishes a stop.
+    placed("control_family", events_whose_payload_declares("control_family"))
+    # WHAT THE CEILING BOUNDED (#458): on the four terminal stops only — a
+    # customer-wide stop is never a ceiling's, so the pair does not carry it.
+    placed("ceiling_basis", events_whose_payload_declares("ceiling_basis"))
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2244,6 +2271,11 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # ever advertised (after `trigger_source`), whose backend half was a
     # collapse, a split and two registry coinages, and whose stored rows were
     # migrated in the same commit so no reader carries a legacy map.
-    assert len(_entries(programme)) >= 11, (
+    # 11 -> 9 in #458: `control_family` and `ceiling_basis`, the fourth and
+    # fifth — both paid at their declared sites (billing's signal ledger
+    # keyed by the family; the work model's two bases) and both advertised
+    # on the stop events in the same commit, the family on all six and the
+    # basis on the four that can be a ceiling's.
+    assert len(_entries(programme)) >= 9, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

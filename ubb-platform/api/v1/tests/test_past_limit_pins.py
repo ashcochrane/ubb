@@ -319,7 +319,8 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # signal ledger (the episode ROW is sourced from there, not from any
         # event tag) — balance 20M, floor 5M: one event billing 26M crosses.
         self._record(provider_cost_micros=1_000_000, bills=26_000_000)
-        state = StopSignalState.objects.get(owner=self.customer, family="floor_stop")
+        state = StopSignalState.objects.get(owner=self.customer,
+                                            reason=reasons.HARD_FLOOR)
         self.assertEqual(state.state, "stopped")
 
         # A hand-crafted event carrying the RETIRED tag value at the SAME

@@ -56,7 +56,6 @@ one) have left the published verdicts list with nothing to name them.
 """
 
 from core.vocabulary import (
-    CUSTOMER_BILLING_MODE_POSTPAID,
     REASON_CODE_ABSOLUTE_DEADLINE,
     REASON_CODE_CUSTOMER_SPEND_POOL,
     REASON_CODE_HARD_FLOOR,
@@ -83,12 +82,15 @@ TASK_COGS_CEILING = REASON_CODE_TASK_COGS_CEILING
 # still priced, recorded, and billed — this is a verdict, not a refusal, and
 # it is deliberately NOT a registry value (see the module docstring).
 TASK_NOT_ACTIVE = "task_not_active"
-# Customer-wide stop: the owner's CUSTOMER SPEND POOL opened the episode. The
-# postpaid lane's stop (slice 6 §4, §7 — the split of the one customer-wide
-# word into the two controls that produce it).
+# Customer-wide stop: the owner's CUSTOMER SPEND POOL opened the episode (slice
+# 6 §4, §7 — the split of the one customer-wide word into the two controls
+# that produce it). Since #458 the signal ledger keys a line by this word, so
+# which control opened an episode is read off the ledger and never forked
+# off the owner's tenant billing mode.
 CUSTOMER_SPEND_POOL = REASON_CODE_CUSTOMER_SPEND_POOL
-# Customer-wide stop: the wallet's HARD FLOOR opened the episode. The prepaid
-# lane's stop, and the same word the suspension it folds into records.
+# Customer-wide stop: the wallet's HARD FLOOR opened the episode — the
+# ledger's other stop line, and the same word the suspension it folds into
+# records.
 HARD_FLOOR = REASON_CODE_HARD_FLOOR
 # Reaped: nothing was reported on this unit inside its silence window, and
 # reporting usage is the only thing that proves a unit is alive (#412).
@@ -189,26 +191,6 @@ def unit_scope(*, is_subtask):
     report.
     """
     return "subtask" if is_subtask else "task"
-
-
-def customer_stop_reason(billing_mode):
-    """Which customer-wide stop a lane produces — the pool's or the floor's —
-    told apart the way the producers are told apart: by the owner's tenant
-    billing mode (slice 6 §7, the split).
-
-    ⚠ UNTIL THE SIGNAL LEDGER CARRIES ITS OWN LINE (ticket 7 of slice 6), this
-    fork is what says which control opened a customer-wide episode, and every
-    producer and reader of that stop calls it rather than spelling the fork
-    again. The postpaid lane is the pool's; every other mode debits a wallet
-    (`LiveCounter.debit` mirrors the drawdown branch for anything that is not
-    postpaid), so every other mode is the floor's. The migration that rewrote
-    stored rows (`work/migrations/0026`) routed the retired word by the same
-    fork, because the mode was the only fact a historical row could answer
-    with.
-    """
-    if billing_mode == CUSTOMER_BILLING_MODE_POSTPAID:
-        return CUSTOMER_SPEND_POOL
-    return HARD_FLOOR
 
 
 def kill_plan(unit_id, parent_id, verdicts):

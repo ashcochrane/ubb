@@ -25,7 +25,9 @@ from apps.billing.gating.models import StopSignalState
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
 from apps.platform.work.services import TaskService
-from apps.billing.gating.services.stop_signal_service import StopSignalService
+from apps.billing.gating.services.stop_signal_service import (
+    LINE_SOFT_FLOOR, StopSignalService)
+from apps.billing.gating.tests._helpers import stop_line
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.queries import get_billing_config, get_customer_soft_min_balance
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
@@ -198,7 +200,7 @@ class TestPin12PairExactlyOnce:
         assert payload["balance_micros"] == -3_000_000
         assert payload["soft_min_balance_micros"] == SOFT
         assert payload["owner_id"] == str(c.id)
-        row = StopSignalState.objects.get(owner=c, family="soft_floor")
+        row = StopSignalState.objects.get(owner=c, reason=LINE_SOFT_FLOOR)
         assert row.state == "stopped" and row.episode_seq == 1
         # Never a stop, never a suspension: the hard floor did not cross.
         assert _hard_fired().count() == 0
@@ -242,8 +244,8 @@ class TestPin12PairExactlyOnce:
         _drain(t, c, 6_000_000)  # 0 -> -6M crosses BOTH lines at once
         assert _crossed().count() == 1
         assert _hard_fired().count() == 1
-        assert StopSignalState.objects.get(owner=c, family="soft_floor").episode_seq == 1
-        assert StopSignalState.objects.get(owner=c, family="floor_stop").episode_seq == 1
+        assert StopSignalState.objects.get(owner=c, reason=LINE_SOFT_FLOOR).episode_seq == 1
+        assert StopSignalState.objects.get(owner=c, reason=stop_line(t)).episode_seq == 1
 
     def test_credit_clears_at_the_exact_recross_once(self):
         t = _tenant()

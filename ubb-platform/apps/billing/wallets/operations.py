@@ -555,15 +555,19 @@ def _drawdown_tail(tenant):
             # re-driven by the hourly reconcile.
             if crossed_floor(old_balance, new_balance, limit):
                 # This lane crosses the wallet's CONFIGURED floor and nothing
-                # else, so the bound it names is the hard floor's (slice 6
-                # §7, the split of the one customer-wide word).
+                # else, so the line it drives is the hard floor's (slice 6
+                # §7, the split of the one customer-wide word) and the
+                # control it names is the row that carried the floor (§15).
+                from apps.billing.queries import get_customer_floor_control_id
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
                 from apps.billing.gating.services.live_counter import (
                     LiveCounter)
                 try:
                     StopSignalService.drive_stop(
-                        owner.id, tenant, reason=reasons.HARD_FLOOR,
+                        owner.id, tenant, line=reasons.HARD_FLOOR,
+                        control_id=get_customer_floor_control_id(
+                            owner.id, tenant.id),
                         balance_micros=new_balance)
                 except Exception:
                     logger.warning("billing.floor_stop_transition_failed",

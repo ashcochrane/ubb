@@ -27,6 +27,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
+from apps.billing.gating.tests._helpers import stop_line
 
 FLOOR = 5_000_000  # configured min balance: the stop line is -5_000_000
 
@@ -89,8 +90,8 @@ class TestPin4DurableLane:
         assert _fired().count() == 1
         payload = _fired().get().payload
         assert payload["episode_seq"] == 1
-        assert payload["reason"] == reasons.HARD_FLOOR
-        row = StopSignalState.objects.get(owner=c, family="floor_stop")
+        assert payload["reason_code"] == reasons.HARD_FLOOR
+        row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
         assert row.state == "stopped" and row.episode_seq == 1
         c.refresh_from_db()
         assert c.status == "suspended"
@@ -122,7 +123,7 @@ class TestPin4DurableLane:
         _drain(t, c, 6_000_000)
         assert _fired().count() == 1
         assert _suspended_events().count() == 1
-        assert StopSignalState.objects.get(owner=c, family="floor_stop").episode_seq == 1
+        assert StopSignalState.objects.get(owner=c, reason=stop_line(t)).episode_seq == 1
 
 
 @pytest.mark.django_db

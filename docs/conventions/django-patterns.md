@@ -27,7 +27,12 @@ are built on — use them rather than reaching across a boundary directly.
 - Handlers are **idempotent** — dispatch is at-least-once and a per-(event, handler) checkpoint
   makes redelivery a no-op. Write handlers that tolerate being called twice.
 - **Event schemas are additive-only** (`apps/platform/events/schemas.py`): a new field needs a
-  default; a breaking change means a new event class, not an edited one.
+  default; a breaking change means a new event class, not an edited one. Two admitted exceptions,
+  each recorded at the field it applies to: a CLOSED vocabulary field with no honest default may be
+  required once a data migration has stamped every stored row and queued payload (#458's
+  `control_family`); and while the pre-live lane is open (ADR-0007 §5) a rename may be made in
+  place with its break recorded in the gate's block and its queued payloads migrated (#458's
+  `reason` → `reason_code` on the customer stop pair).
 
 ## Synchronous reactions: the platform hooks registry
 

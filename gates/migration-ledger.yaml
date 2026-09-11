@@ -1631,30 +1631,6 @@ entries:
       positive owner, and flagged in gates/README.md as wanting an owner's eye
       — the same shape as #206's `meter_only`. Any slice may take it earlier.
 
-  - id: g2-backend-ceiling_basis
-    gate: G2
-    site: ubb-platform/apps/platform/work/models.py::ceiling_basis
-    expected: ceiling_basis
-    found: 0 of 2 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. A Ceiling bounds one unit of
-      work on cost or on time (#150). Slice 6 rebuilds the spend controls and
-      declares both bases.
-
-  - id: g2-backend-control_family
-    gate: G2
-    site: ubb-platform/apps/billing/gating/models.py::control_family
-    expected: control_family
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #150's four families replace
-      one word that named all of them at once. Slice 6 is where they become
-      real.
-
   - id: g2-backend-customer_billing_mode
     gate: G2
     site: ubb-platform/apps/platform/tenants/models.py::customer_billing_mode
@@ -2106,32 +2082,6 @@ entries:
       slice rebuilds the catalogue and it is recorded against the cutover for
       want of an owner — #227's finding, repeated here because it is the same
       absence and it wants an owner's eye. The metadata appears in that slice.
-
-  - id: g4-openapi-ceiling_basis
-    gate: G4
-    site: openapi/v1.json::ceiling_basis
-    expected: ceiling_basis
-    found: 0 of 2 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds the ceiling, which is what declares whether it
-      bounds cost or time (#150). The metadata appears in that slice.
-
-  - id: g4-openapi-control_family
-    gate: G4
-    site: openapi/v1.json::control_family
-    expected: control_family
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control around #150's four families, which
-      is what this names. The metadata appears in that slice.
 
   - id: g4-openapi-customer_billing_mode
     gate: G4

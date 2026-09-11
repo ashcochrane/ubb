@@ -94,8 +94,11 @@ class TheMapIsTheRegistrysWordsTest(TestCase):
             MIGRATION.current_word(MIGRATION.CUSTOMER_WIDE,
                                    CUSTOMER_BILLING_MODE_PREPAID),
             reasons.HARD_FLOOR)
-        # The producers' own fork, held to the migration's: same input, same
-        # word, so a historical row and a live stop agree.
+        # The producers forked the same way until the ledger carried its
+        # own line (#458 deleted `reasons.customer_stop_reason`); the fork
+        # survives only here and in the ledger's own migration, as the one
+        # fact a historical row can answer with — so the expectation is
+        # spelled: postpaid is the pool's, every other mode the wallet's.
         # The third mode is the tenant's default — the one that does not
         # bill through UBB — read off the model rather than spelled.
         for mode in (CUSTOMER_BILLING_MODE_POSTPAID,
@@ -103,7 +106,9 @@ class TheMapIsTheRegistrysWordsTest(TestCase):
                      Tenant._meta.get_field("billing_mode").default):
             self.assertEqual(
                 MIGRATION.current_word(MIGRATION.CUSTOMER_WIDE, mode),
-                reasons.customer_stop_reason(mode), mode)
+                reasons.CUSTOMER_SPEND_POOL
+                if mode == CUSTOMER_BILLING_MODE_POSTPAID
+                else reasons.HARD_FLOOR, mode)
 
     def test_the_migration_is_one_runpython_with_a_stated_reason(self):
         from django.db.migrations import RunPython

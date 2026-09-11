@@ -52,6 +52,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.platform.tenants.flags import live_counter_maintenance_on
+from apps.platform.work import reasons
 
 logger = logging.getLogger("ubb.billing")
 
@@ -251,7 +252,7 @@ def _apply_increment(owner_id, amount):
 
 
 def _resume_if_wedge_lifted(owner_id, tenant, live_after):
-    """Resume on repair (§D): re-check the floor_stop family against the
+    """Resume on repair (§D): re-check the wallet floor's line against the
     repaired balance; a repair that lifted a wedged stop runs
     ``LiveCounter.resume`` (D2 — the clearing trio as one op: ``stop.cleared``
     exactly once through the same guard as every other clearing, fast-flag
@@ -271,7 +272,10 @@ def _resume_if_wedge_lifted(owner_id, tenant, live_after):
         floor = get_customer_min_balance(owner_id, tenant.id)
         if past_floor(live_after, floor):
             return  # still past the floor: the stop stands
-        LiveCounter.resume(owner_id, tenant, reason=CLEAR_BALANCE_REPAIRED,
+        # The repair lifts the wallet FLOOR's line — the only line a live
+        # balance can be wedged past (#458).
+        LiveCounter.resume(owner_id, tenant, line=reasons.HARD_FLOOR,
+                           clear_reason=CLEAR_BALANCE_REPAIRED,
                            balance_micros=live_after)
     except Exception:
         logger.warning("live_balance.repair_resume_failed",

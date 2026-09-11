@@ -44,8 +44,7 @@ from apps.billing.gating import patrol
 from apps.billing.gating.models import PatrolOutcome, StopSignalState
 from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
-    FAMILY_FLOOR_STOP,
-    FAMILY_SOFT_FLOOR,
+    LINE_SOFT_FLOOR,
     StopSignalService,
 )
 from apps.billing.gating.tasks import reconcile_live_ledgers
@@ -57,6 +56,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.work import reasons
+from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 from apps.platform.work.models import Task
 from apps.platform.work.services import STOP_CAUSE_KEY, STOP_MECHANISM_KEY
 from apps.platform.tenants.models import Tenant
@@ -104,8 +104,8 @@ def _set_status(outbox_id, status):
     OutboxEvent.objects.filter(id=outbox_id).update(status=status)
 
 
-def _stamp_of(owner, family):
-    return StopSignalState.objects.get(owner=owner, family=family).announce_outbox_id
+def _stamp_of(owner, line):
+    return StopSignalState.objects.get(owner=owner, reason=line).announce_outbox_id
 
 
 def _task(t, c, limit=None, total=0, status="active", parent=None,
@@ -126,7 +126,7 @@ class TestPin1AmbientRollback:
         # is emitted (there is no state to announce).
         t = _tenant()
         c = _customer(t, balance_micros=5_000_000)
-        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
+        Door.plant_stop(c.id, stop_line(t), ttl=False)
         assert LiveCounter.read(c.id, t)["stop"] is True
         out = LiveCounter.reconcile(c.id, t)
         assert LiveCounter.read(c.id, t)["stop"] is False
@@ -141,7 +141,7 @@ class TestPin1AmbientRollback:
         # drives the stop and emits — late, never lost.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)  # floor defaults to 0
-        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)  # survived flag
+        Door.plant_stop(c.id, stop_line(t), ttl=False)  # survived flag
         LiveCounter.reconcile(c.id, t)
         fired = _events("stop.fired")
         assert fired.count() == 1
@@ -153,7 +153,7 @@ class TestPin1AmbientRollback:
         # (Redis flush). The patrol re-sets it from the durable family state.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        drive_a_stop(c.id, t)
         assert Door.stop_reason(c.id) is None  # durable lane, no flag
         out = LiveCounter.reconcile(c.id, t)
         assert LiveCounter.read(c.id, t)["stop"] is True
@@ -204,8 +204,8 @@ class TestPin3RemintUnannounced:
     def test_dead_lettered_stop_fired_is_reminted_with_the_same_episode(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        first = _stamp_of(c, FAMILY_FLOOR_STOP)
+        drive_a_stop(c.id, t)
+        first = _stamp_of(c, stop_line(t))
         _set_status(first, "failed")  # dead-lettered past the retry horizon
 
         assert patrol.remint_unannounced_signals(t) == 1
@@ -214,21 +214,40 @@ class TestPin3RemintUnannounced:
         fresh = fired.exclude(id=first).get()
         assert fresh.payload["re_announcement"] is True
         assert fresh.payload["episode_seq"] == 1  # same episode, not a new one
-        assert fresh.payload["reason"] == reasons.customer_stop_reason(t.billing_mode)
-        assert _stamp_of(c, FAMILY_FLOOR_STOP) == fresh.id  # stamp updated
+        assert fresh.payload["reason_code"] == stop_line(t)
+        assert _stamp_of(c, stop_line(t)) == fresh.id  # stamp updated
         # The dead-lettered row itself is untouched (alerting stays as is).
         assert OutboxEvent.objects.get(id=first).status == "failed"
+
+    def test_a_signal_remint_reads_the_family_and_the_control_off_the_row(self):
+        """#458: the re-mint carries the line's family and the control id the
+        episode recorded — read off the ledger row, unchanged from the
+        original announcement, which is the only place they exist."""
+        t = _tenant()
+        c = _customer(t, balance_micros=-1_000_000, hard=0)
+        drive_a_stop(c.id, t)
+        first = _stamp_of(c, stop_line(t))
+        original = OutboxEvent.objects.get(id=first).payload
+        _set_status(first, "failed")
+
+        assert patrol.remint_unannounced_signals(t) == 1
+
+        fresh = _events("stop.fired").exclude(id=first).get().payload
+        row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
+        assert fresh["control_family"] == original["control_family"] == row.control_family
+        assert fresh["control_id"] == original["control_id"] == str(row.control_id)
+        assert row.control_id == c.billing_profile.id  # the row that carried the floor
 
     def test_no_mint_while_an_announcement_is_in_flight(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        drive_a_stop(c.id, t)
         # Stamp is pending (in flight) -> the patrol leaves the row alone.
         assert patrol.remint_unannounced_signals(t) == 0
         assert _events("stop.fired").count() == 1
         # A re-mint's own stamp is also in flight: after one repair, the next
         # pass mints nothing — at most one live announcement per row.
-        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
+        _set_status(_stamp_of(c, stop_line(t)), "failed")
         assert patrol.remint_unannounced_signals(t) == 1
         assert patrol.remint_unannounced_signals(t) == 0
         assert _events("stop.fired").count() == 2
@@ -238,16 +257,16 @@ class TestPin3RemintUnannounced:
         # vacuous success, not a delivery failure.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "skipped")
+        drive_a_stop(c.id, t)
+        _set_status(_stamp_of(c, stop_line(t)), "skipped")
         assert patrol.remint_unannounced_signals(t) == 0
         assert _events("stop.fired").count() == 1
 
     def test_processed_rows_are_left_alone(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "processed")
+        drive_a_stop(c.id, t)
+        _set_status(_stamp_of(c, stop_line(t)), "processed")
         assert patrol.remint_unannounced_signals(t) == 0
 
     def test_administrative_close_never_rides_the_wire(self):
@@ -259,10 +278,10 @@ class TestPin3RemintUnannounced:
             CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED)
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
+        drive_a_stop(c.id, t)
+        _set_status(_stamp_of(c, stop_line(t)), "failed")
         StopSignalState.objects.filter(owner=c).update(
-            state=STATE_CLEARED, reason=CLEAR_ENFORCEMENT_MODE_TRANSITION)
+            state=STATE_CLEARED, clear_reason=CLEAR_ENFORCEMENT_MODE_TRANSITION)
         assert patrol.remint_unannounced_signals(t) == 0
         assert not _events("stop.cleared").exists()
         assert _events("stop.fired").count() == 1
@@ -277,13 +296,13 @@ class TestPin4BottomLineOnly:
         # intermediate stop.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        stop_ev = _stamp_of(c, FAMILY_FLOOR_STOP)
+        drive_a_stop(c.id, t)
+        stop_ev = _stamp_of(c, stop_line(t))
         _set_status(stop_ev, "failed")
         Wallet.objects.filter(customer=c).update(balance_micros=2_000_000)
-        StopSignalService.drive_clear(c.id, t, reason="balance_recovered",
+        StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason="balance_recovered",
                                       balance_micros=2_000_000)
-        clear_ev = _stamp_of(c, FAMILY_FLOOR_STOP)
+        clear_ev = _stamp_of(c, stop_line(t))
         _set_status(clear_ev, "failed")
 
         assert patrol.remint_unannounced_signals(t) == 1
@@ -304,7 +323,7 @@ class TestPin5SoftFamilyRidesTheSameRails:
         StopSignalService.drive_soft_crossed(c.id, t,
                                              balance_micros=-3_000_000,
                                              soft_min_balance_micros=2_000_000)
-        _set_status(_stamp_of(c, FAMILY_SOFT_FLOOR), "failed")
+        _set_status(_stamp_of(c, LINE_SOFT_FLOOR), "failed")
         assert patrol.remint_unannounced_signals(t) == 1
         crossed = _events("soft_floor.crossed")
         assert crossed.count() == 2
@@ -313,16 +332,16 @@ class TestPin5SoftFamilyRidesTheSameRails:
         assert fresh.payload["episode_seq"] == 1
         # The hard family was never touched.
         assert not StopSignalState.objects.filter(
-            owner=c, family=FAMILY_FLOOR_STOP).exists()
+            owner=c, reason=stop_line(t)).exists()
 
     def test_families_remint_independently(self):
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000, hard=5_000_000,
                       soft=2_000_000)
-        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        drive_a_stop(c.id, t)
         StopSignalService.drive_soft_crossed(c.id, t)
-        _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
-        _set_status(_stamp_of(c, FAMILY_SOFT_FLOOR), "failed")
+        _set_status(_stamp_of(c, stop_line(t)), "failed")
+        _set_status(_stamp_of(c, LINE_SOFT_FLOOR), "failed")
         assert patrol.remint_unannounced_signals(t) == 2
         assert _events("stop.fired").count() == 2
         assert _events("soft_floor.crossed").count() == 2
@@ -395,8 +414,18 @@ class TestPin6TaskSweep:
         dead = OutboxEvent.objects.create(
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
+        from apps.platform.work.models import (
+            STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY)
+        from core.vocabulary import CONTROL_FAMILY_CEILING
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
-                     stamp=dead.id, meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
+                     stamp=dead.id,
+                     # A cause and its control, as every stopped row holds
+                     # since #458's migration — but no MECHANISM, which is
+                     # what a pre-split row looks like and what this case is
+                     # about.
+                     meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+                           STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
+                           STOP_CONTROL_ID_KEY: str(t.id)})
         assert patrol.remint_unannounced_kills(t) == 1
         ev = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
         assert ev.payload["re_announcement"] is True
@@ -416,6 +445,38 @@ class TestPin6TaskSweep:
         assert task.announce_outbox_id == ev.id
         # The fresh stamp is in flight: the next pass mints nothing.
         assert patrol.remint_unannounced_kills(t) == 0
+
+    def test_a_remint_carries_the_control_the_stopping_lane_recorded(self):
+        """#458, the acceptance criterion's shape: a kill is applied and its
+        row stamped, the delivery dies after that (the stamp points at a
+        dead letter), and the re-mint carries the family and the control id
+        the row recorded — the same two the original announcement carried,
+        because both read the row and neither guesses."""
+        from apps.platform.work.models import (
+            STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY)
+        from apps.platform.work.services import TaskService, ceiling_control_id
+        from core.vocabulary import CEILING_BASIS_COST, CONTROL_FAMILY_CEILING
+
+        t = _tenant()
+        c = _customer(t, balance_micros=1_000_000)
+        task = _task(t, c, limit=1_000, total=2_000)
+        assert TaskService.kill_and_announce(
+            task.id, reasons.TASK_COGS_CEILING, tenant_id=t.id, customer_id=c.id,
+            trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+            control_id=ceiling_control_id(task))
+        task.refresh_from_db()
+        original = OutboxEvent.objects.get(id=task.announce_outbox_id)
+        _set_status(original.id, "failed")  # the kill landed; the delivery did not
+
+        assert patrol.remint_unannounced_kills(t) == 1
+
+        fresh = _events(TaskKilled.EVENT_TYPE).exclude(id=original.id).get().payload
+        assert fresh["control_family"] == original.payload["control_family"] \
+            == task.metadata[STOP_CONTROL_FAMILY_KEY] == CONTROL_FAMILY_CEILING
+        assert fresh["control_id"] == original.payload["control_id"] \
+            == task.metadata[STOP_CONTROL_ID_KEY] == str(t.id)
+        assert fresh["ceiling_basis"] == original.payload["ceiling_basis"] \
+            == CEILING_BASIS_COST
 
     def test_a_remint_names_the_mechanism_the_stopping_lane_recorded(self):
         """The other half of the pair above: where the row DOES record which
@@ -802,12 +863,12 @@ class TestPatrolBeatAndCounters:
         t = _tenant()
         # Owner A: orphaned flag, healthy balance -> one flag re-alignment.
         a = _customer(t, balance_micros=5_000_000, ext="a")
-        Door.plant_stop(a.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
+        Door.plant_stop(a.id, stop_line(t), ttl=False)
         # Owner B: durably stopped, announcement dead-lettered -> one re-mint.
         b = _customer(t, balance_micros=-1_000_000, ext="b")
-        StopSignalService.drive_stop(b.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
-        LiveCounter.ensure_stop_flag(b.id, reasons.customer_stop_reason(t.billing_mode))
-        _set_status(_stamp_of(b, FAMILY_FLOOR_STOP), "failed")
+        drive_a_stop(b.id, t)
+        LiveCounter.ensure_stop_flag(b.id, stop_line(t))
+        _set_status(_stamp_of(b, stop_line(t)), "failed")
         # Owner C: an over-limit task the kill flow never reached -> one sweep.
         c = _customer(t, balance_micros=1_000_000, ext="c")
         _task(t, c, limit=1_000, total=5_000)
@@ -836,7 +897,7 @@ class TestPatrolBeatAndCounters:
         """
         t = _tenant(enf="off")
         c = _customer(t, balance_micros=1_000_000)
-        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
+        Door.plant_stop(c.id, stop_line(t), ttl=False)
         task = _task(t, c, limit=1_000, total=5_000)
         reconcile_live_ledgers()
         task.refresh_from_db()
@@ -848,7 +909,7 @@ class TestPatrolBeatAndCounters:
         # The signal suite did not run for this tenant: the orphaned flag
         # an enforcing tenant's pass would have re-aligned still stands, and
         # no re-alignment was counted.
-        assert Door.stop_reason(c.id) == reasons.customer_stop_reason(t.billing_mode)
+        assert Door.stop_reason(c.id) == stop_line(t)
         assert get_patrol_stats(tenant_id=t.id)["patrol_flag_realigned_7d"] == 0
 
     def test_a_crashed_ceiling_kill_on_an_off_tenant_is_retried_by_the_beat(self):

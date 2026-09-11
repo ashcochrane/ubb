@@ -21,11 +21,16 @@ from core.vocabulary import (
     TASK_STATUS_EXPIRED,
     TASK_STATUS_FAILED,
     TASK_STATUS_KILLED,
+    TASK_TYPE_KIND_SUBTASK,
+    TASK_TYPE_KIND_TASK,
     TRIGGER_SOURCE_PARENT_CASCADE,
 )
+from core import controls
 from apps.platform.grouping_fields.models import SLOTS
 from apps.platform.work import reasons
-from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
+from apps.platform.work.models import (
+    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
+    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, Task, TaskType)
 
 logger = logging.getLogger(__name__)
 
@@ -386,21 +391,33 @@ KILLED_WITH_ITS_PARENT = CascadeRecord(
 EXPIRED_WITH_ITS_PARENT = CascadeRecord(
     TASK_STATUS_EXPIRED, stop_reason=reasons.PARENT_EXPIRED)
 
-#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT — the cause
-#: and the mechanism, side by side and never merged (ADR-0006 §5).
-#:
-#: ⚠ THE CAUSE'S KEY IS THE CONCEPT'S OWN NAME, AND EVERY STORED ROW WAS MOVED
-#: ONTO IT ONCE (slice 6 §8, #457). It was spelled for a kill and carried every
-#: other stop too; `work/migrations/0026` renamed it on every unit row holding
-#: it and rewrote the retired values beneath it in the same pass, so no reader
-#: needs the old spelling and none holds it. Named here rather than spelled at
-#: each write, and read through this name by the patrol's re-mint, the
-#: stop-context tagging and the retired report. Every reader still gates on the
-#: state first: `killed` means UBB stopped the work on a spend signal and
-#: `expired` means nobody ever told UBB how it ended, and the cause under this
-#: key says which bound was reached in either case.
-STOP_CAUSE_KEY = "reason_code"
-STOP_MECHANISM_KEY = "trigger_source"
+#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT live on
+#: the model beside the column they are written into (`models.STOP_CAUSE_KEY`
+#: and its three siblings, #458); this module writes them and every other
+#: reader — the patrol's re-mint, the stop-context tagging, the retired report
+#: — reaches them through either name.
+
+
+def ceiling_control_id(task):
+    """The id of the control a CEILING stop on this unit names (slice 6 §1,
+    §15): the declaration the unit runs under — the `TaskType` row for its
+    declared kind at its own altitude — or the tenant's own id for an
+    undeclared unit, whose ceiling and windows come from the tenant's rungs.
+
+    The ceiling is the kernel's family, so the kernel resolves its identity
+    for every caller of the kill — the ingest lane, the patrol's sweep and
+    the sweeper that reaps a window — rather than each spelling the ladder's
+    first rung again. One indexed read; a row with no declared kind makes
+    none.
+    """
+    if task.task_type:
+        kind = TASK_TYPE_KIND_SUBTASK if task.parent_id else TASK_TYPE_KIND_TASK
+        declared = (TaskType.objects
+                    .filter(tenant_id=task.tenant_id, kind=kind, key=task.task_type)
+                    .values_list("id", flat=True).first())
+        if declared is not None:
+            return str(declared)
+    return str(task.tenant_id)
 
 #: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the words the start
 #: gate's verdict vocabulary already publishes (`openapi/error-codes.json`).
@@ -894,8 +911,8 @@ class TaskService:
         return task, verdicts
 
     @staticmethod
-    def _flip(task_id, status, *, cascade, reason="", declaration=None,
-              tenant_id=None, customer_id=None):
+    def _flip(task_id, status, *, cascade, reason="", control_id="",
+              declaration=None, tenant_id=None, customer_id=None):
         """THE ONE TERMINAL TRANSITION, and the one place terminality is
         enforced (#408). Returns ``(task, transitioned)``; ``transitioned`` is
         True iff THIS call performed the flip out of ``active``, so callers can
@@ -934,6 +951,18 @@ class TaskService:
         A terminal state is a signal point, not a wall: late events still land,
         bill, and count into this unit's totals (and its parent's).
 
+        ``control_id`` is the identity of the control whose bound ``reason``
+        says was reached (slice 6 §1, #458) — passed by the caller, because
+        it is not a function of the reason: a ceiling's is the declaration
+        the unit runs under (`ceiling_control_id`, which every kernel-side
+        caller resolves from the row it holds) and a customer-wide stop's is
+        a billing row this seam never sees. The FAMILY is derived here, from the one map in
+        ``core.controls``, and both are stamped on the row beside the cause
+        so a re-mint reads them back rather than guessing. A reason that
+        names no family of its own — a cascade's, which is written by
+        ``_cascade`` off the parent's row and never passed here — is refused
+        rather than stamped blank.
+
         Must be called inside @transaction.atomic. Lock order: parent before
         children (see Task.parent).
         """
@@ -949,7 +978,9 @@ class TaskService:
         task.completed_at = timezone.now()
         update_fields = ["status", "completed_at", "updated_at"]
         if reason:
-            task.metadata = {**task.metadata, STOP_CAUSE_KEY: reason}
+            task.metadata = {**task.metadata, STOP_CAUSE_KEY: reason,
+                             STOP_CONTROL_FAMILY_KEY: controls.control_family(reason),
+                             STOP_CONTROL_ID_KEY: str(control_id or "")}
             update_fields.append("metadata")
         if declaration is not None:
             task.outcome_reason = declaration.outcome_reason
@@ -961,7 +992,8 @@ class TaskService:
         return task, True
 
     @staticmethod
-    def kill_task(task_id, reason="", *, tenant_id=None, customer_id=None):
+    def kill_task(task_id, reason="", *, control_id="", tenant_id=None,
+                  customer_id=None):
         """UBB STOPPED THIS ON A SPEND SIGNAL, and nothing else writes
         `killed` (I2, spec §2). A ceiling crossing, the patrol, or — through
         the cascade below — a parent that crossed one.
@@ -978,10 +1010,12 @@ class TaskService:
         """
         return TaskService._flip(
             task_id, TASK_STATUS_KILLED, cascade=KILLED_WITH_ITS_PARENT,
-            reason=reason, tenant_id=tenant_id, customer_id=customer_id)
+            reason=reason, control_id=control_id,
+            tenant_id=tenant_id, customer_id=customer_id)
 
     @staticmethod
-    def expire_task(task_id, reason="", *, tenant_id=None, customer_id=None):
+    def expire_task(task_id, reason="", *, control_id="", tenant_id=None,
+                    customer_id=None):
         """NOBODY EVER TOLD UBB HOW THIS ENDED (spec §7). Both sweepers write
         it, and it is the honest answer the model could not give before: the
         crash sweeper used to write `completed` and stamp a marker in metadata,
@@ -995,7 +1029,8 @@ class TaskService:
         """
         return TaskService._flip(
             task_id, TASK_STATUS_EXPIRED, cascade=EXPIRED_WITH_ITS_PARENT,
-            reason=reason, tenant_id=tenant_id, customer_id=customer_id)
+            reason=reason, control_id=control_id,
+            tenant_id=tenant_id, customer_id=customer_id)
 
     @staticmethod
     def _cascade(parent, cascade):
@@ -1019,6 +1054,14 @@ class TaskService:
         anything it did itself. The cause answers *why this stopped* and the
         mechanism answers *what stopped it*: two questions with two value sets,
         which is why they are two keys and never one (ADR-0006 §5).
+
+        ⚠ AND THE CONTROL IS THE PARENT'S (slice 6 §1, §15, #458). Contained
+        work stopped by its parent's end crossed nothing of its own, so the
+        family and the id it records are the ones the parent's winning flip
+        just stamped — read off the parent's row, which is the only place
+        they exist. The two cascade reasons name no family of their own
+        (`core.controls.INHERITED_FROM_THE_PARENT`), and that is why this
+        seam copies rather than derives.
         """
         now = timezone.now()
         children = Task.objects.select_for_update().filter(
@@ -1032,6 +1075,10 @@ class TaskService:
                        STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE}
             if cascade.stop_reason:
                 stamped[STOP_CAUSE_KEY] = cascade.stop_reason
+                stamped[STOP_CONTROL_FAMILY_KEY] = parent.metadata.get(
+                    STOP_CONTROL_FAMILY_KEY, "")
+                stamped[STOP_CONTROL_ID_KEY] = parent.metadata.get(
+                    STOP_CONTROL_ID_KEY, "")
             child.metadata = stamped
             update_fields = ["status", "completed_at", "metadata",
                              "updated_at"]
@@ -1042,7 +1089,7 @@ class TaskService:
 
     @staticmethod
     def kill_and_announce(task_id, reason, *, tenant_id, customer_id,
-                          trigger_source=""):
+                          trigger_source="", control_id=""):
         """The idempotent kill flow: flip the unit to `killed` (cascading
         downward if it is a parent) and, ONLY on the winning transition, emit
         ``task.killed`` — or, for contained work, ``subtask.killed`` scoped to
@@ -1056,16 +1103,19 @@ class TaskService:
         different question from ``reason``, which is the cause. It defaults to
         empty because this seam cannot know which lane called it and inventing
         one would be worse than saying nothing; every production caller passes
-        one.
+        one. ``control_id`` is the identity of the control whose bound was
+        reached (#458), passed on exactly the same terms: the caller holds
+        the row — a ceiling's declaration through `ceiling_control_id` — and
+        this seam does not.
         """
         return TaskService._stop_and_announce(
             TaskService.kill_task, task_id, reason,
             tenant_id=tenant_id, customer_id=customer_id,
-            trigger_source=trigger_source)
+            trigger_source=trigger_source, control_id=control_id)
 
     @staticmethod
     def expire_and_announce(task_id, reason, *, tenant_id, customer_id,
-                            trigger_source=""):
+                            trigger_source="", control_id=""):
         """The same flow for the state at the other end of §2's table: flip the
         unit to `expired` and announce it exactly once, as ``task.expired`` or
         ``subtask.expired``.
@@ -1078,17 +1128,17 @@ class TaskService:
         what picks the event, so a subscriber told about a spend incident is no
         longer told about a worker that went quiet.
 
-        ``trigger_source`` names the mechanism, on the same terms as the kill
-        lane above.
+        ``trigger_source`` names the mechanism and ``control_id`` the control,
+        on the same terms as the kill lane above.
         """
         return TaskService._stop_and_announce(
             TaskService.expire_task, task_id, reason,
             tenant_id=tenant_id, customer_id=customer_id,
-            trigger_source=trigger_source)
+            trigger_source=trigger_source, control_id=control_id)
 
     @staticmethod
     def _stop_and_announce(flip, task_id, reason, *, tenant_id, customer_id,
-                           trigger_source=""):
+                           trigger_source="", control_id=""):
         """Flip through ``flip`` and, on the winning transition only, emit the
         terminal stop event and stamp the announcement id.
 
@@ -1114,7 +1164,7 @@ class TaskService:
         try:
             with transaction.atomic():
                 stopped, transitioned = flip(
-                    task_id, reason=reason,
+                    task_id, reason=reason, control_id=control_id,
                     tenant_id=tenant_id, customer_id=customer_id)
                 if transitioned:
                     announcement = terminal_stop_event(
@@ -1132,6 +1182,16 @@ class TaskService:
                         # by more than one mechanism and one mechanism reaches
                         # more than one reason.
                         trigger_source=trigger_source,
+                        # WHICH CONTROL FIRED (#458), read back off the row
+                        # the flip just stamped rather than restated here —
+                        # the same read the patrol's re-mint makes, so the
+                        # original announcement and a repaired delivery can
+                        # only ever say the same thing. The basis is derived
+                        # off the same row's cause.
+                        control_family=stopped.metadata.get(
+                            STOP_CONTROL_FAMILY_KEY, ""),
+                        control_id=stopped.metadata.get(STOP_CONTROL_ID_KEY, ""),
+                        ceiling_basis=stopped.ceiling_basis,
                         total_billed_cost_micros=stopped.total_billed_cost_micros,
                         total_provider_cost_micros=stopped.total_provider_cost_micros,
                         # The total that crossed the limit is a floor when this

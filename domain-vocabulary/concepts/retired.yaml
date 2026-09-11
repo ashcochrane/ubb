@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,786 of 2,207 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,792 of 2,215 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2003,6 +2003,22 @@ measurement_key:
     # was "a whole unit of work", "contained work", "the unit's own ceiling"
     # and "at either altitude"; the count was taken after the last core
     # regeneration.
+    #
+    # 2026-09-11, #458 (every stop names the control that fired): 1,786 of
+    # 2,207 -> 1,792 of 2,215 tracked files (`units` 44 files / 122
+    # occurrences unchanged). Eight tracked files arrived: two migrations,
+    # excluded (421 -> 423) -- the gating app's, which keys the signal
+    # ledger by family and line, and the work app's, which stamps the
+    # control on every stopped unit -- and six swept: the kernel's shared
+    # reason-to-family map (`core/controls.py`) with its test, the gating
+    # tests' shared helper for the line a fixture's tenant drives, and three
+    # test modules (the route-driven one under `api/v1`, the work app's for
+    # the seams and its migration, the gating app's for the ledger's
+    # migration). Two closed concepts advertised on the `webhooks` section
+    # mint no generated SDK module -- the SDK has no webhook payload models
+    # -- which is why six marked nodes moved nothing here. The prose that
+    # held was "a unit of work", "contained work", "the work" and "a
+    # stopped unit"; the count was taken after the last core regeneration.
 
     - term: units
       retired_as: >-

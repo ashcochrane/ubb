@@ -338,7 +338,17 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # stop-word entries fell to the glossaries alone (14/8/18 -> 2/2/3),
         # five openapi and sdk entries left the ledger outright, and the
         # sites fell 75 -> 70 with the terms unmoved at 22.
-        "historical-migrations": (UNTIL_SLICE_8, 254, 19),
+        # 254 -> 256 in #458: TWO migrations. The gating app's, which renames
+        # the signal ledger's family column onto the registry's word, moves
+        # the clearing cause into its own column, keys one row per line at
+        # the database and rewrites the customer stop pair's queued payloads
+        # -- it spells the ledger's two retired local family words, which is
+        # what a migration must do; and the work app's RunPython that stamps
+        # the control's family and id on every stopped unit and queued
+        # terminal payload. The sites and terms held at 22 in 70: the four
+        # G2/G4 entries this ticket paid left the ledger as a ratchet
+        # removal, not as a sweep change.
+        "historical-migrations": (UNTIL_SLICE_8, 256, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

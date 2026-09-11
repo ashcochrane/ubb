@@ -828,3 +828,37 @@ GET /api/v1/billing/customers/{customer_id}/budget/status api path removed witho
 POST webhook:budget.threshold_reached request property `data/enforce_mode` was restricted to a list of enum values
 PUT /api/v1/billing/budget api path removed without deprecation
 PUT /api/v1/billing/customers/{customer_id}/budget api path removed without deprecation
+
+# 2026-09-11 — Slice 6 (#458): every stop names the control that fired, and
+# the customer stop pair takes the cause's own field name (slice 6 §9, §15).
+#
+# The pair's bare `reason` becomes `reason_code` — the ledger line's own word,
+# `hard_floor` or `customer_spend_pool`, marked with the registry's known
+# values — and both events gain `control_family` (the registry's closed set of
+# four, an `enum`) and `control_id` (the row that declares the control: the
+# billing profile or tenant configuration that carried the floor, the pool
+# row). All three are REQUIRED on the two events: a stop that cannot say which
+# control fired is not one UBB announces, and the closed set has no honest
+# default. The six lines below are those three properties on each half of the
+# pair; the rename's removal side is in the warn file.
+#
+# THE FOUR TERMINAL STOP EVENTS GAINED THE SAME FAMILY (required) AND ID, AND
+# `ceiling_basis` BESIDE THEM, AND OWE THIS BLOCK NOTHING: they post-date
+# `api-v1-launch` (#419 split them after the tag), so against that baseline
+# they net to zero and the cumulative gate reports them nowhere. The
+# authoring direction (`--baseline HEAD`) reports four more lines for them —
+# the required family on each of the four; filing those would record inert
+# suppressions, which fail exactly as an unreviewed break does. Both runs
+# were taken; only the cumulative run's findings are here.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot (no console reader parses the pair's payload), the SDK's generated
+# core (no webhook payload model exists there), and the data migration that
+# rewrites every queued payload of the pair onto the new keys.
+POST webhook:stop.cleared added the new required request property `data/control_family`
+POST webhook:stop.cleared added the new required request property `data/control_id`
+POST webhook:stop.cleared added the new required request property `data/reason_code`
+POST webhook:stop.fired added the new required request property `data/control_family`
+POST webhook:stop.fired added the new required request property `data/control_id`
+POST webhook:stop.fired added the new required request property `data/reason_code`

@@ -100,10 +100,10 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
-        # The customer-wide stop this tenant's lane names (slice 6 §7): the
-        # report keys the episode on SCOPE and labels it by the tenant's mode.
-        self.customer_stop = reasons.customer_stop_reason(
-            self.tenant.billing_mode)
+        # The customer-wide stop this tenant's lane names (slice 6 §7, §9):
+        # the wallet floor's word — every mode but postpaid debits a wallet —
+        # and the report keys the episode on scope and that line's word.
+        self.customer_stop = reasons.HARD_FLOOR
         self.stop = [{"limit": self.customer_stop,
                       "stop_scope": "customer", "episode_seq": 1,
                       "tripped_at": timezone.now().isoformat(),
