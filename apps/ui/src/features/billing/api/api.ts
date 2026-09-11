@@ -28,12 +28,12 @@ export async function getRevenueAnalytics(range: {
 }
 
 export async function getTenantBudget(): Promise<BudgetConfig> {
-  return unwrap(await billingApi.GET("/budget"));
+  return unwrap(await billingApi.GET("/customer-spend-pool"));
 }
 
-/** PUT /billing/budget is a FULL upsert — always send every field. */
+/** PUT /billing/customer-spend-pool is a FULL upsert — always send every field. */
 export async function putTenantBudget(body: BudgetConfigIn): Promise<BudgetConfig> {
-  return unwrap(await billingApi.PUT("/budget", { body }));
+  return unwrap(await billingApi.PUT("/customer-spend-pool", { body }));
 }
 
 export async function listTenantUsageInvoices(options: {

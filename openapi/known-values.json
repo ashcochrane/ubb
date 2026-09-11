@@ -304,10 +304,14 @@
       "representation": "none"
     },
     "spend_pool_enforce_mode": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "alert_only",
+        "blocking"
+      ]
     },
     "stop_behavior": {
       "advertised": false,

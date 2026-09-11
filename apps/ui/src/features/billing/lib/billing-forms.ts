@@ -51,10 +51,12 @@ export const budgetFormSchema = z.object({
 export type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 
 /**
- * `BudgetConfigOut.enforce_mode` is an open string (ADR-003) — the PUT side
- * constrains it to these two values, but GET never guarantees the stored
- * value is one of them. Unrecognized values fall back to the non-blocking
- * mode rather than silently editing a config as more restrictive than it is.
+ * `CustomerSpendPoolOut.enforce_mode` is the registry's closed pair since #456
+ * (the contract publishes the two-value enum on the read as on the write), so
+ * the generated type already narrows it. This guard survives until the console
+ * ticket rebuilds the pool form on the shared open-set rule: a stored value
+ * outside the pair falls back to the non-blocking mode rather than silently
+ * editing a config as more restrictive than it is.
  */
 function narrowEnforceMode(value: string): "alert_only" | "blocking" {
   return value === "blocking" ? "blocking" : "alert_only";

@@ -72,6 +72,17 @@ THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT = {
 #: quietly still passing.
 THE_MECHANISM_MARKER = "trigger_source"
 
+#: And the second arrival (#456): how a customer spend pool is enforced, on the
+#: one event that announces a pool threshold — a value lifted out of the pool
+#: row goes on every schema publishing it, the payload included. Kept apart
+#: from both sets above for the same reason the mechanism is: each set names
+#: WHEN its markers arrived. The event's name is derived off the payload field
+#: it declares, because that name is a retired word this suite has no ledger
+#: seat for until the catalogue ticket renames it — the reader will turn red
+#: with the rename, which is the point.
+THE_POOL_ENFORCE_MODE_MARKER = "spend_pool_enforce_mode"
+THE_POOL_ENFORCE_MODE_FIELD = "enforce_mode"
+
 
 @pytest.fixture(scope="module")
 def spec():
@@ -155,7 +166,14 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     assert arrived_since, (
         "no payload class declares the mechanism field, so the second half of "
         "this equality is empty and proves nothing — suspect the reader")
-    assert seen == THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT | arrived_since
+    arrived_with_the_pool = {
+        (event, THE_POOL_ENFORCE_MODE_MARKER) for event
+        in events_whose_payload_declares(THE_POOL_ENFORCE_MODE_FIELD)}
+    assert len(arrived_with_the_pool) == 1, (
+        "exactly one payload class declares the pool's enforce mode (#456); "
+        "a second one is a deliberate act that owes this module a sentence")
+    assert seen == (THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
+                    | arrived_since | arrived_with_the_pool)
 
 
 def test_no_webhook_marker_names_a_book(spec):

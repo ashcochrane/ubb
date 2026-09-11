@@ -719,7 +719,7 @@ def get_customer_ids_with_usage(tenant_id, period_start: date, period_end: date)
     """Distinct customer ids with ANY usage in [period_start, period_end).
 
     Existence-based: deliberately does NOT filter on billed_cost_micros
-    (zero-billed usage still counts — budget reconcile and postpaid close
+    (zero-billed usage still counts — spend-pool reconcile and postpaid close
     both want every customer that emitted events). tenant_id may be a single
     tenant id or a list/tuple/set of tenant ids (one query either way).
     """

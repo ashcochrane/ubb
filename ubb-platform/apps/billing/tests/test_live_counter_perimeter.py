@@ -8,7 +8,7 @@ the module:
 
 1. no string literal spells a live-counter key family
    (``ubb:livebal`` / ``ubb:livespend`` / ``ubb:stop:`` / ``ubb:stopchan``
-   / ``ubb:budget`` — the #111 DoD explicitly covers the new budget
+   / ``ubb:spend_pool`` — the #111 DoD explicitly covers the seat counter's
    namespace). Together with rule 2 this also pins "never EVALs the
    module's Lua": the scripts are private constants and the keys they
    target are unspellable. Other ``ubb:*`` families (idem, cardver,
@@ -44,7 +44,7 @@ SIGNAL_MODULE_LABEL = "apps/billing/gating/services/stop_signal_service.py"
 # style families can never collide; "ubb:stopchan" needs none (no shorter
 # family shares the prefix).
 KEY_FAMILIES = ("ubb:livebal", "ubb:livespend", "ubb:stop:", "ubb:stopchan",
-                "ubb:budget")
+                "ubb:spend_pool")
 
 MANAGER_MUTATORS = frozenset({
     "create", "bulk_create", "bulk_update", "update", "update_or_create",
@@ -227,7 +227,7 @@ def test_negative_control_key_literal_is_flagged():
         'key = "ubb:livespend:" + str(o) + ":" + label\n',
         'client.delete("ubb:stop:%s" % o)\n',
         'chan = f"ubb:stopchan:{o}"\n',
-        'k = f"ubb:budget:{cid}:{label}"\n',
+        'k = f"ubb:spend_pool:{cid}:{label}"\n',
         '"""docstring spelling ubb:livebal:{owner} counts too"""\n',
     ):
         hits = _check_snippet(src)

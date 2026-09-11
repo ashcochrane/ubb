@@ -5,12 +5,12 @@ Every path that compares a balance/spend value against a configured money
 line imports THESE predicates — the real-time counter write
 (``LiveCounter.debit``), the durable lane (``handlers.py`` drawdown), the
 start-gate (``RiskService``), reconcile (``LiveCounter``), the upward
-repair (``repair.py``), the budget gate (``BudgetService.check``), the
+repair (``repair.py``), the pool gate (``CustomerSpendPoolService.check``), the
 dispute clawback (Stripe webhooks) — and, for a unit of work's ceiling, the
 recording path's live compare (``TaskService.accumulate_cost``), the patrol's
 sweep, the analytics reached-count and the row's own assessment
 (``Task.ceiling_assessment``). Pure module: no model, no query evaluated, no
-Redis — the callers resolve the inputs (floor magnitudes, BudgetConfig rows,
+Redis — the callers resolve the inputs (floor magnitudes, CustomerSpendPool rows,
 counter values, a row's columns); this module owns only the compare, so the
 sign conventions live in exactly one place. The one Django import it makes
 (``ceiling_reached_q``) builds a filter expression and evaluates nothing.
@@ -29,14 +29,14 @@ The three orientations:
   itself). A None floor (an unconfigured soft floor) has no line: never
   past, never crossed, always recovered.
 
-  BUDGET (postpaid — the spend RISES). The stop line is
+  CUSTOMER SPEND POOL (postpaid — the spend RISES). The stop line is
   ``cap_micros * hard_stop_pct // 100`` and past = spend AT/OVER it.
-  ``budget_stop_threshold`` resolves the line from a BudgetConfig and owns
-  the ``enforce_mode`` semantics: an ``alert_only`` (non-blocking) budget can
-  NEVER cross — it alerts (``BudgetService.emit_threshold_alerts``, which is
+  ``spend_pool_stop_threshold`` resolves the line from a CustomerSpendPool and owns
+  the ``enforce_mode`` semantics: an ``alert_only`` (non-blocking) pool can
+  NEVER cross — it alerts (``CustomerSpendPoolService.emit_threshold_alerts``, which is
   level-based and deliberately not this module's concern) but never stops.
   Pre-#110 the live lanes ignored ``enforce_mode`` (the drift this module
-  retires); every lane now shares the ``BudgetService.check`` semantics.
+  retires); every lane now shares the ``CustomerSpendPoolService.check`` semantics.
 
   CEILING (a unit of work's COGS bound — the known total RISES). Reached =
   known total AT/OVER the pinned ceiling, and the four-way assessment
@@ -91,26 +91,68 @@ def recovered_floor(balance_micros, min_balance_micros) -> bool:
     return balance_micros >= -min_balance_micros
 
 
-# --- budget stop (postpaid; spend RISES across the stop line) --------------
+# --- spend-pool stop (postpaid; spend RISES across the stop line) ----------
 
-def budget_stop_threshold(cfg):
-    """The postpaid stop line for a resolved BudgetConfig, or None when the
+def spend_pool_stop_threshold(cfg):
+    """The postpaid stop line for a resolved CustomerSpendPool, or None when the
     owner can never cross: no config, cap <= 0, or — the #110 unification —
-    ``enforce_mode`` not 'blocking' (an alert_only budget alerts, never
-    stops; the ``BudgetService.check`` semantics, now shared by every lane)."""
+    ``enforce_mode`` not 'blocking' (an alert_only pool alerts, never
+    stops; the ``CustomerSpendPoolService.check`` semantics, now shared by every lane)."""
+    from core.vocabulary import SPEND_POOL_ENFORCE_MODE_BLOCKING
     if cfg is None or cfg.cap_micros <= 0:
         return None
-    if cfg.enforce_mode != "blocking":
+    if cfg.enforce_mode != SPEND_POOL_ENFORCE_MODE_BLOCKING:
         return None
     return cfg.cap_micros * cfg.hard_stop_pct // 100
 
 
-def past_budget_stop(spend_micros, stop_threshold_micros) -> bool:
+def past_spend_pool_stop(spend_micros, stop_threshold_micros) -> bool:
     """Level form: month-to-date spend AT/OVER the stop line. None threshold
-    (from ``budget_stop_threshold``) = can never cross."""
+    (from ``spend_pool_stop_threshold``) = can never cross."""
     if stop_threshold_micros is None:
         return False
     return spend_micros >= stop_threshold_micros
+
+
+class SpendPoolAssessment(NamedTuple):
+    """What the pool's status read publishes beside the compare (#456, slice 6
+    §13): how the KNOWN period charges stand against the configured amount.
+    One value rather than four a caller could take half of — the percentage
+    and the headroom are only readable together with the unresolved count
+    that travels beside them on the wire (a floor and a ceiling until it is
+    zero)."""
+    used_percentage: int | None
+    remaining_micros: int | None
+    highest_threshold_reached: int | None
+    blocking_occurred: bool
+
+
+def spend_pool_assessment(cfg, known_micros):
+    """The pool's read for one customer's known period charges against the
+    resolved pool row (``None`` = no row = no pool).
+
+    The percentage and the headroom are the CEILING's arithmetic — the same
+    orientation (a known total rising toward a configured amount), so the
+    same two functions rather than a second floor-and-clamp: whole percent
+    rounded down, never overstating; headroom never below zero. The highest
+    threshold reached is the largest configured alert level whose line the
+    known figure is at or over (``None`` when none is) — the level-based rule
+    ``emit_threshold_alerts`` announces under. Whether blocking occurred is
+    THE compare the start gate makes (``past_spend_pool_stop`` over
+    ``spend_pool_stop_threshold``), so the read and the refusal cannot
+    disagree: under ``alert_only`` there is no stop line and it is never
+    true. A row with no configured amount is no pool — three nulls and
+    ``False``."""
+    if cfg is None or cfg.cap_micros <= 0:
+        return SpendPoolAssessment(None, None, None, False)
+    reached = [level for level in cfg.alert_levels
+               if known_micros >= cfg.cap_micros * level // 100]
+    return SpendPoolAssessment(
+        used_percentage=ceiling_used_percentage(known_micros, cfg.cap_micros),
+        remaining_micros=ceiling_remaining_micros(known_micros, cfg.cap_micros),
+        highest_threshold_reached=max(reached) if reached else None,
+        blocking_occurred=past_spend_pool_stop(
+            known_micros, spend_pool_stop_threshold(cfg)))
 
 
 # --- the live-counter dispatch (fast lane / reconcile) ---------------------
@@ -120,7 +162,7 @@ def crossed_live(mode, value_micros, threshold_micros) -> bool:
     threshold pre-resolved ONCE per owner (the live counter's ``_threshold``
     — so a batch caller pays one ORM lookup, not one per item):
 
-      postpaid -> ``threshold`` is the budget stop line; spend at/over it.
+      postpaid -> ``threshold`` is the pool's stop line; spend at/over it.
       prepaid  -> ``threshold`` is ``floor_line(min_balance)``; balance
                   strictly below it (same convention as ``past_floor`` —
                   test_crossing cross-pins the two forms).
@@ -129,7 +171,7 @@ def crossed_live(mode, value_micros, threshold_micros) -> bool:
     if threshold_micros is None:
         return False
     if mode == "postpaid":
-        return past_budget_stop(value_micros, threshold_micros)
+        return past_spend_pool_stop(value_micros, threshold_micros)
     return value_micros < threshold_micros
 
 

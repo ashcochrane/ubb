@@ -96,21 +96,22 @@ export function BudgetSection({ customerId }: { customerId: string }) {
           <Skeleton className="h-10 w-full" />
         ) : status.isError ? (
           <ErrorCard error={status.error} onRetry={() => void status.refetch()} />
-        ) : status.data && status.data.cap_micros > 0 ? (
+        ) : status.data && status.data.cap_micros > 0 && status.data.used_percentage !== null ? (
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between text-[12px]">
               <span className="text-text-secondary">
-                {status.data.period} — {formatMicros(status.data.spend_micros, currency)}{" "}
-                of {formatMicros(status.data.cap_micros, currency)} (
+                {status.data.period} —{" "}
+                {formatMicros(status.data.known_period_charges_micros, currency)} of{" "}
+                {formatMicros(status.data.cap_micros, currency)} (
                 {budgetEnforceModeLabel(status.data.enforce_mode)})
               </span>
               <span
                 className={cn(
                   "font-medium tabular-nums",
-                  status.data.pct >= 100 && "text-danger-dark",
+                  status.data.used_percentage >= 100 && "text-danger-dark",
                 )}
               >
-                {formatPercent(status.data.pct)}
+                {formatPercent(status.data.used_percentage)}
               </span>
             </div>
             <div
@@ -118,15 +119,15 @@ export function BudgetSection({ customerId }: { customerId: string }) {
               role="meter"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={Math.min(Math.round(status.data.pct), 100)}
+              aria-valuenow={Math.min(status.data.used_percentage, 100)}
               aria-label="Budget consumed"
             >
               <div
                 className={cn(
                   "h-full rounded-full",
-                  status.data.pct >= 100 ? "bg-red" : "bg-accent-base",
+                  status.data.used_percentage >= 100 ? "bg-red" : "bg-accent-base",
                 )}
-                style={{ width: `${Math.min(status.data.pct, 100)}%` }}
+                style={{ width: `${Math.min(status.data.used_percentage, 100)}%` }}
               />
             </div>
           </div>

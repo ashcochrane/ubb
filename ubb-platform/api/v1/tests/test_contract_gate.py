@@ -269,6 +269,67 @@ class TestComponentLevelFindings:
         assert report.unreviewed == [f]
 
 
+def webhook_finding(text="request property `data/costing_status` was restricted "
+                         "to a list of enum values", level=ERR):
+    """An OPERATION-level finding inside the `webhooks` section, verbatim in
+    shape from oasdiff 1.23.0 (#456): it carries an operation and a path, and
+    the path is `webhook:<event type>` — a path that never starts with `/`.
+    The event here is the usage callback, so this module spells no retired
+    event name; the shape is what matters, not which event produced it."""
+    return {"id": "request-property-became-enum", "operation": "POST",
+            "path": "webhook:usage.recorded", "section": "paths",
+            "text": text, "level": level}
+
+
+class TestWebhookOperationFindings:
+    """A finding oasdiff's own ignore pass can never suppress (#456).
+
+    `checker/ignore.go` reads an entry's path as its first field starting with
+    `/` and requires it to equal the finding's path; a webhook's is
+    `webhook:<event>`, so no entry satisfies it — measured against v1.23.0 with
+    six line shapes, none of which suppressed. This gate's matcher has no such
+    hole, so the entry is honoured here and the cross-check sets the raw tool's
+    report of a COVERED webhook finding aside — and only a covered one.
+    """
+
+    def test_a_webhook_operation_finding_is_unsuppressible_by_oasdiff(self):
+        assert contract_gate.unsuppressible_by_oasdiff(webhook_finding())
+
+    def test_a_route_finding_and_a_component_finding_are_not(self):
+        assert not contract_gate.unsuppressible_by_oasdiff(finding())
+        assert not contract_gate.unsuppressible_by_oasdiff(component_finding())
+
+    def test_the_generated_entry_names_the_webhook_path(self):
+        assert contract_gate.entry_for(webhook_finding()) == (
+            "POST webhook:usage.recorded request property "
+            "`data/costing_status` was restricted to a list of enum values")
+
+    def test_this_gate_honours_an_entry_for_it(self):
+        f = webhook_finding()
+        report = contract_gate.review(
+            [f], err_entries=[(1, contract_gate.entry_for(f))], warn_entries=[])
+        assert report.ok
+
+    def test_the_cross_check_sets_aside_a_covered_webhook_finding_oasdiff_still_reports(self):
+        # Ours: nothing unreviewed. Theirs: the webhook finding, which the raw
+        # tool cannot drop. Agreement, because the disagreement is the tool's.
+        contract_gate._cross_check(ours=[], theirs=[webhook_finding()])
+
+    def test_an_uncovered_webhook_finding_still_has_to_agree(self):
+        # Both report it: agreement. Only ours reports it: a divergence, as for
+        # any other finding — the set-aside is for the covered case alone.
+        contract_gate._cross_check(ours=[webhook_finding()],
+                                   theirs=[webhook_finding()])
+        with pytest.raises(SystemExit):
+            contract_gate._cross_check(ours=[webhook_finding()], theirs=[])
+
+    def test_a_route_finding_only_oasdiff_reports_is_still_a_divergence(self):
+        """The negative control: the set-aside must not widen to routes, where
+        the raw tool's ignore pass works and a disagreement is ours to fix."""
+        with pytest.raises(SystemExit):
+            contract_gate._cross_check(ours=[], theirs=[finding()])
+
+
 class TestCommittedSuppressionFiles:
     """The committed files, checked without oasdiff — CI runs the real
     comparison, but a hand-typed finding is catchable right here."""
@@ -276,24 +337,35 @@ class TestCommittedSuppressionFiles:
     @pytest.mark.parametrize("name", [contract_gate.ERR_IGNORE_NAME,
                                       contract_gate.WARN_IGNORE_NAME])
     def test_every_entry_is_a_finding_not_prose(self, name):
-        """Two legal shapes, and nothing else.
+        """Three legal shapes, and nothing else.
 
         An OPERATION-level entry opens with an HTTP method and an `/api/v1/`
-        path. A COMPONENT-level one opens with its section instead, because the
-        finding carries no operation and no path — a webhook is a published
-        event, not a route (#222). Widening to admit the second shape is not
-        loosening the rule: prose still opens with neither, which is the whole
-        thing this test refuses.
+        path — or, since #456, with the method and a `webhook:<event>` path,
+        which is how oasdiff locates an operation-level finding inside the
+        `webhooks` section (an enum on a payload field, say); the event name
+        must be followed by finding text, so a bare `POST webhook:x` cannot
+        stand in for one. A COMPONENT-level one opens with its section instead,
+        because the finding carries no operation and no path — a webhook
+        REMOVAL is about a published event, not a route (#222). Widening to
+        admit the second and third shapes is not loosening the rule: prose
+        still opens with none of them, which is the whole thing this test
+        refuses.
         """
         entries = contract_gate.parse_entries(
             (GIT_ROOT / "openapi" / name).read_text(encoding="utf-8"))
         assert entries, f"{name} has no entries — did the baseline move?"
+        webhook = contract_gate.WEBHOOK_PATH_PREFIX
         for lineno, entry in entries:
             head, _, rest = entry.partition(" ")
             assert head in HTTP_METHODS or head in SECTIONS, (
                 f"{name}:{lineno} is not a generated finding — human metadata "
                 f"belongs on a `#` comment line: {entry!r}")
-            if head in HTTP_METHODS:
+            if head in HTTP_METHODS and rest.startswith(webhook):
+                event, _, text = rest.partition(" ")
+                assert len(event) > len(webhook) and text, (
+                    f"{name}:{lineno} names a webhook and no finding — it would "
+                    f"suppress every finding on that event: {entry!r}")
+            elif head in HTTP_METHODS:
                 assert rest.startswith("/api/v1/"), f"{name}:{lineno}: {entry!r}"
             else:
                 assert rest, (

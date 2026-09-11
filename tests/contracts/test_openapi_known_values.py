@@ -102,14 +102,13 @@ EXPORT_MODULE = REPO_ROOT / "ubb-platform" / "api" / "v1" / "openapi_export.py"
 #:
 #: Checked in both directions, for G7's reason — too few and one has arrived,
 #: too many and the inventory is an excuse with no upper bound.
+#:
+#: ⚠ THE POOL'S ENFORCE-MODE ROW LEFT IN #456, in the same commit as the
+#: field's marker (slice 6 §19 coupling 3 — the ticket's own list numbers it
+#: second): the hand-written `Literal` became
+#: the registry's `enum`, so the node is now generated metadata and counting
+#: it here would over-state the inventory by one.
 NON_VOCABULARY_ENUMS = {
-    "/components/schemas/BudgetConfigIn/properties/enforce_mode":
-        "`spend_pool_enforce_mode`, enumerated by hand before the registry "
-        "existed. The values already agree with it; the SCHEMA does not hold "
-        "them by reference, and the field's own schema is renamed by slice 6 "
-        "along with the retired container name around it. Left in place "
-        "deliberately: removing a published enum is a contract change, and "
-        "#208 emits metadata rather than editing what earlier slices shipped.",
     "/components/schemas/PlanIn/properties/interval":
         "The Stripe billing interval. Not UBB vocabulary at all — Stripe owns "
         "the value set and ADR-0006 does not rename it, so no concept is owed.",
@@ -1028,6 +1027,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     # alone, and a served concept with no marked node is what the test above
     # refuses.
     "ceiling_status": Published(3, ENUM),
+    # HOW A CUSTOMER SPEND POOL IS ENFORCED (#456, slice 6 §13): the three pool
+    # schemas — the declaration in and out, and the status read — plus the
+    # threshold event's payload in the `webhooks` section, because a value
+    # lifted out of a record goes on every schema publishing it. The backend
+    # twin was a RE-SOURCE and not a change of value: both values were already
+    # right on the model's `choices`, which now holds them by reference from
+    # `core.vocabulary`; the G4 twin died in the same commit (§19 coupling 1),
+    # and the inventory row that excused the hand-written `Literal` left with it
+    # (coupling 3).
+    "spend_pool_enforce_mode": Published(4, ENUM),
 }
 
 
@@ -1403,6 +1412,13 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # ceiling field beside it already states. The unit read is one call away
     # for the reader who wants it later, when it can be something else.
     placed("ceiling_status", {"RecordUsageResponse", "TaskOut", "TaskDetailOut"})
+    # HOW A POOL IS ENFORCED (#456): on the declaration both ways, on the
+    # status read, and on the one event whose payload carries it — derived off
+    # the payload classes, the `trigger_source` line's reason, because that
+    # event's name is a retired word this suite has no ledger seat for.
+    placed("spend_pool_enforce_mode",
+           {"CustomerSpendPoolIn", "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut"}
+           | events_whose_payload_declares("enforce_mode"))
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2158,6 +2174,8 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     assert len(_entries(programme)) == len(_owed_sites(decisions))
     # 14 -> 13 in #452: `ceiling_status`, the first of slice 6's seven, paid
     # in full with its backend twin in one commit.
-    assert len(_entries(programme)) >= 13, (
+    # 13 -> 12 in #456: `spend_pool_enforce_mode`, the second — the one whose
+    # backend half was a re-source alone, both values already right.
+    assert len(_entries(programme)) >= 12, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

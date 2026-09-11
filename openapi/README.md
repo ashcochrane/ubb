@@ -156,6 +156,16 @@ oasdiff breaking --fail-on WARN \
   <api-v1-launch spec> openapi/v1.json
 ```
 
+**One exception, and the gate says so at the address (`unsuppressible_by_oasdiff`):**
+an operation-level finding inside the `webhooks` section — `POST webhook:<event>
+request property … was restricted to a list of enum values` — cannot be suppressed
+by the raw tool at all. Its `ignore.go` reads an entry's path as the first field
+starting with `/` and requires it to equal the finding's path, and a webhook's path
+is `webhook:<event>`. The gate's own matcher honours such an entry (it compares the
+three parts as text), the raw run above goes on reporting it, and the gate's
+cross-check sets aside exactly that case — a covered webhook finding — and nothing
+else. Measured against v1.23.0 in #456 with six line shapes; none suppressed.
+
 ### The suppression files cannot reach zero
 
 Not a backlog. While the baseline is `api-v1-launch`, the differences from that

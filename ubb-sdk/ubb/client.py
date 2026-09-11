@@ -9,6 +9,7 @@ from ubb.exceptions import (
 )
 from ubb._models import from_wire
 from ubb.types import PreCheckResult, PaginatedResponse
+from ubb.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 # Generated DTOs (the wrap, #84): the facade returns the same generated models
 # its sub-clients do.
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -634,16 +635,17 @@ class UBBClient:
         """Get wallet transactions. Requires billing product."""
         return self._require_billing().get_transactions(customer_id, cursor=cursor, limit=limit)
 
-    def set_budget(self, customer_id, cap_micros, enforce_mode="alert_only",
-                   hard_stop_pct=100, alert_levels=None, fail_closed=False):
-        return self._require_billing().set_budget(
+    def set_customer_spend_pool(self, customer_id, cap_micros,
+                                enforce_mode=SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+                                hard_stop_pct=100, alert_levels=None, fail_closed=False):
+        return self._require_billing().set_customer_spend_pool(
             customer_id, cap_micros, enforce_mode, hard_stop_pct, alert_levels, fail_closed)
 
-    def get_budget(self, customer_id):
-        return self._require_billing().get_budget(customer_id)
+    def get_customer_spend_pool(self, customer_id):
+        return self._require_billing().get_customer_spend_pool(customer_id)
 
-    def get_budget_status(self, customer_id):
-        return self._require_billing().get_budget_status(customer_id)
+    def get_customer_spend_pool_status(self, customer_id):
+        return self._require_billing().get_customer_spend_pool_status(customer_id)
 
     def get_usage_invoices(self, customer_id):
         return self._require_billing().get_usage_invoices(customer_id)

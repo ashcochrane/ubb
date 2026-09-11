@@ -291,7 +291,7 @@ export async function voidGrant(customerId: string, grantId: string): Promise<Gr
 
 export async function getCustomerBudget(customerId: string): Promise<BudgetConfigOut> {
   return unwrap(
-    await billingApi.GET("/customers/{customer_id}/budget", {
+    await billingApi.GET("/customers/{customer_id}/customer-spend-pool", {
       params: { path: { customer_id: customerId } },
     }),
   );
@@ -303,7 +303,7 @@ export async function putCustomerBudget(
   body: BudgetConfigIn,
 ): Promise<BudgetConfigOut> {
   return unwrap(
-    await billingApi.PUT("/customers/{customer_id}/budget", {
+    await billingApi.PUT("/customers/{customer_id}/customer-spend-pool", {
       params: { path: { customer_id: customerId } },
       body,
     }),
@@ -312,7 +312,7 @@ export async function putCustomerBudget(
 
 export async function getBudgetStatus(customerId: string): Promise<BudgetStatusOut> {
   return unwrap(
-    await billingApi.GET("/customers/{customer_id}/budget/status", {
+    await billingApi.GET("/customers/{customer_id}/customer-spend-pool/status", {
       params: { path: { customer_id: customerId } },
     }),
   );

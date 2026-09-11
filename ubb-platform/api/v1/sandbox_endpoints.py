@@ -23,7 +23,7 @@ class SandboxResetIn(Schema):
 def reset_sandbox(request, payload: SandboxResetIn = None):
     """Asynchronously wipe the calling SANDBOX tenant's domain data.
 
-    keep_config=true (default) preserves rate cards, markups, plans, budget /
+    keep_config=true (default) preserves rate cards, markups, plans, customer spend pools /
     billing / postpaid / webhook configs; the Tenant row and its API keys
     always survive. Returns 202 — the wipe runs as a Celery task and the
     sandbox 401s (deactivated) until it completes.

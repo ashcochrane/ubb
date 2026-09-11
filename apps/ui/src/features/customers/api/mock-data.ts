@@ -572,19 +572,30 @@ export const MOCK_BUDGETS: Record<string, BudgetConfigOut> = {
 };
 
 export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
+  // The status read's basis is the durable pair; every figure beside it is
+  // over the KNOWN charges (a whole percent, floored) and null where no pool
+  // is declared (#456, slice 6 §13).
   [CUS_ACME]: {
     period: "2026-07",
-    spend_micros: 231_400_000,
     cap_micros: 500_000_000,
-    pct: 46.3,
     enforce_mode: "alert_only",
+    known_period_charges_micros: 231_400_000,
+    unresolved_posting_count: 0,
+    used_percentage: 46,
+    remaining_micros: 268_600_000,
+    highest_threshold_reached: null,
+    blocking_occurred: false,
   },
   [CUS_LUNA]: {
     period: "2026-07",
-    spend_micros: 55_900_000,
     cap_micros: 0,
-    pct: 0,
     enforce_mode: "alert_only",
+    known_period_charges_micros: 55_900_000,
+    unresolved_posting_count: 0,
+    used_percentage: null,
+    remaining_micros: null,
+    highest_threshold_reached: null,
+    blocking_occurred: false,
   },
 };
 

@@ -272,7 +272,7 @@ class GrantLedger:
         Per usage allocation of the original debit, the re-fundable slice is
             min(amount - refunded,            # never re-fund the same micro twice
                 granted - remaining,          # CheckConstraint: remaining <= granted
-                G1 budget)                    # see below
+                G1 headroom)                  # see below
         applied as remaining += take, allocation.refunded += take — which
         keeps G2 (granted == remaining + sum(amount - refunded) + expired +
         voided) exact. A depleted lot that regains remaining flips back to
@@ -283,7 +283,7 @@ class GrantLedger:
         so re-inflating them would double-create money. That share of the
         refund stays as base credit.
 
-        G1 budget (overage-recoup parity with create_grant): if the wallet was
+        G1 headroom (overage-recoup parity with create_grant): if the wallet was
         overdrawn, the refund credit first pays the debt — only the part that
         lifts the balance above the active-lot total may go back into lots,
         so sum(remaining(active)) <= max(balance, 0) keeps holding.
@@ -304,17 +304,17 @@ class GrantLedger:
         active_sum = CreditGrant.objects.filter(
             wallet=wallet, status="active",
         ).aggregate(total=Sum("remaining_micros"))["total"] or 0
-        budget = max(wallet.balance_micros, 0) - active_sum
+        headroom = max(wallet.balance_micros, 0) - active_sum
         total = 0
         for alloc in allocations:
-            if budget <= 0:
+            if headroom <= 0:
                 break
             grant = alloc.grant
             if grant.status not in ("active", "depleted"):
                 continue  # expired/voided share lands as base (see docstring)
             take = min(alloc.amount_micros - alloc.refunded_micros,
                        grant.granted_micros - grant.remaining_micros,
-                       budget)
+                       headroom)
             if take <= 0:
                 continue
             grant.remaining_micros += take
@@ -325,7 +325,7 @@ class GrantLedger:
             grant.save(update_fields=fields)
             alloc.refunded_micros += take
             alloc.save(update_fields=["refunded_micros", "updated_at"])
-            budget -= take
+            headroom -= take
             total += take
         return total
 

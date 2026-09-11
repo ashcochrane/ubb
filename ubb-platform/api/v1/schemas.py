@@ -14,7 +14,9 @@ from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.vocabulary import (
-    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT, TASK_TYPE_KIND_TASK)
+    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT,
+    SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_VALUES,
+    TASK_TYPE_KIND_TASK)
 
 #: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
 #:
@@ -95,7 +97,7 @@ class PreCheckResponse(Schema):
     # reason vocabulary: insufficient_funds | account_closed |
     # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
     # NEW top-level starts refuse; subtask starts under an active parent
-    # pass) | rate_limit_exceeded | budget-cap reasons.
+    # pass) | rate_limit_exceeded | customer-spend-pool reasons.
     #
     # TWO WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and neither was
     # deleted: `parent_task_not_active` and `subtask_depth_exceeded` are
@@ -1645,22 +1647,46 @@ class TaskAnalyticsOut(Schema):
     rows: list[TaskAnalyticsRow]
 
 
-class BudgetConfigIn(Schema):
+#: HOW A CUSTOMER SPEND POOL IS ENFORCED (#456, slice 6 §13) — the registry's
+#: closed pair, so the marker renders a real `enum`. It sits on the three pool
+#: schemas AND on the threshold event's payload (`apps/platform/events/
+#: schemas.py`, spelled there again because the kernel, like a product, never
+#: imports the composition layer — ADR-001; the `CostingStatus` precedent):
+#: a value lifted out of a record goes on every schema publishing it.
+SpendPoolEnforceMode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "spend_pool_enforce_mode"})]
+
+
+class CustomerSpendPoolIn(Schema):
+    """Declare a customer spend pool — a bound on the customer's period
+    charges (#150 §7). On the tenant route this is the default every seat
+    inherits; on the customer route it is that customer's own pool. A row on
+    a business is the owner-level pool and a row on a seat the seat-level
+    pool, so the level is where the row is declared and needs no field.
+    `cap_micros` of 0 declares no pool."""
     cap_micros: int = Field(ge=0)
-    # Must match apps.billing.gating.models.BUDGET_ENFORCE_MODES — the model
-    # field's `choices` alone never gets enforced (Django doesn't validate
-    # choices on save()), so an out-of-vocabulary value used to persist
-    # silently and could never cross (crossing.py's budget_stop_threshold
-    # treats anything != "blocking" as non-blocking).
-    enforce_mode: Literal["alert_only", "blocking"] = "alert_only"
+    # The registry's closed pair, refused at the boundary by reference: the
+    # model field's `choices` alone never gets enforced (Django doesn't
+    # validate choices on save()), so an out-of-vocabulary value used to
+    # persist silently and could never cross (crossing.py's
+    # spend_pool_stop_threshold treats anything but blocking as non-blocking).
+    enforce_mode: SpendPoolEnforceMode = SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
     hard_stop_pct: int = Field(default=100, ge=1, le=1000)
     alert_levels: Optional[list[int]] = None
     fail_closed: bool = False
 
+    @field_validator("enforce_mode")
+    @classmethod
+    def enforce_mode_is_registry_vocabulary(cls, v):
+        if v not in SPEND_POOL_ENFORCE_MODE_VALUES:
+            raise ValueError(
+                f"enforce_mode must be one of {sorted(SPEND_POOL_ENFORCE_MODE_VALUES)}")
+        return v
 
-class BudgetConfigOut(Schema):
+
+class CustomerSpendPoolOut(Schema):
     cap_micros: int
-    enforce_mode: str
+    enforce_mode: SpendPoolEnforceMode
     hard_stop_pct: int
     alert_levels: list[int]
     fail_closed: bool
@@ -1693,12 +1719,29 @@ class CustomerBillingProfileOut(Schema):
     is_pooled_seat: bool
 
 
-class BudgetStatusOut(Schema):
+class CustomerSpendPoolStatusOut(Schema):
+    """Where a customer's known period charges stand against the pool that
+    applies to them — their own row, else the tenant default; no row is no
+    pool (`cap_micros` 0, every assessed figure null). The basis is the
+    durable pair: `known_period_charges_micros` is the resolved period
+    charges and a LOWER BOUND wherever `unresolved_posting_count` is not
+    zero, and every figure beside it is computed over that known figure —
+    the percentage a floor and the headroom a ceiling until the count is
+    zero. `highest_threshold_reached` is the largest of the pool's
+    `alert_levels` (a percent of `cap_micros`) the known figure has reached;
+    `blocking_occurred` is the start gate's own compare — true only under a
+    blocking pool whose stop line the known figure is at or over. The pool
+    is blind to a fixed price until delivery; the wallet reservation sees it
+    at start."""
     period: str
-    spend_micros: int
     cap_micros: int
-    pct: float
-    enforce_mode: str
+    enforce_mode: SpendPoolEnforceMode
+    known_period_charges_micros: int
+    unresolved_posting_count: int
+    used_percentage: Optional[int]
+    remaining_micros: Optional[int]
+    highest_threshold_reached: Optional[int]
+    blocking_occurred: bool
 
 
 class UsageInvoiceOut(Schema):

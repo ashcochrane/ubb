@@ -238,7 +238,7 @@ class SandboxResetTest(TestCase):
     def _seed_config_rows(self, tenant):
         from django.utils import timezone
 
-        from apps.billing.gating.models import BudgetConfig
+        from apps.billing.gating.models import CustomerSpendPool
         from apps.metering.pricing.models import (
             CostBook, PricingBook, PricingBookPublish, Rate,
             TenantDefaultMarkup)
@@ -300,7 +300,7 @@ class SandboxResetTest(TestCase):
         # database and fails the WHOLE reset. Nothing here saw that before,
         # because no sandbox fixture had ever had a plan.
         a_plan(tenant=tenant, key="sandbox-plan", name="Sandbox plan")
-        BudgetConfig.objects.create(tenant=tenant, cap_micros=1_000_000)
+        CustomerSpendPool.objects.create(tenant=tenant, cap_micros=1_000_000)
         TenantWebhookConfig.objects.create(
             tenant=tenant, url="https://example.com/hook", secret="s")
 
@@ -324,7 +324,7 @@ class SandboxResetTest(TestCase):
         }
 
     def test_reset_keep_config_wipes_domain_preserves_config_and_keys(self):
-        from apps.billing.gating.models import BudgetConfig
+        from apps.billing.gating.models import CustomerSpendPool
         from apps.billing.wallets.models import Wallet, WalletTransaction
         from apps.metering.pricing.models import (
             CostBook, PricingBook, PricingBookPublish, Rate,
@@ -386,7 +386,7 @@ class SandboxResetTest(TestCase):
         # every later event to `unknown` with nothing saying why.
         self.assertEqual(
             TenantDefaultMarkup.objects.filter(tenant=self.sandbox).count(), 1)
-        self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 1)
+        self.assertEqual(CustomerSpendPool.objects.filter(tenant=self.sandbox).count(), 1)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 1)
 
@@ -409,7 +409,7 @@ class SandboxResetTest(TestCase):
         self.assertEqual(live_wallet.balance_micros, 5_000_000)
 
     def test_reset_without_keep_config_wipes_config_too(self):
-        from apps.billing.gating.models import BudgetConfig
+        from apps.billing.gating.models import CustomerSpendPool
         from apps.metering.pricing.models import CostBook, PricingBook, Rate
 
         self._seed_domain_rows(self.sandbox, "sb-")
@@ -435,7 +435,7 @@ class SandboxResetTest(TestCase):
         # had just removed.
         self.assertEqual(result["deleted"]["pricing.Rate"], 3)
         self.assertEqual(result["deleted"]["plans.Plan"], 1)
-        self.assertEqual(BudgetConfig.objects.filter(tenant=self.sandbox).count(), 0)
+        self.assertEqual(CustomerSpendPool.objects.filter(tenant=self.sandbox).count(), 0)
         self.assertEqual(
             TenantWebhookConfig.objects.filter(tenant=self.sandbox).count(), 0)
         # Tenant + keys still survive a full wipe

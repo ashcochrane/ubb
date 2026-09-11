@@ -17,7 +17,7 @@ from api.v1.schemas import (
     PaginatedWalletTransactions,
     CreateGrantRequest, GrantOut, PaginatedGrants,
     RevenueAnalyticsResponse,
-    BudgetConfigIn, BudgetConfigOut, BudgetStatusOut,
+    CustomerSpendPoolIn, CustomerSpendPoolOut, CustomerSpendPoolStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
     TenantUsageInvoiceListResponse,
@@ -29,6 +29,7 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from core.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
@@ -521,18 +522,27 @@ def revenue_analytics(request, start_date: date = None, end_date: date = None):
     return get_revenue_analytics(request.auth.tenant.id, start_date, end_date)
 
 
-# ---------- Budget config + status ----------
+# ---------- Customer spend pool: declaration + status ----------
 
 
-def _budget_out(cfg):
+def _spend_pool_out(cfg):
     return {"cap_micros": cfg.cap_micros, "enforce_mode": cfg.enforce_mode,
             "hard_stop_pct": cfg.hard_stop_pct, "alert_levels": cfg.alert_levels,
             "fail_closed": cfg.fail_closed}
 
 
-def _upsert_budget(tenant, customer, payload):
-    from apps.billing.gating.models import BudgetConfig, default_alert_levels
-    cfg, _ = BudgetConfig.objects.update_or_create(
+def _no_pool_declared():
+    """What a read answers where no row is declared: no pool (`cap_micros` 0)
+    under the model's own defaults — an unsaved row, serialised — so a caller
+    sees exactly the row a first PUT with only an amount would create, and a
+    default that moves on the model moves here with it."""
+    from apps.billing.gating.models import CustomerSpendPool
+    return _spend_pool_out(CustomerSpendPool())
+
+
+def _upsert_spend_pool(tenant, customer, payload):
+    from apps.billing.gating.models import CustomerSpendPool, default_alert_levels
+    cfg, _ = CustomerSpendPool.objects.update_or_create(
         tenant=tenant, customer=customer,
         defaults={"cap_micros": payload.cap_micros, "enforce_mode": payload.enforce_mode,
                   "hard_stop_pct": payload.hard_stop_pct,
@@ -541,63 +551,61 @@ def _upsert_budget(tenant, customer, payload):
     return cfg
 
 
-@billing_router.get("/budget", response=BudgetConfigOut)
+@billing_router.get("/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(READ)
-def get_tenant_budget(request):
+def get_tenant_customer_spend_pool(request):
     _product_check(request)
-    from apps.billing.gating.models import BudgetConfig
-    cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
+    from apps.billing.gating.models import CustomerSpendPool
+    cfg = CustomerSpendPool.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
     if not cfg:
-        return {"cap_micros": 0, "enforce_mode": "alert_only", "hard_stop_pct": 100,
-                "alert_levels": [50, 80, 100, 110], "fail_closed": False}
-    return _budget_out(cfg)
+        return _no_pool_declared()
+    return _spend_pool_out(cfg)
 
 
-@billing_router.put("/budget", response=BudgetConfigOut)
+@billing_router.put("/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(ADMIN)
-@records_audit("budget.set")
-def put_tenant_budget(request, payload: BudgetConfigIn):
+@records_audit("customer_spend_pool.set")
+def put_tenant_customer_spend_pool(request, payload: CustomerSpendPoolIn):
     _product_check(request)
     with transaction.atomic():
-        cfg = _upsert_budget(request.auth.tenant, None, payload)
+        cfg = _upsert_spend_pool(request.auth.tenant, None, payload)
         audit_record(
-            action="budget.set", tenant_id=request.auth.tenant.id,
-            resource_type="budget", resource_id=request.auth.tenant.id,
+            action="customer_spend_pool.set", tenant_id=request.auth.tenant.id,
+            resource_type="customer_spend_pool", resource_id=request.auth.tenant.id,
             metadata={"scope": "tenant", "cap_micros": cfg.cap_micros,
                       "enforce_mode": cfg.enforce_mode,
                       "hard_stop_pct": cfg.hard_stop_pct})
-    return _budget_out(cfg)
+    return _spend_pool_out(cfg)
 
 
-@billing_router.get("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@billing_router.get("/customers/{customer_id}/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(READ)
-def get_customer_budget(request, customer_id: UUID):
+def get_customer_spend_pool(request, customer_id: UUID):
     _product_check(request)
-    from apps.billing.gating.models import BudgetConfig
+    from apps.billing.gating.models import CustomerSpendPool
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    cfg = BudgetConfig.objects.filter(tenant=request.auth.tenant, customer=customer).first()
+    cfg = CustomerSpendPool.objects.filter(tenant=request.auth.tenant, customer=customer).first()
     if not cfg:
-        return {"cap_micros": 0, "enforce_mode": "alert_only", "hard_stop_pct": 100,
-                "alert_levels": [50, 80, 100, 110], "fail_closed": False}
-    return _budget_out(cfg)
+        return _no_pool_declared()
+    return _spend_pool_out(cfg)
 
 
-@billing_router.put("/customers/{customer_id}/budget", response=BudgetConfigOut)
+@billing_router.put("/customers/{customer_id}/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(ADMIN)
-@records_audit("budget.set")
-def put_customer_budget(request, customer_id: UUID, payload: BudgetConfigIn):
+@records_audit("customer_spend_pool.set")
+def put_customer_spend_pool(request, customer_id: UUID, payload: CustomerSpendPoolIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     with transaction.atomic():
-        cfg = _upsert_budget(request.auth.tenant, customer, payload)
+        cfg = _upsert_spend_pool(request.auth.tenant, customer, payload)
         audit_record(
-            action="budget.set", tenant_id=request.auth.tenant.id,
-            resource_type="budget", resource_id=customer.id,
+            action="customer_spend_pool.set", tenant_id=request.auth.tenant.id,
+            resource_type="customer_spend_pool", resource_id=customer.id,
             metadata={"scope": "customer", "customer_id": str(customer.id),
                       "cap_micros": cfg.cap_micros,
                       "enforce_mode": cfg.enforce_mode,
                       "hard_stop_pct": cfg.hard_stop_pct})
-    return _budget_out(cfg)
+    return _spend_pool_out(cfg)
 
 
 # ---------- Per-customer billing profile (overdraft override + grant expiry) ----------
@@ -692,22 +700,28 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
                 "is_pooled_seat": False}
 
 
-@billing_router.get("/customers/{customer_id}/budget/status", response=BudgetStatusOut)
+@billing_router.get("/customers/{customer_id}/customer-spend-pool/status", response=CustomerSpendPoolStatusOut)
 @role_floor(READ)
-def get_customer_budget_status(request, customer_id: UUID):
+def get_customer_spend_pool_status(request, customer_id: UUID):
+    """Where this customer's known period charges stand against the pool that
+    applies to them. The basis is the durable pair the pool is measured over —
+    the figure the live counter rebuilds from and MAX-merges toward, never the
+    counter itself — beside the configured amount and the assessment the
+    kernel's crossing module composes over it (#456, slice 6 §13)."""
     _product_check(request)
-    from apps.billing.gating.services.budget_service import BudgetService, _period
+    from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
+    from core.crossing import spend_pool_assessment
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    label, _s, _e = _period()
-    cfg = BudgetService.resolve_config(customer)
-    cap = cfg.cap_micros if cfg else 0
-    try:
-        spend = BudgetService.current_spend(customer.tenant_id, customer.id)
-    except Exception:
-        spend = 0
-    pct = round(spend / cap * 100, 2) if cap > 0 else 0.0
-    return {"period": label, "spend_micros": spend, "cap_micros": cap, "pct": pct,
-            "enforce_mode": cfg.enforce_mode if cfg else "alert_only"}
+    cfg = CustomerSpendPoolService.resolve_config(customer)
+    label, known_micros, unresolved_count = CustomerSpendPoolService.period_basis(
+        customer.tenant_id, customer.id)
+    assessment = spend_pool_assessment(cfg, known_micros)
+    return {"period": label,
+            "cap_micros": cfg.cap_micros if cfg else 0,
+            "enforce_mode": cfg.enforce_mode if cfg else SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+            "known_period_charges_micros": known_micros,
+            "unresolved_posting_count": unresolved_count,
+            **assessment._asdict()}
 
 
 # ---------- Postpaid usage-invoice + config ----------

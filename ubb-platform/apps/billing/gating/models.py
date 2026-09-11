@@ -1,5 +1,7 @@
 from django.db import models
 from core.models import BaseModel
+from core.vocabulary import (SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+                             SPEND_POOL_ENFORCE_MODE_BLOCKING)
 
 
 class RiskConfig(BaseModel):
@@ -28,7 +30,16 @@ def default_alert_levels():
     return [50, 80, 100, 110]
 
 
-BUDGET_ENFORCE_MODES = [("alert_only", "Alert only"), ("blocking", "Blocking")]
+#: How a customer spend pool is enforced — the registry's closed pair, held by
+#: reference (#456 paid `g2-backend-spend_pool_enforce_mode`; both values were
+#: already right, so this is a re-source and not a change of value). The
+#: wording beside each identity is the admin's, on `TASK_STATUS_CHOICES`'s
+#: footing. A blocking pool enforces identically for `prepaid` and `postpaid`:
+#: mode decides who invoices, not whether the bound bites (#150 §7.1).
+SPEND_POOL_ENFORCE_MODES = [
+    (SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, "Alert only"),
+    (SPEND_POOL_ENFORCE_MODE_BLOCKING, "Blocking"),
+]
 
 
 STOP_SIGNAL_FAMILIES = [("floor_stop", "Floor stop"), ("soft_floor", "Soft floor")]
@@ -50,7 +61,7 @@ class StopSignalState(BaseModel):
     across the owner's history.
 
     Families at launch: ``floor_stop`` (the customer-wide hard stop — wallet
-    floor / budget cap) and ``soft_floor`` (model support here; exercised by
+    floor / customer spend pool) and ``soft_floor`` (model support here; exercised by
     the soft-floor ticket, #40).
     """
 
@@ -179,25 +190,33 @@ class LiveBalanceRepair(BaseModel):
                 f"d1={self.first_deficit_micros} applied={self.applied_micros})")
 
 
-class BudgetConfig(BaseModel):
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="budget_configs")
+class CustomerSpendPool(BaseModel):
+    """The Customer Spend Pool — a bound on a customer's period charges
+    (#150 §7, slice 6 §4). A row on a customer is that customer's pool; a row
+    with no customer is the tenant default. The pool's LEVEL needs no column:
+    a row on a business is the owner-level pool, a row on a seat the
+    seat-level pool, and the tenant default applies to seats only (§4 — the
+    two-level behaviour is #459's). Renamed from the retired family word by
+    `gating/migrations/0013` (#456), carrying every row."""
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_spend_pools")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
-                                 related_name="budget_configs", null=True, blank=True)
-    cap_micros = models.BigIntegerField(default=0)  # <= 0 means "no cap" (overlay inert)
+                                 related_name="customer_spend_pools", null=True, blank=True)
+    cap_micros = models.BigIntegerField(default=0)  # <= 0 means "no pool" (overlay inert)
     period = models.CharField(max_length=10, default="month")
-    enforce_mode = models.CharField(max_length=10, choices=BUDGET_ENFORCE_MODES, default="alert_only")
+    enforce_mode = models.CharField(max_length=10, choices=SPEND_POOL_ENFORCE_MODES,
+                                    default=SPEND_POOL_ENFORCE_MODE_ALERT_ONLY)
     hard_stop_pct = models.IntegerField(default=100)
     alert_levels = models.JSONField(default=default_alert_levels)
     fail_closed = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "ubb_budget_config"
+        db_table = "ubb_customer_spend_pool"
         constraints = [
             models.UniqueConstraint(fields=["tenant"], condition=models.Q(customer__isnull=True),
-                                    name="uq_budget_config_tenant_default"),
+                                    name="uq_customer_spend_pool_tenant_default"),
             models.UniqueConstraint(fields=["tenant", "customer"], condition=models.Q(customer__isnull=False),
-                                    name="uq_budget_config_tenant_customer"),
+                                    name="uq_customer_spend_pool_tenant_customer"),
         ]
 
     def __str__(self):
-        return f"BudgetConfig({self.tenant_id}/{self.customer_id}: cap={self.cap_micros} {self.enforce_mode})"
+        return f"CustomerSpendPool({self.tenant_id}/{self.customer_id}: cap={self.cap_micros} {self.enforce_mode})"

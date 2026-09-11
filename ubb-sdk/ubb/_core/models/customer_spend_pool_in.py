@@ -8,7 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.budget_config_in_enforce_mode import BudgetConfigInEnforceMode
+from ..models.customer_spend_pool_in_enforce_mode import CustomerSpendPoolInEnforceMode
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -17,24 +17,30 @@ from typing import cast
 
 
 
-T = TypeVar("T", bound="BudgetConfigIn")
+T = TypeVar("T", bound="CustomerSpendPoolIn")
 
 
 
 @_attrs_define
-class BudgetConfigIn:
-    """ 
+class CustomerSpendPoolIn:
+    """ Declare a customer spend pool — a bound on the customer's period
+    charges (#150 §7). On the tenant route this is the default every seat
+    inherits; on the customer route it is that customer's own pool. A row on
+    a business is the owner-level pool and a row on a seat the seat-level
+    pool, so the level is where the row is declared and needs no field.
+    `cap_micros` of 0 declares no pool.
+
         Attributes:
             cap_micros (int):
             alert_levels (list[int] | None | Unset):
-            enforce_mode (BudgetConfigInEnforceMode | Unset):  Default: BudgetConfigInEnforceMode.ALERT_ONLY.
+            enforce_mode (CustomerSpendPoolInEnforceMode | Unset):  Default: CustomerSpendPoolInEnforceMode.ALERT_ONLY.
             fail_closed (bool | Unset):  Default: False.
             hard_stop_pct (int | Unset):  Default: 100.
      """
 
     cap_micros: int
     alert_levels: list[int] | None | Unset = UNSET
-    enforce_mode: BudgetConfigInEnforceMode | Unset = BudgetConfigInEnforceMode.ALERT_ONLY
+    enforce_mode: CustomerSpendPoolInEnforceMode | Unset = CustomerSpendPoolInEnforceMode.ALERT_ONLY
     fail_closed: bool | Unset = False
     hard_stop_pct: int | Unset = 100
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -108,11 +114,11 @@ class BudgetConfigIn:
 
 
         _enforce_mode = d.pop("enforce_mode", UNSET)
-        enforce_mode: BudgetConfigInEnforceMode | Unset
+        enforce_mode: CustomerSpendPoolInEnforceMode | Unset
         if isinstance(_enforce_mode,  Unset):
             enforce_mode = UNSET
         else:
-            enforce_mode = BudgetConfigInEnforceMode(_enforce_mode)
+            enforce_mode = CustomerSpendPoolInEnforceMode(_enforce_mode)
 
 
 
@@ -121,7 +127,7 @@ class BudgetConfigIn:
 
         hard_stop_pct = d.pop("hard_stop_pct", UNSET)
 
-        budget_config_in = cls(
+        customer_spend_pool_in = cls(
             cap_micros=cap_micros,
             alert_levels=alert_levels,
             enforce_mode=enforce_mode,
@@ -130,8 +136,8 @@ class BudgetConfigIn:
         )
 
 
-        budget_config_in.additional_properties = d
-        return budget_config_in
+        customer_spend_pool_in.additional_properties = d
+        return customer_spend_pool_in
 
     @property
     def additional_keys(self) -> list[str]:

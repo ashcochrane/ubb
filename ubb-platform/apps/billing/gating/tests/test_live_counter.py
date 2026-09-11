@@ -17,7 +17,7 @@ from django.core.cache import cache
 from django.test import Client
 from django.utils import timezone
 
-from apps.billing.gating.models import BudgetConfig
+from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import (Door, LiveCounter,
                                                        stop_channel)
 from apps.billing.wallets.models import Wallet
@@ -202,7 +202,7 @@ class TestStopFlag:
     def test_postpaid_crossing_at_budget_cap(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     hard_stop_pct=100, enforce_mode="blocking")
         out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000
@@ -210,12 +210,12 @@ class TestStopFlag:
 
     def test_postpaid_alert_only_budget_never_stops_the_live_lane(self):
         """#110 drift resolution: enforce_mode is honored by EVERY lane via
-        crossing.budget_stop_threshold — an alert_only budget (also the model
+        crossing.spend_pool_stop_threshold — an alert_only pool (also the model
         default) alerts but can never stop. Pre-#110 the live fast lane
         ignored enforce_mode and would have stopped here."""
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     hard_stop_pct=100, enforce_mode="alert_only")
         out = LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         assert out["spend_micros"] == 12_000_000  # the counter still tracks
@@ -225,7 +225,7 @@ class TestStopFlag:
     def test_postpaid_reconcile_clears_stale_flag_next_month(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="blocking")
         now = timezone.now()
         LiveCounter.debit(c.id, t, 12_000_000, now=now)  # flag set

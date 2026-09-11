@@ -25,6 +25,7 @@ from pydantic import Field
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     PRICING_STATUS_KNOWN,
+    SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
     TASK_STATUS_EXPIRED,
     TASK_STATUS_KILLED,
 )
@@ -72,6 +73,14 @@ PricingStatus = Annotated[
 #: away, which is a worse contract bought with a worse module.
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
+
+#: How the customer spend pool that announced a threshold is enforced (#456,
+#: slice 6 §13). Closed — the marker renders the registry's two-value `enum` on
+#: this payload's node exactly as it does on the three pool schemas, because a
+#: value lifted out of a record goes on EVERY schema publishing it, and the
+#: `webhooks` section is part of the contract the applier walks.
+SpendPoolEnforceMode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "spend_pool_enforce_mode"})]
 
 
 class EventSchema:
@@ -368,7 +377,7 @@ class BudgetThresholdReached(EventSchema):
     level: int = 0
     spend_micros: int = 0
     cap_micros: int = 0
-    enforce_mode: str = "alert_only"
+    enforce_mode: SpendPoolEnforceMode = SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 
 
 @dataclass(frozen=True)

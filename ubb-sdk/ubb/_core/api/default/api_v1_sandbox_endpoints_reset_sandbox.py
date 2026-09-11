@@ -86,7 +86,7 @@ def sync_detailed(
 
      Asynchronously wipe the calling SANDBOX tenant's domain data.
 
-    keep_config=true (default) preserves rate cards, markups, plans, budget /
+    keep_config=true (default) preserves rate cards, markups, plans, customer spend pools /
     billing / postpaid / webhook configs; the Tenant row and its API keys
     always survive. Returns 202 — the wipe runs as a Celery task and the
     sandbox 401s (deactivated) until it completes.
@@ -129,7 +129,7 @@ def sync(
 
      Asynchronously wipe the calling SANDBOX tenant's domain data.
 
-    keep_config=true (default) preserves rate cards, markups, plans, budget /
+    keep_config=true (default) preserves rate cards, markups, plans, customer spend pools /
     billing / postpaid / webhook configs; the Tenant row and its API keys
     always survive. Returns 202 — the wipe runs as a Celery task and the
     sandbox 401s (deactivated) until it completes.
@@ -167,7 +167,7 @@ async def asyncio_detailed(
 
      Asynchronously wipe the calling SANDBOX tenant's domain data.
 
-    keep_config=true (default) preserves rate cards, markups, plans, budget /
+    keep_config=true (default) preserves rate cards, markups, plans, customer spend pools /
     billing / postpaid / webhook configs; the Tenant row and its API keys
     always survive. Returns 202 — the wipe runs as a Celery task and the
     sandbox 401s (deactivated) until it completes.
@@ -210,7 +210,7 @@ async def asyncio(
 
      Asynchronously wipe the calling SANDBOX tenant's domain data.
 
-    keep_config=true (default) preserves rate cards, markups, plans, budget /
+    keep_config=true (default) preserves rate cards, markups, plans, customer spend pools /
     billing / postpaid / webhook configs; the Tenant row and its API keys
     always survive. Returns 202 — the wipe runs as a Celery task and the
     sandbox 401s (deactivated) until it completes.

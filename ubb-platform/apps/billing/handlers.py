@@ -19,7 +19,7 @@ def handle_usage_recorded_billing(event_id, payload):
     and BalanceLow under the auto-top-up trigger — live behind the wallet
     seam (``wallet_ops.draw_down_usage``, #109). This handler keeps what is
     caller-side by decision 7: the postpaid branch, the owner resolution,
-    billing-period accumulation, and the budget counters.
+    billing-period accumulation, and the spend-pool counters.
 
     This handler NEVER calls Stripe or dispatches payment tasks.
     Payment connectors subscribe to the emitted events.
@@ -39,7 +39,7 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros is not None and billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
-        # Postpaid has no wallet to draw down, and (#39) its budget-cap
+        # Postpaid has no wallet to draw down, and (#39) its spend-pool
         # stop/suspension rides the StopSignalState transition guard from the
         # fast lane at the crossing plus the hourly reconcile's SET power —
         # this handler no longer reads the stop flag (the old D13 shape), so
@@ -60,10 +60,10 @@ def handle_usage_recorded_billing(event_id, payload):
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
-        # Budget policy: budgets are EFFECTIVE-month basis; the live Redis
+        # Pool policy: a pool is EFFECTIVE-month basis; the live Redis
         # counter tracks the CURRENT wall-clock month only. A backdated event
         # whose effective month is a PRIOR month must NOT inflate this month's
-        # counter (the hourly reconcile_budget_counters rebuild — already
+        # counter (the hourly reconcile_customer_spend_pool_counters rebuild — already
         # effective_at-filtered via get_customer_cost_totals — is the source
         # of truth). Absent/unparseable effective_at = legacy payload =
         # current behavior (increment).
@@ -81,8 +81,8 @@ def handle_usage_recorded_billing(event_id, payload):
             if eff is not None:
                 count_in_live = same_month(eff, _tz.now())
         if count_in_live:
-            from apps.billing.gating.services.budget_service import BudgetService
-            BudgetService.record_usage_spend(seat, billed_cost_micros)
+            from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
+            CustomerSpendPoolService.record_usage_spend(seat, billed_cost_micros)
 
 
 def handle_customer_deleted_billing(event_id, payload):

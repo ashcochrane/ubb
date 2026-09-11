@@ -2,13 +2,13 @@ import pytest
 from django.core.cache import cache
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.models import CustomerSpendPool
+from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import LiveCounter
 
 
 @pytest.mark.django_db
-class TestBudgetService:
+class TestCustomerSpendPoolService:
     def setup_method(self):
         cache.clear()
 
@@ -16,11 +16,11 @@ class TestBudgetService:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         if cfg:
-            BudgetConfig.objects.create(tenant=t, customer=c, **cfg)
+            CustomerSpendPool.objects.create(tenant=t, customer=c, **cfg)
         return c
 
     def _usage(self, c, billed, n):
-        # Mirror production: the Posting is durably committed BEFORE budget_incr runs,
+        # Mirror production: the Posting is durably committed BEFORE spend_pool_incr runs,
         # so a counter rebuild-on-miss reconstructs to the total that already includes it.
         from apps.metering.usage.models import Posting
         Posting.objects.create(
@@ -30,12 +30,12 @@ class TestBudgetService:
     def test_record_and_current_spend(self):
         c = self._cust(cap_micros=1_000_000)
         self._usage(c, 300_000, 1)  # event committed first (as in production)
-        old, new, label = LiveCounter.budget_incr(c.tenant_id, c.id, 300_000)
+        old, new, label = LiveCounter.spend_pool_incr(c.tenant_id, c.id, 300_000)
         assert (old, new) == (0, 300_000)  # rebuild-on-miss = durable total (300k), already includes the event
         self._usage(c, 200_000, 2)
-        old, new, label = LiveCounter.budget_incr(c.tenant_id, c.id, 200_000)  # incr path
+        old, new, label = LiveCounter.spend_pool_incr(c.tenant_id, c.id, 200_000)  # incr path
         assert (old, new) == (300_000, 500_000)
-        assert BudgetService.current_spend(c.tenant_id, c.id) == 500_000
+        assert CustomerSpendPoolService.current_spend(c.tenant_id, c.id) == 500_000
 
     def test_current_spend_rebuilds_from_postgres_on_miss(self):
         from unittest.mock import patch
@@ -43,18 +43,18 @@ class TestBudgetService:
         with patch("apps.metering.queries.get_customer_cost_totals",
                    return_value={"provider_cost_micros": 0, "billed_cost_micros": 750_000, "event_count": 1}):
             cache.clear()
-            assert BudgetService.current_spend(c.tenant_id, c.id) == 750_000
+            assert CustomerSpendPoolService.current_spend(c.tenant_id, c.id) == 750_000
 
     def test_check_no_config_allows(self):
         c = self._cust()
-        assert BudgetService.check(c)["allowed"] is True
+        assert CustomerSpendPoolService.check(c)["allowed"] is True
 
     def test_check_fail_open_when_redis_down(self):
         from unittest.mock import patch
         c = self._cust(cap_micros=1_000, enforce_mode="blocking")  # default fail-open
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
-            res = BudgetService.check(c)
+            res = CustomerSpendPoolService.check(c)
         assert res["allowed"] is True  # money still guarded by the Postgres credit gate
 
     def test_check_fail_closed_when_redis_down(self):
@@ -62,43 +62,43 @@ class TestBudgetService:
         c = self._cust(cap_micros=1_000, enforce_mode="blocking", fail_closed=True)
         with patch("apps.billing.gating.services.live_counter._client",
                    side_effect=ConnectionError("redis down")):
-            res = BudgetService.check(c)
+            res = CustomerSpendPoolService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_unavailable"
 
     def test_check_zero_cap_inert(self):
         c = self._cust(cap_micros=0, enforce_mode="blocking")
-        LiveCounter.budget_incr(c.tenant_id, c.id, 999_999_999)
-        assert BudgetService.check(c)["allowed"] is True
+        LiveCounter.spend_pool_incr(c.tenant_id, c.id, 999_999_999)
+        assert CustomerSpendPoolService.check(c)["allowed"] is True
 
     def test_alert_only_never_denies(self):
         c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
-        LiveCounter.budget_incr(c.tenant_id, c.id, 5_000)
-        assert BudgetService.check(c)["allowed"] is True
+        LiveCounter.spend_pool_incr(c.tenant_id, c.id, 5_000)
+        assert CustomerSpendPoolService.check(c)["allowed"] is True
 
     def test_blocking_denies_at_cap(self):
         c = self._cust(cap_micros=1_000, enforce_mode="blocking", hard_stop_pct=100)
         self._usage(c, 999, 1)  # durable event backs the first (miss → rebuild) increment
-        LiveCounter.budget_incr(c.tenant_id, c.id, 999)
-        assert BudgetService.check(c)["allowed"] is True   # 999 < 1000
-        LiveCounter.budget_incr(c.tenant_id, c.id, 1)   # incr → 1000 == cap
-        res = BudgetService.check(c)
+        LiveCounter.spend_pool_incr(c.tenant_id, c.id, 999)
+        assert CustomerSpendPoolService.check(c)["allowed"] is True   # 999 < 1000
+        LiveCounter.spend_pool_incr(c.tenant_id, c.id, 1)   # incr → 1000 == cap
+        res = CustomerSpendPoolService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
 
     def test_threshold_alert_emitted_once_on_crossing(self):
         from apps.platform.events.models import OutboxEvent
         c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
         self._usage(c, 850, 1)                 # durable event backs the spend
-        BudgetService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
+        CustomerSpendPoolService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
         assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
         self._usage(c, 10, 2)
-        BudgetService.record_usage_spend(c, 10)   # 860 — no new level
+        CustomerSpendPoolService.record_usage_spend(c, 10)   # 860 — no new level
         assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
 
     def test_threshold_alert_dedup_on_repeated_emit(self):
         from apps.platform.events.models import OutboxEvent
         c = self._cust(cap_micros=1_000)
-        cfg = BudgetService.resolve_config(c)
-        BudgetService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # crosses 50%
-        BudgetService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # replay (e.g. reconciliation) — no dup
+        cfg = CustomerSpendPoolService.resolve_config(c)
+        CustomerSpendPoolService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # crosses 50%
+        CustomerSpendPoolService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # replay (e.g. reconciliation) — no dup
         assert OutboxEvent.objects.filter(
             event_type="budget.threshold_reached", payload__level=50).count() == 1

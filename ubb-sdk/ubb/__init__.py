@@ -14,8 +14,8 @@ from ubb._core.models.task_out import TaskOut
 from ubb._core.models.task_detail_out import TaskDetailOut
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
-from ubb._core.models.budget_config_out import BudgetConfigOut
-from ubb._core.models.budget_status_out import BudgetStatusOut
+from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
+from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.grant_out import GrantOut
@@ -67,7 +67,7 @@ __all__ = [
     # generated DTOs
     "RecordUsageResponse", "StartTaskResponse", "CloseTaskResponse", "TaskOut",
     "TaskDetailOut", "CustomerResponse", "BalanceResponse",
-    "BudgetConfigOut", "BudgetStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
+    "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",

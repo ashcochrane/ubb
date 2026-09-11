@@ -603,13 +603,20 @@ export async function getBudgetStatus(customerId: string): Promise<BudgetStatusO
   await mockDelay();
   requireCustomer(customerId);
   const config = budgets[customerId];
+  const cap = config?.cap_micros ?? 0;
+  // Nothing charged yet: with a pool declared the assessment is a settled
+  // zero used and the whole amount remaining; with none it is null (#456).
   return (
     MOCK_BUDGET_STATUS[customerId] ?? {
       period: "2026-07",
-      spend_micros: 0,
-      cap_micros: config?.cap_micros ?? 0,
-      pct: 0,
+      cap_micros: cap,
       enforce_mode: config?.enforce_mode ?? "alert_only",
+      known_period_charges_micros: 0,
+      unresolved_posting_count: 0,
+      used_percentage: cap > 0 ? 0 : null,
+      remaining_micros: cap > 0 ? cap : null,
+      highest_threshold_reached: null,
+      blocking_occurred: false,
     }
   );
 }

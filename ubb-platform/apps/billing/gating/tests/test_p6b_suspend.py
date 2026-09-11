@@ -15,7 +15,7 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.billing.gating.models import BudgetConfig
+from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
@@ -48,7 +48,7 @@ class TestPostpaidDurableSuspend:
     def test_durable_suspend_at_the_crossing(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="blocking")
         # The fast lane's crossing wins the stop transition and suspends there
         # (#39) — the handler drain adds nothing for postpaid.
@@ -62,7 +62,7 @@ class TestPostpaidDurableSuspend:
     def test_single_emit_on_repeat_events(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="blocking")
         LiveCounter.debit(c.id, t, 12_000_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 5_000_000, now=timezone.now())
@@ -123,13 +123,13 @@ class TestP6bReviewFixes:
         cache.clear()
 
     def test_postpaid_suspended_idle_owner_unsuspended_by_reconcile(self):
-        # Deadlock fix: a budget-suspended postpaid owner with NO current-month
+        # Deadlock fix: a pool-suspended postpaid owner with NO current-month
         # usage (start-gate-blocked) must still be reconciled + un-suspended.
         from apps.billing.gating.tasks import reconcile_live_ledgers
         t = _tenant()  # postpaid enforcing
         c = Customer.objects.create(tenant=t, external_id="c1",
                                     status="suspended", suspension_reason="budget_exceeded")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="blocking")
         reconcile_live_ledgers()
         c.refresh_from_db()

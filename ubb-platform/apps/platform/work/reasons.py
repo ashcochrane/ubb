@@ -69,7 +69,7 @@ SUBTASK_LIMIT = "subtask_limit"
 # An event landed on a unit already in one of the five terminal states. It was
 # still priced, recorded, and billed — this is a verdict, not a refusal.
 TASK_NOT_ACTIVE = "task_not_active"
-# Customer-wide spend stop: the owner crossed the wallet floor / budget cap.
+# Customer-wide spend stop: the owner crossed the wallet floor / spend pool.
 CUSTOMER_WIDE_STOP = "customer_wide_stop"
 # Reaped: nothing was reported on this unit inside its silence window, and
 # reporting usage is the only thing that proves a unit is alive (#412). Held by

@@ -18,7 +18,7 @@ the registry cannot silently drift from what the ledger actually writes — and 
 # Order is not significant — grouped by namespace for readability. #81 landed the
 # ledger and one real site (api-key mint); #82 sweeps the rest of the mutating
 # surface in, appending here. Every name below is written by exactly one route (a
-# few — budget.set, top_up.requested — by the tenant/customer or
+# few — customer_spend_pool.set, top_up.requested — by the tenant/customer or
 # tenant/widget twins of one operation). Usage ingestion (record_usage[/batch],
 # task start, task close) and the spend pre-check are telemetry, not governance,
 # and deliberately have NO action here — see the exemption list in
@@ -41,7 +41,7 @@ AUDIT_ACTIONS = (
     "sandbox.reset",
     "connect.started",
     # spend-control config
-    "budget.set",
+    "customer_spend_pool.set",
     "billing_profile.set",
     "auto_top_up.configured",
     "postpaid_config.set",

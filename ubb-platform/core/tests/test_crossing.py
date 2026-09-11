@@ -1,20 +1,20 @@
 """#110: ``core.crossing`` is the ONE owner of the Crossing
 decision — the floor/threshold sign conventions every lane (fast, durable,
-start-gate, reconcile, repair, budget gate) imports.
+start-gate, reconcile, repair, pool gate) imports.
 
 These are the leverage pins: one file guards the compare that 11+ call sites
 used to re-derive by hand. The cross-form equivalence tests (transition form
 == level form on both edges; mode dispatch == the named predicate) are the
 ones that make a future sign error impossible to reintroduce silently.
 
-Pure predicates — no DB, no Redis. BudgetConfig instances are UNSAVED (the
+Pure predicates — no DB, no Redis. CustomerSpendPool instances are UNSAVED (the
 function only reads attributes), so the model-field default for
 ``enforce_mode`` is pinned without a query.
 """
 import datetime
 
 from core import crossing
-from apps.billing.gating.models import BudgetConfig
+from apps.billing.gating.models import CustomerSpendPool
 
 FLOOR = 1_000_000  # min_balance magnitude; the comparable line is -1_000_000
 
@@ -83,46 +83,46 @@ class TestWalletFloorRecovery:
         assert crossing.recovered_floor(-(10**12), None) is True
 
 
-class TestBudgetStopThreshold:
+class TestSpendPoolStopThreshold:
     def test_blocking_cap_times_hard_stop_pct(self):
-        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="blocking",
+        cfg = CustomerSpendPool(cap_micros=10_000_000, enforce_mode="blocking",
                            hard_stop_pct=120)
-        assert crossing.budget_stop_threshold(cfg) == 12_000_000
+        assert crossing.spend_pool_stop_threshold(cfg) == 12_000_000
 
     def test_floor_division(self):
-        cfg = BudgetConfig(cap_micros=999, enforce_mode="blocking",
+        cfg = CustomerSpendPool(cap_micros=999, enforce_mode="blocking",
                            hard_stop_pct=50)
-        assert crossing.budget_stop_threshold(cfg) == 499  # 999 * 50 // 100
+        assert crossing.spend_pool_stop_threshold(cfg) == 499  # 999 * 50 // 100
 
     def test_no_config_can_never_cross(self):
-        assert crossing.budget_stop_threshold(None) is None
+        assert crossing.spend_pool_stop_threshold(None) is None
 
     def test_capless_config_can_never_cross(self):
-        cfg = BudgetConfig(cap_micros=0, enforce_mode="blocking",
+        cfg = CustomerSpendPool(cap_micros=0, enforce_mode="blocking",
                            hard_stop_pct=100)
-        assert crossing.budget_stop_threshold(cfg) is None
+        assert crossing.spend_pool_stop_threshold(cfg) is None
 
     def test_alert_only_can_never_cross(self):
         """THE #110 drift pin: enforce_mode is honored HERE, once, for every
-        lane (the BudgetService.check semantics — decision 8 on the overspend
-        map kept alert_only) — an alert_only budget alerts but can never stop."""
-        cfg = BudgetConfig(cap_micros=10_000_000, enforce_mode="alert_only",
+        lane (the CustomerSpendPoolService.check semantics — decision 8 on the overspend
+        map kept alert_only) — an alert_only pool alerts but can never stop."""
+        cfg = CustomerSpendPool(cap_micros=10_000_000, enforce_mode="alert_only",
                            hard_stop_pct=100)
-        assert crossing.budget_stop_threshold(cfg) is None
+        assert crossing.spend_pool_stop_threshold(cfg) is None
 
     def test_model_default_enforce_mode_is_alert_only_and_never_crosses(self):
-        # A BudgetConfig created without enforce_mode is alert_only — the safe
+        # A CustomerSpendPool created without enforce_mode is alert_only — the safe
         # default: alerts only, no stop, in every lane.
-        cfg = BudgetConfig(cap_micros=10_000_000, hard_stop_pct=100)
-        assert crossing.budget_stop_threshold(cfg) is None
+        cfg = CustomerSpendPool(cap_micros=10_000_000, hard_stop_pct=100)
+        assert crossing.spend_pool_stop_threshold(cfg) is None
 
-    def test_past_budget_stop_at_or_over(self):
-        assert crossing.past_budget_stop(12, 12) is True  # AT the line = past
-        assert crossing.past_budget_stop(13, 12) is True
-        assert crossing.past_budget_stop(11, 12) is False
+    def test_past_spend_pool_stop_at_or_over(self):
+        assert crossing.past_spend_pool_stop(12, 12) is True  # AT the line = past
+        assert crossing.past_spend_pool_stop(13, 12) is True
+        assert crossing.past_spend_pool_stop(11, 12) is False
 
-    def test_past_budget_stop_none_threshold_never(self):
-        assert crossing.past_budget_stop(10**12, None) is False
+    def test_past_spend_pool_stop_none_threshold_never(self):
+        assert crossing.past_spend_pool_stop(10**12, None) is False
 
 
 class TestCrossedLive:
@@ -151,10 +151,10 @@ class TestCrossedLive:
                 "prepaid", bal, crossing.floor_line(FLOOR)
             ) == crossing.past_floor(bal, FLOOR)
 
-    def test_postpaid_dispatch_agrees_with_past_budget_stop(self):
+    def test_postpaid_dispatch_agrees_with_past_spend_pool_stop(self):
         for spend in (0, 11, 12, 13, 10**9):
             assert crossing.crossed_live("postpaid", spend, 12) == \
-                crossing.past_budget_stop(spend, 12)
+                crossing.past_spend_pool_stop(spend, 12)
 
 
 class TestMonthMath:

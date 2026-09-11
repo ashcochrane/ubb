@@ -106,7 +106,7 @@ CONFIG_MODEL_LABELS = frozenset({
     "event_types.MeasurementConcept",
     "plans.Plan",
     "subscriptions.MarginThresholdConfig",
-    "gating.BudgetConfig",
+    "gating.CustomerSpendPool",
     "gating.RiskConfig",
     "invoicing.PostpaidUsageConfig",
     "tenant_billing.BillingTenantConfig",

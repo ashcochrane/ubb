@@ -8,41 +8,33 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.budget_config_in import BudgetConfigIn
-from ...models.budget_config_out import BudgetConfigOut
+from ...models.customer_spend_pool_out import CustomerSpendPoolOut
 from typing import cast
 
 
 
 def _get_kwargs(
-    *,
-    body: BudgetConfigIn,
-
+    
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
-
+    
 
     
 
     
 
     _kwargs: dict[str, Any] = {
-        "method": "put",
-        "url": "/api/v1/billing/budget",
+        "method": "get",
+        "url": "/api/v1/billing/customer-spend-pool",
     }
 
-    _kwargs["json"] = body.to_dict()
 
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> BudgetConfigOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> CustomerSpendPoolOut | None:
     if response.status_code == 200:
-        response_200 = BudgetConfigOut.from_dict(response.json())
+        response_200 = CustomerSpendPoolOut.from_dict(response.json())
 
 
 
@@ -54,7 +46,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[BudgetConfigOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CustomerSpendPoolOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -66,26 +58,21 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: BudgetConfigIn,
 
-) -> Response[BudgetConfigOut]:
-    """ Put Tenant Budget
-
-    Args:
-        body (BudgetConfigIn):
+) -> Response[CustomerSpendPoolOut]:
+    """ Get Tenant Customer Spend Pool
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BudgetConfigOut]
+        Response[CustomerSpendPoolOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
-
+        
     )
 
     response = client.get_httpx_client().request(
@@ -97,52 +84,42 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: BudgetConfigIn,
 
-) -> BudgetConfigOut | None:
-    """ Put Tenant Budget
-
-    Args:
-        body (BudgetConfigIn):
+) -> CustomerSpendPoolOut | None:
+    """ Get Tenant Customer Spend Pool
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BudgetConfigOut
+        CustomerSpendPoolOut
      """
 
 
     return sync_detailed(
         client=client,
-body=body,
 
     ).parsed
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: BudgetConfigIn,
 
-) -> Response[BudgetConfigOut]:
-    """ Put Tenant Budget
-
-    Args:
-        body (BudgetConfigIn):
+) -> Response[CustomerSpendPoolOut]:
+    """ Get Tenant Customer Spend Pool
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BudgetConfigOut]
+        Response[CustomerSpendPoolOut]
      """
 
 
     kwargs = _get_kwargs(
-        body=body,
-
+        
     )
 
     response = await client.get_async_httpx_client().request(
@@ -154,25 +131,20 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: BudgetConfigIn,
 
-) -> BudgetConfigOut | None:
-    """ Put Tenant Budget
-
-    Args:
-        body (BudgetConfigIn):
+) -> CustomerSpendPoolOut | None:
+    """ Get Tenant Customer Spend Pool
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BudgetConfigOut
+        CustomerSpendPoolOut
      """
 
 
     return (await asyncio_detailed(
         client=client,
-body=body,
 
     )).parsed

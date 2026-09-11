@@ -287,7 +287,7 @@ class TestClientRetryIntegration(unittest.TestCase):
 
 
 class TestBranchSurfaceRetry(unittest.TestCase):
-    """Retry wiring on this branch's client surface (rate cards, budgets,
+    """Retry wiring on this branch's client surface (rate cards, customer spend pools,
     platform piggyback, plain-429 record_usage)."""
 
     @patch("ubb.retry.time.sleep")
@@ -313,7 +313,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
         client.close()
 
     @patch("ubb.retry.time.sleep")
-    def test_set_budget_retries_429_honoring_retry_after(self, mock_sleep):
+    def test_set_customer_spend_pool_retries_429_honoring_retry_after(self, mock_sleep):
         from ubb.billing import BillingClient
         client = BillingClient("ubb_live_test", max_retries=2)
         with patch.object(client._http, "put") as mock_put:
@@ -326,7 +326,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
                 "hard_stop_pct": 100, "alert_levels": [], "fail_closed": False,
             }
             mock_put.side_effect = [resp_fail, resp_ok]
-            cfg = client.set_budget("cust_1", 1000)
+            cfg = client.set_customer_spend_pool("cust_1", 1000)
             self.assertEqual(mock_put.call_count, 2)
             self.assertEqual(cfg.cap_micros, 1000)
             mock_sleep.assert_called_once_with(1.5)

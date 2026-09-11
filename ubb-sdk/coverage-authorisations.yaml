@@ -349,3 +349,32 @@ authorisations:
       model; a wrapper for this route would want to say something about that
       refusal, and the generated exception for it exists and is reachable
       without one.
+  - id: slice-6-456-the-pool-routes-take-the-family-name
+    issue: 456
+    operations_added: 2
+    reason: >-
+      THE SDK'S COVERAGE DID NOT CHANGE, AND THIS ENTRY IS STILL CORRECT —
+      #409's and #414's case a third time. The customer spend pool's five
+      routes moved from the retired family word to `customer-spend-pool`
+      under the billing prefix (slice 6 §13, §20 step 2), so five operation
+      ids left the manifest and five arrived. Three were wrapped before and
+      are wrapped after — the hand-written pool wrapper moved with them
+      (`set_customer_spend_pool`, `get_customer_spend_pool`,
+      `get_customer_spend_pool_status`). The tenant-default pair,
+      `api_v1_billing_endpoints_get_tenant_customer_spend_pool` and
+      `api_v1_billing_endpoints_put_tenant_customer_spend_pool`, was
+      `generated_only` before and is `generated_only` after; the total is
+      unmoved at 81 and no integrator gains or loses a method.
+
+      The ratchet reports two new gaps because it compares the SET of
+      unwrapped operation ids and never the total — a move IS a new identity
+      — which is this file's own header arguing for exactly that.
+
+      WHY THE PAIR STAYS UNWRAPPED: the tenant default is an OPERATOR's
+      declaration — the seats-only default every customer without a row
+      inherits — and the billing client this SDK is wraps the per-customer
+      surface an integrator drives from its own code. Wrapping the tenant
+      default would be a new operator method decided in a commit whose
+      subject is a rename, and the ticket that renames it says the wrapper
+      MOVES with the routes and nothing more. The generated modules exist
+      and are reachable without one.

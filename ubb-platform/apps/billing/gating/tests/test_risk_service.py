@@ -129,13 +129,12 @@ class RiskServiceRedisFailureTest(TestCase):
 
 import pytest
 from django.core.cache import cache as django_cache
-from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import LiveCounter
 
 
 @pytest.mark.django_db
-class TestRiskServiceBudget:
+class TestRiskServiceCustomerSpendPool:
     def setup_method(self):
         django_cache.clear()
 
@@ -149,14 +148,14 @@ class TestRiskServiceBudget:
         w.balance_micros = 10_000_000  # plenty — affordability passes
         w.save(update_fields=["balance_micros"])
         if cfg:
-            BudgetConfig.objects.create(tenant=t, customer=c, **cfg)
+            CustomerSpendPool.objects.create(tenant=t, customer=c, **cfg)
         return c
 
     def _spend(self, c, amount):
         from apps.metering.usage.models import Posting
         Posting.objects.create(tenant=c.tenant, customer=c, idempotency_key="i",
                                   provider_cost_micros=amount, billed_cost_micros=amount)
-        LiveCounter.budget_incr(c.tenant_id, c.id, amount)
+        LiveCounter.spend_pool_incr(c.tenant_id, c.id, amount)
 
     def test_no_budget_config_allows(self):
         c = self._funded()
@@ -174,7 +173,7 @@ class TestRiskServiceBudget:
         assert RiskService.check(c)["allowed"] is True
 
     def test_gate_fail_open_when_redis_down_with_budget_config(self):
-        # Even with a blocking budget config, a Redis outage must NOT block the
+        # Even with a blocking pool declared, a Redis outage must NOT block the
         # pre-call gate — the money is still guarded by the Postgres credit check.
         from unittest.mock import patch
         c = self._funded(cap_micros=1_000, enforce_mode="blocking")
@@ -198,10 +197,10 @@ class TestRiskServiceBudget:
         from apps.metering.usage.models import Posting
         t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="pp")
-        BudgetConfig.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
         Posting.objects.create(tenant=t, customer=c, idempotency_key="i",
                                   provider_cost_micros=1_000, billed_cost_micros=1_000)
-        LiveCounter.budget_incr(t.id, c.id, 1_000)
+        LiveCounter.spend_pool_incr(t.id, c.id, 1_000)
         res = RiskService.check(c)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"
 

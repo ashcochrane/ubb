@@ -1,6 +1,6 @@
 from enum import Enum
 
-class BudgetConfigInEnforceMode(str, Enum):
+class CustomerSpendPoolOutEnforceMode(str, Enum):
     ALERT_ONLY = "alert_only"
     BLOCKING = "blocking"
 
