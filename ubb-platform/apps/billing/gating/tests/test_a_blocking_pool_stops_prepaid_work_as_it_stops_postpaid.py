@@ -370,6 +370,48 @@ class TwoDeclaredLevelsTest(PoolTestBase):
             self.assertEqual(self._refusal(self._start(seat)),
                              AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
 
+    def test_the_seat_level_beat_never_lifts_a_businesss_stop(self):
+        """A pooled business's charges sit on its seats' postings, so its
+        seat-scoped total reads as nothing while it is past its pool. The
+        seat-level beat merges and alerts on that counter and drives no line
+        for a business: the owner-level pass owns it. Found by /code-review —
+        the first draft cleared the business's stop from here every hour."""
+        from apps.billing.gating.tasks import (
+            reconcile_customer_spend_pool_counters, reconcile_live_ledgers)
+        pool = self._pool(self.biz, 5_000_000)
+        unit = self._unit(self.seat1)
+        self._record(self.seat1, bills=5_000_000, task_id=unit)
+        self._drain()
+        self.biz.refresh_from_db()
+        self.assertEqual(self.biz.status, "suspended")
+
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            reconcile_customer_spend_pool_counters()
+
+        self.biz.refresh_from_db()
+        self.assertEqual(self.biz.status, "suspended")
+        self.assertEqual(
+            [line["control_id"] for line in StopSignalService.open_stop_lines(self.biz.id)],
+            [pool.id])
+        self.assertTrue(LiveCounter.read(self.biz.id, self.tenant)["stop"])
+        self.assertFalse(self._events(StopCleared).exists())
+        self.assertEqual(self._refusal(self._start(self.seat2)),
+                         AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
+
+        # The owner-level pass holds the line too while the month's charges
+        # stand, and it is the pass that lifts it once they no longer do.
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            reconcile_live_ledgers()
+        self.assertEqual(self._events(StopFired, owner_id=self.biz.id).count(), 1)
+        self.assertFalse(self._events(StopCleared).exists())
+        now = timezone.now()
+        next_month = (now.replace(day=1) + datetime.timedelta(days=40)).replace(day=1)
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            LiveCounter.reconcile(self.biz.id, self.tenant, now=next_month)
+        self.biz.refresh_from_db()
+        self.assertEqual(self.biz.status, "active")
+        self.assertEqual(self._events(StopCleared, owner_id=self.biz.id).count(), 1)
+
     def test_both_levels_alert(self):
         self._default_pool(2_000_000, SPEND_POOL_ENFORCE_MODE_ALERT_ONLY)
         self._pool(self.biz, 2_000_000, SPEND_POOL_ENFORCE_MODE_ALERT_ONLY)
@@ -475,8 +517,10 @@ class TwoLinesAtOnceTest(PoolTestBase):
     WALLET = 4_000_000
 
     def _both_open(self, pool):
-        fired = {e.payload["reason_code"]: e.payload
-                 for e in self._events(StopFired, owner_id=self.customer.id)}
+        announced = self._events(StopFired, owner_id=self.customer.id)
+        # Announced ONCE EACH (claim 6): two lines, two announcements.
+        self.assertEqual(announced.count(), 2)
+        fired = {e.payload["reason_code"]: e.payload for e in announced}
         self.assertEqual(set(fired), {reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL})
         self.assertEqual(fired[reasons.HARD_FLOOR]["control_family"],
                          CONTROL_FAMILY_WALLET_POLICY)
@@ -513,9 +557,10 @@ class TwoLinesAtOnceTest(PoolTestBase):
         self.assertFalse(context[reasons.CUSTOMER_SPEND_POOL]["arrived_after"])
 
         # The drawdown: the durable lane sees both crossings and announces
-        # neither a second time.
+        # neither a second time, and kills nothing twice.
         self._drain()
         self._both_open(pool)
+        self.assertEqual(self._events(TaskKilled).count(), 1)
 
         # The wallet recovers: the floor's line clears and the pool still holds.
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):

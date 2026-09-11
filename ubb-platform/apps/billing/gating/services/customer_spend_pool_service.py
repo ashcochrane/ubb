@@ -32,7 +32,13 @@ toward the owner-aggregated durable charges). Both alert, both stop, both
 refuse. THE TENANT DEFAULT APPLIES TO SEATS ONLY: a business with no row of
 its own has no pool, so one configured number never becomes two lines at two
 altitudes. For a standalone customer the two levels coincide — one row, one
-ledger line — because it is its own billing owner.
+ledger line — because it is its own billing owner. The lanes differ by
+level, as they did for postpaid before this ticket: the SEAT level is
+detected on the drawdown (every posting, in the handler's tail) and settled
+by the seat-level beat; the OWNER level is detected on the recording lane
+(the live counter's pool leg) and settled by the owner-level pass of the
+hourly reconcile — with real-time counter maintenance off, an owner-level
+crossing lands at that pass, which is the posture postpaid always had.
 
 KNOWN-OVER FIRES ON A PAIR (#150 §4.2, §4.4). The pool's durable basis is a
 lower-bound pair — the resolved period charges and the count of postings
@@ -87,15 +93,11 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
     TASK_STATUS_ACTIVE, TRIGGER_SOURCE_POOL_CROSSING)
 from apps.billing.gating.services.live_counter import LiveCounter
+from apps.platform.customers.models import ACCOUNT_TYPE_BUSINESS
 from apps.platform.tenants.flags import enforcing
 from apps.platform.work import reasons
 
 logger = logging.getLogger("ubb.billing")
-
-#: The customer altitude the tenant default never reaches (slice 6 §4). The
-#: account type has no registry seat; it is `Customer.ACCOUNT_TYPE_CHOICES`'
-#: own literal, spelled here the way the postpaid invoicing service spells it.
-A_BUSINESS = "business"
 
 
 def _period():
@@ -113,19 +115,24 @@ class CustomerSpendPoolService:
         configured number never becomes a line at two altitudes. Every lane
         that needs a pool's line resolves through here (#110 retired the live
         lane's inline copy). ``account_type`` is read off the customer row
-        when the caller holds it and looked up once otherwise — only on the
-        fallback path, so a customer with its own row still costs one query."""
+        when the caller holds it and looked up once otherwise — only when a
+        tenant default exists to be refused, so a tenant that declares no
+        pool at all still pays the two reads it always paid, on the hottest
+        path in the system."""
         from apps.billing.gating.models import CustomerSpendPool
         cfg = CustomerSpendPool.objects.filter(tenant_id=tenant_id, customer_id=customer_id).first()
         if cfg:
             return cfg
+        default = CustomerSpendPool.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
+        if default is None:
+            return None
         if account_type is None:
             from apps.platform.customers.models import Customer
             account_type = (Customer.all_objects.filter(id=customer_id)
                             .values_list("account_type", flat=True).first())
-        if account_type == A_BUSINESS:
+        if account_type == ACCOUNT_TYPE_BUSINESS:
             return None
-        return CustomerSpendPool.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
+        return default
 
     @staticmethod
     def resolve_config(customer):
@@ -228,22 +235,25 @@ class CustomerSpendPoolService:
         fast flag.
         Signals exist only in enforcing (#42); the compare is the shared
         predicate and the line is the pool's own (``alert_only`` = no line).
-        Returns True when the customer is past the line."""
+        Returns ``(past, won)``: whether the customer is past the line, and
+        whether THIS call won the transition (the winner's commit registers
+        the kill; a caller that finds the line already open re-sweeps)."""
         tenant = customer.tenant
         if not enforcing(tenant):
-            return False
+            return False, False
         if not past_spend_pool_stop(spend_micros, spend_pool_stop_threshold(cfg)):
-            return False
+            return False, False
         from apps.billing.gating.services.stop_signal_service import StopSignalService
+        won = None
         try:
-            StopSignalService.drive_stop(
+            won = StopSignalService.drive_stop(
                 customer.id, tenant, line=reasons.CUSTOMER_SPEND_POOL,
                 control_id=cfg.id)
         except Exception:
             logger.warning("customer_spend_pool.stop_transition_failed",
                            extra={"data": {"customer_id": str(customer.id)}})
         LiveCounter.ensure_stop_flag(customer.id, reasons.CUSTOMER_SPEND_POOL)
-        return True
+        return True, won is not None
 
     @staticmethod
     def stop_active_work(owner_id, tenant, control_id):
@@ -279,11 +289,24 @@ class CustomerSpendPoolService:
         drive the pool's line both ways — a crossing the lanes missed is
         signalled here (late, never lost), a stale one (month rollover, a
         raised or removed pool) is cleared and the customer's work may begin
-        again. A customer whose pool has gone still clears."""
+        again. A customer whose pool has gone still clears.
+
+        ⚠ A BUSINESS'S LINE IS THE OWNER LEVEL'S, AND THIS PASS NEVER TOUCHES
+        IT. The seat counter this pass merges is scoped to the customer's OWN
+        postings, and a pooled business's charges sit on its seats' postings
+        — its seat-scoped total reads as nothing while the business is past
+        its pool. So for a business this pass merges and alerts on that
+        counter (the start gate reads it for the business's own direct usage)
+        and drives no line either way; the owner-level pass
+        (`LiveCounter._reconcile_pool`, over the owner-aggregated total) owns
+        a business's line, its lift and its rescue. Caught by `/code-review`:
+        the first draft lifted a business's stop from here every hour."""
         from apps.billing.gating.services.stop_signal_service import CLEAR_RECONCILED
         cfg = CustomerSpendPoolService.resolve_config(customer)
+        a_business = customer.account_type == ACCOUNT_TYPE_BUSINESS
         if cfg is None or cfg.cap_micros <= 0:
-            CustomerSpendPoolService._lift_if_open(customer, CLEAR_RECONCILED)
+            if not a_business:
+                CustomerSpendPoolService._lift_if_open(customer, CLEAR_RECONCILED)
             return
         try:
             # P1 (D8/I7): the live counter's monotonic MAX-merge toward the
@@ -296,12 +319,16 @@ class CustomerSpendPoolService:
                            extra={"data": {"customer_id": str(customer.id)}})
             return
         CustomerSpendPoolService.emit_threshold_alerts(customer, cfg, 0, total, label)  # fires only not-yet-sent levels
-        if CustomerSpendPoolService.signal_if_past(customer, cfg, total):
-            # A kill that crashed between the transition and its commit is
-            # retried here: the sweep is idempotent.
+        if a_business:
+            return
+        past, won = CustomerSpendPoolService.signal_if_past(customer, cfg, total)
+        if past and not won:
+            # The line was already open: a kill that crashed between the
+            # transition and its commit is retried here (the winner's own
+            # commit registers the kill, so a win sweeps nothing twice).
             CustomerSpendPoolService.stop_active_work(
                 customer.id, customer.tenant, cfg.id)
-        else:
+        elif not past:
             CustomerSpendPoolService._lift_if_open(customer, CLEAR_RECONCILED)
 
     @staticmethod

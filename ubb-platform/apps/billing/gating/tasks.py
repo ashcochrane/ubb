@@ -45,11 +45,12 @@ def _per_owner_reconcile(tenant):
     Drives the MIN/MAX counter merges (maintenance on) and the durable-basis
     signal catch-up + flag re-alignment (never off) for every billing owner.
     Never raises; returns the flag-realignment count (#44 §C.2)."""
-    from apps.platform.customers.models import Customer
+    from apps.platform.customers.models import ACCOUNT_TYPE_SEAT, Customer
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.customer_spend_pool_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
+    from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
 
     flag_realigned = 0
 
@@ -57,7 +58,7 @@ def _per_owner_reconcile(tenant):
         return 1 if outcome and outcome.get("flag_realigned") else 0
 
     try:
-        if tenant.billing_mode == "postpaid":
+        if tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID:
             _label, start, end = _period()
             cust_ids = list(get_customer_ids_with_usage(tenant.id, start, end))
             owners = {c.resolve_billing_owner().id
@@ -73,10 +74,14 @@ def _per_owner_reconcile(tenant):
         # run, stranding it suspended forever past month rollover. In every
         # mode since #459; a pooled SEAT suspended by its own level is not an
         # owner and is the seat-level beat's to visit.
-        owners |= {c.id for c in Customer.all_objects.filter(
+        owners |= set(Customer.all_objects.filter(
             tenant=tenant, status="suspended",
-            suspension_reason=reasons.CUSTOMER_SPEND_POOL)
-            if c.resolve_billing_owner().id == c.id}
+            suspension_reason=reasons.CUSTOMER_SPEND_POOL,
+        ).exclude(
+            # `resolve_billing_owner`'s one rule, as a predicate: a seat under
+            # a pooled business is funded by its parent and is not an owner.
+            account_type=ACCOUNT_TYPE_SEAT, parent__billing_topology="pooled",
+        ).values_list("id", flat=True))
         for owner_id in owners:
             flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
     except Exception:

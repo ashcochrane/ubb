@@ -82,6 +82,7 @@ from core.crossing import (month_label_bounds, past_floor,
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
+from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
 
 logger = logging.getLogger("ubb.billing")
 
@@ -259,7 +260,7 @@ class LiveCounter:
         try:
             from django.utils import timezone
             now = now or timezone.now()
-            postpaid = tenant.billing_mode == "postpaid"
+            postpaid = tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID
             # I9: a prior-month backdated event must not inflate THIS month's
             # spend counter (mirrors handlers.py's spend-pool tail). Postpaid
             # has no wallet to lower, so there is nothing else to apply.
@@ -371,13 +372,14 @@ class LiveCounter:
     @staticmethod
     def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
                   control_id=None):
-        """Set the customer-wide cooperative stop flag, and on the unset->set
-        TRANSITION only (SET ... NX on the flag key itself is the transition
-        detector — no companion key needed) fan out two best-effort side
-        effects: a ``stop_channel(owner_id)`` Redis pub/sub publish (Plan 2's
-        future SSE endpoint) and the ``StopSignalService.drive_stop``
-        transition — the #39 signal ledger, which on its WINNING transition
-        emits ``stop.fired`` (atomically with the ledger row) and performs the
+        """Set the customer-wide cooperative stop flag and fan out two
+        best-effort side effects: on the flag's unset->set TRANSITION (SET
+        ... NX on the flag key itself — no companion key needed) a
+        ``stop_channel(owner_id)`` Redis pub/sub publish (Plan 2's future SSE
+        endpoint); and, whenever the flag does not already name THIS line,
+        the ``StopSignalService.drive_stop`` transition for the line — the
+        #39 signal ledger, which on its WINNING transition emits
+        ``stop.fired`` (atomically with the ledger row) and performs the
         folded durable suspension. A crossing the durable lane already
         signaled loses the ledger transition here and emits nothing, so the
         two lanes together fire exactly one stop per episode.
@@ -389,7 +391,10 @@ class LiveCounter:
         its own line — the flag is the owner's verdict cache and cannot say
         whether that line's episode is open, only the ledger can — and it
         leaves the flag's word alone, so the ack keeps naming the stop that
-        opened it (``ensure_stop_flag``'s rule). ``_clear_stop`` deletes the
+        opened it (``ensure_stop_flag``'s rule). That drive is preceded by
+        one unlocked indexed read of the open lines, so an owner held by both
+        lines whose stopped work keeps reporting costs a read per report and
+        never the owner-row lock ``drive_stop`` takes. ``_clear_stop`` deletes the
         key outright, so the NEXT ``_set_stop`` naturally re-arms the fast
         lane's transition detector; the ledger guard, not the flag, is what
         dedups emission (a re-set after a Redis flush or blind window drives
@@ -429,6 +434,12 @@ class LiveCounter:
             held = held.decode() if isinstance(held, bytes) else held
             if held == reason:
                 return None
+            if tenant is not None:
+                from apps.billing.gating.services.stop_signal_service import (
+                    StopSignalService)
+                if any(row["reason"] == reason
+                       for row in StopSignalService.open_stop_lines(owner_id)):
+                    return None
         else:
             try:
                 client.publish(stop_channel(owner_id), reason)
@@ -538,9 +549,10 @@ class LiveCounter:
         delete the fast-lane flag, and durably un-suspend behind the D15
         gate. The module owns HOW lifting works (this order, the durable
         gate); callers own WHEN and WHICH LINE — the credit hook on a balance
-        re-cross (the floor's line, ``balance_recovered``), the hourly
-        reconcile bottom line (the mode's line, ``reconciled``), the upward
-        repair on a lifted wedge (the floor's line, ``balance_repaired``).
+        re-cross (the floor's line, ``balance_recovered``), each hourly
+        reconcile pass's bottom line (the wallet pass the floor's line, the
+        pool passes the pool's, ``reconciled``), the upward repair on a
+        lifted wedge (the floor's line, ``balance_repaired``).
 
         ⚠ THE FLAG LIFTS ONLY WHEN NO STOP LINE IS LEFT OPEN (slice 6 §9,
         #458). A customer stopped by its pool and by its floor at once holds
@@ -588,7 +600,9 @@ class LiveCounter:
         off, BEFORE touching Redis (D17). This is the money-path read (ack
         verdicts, the start-gate, the queries.py port).
 
-        counter=True additionally reads the mode's raw counter:
+        counter=True additionally reads the raw counter the upward repair
+        measures — the wallet balance for a wallet-holding mode, the owner's
+        month spend for postpaid (the one counter it has) — as
         ``counter_micros`` (int; None = unseeded/absent) and
         ``counter_blind`` (True when Redis could not answer — distinct from
         absent, because an absent key means "seeds from durable at first
@@ -728,18 +742,21 @@ class LiveCounter:
         blind window, dropped savepoint) is signaled here — late, never
         lost. The fast-lane flag is re-aligned best-effort either way (patrol
         job §C.2: durable truth owns the verdict cache); returns True when
-        the flag actually changed — the #44 flag-realignment outcome."""
+        the flag actually changed — the #44 flag-realignment outcome — beside
+        whether THIS pass won a stop transition (``(realigned, won)``), so a
+        caller re-sweeping work under a line that was already open can tell
+        that apart from a win whose own commit registers the sweep."""
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService, control_id_of)
         if crossed:
-            StopSignalService.drive_stop(
+            won = StopSignalService.drive_stop(
                 owner_id, tenant, line=line,
                 control_id=control_id_of(line, owner_id, tenant),
                 balance_micros=basis_micros)
-            return LiveCounter.ensure_stop_flag(owner_id, line)
+            return LiveCounter.ensure_stop_flag(owner_id, line), won is not None
         return LiveCounter.resume(owner_id, tenant, line=line,
                                   clear_reason=CLEAR_RECONCILED,
-                                  balance_micros=basis_micros)
+                                  balance_micros=basis_micros), False
 
     @staticmethod
     def reconcile(owner_id, tenant, *, now=None):
@@ -752,7 +769,7 @@ class LiveCounter:
         completed pass, None when neither pass completed. ``now`` scopes the
         pool's month (beat callers omit it)."""
         passes = []
-        if tenant.billing_mode != "postpaid":
+        if tenant.billing_mode != CUSTOMER_BILLING_MODE_POSTPAID:
             passes.append(LiveCounter._reconcile_prepaid(owner_id, tenant))
         passes.append(LiveCounter._reconcile_pool(owner_id, tenant, now=now))
         completed = [p for p in passes if p is not None]
@@ -816,7 +833,7 @@ class LiveCounter:
                                        extra={"data": {"owner_id": str(owner_id),
                                                        "mode": "prepaid"}})
                 basis = v if v is not None else durable
-                realigned = LiveCounter._reconcile_transitions(
+                realigned, _ = LiveCounter._reconcile_transitions(
                     owner_id, tenant,
                     LiveCounter._floor_crossed(basis, owner_id, tenant),
                     basis, line=reasons.HARD_FLOOR)
@@ -907,11 +924,14 @@ class LiveCounter:
             pool = LiveCounter._owner_pool(owner_id, tenant)
             LiveCounter._alert_owner_level(owner_id, tenant, pool, 0, basis, label)
             crossed = past_spend_pool_stop(basis, spend_pool_stop_threshold(pool))
-            realigned = LiveCounter._reconcile_transitions(
+            realigned, won = LiveCounter._reconcile_transitions(
                 owner_id, tenant, crossed,
                 0,  # spend never rides balance fields
                 line=reasons.CUSTOMER_SPEND_POOL)
-            if crossed:
+            if crossed and not won:
+                # The line was already open: a kill that crashed between the
+                # transition and its commit is retried here (a win's own
+                # commit registers the sweep, so nothing is swept twice).
                 from apps.billing.gating.services.customer_spend_pool_service import (
                     CustomerSpendPoolService)
                 CustomerSpendPoolService.stop_active_work(owner_id, tenant, pool.id)

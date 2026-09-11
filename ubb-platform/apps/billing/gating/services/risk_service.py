@@ -4,6 +4,7 @@ from django.core.cache import cache
 
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
@@ -24,7 +25,7 @@ def _suspension_refusal(customer):
     holding = {row["reason"] for row in StopSignalService.open_stop_lines(customer.id)}
     if holding == {reasons.CUSTOMER_SPEND_POOL}:
         return AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
-    return "insufficient_funds"
+    return AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
 
 
 class StartPolicy(NamedTuple):

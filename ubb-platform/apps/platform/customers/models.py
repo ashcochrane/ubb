@@ -11,7 +11,15 @@ CUSTOMER_STATUS_CHOICES = [
     ("closed", "Closed"),
 ]
 
-ACCOUNT_TYPE_CHOICES = [("individual", "Individual"), ("business", "Business"), ("seat", "Seat")]
+#: The two account types other code branches on, by name (#459): a SEAT under
+#: a pooled business is funded by its parent, and a BUSINESS is the altitude
+#: the customer spend pool's tenant default never reaches. The account type
+#: has no registry seat, so this model is the one home for its spellings.
+ACCOUNT_TYPE_BUSINESS = "business"
+ACCOUNT_TYPE_SEAT = "seat"
+ACCOUNT_TYPE_CHOICES = [("individual", "Individual"),
+                        (ACCOUNT_TYPE_BUSINESS, "Business"),
+                        (ACCOUNT_TYPE_SEAT, "Seat")]
 BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
 
 
