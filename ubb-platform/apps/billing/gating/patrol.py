@@ -162,16 +162,14 @@ def _remint_signal_row(row, tenant):
     by and the control id the episode recorded, exactly as the original
     announcement did; the patrol derives nothing and guesses nothing."""
     from apps.billing.gating.services.stop_signal_service import (
-        STATE_STOPPED, STOP_LINES, emit_stamped)
+        STATE_STOPPED, STOP_LINES, control_fields, emit_stamped)
     from apps.billing.queries import get_customer_soft_min_balance
     from apps.platform.events.schemas import (
         SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
 
     balance = _owner_balance(row.owner_id, tenant)
     if row.reason in STOP_LINES:
-        control = dict(reason_code=row.reason,
-                       control_family=row.control_family,
-                       control_id=str(row.control_id or ""))
+        control = control_fields(row)
         if row.state == STATE_STOPPED:
             schema = StopFired(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),

@@ -89,9 +89,9 @@ families, because three of that closed set's four did not exist and a closed set
 published with one producible member. #458 added them, additively, to the four terminal stops
 and the customer stop pair — the kernel stamps the family from the one reason→family map in
 `core/controls.py` and the caller of the stop passes the control's id — and renamed the pair's
-bare `reason` to `reason_code` in the same commit (`apps/platform/work/tests/
-test_a_stop_names_the_control_that_fired.py`; `api/v1/tests/test_every_stop_names_the_control_
-that_fired.py`).
+bare `reason` to `reason_code` in the same commit
+(`apps/platform/work/tests/test_a_stop_names_the_control_that_fired.py`;
+`api/v1/tests/test_every_stop_names_the_control_that_fired.py`).
 
 ### 6. A configured maximum is named as a maximum
 

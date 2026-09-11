@@ -640,7 +640,8 @@ class UsageService:
         _tag_stop_context(
             event, task=task, verdicts=verdicts, now=inp.now,
             owner=inp.owner_row, tenant=tenant,
-            opened_episode_seq=live.get("stop_episode_opened"))
+            opened_episode_seq=live.get("stop_episode_opened"),
+            opened_line=live.get("stop_line_opened"))
         if inp.effective_at is not None:
             eff_month_start = month_bounds(inp.effective_at)[0]
             if eff_month_start < month_bounds(inp.now)[0]:

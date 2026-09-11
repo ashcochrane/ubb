@@ -181,8 +181,28 @@ class Migration0027StampsEveryStoredRowTest(WorkTestBase):
         self.assertEqual(undeclared.metadata[STOP_CONTROL_ID_KEY], str(self.tenant.id))
         self.assertNotIn(STOP_CONTROL_FAMILY_KEY, untouched.metadata)
 
+    def test_contained_work_a_cascade_stopped_takes_its_parents_control(self):
+        """§1: a cascade inherits its parent's — on the historical rows too.
+        The contained unit runs under its OWN declared kind, which would name
+        a different row; what it records is the parent's."""
+        parents_kind = TaskType.objects.create(tenant=self.tenant, key="pipe", uncapped=True)
+        TaskType.objects.create(tenant=self.tenant, key="piece",
+                                kind=TASK_TYPE_KIND_SUBTASK, uncapped=True)
+        parent = self._stopped(cause=reasons.TASK_COGS_CEILING, task_type="pipe")
+        contained = self._stopped(cause=reasons.PARENT_KILLED, task_type="piece",
+                                  parent=parent)
+
+        MIGRATION._stamp_the_control(global_apps, None)
+
+        contained.refresh_from_db()
+        self.assertEqual(contained.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
+        self.assertEqual(contained.metadata[STOP_CONTROL_ID_KEY], str(parents_kind.id))
+
     def test_a_queued_payload_is_stamped_from_its_unit_and_its_own_cause(self):
         unit = self._stopped(cause=reasons.ABSOLUTE_DEADLINE)
+        # A literal payload on purpose (`docs/conventions/testing.md`'s
+        # exception): the POINT is the legacy shape a row queued before
+        # #458 holds, which the current dataclass can no longer construct.
         queued = OutboxEvent.objects.create(
             event_type=TaskExpired.EVENT_TYPE, tenant_id=self.tenant.id,
             payload={"tenant_id": str(self.tenant.id), "task_id": str(unit.id),

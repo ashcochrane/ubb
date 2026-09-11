@@ -271,15 +271,32 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
     # a customer stopped by both reports both, each under its own episode
     # ids. This retired row keeps its own family literal for the console
     # readers that key on it (ticket 15 retires them together).
+    #
+    # An entry tagged before the lines existed carries no line (keyed under
+    # None) and is CLAIMED ONCE: by the first line whose signal history holds
+    # its episode id, else by the first line whose ledger row this owner has
+    # — an owner that predates the lines only ever had one — so it is never
+    # itemised under both.
+    line_eps = {line: _signal_episodes(tenant, owner, "stop.fired",
+                                       "stop.cleared", line)
+                for line in STOP_LINES}
+    with_a_row = [line for line in STOP_LINES
+                  if get_stop_signal_state(owner.id, tenant.id, line=line)]
+    legacy_owner = {}
+    for seq in {k[2] for k in buckets if k[0] == "floor" and k[1] is None}:
+        legacy_owner[seq] = next(
+            (line for line in STOP_LINES if seq in line_eps[line]),
+            (with_a_row or list(STOP_LINES))[0])
     for line in STOP_LINES:
-        line_eps = _signal_episodes(tenant, owner, "stop.fired", "stop.cleared",
-                                    line)
-        tagged_seqs = {k[2] for k in buckets
-                       if k[0] == "floor" and k[1] in (line, None)}
-        for seq in set(line_eps) | tagged_seqs:
-            ep = line_eps.get(seq, {"tripped_at": None, "resumed_at": None})
-            bucket = _merged(buckets.get(("floor", line, seq)),
-                             buckets.get(("floor", None, seq)))
+        tagged_seqs = {k[2] for k in buckets if k[0] == "floor" and k[1] == line}
+        tagged_seqs |= {seq for seq, owner_line in legacy_owner.items()
+                        if owner_line == line}
+        for seq in set(line_eps[line]) | tagged_seqs:
+            ep = line_eps[line].get(seq, {"tripped_at": None, "resumed_at": None})
+            bucket = _merged(
+                buckets.get(("floor", line, seq)),
+                buckets.get(("floor", None, seq))
+                if legacy_owner.get(seq) == line else None)
             tripped_at = ep["tripped_at"]
             if tripped_at is None and bucket and bucket["ctx_tripped_at"]:
                 tripped_at = parse_datetime(bucket["ctx_tripped_at"])

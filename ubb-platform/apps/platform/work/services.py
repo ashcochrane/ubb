@@ -952,9 +952,11 @@ class TaskService:
         bill, and count into this unit's totals (and its parent's).
 
         ``control_id`` is the identity of the control whose bound ``reason``
-        says was reached (slice 6 §1, #458) — the declaration's for a ceiling,
-        passed by the caller because the kernel cannot derive it from the
-        reason. The control's FAMILY is derived here, from the one map in
+        says was reached (slice 6 §1, #458) — passed by the caller, because
+        it is not a function of the reason: a ceiling's is the declaration
+        the unit runs under (`ceiling_control_id`, which every kernel-side
+        caller resolves from the row it holds) and a customer-wide stop's is
+        a billing row this seam never sees. The FAMILY is derived here, from the one map in
         ``core.controls``, and both are stamped on the row beside the cause
         so a re-mint reads them back rather than guessing. A reason that
         names no family of its own — a cascade's, which is written by

@@ -107,8 +107,8 @@ class TestStopTransition:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         drive_a_stop(c.id, t)
-        # soft_floor (#40) has its own transitions — they must not share
-        # state or episode sequence with floor_stop.
+        # The wind-down line (#40) has its own transitions — it must not
+        # share state or episode sequence with the stop line.
         won = StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
         assert won == 1
         states = {r.reason: r.state for r in StopSignalState.objects.filter(owner=c)}
@@ -291,7 +291,7 @@ class TestTwoStopLinesAtOnce:
         assert fired[reasons.CUSTOMER_SPEND_POOL]["control_family"] \
             == CONTROL_FAMILY_CUSTOMER_SPEND_POOL
         assert fired[reasons.CUSTOMER_SPEND_POOL]["control_id"] == str(pool.id)
-        assert [line for line, _, _ in StopSignalService.open_stop_lines(c.id)] \
+        assert [row["reason"] for row in StopSignalService.open_stop_lines(c.id)] \
             == [reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL]
         # The suspension records the stop that opened it — the first line —
         # and the second line's winning stop suspends nothing twice.
@@ -311,7 +311,7 @@ class TestTwoStopLinesAtOnce:
         assert LiveCounter.resume(
             c.id, t, line=reasons.HARD_FLOOR,
             clear_reason=CLEAR_BALANCE_RECOVERED, balance_micros=0) is False
-        assert [line for line, _, _ in StopSignalService.open_stop_lines(c.id)] \
+        assert [row["reason"] for row in StopSignalService.open_stop_lines(c.id)] \
             == [reasons.CUSTOMER_SPEND_POOL]
         verdict = LiveCounter.read(c.id, t)
         assert verdict["stop"] is True

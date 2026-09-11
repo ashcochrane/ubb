@@ -267,16 +267,22 @@ class LiveCounter:
                 # postpaid branch debits the pool, every other mode a wallet
                 # (slice 6 §7, §9). The line names the control's family and
                 # the control's row is resolved here, at the crossing.
+                from apps.billing.gating.services.stop_signal_service import (
+                    control_id_of)
                 line = (reasons.CUSTOMER_SPEND_POOL if mode == "postpaid"
                         else reasons.HARD_FLOOR)
                 opened = LiveCounter._set_stop(
                     owner_id, line, tenant=tenant,
-                    control_id=LiveCounter._control_id(line, owner_id, tenant),
+                    control_id=control_id_of(line, owner_id, tenant),
                     balance_micros=v if mode == "prepaid" else 0)
                 if opened is not None:
                     # THIS debit won the stop transition — the caller's event
-                    # is the episode's tipping event (#41 stop-context).
+                    # is the episode's tipping event (#41 stop-context). The
+                    # LINE rides beside the episode id: two lines number
+                    # their episodes independently (#458), so a bare number
+                    # cannot say which line's episode this event opened.
                     base["stop_episode_opened"] = opened
+                    base["stop_line_opened"] = line
             base.update(LiveCounter.read(owner_id, tenant))
             return base
         except Exception:
@@ -316,13 +322,6 @@ class LiveCounter:
         via ``crossing.crossed_live`` — the one owner of both orientations."""
         return crossed_live(
             mode, value, LiveCounter._threshold(mode, owner_id, tenant))
-
-    @staticmethod
-    def _control_id(line, owner_id, tenant):
-        """The row that declares the control whose line this is (#458) —
-        the ledger's own resolution, asked here only on a crossing."""
-        from apps.billing.gating.services.stop_signal_service import control_id_of
-        return control_id_of(line, owner_id, tenant)
 
     @staticmethod
     def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
@@ -403,11 +402,13 @@ class LiveCounter:
         without waiting for the next fast-lane crossing. NX detects only
         whether the flag was ABSENT (the #44 re-alignment counter) — never
         emission semantics, which the ledger guard owns; an existing flag
-        keeps its reason and gets a TTL refresh (every path writes the same
-        customer-wide constant, so this is byte-equivalent to the old plain
-        SET). Returns True when a missing flag was re-set — the patrol's
-        flag-realignment outcome; a Redis failure only delays flag
-        visibility, never the signal."""
+        keeps its reason and gets a TTL refresh. Two stop lines write two
+        words since #458, and an existing flag keeping the first line's word
+        while the second opens is right: the ack names the stop that opened
+        the flag, and ``resume`` re-points it (``_repoint_stop_flag``) when
+        that line lifts while the other still holds. Returns True when a
+        missing flag was re-set — the patrol's flag-realignment outcome; a
+        Redis failure only delays flag visibility, never the signal."""
         try:
             client = _client()
             was_absent = client.set(_stop_key(owner_id), reason,
@@ -419,6 +420,19 @@ class LiveCounter:
             logger.warning("live_counter.ensure_stop_flag_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
             return False
+
+    @staticmethod
+    def _repoint_stop_flag(owner_id, reason):
+        """Make the fast-lane flag name ``reason`` — a plain SET, so an owner
+        one stop line just released and another still holds never has a
+        flagless instant between a delete and a re-set (#458): the ack's
+        verdict keeps saying stopped, and names the stop that still holds.
+        Best-effort, like every flag write."""
+        try:
+            _client().set(_stop_key(owner_id), reason, ex=COUNTER_TTL_SECONDS)
+        except Exception:
+            logger.warning("live_counter.repoint_stop_flag_failed",
+                           extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
     def _clear_stop(owner_id):
@@ -498,8 +512,7 @@ class LiveCounter:
                                       balance_micros=balance_micros)
         surviving = StopSignalService.open_stop_lines(owner_id)
         if surviving:
-            LiveCounter._clear_stop(owner_id)
-            LiveCounter.ensure_stop_flag(owner_id, surviving[0][0])
+            LiveCounter._repoint_stop_flag(owner_id, surviving[0]["reason"])
             return False
         realigned = LiveCounter._clear_stop(owner_id)
         if tenant.billing_mode == "postpaid":
@@ -662,11 +675,11 @@ class LiveCounter:
         job §C.2: durable truth owns the verdict cache); returns True when
         the flag actually changed — the #44 flag-realignment outcome."""
         from apps.billing.gating.services.stop_signal_service import (
-            CLEAR_RECONCILED, StopSignalService)
+            CLEAR_RECONCILED, StopSignalService, control_id_of)
         if crossed:
             StopSignalService.drive_stop(
                 owner_id, tenant, line=line,
-                control_id=LiveCounter._control_id(line, owner_id, tenant),
+                control_id=control_id_of(line, owner_id, tenant),
                 balance_micros=basis_micros)
             return LiveCounter.ensure_stop_flag(owner_id, line)
         return LiveCounter.resume(owner_id, tenant, line=line,

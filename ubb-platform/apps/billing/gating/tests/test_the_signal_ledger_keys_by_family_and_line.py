@@ -172,6 +172,9 @@ class TheRowsTakeTheirLinesTest(MigrationTestBase):
 
 class ThePairsPayloadsTakeTheNewShapeTest(MigrationTestBase):
     def _row(self, tenant, event_type, **payload):
+        # Literal payloads on purpose (`docs/conventions/testing.md`'s
+        # exception): the POINT is the shape a row queued before #458 holds
+        # — the bare `reason` the current dataclasses no longer declare.
         return OutboxEvent.objects.create(
             event_type=event_type, tenant_id=tenant.id,
             payload={"tenant_id": str(tenant.id), **payload})

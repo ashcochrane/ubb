@@ -414,8 +414,18 @@ class TestPin6TaskSweep:
         dead = OutboxEvent.objects.create(
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
+        from apps.platform.work.models import (
+            STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY)
+        from core.vocabulary import CONTROL_FAMILY_CEILING
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
-                     stamp=dead.id, meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
+                     stamp=dead.id,
+                     # A cause and its control, as every stopped row holds
+                     # since #458's migration — but no MECHANISM, which is
+                     # what a pre-split row looks like and what this case is
+                     # about.
+                     meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+                           STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
+                           STOP_CONTROL_ID_KEY: str(t.id)})
         assert patrol.remint_unannounced_kills(t) == 1
         ev = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
         assert ev.payload["re_announcement"] is True

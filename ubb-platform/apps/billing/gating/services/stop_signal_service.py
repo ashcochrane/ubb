@@ -130,6 +130,15 @@ def emit_stamped(row, schema_instance):
     row.save(update_fields=["announce_outbox_id", "updated_at"])
 
 
+def control_fields(row):
+    """The three wire fields a stop line's announcement carries, off the
+    ledger row — the line's word as the cause, the family the row is keyed
+    by, the control's id — spelled once for the fresh pair and the patrol's
+    re-mint alike, so the two can only ever say the same thing."""
+    return dict(reason_code=row.reason, control_family=row.control_family,
+                control_id=str(row.control_id or ""))
+
+
 def _line_row(owner_id, line):
     from apps.billing.gating.models import StopSignalState
     return (StopSignalState.objects.select_for_update()
@@ -214,9 +223,8 @@ class StopSignalService:
                 return None
             emit_stamped(row, StopFired(
                 tenant_id=str(tenant.id), owner_id=str(owner.id),
-                reason_code=line, control_family=row.control_family,
-                control_id=str(row.control_id or ""), scope="customer",
-                episode_seq=row.episode_seq))
+                scope="customer", episode_seq=row.episode_seq,
+                **control_fields(row)))
             postpaid = tenant.billing_mode == "postpaid"
             if (not postpaid or enforcing(tenant)) and owner.status == "active":
                 owner.status = "suspended"
@@ -254,25 +262,25 @@ class StopSignalService:
                 return None
             emit_stamped(row, StopCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
-                reason_code=line, control_family=row.control_family,
-                control_id=str(row.control_id or ""), scope="customer",
-                episode_seq=row.episode_seq,
-                balance_micros=int(balance_micros)))
+                scope="customer", episode_seq=row.episode_seq,
+                balance_micros=int(balance_micros), **control_fields(row)))
             return row.episode_seq
 
     @staticmethod
     def open_stop_lines(owner_id):
-        """The stop lines currently holding this owner — ``[(line, family,
-        control_id), ...]`` in line order, empty when no stop is open. The
-        one read every lifting path makes: the customer-wide stop flag and
-        the money suspension lift only when this answers empty (§9)."""
+        """The stop lines currently holding this owner, as plain data in line
+        order — ``[{reason, control_family, control_id, episode_seq,
+        transitioned_at}, ...]``, empty when no stop is open. The one read
+        every lifting path makes (the customer-wide stop flag and the money
+        suspension lift only when this answers empty, §9) and the one the
+        stop-context tagging reads through billing's read contract."""
         from apps.billing.gating.models import StopSignalState
 
-        rows = dict(
-            (r.reason, r) for r in StopSignalState.objects.filter(
-                owner_id=owner_id, reason__in=STOP_LINES, state=STATE_STOPPED))
-        return [(line, rows[line].control_family, rows[line].control_id)
-                for line in STOP_LINES if line in rows]
+        rows = {r["reason"]: r for r in StopSignalState.objects
+                .filter(owner_id=owner_id, reason__in=STOP_LINES, state=STATE_STOPPED)
+                .values("reason", "control_family", "control_id",
+                        "episode_seq", "transitioned_at")}
+        return [rows[line] for line in STOP_LINES if line in rows]
 
     @staticmethod
     def close_all_silently(tenant, *, reason):

@@ -177,8 +177,21 @@ class CustomerContextTest(StopContextTestBase):
 
     def test_tipping_event_when_this_debit_opened_the_episode(self):
         self._open_episode(seq=4)
-        ctx = self._build(None, None, opened_episode_seq=4)
+        ctx = self._build(None, None, opened_episode_seq=4,
+                          opened_line=reasons.HARD_FLOOR)
         self.assertFalse(ctx[0]["arrived_after"])
+
+    def test_the_tipping_entry_is_matched_on_the_line_as_well_as_the_id(self):
+        """Two lines number their episodes independently (#458), so the
+        same id on both is the ordinary case, not a coincidence: only the
+        line the debit opened is tipping, the other's entry is late."""
+        self._open_episode(seq=2, line=reasons.HARD_FLOOR)
+        self._open_episode(seq=2, line=reasons.CUSTOMER_SPEND_POOL)
+        ctx = self._build(None, None, opened_episode_seq=2,
+                          opened_line=reasons.CUSTOMER_SPEND_POOL)
+        by_limit = {entry["limit"]: entry["arrived_after"] for entry in ctx}
+        self.assertEqual(by_limit, {reasons.HARD_FLOOR: True,
+                                    reasons.CUSTOMER_SPEND_POOL: False})
 
     def test_cleared_episode_tags_nothing(self):
         self._open_episode(state="cleared")
@@ -242,7 +255,8 @@ class CustomerContextTest(StopContextTestBase):
         one whose episode THIS event's debit opened, the other is late."""
         self._open_episode(seq=3, line=reasons.HARD_FLOOR)
         self._open_episode(seq=1, line=reasons.CUSTOMER_SPEND_POOL)
-        ctx = self._build(None, None, opened_episode_seq=1)
+        ctx = self._build(None, None, opened_episode_seq=1,
+                          opened_line=reasons.CUSTOMER_SPEND_POOL)
         by_limit = {entry["limit"]: entry for entry in ctx}
         self.assertEqual(set(by_limit),
                          {reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL})

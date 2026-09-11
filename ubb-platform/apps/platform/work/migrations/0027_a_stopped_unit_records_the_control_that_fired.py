@@ -14,10 +14,14 @@ this migration gives them.
   * every unit row holding a stop cause is stamped `control_family: ceiling`
     — every stop UBB has ever applied to a UNIT was a ceiling's (the COGS
     ceiling or a window), and every cascade under one inherits the parent's,
-    so the family is not a guess — and `control_id`: the declaration the
-    unit runs under (the kind of work's row at the unit's altitude) or the
-    tenant's own id for an undeclared unit on the tenant rung, resolved as
-    the kernel resolves it today (`services.ceiling_control_id`);
+    so the family is not a guess — and `control_id`: for a unit stopped on
+    its own bound, the declaration it runs under (the kind of work's row at
+    the unit's altitude) or the tenant's own id for an undeclared unit on
+    the tenant rung, resolved as the kernel resolves it today
+    (`services.ceiling_control_id`); for contained work a cascade stopped
+    (`parent_killed`, `parent_expired`), its PARENT's control, resolved the
+    same way off the parent's row — what `services.TaskService._cascade`
+    copies today;
   * every queued payload of the four terminal stop events is stamped the
     same family, the id its unit row now carries, and `ceiling_basis` off
     its own `reason_code` (`cost` for the ceiling, `time` for either window,
@@ -54,6 +58,9 @@ TERMINAL_STOP_EVENTS = (
 KIND_TASK = "task"
 KIND_SUBTASK = "subtask"
 
+#: The causes a cascade writes on contained work: the control is the parent's.
+CASCADE_CAUSES = ("parent_killed", "parent_expired")
+
 
 def _declarations(apps):
     TaskType = apps.get_model("work", "TaskType")
@@ -81,7 +88,15 @@ def _stamp_the_control(apps, schema_editor):
     for task in (Task.objects.filter(metadata__has_key=CAUSE_KEY)
                  .only("id", "tenant_id", "parent_id", "task_type", "metadata")
                  .iterator()):
-        control = control_id_of(task, declarations)
+        if task.metadata.get(CAUSE_KEY) in CASCADE_CAUSES and task.parent_id:
+            # Contained work a cascade stopped: the PARENT's control, off the
+            # parent's row (the parent may hold no cause of its own where it
+            # was swept silently, and is resolved the same way either way).
+            parent = Task.objects.only(
+                "id", "tenant_id", "parent_id", "task_type").get(id=task.parent_id)
+            control = control_id_of(parent, declarations)
+        else:
+            control = control_id_of(task, declarations)
         controls[str(task.id)] = control
         if task.metadata.get(FAMILY_KEY) and task.metadata.get(CONTROL_KEY):
             continue

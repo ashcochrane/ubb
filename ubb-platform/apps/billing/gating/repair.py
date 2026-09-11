@@ -252,7 +252,7 @@ def _apply_increment(owner_id, amount):
 
 
 def _resume_if_wedge_lifted(owner_id, tenant, live_after):
-    """Resume on repair (§D): re-check the floor_stop family against the
+    """Resume on repair (§D): re-check the wallet floor's line against the
     repaired balance; a repair that lifted a wedged stop runs
     ``LiveCounter.resume`` (D2 — the clearing trio as one op: ``stop.cleared``
     exactly once through the same guard as every other clearing, fast-flag

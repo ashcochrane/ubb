@@ -7,7 +7,11 @@ Rules:
   exception is a CLOSED vocabulary field with no honest default, added only
   once a data migration has stamped every stored row and queued payload
   (`_TerminalStop.control_family`, #458).
-- Breaking changes (renames, removals, type changes) require a new class.
+- Breaking changes (renames, removals, type changes) require a new class —
+  except while the pre-live lane is open (ADR-0007 §5), when a rename may be
+  made in place with its break recorded in the gate's block and its queued
+  payloads migrated (`StopFired` / `StopCleared`'s `reason` → `reason_code`,
+  #458, `gating/migrations/0014`).
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
   accept ``UUID | str``; construction normalizes to str.
 - Consumers: ``SchemaClass.from_payload(payload)`` — unknown keys filtered,

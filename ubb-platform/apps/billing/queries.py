@@ -192,16 +192,12 @@ def get_open_customer_stops(owner_id, tenant_id):
     order — ``[{episode_seq, reason, control_family, control_id,
     transitioned_at}, ...]``, empty when no stop is open (#458, slice 6 §9).
     A customer stopped by its pool and by its floor at once answers two
-    rows, one per episode; the stop-context tagging marks each."""
-    from apps.billing.gating.models import StopSignalState
-    from apps.billing.gating.services.stop_signal_service import (
-        STATE_STOPPED, STOP_LINES)
-    rows = {r["reason"]: r for r in StopSignalState.objects
-            .filter(owner_id=owner_id, tenant_id=tenant_id,
-                    reason__in=STOP_LINES, state=STATE_STOPPED)
-            .values("episode_seq", "reason", "control_family", "control_id",
-                    "transitioned_at")}
-    return [rows[line] for line in STOP_LINES if line in rows]
+    rows, one per episode; the stop-context tagging marks each. The read is
+    the ledger service's own (`open_stop_lines`), the one the lifting paths
+    make; an owner's id is unique across tenants, so the tenant is not a
+    second filter here."""
+    from apps.billing.gating.services.stop_signal_service import StopSignalService
+    return StopSignalService.open_stop_lines(owner_id)
 
 
 def is_usage_period_closed(owner_id, period_start) -> bool:
