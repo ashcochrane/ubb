@@ -239,7 +239,7 @@ def reap_stale_tasks():
     """
     from apps.platform.work.models import Task
     from apps.platform.work.queries import expiry_windows
-    from apps.platform.work.services import TaskService
+    from apps.platform.work.services import TaskService, ceiling_control_id
     from apps.platform.tenants.models import Tenant
     from apps.platform.tenants.flags import enforcing
 
@@ -266,7 +266,12 @@ def reap_stale_tasks():
                     # window ran out. Both windows are this sweeper's, so one
                     # mechanism covers both reasons — which is exactly why the
                     # two are separate fields rather than one.
-                    trigger_source=TRIGGER_SOURCE_STALE_REAPER):
+                    trigger_source=TRIGGER_SOURCE_STALE_REAPER,
+                    # AND WHICH CONTROL'S WINDOW IT WAS (#458): both windows
+                    # are the Ceiling's, declared on the kind of work — so
+                    # the control is that declaration, or the tenant for
+                    # an undeclared unit on the tenant rung.
+                    control_id=ceiling_control_id(task)):
                 reaped += 1
 
     if reaped:

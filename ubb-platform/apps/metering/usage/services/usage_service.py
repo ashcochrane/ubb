@@ -437,16 +437,26 @@ def _execute_kills(kills, *, tenant_id, customer_id):
     Per-kill try/except + loud log: kill_and_announce already never raises,
     but an on_commit callback that raised would abort every later callback in
     the chain, so the belt-and-braces guard lives HERE too (#112, D2)."""
-    from apps.platform.work.services import TaskService
+    from apps.platform.work.models import Task
+    from apps.platform.work.services import TaskService, ceiling_control_id
     for target_id, reason in kills:
         try:
             # WHICH MECHANISM APPLIED THIS STOP (#412): a usage report tipped
             # a ceiling and this is the lane that carried it. Named here rather
             # than derived downstream, because the same reason is also reached
             # by the patrol sweeping a unit that crossed while nobody reported.
+            #
+            # AND WHICH CONTROL (#458): every kill this plan holds is a
+            # ceiling's (`reasons.CROSSING_REASONS`), and the ceiling's
+            # identity is the declaration the target runs under — read off
+            # the target's row through the kernel's own helper, because the
+            # plan carries ids and the recording transaction is long gone.
+            target = Task.objects.only(
+                "id", "tenant_id", "parent_id", "task_type").get(id=target_id)
             TaskService.kill_and_announce(
                 target_id, reason, tenant_id=tenant_id, customer_id=customer_id,
-                trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
+                trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                control_id=ceiling_control_id(target))
         except Exception:
             logger.exception("usage.kill_failed", extra={"data": {
                 "task_id": str(target_id), "reason": reason,

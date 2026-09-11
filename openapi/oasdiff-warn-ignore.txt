@@ -559,3 +559,15 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/req
 GET /api/v1/tenant/config removed the optional property `default_task_provider_cost_limit_micros` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the optional property `default_task_provider_cost_limit_micros` from the response with the `200` status
 PATCH /api/v1/tenant/config removed the request property `default_task_provider_cost_limit_micros`
+
+# 2026-09-11 — Slice 6 (#458): the customer stop pair's bare `reason` is
+# renamed to the cause's own name, `reason_code` (slice 6 §15). These two
+# lines are the removal side of that rename; the six additions it pairs with
+# — the new key and the control's family and id, required on both events —
+# are in the err file under the same date. WARN rather than ERR because a
+# webhook body is what UBB SENDS: a property leaving it relaxes nothing a
+# caller must send and is read as the rename it is. Both directions were run;
+# the four terminal stop events, which post-date the tag, report nothing
+# cumulatively and are named in the commit, not filed.
+POST webhook:stop.cleared removed the request property `data/reason`
+POST webhook:stop.fired removed the request property `data/reason`

@@ -29,6 +29,8 @@ them); the report is per-seat, matching the per-customer usage surfaces.
 """
 from django.utils.dateparse import parse_datetime
 
+from apps.billing.gating.services.stop_signal_service import (
+    LINE_SOFT_FLOOR, STOP_LINES)
 from apps.billing.queries import get_stop_signal_state
 from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
@@ -89,7 +91,14 @@ def _bucket_events(customer, since, until):
             if scope == "customer":
                 if limit == reasons.SUSPENDED:
                     continue  # taggable but not an episode
-                key = ("floor", ctx.get("episode_seq"))
+                # Two stop lines have episodes of their own since #458, so
+                # a customer-scope entry is keyed by the line's word beside
+                # the episode id. An entry tagged before the lines existed
+                # carries a word no line has, keyed under None and matched
+                # to whichever line owns its episode id — an owner that
+                # predates the lines only ever had one.
+                key = ("floor", limit if limit in STOP_LINES else None,
+                       ctx.get("episode_seq"))
             elif limit == reasons.TASK_NOT_ACTIVE:
                 continue  # no limit episode to itemize
             elif scope == "subtask":
@@ -120,17 +129,29 @@ def _bucket_events(customer, since, until):
     return buckets
 
 
-def _signal_episodes(tenant, owner, opened_type, closed_type, family):
-    """episode_seq → {tripped_at, resumed_at} from the outbox pair, merged
-    with the current ledger row (the durable backstop for an episode whose
-    outbox rows aged out of retention)."""
+def _merged(current, legacy):
+    """One episode's itemization from the bucket tagged with the line's word
+    and the bucket tagged before the lines existed — either may be absent."""
+    if current is None or legacy is None:
+        return current or legacy
+    return {"events": current["events"] + legacy["events"],
+            "ctx_tripped_at": current["ctx_tripped_at"] or legacy["ctx_tripped_at"]}
+
+
+def _signal_episodes(tenant, owner, opened_type, closed_type, line):
+    """episode_seq → {tripped_at, resumed_at} for one ledger LINE, from the
+    outbox pair merged with the current ledger row (the durable backstop for
+    an episode whose outbox rows aged out of retention). The two stop lines
+    share one event pair and are told apart by the word each event carries
+    (#458); the wind-down line has a pair of its own."""
     eps = {}
     rows = (OutboxEvent.objects
             .filter(tenant_id=tenant.id,
                     event_type__in=(opened_type, closed_type),
-                    payload__owner_id=str(owner.id))
-            .order_by("created_at")
-            .values("event_type", "payload", "created_at"))
+                    payload__owner_id=str(owner.id)))
+    if line in STOP_LINES:
+        rows = rows.filter(payload__reason_code=line)
+    rows = rows.order_by("created_at").values("event_type", "payload", "created_at")
     for r in rows:
         seq = r["payload"].get("episode_seq")
         ep = eps.setdefault(seq, {"tripped_at": None, "resumed_at": None})
@@ -139,7 +160,7 @@ def _signal_episodes(tenant, owner, opened_type, closed_type, family):
                 ep["tripped_at"] = r["created_at"]
         else:
             ep["resumed_at"] = r["created_at"]
-    state = get_stop_signal_state(owner.id, tenant.id, family=family)
+    state = get_stop_signal_state(owner.id, tenant.id, line=line)
     if state is not None:
         seq = state["episode_seq"]
         if state["state"] == "stopped":
@@ -244,35 +265,39 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
                 t[UNRESOLVED_EVENT_COUNT_KEY] += 1
             t["event_count"] += 1
 
-    # Customer-wide floor episodes: signal history ∪ tagged-event episodes.
-    # The word each episode carries is the customer-wide stop this owner's
-    # lane produces — the pool's or the hard floor's — told apart the way
-    # the producers are (slice 6 §7), until the ledger carries its own line.
-    floor_eps = _signal_episodes(tenant, owner, "stop.fired", "stop.cleared",
-                                 "floor_stop")
-    customer_stop = reasons.customer_stop_reason(tenant.billing_mode)
-    tagged_seqs = {k[1] for k in buckets if k[0] == "floor"}
-    for seq in set(floor_eps) | tagged_seqs:
-        ep = floor_eps.get(seq, {"tripped_at": None, "resumed_at": None})
-        bucket = buckets.get(("floor", seq))
-        tripped_at = ep["tripped_at"]
-        if tripped_at is None and bucket and bucket["ctx_tripped_at"]:
-            tripped_at = parse_datetime(bucket["ctx_tripped_at"])
-        if not _in_window(tripped_at, since, until):
-            continue
-        row = _episode_row(
-            family="floor_stop", limit=customer_stop,
-            stop_scope="customer", episode_seq=seq,
-            task_id=None, subtask_id=None, provider_cost_limit_micros=None,
-            tripped_at=tripped_at, resumed_at=ep["resumed_at"],
-            bucket=bucket)
-        _count(customer_stop, row["events"])
-        episodes.append(row)
+    # Customer-wide stop episodes, ONE LINE AT A TIME: signal history ∪
+    # tagged-event episodes. The word each episode carries is the ledger
+    # line's own — the pool's or the hard floor's (slice 6 §9, #458) — and
+    # a customer stopped by both reports both, each under its own episode
+    # ids. This retired row keeps its own family literal for the console
+    # readers that key on it (ticket 15 retires them together).
+    for line in STOP_LINES:
+        line_eps = _signal_episodes(tenant, owner, "stop.fired", "stop.cleared",
+                                    line)
+        tagged_seqs = {k[2] for k in buckets
+                       if k[0] == "floor" and k[1] in (line, None)}
+        for seq in set(line_eps) | tagged_seqs:
+            ep = line_eps.get(seq, {"tripped_at": None, "resumed_at": None})
+            bucket = _merged(buckets.get(("floor", line, seq)),
+                             buckets.get(("floor", None, seq)))
+            tripped_at = ep["tripped_at"]
+            if tripped_at is None and bucket and bucket["ctx_tripped_at"]:
+                tripped_at = parse_datetime(bucket["ctx_tripped_at"])
+            if not _in_window(tripped_at, since, until):
+                continue
+            row = _episode_row(
+                family="floor_stop", limit=line,
+                stop_scope="customer", episode_seq=seq,
+                task_id=None, subtask_id=None, provider_cost_limit_micros=None,
+                tripped_at=tripped_at, resumed_at=ep["resumed_at"],
+                bucket=bucket)
+            _count(line, row["events"])
+            episodes.append(row)
 
     # Soft-floor marker rows — crossed/cleared only, never itemized (§F).
     for seq, ep in _signal_episodes(tenant, owner, "soft_floor.crossed",
                                     "soft_floor.cleared",
-                                    "soft_floor").items():
+                                    LINE_SOFT_FLOOR).items():
         if not _in_window(ep["tripped_at"], since, until):
             continue
         episodes.append(_episode_row(

@@ -84,9 +84,14 @@ the state entered — `task.killed`, `task.expired`, `subtask.killed`, `subtask.
 so the claim is a property of the record rather than a habit each emitter keeps
 (`apps/platform/work/tests/test_a_terminal_event_names_the_state_entered.py`;
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries`).
-`control_family` and `control_id` are **not yet on the payload**: they are slice 6's (#188), because
-three of that closed set's four families do not exist until it lands, and a closed set may not be
-published with one producible member. Adding them later is additive.
+`control_family` and `control_id` were withheld from the payload until slice 6 (#188) built the
+families, because three of that closed set's four did not exist and a closed set may not be
+published with one producible member. #458 added them, additively, to the four terminal stops
+and the customer stop pair — the kernel stamps the family from the one reason→family map in
+`core/controls.py` and the caller of the stop passes the control's id — and renamed the pair's
+bare `reason` to `reason_code` in the same commit (`apps/platform/work/tests/
+test_a_stop_names_the_control_that_fired.py`; `api/v1/tests/test_every_stop_names_the_control_
+that_fired.py`).
 
 ### 6. A configured maximum is named as a maximum
 

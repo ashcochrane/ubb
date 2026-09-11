@@ -16,10 +16,11 @@ altitudes, and each case asserts the SET of terminal events that fired is
 exactly its own — a single-event assertion would be satisfied by an emitter
 that sent every name it knew.
 
-The payload case beside them holds the OTHER half of §20's ruling: the two
-OPEN vocabulary fields ship and the CLOSED control pair does not, because three
-of that set's four families do not exist yet and publishing a closed set with
-one producible member is the one thing a closed set may not do.
+The payload case beside them held the OTHER half of §20's ruling — the two
+OPEN vocabulary fields shipped and the CLOSED control pair did not, because
+three of that set's four families did not exist yet — until slice 6 built the
+families and #458 inverted it: the pair ships now, the family derived from the
+cause and the id passed by the caller, with the basis beside them.
 
 ⚠ THIS MODULE IS THE FRESH-CROSSING HALF ONLY. The four cases here drive lanes
 that APPLY a stop and therefore know which of the four events it is, so they
@@ -140,11 +141,16 @@ class TheStoppedPayloadCarriesCauseAndMechanismTest(WorkTestBase):
 
     def setUp(self):
         super().setUp()
+        from apps.platform.work.services import ceiling_control_id
+
         self.unit = self._task(limit=5_000_000)
         TaskService.kill_and_announce(
             self.unit.id, reasons.TASK_COGS_CEILING, tenant_id=self.tenant.id,
             customer_id=self.customer.id,
-            trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
+            trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+            # The caller passes the control's identity, as every production
+            # caller does (#458); the kernel derives the family.
+            control_id=ceiling_control_id(self.unit))
         self.payload = self._events(TaskKilled.EVENT_TYPE).get().payload
 
     def test_the_cause_and_the_mechanism_travel_as_two_fields(self):
@@ -164,16 +170,23 @@ class TheStoppedPayloadCarriesCauseAndMechanismTest(WorkTestBase):
             set(self.payload),
             {field.name for field in dataclasses.fields(TaskKilled)})
 
-    def test_it_carries_no_control_family_and_no_control_id(self):
-        """§20's asymmetry, stated as a refusal rather than left to the set
-        above: an OPEN vocabulary may ship with a subset of its known values by
-        design, and a CLOSED one may not. Three of the four control families do
-        not exist until spend control is rebuilt, so a payload advertising the
-        set here would publish an enum UBB cannot fill. The slice that builds
-        them adds an optional field, which is additive rather than a break.
+    def test_it_carries_the_control_that_fired(self):
+        """§20's asymmetry, INVERTED at its own address (#458, slice 6 §15).
+
+        This case refused the closed control pair while three of the four
+        families did not exist — a payload advertising a set UBB could fill
+        one member of would have published an enum it could not honour. The
+        slice that built the families added the pair, and this is the tripwire
+        going red on purpose: the family is derived from the cause by the one
+        map in `core.controls`, the id is the control's row — the tenant's
+        here, because this fixture declares no kind of work and so runs on
+        the tenant's rung — and the basis says what the ceiling bounded.
         """
-        self.assertNotIn("control_family", self.payload)
-        self.assertNotIn("control_id", self.payload)
+        from core.vocabulary import CEILING_BASIS_COST, CONTROL_FAMILY_CEILING
+
+        self.assertEqual(self.payload["control_family"], CONTROL_FAMILY_CEILING)
+        self.assertEqual(self.payload["control_id"], str(self.tenant.id))
+        self.assertEqual(self.payload["ceiling_basis"], CEILING_BASIS_COST)
 
     def test_the_mechanism_is_recorded_on_the_row_the_announcement_names(self):
         """What #412 left for the split, in two places, so that the patrol's

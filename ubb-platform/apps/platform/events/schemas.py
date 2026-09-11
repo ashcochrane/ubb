@@ -3,7 +3,10 @@ Frozen dataclass contracts for outbox events.
 
 Rules:
 - All event schemas are frozen dataclasses inheriting ``EventSchema``.
-- New fields MUST have defaults (additive-only evolution).
+- New fields MUST have defaults (additive-only evolution). The one admitted
+  exception is a CLOSED vocabulary field with no honest default, added only
+  once a data migration has stamped every stored row and queued payload
+  (`_TerminalStop.control_family`, #458).
 - Breaking changes (renames, removals, type changes) require a new class.
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
   accept ``UUID | str``; construction normalizes to str.
@@ -18,7 +21,7 @@ EVENT_TYPE, or two subclasses claiming one, is an import-time error.
 import dataclasses
 import uuid as _uuid
 from dataclasses import dataclass
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Optional
 
 from pydantic import Field
 
@@ -93,6 +96,28 @@ ReasonCode = Annotated[
 #: `webhooks` section is part of the contract the applier walks.
 SpendPoolEnforceMode = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "spend_pool_enforce_mode"})]
+
+#: WHICH OF THE FOUR SPEND CONTROLS A STOP CAME FROM (#458, slice 6 §1, §15)
+#: — the `control_family` concept, on the four terminal stops and on the
+#: customer stop pair. Closed: the registry owns the four words, so the marker
+#: renders a real `enum`. The kernel stamps it from the one reason→family map
+#: in `core.controls` when it announces a unit's stop; billing's signal ledger
+#: carries it as the column its lines are keyed by and stamps it on the
+#: customer-wide pair. A subscriber routes every stop to the control that
+#: caused it by reading this field and `control_id` beside it, never by
+#: parsing a name (ADR-0006 §5).
+ControlFamily = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "control_family"})]
+
+#: WHAT THE CEILING THAT FIRED BOUNDS (#458, slice 6 §15) — `cost` for the
+#: unit's COGS ceiling, `time` for either window; the `ceiling_basis`
+#: concept, closed, on the four terminal stops only. It is null for a stop
+#: that was not a ceiling's, and the marker sits on the STRING MEMBER of that
+#: nullable union so the generated `enum` constrains the strings and leaves
+#: the null alone (`docs/conventions/api-contract.md`; the two-books test
+#: refuses the other shape).
+CeilingBasis = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
 
 
 class EventSchema:
@@ -508,14 +533,17 @@ class CreditGrantExpired(EventSchema):
 # for putting the cause where the outcome belongs; and a spend-pool crossing and
 # the work it stops are separate events, never one overloaded webhook.
 #
-# THE CAUSE AND THE MECHANISM TRAVEL AS FIELDS, which is the other half of the
-# same rule: a subscriber classifies by SUBSCRIBING and then by reading, never
-# by parsing a name. A control's FAMILY and identity are deliberately NOT here
-# — they are a CLOSED set of four, three of whose families do not exist yet, and
-# publishing a closed set only one member of which is producible is precisely
-# what `domain-vocabulary/concepts/economics.yaml` forbids a closed set to do.
-# Adding an optional field to a payload is additive, so declining them now costs
-# a subscriber nothing and shipping them would cost a promise UBB cannot keep.
+# THE CAUSE, THE MECHANISM AND THE CONTROL TRAVEL AS FIELDS, which is the
+# other half of the same rule: a subscriber classifies by SUBSCRIBING and then
+# by reading, never by parsing a name. The control's FAMILY and identity were
+# deliberately withheld while three of the four families did not exist —
+# publishing a closed set only one member of which is producible is what
+# `domain-vocabulary/concepts/economics.yaml` forbids a closed set to do — and
+# arrived in #458 (slice 6 §15) once the slice built them: `control_family`
+# from the kernel's own reason→family map, `control_id` from the caller that
+# holds the declaration, and `ceiling_basis` where the control was a ceiling.
+# Adding them was additive on the four terminal stops; on the customer pair
+# the bare `reason` took the concept's own name in the same commit.
 
 
 @dataclass(frozen=True)
@@ -536,9 +564,28 @@ class _TerminalStop:
     provider (COGS) total races task_cogs_ceiling_micros.
     """
     tenant_id: str
+    #: WHICH CONTROL'S BOUND WAS REACHED (#458, slice 6 §15) — closed, never
+    #: null: the kernel derives it from the cause (`core.controls`) and a
+    #: cascade-killed unit carries its parent's. ⚠ REQUIRED, the one exception
+    #: the module's additive rule admits: a closed set has no honest default
+    #: (`""` is not one of the four, and an `enum` beside a default outside it
+    #: contradicts itself), and every stored row and queued payload was
+    #: stamped by `work/migrations/0027` before this field could ask for it.
+    control_family: ControlFamily
     customer_id: str = ""
     billing_owner_id: str = ""
     external_task_id: str = ""
+    #: WHICH ROW DECLARES THAT CONTROL — a ceiling's declaration (the kind of
+    #: work's row, or the tenant's own id for an undeclared unit on the
+    #: tenant rung), passed by the caller of the kill and recorded on the
+    #: stopped row beside the mechanism, so a re-mint reads it back. An open
+    #: identifier, not a vocabulary; `""` where a row stamped before #458
+    #: recorded none.
+    control_id: str = ""
+    #: WHAT THE CEILING THAT FIRED BOUNDS — `cost` or `time` — and null for a
+    #: stop that was not a ceiling's (a customer-wide stop reaching the unit,
+    #: a cascade). Derived off the cause, so it can never disagree with it.
+    ceiling_basis: Optional[CeilingBasis] = None
     #: WHY THE UNIT STOPPED — one of `apps.platform.work.reasons`, beside the
     #: mechanism below it. It was a bare `reason` until the split and carries
     #: the registry's own word for the concept now: two questions with two
@@ -686,16 +733,31 @@ class StopFired(EventSchema):
     the missed transition (late, never lost).
 
     owner_id    = the billing owner the stop is keyed on (resolve_billing_owner).
+    reason_code = WHICH customer-wide stop opened the episode — the wallet's
+                  hard floor or the customer spend pool (#458, slice 6 §9):
+                  the ledger line's own word, one of the stop reasons the
+                  registry names. Both controls open this same state, and
+                  a subscriber is told which by reading, never by parsing.
+    control_family / control_id
+                = the family that word belongs to, and the row that declares
+                  the control — the billing profile or tenant configuration
+                  that carried the floor, the pool row — so every stop can
+                  be routed to the control that caused it (§15).
     scope       = "customer" — the whole owner is stopped (consumers fan the
                   stop to every task they hold for the owner).
-    episode_seq = the per-owner stop-episode id (StopSignalState.episode_seq);
-                  the paired ``stop.cleared`` carries the same id, and the
-                  stop-context tagging / past-limit report (#41) key on it.
+    episode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq
+                  — per owner per line since #458, so a customer stopped by
+                  its pool and by its floor at once holds two independent
+                  episodes); the paired ``stop.cleared`` carries the same id
+                  and the same word, and the stop-context tagging / past-limit
+                  report (#41) key on it.
     """
     EVENT_TYPE = "stop.fired"
     tenant_id: str
     owner_id: str
-    reason: str
+    reason_code: ReasonCode
+    control_family: ControlFamily
+    control_id: str
     scope: str = "customer"
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint — an ordinary
@@ -718,6 +780,14 @@ class StopCleared(EventSchema):
 
     episode_seq    = the episode this clear closes (pairs with the stop.fired
                      that opened it).
+    reason_code / control_family / control_id
+                   = WHICH stop line cleared, its family and the row that
+                     declares the control — the same three the opening half
+                     carried (#458). What CAUSED the clear (a balance that
+                     recovered, the hourly reconcile, an upward repair) is
+                     the ledger row's own bookkeeping (`clear_reason`) and
+                     no longer rides this event: a subscriber is told which
+                     stop lifted, which is the question the pair answers.
     balance_micros = the balance at clearance, as seen by the clearing lane
                      (live counter on the fast path, durable balance on the
                      fallback/reconcile paths; postpaid passes 0).
@@ -725,7 +795,9 @@ class StopCleared(EventSchema):
     EVENT_TYPE = "stop.cleared"
     tenant_id: str
     owner_id: str
-    reason: str
+    reason_code: ReasonCode
+    control_family: ControlFamily
+    control_id: str
     scope: str = "customer"
     episode_seq: int = 0
     balance_micros: int = 0

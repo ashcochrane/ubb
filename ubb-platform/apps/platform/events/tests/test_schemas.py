@@ -237,7 +237,8 @@ class TestFromPayload:
         from dataclasses import asdict
         from apps.platform.events.schemas import StopFired
 
-        produced = StopFired(tenant_id="t1", owner_id="o1", reason="floor",
+        produced = StopFired(tenant_id="t1", owner_id="o1", reason_code="floor",
+                             control_family="policy", control_id="row",
                              episode_seq=3)
         assert StopFired.from_payload(asdict(produced)) == produced
 

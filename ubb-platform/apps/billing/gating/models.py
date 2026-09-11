@@ -1,6 +1,10 @@
 from django.db import models
 from core.models import BaseModel
-from core.vocabulary import (SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+from core.vocabulary import (CONTROL_FAMILY_ADMISSION_CONTROL,
+                             CONTROL_FAMILY_CEILING,
+                             CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
+                             CONTROL_FAMILY_WALLET_POLICY,
+                             SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
                              SPEND_POOL_ENFORCE_MODE_BLOCKING)
 
 
@@ -42,37 +46,78 @@ SPEND_POOL_ENFORCE_MODES = [
 ]
 
 
-STOP_SIGNAL_FAMILIES = [("floor_stop", "Floor stop"), ("soft_floor", "Soft floor")]
+#: WHICH OF THE FOUR SPEND CONTROLS A SIGNAL CAME FROM — the registry's
+#: `control_family`, held whole by reference (#458 paid
+#: `g2-backend-control_family` at the site the registry declares, slice 6
+#: §1, §9). The wording beside each identity is the admin's, on
+#: `SPEND_POOL_ENFORCE_MODES`' footing. The ledger below keys its lines by
+#: this column and today drives two of the four — the pool's stop and the
+#: wallet policy's two floors; a ceiling stops a UNIT rather than a customer
+#: and admission control refuses a start rather than stopping anything, so
+#: neither opens a customer-wide episode. A consumer holds the vocabulary
+#: rather than the subset it happens to drive.
+CONTROL_FAMILIES = [
+    (CONTROL_FAMILY_CEILING, "Ceiling"),
+    (CONTROL_FAMILY_CUSTOMER_SPEND_POOL, "Customer spend pool"),
+    (CONTROL_FAMILY_WALLET_POLICY, "Wallet policy"),
+    (CONTROL_FAMILY_ADMISSION_CONTROL, "Admission control"),
+]
+
 STOP_SIGNAL_STATES = [("stopped", "Stopped"), ("cleared", "Cleared")]
 
 
 class StopSignalState(BaseModel):
-    """The durable per-owner-per-family signal ledger (#39, spec §D).
+    """The durable per-owner-per-line signal ledger (#39, spec §D; slice 6 §9).
 
-    One row per (billing owner, signal family) holding the current stop/clear
-    state and the per-family episode sequence. Every stop/resume emission —
-    fast Redis lane, durable drawdown handler, hourly reconcile — routes
-    through a winning transition on this row (see
+    One row per (billing owner, control family, line) holding the current
+    stop/clear state and that line's own episode sequence. Every stop/resume
+    emission — fast Redis lane, durable drawdown handler, hourly reconcile —
+    routes through a winning transition on this row (see
     services/stop_signal_service.py); only the winner emits the outbox event,
     so a crossing observed by several lanes signals exactly once per episode.
     ``episode_seq`` is the stop-episode id the stop-context tagging and the
     past-limit report (#41) key on; it only ever increments (a stop opens
     episode N, the paired clear closes it), so episode ids never collide
-    across the owner's history.
+    across one line's history.
 
-    Families at launch: ``floor_stop`` (the customer-wide hard stop — wallet
-    floor / customer spend pool) and ``soft_floor`` (model support here; exercised by
-    the soft-floor ticket, #40).
+    THREE LINES, EACH WITH ITS OWN EPISODES (#458): the wallet policy's hard
+    floor (``hard_floor``) and the customer spend pool (``customer_spend_pool``)
+    are the two STOP lines — each opens the customer-wide stop state, each
+    is named by the `reason_code` the stop carries, and a customer stopped
+    by its pool and by its floor at once holds two open episodes that clear
+    independently, with the stop flag lifting only when both have — and the
+    wallet policy's soft floor (``soft_floor``) is the wind-down SIGNAL line,
+    never a stop. Until #458 the two stop lines were one row under a local
+    family word and the control that opened an episode was told apart by the
+    owner's tenant billing mode; the family column now names the control
+    and the row records the control's identity beside it.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="stop_signal_states")
     owner = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                               related_name="stop_signal_states")
-    family = models.CharField(max_length=20, choices=STOP_SIGNAL_FAMILIES)
+    control_family = models.CharField(max_length=20, choices=CONTROL_FAMILIES)
+    # THE LINE — the ledger's own line name, part of the unique key: the two
+    # stop lines coincide with the `reason_code` each stop carries, the
+    # wind-down line has a name of its own. Fixed for the life of the row;
+    # what CAUSED the last clearing transition is `clear_reason` below.
+    reason = models.CharField(max_length=64)
     state = models.CharField(max_length=10, choices=STOP_SIGNAL_STATES)
     episode_seq = models.BigIntegerField(default=0)
-    reason = models.CharField(max_length=64, blank=True, default="")
+    # WHY THE LAST CLEARING TRANSITION HAPPENED — a balance that recovered,
+    # the hourly reconcile's bottom line, an upward live-balance repair, or
+    # the silent close behind an enforcement-mode flip. "" while stopped.
+    # It used to overwrite `reason` on every clear; the line's name is part
+    # of the key now, so the cause has its own column.
+    clear_reason = models.CharField(max_length=64, blank=True, default="")
+    # THE ROW THAT DECLARES THE CONTROL WHOSE LINE THIS IS (§15): the pool row
+    # for the pool's line, the billing profile or the tenant's billing
+    # configuration that carried the floor for the hard floor's — recorded on
+    # the stop transition so the episode's announcement and every re-mint of
+    # it name the same control. Null on the wind-down line, which stops
+    # nothing and passes nothing to a kill, and on a row that predates #458.
+    control_id = models.UUIDField(null=True, blank=True)
     transitioned_at = models.DateTimeField()
     # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
     # this row's LAST announcement, stamped inside the same atomic unit as the
@@ -85,12 +130,17 @@ class StopSignalState(BaseModel):
     class Meta:
         db_table = "ubb_stop_signal_state"
         constraints = [
-            models.UniqueConstraint(fields=["owner", "family"],
-                                    name="uq_stop_signal_owner_family"),
+            # ONE ROW PER LINE, AT THE DATABASE (slice 6 §9, Testing
+            # Decisions): the key is the owner, the family and the line, so
+            # the pool's and the floor's episodes are two rows that cannot
+            # collapse into one whichever lane writes first.
+            models.UniqueConstraint(fields=["owner", "control_family", "reason"],
+                                    name="uq_stop_signal_owner_family_line"),
         ]
 
     def __str__(self):
-        return f"StopSignalState({self.owner_id}/{self.family}: {self.state} ep{self.episode_seq})"
+        return (f"StopSignalState({self.owner_id}/{self.control_family}/"
+                f"{self.reason}: {self.state} ep{self.episode_seq})")
 
 
 PATROL_OUTCOMES = [

@@ -12,11 +12,10 @@ event. The rules pinned here:
   itemization stays coherent.
 - A cascade-killed subtask's late events point at the PARENT's episode.
 - Non-limit terminal states (completed / reaped) tag ``task_not_active``.
-- Customer scope comes from the durable ledger (floor_stop family): open
-  episode → the lane's customer-wide stop (the hard floor's word for a
-  prepaid owner, the pool's for a postpaid one — `reasons.customer_stop_reason`)
-  with the episode id; suspension without an open episode → ``suspended``.
-  Soft-floor state NEVER marks (§F).
+- Customer scope comes from the durable ledger's STOP lines (slice 6 §9):
+  each open episode → that line's own word (the hard floor's, the pool's)
+  with the line's episode id, one entry per open line; suspension without
+  an open episode → ``suspended``. Soft-floor state NEVER marks (§F).
 - One ceiling word at either altitude (slice 6 §7): the entry's scope says
   which altitude's ceiling was crossed, so cases key entries by SCOPE.
 - Multiple simultaneous limits → one array entry per limit, nothing lost.
@@ -157,11 +156,14 @@ class UnitContextTest(StopContextTestBase):
 
 
 class CustomerContextTest(StopContextTestBase):
-    def _open_episode(self, seq=3, family="floor_stop", state="stopped"):
+    def _open_episode(self, seq=3, line=reasons.HARD_FLOOR, state="stopped"):
+        # A ledger row on one LINE (slice 6 §9): the family is the line's,
+        # derived the way the ledger derives it.
+        from apps.billing.gating.services.stop_signal_service import family_of_line
         return StopSignalState.objects.create(
-            tenant=self.tenant, owner=self.customer, family=family,
-            state=state, episode_seq=seq, reason=reasons.HARD_FLOOR,
-            transitioned_at=self.now)
+            tenant=self.tenant, owner=self.customer,
+            control_family=family_of_line(line), reason=line,
+            state=state, episode_seq=seq, transitioned_at=self.now)
 
     def test_open_floor_episode_tags_the_lanes_stop(self):
         row = self._open_episode(seq=3)
@@ -183,7 +185,8 @@ class CustomerContextTest(StopContextTestBase):
         self.assertIsNone(self._build(None, None))
 
     def test_soft_floor_state_never_tags(self):
-        self._open_episode(family="soft_floor")
+        from apps.billing.gating.services.stop_signal_service import LINE_SOFT_FLOOR
+        self._open_episode(line=LINE_SOFT_FLOOR)
         self.assertIsNone(self._build(None, None))
 
     def test_suspended_owner_without_episode_tags_suspended(self):
@@ -222,13 +225,28 @@ class CustomerContextTest(StopContextTestBase):
         self.assertEqual(by_limit[reasons.HARD_FLOOR]["task_id"], str(task.id))
         self.assertEqual(by_limit[reasons.HARD_FLOOR]["episode_seq"], 7)
 
-    def test_a_postpaid_owners_episode_is_the_pools_stop(self):
-        """The split (slice 6 §7): the same open episode names the pool's
-        word for a postpaid owner, the way the producers name it — by the
-        owner's tenant billing mode, until the ledger carries its own line."""
-        self.tenant.billing_mode = "postpaid"
-        self.tenant.save(update_fields=["billing_mode"])
-        self._open_episode(seq=2)
+    def test_a_pool_episode_is_the_pools_stop(self):
+        """The split (slice 6 §7, §9): an open episode on the pool's line
+        names the pool's word — read off the ledger line, never forked off
+        the owner's tenant billing mode (#458): the tenant here is still
+        prepaid, and the tag says what the line says."""
+        self._open_episode(seq=2, line=reasons.CUSTOMER_SPEND_POOL)
         ctx = self._build(None, None)
         self.assertEqual(ctx[0]["limit"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(ctx[0]["stop_scope"], "customer")
+
+    def test_an_owner_held_by_both_lines_is_tagged_once_per_line(self):
+        """A customer stopped by its pool and by its floor at once holds two
+        open episodes (slice 6 §9); a late event is tagged into each, under
+        that line's own word and episode id — and the tipping entry is the
+        one whose episode THIS event's debit opened, the other is late."""
+        self._open_episode(seq=3, line=reasons.HARD_FLOOR)
+        self._open_episode(seq=1, line=reasons.CUSTOMER_SPEND_POOL)
+        ctx = self._build(None, None, opened_episode_seq=1)
+        by_limit = {entry["limit"]: entry for entry in ctx}
+        self.assertEqual(set(by_limit),
+                         {reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL})
+        self.assertEqual(by_limit[reasons.HARD_FLOOR]["episode_seq"], 3)
+        self.assertTrue(by_limit[reasons.HARD_FLOOR]["arrived_after"])
+        self.assertEqual(by_limit[reasons.CUSTOMER_SPEND_POOL]["episode_seq"], 1)
+        self.assertFalse(by_limit[reasons.CUSTOMER_SPEND_POOL]["arrived_after"])

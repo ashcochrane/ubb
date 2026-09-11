@@ -263,11 +263,15 @@ class LiveCounter:
             # non-crossing event must not clear a flag a sibling run set — the
             # flag lifts only on recovery (credit / reconcile).
             if LiveCounter._crossed(mode, v, owner_id, tenant):
-                # WHICH BOUND WAS REACHED — the pool's or the wallet floor's
-                # — is the same fork as the branch above (slice 6 §7).
+                # WHICH LINE WAS CROSSED is the branch above's own fact: the
+                # postpaid branch debits the pool, every other mode a wallet
+                # (slice 6 §7, §9). The line names the control's family and
+                # the control's row is resolved here, at the crossing.
+                line = (reasons.CUSTOMER_SPEND_POOL if mode == "postpaid"
+                        else reasons.HARD_FLOOR)
                 opened = LiveCounter._set_stop(
-                    owner_id, reasons.customer_stop_reason(tenant.billing_mode),
-                    tenant=tenant,
+                    owner_id, line, tenant=tenant,
+                    control_id=LiveCounter._control_id(line, owner_id, tenant),
                     balance_micros=v if mode == "prepaid" else 0)
                 if opened is not None:
                     # THIS debit won the stop transition — the caller's event
@@ -314,7 +318,15 @@ class LiveCounter:
             mode, value, LiveCounter._threshold(mode, owner_id, tenant))
 
     @staticmethod
-    def _set_stop(owner_id, reason, tenant=None, balance_micros=0):
+    def _control_id(line, owner_id, tenant):
+        """The row that declares the control whose line this is (#458) —
+        the ledger's own resolution, asked here only on a crossing."""
+        from apps.billing.gating.services.stop_signal_service import control_id_of
+        return control_id_of(line, owner_id, tenant)
+
+    @staticmethod
+    def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
+                  control_id=None):
         """Set the customer-wide cooperative stop flag, and on the unset->set
         TRANSITION only (SET ... NX on the flag key itself is the transition
         detector — no companion key needed) fan out two best-effort side
@@ -351,7 +363,10 @@ class LiveCounter:
         none today, but keeping this defensive) degrades to pub/sub-only
         rather than crashing. balance_micros is the crossing balance the
         detecting lane saw (prepaid live value; postpaid passes 0) — it rides
-        the folded suspension's CustomerSuspended event.
+        the folded suspension's CustomerSuspended event. ``reason`` is the
+        LINE the crossing is on — the stop word the flag carries and the
+        ledger keys by — and ``control_id`` the row declaring that line's
+        control, recorded on the episode (#458).
 
         Returns the episode_seq drive_stop opened when THIS call won the
         ledger transition (#41 tipping-event attribution), else None.
@@ -373,8 +388,9 @@ class LiveCounter:
                 # ledger transition (#41: the caller's event is the tipping
                 # event), else None — a crossing the durable lane already
                 # signaled loses silently.
-                return StopSignalService.drive_stop(owner_id, tenant, reason=reason,
-                                                    balance_micros=balance_micros)
+                return StopSignalService.drive_stop(
+                    owner_id, tenant, line=reason, control_id=control_id,
+                    balance_micros=balance_micros)
             except Exception:
                 logger.warning("live_counter.stop_event_failed",
                                extra={"data": {"owner_id": str(owner_id)}})
@@ -446,15 +462,23 @@ class LiveCounter:
                            extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
-    def resume(owner_id, tenant, *, reason, balance_micros=0) -> bool:
-        """Lift a stop: the clearing trio as ONE op (D2 of the #111 grilling)
-        — drive the signal-ledger clearing transition (the winner emits
-        ``stop.cleared`` with the episode it closes), delete the fast-lane
-        flag, and durably un-suspend behind the D15 gate. The module owns HOW
-        lifting works (this order, the durable gate); callers own WHEN — the
-        credit hook on a balance re-cross (``balance_recovered``), the hourly
-        reconcile bottom line (``reconciled``), the upward repair on a lifted
-        wedge (``balance_repaired``).
+    def resume(owner_id, tenant, *, line, clear_reason, balance_micros=0) -> bool:
+        """Lift a stop on ``line``: the clearing trio as ONE op (D2 of the
+        #111 grilling) — drive the signal-ledger clearing transition for that
+        line (the winner emits ``stop.cleared`` with the episode it closes),
+        delete the fast-lane flag, and durably un-suspend behind the D15
+        gate. The module owns HOW lifting works (this order, the durable
+        gate); callers own WHEN and WHICH LINE — the credit hook on a balance
+        re-cross (the floor's line, ``balance_recovered``), the hourly
+        reconcile bottom line (the mode's line, ``reconciled``), the upward
+        repair on a lifted wedge (the floor's line, ``balance_repaired``).
+
+        ⚠ THE FLAG LIFTS ONLY WHEN NO STOP LINE IS LEFT OPEN (slice 6 §9,
+        #458). A customer stopped by its pool and by its floor at once holds
+        two episodes; clearing one leaves the flag standing — re-pointed at
+        the surviving line's word, so the ack's verdict names the stop that
+        still holds — and leaves the suspension in place, because the stop
+        that opened it has not lifted.
 
         The durable gate (D15): un-suspension is decided on the DURABLE
         wallet, never the live view — a dispute/refund debit is not mirrored
@@ -469,8 +493,14 @@ class LiveCounter:
         Returns True when the fast flag actually existed and was deleted —
         the #44 flag-realignment outcome."""
         from apps.billing.gating.services.stop_signal_service import StopSignalService
-        StopSignalService.drive_clear(owner_id, tenant, reason=reason,
+        StopSignalService.drive_clear(owner_id, tenant, line=line,
+                                      clear_reason=clear_reason,
                                       balance_micros=balance_micros)
+        surviving = StopSignalService.open_stop_lines(owner_id)
+        if surviving:
+            LiveCounter._clear_stop(owner_id)
+            LiveCounter.ensure_stop_flag(owner_id, surviving[0][0])
+            return False
         realigned = LiveCounter._clear_stop(owner_id)
         if tenant.billing_mode == "postpaid":
             LiveCounter._maybe_unsuspend(owner_id)
@@ -565,8 +595,11 @@ class LiveCounter:
                 # guaranteed lane's view of the re-cross.
                 clearance_balance = int(get_customer_balance(owner_id))
             if recovered_floor(clearance_balance, floor):
-                LiveCounter.resume(owner_id, tenant,
-                                   reason=CLEAR_BALANCE_RECOVERED,
+                # A balance that recovered lifts the FLOOR's line and nothing
+                # else (#458): the pool's line, if one holds this owner too,
+                # is the pool reconcile's to clear.
+                LiveCounter.resume(owner_id, tenant, line=reasons.HARD_FLOOR,
+                                   clear_reason=CLEAR_BALANCE_RECOVERED,
                                    balance_micros=clearance_balance)
             # #40 §F — the soft floor's credit-side clearing, independent of
             # the hard pair (an owner can be past the soft line without ever
@@ -616,24 +649,28 @@ class LiveCounter:
 
     # ---- reconcile (hourly beat) ----
     @staticmethod
-    def _reconcile_transitions(owner_id, tenant, crossed, basis_micros):
+    def _reconcile_transitions(owner_id, tenant, crossed, basis_micros, *, line):
         """The bottom-line catch-up both reconcile paths share (#39 §D/§E):
-        drive the signal-ledger transition the reconciled position demands —
-        at most one net stop/resume per owner per run, and only a WINNING
-        transition emits (a position the lanes already signaled is a silent
-        no-op). SET power: a crossing the fast lane missed (Redis blind
-        window, dropped savepoint) is signaled here — late, never lost. The
-        fast-lane flag is re-aligned best-effort either way (patrol job
-        §C.2: durable truth owns the verdict cache); returns True when the
-        flag actually changed — the #44 flag-realignment outcome."""
+        drive the signal-ledger transition the reconciled position demands on
+        ``line`` — the line the calling pass reconciles: the floor's for the
+        prepaid wallet pass, the pool's for the postpaid month pass — at
+        most one net stop/resume per owner per line per run, and only a
+        WINNING transition emits (a position the lanes already signaled is a
+        silent no-op). SET power: a crossing the fast lane missed (Redis
+        blind window, dropped savepoint) is signaled here — late, never
+        lost. The fast-lane flag is re-aligned best-effort either way (patrol
+        job §C.2: durable truth owns the verdict cache); returns True when
+        the flag actually changed — the #44 flag-realignment outcome."""
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService)
         if crossed:
-            reason = reasons.customer_stop_reason(tenant.billing_mode)
-            StopSignalService.drive_stop(owner_id, tenant, reason=reason,
-                                         balance_micros=basis_micros)
-            return LiveCounter.ensure_stop_flag(owner_id, reason)
-        return LiveCounter.resume(owner_id, tenant, reason=CLEAR_RECONCILED,
+            StopSignalService.drive_stop(
+                owner_id, tenant, line=line,
+                control_id=LiveCounter._control_id(line, owner_id, tenant),
+                balance_micros=basis_micros)
+            return LiveCounter.ensure_stop_flag(owner_id, line)
+        return LiveCounter.resume(owner_id, tenant, line=line,
+                                  clear_reason=CLEAR_RECONCILED,
                                   balance_micros=basis_micros)
 
     @staticmethod
@@ -707,7 +744,7 @@ class LiveCounter:
                 realigned = LiveCounter._reconcile_transitions(
                     owner_id, tenant,
                     LiveCounter._crossed("prepaid", basis, owner_id, tenant),
-                    basis)
+                    basis, line=reasons.HARD_FLOOR)
                 from apps.billing.gating.services.stop_signal_service import (
                     CLEAR_RECONCILED, StopSignalService)
                 soft = get_customer_soft_min_balance(owner_id, tenant.id)
@@ -791,7 +828,8 @@ class LiveCounter:
             realigned = LiveCounter._reconcile_transitions(
                 owner_id, tenant,
                 LiveCounter._crossed("postpaid", basis, owner_id, tenant),
-                0)  # postpaid has no balance; spend never rides balance fields
+                0,  # postpaid has no balance; spend never rides balance fields
+                line=reasons.CUSTOMER_SPEND_POOL)
             return {"flag_realigned": realigned}
         except Exception:
             logger.warning("live_counter.reconcile_postpaid_failed",

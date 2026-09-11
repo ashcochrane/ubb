@@ -57,6 +57,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.work.models import Task
 from apps.platform.work import reasons
+from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 from apps.platform.tenants.flags import live_counter_maintenance_on
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -194,15 +195,15 @@ class TestPin9AckContractIdentical:
         on_c = _customer(on_t, 10_000_000, ext="a")
         off_c = _customer(off_t, 10_000_000, ext="b")
         # A durable transition both postures must surface identically.
-        LiveCounter.ensure_stop_flag(on_c.id, reasons.customer_stop_reason(on_t.billing_mode))
-        LiveCounter.ensure_stop_flag(off_c.id, reasons.customer_stop_reason(off_t.billing_mode))
+        LiveCounter.ensure_stop_flag(on_c.id, stop_line(on_t))
+        LiveCounter.ensure_stop_flag(off_c.id, stop_line(off_t))
         on_ack = _record(Client(), _auth(on_t), on_c).json()
         off_ack = _record(Client(), _auth(off_t), off_c).json()
 
         verdict = ("stop", "stop_reason", "stop_scope")
         assert ({k: on_ack[k] for k in verdict}
                 == {k: off_ack[k] for k in verdict}
-                == {"stop": True, "stop_reason": reasons.customer_stop_reason(on_t.billing_mode),
+                == {"stop": True, "stop_reason": stop_line(on_t),
                     "stop_scope": "customer"})
         # ... and the only difference is the live counter itself.
         assert Door.balance(on_c.id) is not None
@@ -213,10 +214,10 @@ class TestPin9AckContractIdentical:
         c = _customer(t, balance_micros=10_000_000)
         # The durable lane set the flag (as its winning transition does in
         # both postures); the recording path surfaces it — a READ, not a write.
-        LiveCounter.ensure_stop_flag(c.id, reasons.customer_stop_reason(t.billing_mode))
+        LiveCounter.ensure_stop_flag(c.id, stop_line(t))
         ack = _record(Client(), _auth(t), c).json()
         assert ack["stop"] is True
-        assert ack["stop_reason"] == reasons.customer_stop_reason(t.billing_mode)
+        assert ack["stop_reason"] == stop_line(t)
         assert ack["stop_scope"] == "customer"
         assert Door.balance(c.id) is None  # still no counter
 
@@ -242,7 +243,7 @@ class TestPin9CrossingSignalsAtDurableLaneLatency:
         assert LiveCounter.read(c.id, t)["stop"] is True
         nxt = _record(client, auth, c, billed=1_000).json()
         assert nxt["stop"] is True                  # verdict via the flag
-        assert nxt["stop_reason"] == reasons.customer_stop_reason(t.billing_mode)
+        assert nxt["stop_reason"] == stop_line(t)
 
 
 @pytest.mark.django_db
@@ -331,8 +332,7 @@ class TestPatrolUnaffectedByTheSwitch:
     def test_dead_lettered_stop_is_reminted_with_maintenance_off(self):
         t = _tenant(maintenance=False)
         c = _customer(t, balance_micros=-1_000_000)  # durably crossed: no
-        StopSignalService.drive_stop(                # clearing interference
-            c.id, t, reason=reasons.customer_stop_reason(t.billing_mode), balance_micros=-1_000_000)
+        drive_a_stop(c.id, t, balance_micros=-1_000_000)  # clearing interference
         row = StopSignalState.objects.get(owner=c)
         OutboxEvent.objects.filter(id=row.announce_outbox_id).update(status="failed")
         reconcile_live_ledgers()

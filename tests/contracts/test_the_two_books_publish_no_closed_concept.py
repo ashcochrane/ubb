@@ -90,6 +90,17 @@ THE_POOL_ENFORCE_MODE_FIELD = "enforce_mode"
 #: the events are derived off the payload field they declare.
 THE_CAUSE_MARKER = "reason_code"
 
+#: And the fourth and fifth arrivals (#458): WHICH CONTROL a stop came from —
+#: on every stop event, the four terminal stops and the customer stop pair,
+#: which took the cause's own field name in the same commit — and WHAT THE
+#: CEILING BOUNDED, on the four terminal stops alone. Both closed, so both
+#: render an `enum`; the basis sits on the string member of a nullable union.
+#: Kept apart from the sets above for the reason they are kept apart from
+#: each other: each names WHEN its markers arrived, and every event name is
+#: derived off the payload field it declares.
+THE_FAMILY_MARKER = "control_family"
+THE_BASIS_MARKER = "ceiling_basis"
+
 
 @pytest.fixture(scope="module")
 def spec():
@@ -182,13 +193,29 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     arrived_with_the_cause = {
         (event, THE_CAUSE_MARKER) for event
         in events_whose_payload_declares(THE_CAUSE_MARKER)}
-    assert {event for event, _ in arrived_with_the_cause} == {
+    assert {event for event, _ in arrived_with_the_cause} > {
         event for event, _ in arrived_since}, (
-        "the cause and the mechanism ride the same stop events (#457); a "
-        "payload declaring one without the other owes this module a sentence")
+        "the cause rides every stop event the mechanism rides, and the "
+        "customer stop pair besides (#457, #458); a terminal payload declaring "
+        "one without the other owes this module a sentence")
+    arrived_with_the_family = {
+        (event, THE_FAMILY_MARKER) for event
+        in events_whose_payload_declares(THE_FAMILY_MARKER)}
+    assert {event for event, _ in arrived_with_the_family} == {
+        event for event, _ in arrived_with_the_cause}, (
+        "the family rides exactly the events the cause rides (#458): every "
+        "stop names the control that fired, and nothing else names one")
+    arrived_with_the_basis = {
+        (event, THE_BASIS_MARKER) for event
+        in events_whose_payload_declares(THE_BASIS_MARKER)}
+    assert {event for event, _ in arrived_with_the_basis} == {
+        event for event, _ in arrived_since}, (
+        "the basis rides the four terminal stops and no customer-wide stop "
+        "(#458): only a unit's stop can be a ceiling's")
     assert seen == (THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
                     | arrived_since | arrived_with_the_pool
-                    | arrived_with_the_cause)
+                    | arrived_with_the_cause | arrived_with_the_family
+                    | arrived_with_the_basis)
 
 
 def test_no_webhook_marker_names_a_book(spec):

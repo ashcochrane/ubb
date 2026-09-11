@@ -149,32 +149,39 @@ def _administratively_closed(row):
     from apps.billing.gating.services.stop_signal_service import (
         CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED)
     return (row.state == STATE_CLEARED
-            and row.reason == CLEAR_ENFORCEMENT_MODE_TRANSITION)
+            and row.clear_reason == CLEAR_ENFORCEMENT_MODE_TRANSITION)
 
 
 def _remint_signal_row(row, tenant):
     """Mint the row's current state as an ordinary event of the same catalog
     type — current ``episode_seq``, ``re_announcement: true`` — and stamp it,
-    inside the caller's transaction (the §B atomic unit)."""
+    inside the caller's transaction (the §B atomic unit).
+
+    ⚠ THE LINE, ITS FAMILY AND ITS CONTROL ARE READ OFF THE ROW (#458): a
+    stop line's re-mint carries the line's word, the family the row is keyed
+    by and the control id the episode recorded, exactly as the original
+    announcement did; the patrol derives nothing and guesses nothing."""
     from apps.billing.gating.services.stop_signal_service import (
-        FAMILY_FLOOR_STOP, STATE_STOPPED, emit_stamped)
+        STATE_STOPPED, STOP_LINES, emit_stamped)
     from apps.billing.queries import get_customer_soft_min_balance
     from apps.platform.events.schemas import (
         SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
 
     balance = _owner_balance(row.owner_id, tenant)
-    if row.family == FAMILY_FLOOR_STOP:
+    if row.reason in STOP_LINES:
+        control = dict(reason_code=row.reason,
+                       control_family=row.control_family,
+                       control_id=str(row.control_id or ""))
         if row.state == STATE_STOPPED:
             schema = StopFired(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
-                reason=row.reason, scope="customer",
-                episode_seq=row.episode_seq, re_announcement=True)
+                scope="customer", episode_seq=row.episode_seq,
+                re_announcement=True, **control)
         else:
             schema = StopCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
-                reason=row.reason, scope="customer",
-                episode_seq=row.episode_seq, balance_micros=balance,
-                re_announcement=True)
+                scope="customer", episode_seq=row.episode_seq,
+                balance_micros=balance, re_announcement=True, **control)
     else:
         soft = get_customer_soft_min_balance(row.owner_id, tenant.id)
         if row.state == STATE_STOPPED:
@@ -186,7 +193,7 @@ def _remint_signal_row(row, tenant):
         else:
             schema = SoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
-                reason=row.reason, balance_micros=balance,
+                reason=row.clear_reason, balance_micros=balance,
                 soft_min_balance_micros=soft,
                 episode_seq=row.episode_seq, re_announcement=True)
     emit_stamped(row, schema)
@@ -221,7 +228,7 @@ def sweep_over_limit_tasks(tenant):
     as one that has been shown to be safe."""
     from apps.platform.work.models import Task
     from apps.platform.work.reasons import TASK_COGS_CEILING
-    from apps.platform.work.services import TaskService
+    from apps.platform.work.services import TaskService, ceiling_control_id
 
     swept = 0
     # THE ONE COMPARE in its queryset spelling (#452): the same `>=` the
@@ -244,10 +251,15 @@ def sweep_over_limit_tasks(tenant):
         # sweep is the mechanism and the ingest lane is not — a subscriber
         # alerting on ceiling crossings can tell a live trip from a repair
         # only because the two lanes say which they are.
+        #
+        # AND WHICH CONTROL (#458): the ceiling is the declaration the unit
+        # runs under, resolved by the kernel's own helper — the caller
+        # passes the id, the kernel stamps the family.
         if TaskService.kill_and_announce(
                 task.id, TASK_COGS_CEILING, tenant_id=tenant.id,
                 customer_id=task.customer_id,
-                trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL):
+                trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+                control_id=ceiling_control_id(task)):
             swept += 1
     return swept
 
@@ -311,8 +323,9 @@ def _remint_kill(task, tenant):
     announcement happened to carry."""
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import terminal_stop_event
-    from apps.platform.work.services import (
-        STOP_CAUSE_KEY, STOP_MECHANISM_KEY)
+    from apps.platform.work.models import (
+        STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
+        STOP_MECHANISM_KEY)
 
     announcement = terminal_stop_event(
         task.status, is_contained=task.parent_id is not None)
@@ -321,6 +334,12 @@ def _remint_kill(task, tenant):
         billing_owner_id=str(task.billing_owner_id or ""),
         external_task_id=task.external_task_id,
         reason_code=task.metadata.get(STOP_CAUSE_KEY, ""),
+        # ⚠ AND THE CONTROL IS READ BACK TOO (#458): the family and the id the
+        # stopping lane stamped on the row, and the basis derived off the
+        # row's own cause — this patrol applied nothing and guesses nothing.
+        control_family=task.metadata.get(STOP_CONTROL_FAMILY_KEY, ""),
+        control_id=task.metadata.get(STOP_CONTROL_ID_KEY, ""),
+        ceiling_basis=task.ceiling_basis,
         # ⚠ AND THE MECHANISM IS READ BACK RATHER THAN INVENTED — it is not
         # this patrol, which applied nothing. The lane that DID apply the stop
         # records itself on the row (`TaskService._stop_and_announce`, and

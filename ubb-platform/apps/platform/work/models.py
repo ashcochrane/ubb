@@ -1,9 +1,11 @@
 from django.db import models
 
-from core import crossing
+from core import controls, crossing
 from core.models import BaseModel
 from core.transitions import FROZEN
 from core.vocabulary import (
+    CEILING_BASIS_COST,
+    CEILING_BASIS_TIME,
     CEILING_STATUS_CEILING_REACHED,
     CEILING_STATUS_INDETERMINATE,
     CEILING_STATUS_NOT_APPLICABLE,
@@ -156,6 +158,49 @@ CEILING_STATUS_CHOICES = [
     (CEILING_STATUS_INDETERMINATE, "Indeterminate"),
     (CEILING_STATUS_WITHIN_CEILING, "Within ceiling"),
 ]
+
+# WHAT A CEILING BOUNDS — the registry's `ceiling_basis`, held by reference
+# on the same footing as the assessment above (slice 6 §15, #458). Cost and
+# time genuinely are different columns measured in different ways, so each
+# ceiling column on the declaration states its own basis rather than one
+# field switching what it measures, how it is stored and how it is compared
+# all at once (#150 §2.3): the COGS
+# ceiling (`task_cogs_ceiling_micros`, at either scope) bounds cost; the
+# silence window and the absolute deadline bound time. A stopped unit says
+# which basis its ceiling fired on through `Task.ceiling_basis` below, read
+# by the terminal stop announcement, the patrol's re-mint and the admin's
+# listing; null where the stop was not a ceiling's.
+CEILING_BASIS_CHOICES = [
+    (CEILING_BASIS_COST, "Cost"),
+    (CEILING_BASIS_TIME, "Time"),
+]
+
+#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT — the
+#: cause, the mechanism, and since #458 the control that fired: its family
+#: and its identity. Four keys and never one merged word (ADR-0006 §5): each
+#: answers a different question — WHY this stopped, WHAT stopped it, WHICH
+#: CONTROL's bound was reached and WHICH ROW declares that control.
+#:
+#: ⚠ THE CAUSE'S KEY IS THE CONCEPT'S OWN NAME, AND EVERY STORED ROW WAS MOVED
+#: ONTO IT ONCE (slice 6 §8, #457). It was spelled for a kill and carried every
+#: other stop too; `work/migrations/0026` renamed it on every unit row holding
+#: it and rewrote the retired values beneath it in the same pass, so no reader
+#: needs the old spelling and none holds it. Named here — beside the column
+#: they are written into — rather than spelled at each write, and read
+#: through these names by the patrol's re-mint, the stop-context tagging and
+#: the retired report. Every reader still gates on the state first: `killed`
+#: means UBB stopped the work on a spend signal and `expired` means nobody
+#: ever told UBB how it ended, and the cause under this key says which bound
+#: was reached in either case.
+#:
+#: The family and the id are stamped by the kernel on the winning flip
+#: (`TaskService._flip`) and on every cascaded piece (`TaskService._cascade`,
+#: which writes the PARENT's — contained work crossed nothing of its own), so
+#: a re-mint reads both back off the row rather than guessing (§15).
+STOP_CAUSE_KEY = "reason_code"
+STOP_MECHANISM_KEY = "trigger_source"
+STOP_CONTROL_FAMILY_KEY = "control_family"
+STOP_CONTROL_ID_KEY = "control_id"
 
 
 def _empty_list():
@@ -834,6 +879,17 @@ class Task(BaseModel):
             ceiling_micros=self.task_cogs_ceiling_micros,
             known_micros=self.total_provider_cost_micros,
             unresolved_count=self.unresolved_event_count)
+
+    # WHICH BASIS THIS UNIT'S CEILING FIRED ON, read off the stored cause
+    # (#458, slice 6 §15): `cost` where the COGS ceiling was reached, `time`
+    # where a window ran out, None where the stop was not a ceiling's — a
+    # customer-wide stop, a cascade, or no stop at all. Derived, like the
+    # assessment above, so a row never carries a basis that disagrees with
+    # its cause; the derivation is `core.controls`' and the vocabulary is
+    # `CEILING_BASIS_CHOICES` above.
+    @property
+    def ceiling_basis(self):
+        return controls.ceiling_basis(self.metadata.get(STOP_CAUSE_KEY))
 
     def save(self, *args, **kwargs):
         """Guard the immutable declared kind (D7/D8) — ONE guard, because

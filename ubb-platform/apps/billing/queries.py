@@ -25,19 +25,37 @@ def get_billing_config(tenant_id):
     return config
 
 
-def get_customer_min_balance(customer_id, tenant_id):
-    """Returns the effective min balance: customer override -> tenant default -> 0."""
+def _hard_floor_source(customer_id, tenant_id):
+    """``(min_balance_micros, the row it came from)`` — the customer's
+    billing profile where it carries an override, else the tenant's billing
+    configuration. ONE resolution for the value and for the control's
+    identity (#458): the two readers below cannot disagree about which rung
+    answered."""
     from apps.billing.wallets.models import CustomerBillingProfile
 
     try:
         profile = CustomerBillingProfile.objects.get(customer_id=customer_id)
         if profile.min_balance_micros is not None:
-            return profile.min_balance_micros
+            return profile.min_balance_micros, profile
     except CustomerBillingProfile.DoesNotExist:
         pass
 
     config = get_billing_config(tenant_id)
-    return config.min_balance_micros
+    return config.min_balance_micros, config
+
+
+def get_customer_min_balance(customer_id, tenant_id):
+    """Returns the effective min balance: customer override -> tenant default -> 0."""
+    return _hard_floor_source(customer_id, tenant_id)[0]
+
+
+def get_customer_floor_control_id(customer_id, tenant_id):
+    """The id of the row that carries the customer's hard floor — the
+    Wallet policy control a floor stop names as its `control_id` (slice 6
+    §1, §15, #458): the billing profile where an override exists, else the
+    tenant's billing configuration. Resolved by the same walk as the value,
+    so the stop that fired on a floor names the row that set it."""
+    return _hard_floor_source(customer_id, tenant_id)[1].id
 
 
 def get_customer_soft_min_balance(customer_id, tenant_id):
@@ -150,18 +168,40 @@ def get_patrol_stats(tenant_id=None):
                             patrol.OUTCOME_REPAIR_LAPSED)}
 
 
-def get_stop_signal_state(owner_id, tenant_id, family="floor_stop"):
+def get_stop_signal_state(owner_id, tenant_id, *, line):
     """Plain-data snapshot of the owner's DURABLE stop-signal ledger row for
-    one family (#41 stop-context tagging) — the cross-product read for the
-    metering record/settle paths. Returns
-    {state, episode_seq, reason, transitioned_at} or None when the family has
+    one LINE (#41 stop-context tagging; three lines since #458) — the
+    cross-product read for the metering record/settle paths and the retired
+    report. ``line`` is the ledger's own line name: the two stop words, or
+    the wind-down line. Returns {state, episode_seq, reason, control_family,
+    control_id, clear_reason, transitioned_at} or None when the line has
     never transitioned for this owner. One indexed point read (unique on
-    (owner, family)); the caller decides what an open episode means."""
+    (owner, family, line)); the caller decides what an open episode means."""
     from apps.billing.gating.models import StopSignalState
+    from apps.billing.gating.services.stop_signal_service import family_of_line
     return (StopSignalState.objects
-            .filter(owner_id=owner_id, tenant_id=tenant_id, family=family)
-            .values("state", "episode_seq", "reason", "transitioned_at")
+            .filter(owner_id=owner_id, tenant_id=tenant_id,
+                    control_family=family_of_line(line), reason=line)
+            .values("state", "episode_seq", "reason", "control_family",
+                    "control_id", "clear_reason", "transitioned_at")
             .first())
+
+
+def get_open_customer_stops(owner_id, tenant_id):
+    """Every STOP line currently holding the owner, as plain data, in line
+    order — ``[{episode_seq, reason, control_family, control_id,
+    transitioned_at}, ...]``, empty when no stop is open (#458, slice 6 §9).
+    A customer stopped by its pool and by its floor at once answers two
+    rows, one per episode; the stop-context tagging marks each."""
+    from apps.billing.gating.models import StopSignalState
+    from apps.billing.gating.services.stop_signal_service import (
+        STATE_STOPPED, STOP_LINES)
+    rows = {r["reason"]: r for r in StopSignalState.objects
+            .filter(owner_id=owner_id, tenant_id=tenant_id,
+                    reason__in=STOP_LINES, state=STATE_STOPPED)
+            .values("episode_seq", "reason", "control_family", "control_id",
+                    "transitioned_at")}
+    return [rows[line] for line in STOP_LINES if line in rows]
 
 
 def is_usage_period_closed(owner_id, period_start) -> bool:

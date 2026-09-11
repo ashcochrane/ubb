@@ -90,10 +90,14 @@ class WorkTestBase(TestCase):
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1")
 
-    def _task(self, limit=None, balance=100_000_000, parent=None):
+    def _task(self, limit=None, balance=100_000_000, parent=None, task_type=""):
+        # `task_type` names a declared kind of work — the caller declares the
+        # kind itself, since resolving a control's identity (#458) is the one
+        # thing in this directory that asks which declaration a unit runs
+        # under; the windows module keeps its own richer factory.
         return TaskService.create_task(
             self.tenant, self.customer, balance_snapshot_micros=balance,
-            task_cogs_ceiling_micros=limit,
+            task_cogs_ceiling_micros=limit, task_type=task_type,
             billing_owner_id=self.customer.id, parent=parent)
 
     def _a_parent_and_its_contained_work(self, **kwargs):
