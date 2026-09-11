@@ -531,12 +531,13 @@ def _spend_pool_out(cfg):
             "fail_closed": cfg.fail_closed}
 
 
-#: What a read answers where no row is declared: no pool (`cap_micros` 0)
-#: under the model's own defaults, so a caller sees exactly the row a first
-#: PUT with only an amount would create.
-_NO_POOL_DECLARED = {"cap_micros": 0, "enforce_mode": SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
-                     "hard_stop_pct": 100, "alert_levels": [50, 80, 100, 110],
-                     "fail_closed": False}
+def _no_pool_declared():
+    """What a read answers where no row is declared: no pool (`cap_micros` 0)
+    under the model's own defaults — an unsaved row, serialised — so a caller
+    sees exactly the row a first PUT with only an amount would create, and a
+    default that moves on the model moves here with it."""
+    from apps.billing.gating.models import CustomerSpendPool
+    return _spend_pool_out(CustomerSpendPool())
 
 
 def _upsert_spend_pool(tenant, customer, payload):
@@ -557,7 +558,7 @@ def get_tenant_customer_spend_pool(request):
     from apps.billing.gating.models import CustomerSpendPool
     cfg = CustomerSpendPool.objects.filter(tenant=request.auth.tenant, customer__isnull=True).first()
     if not cfg:
-        return _NO_POOL_DECLARED
+        return _no_pool_declared()
     return _spend_pool_out(cfg)
 
 
@@ -585,7 +586,7 @@ def get_customer_spend_pool(request, customer_id: UUID):
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     cfg = CustomerSpendPool.objects.filter(tenant=request.auth.tenant, customer=customer).first()
     if not cfg:
-        return _NO_POOL_DECLARED
+        return _no_pool_declared()
     return _spend_pool_out(cfg)
 
 

@@ -50,12 +50,13 @@ class CustomerSpendPoolService:
 
     @staticmethod
     def period_basis(tenant_id, customer_id, *, now=None):
-        """The pool's DURABLE basis for the current effective month, as the
-        pair the status read publishes (#456, slice 6 §4, §13): ``(label,
-        known_period_charges_micros, unresolved_posting_count)`` — the
-        resolved period charges, a lower bound wherever the count beside them
-        is not zero, and the count of postings whose customer price UBB has
-        not resolved and so could not include. Read from metering's read
+        """The pool's DURABLE basis for the current effective month: the
+        period label, then the pair the status read publishes (#456, slice 6
+        §4, §13) — ``(label, known_period_charges_micros,
+        unresolved_posting_count)``: the resolved period charges, a lower
+        bound wherever the count beside them is not zero, and the count of
+        postings whose customer price UBB has not resolved and so could not
+        include. Read from metering's read
         contract, which is the same total the live counter rebuilds from and
         MAX-merges toward: a status read reports the figure the gate's
         counter is a cache of, never the cache. The count is the price pair's

@@ -1985,9 +1985,9 @@ measurement_key:
     # (419 -> 420) — the pool row's RenameModel — and two swept SDK modules,
     # because advertising a closed concept mints one generated enum module
     # per schema carrying it and the pool's enforce mode now sits on three
-    # schemas where the hand-written `Literal` sat on one. Six modules were
-    # renamed in place (the service, four test modules, the SDK's wrapper
-    # test) and move neither number. The prose that held was "a bound on a
+    # schemas where the hand-written `Literal` sat on one. Seven files were
+    # renamed in place (the service, four gating test modules, the route test
+    # module, the SDK's wrapper test) and move neither number. The prose that held was "a bound on a
     # customer's period charges", "the known figure", "the durable pair" and
     # "a lower bound"; the count was taken after the last core regeneration
     # and re-taken after the review pass.

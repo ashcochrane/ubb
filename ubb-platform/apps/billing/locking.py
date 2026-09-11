@@ -30,7 +30,7 @@ def lock_for_billing(customer_id):
     first test run rather than a wallet nothing ever reads.
 
     The two things that legitimately key off a SEAT rather than the owner —
-    ``CustomerSpendPool`` (budgets cap the seat's own spend) and audit records
+    ``CustomerSpendPool`` (a pool bounds the seat's own spend) and audit records
     (the seat is the named subject of an action) — never call this function;
     they read/write their own tables directly. If that ever changes, they
     would need to be added to a deliberate allowlist, not silently pass here.

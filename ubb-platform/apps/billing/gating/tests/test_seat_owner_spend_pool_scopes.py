@@ -1,7 +1,8 @@
 """Task 5: pins the two-level spend-pool resolution so it stops being folklore.
 
-There are two month-to-date spend counters, deliberately not merged (see
-CONTEXT.md's pool / "Live counter" entries):
+There are two month-to-date spend counters, deliberately not merged (see the
+billing glossary's "Live counter" entry and its entry for the pool — still under
+the pool's retired name until the fold, #470, rewrites it):
 
   ``ubb:spend_pool:{seat}:{YYYY-MM}``     -- SEAT-keyed. Drives the start-gate and
                                          the threshold alerts. Resolved via

@@ -130,7 +130,6 @@ class RiskServiceRedisFailureTest(TestCase):
 import pytest
 from django.core.cache import cache as django_cache
 from apps.billing.gating.models import CustomerSpendPool
-from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import LiveCounter
 
 

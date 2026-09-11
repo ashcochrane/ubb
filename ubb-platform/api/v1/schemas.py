@@ -1650,7 +1650,8 @@ class TaskAnalyticsOut(Schema):
 #: HOW A CUSTOMER SPEND POOL IS ENFORCED (#456, slice 6 §13) — the registry's
 #: closed pair, so the marker renders a real `enum`. It sits on the three pool
 #: schemas AND on the threshold event's payload (`apps/platform/events/
-#: schemas.py`, spelled there because a product may not import this module):
+#: schemas.py`, spelled there again because the kernel, like a product, never
+#: imports the composition layer — ADR-001; the `CostingStatus` precedent):
 #: a value lifted out of a record goes on every schema publishing it.
 SpendPoolEnforceMode = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "spend_pool_enforce_mode"})]

@@ -269,13 +269,15 @@ class TestComponentLevelFindings:
         assert report.unreviewed == [f]
 
 
-def webhook_finding(text="request property `data/enforce_mode` was restricted "
+def webhook_finding(text="request property `data/costing_status` was restricted "
                          "to a list of enum values", level=ERR):
     """An OPERATION-level finding inside the `webhooks` section, verbatim in
     shape from oasdiff 1.23.0 (#456): it carries an operation and a path, and
-    the path is `webhook:<event type>` — a path that never starts with `/`."""
+    the path is `webhook:<event type>` — a path that never starts with `/`.
+    The event here is the usage callback, so this module spells no retired
+    event name; the shape is what matters, not which event produced it."""
     return {"id": "request-property-became-enum", "operation": "POST",
-            "path": "webhook:budget.threshold_reached", "section": "paths",
+            "path": "webhook:usage.recorded", "section": "paths",
             "text": text, "level": level}
 
 
@@ -299,8 +301,8 @@ class TestWebhookOperationFindings:
 
     def test_the_generated_entry_names_the_webhook_path(self):
         assert contract_gate.entry_for(webhook_finding()) == (
-            "POST webhook:budget.threshold_reached request property "
-            "`data/enforce_mode` was restricted to a list of enum values")
+            "POST webhook:usage.recorded request property "
+            "`data/costing_status` was restricted to a list of enum values")
 
     def test_this_gate_honours_an_entry_for_it(self):
         f = webhook_finding()

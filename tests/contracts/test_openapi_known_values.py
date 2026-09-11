@@ -104,7 +104,8 @@ EXPORT_MODULE = REPO_ROOT / "ubb-platform" / "api" / "v1" / "openapi_export.py"
 #: too many and the inventory is an excuse with no upper bound.
 #:
 #: ⚠ THE POOL'S ENFORCE-MODE ROW LEFT IN #456, in the same commit as the
-#: field's marker (slice 6 §19 coupling 3): the hand-written `Literal` became
+#: field's marker (slice 6 §19 coupling 3 — the ticket's own list numbers it
+#: second): the hand-written `Literal` became
 #: the registry's `enum`, so the node is now generated metadata and counting
 #: it here would over-state the inventory by one.
 NON_VOCABULARY_ENUMS = {
