@@ -23,6 +23,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
+from apps.platform.work import reasons
 
 
 def _tenant(mode="postpaid", enf="enforcing"):
@@ -56,7 +57,7 @@ class TestPostpaidDurableSuspend:
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 12_000_000))
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "budget_exceeded"
+        assert c.suspension_reason == reasons.CUSTOMER_SPEND_POOL
         assert _suspend_events(c.id).count() == 1
 
     def test_single_emit_on_repeat_events(self):
@@ -83,7 +84,7 @@ class TestPrepaidSuspendReason:
         handle_usage_recorded_billing(str(uuid.uuid4()), _payload(t, c, 5_000_000))  # -> -5M < floor 0
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
 
 
 @pytest.mark.django_db
@@ -97,7 +98,7 @@ class TestUnsuspendOnRecovery:
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())  # flag set
         c.status = "suspended"
-        c.suspension_reason = "min_balance_exceeded"
+        c.suspension_reason = reasons.HARD_FLOOR
         c.save(update_fields=["status", "suspension_reason"])
         LiveCounter.credit(c.id, t, 10_000_000)  # recovers above floor
         c.refresh_from_db()
@@ -128,7 +129,7 @@ class TestP6bReviewFixes:
         from apps.billing.gating.tasks import reconcile_live_ledgers
         t = _tenant()  # postpaid enforcing
         c = Customer.objects.create(tenant=t, external_id="c1",
-                                    status="suspended", suspension_reason="budget_exceeded")
+                                    status="suspended", suspension_reason=reasons.CUSTOMER_SPEND_POOL)
         CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000,
                                     enforce_mode="blocking")
         reconcile_live_ledgers()
@@ -141,7 +142,7 @@ class TestP6bReviewFixes:
         # un-suspend must use the DURABLE wallet, not the live counter.
         t = _tenant(mode="prepaid", enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1",
-                                    status="suspended", suspension_reason="min_balance_exceeded")
+                                    status="suspended", suspension_reason=reasons.HARD_FLOOR)
         Wallet.objects.create(customer=c, balance_micros=-5_000_000)  # durable below floor
         Door.set_balance(c.id, 1_000_000)  # live counter over-states
         LiveCounter.credit(c.id, t, 100_000)  # live -> 1.1M >= floor, durable still -5M

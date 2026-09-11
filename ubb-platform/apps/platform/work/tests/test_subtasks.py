@@ -177,7 +177,7 @@ class KillCascadeTest(WorkTestBase):
     def test_kill_subtask_kills_it_alone(self):
         parent = self._task()
         sub = self._task(parent=parent)
-        killed, transitioned = TaskService.kill_task(sub.id, reason=reasons.SUBTASK_LIMIT)
+        killed, transitioned = TaskService.kill_task(sub.id, reason=reasons.TASK_COGS_CEILING)
         self.assertTrue(transitioned)
         self.assertEqual(killed.status, TASK_STATUS_KILLED)
         parent.refresh_from_db()
@@ -189,12 +189,12 @@ class KillCascadeTest(WorkTestBase):
         sub_done = self._task(parent=parent)
         TaskService.close_task(sub_done.id, CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
-        _, transitioned = TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
+        _, transitioned = TaskService.kill_task(parent.id, reason=reasons.TASK_COGS_CEILING)
         self.assertTrue(transitioned)
         sub_active.refresh_from_db()
         sub_done.refresh_from_db()
         self.assertEqual(sub_active.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub_active.metadata["kill_reason"], reasons.PARENT_KILLED)
+        self.assertEqual(sub_active.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
         self.assertIsNotNone(sub_active.completed_at)
         # Terminal subtasks are left untouched by the cascade.
         self.assertEqual(sub_done.status, TASK_STATUS_COMPLETED)
@@ -317,7 +317,7 @@ class CascadeRecordTest(WorkTestBase):
     def test_a_kill_cascade_records_containment_and_its_mechanism(self):
         parent, contained = self._a_parent_and_its_contained_work()
 
-        TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
+        TaskService.kill_task(parent.id, reason=reasons.TASK_COGS_CEILING)
 
         parent.refresh_from_db()
         contained.refresh_from_db()
@@ -332,7 +332,10 @@ class CascadeRecordTest(WorkTestBase):
         self.assertNotEqual(contained.metadata[STOP_CAUSE_KEY],
                             parent.metadata[STOP_CAUSE_KEY])
 
-    def test_an_expiry_cascade_records_the_silence_window_and_its_mechanism(self):
+    def test_an_expiry_cascade_records_containment_and_its_mechanism(self):
+        """A parent's expiry records `parent_expired` on its contained work
+        (#457, slice 6 §7): containment, not the parent's cause, on the same
+        footing as the kill cascade above."""
         parent, contained = self._a_parent_and_its_contained_work()
 
         TaskService.expire_task(parent.id, reason=reasons.SILENCE_WINDOW)
@@ -340,9 +343,28 @@ class CascadeRecordTest(WorkTestBase):
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_EXPIRED)
         self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
-                         reasons.SILENCE_WINDOW)
+                         reasons.PARENT_EXPIRED)
         self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
                          TRIGGER_SOURCE_PARENT_CASCADE)
+
+    def test_the_two_rows_of_one_expired_tree_no_longer_disagree(self):
+        """The case the old record approximated: a parent reaped on its
+        ABSOLUTE DEADLINE used to leave contained work saying the silence
+        window, so two rows of one tree disagreed in one transaction. Each
+        names itself now — the parent the bound it reached, the contained
+        work the parent that ended — asserted by constant identity."""
+        parent, contained = self._a_parent_and_its_contained_work()
+
+        TaskService.expire_task(parent.id, reason=reasons.ABSOLUTE_DEADLINE)
+
+        parent.refresh_from_db()
+        contained.refresh_from_db()
+        self.assertEqual(parent.metadata[STOP_CAUSE_KEY],
+                         reasons.ABSOLUTE_DEADLINE)
+        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
+                         reasons.PARENT_EXPIRED)
+        self.assertNotEqual(contained.metadata[STOP_CAUSE_KEY],
+                            reasons.SILENCE_WINDOW)
 
     def test_the_three_cascades_record_three_different_reasons(self):
         """The records are told apart, not merely present.
@@ -351,7 +373,7 @@ class CascadeRecordTest(WorkTestBase):
         what stops a repair that collapsed them onto one value passing all three.
         """
         recorded = set()
-        for stop, reason in ((TaskService.kill_task, reasons.TASK_LIMIT),
+        for stop, reason in ((TaskService.kill_task, reasons.TASK_COGS_CEILING),
                              (TaskService.expire_task, reasons.SILENCE_WINDOW)):
             parent, contained = self._a_parent_and_its_contained_work()
             stop(parent.id, reason=reason)
@@ -365,7 +387,7 @@ class CascadeRecordTest(WorkTestBase):
         recorded.add(contained.outcome_reason)
 
         self.assertEqual(recorded, {reasons.PARENT_KILLED,
-                                    reasons.SILENCE_WINDOW,
+                                    reasons.PARENT_EXPIRED,
                                     OUTCOME_REASON_PARENT_CLOSED})
 
 
@@ -436,7 +458,7 @@ class ContainmentCutsDownwardOnlyTest(WorkTestBase):
             contained.id, billed_cost_micros=1_000_000,
             provider_cost_micros=2_000_000)
 
-        TaskService.kill_task(contained.id, reason=reasons.SUBTASK_LIMIT)
+        TaskService.kill_task(contained.id, reason=reasons.TASK_COGS_CEILING)
 
         parent.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
@@ -469,7 +491,7 @@ class AnnounceTest(WorkTestBase):
         TaskService.accumulate_cost(
             sub.id, billed_cost_micros=8_000_000, provider_cost_micros=6_000_000)
         transitioned = TaskService.kill_and_announce(
-            sub.id, reasons.SUBTASK_LIMIT,
+            sub.id, reasons.TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
 
@@ -478,7 +500,7 @@ class AnnounceTest(WorkTestBase):
         payload = self._events(SubtaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["subtask_id"], str(sub.id))
         self.assertEqual(payload["parent_task_id"], str(parent.id))
-        self.assertEqual(payload["reason_code"], reasons.SUBTASK_LIMIT)
+        self.assertEqual(payload["reason_code"], reasons.TASK_COGS_CEILING)
         self.assertEqual(payload["total_billed_cost_micros"], 8_000_000)
         self.assertEqual(payload["total_provider_cost_micros"], 6_000_000)
         self.assertEqual(payload["task_cogs_ceiling_micros"], 5_000_000)
@@ -491,7 +513,7 @@ class AnnounceTest(WorkTestBase):
         TaskService.accumulate_cost(
             sub.id, billed_cost_micros=0, provider_cost_micros=11_000_000)
         transitioned = TaskService.kill_and_announce(
-            parent.id, reasons.TASK_LIMIT,
+            parent.id, reasons.TASK_COGS_CEILING,
             tenant_id=self.tenant.id, customer_id=self.customer.id)
         self.assertTrue(transitioned)
 
@@ -505,7 +527,7 @@ class AnnounceTest(WorkTestBase):
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
         sub.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub.metadata["kill_reason"], reasons.PARENT_KILLED)
+        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
 
 
 class KillPlanTest(WorkTestBase):
@@ -518,19 +540,19 @@ class KillPlanTest(WorkTestBase):
                     "task_not_active": False}
         return unit_id, reasons.kill_plan(unit_id, parent_id, {**defaults, **verdicts})
 
-    def test_top_level_task_limit(self):
+    def test_a_whole_units_own_crossing(self):
         unit_id, plan = self._plan({"crossed_task_limit": True})
-        self.assertEqual(plan, [(unit_id, reasons.TASK_LIMIT)])
+        self.assertEqual(plan, [(unit_id, reasons.TASK_COGS_CEILING)])
 
-    def test_subtask_own_limit_kills_it_alone(self):
+    def test_a_contained_units_own_crossing_kills_it_alone(self):
         parent_id = uuid.uuid4()
         unit_id, plan = self._plan({"crossed_subtask_limit": True}, parent_id)
-        self.assertEqual(plan, [(unit_id, reasons.SUBTASK_LIMIT)])
+        self.assertEqual(plan, [(unit_id, reasons.TASK_COGS_CEILING)])
 
     def test_parent_limit_on_a_subtask_event_kills_the_parent(self):
         parent_id = uuid.uuid4()
         _, plan = self._plan({"crossed_task_limit": True}, parent_id)
-        self.assertEqual(plan, [(parent_id, reasons.TASK_LIMIT)])
+        self.assertEqual(plan, [(parent_id, reasons.TASK_COGS_CEILING)])
 
     def test_both_cross_subtask_killed_first_then_parent(self):
         # The subtask's own announcement must precede the parent's cascade —
@@ -538,8 +560,8 @@ class KillPlanTest(WorkTestBase):
         parent_id = uuid.uuid4()
         unit_id, plan = self._plan(
             {"crossed_subtask_limit": True, "crossed_task_limit": True}, parent_id)
-        self.assertEqual(plan, [(unit_id, reasons.SUBTASK_LIMIT),
-                                (parent_id, reasons.TASK_LIMIT)])
+        self.assertEqual(plan, [(unit_id, reasons.TASK_COGS_CEILING),
+                                (parent_id, reasons.TASK_COGS_CEILING)])
 
     def test_nothing_crossing_plans_nothing(self):
         _, plan = self._plan({"task_not_active": True})
@@ -556,20 +578,20 @@ class StopFieldsTest(WorkTestBase):
                     "task_not_active": False}
         return reasons.stop_fields({**defaults, **verdicts}, is_subtask=is_subtask)
 
-    def test_task_limit_scope_task(self):
+    def test_a_parent_crossing_is_scope_task(self):
         self.assertEqual(self._fields({"crossed_task_limit": True}),
-                         (reasons.TASK_LIMIT, "task"))
+                         (reasons.TASK_COGS_CEILING, "task"))
 
-    def test_subtask_limit_scope_subtask(self):
+    def test_a_contained_units_own_crossing_is_scope_subtask(self):
         self.assertEqual(
             self._fields({"crossed_subtask_limit": True}, is_subtask=True),
-            (reasons.SUBTASK_LIMIT, "subtask"))
+            (reasons.TASK_COGS_CEILING, "subtask"))
 
     def test_parent_trip_wins_the_scalar_over_the_subtask_trip(self):
         self.assertEqual(
             self._fields({"crossed_subtask_limit": True,
                           "crossed_task_limit": True}, is_subtask=True),
-            (reasons.TASK_LIMIT, "task"))
+            (reasons.TASK_COGS_CEILING, "task"))
 
     def test_not_active_scope_follows_the_unit(self):
         self.assertEqual(self._fields({"task_not_active": True}),
@@ -579,3 +601,17 @@ class StopFieldsTest(WorkTestBase):
 
     def test_nothing_fired(self):
         self.assertEqual(self._fields({}), (None, None))
+
+    def test_the_scope_is_read_off_the_flag_that_fired_never_off_the_word(self):
+        """The collapse (slice 6 §7, #457): both crossings carry the ONE
+        ceiling word, so the word cannot say which altitude crossed — only
+        the verdict's own flag can, and that is what the scope is derived
+        from. Asserted as a pair of calls that agree on the word and differ
+        on the scope, which a scope keyed on the word could never produce."""
+        parent_word, parent_scope = self._fields(
+            {"crossed_task_limit": True}, is_subtask=True)
+        own_word, own_scope = self._fields(
+            {"crossed_subtask_limit": True}, is_subtask=True)
+        self.assertEqual(parent_word, own_word)
+        self.assertEqual((parent_scope, own_scope), ("task", "subtask"))
+        self.assertEqual(parent_word, reasons.TASK_COGS_CEILING)

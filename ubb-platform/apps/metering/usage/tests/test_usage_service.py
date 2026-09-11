@@ -4,6 +4,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
+from apps.platform.work import reasons
 from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import declares_a_markup
@@ -418,7 +419,7 @@ class UsageServiceTaskTest(TestCase):
             task_id=task.id,
         )
         self.assertTrue(result["stop"])
-        self.assertEqual(result["stop_reason"], "task_limit")
+        self.assertEqual(result["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(result["stop_scope"], "task")
 
         # The tipping event WAS created and both totals include it.

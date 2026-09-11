@@ -15,7 +15,11 @@ Every body below carries `costing_status`, which the ack has published since
 #317 and which the generated model requires. The literal is written out in each
 body rather than sourced from `ubb.vocabulary`, deliberately: these are
 transcripts of what the server sends, and a fixture that imported the same
-constant the client parses against could not contradict a mistake in it.
+constant the client parses against could not contradict a mistake in it. The
+stop REASON is the exception, and for the opposite reason: the client never
+parses against it (an unknown one travels as a plain string), so naming the
+registry's constant costs nothing and says which bound the transcript claims
+was reached (#457).
 """
 import inspect
 import unittest
@@ -23,6 +27,7 @@ from unittest.mock import patch, MagicMock
 
 import ubb
 from ubb.metering import MeteringClient
+from ubb.vocabulary import REASON_CODE_HARD_FLOOR, REASON_CODE_TASK_COGS_CEILING
 from ubb.exceptions import UBBAPIError, UBBError, UBBStopRequested
 from ubb._core.models.record_usage_response import RecordUsageResponse
 
@@ -32,7 +37,7 @@ def _stopped_ack(**overrides) -> dict:
     body = {
         "event_id": "e1", "suspended": False,
         "costing_status": "known", "pricing_status": "known",
-        "stop": True, "stop_reason": "customer_wide_stop", "stop_scope": "customer",
+        "stop": True, "stop_reason": REASON_CODE_HARD_FLOOR, "stop_scope": "customer",
     }
     body.update(overrides)
     return body
@@ -73,7 +78,7 @@ class TheStopRaisesByDefaultTest(_ClientCase):
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         stop = cm.exception
         self.assertEqual(stop.stop_scope, "customer")
-        self.assertEqual(stop.stop_reason, "customer_wide_stop")
+        self.assertEqual(stop.stop_reason, REASON_CODE_HARD_FLOOR)
         self.assertIsNone(stop.task_id)
         self.assertEqual(stop.event_id, "e1")
         self.assertEqual(stop.idempotency_key, "i1")
@@ -83,7 +88,7 @@ class TheStopRaisesByDefaultTest(_ClientCase):
         """A ceiling crossing rides a 200 — the event landed and billed; the
         signal names the task and carries the post-event totals on the ack."""
         _responding(mock_post, _stopped_ack(
-            stop_reason="task_limit", stop_scope="task", task_id="task_1",
+            stop_reason=REASON_CODE_TASK_COGS_CEILING, stop_scope="task", task_id="task_1",
             parent_task_id=None,
             task_total_billed_cost_micros=2_000_000,
             task_total_provider_cost_micros=1_100_000))
@@ -91,7 +96,7 @@ class TheStopRaisesByDefaultTest(_ClientCase):
             self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                      task_id="task_1")
         stop = cm.exception
-        self.assertEqual(stop.stop_reason, "task_limit")
+        self.assertEqual(stop.stop_reason, REASON_CODE_TASK_COGS_CEILING)
         self.assertEqual(stop.stop_scope, "task")
         self.assertEqual(stop.task_id, "task_1")
         self.assertIsInstance(stop.result, RecordUsageResponse)
@@ -243,11 +248,11 @@ class OptingOutOfTheRaiseTest(_ClientCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_false_returns_the_identical_verdict_instead_of_raising(self, mock_post):
         _responding(mock_post, _stopped_ack(
-            stop_reason="task_limit", stop_scope="task", task_id="task_1"))
+            stop_reason=REASON_CODE_TASK_COGS_CEILING, stop_scope="task", task_id="task_1"))
         returned = self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                             task_id="task_1", raise_on_stop=False)
         self.assertTrue(returned.stop)
-        self.assertEqual(returned.stop_reason, "task_limit")
+        self.assertEqual(returned.stop_reason, REASON_CODE_TASK_COGS_CEILING)
         self.assertEqual(returned.stop_scope, "task")
         self.assertEqual(returned.task_id, "task_1")
 
@@ -296,7 +301,7 @@ class ABatchReportNeverRaisesTest(_ClientCase):
     def test_a_stopped_item_among_unstopped_ones_is_reported_not_raised(self, mock_post):
         self._batch_of(mock_post, [
             self._accepted("evt_0"),
-            self._accepted("evt_1", stop=True, stop_reason="task_limit",
+            self._accepted("evt_1", stop=True, stop_reason=REASON_CODE_TASK_COGS_CEILING,
                            stop_scope="task", task_id="task_1"),
             self._rejected("effective_at_too_old"),
             self._accepted("evt_3"),
@@ -308,7 +313,7 @@ class ABatchReportNeverRaisesTest(_ClientCase):
                          ["evt_0", "evt_1", None, "evt_3"])
         self.assertEqual([r.stop for r in result.results], [False, True, False, False])
         stopped = result.results[1]
-        self.assertEqual(stopped.stop_reason, "task_limit")
+        self.assertEqual(stopped.stop_reason, REASON_CODE_TASK_COGS_CEILING)
         self.assertEqual(stopped.stop_scope, "task")
         self.assertEqual(stopped.data["task_id"], "task_1")
         self.assertTrue(result.stop)
@@ -322,9 +327,9 @@ class ABatchReportNeverRaisesTest(_ClientCase):
         self._batch_of(mock_post, [
             self._accepted("evt_0"),
             self._accepted("evt_1"),
-            self._accepted("evt_2", stop=True, stop_reason="task_limit",
+            self._accepted("evt_2", stop=True, stop_reason=REASON_CODE_TASK_COGS_CEILING,
                            stop_scope="task"),
-            self._accepted("evt_3", stop=True, stop_reason="customer_wide_stop",
+            self._accepted("evt_3", stop=True, stop_reason=REASON_CODE_HARD_FLOOR,
                            stop_scope="customer"),
         ])
         result = self.client.record_batch([

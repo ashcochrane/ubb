@@ -1037,6 +1037,19 @@ CONCEPTS_IN_THE_CONTRACT = {
     # and the inventory row that excused the hand-written `Literal` left with it
     # (coupling 3).
     "spend_pool_enforce_mode": Published(4, ENUM),
+    # WHY A STOP FIRED (#457, slice 6 §7/§13): the acknowledgement's
+    # `stop_reason` — the field keeps its name and position, because #180 §11
+    # makes the stop trio the shell target's exit-20 contract, so the marker
+    # arrives WITHOUT a rename — and the four terminal stop events' own
+    # `reason_code` in the `webhooks` section, beside the mechanism that has
+    # ridden them since #412. The second OPEN concept in this map, so it
+    # renders `x-ubb-known-values` metadata and never an enum: a stop can
+    # originate outside UBB, and the acknowledgement also carries one
+    # UBB-produced verdict the registry deliberately does not list. The
+    # backend twin was the seven held by reference in `work/reasons.py` after a
+    # collapse, a split and two coinages; the G4 twin and the SDK twin died in
+    # the same commit (§19 coupling 1).
+    "reason_code": Published(5, KNOWN_VALUES),
 }
 
 
@@ -1419,6 +1432,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("spend_pool_enforce_mode",
            {"CustomerSpendPoolIn", "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut"}
            | events_whose_payload_declares("enforce_mode"))
+    # WHY A STOP FIRED (#457): on the acknowledgement under the stop trio's
+    # own field name, and on the four terminal stop events — derived off the
+    # payload classes, the `trigger_source` line's reason. NOT on the unit
+    # read (`TaskOut` / `TaskDetailOut` carry no stop cause — #454 named that
+    # gap as nobody's) and NOT on the customer stop pair, whose `reason` is
+    # the ledger's own line and ticket 7's to rename.
+    placed("reason_code",
+           {"RecordUsageResponse"} | events_whose_payload_declares("reason_code"))
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -1517,11 +1538,52 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
                 if name in decisions and decisions[name].advertised
                 and _marker_on(node) != name]
 
-    assert not unmarked, (
-        f"{len(unmarked)} propert(ies) are named for a concept the contract "
-        f"advertises and carry no marker for it, so the document publishes an "
-        f"agreed value set as an open string:\n"
-        + "\n".join(f"  {pointer}" for pointer in unmarked))
+    # Pinned both ways, for the same reason `NON_VOCABULARY_ENUMS` is: a
+    # collision that leaves the inventory is a field that was renamed or
+    # marked, and a stale line would quietly licence whatever moved into its
+    # place.
+    assert set(unmarked) == set(PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT), (
+        f"propert(ies) named for a concept the contract advertises carry no "
+        f"marker for it, so the document publishes an agreed value set as an "
+        f"open string — unless the name is a coincidence declared below:\n"
+        f"  unaccounted: "
+        f"{sorted(set(unmarked) - set(PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT))}\n"
+        f"  gone:        "
+        f"{sorted(set(PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT) - set(unmarked))}")
+
+
+#: Properties that SHARE an advertised concept's name and carry a different
+#: concept — the one hole in the check above, declared rather than left for a
+#: reader to rediscover, and pinned exactly so a third collision is a
+#: deliberate act with a sentence beside it.
+#:
+#: ⚠ ARRIVED WITH `reason_code` (#457). The wallet's credit and debit bodies
+#: carry a `reason_code` that categorises the MOVEMENT — a caller-supplied
+#: closed set the route validates by hand (`api/v1/schemas.py::REASON_CODES`:
+#: a correction, goodwill, a chargeback, a write-off, a migration, other) —
+#: and it predates the stop cause taking the same spelling by two slices. It
+#: is not the stop cause, it has no registry concept, and marking it with the
+#: stop cause's concept would publish the seven bounds on a field that
+#: admits none of them. ONE NAME FOR TWO CONCEPTS IS ADR-0006 §2's smell IN
+#: REVERSE, and it is nobody's residual yet: renaming the wallet field is a
+#: contract break on a surface no slice rebuilds, so it is recorded here and
+#: in #457's commit rather than taken in a ticket about the stop cause.
+PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {
+    "/components/schemas/CreditRequest/properties/reason_code":
+        "The wallet movement's own categorisation, a hand-validated closed set "
+        "(`REASON_CODES`) with no registry concept — shares the stop cause's "
+        "name by coincidence and admits none of its values.",
+    "/components/schemas/DebitRequest/properties/reason_code":
+        "The same set on the debit body, for the same reason: a caller says "
+        "why money moved, not which bound stopped work.",
+}
+
+
+def test_every_name_collision_carries_a_real_reason():
+    """The inventory's own guard, on `NON_VOCABULARY_ENUMS`'s footing."""
+    for pointer, reason in PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT.items():
+        assert pointer.startswith("/components/schemas/"), pointer
+        assert len(reason.split()) >= 12, f"{pointer} carries no real reason"
 
 
 #: JSON Schema keywords that would bound WHICH strings a field admits. Length is
@@ -2176,6 +2238,10 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # in full with its backend twin in one commit.
     # 13 -> 12 in #456: `spend_pool_enforce_mode`, the second — the one whose
     # backend half was a re-source alone, both values already right.
-    assert len(_entries(programme)) >= 12, (
+    # 12 -> 11 in #457: `reason_code`, the third — the second OPEN concept
+    # ever advertised (after `trigger_source`), whose backend half was a
+    # collapse, a split and two registry coinages, and whose stored rows were
+    # migrated in the same commit so no reader carries a legacy map.
+    assert len(_entries(programme)) >= 11, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

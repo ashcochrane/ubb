@@ -10,8 +10,8 @@ the stop-context markers —
   by the current ``StopSignalState`` row (an open episode survives outbox
   retention) and by the markers themselves (a marked event's ``tripped_at``
   re-dates an episode whose outbox rows were purged).
-- **Task/subtask trip episodes** from killed Task rows whose
-  ``kill_reason`` names a limit. A kill is terminal — no resume.
+- **Task/subtask trip episodes** from killed Task rows whose stored cause
+  (``STOP_CAUSE_KEY``) names the ceiling. A kill is terminal — no resume.
 - **Soft-floor marker rows** from the ``soft_floor.crossed`` / ``.cleared``
   pair — crossed/cleared timestamps only, NO itemized events: nothing is
   "past limit" under a soft floor (§F).
@@ -34,13 +34,16 @@ from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
+from apps.platform.work.services import STOP_CAUSE_KEY
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.vocabulary import TASK_STATUS_KILLED
 from core.cost_totals import (
     UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, cost_total,
     counts_as_unresolved)
 
-_UNIT_LIMITS = (reasons.TASK_LIMIT, reasons.SUBTASK_LIMIT)
+#: The one ceiling word at either altitude (slice 6 §7): the row's altitude
+#: says whether it was a whole unit's ceiling or contained work's.
+_UNIT_LIMITS = (reasons.TASK_COGS_CEILING,)
 
 #: THE RETIRED REPORT'S OWN ROW KEY FOR A UNIT'S CEILING. The unit's column was
 #: renamed by #453 (`Task.task_cogs_ceiling_micros`); this untyped row keeps its
@@ -73,17 +76,25 @@ def _bucket_events(customer, since, until):
     buckets = {}
     for e in qs.order_by("effective_at", "created_at"):
         for ctx in e.stop_context or []:
+            # KEYED ON SCOPE, NEVER ON A LITERAL. `stop_context` is immutable
+            # with its row and was not migrated (the metering glossary's own
+            # rule: a reader keyed on one current string silently under-counts
+            # the oldest rows), so an entry's episode is found by its scope
+            # and its ids; the two words that are NOT episodes are excluded by
+            # constant identity. A unit-scope entry is a ceiling crossing at
+            # that altitude or the not-active verdict, and nothing else.
             limit = ctx.get("limit")
-            if ctx.get("stop_scope") == "customer":
+            scope = ctx.get("stop_scope")
+            if scope == "customer":
                 if limit == reasons.SUSPENDED:
                     continue  # taggable but not an episode
                 key = ("floor", ctx.get("episode_seq"))
-            elif limit == reasons.TASK_LIMIT:
-                key = ("unit", ctx.get("task_id"))
-            elif limit == reasons.SUBTASK_LIMIT:
+            elif limit == reasons.TASK_NOT_ACTIVE:
+                continue  # no limit episode to itemize
+            elif scope == "subtask":
                 key = ("unit", ctx.get("subtask_id"))
             else:
-                continue  # task_not_active — no limit episode to itemize
+                key = ("unit", ctx.get("task_id"))
             b = buckets.setdefault(key, {"events": [], "ctx_tripped_at": None})
             b["events"].append({
                 "event_id": str(e.id),
@@ -233,8 +244,12 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             t["event_count"] += 1
 
     # Customer-wide floor episodes: signal history ∪ tagged-event episodes.
+    # The word each episode carries is the customer-wide stop this owner's
+    # lane produces — the pool's or the hard floor's — told apart the way
+    # the producers are (slice 6 §7), until the ledger carries its own line.
     floor_eps = _signal_episodes(tenant, owner, "stop.fired", "stop.cleared",
                                  "floor_stop")
+    customer_stop = reasons.customer_stop_reason(tenant.billing_mode)
     tagged_seqs = {k[1] for k in buckets if k[0] == "floor"}
     for seq in set(floor_eps) | tagged_seqs:
         ep = floor_eps.get(seq, {"tripped_at": None, "resumed_at": None})
@@ -245,12 +260,12 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
         if not _in_window(tripped_at, since, until):
             continue
         row = _episode_row(
-            family="floor_stop", limit=reasons.CUSTOMER_WIDE_STOP,
+            family="floor_stop", limit=customer_stop,
             stop_scope="customer", episode_seq=seq,
             task_id=None, subtask_id=None, provider_cost_limit_micros=None,
             tripped_at=tripped_at, resumed_at=ep["resumed_at"],
             bucket=bucket)
-        _count(reasons.CUSTOMER_WIDE_STOP, row["events"])
+        _count(customer_stop, row["events"])
         episodes.append(row)
 
     # Soft-floor marker rows — crossed/cleared only, never itemized (§F).
@@ -266,8 +281,8 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             tripped_at=ep["tripped_at"], resumed_at=ep["resumed_at"],
             bucket=None))
 
-    # Task/subtask trips: a killed unit whose kill_reason names a limit is
-    # an episode; the kill is terminal, so there is never a resume.
+    # Task/subtask trips: a killed unit whose stored cause names the ceiling
+    # is an episode; the kill is terminal, so there is never a resume.
     #
     # ⚠ THE STATE FILTER IS NOW LOAD-BEARING ON ITS OWN (#408). `killed` means
     # UBB stopped the work on a spend signal and nothing else — the sweepers
@@ -277,15 +292,15 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
     # rather than one covering for the other.
     unit_qs = Task.objects.filter(
         customer=customer, status=TASK_STATUS_KILLED,
-        metadata__kill_reason__in=_UNIT_LIMITS)
+        **{f"metadata__{STOP_CAUSE_KEY}__in": _UNIT_LIMITS})
     if since is not None:
         unit_qs = unit_qs.filter(completed_at__gte=since)
     if until is not None:
         unit_qs = unit_qs.filter(completed_at__lt=until)
     for unit in unit_qs:
-        limit = unit.metadata["kill_reason"]
+        limit = unit.metadata[STOP_CAUSE_KEY]
         is_subtask = unit.parent_id is not None
-        scope = reasons.kill_scope(limit, is_subtask=is_subtask)
+        scope = reasons.unit_scope(is_subtask=is_subtask)
         row = _episode_row(
             family="task", limit=limit, stop_scope=scope,
             episode_seq=None,

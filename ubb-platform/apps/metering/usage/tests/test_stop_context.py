@@ -13,8 +13,12 @@ event. The rules pinned here:
 - A cascade-killed subtask's late events point at the PARENT's episode.
 - Non-limit terminal states (completed / reaped) tag ``task_not_active``.
 - Customer scope comes from the durable ledger (floor_stop family): open
-  episode → ``customer_wide_stop`` with the episode id; suspension without an
-  open episode → ``suspended``. Soft-floor state NEVER marks (§F).
+  episode → the lane's customer-wide stop (the hard floor's word for a
+  prepaid owner, the pool's for a postpaid one — `reasons.customer_stop_reason`)
+  with the episode id; suspension without an open episode → ``suspended``.
+  Soft-floor state NEVER marks (§F).
+- One ceiling word at either altitude (slice 6 §7): the entry's scope says
+  which altitude's ceiling was crossed, so cases key entries by SCOPE.
 - Multiple simultaneous limits → one array entry per limit, nothing lost.
 """
 from django.test import TestCase
@@ -25,7 +29,8 @@ from apps.metering.usage.services.stop_context import build_stop_context
 from apps.platform.customers.models import Customer
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import CloseDeclaration, TaskService
+from apps.platform.work.services import (
+    STOP_CAUSE_KEY, CloseDeclaration, TaskService)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import TASK_OUTCOME_DELIVERED
 
@@ -60,11 +65,11 @@ class UnitContextTest(StopContextTestBase):
         self.assertIsNone(self._build(task, dict(NO_VERDICTS)))
         self.assertIsNone(self._build(None, None))
 
-    def test_tipping_event_task_limit(self):
+    def test_tipping_event_on_the_units_ceiling(self):
         task = self._task(task_cogs_ceiling_micros=10)
         ctx = self._build(task, dict(NO_VERDICTS, crossed_task_limit=True))
         self.assertEqual(ctx, [{
-            "limit": "task_limit", "stop_scope": "task",
+            "limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",
             "tripped_at": self.now.isoformat(), "episode_seq": None,
             "task_id": str(task.id), "subtask_id": None,
             "arrived_after": False,
@@ -76,22 +81,23 @@ class UnitContextTest(StopContextTestBase):
         ctx = self._build(sub, dict(NO_VERDICTS, crossed_task_limit=True,
                                     crossed_subtask_limit=True))
         self.assertEqual(len(ctx), 2)
-        by_limit = {c["limit"]: c for c in ctx}
-        self.assertEqual(by_limit["task_limit"]["stop_scope"], "task")
-        self.assertEqual(by_limit["task_limit"]["task_id"], str(parent.id))
-        self.assertEqual(by_limit["task_limit"]["subtask_id"], str(sub.id))
-        self.assertFalse(by_limit["task_limit"]["arrived_after"])
-        self.assertEqual(by_limit["subtask_limit"]["stop_scope"], "subtask")
-        self.assertEqual(by_limit["subtask_limit"]["task_id"], str(parent.id))
-        self.assertEqual(by_limit["subtask_limit"]["subtask_id"], str(sub.id))
+        # ONE word, TWO scopes: the parent's crossing and the contained unit's
+        # own are told apart by scope and by nothing else (slice 6 §7).
+        by_scope = {c["stop_scope"]: c for c in ctx}
+        self.assertEqual(set(by_scope), {"task", "subtask"})
+        for entry in ctx:
+            self.assertEqual(entry["limit"], reasons.TASK_COGS_CEILING)
+            self.assertEqual(entry["task_id"], str(parent.id))
+            self.assertEqual(entry["subtask_id"], str(sub.id))
+        self.assertFalse(by_scope["task"]["arrived_after"])
 
     def test_late_event_on_limit_killed_task(self):
         task = self._task(task_cogs_ceiling_micros=10)
-        TaskService.kill_task(task.id, reason=reasons.TASK_LIMIT)
+        TaskService.kill_task(task.id, reason=reasons.TASK_COGS_CEILING)
         task.refresh_from_db()
         ctx = self._build(task, dict(NO_VERDICTS, task_not_active=True))
         self.assertEqual(ctx, [{
-            "limit": "task_limit", "stop_scope": "task",
+            "limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",
             "tripped_at": task.completed_at.isoformat(), "episode_seq": None,
             "task_id": str(task.id), "subtask_id": None,
             "arrived_after": True,
@@ -100,13 +106,13 @@ class UnitContextTest(StopContextTestBase):
     def test_late_event_on_cascade_killed_subtask_points_at_parent_episode(self):
         parent = self._task(task_cogs_ceiling_micros=10)
         sub = self._task(parent=parent)
-        TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
+        TaskService.kill_task(parent.id, reason=reasons.TASK_COGS_CEILING)
         sub.refresh_from_db()
         parent.refresh_from_db()
-        self.assertEqual(sub.metadata["kill_reason"], reasons.PARENT_KILLED)
+        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
         ctx = self._build(sub, dict(NO_VERDICTS, task_not_active=True))
         self.assertEqual(ctx, [{
-            "limit": "task_limit", "stop_scope": "task",
+            "limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",
             "tripped_at": parent.completed_at.isoformat(), "episode_seq": None,
             "task_id": str(parent.id), "subtask_id": str(sub.id),
             "arrived_after": True,
@@ -138,14 +144,15 @@ class UnitContextTest(StopContextTestBase):
         # own late context ride the array.
         parent = self._task(task_cogs_ceiling_micros=10)
         sub = self._task(parent=parent, task_cogs_ceiling_micros=5)
-        TaskService.kill_task(sub.id, reason=reasons.SUBTASK_LIMIT)
+        TaskService.kill_task(sub.id, reason=reasons.TASK_COGS_CEILING)
         sub.refresh_from_db()
         ctx = self._build(sub, dict(NO_VERDICTS, crossed_task_limit=True,
                                     task_not_active=True))
-        by_limit = {c["limit"]: c for c in ctx}
-        self.assertFalse(by_limit["task_limit"]["arrived_after"])
-        self.assertTrue(by_limit["subtask_limit"]["arrived_after"])
-        self.assertEqual(by_limit["subtask_limit"]["tripped_at"],
+        by_scope = {c["stop_scope"]: c for c in ctx}
+        self.assertEqual({c["limit"] for c in ctx}, {reasons.TASK_COGS_CEILING})
+        self.assertFalse(by_scope["task"]["arrived_after"])
+        self.assertTrue(by_scope["subtask"]["arrived_after"])
+        self.assertEqual(by_scope["subtask"]["tripped_at"],
                          sub.completed_at.isoformat())
 
 
@@ -153,14 +160,14 @@ class CustomerContextTest(StopContextTestBase):
     def _open_episode(self, seq=3, family="floor_stop", state="stopped"):
         return StopSignalState.objects.create(
             tenant=self.tenant, owner=self.customer, family=family,
-            state=state, episode_seq=seq, reason="customer_wide_stop",
+            state=state, episode_seq=seq, reason=reasons.HARD_FLOOR,
             transitioned_at=self.now)
 
-    def test_open_floor_episode_tags_customer_wide_stop(self):
+    def test_open_floor_episode_tags_the_lanes_stop(self):
         row = self._open_episode(seq=3)
         ctx = self._build(None, None)
         self.assertEqual(ctx, [{
-            "limit": "customer_wide_stop", "stop_scope": "customer",
+            "limit": reasons.HARD_FLOOR, "stop_scope": "customer",
             "tripped_at": row.transitioned_at.isoformat(), "episode_seq": 3,
             "task_id": None, "subtask_id": None,
             "arrived_after": True,
@@ -197,7 +204,7 @@ class CustomerContextTest(StopContextTestBase):
         self.customer.status = "suspended"
         ctx = self._build(None, None)
         self.assertEqual(len(ctx), 1)
-        self.assertEqual(ctx[0]["limit"], "customer_wide_stop")
+        self.assertEqual(ctx[0]["limit"], reasons.HARD_FLOOR)
 
     def test_enforcement_off_tags_no_customer_context(self):
         self.tenant.enforcement_mode = "off"
@@ -210,7 +217,18 @@ class CustomerContextTest(StopContextTestBase):
         task = self._task(task_cogs_ceiling_micros=10)
         ctx = self._build(task, dict(NO_VERDICTS, crossed_task_limit=True))
         by_limit = {c["limit"]: c for c in ctx}
-        self.assertEqual(set(by_limit), {"task_limit", "customer_wide_stop"})
+        self.assertEqual(set(by_limit), {reasons.TASK_COGS_CEILING, reasons.HARD_FLOOR})
         # Customer-scope entries carry the event's unit attribution too.
-        self.assertEqual(by_limit["customer_wide_stop"]["task_id"], str(task.id))
-        self.assertEqual(by_limit["customer_wide_stop"]["episode_seq"], 7)
+        self.assertEqual(by_limit[reasons.HARD_FLOOR]["task_id"], str(task.id))
+        self.assertEqual(by_limit[reasons.HARD_FLOOR]["episode_seq"], 7)
+
+    def test_a_postpaid_owners_episode_is_the_pools_stop(self):
+        """The split (slice 6 §7): the same open episode names the pool's
+        word for a postpaid owner, the way the producers name it — by the
+        owner's tenant billing mode, until the ledger carries its own line."""
+        self.tenant.billing_mode = "postpaid"
+        self.tenant.save(update_fields=["billing_mode"])
+        self._open_episode(seq=2)
+        ctx = self._build(None, None)
+        self.assertEqual(ctx[0]["limit"], reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(ctx[0]["stop_scope"], "customer")

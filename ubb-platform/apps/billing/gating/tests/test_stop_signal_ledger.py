@@ -18,6 +18,7 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
+from apps.platform.work import reasons
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -37,12 +38,12 @@ class TestStopTransition:
     def test_first_stop_wins_opens_episode_1_and_emits(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        won = StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop",
+        won = StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode),
                                            balance_micros=-6_000_000)
         assert won == 1
         row = StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP)
         assert row.state == "stopped" and row.episode_seq == 1
-        assert row.reason == "customer_wide_stop"
+        assert row.reason == reasons.customer_stop_reason(t.billing_mode)
         fired = _events("stop.fired", owner_id=c.id)
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
@@ -50,15 +51,15 @@ class TestStopTransition:
     def test_repeat_stop_loses_and_emits_nothing(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") is None
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        assert StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) is None
         assert _events("stop.fired", owner_id=c.id).count() == 1
         assert _events("customer.suspended", "customer_id", c.id).count() == 1
 
     def test_clear_wins_once_and_carries_the_closed_episode(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         closed = StopSignalService.drive_clear(c.id, t, reason=CLEAR_BALANCE_RECOVERED,
                                                balance_micros=2_000_000)
         assert closed == 1
@@ -82,16 +83,16 @@ class TestStopTransition:
     def test_stop_clear_stop_increments_the_episode(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") == 1
+        assert StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) == 1
         assert StopSignalService.drive_clear(c.id, t, reason=CLEAR_BALANCE_RECOVERED) == 1
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") == 2
+        assert StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) == 2
         seqs = [e.payload["episode_seq"] for e in _events("stop.fired", owner_id=c.id).order_by("created_at")]
         assert seqs == [1, 2]
 
     def test_families_have_independent_state_and_episodes(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         # soft_floor (#40) has its own transitions — they must not share
         # state or episode sequence with floor_stop.
         won = StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
@@ -104,25 +105,25 @@ class TestStopTransition:
 
 @pytest.mark.django_db
 class TestSuspensionFold:
-    def test_prepaid_winner_suspends_min_balance_exceeded(self):
+    def test_prepaid_winner_suspends_with_the_hard_floors_word(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop",
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode),
                                      balance_micros=-6_000_000)
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
         suspended = _events("customer.suspended", "customer_id", c.id)
         assert suspended.count() == 1
         assert suspended.get().payload["balance_micros"] == -6_000_000
 
-    def test_postpaid_enforcing_suspends_budget_exceeded(self):
+    def test_postpaid_enforcing_suspends_with_the_pools_word(self):
         t = _tenant(mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "budget_exceeded"
+        assert c.suspension_reason == reasons.CUSTOMER_SPEND_POOL
 
     def test_non_active_owner_gets_the_signal_but_no_status_flip(self):
         # An admin/fraud suspension is never overwritten by the money path —
@@ -130,7 +131,7 @@ class TestSuspensionFold:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1", status="suspended",
                                     suspension_reason="fraud")
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") == 1
+        assert StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) == 1
         c.refresh_from_db()
         assert c.suspension_reason == "fraud"
         assert _events("stop.fired", owner_id=c.id).count() == 1
@@ -190,7 +191,7 @@ class TestAnnouncementStamps:
     def test_winning_stop_stamps_the_stop_fired_event(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         row = StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP)
         fired = _events("stop.fired", owner_id=c.id).get()
         assert row.announce_outbox_id == fired.id
@@ -199,17 +200,17 @@ class TestAnnouncementStamps:
     def test_losing_stop_leaves_the_stamp_alone(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         stamp = StopSignalState.objects.get(
             owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id
-        assert StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop") is None
+        assert StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) is None
         assert StopSignalState.objects.get(
             owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id == stamp
 
     def test_clear_moves_the_stamp_to_the_cleared_event(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         fired_id = _events("stop.fired", owner_id=c.id).get().id
         StopSignalService.drive_clear(c.id, t, reason=CLEAR_BALANCE_RECOVERED)
         row = StopSignalState.objects.get(owner=c, family=FAMILY_FLOOR_STOP)
@@ -221,7 +222,7 @@ class TestAnnouncementStamps:
     def test_soft_pair_stamps_its_own_family_row(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         hard_stamp = StopSignalState.objects.get(
             owner=c, family=FAMILY_FLOOR_STOP).announce_outbox_id
         StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)

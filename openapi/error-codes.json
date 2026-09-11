@@ -169,15 +169,14 @@
       "soft_floor_reached",
       "subtask_depth_exceeded"
     ],
-    "stop_reasons": [
-      "customer_floor",
-      "customer_wide_stop",
+    "reason_codes": [
+      "absolute_deadline",
+      "customer_spend_pool",
+      "hard_floor",
+      "parent_expired",
       "parent_killed",
       "silence_window",
-      "stale",
-      "stale_max_age",
-      "subtask_limit",
-      "task_limit",
+      "task_cogs_ceiling",
       "task_not_active"
     ],
     "stop_scopes": [

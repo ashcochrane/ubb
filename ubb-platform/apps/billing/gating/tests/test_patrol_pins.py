@@ -126,7 +126,7 @@ class TestPin1AmbientRollback:
         # is emitted (there is no state to announce).
         t = _tenant()
         c = _customer(t, balance_micros=5_000_000)
-        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
         assert LiveCounter.read(c.id, t)["stop"] is True
         out = LiveCounter.reconcile(c.id, t)
         assert LiveCounter.read(c.id, t)["stop"] is False
@@ -141,7 +141,7 @@ class TestPin1AmbientRollback:
         # drives the stop and emits — late, never lost.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)  # floor defaults to 0
-        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)  # survived flag
+        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)  # survived flag
         LiveCounter.reconcile(c.id, t)
         fired = _events("stop.fired")
         assert fired.count() == 1
@@ -153,7 +153,7 @@ class TestPin1AmbientRollback:
         # (Redis flush). The patrol re-sets it from the durable family state.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         assert Door.stop_reason(c.id) is None  # durable lane, no flag
         out = LiveCounter.reconcile(c.id, t)
         assert LiveCounter.read(c.id, t)["stop"] is True
@@ -204,7 +204,7 @@ class TestPin3RemintUnannounced:
     def test_dead_lettered_stop_fired_is_reminted_with_the_same_episode(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         first = _stamp_of(c, FAMILY_FLOOR_STOP)
         _set_status(first, "failed")  # dead-lettered past the retry horizon
 
@@ -214,7 +214,7 @@ class TestPin3RemintUnannounced:
         fresh = fired.exclude(id=first).get()
         assert fresh.payload["re_announcement"] is True
         assert fresh.payload["episode_seq"] == 1  # same episode, not a new one
-        assert fresh.payload["reason"] == "customer_wide_stop"
+        assert fresh.payload["reason"] == reasons.customer_stop_reason(t.billing_mode)
         assert _stamp_of(c, FAMILY_FLOOR_STOP) == fresh.id  # stamp updated
         # The dead-lettered row itself is untouched (alerting stays as is).
         assert OutboxEvent.objects.get(id=first).status == "failed"
@@ -222,7 +222,7 @@ class TestPin3RemintUnannounced:
     def test_no_mint_while_an_announcement_is_in_flight(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         # Stamp is pending (in flight) -> the patrol leaves the row alone.
         assert patrol.remint_unannounced_signals(t) == 0
         assert _events("stop.fired").count() == 1
@@ -238,7 +238,7 @@ class TestPin3RemintUnannounced:
         # vacuous success, not a delivery failure.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "skipped")
         assert patrol.remint_unannounced_signals(t) == 0
         assert _events("stop.fired").count() == 1
@@ -246,7 +246,7 @@ class TestPin3RemintUnannounced:
     def test_processed_rows_are_left_alone(self):
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "processed")
         assert patrol.remint_unannounced_signals(t) == 0
 
@@ -259,7 +259,7 @@ class TestPin3RemintUnannounced:
             CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED)
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
         StopSignalState.objects.filter(owner=c).update(
             state=STATE_CLEARED, reason=CLEAR_ENFORCEMENT_MODE_TRANSITION)
@@ -277,7 +277,7 @@ class TestPin4BottomLineOnly:
         # intermediate stop.
         t = _tenant()
         c = _customer(t, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         stop_ev = _stamp_of(c, FAMILY_FLOOR_STOP)
         _set_status(stop_ev, "failed")
         Wallet.objects.filter(customer=c).update(balance_micros=2_000_000)
@@ -319,7 +319,7 @@ class TestPin5SoftFamilyRidesTheSameRails:
         t = _tenant()
         c = _customer(t, balance_micros=-6_000_000, hard=5_000_000,
                       soft=2_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         StopSignalService.drive_soft_crossed(c.id, t)
         _set_status(_stamp_of(c, FAMILY_FLOOR_STOP), "failed")
         _set_status(_stamp_of(c, FAMILY_SOFT_FLOOR), "failed")
@@ -340,10 +340,10 @@ class TestPin6TaskSweep:
         assert patrol.sweep_over_limit_tasks(t) == 1
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata["kill_reason"] == "task_limit"
+        assert task.metadata[STOP_CAUSE_KEY] == reasons.TASK_COGS_CEILING
         ev = _events(TaskKilled.EVENT_TYPE).get()
         assert ev.payload["task_id"] == str(task.id)
-        assert ev.payload["reason_code"] == "task_limit"
+        assert ev.payload["reason_code"] == reasons.TASK_COGS_CEILING
         # WHICH MECHANISM APPLIED IT (#412). The sweep found a unit already
         # over its ceiling that no usage report had stopped, and saying so is
         # the only way a subscriber tells this apart from the ingest lane
@@ -353,9 +353,9 @@ class TestPin6TaskSweep:
         assert task.announce_outbox_id == ev.id
         # ...AND IT IS RECORDED ON THE ROW, which is what lets a later re-mint
         # of this same unit name the mechanism instead of going silent. Keyed
-        # by the constant the writer uses, not by the word: the cases already
-        # here spell `kill_reason` and are left alone, but a key this commit
-        # makes load-bearing is addressed through the module that owns it.
+        # by the constant the writer uses, not by the word: both stored keys
+        # are addressed through the module that owns them (`STOP_CAUSE_KEY`
+        # since #457 renamed it, `STOP_MECHANISM_KEY` since #412).
         assert (task.metadata[STOP_MECHANISM_KEY]
                 == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         # Idempotent: the next pass finds nothing active.
@@ -375,7 +375,7 @@ class TestPin6TaskSweep:
         ev = _events(SubtaskKilled.EVENT_TYPE).get()
         assert ev.payload["subtask_id"] == str(child.id)
         assert ev.payload["parent_task_id"] == str(parent.id)
-        assert ev.payload["reason_code"] == "subtask_limit"
+        assert ev.payload["reason_code"] == reasons.TASK_COGS_CEILING
         assert not _events(TaskKilled.EVENT_TYPE).exists()
 
     def test_under_limit_and_unlimited_tasks_are_left_alone(self):
@@ -396,12 +396,12 @@ class TestPin6TaskSweep:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
-                     stamp=dead.id, meta={"kill_reason": "task_limit"})
+                     stamp=dead.id, meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
         assert patrol.remint_unannounced_kills(t) == 1
         ev = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()
         assert ev.payload["re_announcement"] is True
         assert ev.payload["task_id"] == str(task.id)
-        assert ev.payload["reason_code"] == "task_limit"
+        assert ev.payload["reason_code"] == reasons.TASK_COGS_CEILING
         # ⚠ AND IT NAMES NO MECHANISM, BECAUSE THIS ROW HOLDS NONE — which is
         # a different claim from the one this case made before the terminal
         # events split. A re-mint applies no transition; it repairs the
@@ -432,7 +432,7 @@ class TestPin6TaskSweep:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         _task(t, c, limit=1_000, total=2_000, status="killed", stamp=dead.id,
-              meta={"kill_reason": "task_limit",
+              meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
                     STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST})
 
         assert patrol.remint_unannounced_kills(t) == 1
@@ -447,9 +447,9 @@ class TestPin6TaskSweep:
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
         parent = _task(t, c, limit=1_000_000, status="killed",
-                       meta={"kill_reason": "task_limit"})
+                       meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
         _task(t, c, status="killed", parent=parent,
-              meta={"kill_reason": "parent_killed"})
+              meta={STOP_CAUSE_KEY: reasons.PARENT_KILLED})
         assert patrol.remint_unannounced_kills(t) == 0
         assert not _events(SubtaskKilled.EVENT_TYPE).exists()
         assert not _events(TaskKilled.EVENT_TYPE).exists()
@@ -575,7 +575,7 @@ class TestTheRemintNamesTheStateTheRowCarries:
         c = _customer(t, balance_micros=1_000_000)
         task, dead = self._stopped_with_a_dead_announcement(
             t, c, status=TASK_STATUS_KILLED, announced=TaskExpired,
-            reason=reasons.TASK_LIMIT, mechanism=TRIGGER_SOURCE_USAGE_INGEST,
+            reason=reasons.TASK_COGS_CEILING, mechanism=TRIGGER_SOURCE_USAGE_INGEST,
             limit=1_000, total=2_000)
 
         assert patrol.remint_unannounced_kills(t) == 1
@@ -585,7 +585,7 @@ class TestTheRemintNamesTheStateTheRowCarries:
         assert minted.payload["task_id"] == str(task.id)
         # The cause and the mechanism are read back off the row too, for the
         # same reason the name is: a repair states what the record holds.
-        assert minted.payload["reason_code"] == reasons.TASK_LIMIT
+        assert minted.payload["reason_code"] == reasons.TASK_COGS_CEILING
         assert minted.payload["trigger_source"] == TRIGGER_SOURCE_USAGE_INGEST
 
     def test_a_whole_unit_of_work_that_expired_remints_the_expiry(self):
@@ -615,7 +615,7 @@ class TestTheRemintNamesTheStateTheRowCarries:
         parent = _task(t, c, limit=1_000_000)
         child, dead = self._stopped_with_a_dead_announcement(
             t, c, status=TASK_STATUS_KILLED, announced=SubtaskExpired,
-            reason=reasons.SUBTASK_LIMIT,
+            reason=reasons.TASK_COGS_CEILING,
             mechanism=TRIGGER_SOURCE_USAGE_INGEST, parent=parent,
             limit=2_000, total=3_000)
 
@@ -802,11 +802,11 @@ class TestPatrolBeatAndCounters:
         t = _tenant()
         # Owner A: orphaned flag, healthy balance -> one flag re-alignment.
         a = _customer(t, balance_micros=5_000_000, ext="a")
-        Door.plant_stop(a.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(a.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
         # Owner B: durably stopped, announcement dead-lettered -> one re-mint.
         b = _customer(t, balance_micros=-1_000_000, ext="b")
-        StopSignalService.drive_stop(b.id, t, reason="customer_wide_stop")
-        LiveCounter.ensure_stop_flag(b.id, "customer_wide_stop")
+        StopSignalService.drive_stop(b.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
+        LiveCounter.ensure_stop_flag(b.id, reasons.customer_stop_reason(t.billing_mode))
         _set_status(_stamp_of(b, FAMILY_FLOOR_STOP), "failed")
         # Owner C: an over-limit task the kill flow never reached -> one sweep.
         c = _customer(t, balance_micros=1_000_000, ext="c")
@@ -836,19 +836,19 @@ class TestPatrolBeatAndCounters:
         """
         t = _tenant(enf="off")
         c = _customer(t, balance_micros=1_000_000)
-        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
         task = _task(t, c, limit=1_000, total=5_000)
         reconcile_live_ledgers()
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata["kill_reason"] == "task_limit"
+        assert task.metadata[STOP_CAUSE_KEY] == reasons.TASK_COGS_CEILING
         assert (task.metadata[STOP_MECHANISM_KEY]
                 == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         assert get_patrol_stats(tenant_id=t.id)["patrol_sweep_killed_7d"] == 1
         # The signal suite did not run for this tenant: the orphaned flag
         # an enforcing tenant's pass would have re-aligned still stands, and
         # no re-alignment was counted.
-        assert Door.stop_reason(c.id) == "customer_wide_stop"
+        assert Door.stop_reason(c.id) == reasons.customer_stop_reason(t.billing_mode)
         assert get_patrol_stats(tenant_id=t.id)["patrol_flag_realigned_7d"] == 0
 
     def test_a_crashed_ceiling_kill_on_an_off_tenant_is_retried_by_the_beat(self):
@@ -866,7 +866,7 @@ class TestPatrolBeatAndCounters:
         with patch("apps.platform.events.outbox.write_event",
                    side_effect=RuntimeError("the outbox insert crashed")):
             assert TaskService.kill_and_announce(
-                task.id, reasons.TASK_LIMIT, tenant_id=t.id,
+                task.id, reasons.TASK_COGS_CEILING, tenant_id=t.id,
                 customer_id=c.id,
                 trigger_source=TRIGGER_SOURCE_USAGE_INGEST) is False
         task.refresh_from_db()
@@ -896,7 +896,7 @@ class TestPatrolBeatAndCounters:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
-                     stamp=dead.id, meta={"kill_reason": "task_limit"})
+                     stamp=dead.id, meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
         reconcile_live_ledgers()
         task.refresh_from_db()
         fresh = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()

@@ -17,6 +17,8 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
+from apps.platform.work import reasons
+from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 BATCH_URL = "/api/v1/metering/usage/batch"
@@ -202,7 +204,7 @@ class TestBatchOneRuleParity:
             {"customer_id": str(c.id),
              "idempotency_key": f"k{n0+1}", "provider_cost_micros": 600,
              "event_type": DECLARED,
-             "task_id": str(task.id)},  # 1200 > 1000 → task_limit crossing
+             "task_id": str(task.id)},  # 1200 > 1000 → ceiling crossing
             {"customer_id": str(c.id),
              "idempotency_key": f"k{n0+2}", "provider_cost_micros": 100,
              "event_type": DECLARED,
@@ -219,7 +221,7 @@ class TestBatchOneRuleParity:
         # The tipping item answers accepted=True with the stop verdict riding it.
         assert r2["accepted"] is True
         assert r2["stop"] is True
-        assert r2["stop_reason"] == "task_limit"
+        assert r2["stop_reason"] == reasons.TASK_COGS_CEILING
         assert r2["stop_scope"] == "task"
         assert r2["task_total_provider_cost_micros"] == 1_200
         # A later item on the killed task still LANDS, with task_not_active.
@@ -233,7 +235,7 @@ class TestBatchOneRuleParity:
         assert Posting.objects.filter(tenant=t).count() == 3
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata.get("kill_reason") == "task_limit"
+        assert task.metadata.get(STOP_CAUSE_KEY) == reasons.TASK_COGS_CEILING
         assert task.total_provider_cost_micros == 1_300
         assert task.total_billed_cost_micros == 1_300
         assert task.event_count == 3
@@ -242,7 +244,7 @@ class TestBatchOneRuleParity:
         """A kill_task crash is contained by kill_and_announce (it swallows
         and logs task.kill_failed) — the batch still answers 200 with
         accepted=True items and every event lands. The failed kill leaves the
-        task ACTIVE, so later items keep re-reporting the task_limit crossing
+        task ACTIVE, so later items keep re-reporting the ceiling crossing
         (the next event's verdict retries the kill)."""
         t, c, http, auth = _setup()
         task = self._task(t, c)
@@ -254,12 +256,12 @@ class TestBatchOneRuleParity:
         r1, r2, r3 = body["results"]
         assert r1["accepted"] is True and r1["stop"] is False
         assert r2["accepted"] is True
-        assert r2["stop_reason"] == "task_limit"
+        assert r2["stop_reason"] == reasons.TASK_COGS_CEILING
         assert kill.called
         # The task was never killed -> item 3 still lands; its provider total
         # (1300) remains past the limit, so the crossing verdict repeats.
         assert r3["accepted"] is True
-        assert r3["stop_reason"] == "task_limit"
+        assert r3["stop_reason"] == reasons.TASK_COGS_CEILING
         task.refresh_from_db()
         assert task.status == "active"
         assert task.event_count == 3

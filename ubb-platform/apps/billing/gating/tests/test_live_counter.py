@@ -30,6 +30,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
+from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 
 
@@ -171,7 +172,7 @@ class TestStopFlag:
         out = LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         assert out["balance_micros"] == -1_000_000  # below floor (0)
         assert out["stop"] is True
-        assert out["stop_reason"] == "customer_wide_stop"
+        assert out["stop_reason"] == reasons.customer_stop_reason(t.billing_mode)
         assert out["stop_scope"] == "customer"
         assert LiveCounter.read(c.id, t)["stop"] is True
 
@@ -248,7 +249,7 @@ class TestStopFlag:
             tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))
         # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
-        assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
+        assert res["stop"] is True and res["stop_reason"] == reasons.customer_stop_reason(t.billing_mode)
         assert Posting.objects.filter(id=res["event_id"]).exists()
         # I4: the idempotent replay return ALSO carries the stop verdict
         replay = UsageService.record_usage(
@@ -296,7 +297,7 @@ class TestStopFlag:
             measurements=priced_at(6_000_000))  # crosses the floor -> _set_stop fires
         # The one rule: record_usage returned normally; the tipping event
         # landed and billed.
-        assert res["stop"] is True and res["stop_reason"] == "customer_wide_stop"
+        assert res["stop"] is True and res["stop_reason"] == reasons.customer_stop_reason(t.billing_mode)
         assert Posting.objects.get(id=res["event_id"]).billed_cost_micros == 6_000_000
         # The ambient transaction stayed usable: the UsageRecorded outbox row
         # (written AFTER the failed StopFired insert) still landed.
@@ -428,13 +429,13 @@ class TestStopPropagation:
 
             msg = pubsub.get_message(timeout=1)
             assert msg is not None and msg["type"] == "message"
-            assert msg["data"].decode() == "customer_wide_stop"
+            assert msg["data"].decode() == reasons.customer_stop_reason(t.billing_mode)
             assert pubsub.get_message(timeout=0.2) is None  # exactly one
 
             assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
             event = OutboxEvent.objects.get(event_type="stop.fired")
             assert event.payload["owner_id"] == str(c.id)
-            assert event.payload["reason"] == "customer_wide_stop"
+            assert event.payload["reason"] == reasons.customer_stop_reason(t.billing_mode)
             assert event.payload["scope"] == "customer"
             assert event.payload["tenant_id"] == str(t.id)
         finally:
@@ -484,7 +485,7 @@ class TestStopPropagation:
             out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
             assert out["stop"] is True
             msg = pubsub.get_message(timeout=1)
-            assert msg is not None and msg["data"].decode() == "customer_wide_stop"
+            assert msg is not None and msg["data"].decode() == reasons.customer_stop_reason(t.billing_mode)
             # Episode still open on the ledger -> the re-set lost the transition.
             assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
         finally:

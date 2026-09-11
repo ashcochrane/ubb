@@ -23,6 +23,7 @@ from apps.billing.topups.models import AutoTopUpConfig
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
+from apps.platform.work import reasons
 
 
 def _tenant(**kw):
@@ -677,7 +678,7 @@ class TestDrawdownTail:
             event_type="customer.suspended").count() == 1
         c.refresh_from_db()
         assert c.status == "suspended"
-        assert c.suspension_reason == "min_balance_exceeded"
+        assert c.suspension_reason == reasons.HARD_FLOOR
 
     def test_balance_low_fires_under_the_topup_trigger(self):
         t = _tenant()

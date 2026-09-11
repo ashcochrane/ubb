@@ -123,9 +123,13 @@ route's items, against the single-call body they mirror:
 - Envelope counters: `accepted`/`rejected`.
 
 Verdict words come from the same registry (`verdicts` section):
-`ingest_rejections` reference problem codes; `stop_reasons`, `stop_scopes`,
-and `pre_check_reasons` are the closed vocabularies of the spend-control
-surface (`apps/platform/work/reasons.py`, `RiskService`).
+`ingest_rejections` reference problem codes; `reason_codes`, `stop_scopes`,
+and `pre_check_reasons` are the vocabularies of the spend-control surface
+(`apps/platform/work/reasons.py`, `RiskService`). `reason_codes` is a mirror
+of the reason module — the registry's seven known `reason_code` values plus
+the one UBB-produced verdict that is not a bound (`task_not_active`) — and
+`api/v1/tests/test_problem_contract.py` pins it to `core.vocabulary`, so the
+mirror cannot drift (#457).
 
 ## Idempotency is a domain concept
 

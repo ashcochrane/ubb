@@ -26,6 +26,7 @@ from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.work import reasons
 
 
 @pytest.mark.django_db
@@ -77,7 +78,7 @@ class TestEnforcementSeam:
         #    the breaching event IS still recorded + charged (I3, not rolled back).
         r2 = record("k2", 8_000_000, task_id).json()
         assert r2["stop"] is True
-        assert r2["stop_reason"] == "customer_wide_stop"
+        assert r2["stop_reason"] == reasons.HARD_FLOOR
         assert Posting.objects.filter(tenant=t, customer=c, idempotency_key="k2").exists()
 
         # 4. Start-gate now BLOCKS a new task. #39: the winning stop transition

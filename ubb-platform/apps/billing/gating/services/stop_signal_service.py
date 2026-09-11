@@ -122,7 +122,12 @@ class StopSignalService:
             postpaid = tenant.billing_mode == "postpaid"
             if (not postpaid or enforcing(tenant)) and owner.status == "active":
                 owner.status = "suspended"
-                owner.suspension_reason = "budget_exceeded" if postpaid else "min_balance_exceeded"
+                # THE THING THAT SUSPENDED THE OWNER IS THE STOP THAT OPENED
+                # THE EPISODE, AND IT IS ONE WORD (slice 6 §9): the caller
+                # named which bound was reached — the wallet floor's or the
+                # pool's — and the suspension records the same word, which
+                # is also what `LiveCounter._MONEY_SUSPEND_REASONS` clears.
+                owner.suspension_reason = reason
                 owner.save(update_fields=["status", "suspension_reason", "updated_at"])
                 write_event(CustomerSuspended(
                     tenant_id=str(tenant.id), customer_id=str(owner.id),

@@ -552,19 +552,22 @@ def _drawdown_tail(tenant):
             # drive_stop is savepoint-isolated, and a failure here is
             # re-driven by the hourly reconcile.
             if crossed_floor(old_balance, new_balance, limit):
-                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
+                # This lane crosses the wallet's CONFIGURED floor and nothing
+                # else, so the bound it names is the hard floor's (slice 6
+                # §7, the split of the one customer-wide word).
+                from apps.platform.work.reasons import HARD_FLOOR
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
                 from apps.billing.gating.services.live_counter import (
                     LiveCounter)
                 try:
                     StopSignalService.drive_stop(
-                        owner.id, tenant, reason=CUSTOMER_WIDE_STOP,
+                        owner.id, tenant, reason=HARD_FLOOR,
                         balance_micros=new_balance)
                 except Exception:
                     logger.warning("billing.floor_stop_transition_failed",
                                    extra={"data": {"owner_id": str(owner.id)}})
-                LiveCounter.ensure_stop_flag(owner.id, CUSTOMER_WIDE_STOP)
+                LiveCounter.ensure_stop_flag(owner.id, HARD_FLOOR)
             # #40 §F — the soft floor's ONLY crossing detector (no fast lane,
             # no Redis threshold: signal latency is outbox latency). Crossing
             # the resolved soft line drives the soft_floor family of the same
@@ -585,13 +588,15 @@ def _drawdown_tail(tenant):
                                    extra={"data": {"owner_id": str(owner.id)}})
         elif past_floor(new_balance, limit) and owner.status == "active":
             # enforcement off: Tier-1 baseline suspension, byte-for-byte
-            # (no signal suite, no ledger).
+            # (no signal suite, no ledger). The suspension records the bound
+            # that was reached — the hard floor's word (slice 6 §9).
+            from apps.platform.work.reasons import HARD_FLOOR
             owner.status = "suspended"
-            owner.suspension_reason = "min_balance_exceeded"  # P6b/D15
+            owner.suspension_reason = HARD_FLOOR  # P6b/D15
             owner.save(update_fields=["status", "suspension_reason", "updated_at"])
             write_event(CustomerSuspended(
                 tenant_id=str(tenant.id), customer_id=str(owner.id),
-                reason="min_balance_exceeded", balance_micros=new_balance))
+                reason=HARD_FLOOR, balance_micros=new_balance))
         try:
             config = AutoTopUpConfig.objects.get(customer=owner, is_enabled=True)
         except AutoTopUpConfig.DoesNotExist:

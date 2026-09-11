@@ -20,7 +20,9 @@ from ninja.errors import (
 )
 
 from core.problems import PROBLEMS, REGISTRY_PATH, VERDICTS, Problem
+from core.vocabulary import REASON_CODE_KNOWN_VALUES
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.work import reasons
 
 SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 # The status vocabulary #63 settled: 400 malformed/bad cursor, 401, 403,
@@ -73,6 +75,27 @@ class RegistryDocumentTest(TestCase):
         self.assertTrue(
             set(VERDICTS["ingest_rejections"]) <= set(PROBLEMS)
         )
+
+    def test_the_reason_codes_are_the_registrys_seven_plus_the_one_verdict(self):
+        """The published stop list is a MIRROR of the reason module, and this
+        is the pin that stops it drifting again (#457, slice 6 §13).
+
+        It drifted once already: #412 renamed a constant and left the list
+        advertising a word no producer emits while omitting the one every
+        sweeper wrote — found by review, by no gate. Pinned to
+        `core.vocabulary` (the seven known values, generated from the
+        registry) plus the one UBB-produced verdict an acknowledgement can
+        carry that is deliberately not a registry value (`task_not_active`,
+        argued in `apps/platform/work/reasons.py`), and to nothing else: no
+        retired spelling survives here because the stored rows that carried
+        them were migrated (`work/migrations/0026`), so a reader compares by
+        constant identity and never by a legacy map. Mutate either side and
+        this goes red.
+        """
+        self.assertEqual(set(VERDICTS["reason_codes"]),
+                         set(REASON_CODE_KNOWN_VALUES) | {reasons.TASK_NOT_ACTIVE})
+        self.assertEqual(set(VERDICTS["reason_codes"]), reasons.ALL_REASONS)
+        self.assertNotIn(reasons.SUSPENDED, VERDICTS["reason_codes"])
 
     def test_unregistered_code_is_refused_at_raise_time(self):
         with self.assertRaises(ValueError):

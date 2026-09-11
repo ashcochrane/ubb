@@ -66,7 +66,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
+from apps.platform.work.reasons import HARD_FLOOR
 
 WALLET_MICROS = 100_000_000  # $100 of real, unspent money
 BILLED_MICROS = 30_000_000  # $30 the tenant is charged for the failed request
@@ -199,7 +199,7 @@ class RecordingDriftPinTest(TestCase):
         self.assertEqual(self._durable_balance(), WALLET_MICROS)
         self.assertEqual(self._live_balance(), WALLET_MICROS - OVERSPEND_MICROS)
         self.assertLess(self._live_balance(), 0, "the debit crossed the floor")
-        self.assertEqual(Door.stop_reason(self.customer.id), CUSTOMER_WIDE_STOP)
+        self.assertEqual(Door.stop_reason(self.customer.id), HARD_FLOOR)
 
         # The next request is legitimate and the wallet is untouched, but the
         # verdict rides the stranded counter. One-rule still holds: the event
@@ -208,5 +208,5 @@ class RecordingDriftPinTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], CUSTOMER_WIDE_STOP)
+        self.assertEqual(body["stop_reason"], HARD_FLOOR)
         self.assertEqual(body["stop_scope"], "customer")

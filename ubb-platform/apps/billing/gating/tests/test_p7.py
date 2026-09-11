@@ -17,6 +17,7 @@ from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.work import reasons
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -33,7 +34,7 @@ class TestCleanup:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Door.set_balance(c.id, 1_000_000)
-        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
         LiveCounter.cleanup(t)
         assert Door.balance(c.id) is None
         assert Door.stop_reason(c.id) is None
@@ -42,7 +43,7 @@ class TestCleanup:
         t1 = _tenant()
         t2 = _tenant()
         c2 = Customer.objects.create(tenant=t2, external_id="c2")
-        Door.plant_stop(c2.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(c2.id, reasons.customer_stop_reason(t2.billing_mode), ttl=False)
         LiveCounter.cleanup(t1)  # cleaning t1 must not touch t2's keys
         assert Door.stop_reason(c2.id) is not None
 
@@ -55,9 +56,9 @@ class TestCleanup:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=-1_000_000)
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         StopSignalService.drive_clear(c.id, t, reason="balance_recovered")
-        StopSignalService.drive_stop(c.id, t, reason="customer_wide_stop")
+        StopSignalService.drive_stop(c.id, t, reason=reasons.customer_stop_reason(t.billing_mode))
         row = StopSignalState.objects.get(owner=c)
         assert row.episode_seq == 2  # a real history, not a fresh row
         cleared_before = OutboxEvent.objects.filter(
@@ -75,7 +76,7 @@ class TestCleanup:
         # Ids never restart: the first real crossing after re-enable opens
         # episode 3, not a colliding episode 1.
         assert StopSignalService.drive_stop(
-            c.id, t, reason="customer_wide_stop") == 3
+            c.id, t, reason=reasons.customer_stop_reason(t.billing_mode)) == 3
 
 
 @pytest.mark.django_db
@@ -132,7 +133,7 @@ class TestEnforcementModeFlip:
     def test_flip_clears_stale_keys(self, django_capture_on_commit_callbacks):
         t = _tenant(enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        Door.plant_stop(c.id, "customer_wide_stop", ttl=False)
+        Door.plant_stop(c.id, reasons.customer_stop_reason(t.billing_mode), ttl=False)
         _k, raw = TenantApiKey.create_key(t, label="t")
         with django_capture_on_commit_callbacks(execute=True):
             resp = self._patch(raw, {"enforcement_mode": "off"})

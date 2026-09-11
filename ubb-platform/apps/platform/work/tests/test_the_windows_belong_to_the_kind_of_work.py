@@ -19,9 +19,10 @@ The two windows bound different things and neither implies the other:
     rejected: it is the guard that stops any tenant getting an immortal unit.
 
 ⚠ EVERY ASSERTION ABOUT A STOP REASON NAMES A CONSTANT, NEVER A STRING VALUE.
-One of the two the sweepers write is sourced from the registry and one keeps
-this module's own word, so a test spelling either would be asserting the very
-thing that is allowed to move.
+Both of the words the sweepers write are sourced from the registry (the
+deadline's since slice 6 coined it, #457), and the key they are stored under
+is named once in `services`; a test spelling any of them would be asserting
+the very thing that is allowed to move.
 """
 import ast
 from datetime import timedelta
@@ -41,7 +42,7 @@ from apps.platform.work.queries import (
     ABSOLUTE_DEADLINE_BACKSTOP_SECONDS, EXPIRY_LADDER_FALLBACK,
     SILENCE_WINDOW_BACKSTOP_SECONDS, expiry_windows, task_rollup_by_type,
     task_type_policy)
-from apps.platform.work.services import TaskService
+from apps.platform.work.services import STOP_CAUSE_KEY, TaskService
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 import core.vocabulary as generated
 from core.vocabulary import (
@@ -58,6 +59,9 @@ HOUR = 60 * 60
 TRIGGER_SOURCE_NAMES = frozenset(
     name for name in vars(generated)
     if name.startswith("TRIGGER_SOURCE_") and not name.endswith("_KNOWN_VALUES"))
+REASON_CODE_NAMES = frozenset(
+    name for name in vars(generated)
+    if name.startswith("REASON_CODE_") and not name.endswith("_KNOWN_VALUES"))
 
 
 class WindowTestBase(TestCase):
@@ -227,7 +231,7 @@ class TheDeadlineCannotBeRemovedTest(WindowTestBase):
         reap_stale_tasks()
         unit.refresh_from_db()
         self.assertEqual(unit.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(unit.metadata.get("kill_reason"), reasons.STALE_MAX_AGE)
+        self.assertEqual(unit.metadata.get(STOP_CAUSE_KEY), reasons.ABSOLUTE_DEADLINE)
 
 
 class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
@@ -246,7 +250,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         # One tenant, one silence, two answers — which is the whole point.
         self.assertEqual(slow.status, TASK_STATUS_ACTIVE)
         self.assertEqual(ordinary.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(ordinary.metadata.get("kill_reason"),
+        self.assertEqual(ordinary.metadata.get(STOP_CAUSE_KEY),
                          reasons.SILENCE_WINDOW)
 
     def test_a_declared_silence_window_narrows_it_too(self):
@@ -268,8 +272,8 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         reap_stale_tasks()
         runaway.refresh_from_db()
         self.assertEqual(runaway.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(runaway.metadata.get("kill_reason"),
-                         reasons.STALE_MAX_AGE)
+        self.assertEqual(runaway.metadata.get(STOP_CAUSE_KEY),
+                         reasons.ABSOLUTE_DEADLINE)
 
     def test_the_announcement_names_the_mechanism_beside_the_cause(self):
         """Two fields because they are two questions (#412). The reason moves
@@ -292,7 +296,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         self.assertEqual(announced[str(quiet.id)]["reason_code"],
                          reasons.SILENCE_WINDOW)
         self.assertEqual(announced[str(overrun.id)]["reason_code"],
-                         reasons.STALE_MAX_AGE)
+                         reasons.ABSOLUTE_DEADLINE)
         for payload in announced.values():
             self.assertEqual(payload["trigger_source"],
                              TRIGGER_SOURCE_STALE_REAPER)
@@ -306,7 +310,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         self._age(unit, created=timedelta(hours=2), reported=timedelta(hours=1))
         reap_stale_tasks()
         unit.refresh_from_db()
-        self.assertEqual(unit.metadata.get("kill_reason"), reasons.STALE_MAX_AGE)
+        self.assertEqual(unit.metadata.get(STOP_CAUSE_KEY), reasons.ABSOLUTE_DEADLINE)
 
     def test_work_that_never_reported_is_not_silent(self):
         """Silence is measured from the last report, so a unit that has never
@@ -488,8 +492,10 @@ class TheWordsTheseStopsTravelUnderTest(TestCase):
     The two windows above each produce a stop, and a stop's cause is a registry
     concept whose declared backend consumer IS that module. So the windows and
     the words they emit are one subject: the module holds by reference every
-    value the registry has a word for and this slice can produce, and keeps its
-    own only where the registry has none.
+    value the registry has a word for — all seven since slice 6 coined the
+    deadline's and the expiry cascade's (#457) — and keeps its own only for the
+    two the registry deliberately does not list, the not-active verdict and
+    the suspension tag.
 
     ⚠ THE ASSERTIONS READ THE MODULE'S OWN IMPORT AND ASSIGNMENT STATEMENTS,
     not the values. Comparing a constant to the generated one is satisfied by a
@@ -530,27 +536,39 @@ class TheWordsTheseStopsTravelUnderTest(TestCase):
         self.assertEqual(reasons.KNOWN_TRIGGER_SOURCES,
                          TRIGGER_SOURCE_KNOWN_VALUES)
 
-    def test_exactly_two_stop_causes_are_held_by_reference(self):
-        """And which two is the claim, not how many. The other three known
-        values are end-state names for mechanisms that do not exist yet, so
-        importing them would be this module performing another slice's renames
-        on paths it cannot drive."""
+    def test_every_stop_cause_the_registry_knows_is_held_by_reference(self):
+        """All seven, each bound to exactly one module constant — the
+        `reason_code` payment in full (#457). Derived from the artifact rather
+        than listed, so an eighth registry value is a red line HERE (the
+        module has not bound it) rather than a silent partial payment."""
         imported, bound = self._referenced("REASON_CODE_")
-        self.assertEqual(imported, {"REASON_CODE_PARENT_KILLED",
-                                    "REASON_CODE_SILENCE_WINDOW"})
-        self.assertEqual(bound, {"PARENT_KILLED": "REASON_CODE_PARENT_KILLED",
-                                 "SILENCE_WINDOW": "REASON_CODE_SILENCE_WINDOW"})
+        self.assertEqual(imported, REASON_CODE_NAMES)
+        self.assertEqual(set(bound.values()), REASON_CODE_NAMES)
+        self.assertEqual(len(bound), len(REASON_CODE_NAMES),
+                         "two module constants bound to one generated name")
+        self.assertEqual(reasons.KNOWN_REASONS, REASON_CODE_KNOWN_VALUES)
+
+    def test_the_two_non_registry_verdicts_are_the_only_inline_words(self):
+        """The not-active verdict and the suspension tag are UBB-produced,
+        travel under `allow_unknown`, and are deliberately not registry
+        values — so they are the only reason-shaped literals the module may
+        spell, and nothing else in `ALL_REASONS` is one."""
+        self.assertNotIn(reasons.TASK_NOT_ACTIVE, REASON_CODE_KNOWN_VALUES)
+        self.assertNotIn(reasons.SUSPENDED, REASON_CODE_KNOWN_VALUES)
+        self.assertEqual(reasons.ALL_REASONS - REASON_CODE_KNOWN_VALUES,
+                         {reasons.TASK_NOT_ACTIVE})
+        self.assertNotIn(reasons.SUSPENDED, reasons.ALL_REASONS)
 
     def test_the_silence_windows_stop_is_a_word_the_registry_knows(self):
         self.assertIn(reasons.SILENCE_WINDOW, REASON_CODE_KNOWN_VALUES)
 
-    def test_the_deadlines_stop_travels_as_a_word_the_registry_does_not_know(self):
-        """Legal rather than owed: the concept is open, so a value it has never
-        seen travels instead of being refused at the boundary. Coining one here
-        would be this module inventing a name the registry owns."""
-        self.assertNotIn(reasons.STALE_MAX_AGE, REASON_CODE_KNOWN_VALUES)
+    def test_the_deadlines_stop_is_a_word_the_registry_knows(self):
+        """It travelled under this module's own spelling until slice 6 coined
+        the registry's (#457); the migration that rewrote the stored rows is
+        `work/migrations/0026`."""
+        self.assertIn(reasons.ABSOLUTE_DEADLINE, REASON_CODE_KNOWN_VALUES)
 
     def test_the_two_a_sweeper_writes_are_two_and_are_both_stop_reasons(self):
-        self.assertNotEqual(reasons.SILENCE_WINDOW, reasons.STALE_MAX_AGE)
+        self.assertNotEqual(reasons.SILENCE_WINDOW, reasons.ABSOLUTE_DEADLINE)
         self.assertIn(reasons.SILENCE_WINDOW, reasons.ALL_REASONS)
-        self.assertIn(reasons.STALE_MAX_AGE, reasons.ALL_REASONS)
+        self.assertIn(reasons.ABSOLUTE_DEADLINE, reasons.ALL_REASONS)

@@ -5627,7 +5627,17 @@
           "stop_reason": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "x-ubb-concept": "reason_code",
+                "x-ubb-known-values": [
+                  "task_cogs_ceiling",
+                  "customer_spend_pool",
+                  "parent_killed",
+                  "silence_window",
+                  "hard_floor",
+                  "absolute_deadline",
+                  "parent_expired"
+                ]
               },
               {
                 "type": "null"
@@ -20680,7 +20690,17 @@
                       "reason_code": {
                         "default": "",
                         "title": "Reason Code",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "subtask_id": {
                         "default": "",
@@ -20842,7 +20862,17 @@
                       "reason_code": {
                         "default": "",
                         "title": "Reason Code",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "subtask_id": {
                         "default": "",
@@ -20999,7 +21029,17 @@
                       "reason_code": {
                         "default": "",
                         "title": "Reason Code",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "task_cogs_ceiling_micros": {
                         "default": 0,
@@ -21156,7 +21196,17 @@
                       "reason_code": {
                         "default": "",
                         "title": "Reason Code",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
                       },
                       "task_cogs_ceiling_micros": {
                         "default": 0,

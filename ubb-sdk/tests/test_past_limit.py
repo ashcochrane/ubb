@@ -7,8 +7,9 @@ from unittest.mock import patch, MagicMock
 from ubb.billing import BillingClient
 from ubb.exceptions import UBBStopRequested
 from ubb.metering import MeteringClient
+from ubb.vocabulary import REASON_CODE_TASK_COGS_CEILING
 
-_CTX = [{"limit": "task_limit", "stop_scope": "task",
+_CTX = [{"limit": REASON_CODE_TASK_COGS_CEILING, "stop_scope": "task",
          "tripped_at": "2026-07-17T10:00:00+00:00", "episode_seq": None,
          "task_id": "task_1", "subtask_id": None, "arrived_after": False}]
 
@@ -27,7 +28,7 @@ class StopContextAckTest(unittest.TestCase):
         on the signal's ``result`` — the same acknowledgement, nothing lost."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known",
-            "stop": True, "stop_reason": "task_limit",
+            "stop": True, "stop_reason": REASON_CODE_TASK_COGS_CEILING,
             "stop_scope": "task", "stop_context": _CTX})
         with self.assertRaises(UBBStopRequested) as cm:
             self.client.record_usage(customer_id="c1",
@@ -92,7 +93,7 @@ class PastLimitReportTest(unittest.TestCase):
     def test_report_hits_the_endpoint_and_returns_the_body(self, mock_get):
         body = {"customer_id": "c1", "billing_owner_id": "c1",
                 "since": None, "until": None,
-                "episodes": [{"family": "task", "limit": "task_limit",
+                "episodes": [{"family": "task", "limit": REASON_CODE_TASK_COGS_CEILING,
                               "events": [], "event_count": 0}],
                 "totals_per_limit": {}}
         mock_get.return_value = MagicMock(status_code=200, json=lambda: body)

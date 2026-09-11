@@ -366,60 +366,40 @@ KILLED_WITH_ITS_PARENT = CascadeRecord(
 
 #: A PARENT NOBODY EVER TOLD UBB ABOUT. Its contained work goes the same way: a
 #: parent nobody reported on is a parent whose contained work nobody reported on
-#: either.
+#: either — and it records CONTAINMENT, not the parent's cause, on the same
+#: footing as the kill cascade above (slice 6 §7, #457).
 #:
-#: ⚠ THE REASON IS THE SILENCE WINDOW ON EVERY EXPIRY CASCADE, WHICH THE SPEC
-#: RULES AND WHICH IS AN APPROXIMATION IN ONE OF THE THREE CASES. Recorded here
-#: in full, because the case it approximates is one THIS APP ALREADY DECIDED THE
-#: OTHER WAY ONE MODULE OVER, and a reader who finds that first is entitled to
-#: think this was written without seeing it.
-#:
-#: The three ways a parent can reach an expiry, and what each leaves on the row:
-#:
-#:   the announcing sweeper, silence     parent `silence_window`, contained
-#:                                       work `silence_window` — exactly true,
-#:                                       since reporting usage on contained work
-#:                                       stamps its parent's heartbeat too, so a
-#:                                       parent reaped for silence really did
-#:                                       have nothing reported underneath it.
-#:   the announcing sweeper, deadline    parent `stale_max_age`, contained work
-#:                                       `silence_window` — ⚠ THE TWO ROWS OF
-#:                                       ONE TREE DISAGREE, IN ONE TRANSACTION.
-#:   the unannounced sweeper             parent NO CAUSE AT ALL (it calls
-#:                                       `expire_task` with no reason),
-#:                                       contained work `silence_window`.
-#:
-#: ⚠ `tasks._reason_for` RULES AGAINST THIS WORD FOR THE MIDDLE CASE, in the
-#: parent's own right: it asks the absolute deadline FIRST because "reporting
-#: the silence instead would say the tenant stopped talking about work that had
-#: in fact run out of time." That argument transfers to contained work
-#: unchanged, so this record is NOT the reading that module would have chosen.
-#:
-#: It is kept because every alternative is worse HERE and none of them is this
-#: slice's to take. Carrying the parent's cause down contradicts the ticket's
-#: own table, which names this word unconditionally, and leaves the third case
-#: with nothing at all to carry. Coining `parent_expired` would be this app
-#: minting a value in `reason_code`, an OPEN concept whose known values another
-#: slice owns — the same refusal that leaves `STALE_MAX_AGE` this app's own word
-#: rather than a registry one. And the row is not left blank, because *this
-#: stopped because it was contained in something that ended* is exactly what the
-#: mechanism beside it says, and the mechanism is recorded unconditionally.
-#:
-#: ⚠ RESIDUAL, for the slice that owns `reason_code`: the concept has no known
-#: value meaning *the unit containing this one ended*, and until it does, one of
-#: these three cases records a cause that its own parent's row contradicts.
+#: ⚠ IT USED TO RECORD THE SILENCE WINDOW UNCONDITIONALLY, which was exactly
+#: true in one of the three ways a parent reaches an expiry and an approximation
+#: in the other two: a parent reaped on its ABSOLUTE DEADLINE recorded that
+#: word while its contained work recorded the silence, so two rows of one tree
+#: disagreed in one transaction, and the unannounced sweeper's parent recorded
+#: no cause at all while its contained work still recorded one. `tasks.
+#: _reason_for` had already ruled against the silence word for the deadline
+#: case in the parent's own right ("reporting the silence instead would say the
+#: tenant stopped talking about work that had in fact run out of time"), and
+#: that argument transfers to contained work unchanged. Carrying the parent's
+#: cause down was the other repair and is the wrong one: the third case has no
+#: cause to carry, and *why this stopped* on contained work is that the thing
+#: containing it ended — which is what this word says, whatever window the
+#: parent ran out of. The registry coined it for exactly this row.
 EXPIRED_WITH_ITS_PARENT = CascadeRecord(
-    TASK_STATUS_EXPIRED, stop_reason=reasons.SILENCE_WINDOW)
+    TASK_STATUS_EXPIRED, stop_reason=reasons.PARENT_EXPIRED)
 
 #: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT — the cause
 #: and the mechanism, side by side and never merged (ADR-0006 §5).
 #:
-#: ⚠ THE CAUSE'S KEY IS STILL SPELLED FOR A KILL AND CARRIES EVERY OTHER STOP
-#: TOO (#408). Both sweepers write `expired` and both stamp their reason here;
-#: renaming the key belongs with the ticket that wires the concept's consumers,
-#: and every reader gates on the state first. Named here rather than spelled at
-#: each write so the rename is one edit on this side of it.
-STOP_CAUSE_KEY = "kill_reason"
+#: ⚠ THE CAUSE'S KEY IS THE CONCEPT'S OWN NAME, AND EVERY STORED ROW WAS MOVED
+#: ONTO IT ONCE (slice 6 §8, #457). It was spelled for a kill and carried every
+#: other stop too; `work/migrations/0026` renamed it on every unit row holding
+#: it and rewrote the retired values beneath it in the same pass, so no reader
+#: needs the old spelling and none holds it. Named here rather than spelled at
+#: each write, and read through this name by the patrol's re-mint, the
+#: stop-context tagging and the retired report. Every reader still gates on the
+#: state first: `killed` means UBB stopped the work on a spend signal and
+#: `expired` means nobody ever told UBB how it ended, and the cause under this
+#: key says which bound was reached in either case.
+STOP_CAUSE_KEY = "reason_code"
 STOP_MECHANISM_KEY = "trigger_source"
 
 #: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the words the start

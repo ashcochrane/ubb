@@ -74,6 +74,18 @@ PricingStatus = Annotated[
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
 
+#: WHY A STOP FIRED, beside the mechanism above — the `reason_code` concept on
+#: the four terminal payloads (slice 6 §7, #457). Open for the reason the
+#: mechanism is: a stop can originate outside UBB, so the marker renders
+#: documentation metadata beside an untouched `type: string` and a subscriber
+#: must accept a cause it has not seen. The field is here because the backend
+#: now serves all seven known values (`apps/platform/work/reasons.py`), and a
+#: served concept with an `openapi` consumer must reach the document. The same
+#: marker sits on the acknowledgement's `stop_reason` (`api/v1/schemas.py`),
+#: spelled again there for ADR-001's reason.
+ReasonCode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "reason_code"})]
+
 #: How the customer spend pool that announced a threshold is enforced (#456,
 #: slice 6 §13). Closed — the marker renders the registry's two-value `enum` on
 #: this payload's node exactly as it does on the three pool schemas, because a
@@ -533,8 +545,11 @@ class _TerminalStop:
     #: value sets are two fields, and a field named for neither answers a
     #: reader nothing. The set is `open` and this producer drives part of it,
     #: which is what an open set is for — a subscriber must accept a cause it
-    #: has not seen rather than reject the event carrying it (ADR-0003).
-    reason_code: str = ""
+    #: has not seen rather than reject the event carrying it (ADR-0003). It
+    #: says WHICH BOUND was reached — the unit's own ceiling at either
+    #: altitude, a silence window, the absolute deadline — and never the
+    #: altitude, which is in the event's name (#457).
+    reason_code: ReasonCode = ""
     #: THE MECHANISM, beside the cause (#412) — see `TriggerSource` above for
     #: why an open set may ship a subset. Every path that APPLIES a stop names
     #: itself, and a patrol re-mint reads back the mechanism the stopped row

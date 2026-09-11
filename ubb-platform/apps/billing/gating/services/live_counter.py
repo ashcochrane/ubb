@@ -72,6 +72,7 @@ from core.crossing import (spend_pool_stop_threshold, crossed_live, floor_line,
                            month_label_bounds, past_floor, recovered_floor,
                            same_month)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
+from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 
 logger = logging.getLogger("ubb.billing")
@@ -262,9 +263,12 @@ class LiveCounter:
             # non-crossing event must not clear a flag a sibling run set — the
             # flag lifts only on recovery (credit / reconcile).
             if LiveCounter._crossed(mode, v, owner_id, tenant):
-                from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
+                # WHICH BOUND WAS REACHED — the pool's or the wallet floor's
+                # — is the same fork as the branch above (slice 6 §7).
+                from apps.platform.work.reasons import customer_stop_reason
                 opened = LiveCounter._set_stop(
-                    owner_id, CUSTOMER_WIDE_STOP, tenant=tenant,
+                    owner_id, customer_stop_reason(tenant.billing_mode),
+                    tenant=tenant,
                     balance_micros=v if mode == "prepaid" else 0)
                 if opened is not None:
                     # THIS debit won the stop transition — the caller's event
@@ -417,7 +421,9 @@ class LiveCounter:
             return False
 
     # Monetary suspension reasons that may be auto-cleared on recovery (D15).
-    _MONEY_SUSPEND_REASONS = ("min_balance_exceeded", "budget_exceeded")
+    # The thing that suspended the owner is the stop that opened the episode,
+    # and it is one word (slice 6 §9): the wallet floor's or the pool's.
+    _MONEY_SUSPEND_REASONS = (reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL)
 
     @staticmethod
     def _maybe_unsuspend(owner_id):
@@ -621,13 +627,14 @@ class LiveCounter:
         fast-lane flag is re-aligned best-effort either way (patrol job
         §C.2: durable truth owns the verdict cache); returns True when the
         flag actually changed — the #44 flag-realignment outcome."""
-        from apps.platform.work.reasons import CUSTOMER_WIDE_STOP
+        from apps.platform.work.reasons import customer_stop_reason
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService)
         if crossed:
-            StopSignalService.drive_stop(owner_id, tenant, reason=CUSTOMER_WIDE_STOP,
+            reason = customer_stop_reason(tenant.billing_mode)
+            StopSignalService.drive_stop(owner_id, tenant, reason=reason,
                                          balance_micros=basis_micros)
-            return LiveCounter.ensure_stop_flag(owner_id, CUSTOMER_WIDE_STOP)
+            return LiveCounter.ensure_stop_flag(owner_id, reason)
         return LiveCounter.resume(owner_id, tenant, reason=CLEAR_RECONCILED,
                                   balance_micros=basis_micros)
 

@@ -32,6 +32,8 @@ from apps.platform.event_types.tests._helpers import (
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
+from apps.platform.work import reasons
+from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.work.services import (
     PARENT_NOT_ACTIVE, SUBTASK_DEPTH_EXCEEDED, CloseDeclaration, TaskService)
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -145,10 +147,10 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         sub.refresh_from_db()
         parent.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
+        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], "subtask_limit")
+        self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["stop_scope"], "subtask")
         self.assertEqual(body["task_id"], str(sub.id))
         self.assertEqual(body["parent_task_id"], str(parent.id))
@@ -159,7 +161,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         payload = self._events(SubtaskKilled.EVENT_TYPE).get().payload
         self.assertEqual(payload["subtask_id"], str(sub.id))
         self.assertEqual(payload["parent_task_id"], str(parent.id))
-        self.assertEqual(payload["reason_code"], "subtask_limit")
+        self.assertEqual(payload["reason_code"], reasons.TASK_COGS_CEILING)
         self.assertEqual(payload["total_provider_cost_micros"], 5_000_000)
         self.assertEqual(payload["task_cogs_ceiling_micros"], 5_000_000)
 
@@ -231,7 +233,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
                                 bills=11_000_000)
         body = resp.json()
         self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["stop_scope"], "task")
         self.assertEqual(body["parent_task_id"], str(parent.id))
 
@@ -239,11 +241,11 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         tripping_sub.refresh_from_db()
         sibling_sub.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_KILLED)
-        self.assertEqual(parent.metadata["kill_reason"], "task_limit")
+        self.assertEqual(parent.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
         # Containment cuts downward: BOTH subtasks are cascade-killed ...
         self.assertEqual(tripping_sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sibling_sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sibling_sub.metadata["kill_reason"], "parent_killed")
+        self.assertEqual(sibling_sub.metadata[STOP_CAUSE_KEY], "parent_killed")
         # ... but only the parent announces (the subtasks crossed nothing).
         self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
         self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 0)
@@ -260,14 +262,14 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
                                 bills=12_000_000)
         body = resp.json()
         # The WIDEST tripped scope wins the scalar slot: stop the whole tree.
-        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["stop_scope"], "task")
         # Both kills happened; both announcements fired — the subtask's own
         # crossing is not swallowed by the parent's cascade.
         self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
         self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
         sub.refresh_from_db()
-        self.assertEqual(sub.metadata["kill_reason"], "subtask_limit")
+        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -295,7 +297,7 @@ class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
         self.assertEqual(body["accepted"], 2)
         # Item 1 trips the subtask limit; item 2 lands on the killed subtask
         # — identical to firing the same items as sequential singles.
-        self.assertEqual(body["results"][0]["stop_reason"], "subtask_limit")
+        self.assertEqual(body["results"][0]["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["results"][0]["stop_scope"], "subtask")
         self.assertEqual(body["results"][1]["stop_reason"], "task_not_active")
         self.assertEqual(body["results"][1]["stop_scope"], "subtask")
@@ -334,7 +336,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
                                 # figure is asserted nowhere and the number
                                 # beside it is what races the limit.
                                 bills=1_000)
-        self.assertEqual(resp.json()["stop_reason"], "subtask_limit")
+        self.assertEqual(resp.json()["stop_reason"], reasons.TASK_COGS_CEILING)
         sub.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
 

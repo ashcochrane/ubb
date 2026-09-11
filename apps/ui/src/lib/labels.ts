@@ -310,10 +310,13 @@ export const stopReasonLabel = legacyLabelMap({
   // the same thing.
   silence_window: "Silence window elapsed",
   // ⚠ AND THE SPELLING IT REPLACED STAYS, on `customer_floor`'s precedent two
-  // lines up: no current path emits it, and rows written before the rename
-  // carry it forever. A display map renders what it is handed, so dropping a
-  // key that stored data still holds would degrade exactly the oldest rows —
-  // and the published `stop_reasons` list keeps both for the same reason.
+  // lines up: a display map renders what it is handed, and this legacy
+  // adapter is replaced whole by the console ticket that renders the stop
+  // reasons through the registry's map (slice 6, #466). The BACKEND no
+  // longer holds either spelling: the stored rows were migrated onto the
+  // registry's words in one pass (#457, `work/migrations/0026`) and the
+  // published `reason_codes` list names only those, so nothing this map
+  // renders from a live response carries the keys below any more.
   stale: "Stale task",
   stale_max_age: "Task exceeded max age",
   parent_killed: "Parent task killed",

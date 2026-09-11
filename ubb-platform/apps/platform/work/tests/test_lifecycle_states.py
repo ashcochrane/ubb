@@ -143,7 +143,7 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
 
     def test_a_spend_kill_does_not_write_it(self):
         task = self._task()
-        killed, _ = TaskService.kill_task(task.id, reason=reasons.TASK_LIMIT)
+        killed, _ = TaskService.kill_task(task.id, reason=reasons.TASK_COGS_CEILING)
         self.assertNotEqual(killed.status, TASK_STATUS_COMPLETED)
 
     def test_the_crash_sweeper_does_not_write_it(self):
@@ -190,14 +190,14 @@ class KilledMeansUbbStoppedItOnASpendSignalTest(LifecycleTestBase):
     def test_a_ceiling_crossing_writes_it(self):
         task = self._task(limit=1_000)
         killed, transitioned = TaskService.kill_task(
-            task.id, reason=reasons.TASK_LIMIT)
+            task.id, reason=reasons.TASK_COGS_CEILING)
         self.assertTrue(transitioned)
         self.assertEqual(killed.status, TASK_STATUS_KILLED)
 
     def test_a_parents_kill_cascade_writes_it_on_contained_work(self):
         parent = self._task()
         child = self._task(parent=parent)
-        TaskService.kill_task(parent.id, reason=reasons.TASK_LIMIT)
+        TaskService.kill_task(parent.id, reason=reasons.TASK_COGS_CEILING)
         child.refresh_from_db()
         self.assertEqual(child.status, TASK_STATUS_KILLED)
 

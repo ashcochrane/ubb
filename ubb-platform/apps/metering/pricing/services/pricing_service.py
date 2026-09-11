@@ -1265,7 +1265,7 @@ class PricingService:
 #: (#415, #151 §17, #139 §3.3).
 #:
 #: Named here rather than spelled at the composition layer for the reason
-#: `reasons.TASK_LIMIT` is named where it is produced: a test comparing
+#: `reasons.TASK_COGS_CEILING` is named where it is produced: a test comparing
 #: against its own copy of a string passes
 #: whatever this module decides to answer, while one importing the symbol goes
 #: red the day the answer moves. The words are the problem codes the tenant

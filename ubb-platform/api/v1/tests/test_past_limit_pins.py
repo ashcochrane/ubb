@@ -31,6 +31,8 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.services import TaskService
+from apps.platform.work import reasons
+from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 FLOOR = 5_000_000       # hard floor: the stop line is -5M
@@ -145,7 +147,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
             self.assertEqual(set(ctx[0]), _CONTEXT_KEYS)
 
         # The tipping event tripped the limit — arrived_after=false.
-        self.assertEqual(tip_ctx[0]["limit"], "task_limit")
+        self.assertEqual(tip_ctx[0]["limit"], reasons.TASK_COGS_CEILING)
         self.assertEqual(tip_ctx[0]["stop_scope"], "task")
         self.assertEqual(tip_ctx[0]["task_id"], str(task.id))
         self.assertIsNone(tip_ctx[0]["subtask_id"])
@@ -156,7 +158,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
         # The late event points back at the SAME episode: same limit,
         # arrived_after=true, tripped_at = the kill time.
         task.refresh_from_db()
-        self.assertEqual(late_ctx[0]["limit"], "task_limit")
+        self.assertEqual(late_ctx[0]["limit"], reasons.TASK_COGS_CEILING)
         self.assertTrue(late_ctx[0]["arrived_after"])
         self.assertEqual(late_ctx[0]["tripped_at"],
                          task.completed_at.isoformat())
@@ -176,7 +178,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
             }]}), content_type="application/json", **self._auth())
         item = resp.json()["results"][0]
         self.assertTrue(item["accepted"])
-        self.assertEqual(item["stop_context"][0]["limit"], "task_limit")
+        self.assertEqual(item["stop_context"][0]["limit"], reasons.TASK_COGS_CEILING)
         self.assertTrue(item["stop_context"][0]["arrived_after"])
 
     def test_the_stored_row_carries_the_context_not_just_the_ack(self, _mock):
@@ -195,7 +197,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
                             bills=1_000_000)
         event = Posting.objects.get()
         self.assertEqual(event.provider_cost_micros, 12_000_000)
-        self.assertEqual(event.stop_context[0]["limit"], "task_limit")
+        self.assertEqual(event.stop_context[0]["limit"], reasons.TASK_COGS_CEILING)
         self.assertFalse(event.stop_context[0]["arrived_after"])
         self.assertEqual(set(event.stop_context[0]), _CONTEXT_KEYS)
         self.assertEqual(event.stop_context, resp["stop_context"])
@@ -248,7 +250,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # totals in BOTH denominations; a kill never "resumes".
         ep = by_family["task"][0]
         task.refresh_from_db()
-        self.assertEqual(ep["limit"], "task_limit")
+        self.assertEqual(ep["limit"], reasons.TASK_COGS_CEILING)
         self.assertEqual(ep["stop_scope"], "task")
         self.assertEqual(ep["task_id"], str(task.id))
         self.assertIsNone(ep["subtask_id"])
@@ -266,7 +268,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # Customer-wide-stop episode: stop → itemized events → resume, keyed
         # on the signal ledger's episode id.
         ep = by_family["floor_stop"][0]
-        self.assertEqual(ep["limit"], "customer_wide_stop")
+        self.assertEqual(ep["limit"], reasons.HARD_FLOOR)
         self.assertEqual(ep["stop_scope"], "customer")
         self.assertEqual(ep["episode_seq"], 1)
         self.assertIsNotNone(ep["tripped_at"])
@@ -291,25 +293,26 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         # could not include (#328, #351); here every event's cost and price are
         # resolved, so both totals are whole and say so.
         self.assertEqual(report["totals_per_limit"], {
-            "task_limit": {"billed_cost_micros": 9_000_000,
+            reasons.TASK_COGS_CEILING: {"billed_cost_micros": 9_000_000,
                            "unpriced_event_count": 0,
                            "provider_cost_micros": 13_000_000,
                            "unresolved_event_count": 0,
                            "event_count": 2},
-            "customer_wide_stop": {"billed_cost_micros": 18_000_000,
+            reasons.HARD_FLOOR: {"billed_cost_micros": 18_000_000,
                                    "unpriced_event_count": 0,
                                    "provider_cost_micros": 2_000_000,
                                    "unresolved_event_count": 0,
                                    "event_count": 2},
         })
 
-    def test_legacy_customer_floor_tag_still_lands_in_itemization(self, _mock):
+    def test_a_historical_customer_scope_tag_still_lands_in_itemization(
+            self, _mock):
         """`stop_context` is immutable and written once (billing-surface-
-        correctness, task 1 round 1). Rows tagged before the CUSTOMER_FLOOR
-        -> CUSTOMER_WIDE_STOP relabel carry the retired "customer_floor"
-        string, forever. The bucketing filter must itemize them under their
-        episode regardless of which historical string they carry — it must
-        NOT allow-list the current value only."""
+        correctness, task 1 round 1), and it was NOT migrated when the stop
+        vocabulary was (#457, slice 6 §8): rows tagged under an earlier
+        spelling carry it forever. The bucketing keys on SCOPE, never on an
+        allow-list of current words, so such a row is itemized under its
+        episode whatever spelling it carries."""
         from apps.billing.gating.models import StopSignalState
 
         # Trip a real floor crossing so a genuine episode exists on the
@@ -326,7 +329,7 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
             idempotency_key="legacy-1",
             provider_cost_micros=1_000_000, billed_cost_micros=4_000_000,
             stop_context=[{
-                "limit": "customer_floor", "stop_scope": "customer",
+                "limit": "a_spelling_no_constant_carries", "stop_scope": "customer",
                 "tripped_at": state.transitioned_at.isoformat(),
                 "episode_seq": state.episode_seq,
                 "task_id": None, "subtask_id": None, "arrived_after": True,
@@ -337,8 +340,8 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         ep = by_family["floor_stop"]
         event_ids = {e["event_id"] for e in ep["events"]}
         self.assertIn(str(legacy.id), event_ids)
-        self.assertIn("customer_wide_stop", report["totals_per_limit"])
-        totals = report["totals_per_limit"]["customer_wide_stop"]
+        self.assertIn(reasons.HARD_FLOOR, report["totals_per_limit"])
+        totals = report["totals_per_limit"][reasons.HARD_FLOOR]
         self.assertGreaterEqual(totals["billed_cost_micros"], 4_000_000)
 
     def test_suspended_tag_stays_excluded_from_itemization(self, _mock):
@@ -465,7 +468,7 @@ class PastLimitQueryFiltersTest(PastLimitPinTestBase):
         self.assertEqual(len(self._usage("?past_limit=false")), 1)
         task_scoped = self._usage("?stop_scope=task")
         self.assertEqual(len(task_scoped), 1)
-        self.assertEqual(task_scoped[0]["stop_context"][0]["limit"], "task_limit")
+        self.assertEqual(task_scoped[0]["stop_context"][0]["limit"], reasons.TASK_COGS_CEILING)
         episode = self._usage("?episode_seq=1")
         self.assertEqual(len(episode), 2)
         self.assertEqual(len(self._usage("?episode_seq=99")), 0)

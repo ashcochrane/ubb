@@ -9,7 +9,7 @@ Pin 3  — Wallet carries no floor CHECK constraint (ADR-002 pin): spend policy
          is enforced in application code, never a DB constraint on the ledger.
          (The per-task floor snapshot this pin used to also cover was deleted
          — see the billing-surface-correctness plan, task 1 — in favor of the
-         durable drawdown lane's customer_wide_stop, the correct scope for a
+         durable drawdown lane's hard-floor stop, the correct scope for a
          wallet-wide fact.)
 Pin 7  — every recorded event answers 200; no code path returns 429/409 for a
          usage report.
@@ -52,6 +52,8 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.models import Task, TaskType
 from apps.platform.work.services import TaskService
+from apps.platform.work import reasons
+from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     CEILING_STATUS_CEILING_REACHED, CEILING_STATUS_INDETERMINATE,
@@ -176,11 +178,11 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertEqual(task.total_provider_cost_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 15_000_000)
         self.assertEqual(task.status, TASK_STATUS_KILLED)
-        self.assertEqual(task.metadata["kill_reason"], "task_limit")
+        self.assertEqual(task.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
 
         # The stop verdict rides the 200; the fan-out event fired exactly once.
         self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["stop_scope"], "task")
         self.assertEqual(body["task_total_provider_cost_micros"], 10_000_000)
         self.assertEqual(body["task_total_billed_cost_micros"], 15_000_000)
@@ -195,11 +197,11 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         # would have passed, and the patrol's kill an hour later would have
         # had no event to point at.
         (context,) = body["stop_context"]
-        self.assertEqual(context["limit"], "task_limit")
+        self.assertEqual(context["limit"], reasons.TASK_COGS_CEILING)
         self.assertIs(context["arrived_after"], False)
         self.assertEqual(self._limit_events().count(), 1)
         payload = self._limit_events().get().payload
-        self.assertEqual(payload["reason_code"], "task_limit")
+        self.assertEqual(payload["reason_code"], reasons.TASK_COGS_CEILING)
         # WHICH MECHANISM APPLIED IT, beside why (#412). This crossing was
         # tipped by the usage report the test just made, and the field is what
         # tells a subscriber that apart from the patrol finding the same
@@ -283,7 +285,7 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         body = resp.json()
         self.assertEqual(body["task_total_unresolved_event_count"], 1)
         self.assertTrue(body["stop"])
-        self.assertEqual(body["stop_reason"], "task_limit")
+        self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
         self.assertEqual(body["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
         self.assertEqual(body["ceiling_used_percentage"], 100)
         self.assertEqual(body["ceiling_remaining_micros"], 0)
@@ -508,12 +510,12 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
         self.assertEqual(task.total_provider_cost_micros, 12_000_000)
         self.assertEqual(self._limit_events().count(), 1)
         self.assertEqual(self._limit_events().get().payload["reason_code"],
-                         "task_limit")
+                         reasons.TASK_COGS_CEILING)
 
         # The stop verdict rides the same 200 — no later call is needed to
         # learn that the ceiling bit.
         self.assertTrue(resp.json()["stop"])
-        self.assertEqual(resp.json()["stop_reason"], "task_limit")
+        self.assertEqual(resp.json()["stop_reason"], reasons.TASK_COGS_CEILING)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -629,7 +631,7 @@ class Pin14DenominationTest(OneRulePinTestBase):
                                 # beside it is the one that races the limit.
                                 bills=1_000)
         self.assertTrue(resp.json()["stop"])
-        self.assertEqual(resp.json()["stop_reason"], "task_limit")
+        self.assertEqual(resp.json()["stop_reason"], reasons.TASK_COGS_CEILING)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_KILLED)
 
