@@ -8,10 +8,11 @@ from ubb._http import raise_for_status
 from ubb._models import from_wire, page_from_wire
 from ubb.retry import request_with_retry
 from ubb.types import PaginatedResponse
+from ubb.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 # Generated DTOs (the wrap, #84).
 from ubb._core.models.balance_response import BalanceResponse
-from ubb._core.models.budget_config_out import BudgetConfigOut
-from ubb._core.models.budget_status_out import BudgetStatusOut
+from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
+from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from ubb._core.models.grant_out import GrantOut
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
@@ -190,22 +191,29 @@ class BillingClient:
             params=params)
         return page_from_wire(WalletTransactionOut, r.json())
 
-    def set_budget(self, customer_id, cap_micros, enforce_mode="alert_only",
-                   hard_stop_pct=100, alert_levels=None, fail_closed=False):
+    def set_customer_spend_pool(self, customer_id, cap_micros,
+                                enforce_mode=SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+                                hard_stop_pct=100, alert_levels=None, fail_closed=False):
+        """Declare this customer's spend pool — a bound on their period charges.
+        The default enforce mode is the registry's own constant; the route, not
+        this client, refuses a value outside the pair."""
         body = {"cap_micros": cap_micros, "enforce_mode": enforce_mode,
                 "hard_stop_pct": hard_stop_pct, "fail_closed": fail_closed}
         if alert_levels is not None:
             body["alert_levels"] = alert_levels
-        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_BUDGET(customer_id), json=body)
-        return from_wire(BudgetConfigOut, r.json())
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_SPEND_POOL(customer_id), json=body)
+        return from_wire(CustomerSpendPoolOut, r.json())
 
-    def get_budget(self, customer_id):
-        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET(customer_id))
-        return from_wire(BudgetConfigOut, r.json())
+    def get_customer_spend_pool(self, customer_id):
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_SPEND_POOL(customer_id))
+        return from_wire(CustomerSpendPoolOut, r.json())
 
-    def get_budget_status(self, customer_id):
-        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET_STATUS(customer_id))
-        return from_wire(BudgetStatusOut, r.json())
+    def get_customer_spend_pool_status(self, customer_id):
+        """Where the customer's known period charges stand against their pool:
+        the durable basis pair, the percentage and headroom over the known
+        figure, the highest threshold reached and whether blocking occurred."""
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_SPEND_POOL_STATUS(customer_id))
+        return from_wire(CustomerSpendPoolStatusOut, r.json())
 
     def get_usage_invoices(self, customer_id):
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_LIST_CUSTOMER_USAGE_INVOICES(customer_id))

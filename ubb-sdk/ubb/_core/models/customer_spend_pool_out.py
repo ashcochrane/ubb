@@ -8,32 +8,34 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.customer_spend_pool_out_enforce_mode import CustomerSpendPoolOutEnforceMode
+from typing import cast
 
 
 
 
 
 
-T = TypeVar("T", bound="BudgetStatusOut")
+T = TypeVar("T", bound="CustomerSpendPoolOut")
 
 
 
 @_attrs_define
-class BudgetStatusOut:
+class CustomerSpendPoolOut:
     """ 
         Attributes:
+            alert_levels (list[int]):
             cap_micros (int):
-            enforce_mode (str):
-            pct (float):
-            period (str):
-            spend_micros (int):
+            enforce_mode (CustomerSpendPoolOutEnforceMode):
+            fail_closed (bool):
+            hard_stop_pct (int):
      """
 
+    alert_levels: list[int]
     cap_micros: int
-    enforce_mode: str
-    pct: float
-    period: str
-    spend_micros: int
+    enforce_mode: CustomerSpendPoolOutEnforceMode
+    fail_closed: bool
+    hard_stop_pct: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -41,25 +43,27 @@ class BudgetStatusOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        alert_levels = self.alert_levels
+
+
+
         cap_micros = self.cap_micros
 
-        enforce_mode = self.enforce_mode
+        enforce_mode = self.enforce_mode.value
 
-        pct = self.pct
+        fail_closed = self.fail_closed
 
-        period = self.period
-
-        spend_micros = self.spend_micros
+        hard_stop_pct = self.hard_stop_pct
 
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "alert_levels": alert_levels,
             "cap_micros": cap_micros,
             "enforce_mode": enforce_mode,
-            "pct": pct,
-            "period": period,
-            "spend_micros": spend_micros,
+            "fail_closed": fail_closed,
+            "hard_stop_pct": hard_stop_pct,
         })
 
         return field_dict
@@ -69,27 +73,31 @@ class BudgetStatusOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        alert_levels = cast(list[int], d.pop("alert_levels"))
+
+
         cap_micros = d.pop("cap_micros")
 
-        enforce_mode = d.pop("enforce_mode")
+        enforce_mode = CustomerSpendPoolOutEnforceMode(d.pop("enforce_mode"))
 
-        pct = d.pop("pct")
 
-        period = d.pop("period")
 
-        spend_micros = d.pop("spend_micros")
 
-        budget_status_out = cls(
+        fail_closed = d.pop("fail_closed")
+
+        hard_stop_pct = d.pop("hard_stop_pct")
+
+        customer_spend_pool_out = cls(
+            alert_levels=alert_levels,
             cap_micros=cap_micros,
             enforce_mode=enforce_mode,
-            pct=pct,
-            period=period,
-            spend_micros=spend_micros,
+            fail_closed=fail_closed,
+            hard_stop_pct=hard_stop_pct,
         )
 
 
-        budget_status_out.additional_properties = d
-        return budget_status_out
+        customer_spend_pool_out.additional_properties = d
+        return customer_spend_pool_out
 
     @property
     def additional_keys(self) -> list[str]:

@@ -354,23 +354,21 @@ entries:
     gate: G7
     site: backend::budget
     expected: control_family
-    found: 36 files
+    found: 7 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
       Ceiling, Customer Spend Pool, Wallet policy, Admission control —
       replace one word that named all of them at once, and slice 6
-      builds them.
-
-  - id: g7-backend-budget.set
-    gate: G7
-    site: backend::budget.set
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      The audit action for configuring the retired family. It is renamed
-      with the family, in the slice that replaces it.
+      builds them. 36 → 7 in #456, the first Pool ticket (§20 step 1,
+      backend whole): the pool row, its service, its enforce-mode
+      constant, the live counter's key family and Lua, the beat key, the
+      audit action, the four routes and every pool test took the family's
+      noun. What survives is exactly what that ticket may not touch: the
+      threshold event's class and its `EVENT_TYPE` literal, with the
+      emitter's dedupe filter and the three tests that assert that event
+      by name (the catalogue ticket's, #464 — its own `budget.threshold_reached`
+      entry counts those files), and the two glossaries (the fold's, #470).
 
   - id: g7-backend-budget.threshold_reached
     gate: G7
@@ -721,13 +719,18 @@ entries:
     gate: G7
     site: console::budget
     expected: control_family
-    found: 24 files
+    found: 23 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
       Ceiling, Customer Spend Pool, Wallet policy, Admission control —
       replace one word that named all of them at once, and slice 6
-      builds them.
+      builds them. 24 → 23 in #456, the contract stage (§20 step 2): the
+      billing feature's API module spelled the word only in the two route
+      paths a generated type gave it, and those moved with the routes. The
+      generated snapshot still carries it on the threshold webhook's name
+      (the catalogue ticket's), and the two features' own file names,
+      locals, copy and fixtures are the console ticket's (#468).
 
   - id: g7-console-budget.threshold_reached
     gate: G7
@@ -1342,21 +1345,6 @@ entries:
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
 
-  - id: g7-sdk-budget
-    gate: G7
-    site: sdk::budget
-    expected: control_family
-    found: 9 files
-    owner_slice: slice_6
-    reason: >-
-      A retired spend-control family name. #150's four families —
-      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
-      replace one word that named all of them at once, and slice 6
-      builds them. 10 → 9 in #421, a fall in extent and not a payment:
-      the spend stop's exception was rewritten as the `BaseException`
-      signal and its docstring stopped describing the customer-scope
-      verdict with this word. Slice 6 still owes the nine.
-
   # ⚠ `card_type` REACHED ZERO ON THE SDK IN #373 and its entry is deleted —
   # the LAST surface holding it apart from the backend's four files, so the
   # term now has one entry left in the whole ledger. Three files: the
@@ -1747,17 +1735,6 @@ entries:
   # them rather than adding an import to a model with no opinion about what is
   # inside its `jsonb`. `measurements_status` is the precedent: its consumer is
   # the serialiser that computes it, for the same reason.
-
-  - id: g2-backend-spend_pool_enforce_mode
-    gate: G2
-    site: ubb-platform/apps/billing/gating/models.py::spend_pool_enforce_mode
-    expected: spend_pool_enforce_mode
-    found: 0 of 2 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. A Pool refuses starts and
-      stops a customer but kills nothing (#150). Slice 6 rebuilds it.
 
   - id: g2-backend-tenant_posture
     gate: G2
@@ -2253,20 +2230,6 @@ entries:
       the expiry paths that produce it were built. The remaining three are the
       end-state names for mechanisms slice 6 builds, so importing them earlier
       would name paths that do not exist. The metadata appears in that slice.
-
-  - id: g4-openapi-spend_pool_enforce_mode
-    gate: G4
-    site: openapi/v1.json::spend_pool_enforce_mode
-    expected: spend_pool_enforce_mode
-    found: 0 of 2 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control, where the customer spend pool
-      replaces today's container (#150 §7.1). The metadata appears in that
-      slice.
 
   - id: g4-openapi-tenant_posture
     gate: G4

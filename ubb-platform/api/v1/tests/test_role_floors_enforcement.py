@@ -74,7 +74,7 @@ class RoleFloorEnforcementTest(TestCase):
     # platform, tenant) and all three floors.
     MATRIX = [
         ("get", "/api/v1/tenant/config", READ, None),
-        ("get", "/api/v1/billing/budget", READ, None),
+        ("get", "/api/v1/billing/customer-spend-pool", READ, None),
         ("get", "/api/v1/metering/pricing/default-markup", READ, None),
         ("post", "/api/v1/subscriptions/sync", WRITE, None),
         ("patch", "/api/v1/tenant/config", ADMIN, {}),
@@ -120,7 +120,7 @@ class RoleFloorEnforcementTest(TestCase):
         token = self._member("finance@x.com", READ, "clerk_fin")
         resp = self.http.get("/api/v1/tenant/config", **self._hdr(token))
         self.assertEqual(resp.status_code, 200)
-        resp = self.http.get("/api/v1/billing/budget", **self._hdr(token))
+        resp = self.http.get("/api/v1/billing/customer-spend-pool", **self._hdr(token))
         self.assertEqual(resp.status_code, 200)
 
     # --- last-Admin guard ---------------------------------------------------

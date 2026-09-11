@@ -1,6 +1,6 @@
-"""End-to-end Stage 3: usage drawdown → Redis budget counter → threshold webhook
+"""End-to-end Stage 3: usage drawdown → Redis spend-pool counter → threshold webhook
 → pre-call gate, across the alert_only→blocking flip. Exercises the real seams
-(handle_usage_recorded_billing, BudgetService, RiskService) wired together."""
+(handle_usage_recorded_billing, CustomerSpendPoolService, RiskService) wired together."""
 import uuid
 from dataclasses import asdict
 
@@ -12,15 +12,15 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.billing.wallets.models import Wallet
-from apps.billing.gating.models import BudgetConfig
-from apps.billing.gating.services.budget_service import BudgetService
+from apps.billing.gating.models import CustomerSpendPool
+from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.metering.usage.models import Posting
 
 
 @pytest.mark.django_db
-class TestBudgetEndToEnd:
+class TestCustomerSpendPoolEndToEnd:
     def setup_method(self):
         cache.clear()
 
@@ -43,19 +43,19 @@ class TestBudgetEndToEnd:
         w = Wallet.objects.create(customer=customer)
         w.balance_micros = 1_000_000_000  # well funded — credit gate always passes here
         w.save(update_fields=["balance_micros"])
-        BudgetConfig.objects.create(tenant=tenant, customer=customer,
+        CustomerSpendPool.objects.create(tenant=tenant, customer=customer,
                                     cap_micros=1_000_000, enforce_mode="alert_only")
 
         # --- alert_only: usage crosses 50% → one alert, gate still allows ---
         self._draw(tenant, customer, 600_000, 1)
-        assert BudgetService.current_spend(tenant.id, customer.id) == 600_000
+        assert CustomerSpendPoolService.current_spend(tenant.id, customer.id) == 600_000
         assert OutboxEvent.objects.filter(
             event_type="budget.threshold_reached", payload__level=50).count() == 1
         assert RiskService.check(customer)["allowed"] is True  # alert_only never blocks
 
         # --- flip to blocking (config-only), drive over the cap → gate blocks ---
-        BudgetConfig.objects.filter(tenant=tenant, customer=customer).update(enforce_mode="blocking")
+        CustomerSpendPool.objects.filter(tenant=tenant, customer=customer).update(enforce_mode="blocking")
         self._draw(tenant, customer, 500_000, 2)  # 1_100_000 total > 1_000_000 cap
-        assert BudgetService.current_spend(tenant.id, customer.id) == 1_100_000
+        assert CustomerSpendPoolService.current_spend(tenant.id, customer.id) == 1_100_000
         res = RiskService.check(customer)
         assert res["allowed"] is False and res["reason"] == "budget_exceeded"

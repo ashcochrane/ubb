@@ -104,9 +104,16 @@ GET /api/v1/metering/analytics/usage removed the required property `by_product` 
 # never enforced (Django does not validate choices on save()), so an
 # out-of-vocabulary value persisted silently and could never cross —
 # crossing.py treats anything != "blocking" as non-blocking. Narrowing the
-# schema turns that silent no-op into a 422:
-PUT /api/v1/billing/budget request property `enforce_mode` was restricted to a list of enum values
-PUT /api/v1/billing/customers/{customer_id}/budget request property `enforce_mode` was restricted to a list of enum values
+# schema turns that silent no-op into a 422.
+#
+# ⚠ THE TWO LINES THIS BLOCK HELD ARE GONE (#456): they named the enum
+# restriction on the two PUT routes under the retired family word, and those
+# paths left the contract when the pool took its name (the block dated
+# 2026-09-11 below records their removal). A path the cumulative gate no
+# longer sees carries no property-level break, so the two lines suppressed
+# nothing and an inert entry fails the gate exactly as an unreviewed one does
+# (#367). The narrowing they recorded survives on the successor routes as the
+# registry's own `enum`, post-tag and therefore invisible to this gate.
 
 # 2026-08-05 the thirteen webhook events named for the state entered (#222).
 # PRE-LIVE LANE — map #137 constraint 1, reaffirmed by migration/cutover §7.1.
@@ -780,3 +787,44 @@ GET /api/v1/metering/usage/{event_id} removed the required property `request_id`
 # successors and routes every pending outbox row to one of them.
 components webhook `subtask.limit_exceeded` removed
 components webhook `task.limit_exceeded` removed
+
+# 2026-09-11 the customer spend pool takes the family's name (#456, slice 6
+# §13, §20 step 2). PRE-LIVE LANE — ADR-0007 §5; not a deprecation.
+#
+# The pool's five operations on three paths move from the retired family
+# word to `customer-spend-pool` under the billing prefix — the tenant-default
+# pair, the per-customer pair and the status read — and their three schemas
+# become `CustomerSpendPoolIn`, `CustomerSpendPoolOut` and
+# `CustomerSpendPoolStatusOut`. A short form was refused for #154 §5.2's
+# reason: an abbreviation is a second public name for one concept. oasdiff
+# reports the three schemas' renames THROUGH the five path removals (each
+# schema is referenced only from these paths), so this block is five path
+# lines and not eight; the successor paths post-date the tag and are
+# additive, so nothing is reported for them — the status read's final shape
+# (the basis pair, the percentage and headroom over the known figure, the
+# highest threshold reached, whether blocking occurred) ships under a name
+# the gate has never seen and is renamed once (ADR-0007 §3).
+#
+# The sixth line is the marker: `enforce_mode` now carries the registry's
+# `spend_pool_enforce_mode` and the applier renders its two-value `enum` on
+# the threshold event's payload (`webhooks` section) as on the three schemas.
+# The event pre-dates the tag, so the enum is visible to the cumulative gate;
+# the values are the two the payload has always carried.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE EXACTLY — six breaks, the same six,
+# from `--baseline HEAD` (6 error, 0 warning) and from the cumulative gate
+# alike; every path pre-dates the tag, so every line here is live. The two
+# property-level lines the 2026-07-28 block held on the old PUT paths left in
+# this commit because the gate reported them as suppressing nothing.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot and the two features that read these routes, the SDK's generated
+# modules and its hand-written pool wrapper with its test, and the SDK
+# migration guide's §9.
+GET /api/v1/billing/budget api path removed without deprecation
+GET /api/v1/billing/customers/{customer_id}/budget api path removed without deprecation
+GET /api/v1/billing/customers/{customer_id}/budget/status api path removed without deprecation
+POST webhook:budget.threshold_reached request property `data/enforce_mode` was restricted to a list of enum values
+PUT /api/v1/billing/budget api path removed without deprecation
+PUT /api/v1/billing/customers/{customer_id}/budget api path removed without deprecation

@@ -52,20 +52,22 @@ API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BILLING_PROFILE = Operation(
     'api_v1_billing_endpoints_get_customer_billing_profile',
     'get',
     '/api/v1/billing/customers/{customer_id}/billing-profile')
-API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET = Operation(
-    'api_v1_billing_endpoints_get_customer_budget',
+API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_SPEND_POOL = Operation(
+    'api_v1_billing_endpoints_get_customer_spend_pool',
     'get',
-    '/api/v1/billing/customers/{customer_id}/budget')
-API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_BUDGET_STATUS = Operation(
-    'api_v1_billing_endpoints_get_customer_budget_status',
+    '/api/v1/billing/customers/{customer_id}/customer-spend-pool')
+API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_SPEND_POOL_STATUS = Operation(
+    'api_v1_billing_endpoints_get_customer_spend_pool_status',
     'get',
-    '/api/v1/billing/customers/{customer_id}/budget/status')
+    '/api/v1/billing/customers/{customer_id}/customer-spend-pool/status')
 API_V1_BILLING_ENDPOINTS_GET_POSTPAID_CONFIG = Operation(
     'api_v1_billing_endpoints_get_postpaid_config',
     'get',
     '/api/v1/billing/postpaid-config')
-API_V1_BILLING_ENDPOINTS_GET_TENANT_BUDGET = Operation(
-    'api_v1_billing_endpoints_get_tenant_budget', 'get', '/api/v1/billing/budget')
+API_V1_BILLING_ENDPOINTS_GET_TENANT_CUSTOMER_SPEND_POOL = Operation(
+    'api_v1_billing_endpoints_get_tenant_customer_spend_pool',
+    'get',
+    '/api/v1/billing/customer-spend-pool')
 API_V1_BILLING_ENDPOINTS_GET_TRANSACTIONS = Operation(
     'api_v1_billing_endpoints_get_transactions',
     'get',
@@ -88,16 +90,18 @@ API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_BILLING_PROFILE = Operation(
     'api_v1_billing_endpoints_put_customer_billing_profile',
     'put',
     '/api/v1/billing/customers/{customer_id}/billing-profile')
-API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_BUDGET = Operation(
-    'api_v1_billing_endpoints_put_customer_budget',
+API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_SPEND_POOL = Operation(
+    'api_v1_billing_endpoints_put_customer_spend_pool',
     'put',
-    '/api/v1/billing/customers/{customer_id}/budget')
+    '/api/v1/billing/customers/{customer_id}/customer-spend-pool')
 API_V1_BILLING_ENDPOINTS_PUT_POSTPAID_CONFIG = Operation(
     'api_v1_billing_endpoints_put_postpaid_config',
     'put',
     '/api/v1/billing/postpaid-config')
-API_V1_BILLING_ENDPOINTS_PUT_TENANT_BUDGET = Operation(
-    'api_v1_billing_endpoints_put_tenant_budget', 'put', '/api/v1/billing/budget')
+API_V1_BILLING_ENDPOINTS_PUT_TENANT_CUSTOMER_SPEND_POOL = Operation(
+    'api_v1_billing_endpoints_put_tenant_customer_spend_pool',
+    'put',
+    '/api/v1/billing/customer-spend-pool')
 API_V1_BILLING_ENDPOINTS_REFUND_USAGE = Operation(
     'api_v1_billing_endpoints_refund_usage',
     'post',

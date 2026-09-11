@@ -1,10 +1,10 @@
-"""Budget POLICY — config resolution, the gate, and threshold alerts.
+"""Customer spend pool POLICY — config resolution, the gate, and threshold alerts.
 
 The COUNTER MECHANICS (the seat-keyed month-scoped Redis counter, its
 INCR/rebuild/MAX-merge Lua and TTL discipline) moved into the live counter
 (#111, D3/D3b) — one client dialect, one owner of the whole Tier-2
 keyspace. What stays here is everything the counter feeds: WHICH
-BudgetConfig applies (``resolve_config_for``), the start-gate verdict with
+CustomerSpendPool applies (``resolve_config_for``), the start-gate verdict with
 its fail-open/fail-closed policy (``check``), and the level-based alert
 emission (``emit_threshold_alerts``).
 """
@@ -12,8 +12,8 @@ import logging
 
 from django.utils import timezone
 
-from core.crossing import (budget_stop_threshold, month_label_bounds,
-                           past_budget_stop)
+from core.crossing import (spend_pool_stop_threshold, month_label_bounds,
+                           past_spend_pool_stop)
 from apps.billing.gating.services.live_counter import LiveCounter
 
 logger = logging.getLogger("ubb.billing")
@@ -25,36 +25,56 @@ def _period():
     return month_label_bounds(timezone.now())
 
 
-class BudgetService:
+class CustomerSpendPoolService:
     @staticmethod
     def resolve_config_for(tenant_id, customer_id):
-        """THE BudgetConfig resolution — customer-specific row first, tenant
-        default second. Every lane that needs a budget line resolves through
+        """THE CustomerSpendPool resolution — customer-specific row first, tenant
+        default second. Every lane that needs a pool's line resolves through
         here (#110 retired the live lane's inline copy)."""
-        from apps.billing.gating.models import BudgetConfig
-        cfg = BudgetConfig.objects.filter(tenant_id=tenant_id, customer_id=customer_id).first()
+        from apps.billing.gating.models import CustomerSpendPool
+        cfg = CustomerSpendPool.objects.filter(tenant_id=tenant_id, customer_id=customer_id).first()
         if cfg:
             return cfg
-        return BudgetConfig.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
+        return CustomerSpendPool.objects.filter(tenant_id=tenant_id, customer__isnull=True).first()
 
     @staticmethod
     def resolve_config(customer):
-        return BudgetService.resolve_config_for(customer.tenant_id, customer.id)
+        return CustomerSpendPoolService.resolve_config_for(customer.tenant_id, customer.id)
 
     @staticmethod
     def current_spend(tenant_id, customer_id):
-        """The seat's month-to-date spend — the live counter's budget read
+        """The seat's month-to-date spend — the live counter's spend-pool read
         (rebuilds from the durable ledger on a missing key; a Redis READ
         failure raises so ``check`` can apply its fail-open/closed policy)."""
-        return LiveCounter.budget_read(tenant_id, customer_id)
+        return LiveCounter.spend_pool_read(tenant_id, customer_id)
+
+    @staticmethod
+    def period_basis(tenant_id, customer_id, *, now=None):
+        """The pool's DURABLE basis for the current effective month, as the
+        pair the status read publishes (#456, slice 6 §4, §13): ``(label,
+        known_period_charges_micros, unresolved_posting_count)`` — the
+        resolved period charges, a lower bound wherever the count beside them
+        is not zero, and the count of postings whose customer price UBB has
+        not resolved and so could not include. Read from metering's read
+        contract, which is the same total the live counter rebuilds from and
+        MAX-merges toward: a status read reports the figure the gate's
+        counter is a cache of, never the cache. The count is the price pair's
+        own (``core.cost_totals``), not the supplier-cost pair's — a pool
+        bounds what the customer is charged."""
+        from apps.metering.queries import get_customer_cost_totals
+        from core.amount_status_pairs import CUSTOMER_PRICE
+        label, start, end = month_label_bounds(now or timezone.now())
+        totals = get_customer_cost_totals(tenant_id, customer_id, start, end)
+        return (label, int(totals["billed_cost_micros"]),
+                int(totals[CUSTOMER_PRICE.count_key]))
 
     @staticmethod
     def check(customer):
-        cfg = BudgetService.resolve_config(customer)
+        cfg = CustomerSpendPoolService.resolve_config(customer)
         if cfg is None or cfg.cap_micros <= 0:
             return {"allowed": True, "reason": None, "spend_micros": None, "cap_micros": None}
         try:
-            spend = BudgetService.current_spend(customer.tenant_id, customer.id)
+            spend = CustomerSpendPoolService.current_spend(customer.tenant_id, customer.id)
         except Exception:
             from apps.billing.gating.models import RiskConfig
             fail_closed = cfg.fail_closed
@@ -67,7 +87,7 @@ class BudgetService:
             return {"allowed": True, "reason": None, "spend_micros": None, "cap_micros": cfg.cap_micros}
         # The crossing module owns the stop line + enforce_mode semantics
         # (#110): alert_only -> None -> never past.
-        if past_budget_stop(spend, budget_stop_threshold(cfg)):
+        if past_spend_pool_stop(spend, spend_pool_stop_threshold(cfg)):
             return {"allowed": False, "reason": "budget_exceeded",
                     "spend_micros": spend, "cap_micros": cfg.cap_micros}
         return {"allowed": True, "reason": None, "spend_micros": spend, "cap_micros": cfg.cap_micros}
@@ -97,19 +117,19 @@ class BudgetService:
 
     @staticmethod
     def reconcile_customer(customer):
-        cfg = BudgetService.resolve_config(customer)
+        cfg = CustomerSpendPoolService.resolve_config(customer)
         if cfg is None or cfg.cap_micros <= 0:
             return
         try:
             # P1 (D8/I7): the live counter's monotonic MAX-merge toward the
             # durable in-month total — never lowers, so a concurrent
             # drawdown-tail INCR can no longer be lost.
-            total, label = LiveCounter.budget_reconcile(customer.tenant_id, customer.id)
+            total, label = LiveCounter.spend_pool_reconcile(customer.tenant_id, customer.id)
         except Exception:
-            logger.warning("budget.reconcile_failed",
+            logger.warning("customer_spend_pool.reconcile_failed",
                            extra={"data": {"customer_id": str(customer.id)}})
             return
-        BudgetService.emit_threshold_alerts(customer, cfg, 0, total, label)  # fires only not-yet-sent levels
+        CustomerSpendPoolService.emit_threshold_alerts(customer, cfg, 0, total, label)  # fires only not-yet-sent levels
 
     @staticmethod
     def record_usage_spend(customer, amount_micros):
@@ -120,10 +140,10 @@ class BudgetService:
         step — config lookup, counter increment, alert emission — is best-effort;
         the hourly reconciliation repairs any missed counter/alert from the ledger.
 
-        Budget basis (F4.2): budgets are EFFECTIVE-month; this live counter is
+        Period basis (F4.2): a pool is EFFECTIVE-month; this live counter is
         current-wall-clock-month only, so the caller (billing handler) skips it
         for events backdated into a prior month. The hourly rebuild
-        (reconcile_customer → LiveCounter.budget_reconcile, effective_at-filtered)
+        (reconcile_customer → LiveCounter.spend_pool_reconcile, effective_at-filtered)
         is the source of truth. Documented bypass: an enforcing-capped seat can
         backdate into the PRIOR month to evade the live cap — bounded by
         Tenant.backfill_window_days (0 = no backfill = airtight).
@@ -131,12 +151,12 @@ class BudgetService:
         if amount_micros <= 0:
             return
         try:
-            cfg = BudgetService.resolve_config(customer)
+            cfg = CustomerSpendPoolService.resolve_config(customer)
             if cfg is None or cfg.cap_micros <= 0:
                 return
-            old, new, label = LiveCounter.budget_incr(
+            old, new, label = LiveCounter.spend_pool_incr(
                 customer.tenant_id, customer.id, amount_micros)
-            BudgetService.emit_threshold_alerts(customer, cfg, old, new, label)
+            CustomerSpendPoolService.emit_threshold_alerts(customer, cfg, old, new, label)
         except Exception:
-            logger.warning("budget.record_usage_spend_failed",
+            logger.warning("customer_spend_pool.record_usage_spend_failed",
                            extra={"data": {"customer_id": str(customer.id)}})

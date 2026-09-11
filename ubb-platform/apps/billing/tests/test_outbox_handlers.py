@@ -286,7 +286,7 @@ class TestBillingOutboxHandler:
         customer.refresh_from_db()
         assert customer.status == "active"
 
-    def test_drawdown_invokes_budget_record(self):
+    def test_drawdown_invokes_spend_pool_record(self):
         from unittest.mock import patch
         import uuid
         from apps.billing.handlers import handle_usage_recorded_billing
@@ -303,7 +303,7 @@ class TestBillingOutboxHandler:
             payload=asdict(UsageRecorded(
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
-        with patch("apps.billing.gating.services.budget_service.BudgetService.record_usage_spend") as mock_rec:
+        with patch("apps.billing.gating.services.customer_spend_pool_service.CustomerSpendPoolService.record_usage_spend") as mock_rec:
             handle_usage_recorded_billing(str(event.id), event.payload)
         mock_rec.assert_called_once()
         assert str(mock_rec.call_args.args[0].id) == str(customer.id)  # the customer

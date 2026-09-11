@@ -217,6 +217,34 @@ def _findings(binary: str, baseline_spec: Path, head_spec: Path,
     return json.loads(result.stdout or "[]")
 
 
+#: The path oasdiff gives an operation-level finding inside the `webhooks`
+#: section: `webhook:<event type>` (`POST webhook:usage.recorded …`).
+WEBHOOK_PATH_PREFIX = "webhook:"
+
+
+def unsuppressible_by_oasdiff(finding: dict) -> bool:
+    """Can oasdiff's OWN `--err/--warn-ignore` pass never suppress this finding?
+
+    True for an operation-level finding on a webhook. `checker/ignore.go`'s
+    `ignoreLinePath` takes the first whitespace-separated field of an entry
+    that starts with `/` as the entry's path, and `ApiChange.MatchIgnore`
+    requires that field to EQUAL the finding's lower-cased path — which for a
+    webhook is `webhook:<event type>` and never starts with `/`. No line shape
+    satisfies both, so the raw tool reports such a finding whatever the file
+    says. Measured rather than read off the source alone: six shapes were
+    tried against v1.23.0 for the first such finding (#456, the pool's enforce
+    mode enumerated on the threshold event's payload) and none suppressed.
+
+    This gate's own matcher (`suppresses`) has no such hole — it compares the
+    three parts as text — so an entry for a webhook finding is honoured HERE,
+    and the cross-check below reads the raw tool's insistence as its
+    limitation rather than as a divergence of this matcher. It is the one
+    place the suppression files are not usable with the raw tool, and
+    `openapi/README.md` says so.
+    """
+    return finding.get("path", "").lower().startswith(WEBHOOK_PATH_PREFIX)
+
+
 def _cross_check(ours: list[dict], theirs: list[dict]) -> None:
     """Our matcher must agree with oasdiff's own `--err/--warn-ignore` run.
 
@@ -224,9 +252,19 @@ def _cross_check(ours: list[dict], theirs: list[dict]) -> None:
     cannot report an entry that suppressed nothing. That only stays honest while
     the two agree — and the files are documented as usable with the raw tool, so
     a divergence would make that documentation false.
+
+    One disagreement is the tool's and not ours: a webhook finding oasdiff
+    cannot suppress (`unsuppressible_by_oasdiff`). Such a finding is set aside
+    from oasdiff's side ONLY where this gate has an entry covering it; one this
+    gate also reports as unreviewed stays in both lists and still has to agree.
     """
     def key(findings):
         return sorted((*located(f), f["text"]) for f in findings)
+
+    reported_here = set(key(ours))
+    theirs = [f for f in theirs
+              if not (unsuppressible_by_oasdiff(f)
+                      and (*located(f), f["text"]) not in reported_here)]
 
     if key(ours) != key(theirs):
         _fail("this gate and oasdiff's own --err-ignore/--warn-ignore run "

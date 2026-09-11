@@ -39,7 +39,7 @@ transition through the same ``StopSignalState`` guard as every other
 clearing — ``stop.cleared`` exactly once — and re-aligns the fast flag.
 
 Untouched neighbors: the MIN-merge stays byte-identical. The postpaid spend
-counter is out of scope: its drift lane is the MAX-merge + budget reconcile,
+counter is out of scope: its drift lane is the MAX-merge + spend-pool reconcile,
 and the repair is the prepaid wallet lane's alone. The repair hangs off the
 live-counter-maintenance switch (#46) — the same switch that governs the
 synchronous debit and its crossing check, so the repair is armed exactly where
@@ -89,7 +89,7 @@ def repair_live_balances(tenant):
     counts = {OUTCOME_REPAIRED: 0, OUTCOME_REPAIRED_MICROS: 0,
               OUTCOME_REPAIR_LAPSED: 0}
     # The repair is the prepaid wallet lane's alone. Postpaid spend drift is
-    # owned by the MAX-merge + budget reconcile. The live-counter-maintenance
+    # owned by the MAX-merge + spend-pool reconcile. The live-counter-maintenance
     # switch (#46, §E) is the same one that arms the synchronous debit and its
     # crossing check: with it off nothing debits and nothing reads the
     # counter — a deficit is moot, and the repair is inert.

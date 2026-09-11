@@ -8,7 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.budget_config_out import BudgetConfigOut
+from ...models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from typing import cast
 from uuid import UUID
 
@@ -26,7 +26,7 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "get",
-        "url": "/api/v1/billing/customers/{customer_id}/budget".format(customer_id=quote(str(customer_id), safe=""),),
+        "url": "/api/v1/billing/customers/{customer_id}/customer-spend-pool/status".format(customer_id=quote(str(customer_id), safe=""),),
     }
 
 
@@ -34,9 +34,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> BudgetConfigOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> CustomerSpendPoolStatusOut | None:
     if response.status_code == 200:
-        response_200 = BudgetConfigOut.from_dict(response.json())
+        response_200 = CustomerSpendPoolStatusOut.from_dict(response.json())
 
 
 
@@ -48,7 +48,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[BudgetConfigOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[CustomerSpendPoolStatusOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -62,8 +62,14 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[BudgetConfigOut]:
-    """ Get Customer Budget
+) -> Response[CustomerSpendPoolStatusOut]:
+    """ Get Customer Spend Pool Status
+
+     Where this customer's known period charges stand against the pool that
+    applies to them. The basis is the durable pair the pool is measured over —
+    the figure the live counter rebuilds from and MAX-merges toward, never the
+    counter itself — beside the configured amount and the assessment the
+    kernel's crossing module composes over it (#456, slice 6 §13).
 
     Args:
         customer_id (UUID):
@@ -73,7 +79,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BudgetConfigOut]
+        Response[CustomerSpendPoolStatusOut]
      """
 
 
@@ -93,8 +99,14 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> BudgetConfigOut | None:
-    """ Get Customer Budget
+) -> CustomerSpendPoolStatusOut | None:
+    """ Get Customer Spend Pool Status
+
+     Where this customer's known period charges stand against the pool that
+    applies to them. The basis is the durable pair the pool is measured over —
+    the figure the live counter rebuilds from and MAX-merges toward, never the
+    counter itself — beside the configured amount and the assessment the
+    kernel's crossing module composes over it (#456, slice 6 §13).
 
     Args:
         customer_id (UUID):
@@ -104,7 +116,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BudgetConfigOut
+        CustomerSpendPoolStatusOut
      """
 
 
@@ -119,8 +131,14 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[BudgetConfigOut]:
-    """ Get Customer Budget
+) -> Response[CustomerSpendPoolStatusOut]:
+    """ Get Customer Spend Pool Status
+
+     Where this customer's known period charges stand against the pool that
+    applies to them. The basis is the durable pair the pool is measured over —
+    the figure the live counter rebuilds from and MAX-merges toward, never the
+    counter itself — beside the configured amount and the assessment the
+    kernel's crossing module composes over it (#456, slice 6 §13).
 
     Args:
         customer_id (UUID):
@@ -130,7 +148,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BudgetConfigOut]
+        Response[CustomerSpendPoolStatusOut]
      """
 
 
@@ -150,8 +168,14 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> BudgetConfigOut | None:
-    """ Get Customer Budget
+) -> CustomerSpendPoolStatusOut | None:
+    """ Get Customer Spend Pool Status
+
+     Where this customer's known period charges stand against the pool that
+    applies to them. The basis is the durable pair the pool is measured over —
+    the figure the live counter rebuilds from and MAX-merges toward, never the
+    counter itself — beside the configured amount and the assessment the
+    kernel's crossing module composes over it (#456, slice 6 §13).
 
     Args:
         customer_id (UUID):
@@ -161,7 +185,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BudgetConfigOut
+        CustomerSpendPoolStatusOut
      """
 
 

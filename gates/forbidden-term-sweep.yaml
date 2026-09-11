@@ -302,7 +302,12 @@ exclusions:
     # only for the cap's count. The billing one spells the column it drops,
     # which is not a sweep term; the cap's VERDICT is one, and it left the
     # tree entirely — three G7 entries gone, 24 terms → 23 and 80 sites → 77.
-    files: 252
+    # 252 → 253 in #456: ONE migration, the pool row's `RenameModel` with its
+    # table, two constraints and two reverse accessors following. The row's
+    # old class name is not a sweep term; the family word it carried is, and
+    # the backend area fell 36 → 7 files while two entries left the ledger
+    # outright — 23 terms → 22 and 77 sites → 75.
+    files: 253
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

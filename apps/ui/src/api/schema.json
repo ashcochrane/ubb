@@ -716,124 +716,6 @@
         "title": "BookPublishOut",
         "type": "object"
       },
-      "BudgetConfigIn": {
-        "properties": {
-          "alert_levels": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Alert Levels"
-          },
-          "cap_micros": {
-            "minimum": 0,
-            "title": "Cap Micros",
-            "type": "integer"
-          },
-          "enforce_mode": {
-            "default": "alert_only",
-            "enum": [
-              "alert_only",
-              "blocking"
-            ],
-            "title": "Enforce Mode",
-            "type": "string"
-          },
-          "fail_closed": {
-            "default": false,
-            "title": "Fail Closed",
-            "type": "boolean"
-          },
-          "hard_stop_pct": {
-            "default": 100,
-            "maximum": 1000,
-            "minimum": 1,
-            "title": "Hard Stop Pct",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "cap_micros"
-        ],
-        "title": "BudgetConfigIn",
-        "type": "object"
-      },
-      "BudgetConfigOut": {
-        "properties": {
-          "alert_levels": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Alert Levels",
-            "type": "array"
-          },
-          "cap_micros": {
-            "title": "Cap Micros",
-            "type": "integer"
-          },
-          "enforce_mode": {
-            "title": "Enforce Mode",
-            "type": "string"
-          },
-          "fail_closed": {
-            "title": "Fail Closed",
-            "type": "boolean"
-          },
-          "hard_stop_pct": {
-            "title": "Hard Stop Pct",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "cap_micros",
-          "enforce_mode",
-          "hard_stop_pct",
-          "alert_levels",
-          "fail_closed"
-        ],
-        "title": "BudgetConfigOut",
-        "type": "object"
-      },
-      "BudgetStatusOut": {
-        "properties": {
-          "cap_micros": {
-            "title": "Cap Micros",
-            "type": "integer"
-          },
-          "enforce_mode": {
-            "title": "Enforce Mode",
-            "type": "string"
-          },
-          "pct": {
-            "title": "Pct",
-            "type": "number"
-          },
-          "period": {
-            "title": "Period",
-            "type": "string"
-          },
-          "spend_micros": {
-            "title": "Spend Micros",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "period",
-          "spend_micros",
-          "cap_micros",
-          "pct",
-          "enforce_mode"
-        ],
-        "title": "BudgetStatusOut",
-        "type": "object"
-      },
       "BusinessMarginOut": {
         "properties": {
           "business_id": {
@@ -1739,6 +1621,178 @@
           "status"
         ],
         "title": "CustomerResponse",
+        "type": "object"
+      },
+      "CustomerSpendPoolIn": {
+        "description": "Declare a customer spend pool \u2014 a bound on the customer's period\ncharges (#150 \u00a77). On the tenant route this is the default every seat\ninherits; on the customer route it is that customer's own pool. A row on\na business is the owner-level pool and a row on a seat the seat-level\npool, so the level is where the row is declared and needs no field.\n`cap_micros` of 0 declares no pool.",
+        "properties": {
+          "alert_levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Levels"
+          },
+          "cap_micros": {
+            "minimum": 0,
+            "title": "Cap Micros",
+            "type": "integer"
+          },
+          "enforce_mode": {
+            "default": "alert_only",
+            "enum": [
+              "alert_only",
+              "blocking"
+            ],
+            "title": "Enforce Mode",
+            "type": "string",
+            "x-ubb-concept": "spend_pool_enforce_mode"
+          },
+          "fail_closed": {
+            "default": false,
+            "title": "Fail Closed",
+            "type": "boolean"
+          },
+          "hard_stop_pct": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Hard Stop Pct",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap_micros"
+        ],
+        "title": "CustomerSpendPoolIn",
+        "type": "object"
+      },
+      "CustomerSpendPoolOut": {
+        "properties": {
+          "alert_levels": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Alert Levels",
+            "type": "array"
+          },
+          "cap_micros": {
+            "title": "Cap Micros",
+            "type": "integer"
+          },
+          "enforce_mode": {
+            "enum": [
+              "alert_only",
+              "blocking"
+            ],
+            "title": "Enforce Mode",
+            "type": "string",
+            "x-ubb-concept": "spend_pool_enforce_mode"
+          },
+          "fail_closed": {
+            "title": "Fail Closed",
+            "type": "boolean"
+          },
+          "hard_stop_pct": {
+            "title": "Hard Stop Pct",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap_micros",
+          "enforce_mode",
+          "hard_stop_pct",
+          "alert_levels",
+          "fail_closed"
+        ],
+        "title": "CustomerSpendPoolOut",
+        "type": "object"
+      },
+      "CustomerSpendPoolStatusOut": {
+        "description": "Where a customer's known period charges stand against the pool that\napplies to them \u2014 their own row, else the tenant default; no row is no\npool (`cap_micros` 0, every assessed figure null). The basis is the\ndurable pair: `known_period_charges_micros` is the resolved period\ncharges and a LOWER BOUND wherever `unresolved_posting_count` is not\nzero, and every figure beside it is computed over that known figure \u2014\nthe percentage a floor and the headroom a ceiling until the count is\nzero. `highest_threshold_reached` is the largest of the pool's\n`alert_levels` (a percent of `cap_micros`) the known figure has reached;\n`blocking_occurred` is the start gate's own compare \u2014 true only under a\nblocking pool whose stop line the known figure is at or over. The pool\nis blind to a fixed price until delivery; the wallet reservation sees it\nat start.",
+        "properties": {
+          "blocking_occurred": {
+            "title": "Blocking Occurred",
+            "type": "boolean"
+          },
+          "cap_micros": {
+            "title": "Cap Micros",
+            "type": "integer"
+          },
+          "enforce_mode": {
+            "enum": [
+              "alert_only",
+              "blocking"
+            ],
+            "title": "Enforce Mode",
+            "type": "string",
+            "x-ubb-concept": "spend_pool_enforce_mode"
+          },
+          "highest_threshold_reached": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Threshold Reached"
+          },
+          "known_period_charges_micros": {
+            "title": "Known Period Charges Micros",
+            "type": "integer"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Micros"
+          },
+          "unresolved_posting_count": {
+            "title": "Unresolved Posting Count",
+            "type": "integer"
+          },
+          "used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Percentage"
+          }
+        },
+        "required": [
+          "period",
+          "cap_micros",
+          "enforce_mode",
+          "known_period_charges_micros",
+          "unresolved_posting_count",
+          "used_percentage",
+          "remaining_micros",
+          "highest_threshold_reached",
+          "blocking_occurred"
+        ],
+        "title": "CustomerSpendPoolStatusOut",
         "type": "object"
       },
       "DebitCreditResponse": {
@@ -9530,62 +9584,6 @@
         "summary": "Revenue Analytics"
       }
     },
-    "/api/v1/billing/budget": {
-      "get": {
-        "operationId": "api_v1_billing_endpoints_get_tenant_budget",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BudgetConfigOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Tenant Budget"
-      },
-      "put": {
-        "operationId": "api_v1_billing_endpoints_put_tenant_budget",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BudgetConfigIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BudgetConfigOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Put Tenant Budget"
-      }
-    },
     "/api/v1/billing/credit": {
       "post": {
         "description": "Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).\n\nDeliberately untouched by F4.3: base is derived (balance minus active\ngrant remainders), so an ADJUSTMENT credit simply grows base. Tenants who\nwant expiring or promo credit use POST /customers/{id}/grants instead.",
@@ -9619,6 +9617,62 @@
           }
         ],
         "summary": "Credit"
+      }
+    },
+    "/api/v1/billing/customer-spend-pool": {
+      "get": {
+        "operationId": "api_v1_billing_endpoints_get_tenant_customer_spend_pool",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSpendPoolOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Tenant Customer Spend Pool"
+      },
+      "put": {
+        "operationId": "api_v1_billing_endpoints_put_tenant_customer_spend_pool",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerSpendPoolIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSpendPoolOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Put Tenant Customer Spend Pool"
       }
     },
     "/api/v1/billing/customers/{customer_id}/auto-top-up": {
@@ -9787,9 +9841,9 @@
         "summary": "Put Customer Billing Profile"
       }
     },
-    "/api/v1/billing/customers/{customer_id}/budget": {
+    "/api/v1/billing/customers/{customer_id}/customer-spend-pool": {
       "get": {
-        "operationId": "api_v1_billing_endpoints_get_customer_budget",
+        "operationId": "api_v1_billing_endpoints_get_customer_spend_pool",
         "parameters": [
           {
             "in": "path",
@@ -9807,7 +9861,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BudgetConfigOut"
+                  "$ref": "#/components/schemas/CustomerSpendPoolOut"
                 }
               }
             },
@@ -9819,10 +9873,10 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Get Customer Budget"
+        "summary": "Get Customer Spend Pool"
       },
       "put": {
-        "operationId": "api_v1_billing_endpoints_put_customer_budget",
+        "operationId": "api_v1_billing_endpoints_put_customer_spend_pool",
         "parameters": [
           {
             "in": "path",
@@ -9839,7 +9893,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BudgetConfigIn"
+                "$ref": "#/components/schemas/CustomerSpendPoolIn"
               }
             }
           },
@@ -9850,7 +9904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BudgetConfigOut"
+                  "$ref": "#/components/schemas/CustomerSpendPoolOut"
                 }
               }
             },
@@ -9862,12 +9916,13 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Put Customer Budget"
+        "summary": "Put Customer Spend Pool"
       }
     },
-    "/api/v1/billing/customers/{customer_id}/budget/status": {
+    "/api/v1/billing/customers/{customer_id}/customer-spend-pool/status": {
       "get": {
-        "operationId": "api_v1_billing_endpoints_get_customer_budget_status",
+        "description": "Where this customer's known period charges stand against the pool that\napplies to them. The basis is the durable pair the pool is measured over \u2014\nthe figure the live counter rebuilds from and MAX-merges toward, never the\ncounter itself \u2014 beside the configured amount and the assessment the\nkernel's crossing module composes over it (#456, slice 6 \u00a713).",
+        "operationId": "api_v1_billing_endpoints_get_customer_spend_pool_status",
         "parameters": [
           {
             "in": "path",
@@ -9885,7 +9940,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BudgetStatusOut"
+                  "$ref": "#/components/schemas/CustomerSpendPoolStatusOut"
                 }
               }
             },
@@ -9897,7 +9952,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Get Customer Budget Status"
+        "summary": "Get Customer Spend Pool Status"
       }
     },
     "/api/v1/billing/customers/{customer_id}/grants": {
@@ -15984,7 +16039,7 @@
     },
     "/api/v1/sandbox/reset": {
       "post": {
-        "description": "Asynchronously wipe the calling SANDBOX tenant's domain data.\n\nkeep_config=true (default) preserves rate cards, markups, plans, budget /\nbilling / postpaid / webhook configs; the Tenant row and its API keys\nalways survive. Returns 202 \u2014 the wipe runs as a Celery task and the\nsandbox 401s (deactivated) until it completes.\n\nThe wipe clears the sandbox's own audit entries and records this reset as\nthe first entry of the fresh history (ADR-004). The reset is async, so the\nacting principal \u2014 captured at the auth seam \u2014 is threaded to the task by\nvalue; ``record()`` in a worker has no request-scoped actor to read.",
+        "description": "Asynchronously wipe the calling SANDBOX tenant's domain data.\n\nkeep_config=true (default) preserves rate cards, markups, plans, customer spend pools /\nbilling / postpaid / webhook configs; the Tenant row and its API keys\nalways survive. Returns 202 \u2014 the wipe runs as a Celery task and the\nsandbox 401s (deactivated) until it completes.\n\nThe wipe clears the sandbox's own audit entries and records this reset as\nthe first entry of the fresh history (ADR-004). The reset is async, so the\nacting principal \u2014 captured at the auth seam \u2014 is threaded to the task by\nvalue; ``record()`` in a worker has no request-scoped actor to read.",
         "operationId": "api_v1_sandbox_endpoints_reset_sandbox",
         "parameters": [],
         "requestBody": {
@@ -18303,8 +18358,13 @@
                       },
                       "enforce_mode": {
                         "default": "alert_only",
+                        "enum": [
+                          "alert_only",
+                          "blocking"
+                        ],
                         "title": "Enforce Mode",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "spend_pool_enforce_mode"
                       },
                       "level": {
                         "default": 0,

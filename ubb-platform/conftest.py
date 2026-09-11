@@ -2,10 +2,10 @@
 Root pytest conftest.
 
 Overrides the Redis/cache URL to DB index 15 during test runs so that
-cache.clear() (FLUSHDB) in budget/gating/risk tests does not touch the
+cache.clear() (FLUSHDB) in spend-pool/gating/risk tests does not touch the
 application or Celery broker data (DB 1).
 
-Tests still use REAL Redis (not LocMemCache) because gating and budget tests
+Tests still use REAL Redis (not LocMemCache) because gating and spend-pool tests
 require cross-process cache semantics.  Only the database index changes.
 """
 import os

@@ -241,11 +241,11 @@ class RiskService:
                 return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
                         "balance_micros": balance}
 
-        # Budget cap: checked per-seat (customer, not owner)
-        from apps.billing.gating.services.budget_service import BudgetService
-        budget = BudgetService.check(customer)
-        if not budget["allowed"]:
-            return {"allowed": False, "reason": budget["reason"],
+        # Customer spend pool: checked per-seat (customer, not owner)
+        from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
+        pool = CustomerSpendPoolService.check(customer)
+        if not pool["allowed"]:
+            return {"allowed": False, "reason": pool["reason"],
                     "balance_micros": balance}
 
         # THE PARENT THE SOFT FLOOR ABOVE READS IS CHECKED ELSEWHERE NOW.

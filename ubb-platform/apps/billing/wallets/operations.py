@@ -45,7 +45,7 @@ Design decisions (grilled 2026-07-22, recorded on issue #109):
   ``BalanceLow`` under the top-up trigger) is suppressed by the ``repair``
   flag (I12: a back-correction never re-fires signals). Caller-side and
   staying there: the postpaid branch, ``TenantBillingService.accumulate_usage``
-  and the budget counters.
+  and the spend-pool counters.
 
 ``GrantLedger`` (grants.py) is private implementation of this module.
 """

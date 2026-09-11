@@ -89,27 +89,27 @@ operations:
     method: GET
     path: /api/v1/billing/customers/{customer_id}/billing-profile
     disposition: generated_only
-  - operation_id: api_v1_billing_endpoints_get_customer_budget
+  - operation_id: api_v1_billing_endpoints_get_customer_spend_pool
     method: GET
-    path: /api/v1/billing/customers/{customer_id}/budget
+    path: /api/v1/billing/customers/{customer_id}/customer-spend-pool
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/billing.py::BillingClient.get_budget
-  - operation_id: api_v1_billing_endpoints_get_customer_budget_status
+      - ubb-sdk/ubb/billing.py::BillingClient.get_customer_spend_pool
+  - operation_id: api_v1_billing_endpoints_get_customer_spend_pool_status
     method: GET
-    path: /api/v1/billing/customers/{customer_id}/budget/status
+    path: /api/v1/billing/customers/{customer_id}/customer-spend-pool/status
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/billing.py::BillingClient.get_budget_status
+      - ubb-sdk/ubb/billing.py::BillingClient.get_customer_spend_pool_status
   - operation_id: api_v1_billing_endpoints_get_postpaid_config
     method: GET
     path: /api/v1/billing/postpaid-config
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/billing.py::BillingClient.get_postpaid_config
-  - operation_id: api_v1_billing_endpoints_get_tenant_budget
+  - operation_id: api_v1_billing_endpoints_get_tenant_customer_spend_pool
     method: GET
-    path: /api/v1/billing/budget
+    path: /api/v1/billing/customer-spend-pool
     disposition: generated_only
   - operation_id: api_v1_billing_endpoints_get_transactions
     method: GET
@@ -143,21 +143,21 @@ operations:
     method: PUT
     path: /api/v1/billing/customers/{customer_id}/billing-profile
     disposition: generated_only
-  - operation_id: api_v1_billing_endpoints_put_customer_budget
+  - operation_id: api_v1_billing_endpoints_put_customer_spend_pool
     method: PUT
-    path: /api/v1/billing/customers/{customer_id}/budget
+    path: /api/v1/billing/customers/{customer_id}/customer-spend-pool
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/billing.py::BillingClient.set_budget
+      - ubb-sdk/ubb/billing.py::BillingClient.set_customer_spend_pool
   - operation_id: api_v1_billing_endpoints_put_postpaid_config
     method: PUT
     path: /api/v1/billing/postpaid-config
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/billing.py::BillingClient.set_postpaid_config
-  - operation_id: api_v1_billing_endpoints_put_tenant_budget
+  - operation_id: api_v1_billing_endpoints_put_tenant_customer_spend_pool
     method: PUT
-    path: /api/v1/billing/budget
+    path: /api/v1/billing/customer-spend-pool
     disposition: generated_only
   - operation_id: api_v1_billing_endpoints_refund_usage
     method: POST

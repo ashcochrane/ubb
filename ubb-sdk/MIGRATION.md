@@ -426,6 +426,41 @@ region. The axis is not repeated per row, because your request already named it.
 
 ---
 
+## 9. The customer spend pool takes its name (slice 6, #456 — pre-live)
+
+The per-customer spending bound is a **Customer Spend Pool** on every surface, and the
+retired family word that used to name it leaves the routes, the schemas and the SDK
+together. No alias, no short form: an abbreviation would be a second public name for
+one concept.
+
+The old paths are spelled with the retired word below as `{retired}` — the
+repository refuses the word itself on every living surface, and this guide is one.
+
+| earlier v3.0 pre-tag | v3.0 |
+|---|---|
+| `PUT`/`GET /api/v1/billing/{retired}` | `PUT`/`GET /api/v1/billing/customer-spend-pool` |
+| `PUT`/`GET /api/v1/billing/customers/{id}/{retired}` | `…/customers/{id}/customer-spend-pool` |
+| `GET …/customers/{id}/{retired}/status` | `GET …/customers/{id}/customer-spend-pool/status` |
+| `BudgetConfigIn` / `BudgetConfigOut` / `BudgetStatusOut` | `CustomerSpendPoolIn` / `CustomerSpendPoolOut` / `CustomerSpendPoolStatusOut` |
+| `BillingClient.set_budget` / `get_budget` / `get_budget_status` (and the `UBBClient` twins) | `set_customer_spend_pool` / `get_customer_spend_pool` / `get_customer_spend_pool_status` |
+
+`enforce_mode` keeps its two values, `alert_only` and `blocking`, and the SDK's
+default is now the generated constant `ubb.vocabulary.SPEND_POOL_ENFORCE_MODE_ALERT_ONLY`
+rather than a literal of its own. The published document enumerates the pair on all
+three schemas and on the threshold webhook's payload.
+
+**The status read's shape is final and different.** `spend_micros` and `pct` are
+gone. The read now carries the pool's basis as a pair — `known_period_charges_micros`
+(the resolved period charges, a lower bound whenever the count beside it is not zero)
+and `unresolved_posting_count` — beside `cap_micros`, `used_percentage` (a whole percent
+over the known figure, `null` with no pool), `remaining_micros` (headroom, never below
+zero, `null` with no pool), `highest_threshold_reached` (the largest of the pool's
+`alert_levels` reached, `null` when none is) and `blocking_occurred` (the start gate's
+own compare — `true` only under a `blocking` pool at or over its stop line). Section 8's
+value-rename table above still describes the same field, under the schemas' old names.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

@@ -325,7 +325,12 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # existed only for the cap's count. The column is not a sweep term;
         # the cap's VERDICT is, and it left the tree entirely: three G7
         # entries gone, 24 terms -> 23 and 80 sites -> 77.
-        "historical-migrations": (UNTIL_SLICE_8, 252, 19),
+        # 252 -> 253 in #456: ONE migration, the pool row's RenameModel with
+        # its table, constraints and reverse accessors following. The row's
+        # old name is not a sweep term; the family word it carried IS, and
+        # the backend area's count fell 36 -> 7 while two entries left the
+        # ledger outright: 23 terms -> 22 and 77 sites -> 75.
+        "historical-migrations": (UNTIL_SLICE_8, 253, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

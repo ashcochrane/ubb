@@ -449,7 +449,7 @@ class TestRepairRidesThePatrol:
         assert _live(b.id) == 8_000_000
 
     def test_postpaid_tenants_are_out_of_scope(self):
-        # The postpaid spend counter's drift lane is the MAX-merge + budget
+        # The postpaid spend counter's drift lane is the MAX-merge + spend-pool
         # reconcile; the repair is the prepaid wallet lane's alone.
         t = _tenant(mode="postpaid")
         assert repair.repair_live_balances(t) == NO_OUTCOMES

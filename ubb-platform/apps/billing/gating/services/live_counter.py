@@ -1,10 +1,10 @@
 """THE live counter (#111) — the one owner of the Tier-2 Redis state.
 
 The SHARED, owner-keyed Redis counters that the fast lane maintains so an
-API response can express a real wallet/budget stop verdict, plus the
-cooperative customer-wide stop flag and the seat-keyed budget counter. Every
+API response can express a real wallet/spend-pool stop verdict, plus the
+cooperative customer-wide stop flag and the seat-keyed spend-pool counter. Every
 ``ubb:livebal:*`` / ``ubb:livespend:*`` / ``ubb:stop:*`` / ``ubb:stopchan:*``
-/ ``ubb:budget:*`` key format, every Lua script, and the TTL discipline live
+/ ``ubb:spend_pool:*`` key format, every Lua script, and the TTL discipline live
 HERE and only here — pinned by ``apps/billing/tests/
 test_live_counter_perimeter.py`` (ADR-001 walker style) and frozen once in
 this module's own pin test, never by scattered private imports.
@@ -35,14 +35,14 @@ across all its seats and an allocated/individual owner is its own:
            first-use under-count (the counter is born at the first event,
            not the month-to-date total) within one reconcile cycle.
 
-The BUDGET counter (D3/D3b of the #111 grilling) is the seat-keyed sibling:
-``ubb:budget:{customer_id}:{YYYY-MM}`` = micros of the seat's month-to-date
+The SPEND-POOL counter (D3/D3b of the #111 grilling) is the seat-keyed sibling:
+``ubb:spend_pool:{customer_id}:{YYYY-MM}`` = micros of the seat's month-to-date
 billed spend, INCRBY'd by the drawdown tail and MAX-merged toward the durable
 ledger by the hourly rebuild. One client dialect: like every other key here
 it lives on the raw client with the module's TTL discipline — the old
 two-dialect hack (Django-cache counter ops + a raw-client Lua aimed at the
-cache-prefixed physical key) is retired. Budget POLICY — config resolution,
-threshold alerts, the fail-open/fail-closed gate — stays in BudgetService;
+cache-prefixed physical key) is retired. Pool POLICY — config resolution,
+threshold alerts, the fail-open/fail-closed gate — stays in CustomerSpendPoolService;
 only the counter mechanics live here.
 
 SEEDING (the one deliberate over-permissive window): the prepaid counter
@@ -68,7 +68,7 @@ import logging
 
 from django.conf import settings
 
-from core.crossing import (budget_stop_threshold, crossed_live, floor_line,
+from core.crossing import (spend_pool_stop_threshold, crossed_live, floor_line,
                            month_label_bounds, past_floor, recovered_floor,
                            same_month)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
@@ -105,8 +105,8 @@ return v
 # durable ledger. ARGV[1] may be negative. Returns new value or nil.
 # KEYS[1]=counter; ARGV[1]=amount; ARGV[2]=ttl. One script, three riders: the
 # prepaid credit hook, the upward repair's ``repair_incr`` (D1 — the same
-# primitive, different policy around it), and the budget drawdown INCR (D3b —
-# a missing budget key rebuilds from Postgres instead).
+# primitive, different policy around it), and the spend-pool drawdown INCR (D3b
+# — a missing spend-pool key rebuilds from Postgres instead).
 _INCR_IF_PRESENT = """
 if redis.call('EXISTS', KEYS[1]) == 1 then
     local v = redis.call('INCRBY', KEYS[1], ARGV[1])
@@ -145,14 +145,14 @@ return v
 
 # Reconcile MAX-merge: only RAISES toward the durable month total (catches
 # the first-use under-count / a lost INCR). ONE script for both month-scoped
-# counters — the postpaid owner livespend and the seat budget counter (D3b
-# retired the budget_service mirror copy). Within a month real spend only
+# counters — the postpaid owner livespend and the seat spend-pool counter (D3b
+# retired the pool service's mirror copy). Within a month real spend only
 # rises and the durable ledger is the truth, so raising-toward-durable is the
 # correct discipline; the only legitimate decrease is at month rollover,
 # where the key LABEL changes and this script seeds the fresh key. An atomic
 # read+set(max) in one server-side op, so a concurrent INCR is never erased:
 # an INCR before the GET is included; one after the SET only raises.
-# KEYS[1]=livespend|budget; ARGV[1]=durable_total; ARGV[2]=ttl.
+# KEYS[1]=livespend|spend_pool; ARGV[1]=durable_total; ARGV[2]=ttl.
 _RECONCILE_MAX = """
 local cur = redis.call('GET', KEYS[1])
 local target = tonumber(ARGV[1])
@@ -187,9 +187,9 @@ def _stop_key(owner_id) -> str:
     return f"ubb:stop:{owner_id}"
 
 
-def _budget_key(customer_id, label) -> str:
-    # SEAT-keyed (customer, not owner) — budgets cap the seat's own spend.
-    return f"ubb:budget:{customer_id}:{label}"
+def _spend_pool_key(customer_id, label) -> str:
+    # SEAT-keyed (customer, not owner) — a pool bounds the seat's own spend.
+    return f"ubb:spend_pool:{customer_id}:{label}"
 
 
 def stop_channel(owner_id) -> str:
@@ -207,7 +207,7 @@ class LiveCounter:
         return the customer-wide stop verdict.
 
         P3: if this event drives the counter across the threshold (prepaid
-        wallet floor / postpaid budget cap) the owner-keyed stop flag is SET
+        wallet floor / postpaid spend pool) the owner-keyed stop flag is SET
         (cooperative — never rolls back this event; I3). The returned dict
         carries {mode, balance_micros|spend_micros, stop, stop_reason,
         stop_scope} (the stop fields reflect the flag AFTER this event, so a
@@ -242,7 +242,7 @@ class LiveCounter:
                 from django.utils import timezone
                 now = now or timezone.now()
                 # I9: a prior-month backdated event must not inflate THIS
-                # month's live counter (mirrors handlers.py budget tail).
+                # month's live counter (mirrors handlers.py's spend-pool tail).
                 if not same_month(effective_at, now):
                     return None
                 label, _, _ = month_label_bounds(now)
@@ -281,12 +281,12 @@ class LiveCounter:
     @staticmethod
     def _threshold(mode, owner_id, tenant):
         """Resolve the ONE comparable crossing bound for this (mode, owner):
-        postpaid -> ``crossing.budget_stop_threshold`` over the resolved
-        BudgetConfig (None = can never cross: no config, cap <= 0, or an
+        postpaid -> ``crossing.spend_pool_stop_threshold`` over the resolved
+        CustomerSpendPool (None = can never cross: no config, cap <= 0, or an
         alert_only ``enforce_mode`` — #110 unified every lane on the
-        BudgetService.check semantics); prepaid -> ``crossing.floor_line``
-        (the wallet floor). Exactly ONE ORM lookup (BudgetConfig via
-        BudgetService.resolve_config_for, or CustomerBillingProfile/
+        CustomerSpendPoolService.check semantics); prepaid -> ``crossing.floor_line``
+        (the wallet floor). Exactly ONE ORM lookup (CustomerSpendPool via
+        CustomerSpendPoolService.resolve_config_for, or CustomerBillingProfile/
         BillingTenantConfig via get_customer_min_balance).
 
         Separate from ``_crossed`` — resolving the line and comparing against
@@ -294,9 +294,9 @@ class LiveCounter:
         that answers "which line does this owner cross?". ``_crossed`` is its
         only caller."""
         if mode == "postpaid":
-            from apps.billing.gating.services.budget_service import BudgetService
-            return budget_stop_threshold(
-                BudgetService.resolve_config_for(tenant.id, owner_id))
+            from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
+            return spend_pool_stop_threshold(
+                CustomerSpendPoolService.resolve_config_for(tenant.id, owner_id))
         from apps.billing.queries import get_customer_min_balance
         return floor_line(get_customer_min_balance(owner_id, tenant.id))
 
@@ -304,7 +304,7 @@ class LiveCounter:
     def _crossed(mode, value, owner_id, tenant) -> bool:
         """True if the live counter has crossed the owner's threshold:
         prepaid balance below the wallet floor (-min_balance), or postpaid
-        month-to-date spend at/over the budget stop line. Resolves the
+        month-to-date spend at/over the pool's stop line. Resolves the
         threshold via ``_threshold`` (ONE ORM query per call) and compares
         via ``crossing.crossed_live`` — the one owner of both orientations."""
         return crossed_live(
@@ -334,7 +334,7 @@ class LiveCounter:
         path (``debit``). The pub/sub publish is guarded by try/except
         (not a DB statement, so that suffices). drive_stop opens its own
         ``transaction.atomic`` — a SAVEPOINT inside the sync path's ambient
-        transaction (the budget_service.check_thresholds pattern): a DB-level
+        transaction (the pool service's threshold-alert pattern): a DB-level
         failure inside it (deadlock, timeout) rolls back to the savepoint
         cleanly, so the ambient Postgres transaction stays usable and the
         caller's money-path statements are never collaterally rolled back by
@@ -727,7 +727,7 @@ class LiveCounter:
 
         Signal catch-up (#39): mirrors the prepaid pass — the merged spend
         (or the durable month total when Redis is blind) drives the ledger
-        both ways, so a budget-cap stop missed by the fast lane is SET here
+        both ways, so a spend-pool stop missed by the fast lane is SET here
         and a stale one (incl. MONTH ROLLOVER: the new month's livespend is
         low, and the stop flag is NOT month-scoped) is cleared within one
         cycle. No soft-family leg: the soft floor is a wallet line,
@@ -804,17 +804,17 @@ class LiveCounter:
         v = _client().get(_livespend_key(owner_id, label))
         return int(v) if v is not None else None
 
-    # ---- budget counter mechanics (D3/D3b) ----
+    # ---- spend-pool counter mechanics (D3/D3b) ----
     @staticmethod
-    def budget_read(tenant_id, customer_id, *, now=None):
-        """The seat's month-to-date budget counter, rebuilding from the
+    def spend_pool_read(tenant_id, customer_id, *, now=None):
+        """The seat's month-to-date spend-pool counter, rebuilding from the
         durable ledger on a missing key (and best-effort seeding it — a
         Redis write failure still returns the authoritative Postgres total).
-        A Redis READ failure raises: the caller (BudgetService.check) owns
+        A Redis READ failure raises: the caller (CustomerSpendPoolService.check) owns
         the fail-open/fail-closed policy."""
         from django.utils import timezone
         label, start, end = month_label_bounds(now or timezone.now())
-        key = _budget_key(customer_id, label)
+        key = _spend_pool_key(customer_id, label)
         val = _client().get(key)
         if val is not None:
             return int(val)
@@ -827,16 +827,16 @@ class LiveCounter:
         return total
 
     @staticmethod
-    def budget_incr(tenant_id, customer_id, amount_micros, *, now=None):
+    def spend_pool_incr(tenant_id, customer_id, amount_micros, *, now=None):
         """INCRBY the seat's period counter; returns (old, new, label).
         Missing key: in the production drawdown path this runs AFTER the
         Posting is committed, so the durable total already INCLUDES this
         event — rebuild to that total (do NOT add amount again, or we
         double-count). Redis errors propagate: the caller
-        (BudgetService.record_usage_spend) is fully fail-open."""
+        (CustomerSpendPoolService.record_usage_spend) is fully fail-open."""
         from django.utils import timezone
         label, start, end = month_label_bounds(now or timezone.now())
-        key = _budget_key(customer_id, label)
+        key = _spend_pool_key(customer_id, label)
         v = _client().eval(_INCR_IF_PRESENT, 1, key, int(amount_micros),
                            COUNTER_TTL_SECONDS)
         if v is not None:
@@ -848,15 +848,15 @@ class LiveCounter:
         return max(0, new - amount_micros), new, label
 
     @staticmethod
-    def budget_reconcile(tenant_id, customer_id, *, now=None):
-        """MAX-merge the seat's budget counter toward the durable in-month
+    def spend_pool_reconcile(tenant_id, customer_id, *, now=None):
+        """MAX-merge the seat's spend-pool counter toward the durable in-month
         billed total (P1, D8/I7: the monotonic merge — an absolute SET could
         erase an in-flight INCR mid-burst, transiently re-allowing over-cap
         spend; MAX never lowers, and the month-rollover label change is the
         only legitimate decrease).
 
         NOTE on locking: unlike the prepaid reconcile, this does NOT take
-        lock_for_billing(owner) — the concurrent writer (``budget_incr`` via
+        lock_for_billing(owner) — the concurrent writer (``spend_pool_incr`` via
         the drawdown tail) runs outside that lock and is keyed on the SEAT,
         so the lock would not serialize it. The atomic MAX-merge is what
         makes this race-free. Returns (durable_total, label) for the
@@ -873,7 +873,7 @@ class LiveCounter:
         # postpaid reconcile above, which is the lane that owns this basis.
         totals = get_customer_cost_totals(tenant_id, customer_id, start, end)
         total = int(totals["billed_cost_micros"])
-        _client().eval(_RECONCILE_MAX, 1, _budget_key(customer_id, label),
+        _client().eval(_RECONCILE_MAX, 1, _spend_pool_key(customer_id, label),
                        total, COUNTER_TTL_SECONDS)
         return total, label
 
@@ -884,7 +884,7 @@ class LiveCounter:
         for every owner of a tenant (D17). Call on an enforcement_mode
         TRANSITION so a re-enable / mode change never reads a STALE stop flag
         (which could wrongly durably-suspend) or a stale prepaid balance
-        (62-day TTL). The month-scoped counters (livespend, budget)
+        (62-day TTL). The month-scoped counters (livespend, spend_pool)
         self-reset monthly, are reconcile-corrected, and are short-circuited
         while mode==off, so they need no explicit cleanup. Best-effort.
 
@@ -978,17 +978,17 @@ class Door:
         clearing path, which goes through ``resume``)."""
         _client().delete(_stop_key(owner_id))
 
-    # -- seat budget counter --
+    # -- seat spend-pool counter --
     @staticmethod
-    def set_budget(customer_id, micros, *, now=None):
+    def set_spend_pool(customer_id, micros, *, now=None):
         from django.utils import timezone
         label, _, _ = month_label_bounds(now or timezone.now())
-        _client().set(_budget_key(customer_id, label), int(micros),
+        _client().set(_spend_pool_key(customer_id, label), int(micros),
                       ex=COUNTER_TTL_SECONDS)
 
     @staticmethod
-    def budget(customer_id, *, now=None):
+    def spend_pool(customer_id, *, now=None):
         from django.utils import timezone
         label, _, _ = month_label_bounds(now or timezone.now())
-        v = _client().get(_budget_key(customer_id, label))
+        v = _client().get(_spend_pool_key(customer_id, label))
         return int(v) if v is not None else None

@@ -6,25 +6,25 @@ logger = logging.getLogger("ubb.billing")
 
 
 @shared_task(queue="ubb_billing")
-def reconcile_budget_counters():
-    """Rebuild per-customer budget counters from the durable ledger (drift correction)."""
+def reconcile_customer_spend_pool_counters():
+    """Rebuild per-customer spend-pool counters from the durable ledger (drift correction)."""
     from apps.platform.customers.models import Customer
-    from apps.billing.gating.models import BudgetConfig
-    from apps.billing.gating.services.budget_service import BudgetService, _period
+    from apps.billing.gating.models import CustomerSpendPool
+    from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService, _period
     from apps.metering.queries import get_customer_ids_with_usage
 
     _label, start, end = _period()
-    ids = set(BudgetConfig.objects.filter(customer__isnull=False, cap_micros__gt=0)
+    ids = set(CustomerSpendPool.objects.filter(customer__isnull=False, cap_micros__gt=0)
               .values_list("customer_id", flat=True))
-    default_tenants = list(BudgetConfig.objects.filter(customer__isnull=True, cap_micros__gt=0)
+    default_tenants = list(CustomerSpendPool.objects.filter(customer__isnull=True, cap_micros__gt=0)
                            .values_list("tenant_id", flat=True))
     if default_tenants:
         ids |= set(get_customer_ids_with_usage(default_tenants, start, end))
     for customer in Customer.objects.filter(id__in=ids):
         try:
-            BudgetService.reconcile_customer(customer)
+            CustomerSpendPoolService.reconcile_customer(customer)
         except Exception:
-            logger.exception("budget.reconcile_failed", extra={"data": {"customer_id": str(customer.id)}})
+            logger.exception("customer_spend_pool.reconcile_failed", extra={"data": {"customer_id": str(customer.id)}})
 
 
 def _per_owner_reconcile(tenant):
@@ -36,7 +36,7 @@ def _per_owner_reconcile(tenant):
     from apps.platform.customers.models import Customer
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
-    from apps.billing.gating.services.budget_service import _period
+    from apps.billing.gating.services.customer_spend_pool_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
 
     flag_realigned = 0
@@ -50,7 +50,7 @@ def _per_owner_reconcile(tenant):
             cust_ids = list(get_customer_ids_with_usage(tenant.id, start, end))
             owners = {c.resolve_billing_owner().id
                       for c in Customer.all_objects.filter(id__in=cust_ids)}
-            # P6b deadlock fix: ALSO reconcile owners suspended for budget
+            # P6b deadlock fix: ALSO reconcile owners suspended at their pool
             # that have NO current-month usage. A suspended owner is
             # start-gate-blocked, so it never appears in
             # get_customer_ids_with_usage — and reconcile_postpaid (its only

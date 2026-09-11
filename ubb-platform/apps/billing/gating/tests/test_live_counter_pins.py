@@ -85,12 +85,12 @@ def test_stop_channel_format(owner):
     assert stop_channel(owner.id) == f"ubb:stopchan:{owner.id}"
 
 
-def test_budget_key_format(tenant):
+def test_spend_pool_key_format(tenant):
     c = Customer.objects.create(tenant=tenant, external_id="pin-seat")
-    Door.set_budget(c.id, 111)
-    LiveCounter.budget_incr(tenant.id, c.id, 9)
-    assert _raw().get(f"ubb:budget:{c.id}:{_label()}") == b"120"
-    assert Door.budget(c.id) == 120
+    Door.set_spend_pool(c.id, 111)
+    LiveCounter.spend_pool_incr(tenant.id, c.id, 9)
+    assert _raw().get(f"ubb:spend_pool:{c.id}:{_label()}") == b"120"
+    assert Door.spend_pool(c.id) == 120
 
 
 def test_counter_keys_carry_the_module_ttl(tenant, owner):
