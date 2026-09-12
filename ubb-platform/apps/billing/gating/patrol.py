@@ -26,6 +26,9 @@ recording lane stops on it whatever the switch says:
    SWEEP is the spend lane and stops only on a crossing, so it writes `killed`
    alone; the RE-MINT follows the announcement stamp instead, so it covers
    `expired` as well — the reaper's stop is announced too (#408).
+   ``sweep_pool_stopped_work`` (#459) is the same repair for the pool's
+   kill: active work under an open pool line is swept into the kill flow,
+   and it is customer-wide, so it runs with legs 1, 2 and 4.
 4. Upward live-balance repair (§D, #45) — ``apps.billing.gating.repair``:
    the grace-gated honesty repair of the prepaid live counter (candidate on
    one pass, min-of-two-measurements relative increment on the next), with
@@ -88,6 +91,7 @@ def run_patrol(tenant, *, flag_realigned=0):
             (OUTCOME_REMINTED, remint_unannounced_kills)]
     if enforcing(tenant):
         legs.insert(0, (OUTCOME_REMINTED, remint_unannounced_signals))
+        legs.append((OUTCOME_SWEEP_KILLED, sweep_pool_stopped_work))
     for outcome, job in legs:
         try:
             counts[outcome] += job(tenant)
@@ -259,6 +263,31 @@ def sweep_over_limit_tasks(tenant):
                 trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
                 control_id=ceiling_control_id(task)):
             swept += 1
+    return swept
+
+
+def sweep_pool_stopped_work(tenant):
+    """The pool's own sweep (slice 6 §4, #459): every active unit of a
+    customer whose POOL line is open is swept into the idempotent kill flow
+    — the pool's word, ``pool_crossing``, the control the episode recorded.
+    The kill is registered on the crossing's commit; a process that died
+    between the ledger transition and its callbacks left the customer
+    suspended and its work running, and this leg is what makes that late
+    rather than lost, exactly as the ceiling's sweep does for a crashed
+    ceiling kill. Customer-wide, so enforcing tenants only. Returns how many
+    pieces of work it stopped."""
+    from apps.billing.gating.models import StopSignalState
+    from apps.billing.gating.services.customer_spend_pool_service import (
+        CustomerSpendPoolService)
+    from apps.billing.gating.services.stop_signal_service import (
+        LINE_CUSTOMER_SPEND_POOL, STATE_STOPPED)
+
+    swept = 0
+    for owner_id, control_id in (StopSignalState.objects
+                                 .filter(tenant_id=tenant.id, state=STATE_STOPPED,
+                                         reason=LINE_CUSTOMER_SPEND_POOL)
+                                 .values_list("owner_id", "control_id")):
+        swept += CustomerSpendPoolService.stop_active_work(owner_id, tenant, control_id)
     return swept
 
 

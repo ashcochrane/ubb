@@ -3,10 +3,29 @@ from typing import NamedTuple
 from django.core.cache import cache
 
 from core.vocabulary import (
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
 from apps.billing.gating.models import RiskConfig
+from apps.platform.work import reasons
+
+
+def _suspension_refusal(customer):
+    """The refusal word for a suspended customer (slice 6 §4, #459): a
+    customer the pool alone is holding is refused in the pool's own word;
+    every other suspension — the wallet floor's, an administrative one, or
+    both lines at once, where the money-shaped refusal has always won below
+    both — in the word the gate has always used. Read off the OPEN ledger
+    lines rather than the suspension's own word, because the suspension
+    records the stop that OPENED it and that stop may since have lifted
+    while the other still holds (#458's two independent episodes)."""
+    from apps.billing.gating.services.stop_signal_service import StopSignalService
+    holding = {row["reason"] for row in StopSignalService.open_stop_lines(customer.id)}
+    if holding == {reasons.CUSTOMER_SPEND_POOL}:
+        return AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
+    return AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
 
 
 class StartPolicy(NamedTuple):
@@ -184,13 +203,14 @@ class RiskService:
         # Status: gate if the seat OR its billing-owner (business) is suspended/closed
         for who in ([customer] if owner.id == customer.id else [customer, owner]):
             if who.status == "suspended":
-                return {"allowed": False, "reason": "insufficient_funds", "balance_micros": None}
+                return {"allowed": False, "reason": _suspension_refusal(who),
+                        "balance_micros": None}
             if who.status == "closed":
                 return {"allowed": False, "reason": "account_closed", "balance_micros": None}
         # Tier-2 P6: honor the synchronous customer-wide stop flag at the
         # start-gate (enforcing only — the flag cannot exist for an off
         # tenant) so a flag-stopped owner's NEW tasks are blocked even before
-        # the durable suspend lands, and for postpaid owner-aggregate stops.
+        # the durable suspend lands, and for owner-aggregate pool stops.
         from apps.platform.tenants.flags import enforcing
         if enforcing(customer.tenant):
             from apps.billing.gating.services.live_counter import LiveCounter
@@ -241,7 +261,9 @@ class RiskService:
                 return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
                         "balance_micros": balance}
 
-        # Customer spend pool: checked per-seat (customer, not owner)
+        # Customer spend pool, the SEAT level (slice 6 §4): the seat's own
+        # counter against the seat's pool. The owner level refuses through
+        # the owner's suspension and flag above.
         from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
         pool = CustomerSpendPoolService.check(customer)
         if not pool["allowed"]:

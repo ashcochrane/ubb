@@ -4,8 +4,9 @@ start-gate, reconcile, repair, pool gate) imports.
 
 These are the leverage pins: one file guards the compare that 11+ call sites
 used to re-derive by hand. The cross-form equivalence tests (transition form
-== level form on both edges; mode dispatch == the named predicate) are the
-ones that make a future sign error impossible to reintroduce silently.
+== level form on both edges; the pre-resolved line == the named predicate)
+are the ones that make a future sign error impossible to reintroduce
+silently.
 
 Pure predicates — no DB, no Redis. CustomerSpendPool instances are UNSAVED (the
 function only reads attributes), so the model-field default for
@@ -125,36 +126,18 @@ class TestSpendPoolStopThreshold:
         assert crossing.past_spend_pool_stop(10**12, None) is False
 
 
-class TestCrossedLive:
-    """The mode dispatch the fast lane and reconcile share: one
-    orientation per mode, threshold pre-resolved once per owner."""
+class TestTheLineAgreesWithThePredicate:
+    """The mode-keyed dispatcher the fast lane and reconcile once shared
+    left with #459 (each lane names the line it compares); what survives is
+    the sign-drift killer — the wallet's pre-resolved line and its named
+    predicate are ONE decision."""
 
-    def test_postpaid_spend_rises_across_the_stop_line(self):
-        assert crossing.crossed_live("postpaid", 12, 12) is True
-        assert crossing.crossed_live("postpaid", 11, 12) is False
-
-    def test_prepaid_balance_falls_across_the_wallet_line(self):
-        line = crossing.floor_line(FLOOR)
-        assert crossing.crossed_live("prepaid", -FLOOR - 1, line) is True
-        assert crossing.crossed_live("prepaid", -FLOOR, line) is False
-
-    def test_none_threshold_never_crosses_either_mode(self):
-        assert crossing.crossed_live("postpaid", 10**12, None) is False
-        assert crossing.crossed_live("prepaid", -(10**12), None) is False
-
-    def test_prepaid_dispatch_agrees_with_past_floor(self):
-        # The sign-drift killer: the batch compare (value vs pre-resolved
-        # line) and the named predicate (balance vs floor magnitude) are ONE
-        # decision.
+    def test_the_wallet_line_agrees_with_past_floor(self):
         for bal in (-2 * FLOOR, -FLOOR - 1, -FLOOR, -FLOOR + 1, 0, FLOOR):
-            assert crossing.crossed_live(
-                "prepaid", bal, crossing.floor_line(FLOOR)
-            ) == crossing.past_floor(bal, FLOOR)
+            assert (bal < crossing.floor_line(FLOOR)) == crossing.past_floor(bal, FLOOR)
 
-    def test_postpaid_dispatch_agrees_with_past_spend_pool_stop(self):
-        for spend in (0, 11, 12, 13, 10**9):
-            assert crossing.crossed_live("postpaid", spend, 12) == \
-                crossing.past_spend_pool_stop(spend, 12)
+    def test_no_mode_keyed_dispatcher_survives(self):
+        assert not hasattr(crossing, "crossed_live")
 
 
 class TestMonthMath:

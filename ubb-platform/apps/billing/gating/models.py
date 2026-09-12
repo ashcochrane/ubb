@@ -245,9 +245,10 @@ class CustomerSpendPool(BaseModel):
     (#150 §7, slice 6 §4). A row on a customer is that customer's pool; a row
     with no customer is the tenant default. The pool's LEVEL needs no column:
     a row on a business is the owner-level pool, a row on a seat the
-    seat-level pool, and the tenant default applies to seats only (§4 — the
-    two-level behaviour is #459's). Renamed from the retired family word by
-    `gating/migrations/0013` (#456), carrying every row."""
+    seat-level pool, and the tenant default applies to seats only — a
+    business with no row of its own has no pool (§4, #459: both levels
+    alert, stop and refuse, in every billing mode). Renamed from the retired
+    family word by `gating/migrations/0013` (#456), carrying every row."""
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_spend_pools")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="customer_spend_pools", null=True, blank=True)

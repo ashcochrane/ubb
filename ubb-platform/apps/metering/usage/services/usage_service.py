@@ -635,13 +635,13 @@ class UsageService:
             inp.billing_owner_id, tenant, billed_cost_micros,
             effective_at=inp.effective_at, now=inp.now) or {}
         # Stop-context tagging (#41): runs AFTER the live debit so a fresh
-        # crossing (stop_episode_opened) marks THIS event as the episode's
-        # tipping event; still inside the recording transaction.
+        # crossing (stop_episodes_opened — one entry per line this debit
+        # tipped) marks THIS event as each episode's tipping event; still
+        # inside the recording transaction.
         _tag_stop_context(
             event, task=task, verdicts=verdicts, now=inp.now,
             owner=inp.owner_row, tenant=tenant,
-            opened_episode_seq=live.get("stop_episode_opened"),
-            opened_line=live.get("stop_line_opened"))
+            opened_episodes=live.get("stop_episodes_opened"))
         if inp.effective_at is not None:
             eff_month_start = month_bounds(inp.effective_at)[0]
             if eff_month_start < month_bounds(inp.now)[0]:

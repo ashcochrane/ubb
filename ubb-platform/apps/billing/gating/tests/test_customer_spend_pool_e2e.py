@@ -17,6 +17,7 @@ from apps.billing.gating.services.customer_spend_pool_service import CustomerSpe
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.metering.usage.models import Posting
+from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
 
 
 @pytest.mark.django_db
@@ -58,4 +59,5 @@ class TestCustomerSpendPoolEndToEnd:
         self._draw(tenant, customer, 500_000, 2)  # 1_100_000 total > 1_000_000 cap
         assert CustomerSpendPoolService.current_spend(tenant.id, customer.id) == 1_100_000
         res = RiskService.check(customer)
-        assert res["allowed"] is False and res["reason"] == "budget_exceeded"
+        assert res["allowed"] is False
+        assert res["reason"] == AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED

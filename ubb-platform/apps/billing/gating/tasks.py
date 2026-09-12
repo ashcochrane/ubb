@@ -9,7 +9,14 @@ logger = logging.getLogger("ubb.billing")
 
 @shared_task(queue="ubb_billing")
 def reconcile_customer_spend_pool_counters():
-    """Rebuild per-customer spend-pool counters from the durable ledger (drift correction)."""
+    """Rebuild per-customer spend-pool counters from the durable ledger
+    (drift correction) and drive the SEAT level's bottom line — the pool's
+    line signalled or cleared from the durable figure (slice 6 §4, #459).
+
+    A customer the seat level suspended is visited whether or not it has
+    usage this month: it is refused every start, so it never appears in the
+    usage-keyed set, and this pass is its only clearing path once the month
+    turns (the owner-level pass below has the same rescue for owners)."""
     from apps.platform.customers.models import Customer
     from apps.billing.gating.models import CustomerSpendPool
     from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService, _period
@@ -22,6 +29,9 @@ def reconcile_customer_spend_pool_counters():
                            .values_list("tenant_id", flat=True))
     if default_tenants:
         ids |= set(get_customer_ids_with_usage(default_tenants, start, end))
+    ids |= set(Customer.all_objects.filter(
+        status="suspended", suspension_reason=reasons.CUSTOMER_SPEND_POOL,
+    ).values_list("id", flat=True))
     for customer in Customer.objects.filter(id__in=ids):
         try:
             CustomerSpendPoolService.reconcile_customer(customer)
@@ -35,11 +45,12 @@ def _per_owner_reconcile(tenant):
     Drives the MIN/MAX counter merges (maintenance on) and the durable-basis
     signal catch-up + flag re-alignment (never off) for every billing owner.
     Never raises; returns the flag-realignment count (#44 §C.2)."""
-    from apps.platform.customers.models import Customer
+    from apps.platform.customers.models import ACCOUNT_TYPE_SEAT, Customer
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.customer_spend_pool_service import _period
     from apps.metering.queries import get_customer_ids_with_usage
+    from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
 
     flag_realigned = 0
 
@@ -47,27 +58,32 @@ def _per_owner_reconcile(tenant):
         return 1 if outcome and outcome.get("flag_realigned") else 0
 
     try:
-        if tenant.billing_mode == "postpaid":
+        if tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID:
             _label, start, end = _period()
             cust_ids = list(get_customer_ids_with_usage(tenant.id, start, end))
             owners = {c.resolve_billing_owner().id
                       for c in Customer.all_objects.filter(id__in=cust_ids)}
-            # P6b deadlock fix: ALSO reconcile owners suspended at their pool
-            # that have NO current-month usage. A suspended owner is
-            # start-gate-blocked, so it never appears in
-            # get_customer_ids_with_usage — and reconcile_postpaid (its only
-            # un-suspend path; credit() is a postpaid no-op) would never run,
-            # stranding it suspended forever past month rollover.
-            owners |= set(Customer.all_objects.filter(
-                tenant=tenant, status="suspended",
-                suspension_reason=reasons.CUSTOMER_SPEND_POOL,
-            ).values_list("id", flat=True))
-            for owner_id in owners:
-                flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
         else:
-            for owner_id in Wallet.objects.filter(
-                    customer__tenant=tenant).values_list("customer_id", flat=True):
-                flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
+            owners = set(Wallet.objects.filter(
+                customer__tenant=tenant).values_list("customer_id", flat=True))
+        # P6b deadlock fix: ALSO reconcile OWNERS suspended at their pool
+        # that have NO current-month usage. A suspended owner is
+        # start-gate-blocked, so it never appears in
+        # get_customer_ids_with_usage — and the pool pass (its only
+        # un-suspend path; credit() clears the floor's line only) would never
+        # run, stranding it suspended forever past month rollover. In every
+        # mode since #459; a pooled SEAT suspended by its own level is not an
+        # owner and is the seat-level beat's to visit.
+        owners |= set(Customer.all_objects.filter(
+            tenant=tenant, status="suspended",
+            suspension_reason=reasons.CUSTOMER_SPEND_POOL,
+        ).exclude(
+            # `resolve_billing_owner`'s one rule, as a predicate: a seat under
+            # a pooled business is funded by its parent and is not an owner.
+            account_type=ACCOUNT_TYPE_SEAT, parent__billing_topology="pooled",
+        ).values_list("id", flat=True))
+        for owner_id in owners:
+            flag_realigned += _count(LiveCounter.reconcile(owner_id, tenant))
     except Exception:
         logger.exception("live_counter.reconcile_tenant_failed",
                          extra={"data": {"tenant_id": str(tenant.id)}})
@@ -79,13 +95,15 @@ def reconcile_live_ledgers():
     """Tier-2 (P2/WS1): MIN/MAX-merge the synchronous live counters toward the
     durable ledger for every enforcing tenant.
 
-    Prepaid: per-wallet ``livebal`` MIN-merge toward the durable wallet balance
-    (only lowers — credits are applied via the credit() hooks, so reconcile
-    repairs drift-high / the bounded seed window, never re-raises a missed
-    credit). Postpaid: per-OWNER ``livespend`` MAX-merge toward the
+    The wallet pass (every mode but postpaid): per-wallet ``livebal``
+    MIN-merge toward the durable wallet balance (only lowers — credits are
+    applied via the credit() hooks, so reconcile repairs drift-high / the
+    bounded seed window, never re-raises a missed credit). The pool pass
+    (every mode, #459): per-OWNER ``livespend`` MAX-merge toward the
     owner-aggregated month-to-date billed total (raises to catch the first-use
-    under-count). Iterates Wallet rows for prepaid (a wallet => a billing
-    owner, so allocated seats are covered, not just account_type in/business).
+    under-count). Iterates Wallet rows for a wallet-holding mode (a wallet =>
+    a billing owner, so allocated seats are covered, not just account_type
+    in/business).
 
     This pass IS the hourly patrol (#44, delivery spec §C — no new scheduled
     task): the per-owner reconcile drives missed signal transitions for both

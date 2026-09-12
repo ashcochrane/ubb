@@ -384,31 +384,6 @@ entries:
       `customer_spend_pool.threshold_reached` replaces it when slice 6
       builds the Customer Spend Pool. Same owner as G8's entry.
 
-  - id: g7-backend-budget_exceeded
-    gate: G7
-    site: backend::budget_exceeded
-    expected: affordability_reason
-    found: 4 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict named after the retired family. Slice 6's
-      four families give the refusal its own noun. 10 → 4 in #457: the
-      word was ALSO the postpaid suspension's reason, and that sense left
-      six files when the suspension fold started recording the stop that
-      opened the episode (`reasons.CUSTOMER_SPEND_POOL`, §9) and the
-      migration rewrote the stored column. What survives is the
-      affordability sense alone — the pool service's refusal and its three
-      test modules — which the affordability ticket (#463) renames.
-
-  - id: g7-backend-budget_unavailable
-    gate: G7
-    site: backend::budget_unavailable
-    expected: affordability_reason
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      The same, for the case where the family's state could not be read.
-
   # ⚠ `backend::card_type` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED. The
   # descent was 31 -> 28 (#367, the column off the RULE) -> 4 (#368, the split
   # itself) -> 0. ⚠ **#368's own reason line was never written and the entry
@@ -525,7 +500,7 @@ entries:
     gate: G7
     site: backend::meter_only
     expected: customer_billing_mode
-    found: 16 files
+    found: 15 files
     owner_slice: slice_8
     reason: >-
       It said what UBB does NOT do; `external` says where the billing
@@ -1192,25 +1167,6 @@ entries:
       An event owned by the retired family name.
       `customer_spend_pool.threshold_reached` replaces it when slice 6
       builds the Customer Spend Pool. Same owner as G8's entry.
-
-  - id: g7-openapi-budget_exceeded
-    gate: G7
-    site: openapi::budget_exceeded
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict named after the retired family. Slice 6's
-      four families give the refusal its own noun.
-
-  - id: g7-openapi-budget_unavailable
-    gate: G7
-    site: openapi::budget_unavailable
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The same, for the case where the family's state could not be read.
 
 
   - id: g7-openapi-dimensions
