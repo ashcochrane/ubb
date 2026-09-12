@@ -27,7 +27,7 @@ from core.vocabulary import (
 )
 from core import controls
 from apps.platform.grouping_fields.models import SLOTS
-from apps.platform.work import reasons
+from apps.platform.work import hooks, reasons
 from apps.platform.work.models import (
     STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
     STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, Task, TaskType)
@@ -963,6 +963,15 @@ class TaskService:
         ``_cascade`` off the parent's row and never passed here — is refused
         rather than stamped blank.
 
+        THE LISTENERS ARE TOLD HERE (#460, slice 6 §5), after the row is
+        written and before the cascade, so a parent's transition is heard
+        before its contained work's. Because this is the one terminal
+        transition, telling them here is what makes "every terminal path"
+        a property of the seam rather than a list somebody keeps: a new
+        path through this method reaches the listeners on the day it is
+        written. What a listener may and may not do to the transition is
+        `work/hooks.py`'s subject.
+
         Must be called inside @transaction.atomic. Lock order: parent before
         children (see Task.parent).
         """
@@ -987,6 +996,12 @@ class TaskService:
             task.reason_detail = declaration.reason_detail
             update_fields += ["outcome_reason", "reason_detail"]
         task.save(update_fields=update_fields)
+        # Read off the row the UPDATE above just wrote, not off the
+        # arguments again: a close's declared reason is now the column, and
+        # a row nothing ever closed carries "" there.
+        hooks.notify_terminal_transition(task, hooks.TerminalTransition(
+            task.status, outcome_reason=task.outcome_reason,
+            stop_reason=reason))
         if task.parent_id is None:
             TaskService._cascade(task, cascade)
         return task, True
@@ -1062,6 +1077,13 @@ class TaskService:
         they exist. The two cascade reasons name no family of their own
         (`core.controls.INHERITED_FROM_THE_PARENT`), and that is why this
         seam copies rather than derives.
+
+        AND THE LISTENERS HEAR EACH CASCADED PIECE (#460), marked as a
+        cascade, after `_flip` has told them about the parent. A cascade
+        announces nothing to the tenant's workers; a product that must
+        release what a piece of work held has to hear about that piece all
+        the same, and hearing it as a cascade is what lets it tell a piece
+        that ended from one whose container did.
         """
         now = timezone.now()
         children = Task.objects.select_for_update().filter(
@@ -1086,6 +1108,9 @@ class TaskService:
                 child.outcome_reason = cascade.outcome_reason
                 update_fields.append("outcome_reason")
             child.save(update_fields=update_fields)
+            hooks.notify_terminal_transition(child, hooks.TerminalTransition(
+                cascade.status, outcome_reason=cascade.outcome_reason,
+                stop_reason=cascade.stop_reason, cascaded=True))
 
     @staticmethod
     def kill_and_announce(task_id, reason, *, tenant_id, customer_id,

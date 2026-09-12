@@ -36,6 +36,7 @@ from apps.platform.work.models import (
 from apps.platform.work.services import (
     STATUS_FOR_OUTCOME, CloseDeclaration, TaskService)
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
+from apps.platform.work.tests._helpers import backdate
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
@@ -62,14 +63,6 @@ class LifecycleTestBase(TestCase):
         test."""
         Task.objects.filter(id=task.id).update(
             status=status, completed_at=timezone.now())
-        task.refresh_from_db()
-        return task
-
-    def _backdate(self, task, *, created, last_event=None):
-        Task.objects.filter(id=task.id).update(
-            created_at=timezone.now() - created,
-            last_event_at=None if last_event is None
-            else timezone.now() - last_event)
         task.refresh_from_db()
         return task
 
@@ -147,13 +140,13 @@ class CompletedMeansTheTenantDeclaredDeliveryTest(LifecycleTestBase):
         self.assertNotEqual(killed.status, TASK_STATUS_COMPLETED)
 
     def test_the_crash_sweeper_does_not_write_it(self):
-        task = self._backdate(self._task(), created=timedelta(hours=2))
+        task = backdate(self._task(), created=timedelta(hours=2))
         close_abandoned_tasks()
         task.refresh_from_db()
         self.assertNotEqual(task.status, TASK_STATUS_COMPLETED)
 
     def test_the_stale_reaper_does_not_write_it(self):
-        task = self._backdate(self._task(), created=timedelta(hours=2),
+        task = backdate(self._task(), created=timedelta(hours=2),
                               last_event=timedelta(hours=1))
         reap_stale_tasks()
         task.refresh_from_db()
@@ -214,12 +207,12 @@ class KilledMeansUbbStoppedItOnASpendSignalTest(LifecycleTestBase):
         self.assertNotEqual(child.status, TASK_STATUS_KILLED)
 
     def test_neither_sweeper_writes_it(self):
-        crashed = self._backdate(self._task(), created=timedelta(hours=2))
+        crashed = backdate(self._task(), created=timedelta(hours=2))
         close_abandoned_tasks()
         crashed.refresh_from_db()
         self.assertNotEqual(crashed.status, TASK_STATUS_KILLED)
 
-        silent = self._backdate(self._task(), created=timedelta(hours=2),
+        silent = backdate(self._task(), created=timedelta(hours=2),
                                 last_event=timedelta(hours=1))
         reap_stale_tasks()
         silent.refresh_from_db()
@@ -230,7 +223,7 @@ class BothSweepersWriteExpiredTest(LifecycleTestBase):
     """§7 — `expired` means exactly *nobody ever told UBB how this ended*."""
 
     def test_the_crash_sweeper_writes_expired(self):
-        task = self._backdate(self._task(), created=timedelta(hours=2))
+        task = backdate(self._task(), created=timedelta(hours=2))
         self.assertEqual(close_abandoned_tasks(), 1)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_EXPIRED)
@@ -239,20 +232,20 @@ class BothSweepersWriteExpiredTest(LifecycleTestBase):
     def test_the_crash_sweeper_stamps_no_marker(self):
         # The marker said "we gave up waiting" beside a state that claimed a
         # delivery. The state says it now, so the marker is gone.
-        task = self._backdate(self._task(), created=timedelta(hours=2))
+        task = backdate(self._task(), created=timedelta(hours=2))
         close_abandoned_tasks()
         task.refresh_from_db()
         self.assertEqual(task.metadata, {})
 
     def test_the_stale_reaper_writes_expired(self):
-        task = self._backdate(self._task(), created=timedelta(hours=2),
+        task = backdate(self._task(), created=timedelta(hours=2),
                               last_event=timedelta(hours=1))
         self.assertEqual(reap_stale_tasks(), 1)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_EXPIRED)
 
     def test_the_stale_reaper_stamps_no_marker(self):
-        task = self._backdate(self._task(), created=timedelta(hours=2),
+        task = backdate(self._task(), created=timedelta(hours=2),
                               last_event=timedelta(hours=1))
         reap_stale_tasks()
         task.refresh_from_db()
@@ -261,7 +254,7 @@ class BothSweepersWriteExpiredTest(LifecycleTestBase):
     def test_the_stale_reaper_still_announces(self):
         # The state changes; the signal does not. A worker whose sibling went
         # silent is told, exactly as before — §19 renames the event later.
-        task = self._backdate(self._task(), created=timedelta(hours=2),
+        task = backdate(self._task(), created=timedelta(hours=2),
                               last_event=timedelta(hours=1))
         reap_stale_tasks()
         task.refresh_from_db()
@@ -272,7 +265,7 @@ class BothSweepersWriteExpiredTest(LifecycleTestBase):
     def test_an_expiring_parent_expires_its_contained_work(self):
         parent = self._task()
         child = self._task(parent=parent)
-        self._backdate(parent, created=timedelta(hours=2))
+        backdate(parent, created=timedelta(hours=2))
         close_abandoned_tasks()
         child.refresh_from_db()
         self.assertEqual(child.status, TASK_STATUS_EXPIRED)

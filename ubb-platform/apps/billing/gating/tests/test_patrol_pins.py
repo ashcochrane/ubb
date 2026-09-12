@@ -55,7 +55,7 @@ from apps.platform.events import announcements
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled)
-from apps.platform.work import reasons
+from apps.platform.work import hooks, reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 from apps.platform.work.models import Task
 from apps.platform.work.services import STOP_CAUSE_KEY, STOP_MECHANISM_KEY
@@ -380,6 +380,35 @@ class TestPin6TaskSweep:
         # Idempotent: the next pass finds nothing active.
         assert patrol.sweep_over_limit_tasks(t) == 0
         assert _events(TaskKilled.EVENT_TYPE).count() == 1
+
+    def test_the_patrols_kill_reaches_the_kernels_terminal_listeners(self):
+        """The patrol's kill is one of the terminal paths the kernel's
+        listener registry must hear (#460, slice 6 §5), and it is proved HERE
+        rather than beside the other paths in
+        `apps.platform.work.tests.test_every_terminal_path_reaches_the_listeners`
+        because the sweep is billing's: a kernel test importing a product is
+        the boundary ADR-001 draws, read in the other direction. Driven
+        through the hourly beat, which is how the patrol actually runs."""
+        heard = []
+        saved = list(hooks._listeners)
+        hooks._listeners[:] = []
+        hooks.register_terminal_transition_listener(
+            lambda task, transition: heard.append((task.id, transition)))
+        try:
+            t = _tenant()
+            c = _customer(t, balance_micros=1_000_000)
+            task = _task(t, c, limit=1_000, total=1_000)
+            reconcile_live_ledgers()
+            task.refresh_from_db()
+            assert task.status == TASK_STATUS_KILLED
+            assert heard == [(task.id, hooks.TerminalTransition(
+                TASK_STATUS_KILLED, stop_reason=reasons.TASK_COGS_CEILING))]
+            # The next beat finds nothing active, and the listener hears
+            # nothing more: exactly once, under the beat's own repeat.
+            reconcile_live_ledgers()
+            assert len(heard) == 1
+        finally:
+            hooks._listeners[:] = saved
 
     def test_subtask_is_swept_alone_parent_unaffected(self):
         t = _tenant()

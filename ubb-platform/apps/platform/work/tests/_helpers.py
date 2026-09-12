@@ -9,10 +9,12 @@ modules come to stand their work up slightly differently.
 """
 from django.db import IntegrityError, connection, models, transaction
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
+from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 
 
@@ -72,6 +74,22 @@ def refusal_from(door, row, **columns):
     except IntegrityError as refused:
         return str(refused)
     return None
+
+
+def backdate(task, *, created, last_event=None):
+    """Age a unit of work into a sweeper's window without a transition.
+
+    Written straight to the row, so a sweeper's fixture is never built out of
+    the reporting path whose timestamps the sweeper reads. ``created`` and
+    ``last_event`` are how long ago; ``None`` for the latter leaves the unit
+    as one that has never reported — the crash sweeper's subject.
+    """
+    Task.objects.filter(id=task.id).update(
+        created_at=timezone.now() - created,
+        last_event_at=None if last_event is None
+        else timezone.now() - last_event)
+    task.refresh_from_db()
+    return task
 
 
 class WorkTestBase(TestCase):
