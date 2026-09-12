@@ -30,7 +30,6 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
-from core.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
@@ -728,19 +727,11 @@ def get_customer_spend_pool_status(request, customer_id: UUID):
     counter itself — beside the configured amount and the assessment the
     kernel's crossing module composes over it (#456, slice 6 §13)."""
     _product_check(request)
-    from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
-    from core.crossing import spend_pool_assessment
+    from apps.billing.queries import customer_spend_pool_utilisation
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    cfg = CustomerSpendPoolService.resolve_config(customer)
-    label, known_micros, unresolved_count = CustomerSpendPoolService.period_basis(
-        customer.tenant_id, customer.id)
-    assessment = spend_pool_assessment(cfg, known_micros)
-    return {"period": label,
-            "cap_micros": cfg.cap_micros if cfg else 0,
-            "enforce_mode": cfg.enforce_mode if cfg else SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
-            "known_period_charges_micros": known_micros,
-            "unresolved_posting_count": unresolved_count,
-            **assessment._asdict()}
+    # Composed once, in billing's read contract, because Utilisation and
+    # headroom publishes the same pair beside its rows (#465).
+    return customer_spend_pool_utilisation(customer.tenant_id, customer.id)
 
 
 # ---------- Postpaid usage-invoice + config ----------

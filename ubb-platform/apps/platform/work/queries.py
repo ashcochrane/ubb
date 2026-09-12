@@ -2,17 +2,27 @@
 
 Billing's start-gate reads task-type policy through here; the API's analytics
 routes read task rollups through here; the platform's own sweepers read the
-expiry ladder through here. Plain data only — never ORM objects.
+expiry ladder through here; the two spend-control reports read a ceiling's
+episodes, every completed unit's utilisation and the work a customer-wide
+stop swept through here (#465, slice 6 §14). Plain data only — never ORM
+objects.
 """
 from typing import NamedTuple
 
 from django.db import models
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.db.models.aggregates import Aggregate
 
+from core import controls
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
-from core.crossing import ceiling_reached_q
-from apps.platform.work.models import Task, TaskType
+from core.crossing import ceiling_assessment, ceiling_fields
+from core.vocabulary import TASK_STATUS_KILLED
+from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SubtaskKilled, TaskKilled
+from apps.platform.work import reasons
+from apps.platform.work.models import (
+    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
+    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, Task, TaskType)
 
 #: WHAT A UNIT GETS WHEN NOBODY DECLARED ANYTHING, at either window (#412).
 #:
@@ -262,10 +272,6 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
                 sum_unpriced=Sum("unpriced_event_count"),
                 avg_provider_cost_micros=Avg("total_provider_cost_micros"),
                 p95_provider_cost_micros=PercentileCont("total_provider_cost_micros"),
-                # THE ONE COMPARE in its queryset spelling (#452), so this
-                # count and the recording lane's stop agree on the boundary.
-                limit_hit_count=Count("id", filter=ceiling_reached_q(
-                    "total_provider_cost_micros", "task_cogs_ceiling_micros")),
             )
             .order_by("-sum_provider_cost_micros"))
 
@@ -276,6 +282,209 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
              "total_billed_cost_micros": r["sum_billed_cost_micros"],
              UNPRICED_EVENT_COUNT_KEY: r["sum_unpriced"],
              "avg_provider_cost_micros": int(r["avg_provider_cost_micros"]),
-             "p95_provider_cost_micros": int(r["p95_provider_cost_micros"]),
-             "limit_hit_count": r["limit_hit_count"]}
+             "p95_provider_cost_micros": int(r["p95_provider_cost_micros"])}
             for r in rows]
+    # ⚠ NO REACHED COUNT ON THIS ROW ANY MORE (#465, slice 6 §14, Testing
+    # Decisions claim 14). The number of pieces of work whose known total reached the
+    # ceiling sat here as a third comparison beside the mean and the p95; it
+    # is a fact about the ceiling as a spend control rather than about the
+    # economics of a kind of work, so it moved to Utilisation and headroom
+    # (`ceiling_utilisation` below, aggregated per unit by the composition
+    # layer) and LEFT this report in both directions — slice 7's parity
+    # matrix for this endpoint starts one field short, and has been told.
+
+
+# --- the two spend-control reports' reads (#465, slice 6 §14) -------------
+#
+# WHAT THE KERNEL ANSWERS AND WHAT IT LEAVES TO THE JOIN. A ceiling is the
+# kernel's control (slice 6 §1), so the kernel says which work it stopped,
+# what each read when it fired and where each ended; the itemised events that
+# arrived after a stop are metering's rows and the customer-wide lines are
+# billing's ledger, and the composition layer joins the three (the seam the
+# retired per-customer report already sits on). Every filter here is the
+# report's own — the customer a unit belongs to, the kind of work it declared,
+# and the instant it stopped or completed — so a row is never fetched to be
+# thrown away one layer up.
+
+def _window(qs, column, since, until):
+    if since is not None:
+        qs = qs.filter(**{f"{column}__gte": since})
+    if until is not None:
+        qs = qs.filter(**{f"{column}__lt": until})
+    return qs
+
+
+def _scoped(tenant_id, *, customer_id, task_type):
+    qs = Task.objects.filter(tenant_id=tenant_id)
+    if customer_id is not None:
+        qs = qs.filter(customer_id=customer_id)
+    if task_type is not None:
+        qs = qs.filter(task_type=task_type)
+    return qs
+
+
+def _str_or_none(value):
+    return str(value) if value else None
+
+
+def _crossing_pairs(tenant_id, unit_ids):
+    """``{unit id: (known total, unresolved count)}`` as the kill ANNOUNCED
+    them — the pair the ceiling fired on.
+
+    The row's two counters keep moving after the kill (every late event
+    lands and counts), so the row can only say where a unit ended; what the
+    ceiling read when it fired is what the ORIGINAL announcement carried
+    (`_stop_and_announce` reads both off the row inside the flip's own
+    transaction). A patrol re-mint (`re_announcement`) carries the row as it
+    stood at repair time and is never the crossing, so the first
+    announcement per unit wins. A unit whose announcement has aged out of
+    outbox retention has no pair here, and the caller publishes null — the
+    figure is unknown, never zero.
+    """
+    if not unit_ids:
+        return {}
+    ids = [str(i) for i in unit_ids]
+    rows = (OutboxEvent.objects
+            .filter(tenant_id=tenant_id,
+                    event_type__in=(TaskKilled.EVENT_TYPE, SubtaskKilled.EVENT_TYPE))
+            .filter(Q(payload__task_id__in=ids) | Q(payload__subtask_id__in=ids))
+            .exclude(payload__re_announcement=True)
+            .order_by("created_at")
+            .values_list("event_type", "payload"))
+    pairs = {}
+    for event_type, payload in rows:
+        unit_id = (payload.get("subtask_id")
+                   if event_type == SubtaskKilled.EVENT_TYPE
+                   else payload.get("task_id"))
+        if unit_id in ids and unit_id not in pairs:
+            pairs[unit_id] = (payload.get("total_provider_cost_micros"),
+                              payload.get("unresolved_event_count"))
+    return pairs
+
+
+def ceiling_episodes(tenant_id, *, customer_id=None, task_type=None,
+                     since=None, until=None) -> list[dict]:
+    """Every unit UBB stopped on its OWN cost ceiling, as plain data — the
+    Ceiling rows of Stops and breaches (#465, slice 6 §14).
+
+    A row is a unit in `killed` whose stored cause is the ceiling's — which,
+    since #408, is the only way `killed` and that cause meet: nothing a
+    tenant declares writes the state, and no sweeper writes the cause. The
+    rules #153 §10.2 and §10.4 carry are satisfied by that selection alone
+    rather than by a second compare (the one-place gate): an
+    `indeterminate` unit is never stopped by its ceiling, so it never appears
+    here; an expiry writes `expired`; contained work the cascade stopped
+    carries the cascade's cause; a pool's kill carries the pool's word. The
+    scope is the row's own altitude (`reasons.unit_scope`).
+
+    Each row carries the control that fired as the flip stamped it (family,
+    id, the basis derived off the cause) and the mechanism the applying lane
+    recorded, the ceiling the unit pinned at start, the instant it stopped
+    (`opened_at` — a kill never resumes, so there is no close), the pair the
+    ceiling FIRED on (`crossed_*`, off the announcement — see
+    `_crossing_pairs`, null where none survives) and the pair the unit ENDED
+    on (`final_*`, off the row). The window selects on the stop instant.
+    """
+    qs = _window(_scoped(tenant_id, customer_id=customer_id, task_type=task_type)
+                 .filter(status=TASK_STATUS_KILLED,
+                         **{f"metadata__{STOP_CAUSE_KEY}__in": reasons.CROSSING_REASONS}),
+                 "completed_at", since, until)
+    stopped = list(qs.order_by("completed_at", "id").values(
+        "id", "parent_id", "customer_id", "task_type", "metadata",
+        "task_cogs_ceiling_micros", "total_provider_cost_micros",
+        "unresolved_event_count", "completed_at"))
+    crossed = _crossing_pairs(tenant_id, [u["id"] for u in stopped])
+    rows = []
+    for u in stopped:
+        cause = u["metadata"].get(STOP_CAUSE_KEY)
+        crossed_known, crossed_unresolved = crossed.get(str(u["id"]), (None, None))
+        rows.append({
+            "task_id": str(u["id"]),
+            "parent_task_id": _str_or_none(u["parent_id"]),
+            "customer_id": str(u["customer_id"]),
+            "task_type": u["task_type"],
+            "stop_scope": reasons.unit_scope(is_subtask=u["parent_id"] is not None),
+            "reason_code": cause,
+            "control_family": u["metadata"].get(STOP_CONTROL_FAMILY_KEY),
+            "control_id": _str_or_none(u["metadata"].get(STOP_CONTROL_ID_KEY)),
+            "ceiling_basis": controls.ceiling_basis(cause),
+            "trigger_source": _str_or_none(u["metadata"].get(STOP_MECHANISM_KEY)),
+            "task_cogs_ceiling_micros": u["task_cogs_ceiling_micros"],
+            "opened_at": u["completed_at"],
+            "crossed_provider_cost_micros": crossed_known,
+            "crossed_unresolved_event_count": crossed_unresolved,
+            "final_provider_cost_micros": u["total_provider_cost_micros"],
+            "final_unresolved_event_count": u["unresolved_event_count"],
+        })
+    return rows
+
+
+def ceiling_utilisation(tenant_id, *, customer_id=None, task_type=None,
+                        since=None, until=None) -> list[dict]:
+    """Every unit whose work is over, with its ceiling assessed as it stands
+    at completion — the rows of Utilisation and headroom (#465, slice 6 §14).
+
+    One row per unit in a terminal state at either altitude, selected by the
+    instant it completed. The three assessment fields are the row's own
+    (`Task.ceiling_assessment`, composed by the one predicate in
+    `core.crossing`) rendered under the wire names every other surface uses:
+    under `not_applicable` both figures are null, never zero, and under
+    `indeterminate` the percentage is a floor and the headroom a ceiling —
+    the status beside them is what says so. The aggregate a report builds on
+    these — the average computed per unit and then across every unit (#150
+    §9.3) — is the composition layer's, because it is a statement about the
+    set the report shows and not about any row.
+    """
+    qs = _window(_scoped(tenant_id, customer_id=customer_id, task_type=task_type)
+                 .filter(status__in=TERMINAL_TASK_STATUSES),
+                 "completed_at", since, until)
+    rows = []
+    for u in qs.order_by("completed_at", "id").values(
+            "id", "parent_id", "customer_id", "task_type", "completed_at",
+            "task_cogs_ceiling_micros", "total_provider_cost_micros",
+            "unresolved_event_count"):
+        assessment = ceiling_assessment(
+            ceiling_micros=u["task_cogs_ceiling_micros"],
+            known_micros=u["total_provider_cost_micros"],
+            unresolved_count=u["unresolved_event_count"])
+        rows.append({
+            "task_id": str(u["id"]),
+            "parent_task_id": _str_or_none(u["parent_id"]),
+            "customer_id": str(u["customer_id"]),
+            "task_type": u["task_type"],
+            "completed_at": u["completed_at"],
+            "task_cogs_ceiling_micros": u["task_cogs_ceiling_micros"],
+            "final_provider_cost_micros": u["total_provider_cost_micros"],
+            "final_unresolved_event_count": u["unresolved_event_count"],
+            **ceiling_fields(assessment),
+        })
+    return rows
+
+
+def customer_wide_stops_applied(tenant_id, *, since=None, until=None) -> list[dict]:
+    """Every unit a customer-wide stop swept — `killed` with the pool's word
+    as its cause — so a pool episode can say how much active work it
+    stopped (#465, slice 6 §14; the kill is `CustomerSpendPoolService.
+    stop_active_work` through the kernel's own seam, #459).
+
+    The wallet policy's hard floor opens the same customer-wide state and
+    sweeps nothing itself (the announcement is the signal; a subscriber fans
+    it out), so no unit carries its word and none is listed here. Each row
+    names the seat that owned the work and its billing owner, because the
+    pool's line is declared on either and the join matches on whichever the
+    episode belongs to — which is why this read takes no customer filter of
+    its own. The window selects on the instant the unit stopped.
+    """
+    qs = _window(_scoped(tenant_id, customer_id=None, task_type=None)
+                 .filter(status=TASK_STATUS_KILLED,
+                         **{f"metadata__{STOP_CAUSE_KEY}": reasons.CUSTOMER_SPEND_POOL}),
+                 "completed_at", since, until)
+    return [{
+        "task_id": str(u["id"]),
+        "customer_id": str(u["customer_id"]),
+        "billing_owner_id": _str_or_none(u["billing_owner_id"]),
+        "reason_code": u["metadata"].get(STOP_CAUSE_KEY),
+        "control_id": _str_or_none(u["metadata"].get(STOP_CONTROL_ID_KEY)),
+        "stopped_at": u["completed_at"],
+    } for u in qs.order_by("completed_at", "id").values(
+        "id", "customer_id", "billing_owner_id", "metadata", "completed_at")]

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,817 of 2,244 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,844 of 2,271 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2116,6 +2116,30 @@ measurement_key:
     # backend, the console and the contract, the last `openapi::budget`
     # file, the catalogue's three G2 entries and its G4 twin, and the two G6
     # humanisers.
+    #
+    # 2026-09-12, #465 (Stops and breaches and Utilisation and headroom exist
+    # on the wire, at their own prefix): 1,817 of 2,244 -> 1,844 of 2,271
+    # tracked files (`units` 44 files / 122 occurrences, unmoved after one
+    # re-take: the first take reached 52 / 142 through two published
+    # docstrings that fanned out into the contract, the console snapshot and
+    # four generated SDK files, and the prose that held is "a unit of work",
+    # "every unit", "contained work", "pieces of work" and "the work it
+    # stopped"). Net twenty-seven tracked files, every one of them swept,
+    # and no migration, so `historical-migrations` stays at 260 and the
+    # exclusion at 427. Seven hand-written files arrived -- the composition
+    # layer's module joining the three products' reads into the two reports
+    # and its route test module, one test module per product's reads (the
+    # kernel's three, billing's two, metering's two), and the SDK's
+    # `spend_controls` handle with its test module -- and the generated SDK
+    # core moved by twenty: two operation modules, the two response models,
+    # the seven row and block models beneath them, and nine enum modules,
+    # one per contract node a closed concept was advertised on (the family
+    # on four schemas and the report's filter, the basis, the status at
+    # completion, and both amount statuses on the itemised event). The
+    # contract added two paths and nine schemas and removed one response
+    # property from a route that post-dates the launch tag (named in the
+    # commit and the SDK migration guide, never filed). No ledger entry
+    # moved.
 
     - term: units
       retired_as: >-

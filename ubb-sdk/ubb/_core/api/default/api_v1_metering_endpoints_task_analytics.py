@@ -104,10 +104,11 @@ def sync_detailed(
 ) -> Response[ProblemOut | TaskAnalyticsOut]:
     """ Task Analytics
 
-     Cost per KIND of job: run count, mean, p95, and limit hits.
+     Cost per KIND of work: run count, mean and p95.
 
-    A p95 approaching the type's ceiling is the signal that the limit is about
-    to start biting real customers.
+    A p95 approaching the kind's ceiling is the signal that the ceiling is
+    about to start biting real customers; how much work reached it is
+    `GET /spend-controls/utilisation-and-headroom`'s figure.
 
     Args:
         group_by (str | Unset):  Default: 'task_type'.
@@ -146,10 +147,11 @@ def sync(
 ) -> ProblemOut | TaskAnalyticsOut | None:
     """ Task Analytics
 
-     Cost per KIND of job: run count, mean, p95, and limit hits.
+     Cost per KIND of work: run count, mean and p95.
 
-    A p95 approaching the type's ceiling is the signal that the limit is about
-    to start biting real customers.
+    A p95 approaching the kind's ceiling is the signal that the ceiling is
+    about to start biting real customers; how much work reached it is
+    `GET /spend-controls/utilisation-and-headroom`'s figure.
 
     Args:
         group_by (str | Unset):  Default: 'task_type'.
@@ -183,10 +185,11 @@ async def asyncio_detailed(
 ) -> Response[ProblemOut | TaskAnalyticsOut]:
     """ Task Analytics
 
-     Cost per KIND of job: run count, mean, p95, and limit hits.
+     Cost per KIND of work: run count, mean and p95.
 
-    A p95 approaching the type's ceiling is the signal that the limit is about
-    to start biting real customers.
+    A p95 approaching the kind's ceiling is the signal that the ceiling is
+    about to start biting real customers; how much work reached it is
+    `GET /spend-controls/utilisation-and-headroom`'s figure.
 
     Args:
         group_by (str | Unset):  Default: 'task_type'.
@@ -225,10 +228,11 @@ async def asyncio(
 ) -> ProblemOut | TaskAnalyticsOut | None:
     """ Task Analytics
 
-     Cost per KIND of job: run count, mean, p95, and limit hits.
+     Cost per KIND of work: run count, mean and p95.
 
-    A p95 approaching the type's ceiling is the signal that the limit is about
-    to start biting real customers.
+    A p95 approaching the kind's ceiling is the signal that the ceiling is
+    about to start biting real customers; how much work reached it is
+    `GET /spend-controls/utilisation-and-headroom`'s figure.
 
     Args:
         group_by (str | Unset):  Default: 'task_type'.

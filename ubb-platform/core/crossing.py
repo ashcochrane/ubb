@@ -8,8 +8,8 @@ start-gate (``RiskService``), reconcile (``LiveCounter``), the upward
 repair (``repair.py``), the pool gate (``CustomerSpendPoolService.check``), the
 dispute clawback (Stripe webhooks) — and, for a unit of work's ceiling, the
 recording path's live compare (``TaskService.accumulate_cost``), the patrol's
-sweep, the analytics reached-count and the row's own assessment
-(``Task.ceiling_assessment``). Pure module: no model, no query evaluated, no
+sweep, the utilisation report's per-unit rows (``work/queries.py``) and the
+row's own assessment (``Task.ceiling_assessment``). Pure module: no model, no query evaluated, no
 Redis — the callers resolve the inputs (floor magnitudes, CustomerSpendPool rows,
 counter values, a row's columns); this module owns only the compare, so the
 sign conventions live in exactly one place. The one Django import it makes
@@ -97,6 +97,14 @@ def recovered_floor(balance_micros, min_balance_micros) -> bool:
 
 # --- spend-pool stop (every mode; spend RISES across the stop line) --------
 
+def spend_pool_stop_line(cap_micros, hard_stop_pct):
+    """The line a pool's stop is measured against, off its two figures — the
+    arithmetic `spend_pool_stop_threshold` applies once the enforce mode has
+    said a line exists, spelled here alone so a reader of a past episode
+    (Stops and breaches, #465) asks the same sum rather than restating it."""
+    return cap_micros * hard_stop_pct // 100
+
+
 def spend_pool_stop_threshold(cfg):
     """The pool's stop line for a resolved CustomerSpendPool, or None when the
     customer can never cross: no config, cap <= 0, or — the #110 unification —
@@ -107,7 +115,7 @@ def spend_pool_stop_threshold(cfg):
         return None
     if cfg.enforce_mode != SPEND_POOL_ENFORCE_MODE_BLOCKING:
         return None
-    return cfg.cap_micros * cfg.hard_stop_pct // 100
+    return spend_pool_stop_line(cfg.cap_micros, cfg.hard_stop_pct)
 
 
 def past_spend_pool_stop(spend_micros, stop_threshold_micros) -> bool:
@@ -212,10 +220,12 @@ def ceiling_reached(known_micros, ceiling_micros) -> bool:
 
 def ceiling_reached_q(known_column, ceiling_column):
     """The same compare as a queryset filter, for the callers that select
-    ROWS rather than hold one — the patrol's sweep and the analytics
-    reached-count. Spelled here so a query cannot say `>` where the row says
-    `>=`; the work app's `TheRowAssessesItsOwnCeilingTest` pins the two forms
-    to each other on real rows over every boundary shape.
+    ROWS rather than hold one — the patrol's sweep (the analytics
+    reached-count was the other until #465 moved the count to Utilisation
+    and headroom, which assesses each row through `ceiling_assessment`).
+    Spelled here so a query cannot say `>` where the row says `>=`; the work
+    app's `TheRowAssessesItsOwnCeilingTest` pins the two forms to each other
+    on real rows over every boundary shape.
 
     Django's expression classes are imported on call rather than at module
     top so the rest of this module stays importable without Django — it is

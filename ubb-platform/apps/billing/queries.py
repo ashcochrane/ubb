@@ -14,6 +14,8 @@ Consumers:
 - apps/billing/stripe/services/stripe_service.py → get_billing_config()
 - apps/billing/tenant_billing/services.py → get_billing_config()
 - apps/metering/usage/services/usage_service.py → is_usage_period_closed()
+- api/v1/spend_control_endpoints.py → signal_episodes(),
+  customer_spend_pool_utilisation() (the two spend-control reports, #465)
 """
 
 
@@ -185,6 +187,200 @@ def get_stop_signal_state(owner_id, tenant_id, *, line):
             .values("state", "episode_seq", "reason", "control_family",
                     "control_id", "clear_reason", "transitioned_at")
             .first())
+
+
+def signal_episodes(tenant_id, *, owner_ids=None, since=None, until=None) -> list[dict]:
+    """Every customer-wide episode the signal ledger's three lines ever
+    opened for this tenant, as plain data — the Pool and Wallet rows of
+    Stops and breaches (#465, slice 6 §14).
+
+    THE HISTORY IS THE OUTBOX PAIR, BY CONSTANT; THE LEDGER ROW IS THE
+    BACKSTOP. The two stop lines share one pair (`StopFired` /
+    `StopCleared`) and are told apart by the word each carries (#458); the
+    wind-down line has a pair of its own. Every event type is the payload
+    class's constant, never a spelled name (#464). An open episode outlives
+    outbox retention because the row still says `stopped`, so a row with no
+    surviving opening is dated by the row's own instant; a cleared episode
+    whose clearing aged out is closed the same way. An episode nothing can
+    date at all — both announcements gone and the row moved on — is not
+    listed, because it cannot be placed in any window.
+
+    WHAT EACH ROW CARRIES BEYOND THE EPISODE. The control (family, id) off
+    the announcement, or off the row for the current episode. For a pool's
+    line: the pool row's configured amount and its stop line as they stand
+    now (null where the row is gone) and the crossing month's label — the
+    pool's crossing is month-scoped. For the hard floor: the floor the control row carries now
+    (the crossing did not record the figure, and the declaration can have
+    moved since) and the balance the suspension announced beside the stop —
+    the stop pair carries none, and a customer already suspended by the
+    other line announces no second suspension, so it is null where none was
+    announced. For the soft floor: both figures off the pair itself, no stop
+    word and no control — the wind-down line stops nothing (§F).
+    ``owner_ids`` narrows to the customers named — a pooled seat's own pool
+    line is declared on the seat while its floor is its billing owner's, so
+    a customer filter asks for both (review of #465); the window selects on
+    the opening instant. Ordered by opening instant.
+    """
+    from apps.billing.gating.models import CustomerSpendPool, StopSignalState
+    from apps.billing.gating.services.stop_signal_service import (
+        LINE_CUSTOMER_SPEND_POOL, LINE_HARD_FLOOR, LINE_SOFT_FLOOR, STATE_STOPPED,
+        STOP_LINES, family_of_line)
+    from apps.platform.events.models import OutboxEvent
+    from apps.platform.events.schemas import (
+        CustomerSuspended, SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
+    from core.crossing import month_label_bounds, spend_pool_stop_line
+
+    owners = None if owner_ids is None else [str(o) for o in owner_ids]
+
+    def _announcements(*event_types):
+        qs = OutboxEvent.objects.filter(tenant_id=tenant_id, event_type__in=event_types)
+        if owners is not None:
+            qs = qs.filter(payload__owner_id__in=owners)
+        return qs.order_by("created_at").values_list("event_type", "payload", "created_at")
+
+    # (owner, line, episode) -> the episode as the announcements tell it.
+    episodes = {}
+
+    def _episode(owner, line, seq):
+        return episodes.setdefault((owner, line, seq), {
+            "owner_id": owner, "line": line, "episode_seq": seq,
+            "opened_at": None, "closed_at": None, "control_id": None,
+            "balance_at_crossing_micros": None, "floor_micros": None})
+
+    pairs = (
+        (StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE, None),
+        (SoftFloorCrossed.EVENT_TYPE, SoftFloorCleared.EVENT_TYPE, LINE_SOFT_FLOOR),
+    )
+    for opened_type, closed_type, fixed_line in pairs:
+        for event_type, payload, created_at in _announcements(opened_type, closed_type):
+            line = fixed_line or payload.get("reason_code")
+            if line not in STOP_LINES and line != LINE_SOFT_FLOOR:
+                continue
+            ep = _episode(payload["owner_id"], line, payload.get("episode_seq"))
+            if event_type == opened_type:
+                if ep["opened_at"] is None:
+                    ep["opened_at"] = created_at
+                    ep["control_id"] = payload.get("control_id") or None
+                    if line == LINE_SOFT_FLOOR:
+                        ep["balance_at_crossing_micros"] = payload.get("balance_micros")
+                        ep["floor_micros"] = payload.get("soft_min_balance_micros")
+            else:
+                ep["closed_at"] = created_at
+
+    rows_qs = StopSignalState.objects.filter(tenant_id=tenant_id)
+    if owners is not None:
+        rows_qs = rows_qs.filter(owner_id__in=owners)
+    for state in rows_qs.values("owner_id", "reason", "state", "episode_seq",
+                                "control_id", "transitioned_at"):
+        key = (str(state["owner_id"]), state["reason"], state["episode_seq"])
+        if state["state"] == STATE_STOPPED:
+            ep = _episode(*key)
+            if ep["opened_at"] is None:
+                ep["opened_at"] = state["transitioned_at"]
+            if ep["control_id"] is None and state["control_id"]:
+                ep["control_id"] = str(state["control_id"])
+        elif key in episodes and episodes[key]["closed_at"] is None:
+            episodes[key]["closed_at"] = state["transitioned_at"]
+
+    dated = sorted((ep for ep in episodes.values() if ep["opened_at"] is not None),
+                   key=lambda ep: (ep["opened_at"], ep["owner_id"], ep["line"]))
+    if since is not None:
+        dated = [ep for ep in dated if ep["opened_at"] >= since]
+    if until is not None:
+        dated = [ep for ep in dated if ep["opened_at"] < until]
+
+    # The balance the hard floor's stop announced beside itself: the first
+    # suspension in the floor's word at or after the episode opened and
+    # before it closed (or before the owner's next floor episode).
+    floor_eps = [ep for ep in dated if ep["line"] == LINE_HARD_FLOOR]
+    if floor_eps:
+        suspensions = (OutboxEvent.objects
+                       .filter(tenant_id=tenant_id, event_type=CustomerSuspended.EVENT_TYPE,
+                               payload__reason=LINE_HARD_FLOOR)
+                       .order_by("created_at").values_list("payload", "created_at"))
+        by_owner = {}
+        for payload, created_at in suspensions:
+            by_owner.setdefault(payload["customer_id"], []).append(
+                (created_at, payload.get("balance_micros")))
+        next_open = {}
+        for ep in sorted(floor_eps, key=lambda e: e["opened_at"], reverse=True):
+            key = ep["owner_id"]
+            ep["_until"] = ep["closed_at"] or next_open.get(key)
+            next_open[key] = ep["opened_at"]
+        for ep in floor_eps:
+            for created_at, balance in by_owner.get(ep["owner_id"], []):
+                if created_at >= ep["opened_at"] and (
+                        ep["_until"] is None or created_at < ep["_until"]):
+                    ep["balance_at_crossing_micros"] = balance
+                    break
+            del ep["_until"]
+            ep["floor_micros"] = get_customer_min_balance(ep["owner_id"], tenant_id)
+
+    pool_ids = {ep["control_id"] for ep in dated
+                if ep["line"] == LINE_CUSTOMER_SPEND_POOL and ep["control_id"]}
+    pools = {str(pk): (cap, spend_pool_stop_line(cap, pct))
+             for pk, cap, pct in CustomerSpendPool.objects
+             .filter(tenant_id=tenant_id, id__in=pool_ids)
+             .values_list("id", "cap_micros", "hard_stop_pct")}
+
+    out = []
+    for ep in dated:
+        a_pool = ep["line"] == LINE_CUSTOMER_SPEND_POOL
+        soft = ep["line"] == LINE_SOFT_FLOOR
+        out.append({
+            "control_family": family_of_line(ep["line"]),
+            "reason_code": None if soft else ep["line"],
+            "soft_floor": soft,
+            "owner_id": ep["owner_id"],
+            "episode_seq": ep["episode_seq"],
+            "control_id": ep["control_id"],
+            "opened_at": ep["opened_at"],
+            "closed_at": ep["closed_at"],
+            "balance_at_crossing_micros": ep["balance_at_crossing_micros"],
+            "floor_micros": ep["floor_micros"],
+            "cap_micros": pools[ep["control_id"]][0]
+                          if a_pool and ep["control_id"] in pools else None,
+            # The line the crossing was measured against, off the row as it
+            # stands (the crossing recorded no figure); the composition layer
+            # replays the drawdown up to it to name the Charge that reached
+            # it where the recording route marked none. Never the enforce
+            # mode's answer — an open episode proves the pool was blocking.
+            "stop_threshold_micros": pools[ep["control_id"]][1]
+                                     if a_pool and ep["control_id"] in pools else None,
+            "period": month_label_bounds(ep["opened_at"])[0] if a_pool else None,
+        })
+    return out
+
+
+def customer_spend_pool_utilisation(tenant_id, customer_id) -> dict:
+    """Where one customer's known period charges stand against the pool
+    that applies to them — the status pair the pool's status route publishes
+    and Utilisation and headroom carries beside its per-unit rows (#456 §13,
+    #465 §14), composed ONCE here for both readers.
+
+    The basis is the durable pair (`CustomerSpendPoolService.period_basis` —
+    the resolved period charges, a lower bound wherever the count beside
+    them is not zero) and the assessment is the kernel's crossing module's,
+    over the resolved pool row: the customer's own, else the tenant default
+    where that reaches them (a seat, never a business). No pool is
+    `cap_micros` 0 with every assessed figure null and `blocking_occurred`
+    false — the row's own reading of an absent pool.
+    """
+    from apps.billing.gating.services.customer_spend_pool_service import (
+        CustomerSpendPoolService)
+    from core.crossing import spend_pool_assessment
+    from core.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
+
+    cfg = CustomerSpendPoolService.resolve_config_for(tenant_id, customer_id)
+    label, known_micros, unresolved_count = CustomerSpendPoolService.period_basis(
+        tenant_id, customer_id)
+    assessment = spend_pool_assessment(cfg, known_micros)
+    return {"period": label,
+            "cap_micros": cfg.cap_micros if cfg else 0,
+            "enforce_mode": cfg.enforce_mode if cfg else SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+            "known_period_charges_micros": known_micros,
+            "unresolved_posting_count": unresolved_count,
+            **assessment._asdict()}
 
 
 def get_open_customer_stops(owner_id, tenant_id):

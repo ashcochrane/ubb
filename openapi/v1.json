@@ -886,6 +886,262 @@
         "title": "BusinessMarginTotals",
         "type": "object"
       },
+      "CeilingEpisodeRow": {
+        "description": "A unit UBB stopped on its own cost ceiling: the unit and its kind, the\ncontrol that fired (family, id, basis) and the mechanism that applied\nit, the ceiling the unit pinned at start, the known supplier cost when\nthe ceiling fired and where the unit ended \u2014 each as a pair with the\ncount it could not include \u2014 and the itemised events that landed after\nthe stop. A kill never resumes, so there is no close. An indeterminate\nunit is never here (its ceiling never fired), nor is an expiry, nor\ncontained work stopped by its parent's cascade.",
+        "properties": {
+          "ceiling_basis": {
+            "enum": [
+              "cost",
+              "time"
+            ],
+            "title": "Ceiling Basis",
+            "type": "string",
+            "x-ubb-concept": "ceiling_basis"
+          },
+          "control_family": {
+            "enum": [
+              "ceiling",
+              "customer_spend_pool",
+              "wallet_policy",
+              "admission_control"
+            ],
+            "title": "Control Family",
+            "type": "string",
+            "x-ubb-concept": "control_family"
+          },
+          "control_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control Id"
+          },
+          "crossed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossed Provider Cost Micros"
+          },
+          "crossed_unresolved_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossed Unresolved Event Count"
+          },
+          "customer_id": {
+            "format": "uuid",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "final_provider_cost_micros": {
+            "title": "Final Provider Cost Micros",
+            "type": "integer"
+          },
+          "final_unresolved_event_count": {
+            "title": "Final Unresolved Event Count",
+            "type": "integer"
+          },
+          "itemised": {
+            "$ref": "#/components/schemas/ItemisedEventsOut"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string",
+            "x-ubb-concept": "reason_code",
+            "x-ubb-known-values": [
+              "task_cogs_ceiling",
+              "customer_spend_pool",
+              "parent_killed",
+              "silence_window",
+              "hard_floor",
+              "absolute_deadline",
+              "parent_expired"
+            ]
+          },
+          "stop_scope": {
+            "title": "Stop Scope",
+            "type": "string"
+          },
+          "task_cogs_ceiling_micros": {
+            "title": "Task Cogs Ceiling Micros",
+            "type": "integer"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          },
+          "trigger_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "trigger_source",
+                "x-ubb-known-values": [
+                  "usage_ingest",
+                  "enforcement_patrol",
+                  "parent_cascade",
+                  "pool_crossing",
+                  "stale_reaper"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Source"
+          }
+        },
+        "required": [
+          "control_family",
+          "reason_code",
+          "ceiling_basis",
+          "task_id",
+          "customer_id",
+          "task_type",
+          "stop_scope",
+          "task_cogs_ceiling_micros",
+          "opened_at",
+          "final_provider_cost_micros",
+          "final_unresolved_event_count",
+          "itemised"
+        ],
+        "title": "CeilingEpisodeRow",
+        "type": "object"
+      },
+      "CeilingUtilisationRow": {
+        "description": "One completed unit's ceiling as it stands at completion: the status\n(the reading rule is written once, on `RecordUsageResponse.ceiling_status`\n\u2014 under `indeterminate` the percentage is a floor and the headroom a\nceiling), the final utilisation over the known total, the headroom, and\nthe pair the figures are computed over. Under `not_applicable` both\nfigures are null, never zero.",
+        "properties": {
+          "ceiling_remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Remaining Micros"
+          },
+          "ceiling_status": {
+            "enum": [
+              "within_ceiling",
+              "ceiling_reached",
+              "indeterminate",
+              "not_applicable"
+            ],
+            "title": "Ceiling Status",
+            "type": "string",
+            "x-ubb-concept": "ceiling_status"
+          },
+          "ceiling_used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Used Percentage"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "customer_id": {
+            "format": "uuid",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "final_provider_cost_micros": {
+            "title": "Final Provider Cost Micros",
+            "type": "integer"
+          },
+          "final_unresolved_event_count": {
+            "title": "Final Unresolved Event Count",
+            "type": "integer"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "task_cogs_ceiling_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Cogs Ceiling Micros"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "customer_id",
+          "task_type",
+          "completed_at",
+          "final_provider_cost_micros",
+          "final_unresolved_event_count",
+          "ceiling_status"
+        ],
+        "title": "CeilingUtilisationRow",
+        "type": "object"
+      },
       "CloseTaskRequest": {
         "description": "The declaration that ends a unit of work.\n\nONE call and ONE mandatory field. Two endpoints (`/close` and `/fail`) was\nrejected as two of everything, and optional-with-a-delivered-default was\nrejected on the strongest rule available: THE FORGIVING PATH MUST NEVER BE\nTHE MONEY-MOVING ONE. A dropped field, a stale example or an old client\nwould otherwise bill a customer for work that failed.",
         "properties": {
@@ -1713,6 +1969,146 @@
           "status"
         ],
         "title": "CustomerResponse",
+        "type": "object"
+      },
+      "CustomerSpendPoolEpisodeRow": {
+        "description": "A customer spend pool's stop: the customer the pool is declared on,\nthe period, the pool amount, THE CHARGE THAT CROSSED IT AND THAT CHARGE'S\nPOSTING \u2014 never an arbitrary event \u2014 the period spend after it as a pair,\nand the outcome: how much active work the stop swept. Starts were\nrefused from `opened_at` until `closed_at` (null while the episode is\nstill open). `cap_micros` is the pool row as it stands now, null where\nthe row is gone. `crossing_marked` says how the charge was found: true\nwhere the recording route marked the tipping event as it landed, false\nwhere the drawdown was replayed up to the opening instant against the\npool's stop line as it stands now \u2014 a pool moved since can shift which\nposting the replay names, so a replayed answer is read with that in\nmind; `crossing_*` are null where nothing UBB holds can name the charge\n\u2014 never a guess.",
+        "properties": {
+          "cap_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Micros"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "control_family": {
+            "enum": [
+              "ceiling",
+              "customer_spend_pool",
+              "wallet_policy",
+              "admission_control"
+            ],
+            "title": "Control Family",
+            "type": "string",
+            "x-ubb-concept": "control_family"
+          },
+          "control_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control Id"
+          },
+          "crossing_charge_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossing Charge Id"
+          },
+          "crossing_marked": {
+            "title": "Crossing Marked",
+            "type": "boolean"
+          },
+          "crossing_posting_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossing Posting Id"
+          },
+          "customer_id": {
+            "format": "uuid",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "episode_seq": {
+            "title": "Episode Seq",
+            "type": "integer"
+          },
+          "itemised": {
+            "$ref": "#/components/schemas/ItemisedEventsOut"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string",
+            "x-ubb-concept": "reason_code",
+            "x-ubb-known-values": [
+              "task_cogs_ceiling",
+              "customer_spend_pool",
+              "parent_killed",
+              "silence_window",
+              "hard_floor",
+              "absolute_deadline",
+              "parent_expired"
+            ]
+          },
+          "spent_after_micros": {
+            "title": "Spent After Micros",
+            "type": "integer"
+          },
+          "unpriced_after_count": {
+            "title": "Unpriced After Count",
+            "type": "integer"
+          },
+          "work_stopped_count": {
+            "title": "Work Stopped Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "control_family",
+          "reason_code",
+          "customer_id",
+          "episode_seq",
+          "period",
+          "opened_at",
+          "crossing_marked",
+          "spent_after_micros",
+          "unpriced_after_count",
+          "work_stopped_count",
+          "itemised"
+        ],
+        "title": "CustomerSpendPoolEpisodeRow",
         "type": "object"
       },
       "CustomerSpendPoolIn": {
@@ -2838,6 +3234,137 @@
           "created_at"
         ],
         "title": "InvoiceOut",
+        "type": "object"
+      },
+      "ItemisedEventRow": {
+        "description": "One event itemised under an episode: the tipping event\n(`arrived_after` false) and every event that landed after the stop. Both\namount/status pairs travel together (#328, #351): an absent amount is\nread through its status \u2014 unresolved is missing, waived or not\napplicable is a genuine zero \u2014 and never coalesced.",
+        "properties": {
+          "arrived_after": {
+            "title": "Arrived After",
+            "type": "boolean"
+          },
+          "billed_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billed Cost Micros"
+          },
+          "charge_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charge Id"
+          },
+          "costing_status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Costing Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
+          },
+          "customer_id": {
+            "format": "uuid",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "pricing_status": {
+            "enum": [
+              "known",
+              "waived",
+              "unknown",
+              "not_applicable"
+            ],
+            "title": "Pricing Status",
+            "type": "string",
+            "x-ubb-concept": "pricing_status"
+          },
+          "provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Micros"
+          }
+        },
+        "required": [
+          "event_id",
+          "customer_id",
+          "effective_at",
+          "pricing_status",
+          "costing_status",
+          "arrived_after"
+        ],
+        "title": "ItemisedEventRow",
+        "type": "object"
+      },
+      "ItemisedEventsOut": {
+        "description": "The events an episode itemises and their totals in both denominations\n\u2014 each total adding what is resolved and counting what is not, so a row\ncan never read complete while its own events read partial.",
+        "properties": {
+          "billed_cost_micros": {
+            "title": "Billed Cost Micros",
+            "type": "integer"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ItemisedEventRow"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "unpriced_event_count": {
+            "title": "Unpriced Event Count",
+            "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "events",
+          "event_count",
+          "billed_cost_micros",
+          "unpriced_event_count",
+          "provider_cost_micros",
+          "unresolved_event_count"
+        ],
+        "title": "ItemisedEventsOut",
         "type": "object"
       },
       "LedgerEntryOut": {
@@ -6557,6 +7084,52 @@
         "title": "SeatsIn",
         "type": "object"
       },
+      "SpendControlFamilyTotalsRow": {
+        "description": "One family's totals over exactly the itemised events of the episodes\nshown, each event counted once per family, both denominations.",
+        "properties": {
+          "billed_cost_micros": {
+            "title": "Billed Cost Micros",
+            "type": "integer"
+          },
+          "control_family": {
+            "enum": [
+              "ceiling",
+              "customer_spend_pool",
+              "wallet_policy",
+              "admission_control"
+            ],
+            "title": "Control Family",
+            "type": "string",
+            "x-ubb-concept": "control_family"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "provider_cost_micros": {
+            "title": "Provider Cost Micros",
+            "type": "integer"
+          },
+          "unpriced_event_count": {
+            "title": "Unpriced Event Count",
+            "type": "integer"
+          },
+          "unresolved_event_count": {
+            "title": "Unresolved Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "control_family",
+          "event_count",
+          "billed_cost_micros",
+          "unpriced_event_count",
+          "provider_cost_micros",
+          "unresolved_event_count"
+        ],
+        "title": "SpendControlFamilyTotalsRow",
+        "type": "object"
+      },
       "StartTaskRequest": {
         "description": "The declaration that REGISTERS a unit of work (#410).\n\nThere is one start call and one start shape, whichever altitude the work\nsits at: naming ``parent_task_id`` registers contained work under a running\nunit, and everything else about the call is identical. A contained start is\na start, so it claims a key like any other.",
         "properties": {
@@ -6730,6 +7303,53 @@
           "status"
         ],
         "title": "StatusResponse",
+        "type": "object"
+      },
+      "StopsAndBreachesResponse": {
+        "description": "What was spent past a stop, and why (#153 \u00a710): every control that\nfired and had an enforcement consequence, in the window, as typed rows\ndiscriminated by `control_family`. Expiries and admission control belong\nto neither report. `since`/`until` echo the window applied \u2014 a window\nthe caller left open is bounded to 366 days ending now.",
+        "properties": {
+          "rows": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CeilingEpisodeRow"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomerSpendPoolEpisodeRow"
+                },
+                {
+                  "$ref": "#/components/schemas/WalletPolicyEpisodeRow"
+                }
+              ]
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/SpendControlFamilyTotalsRow"
+            },
+            "title": "Totals",
+            "type": "array"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since",
+          "until",
+          "rows",
+          "totals"
+        ],
+        "title": "StopsAndBreachesResponse",
         "type": "object"
       },
       "StripeSubscriptionOut": {
@@ -6915,10 +7535,6 @@
             "title": "Avg Provider Cost Micros",
             "type": "integer"
           },
-          "limit_hit_count": {
-            "title": "Limit Hit Count",
-            "type": "integer"
-          },
           "p95_provider_cost_micros": {
             "title": "P95 Provider Cost Micros",
             "type": "integer"
@@ -6956,8 +7572,7 @@
           "total_billed_cost_micros",
           "unpriced_event_count",
           "avg_provider_cost_micros",
-          "p95_provider_cost_micros",
-          "limit_hit_count"
+          "p95_provider_cost_micros"
         ],
         "title": "TaskAnalyticsRow",
         "type": "object"
@@ -9069,6 +9684,119 @@
         "title": "UsageTimeseriesResponse",
         "type": "object"
       },
+      "UtilisationAndHeadroomResponse": {
+        "description": "How much of each ceiling was used, and how often it could not be\nevaluated (#150 \u00a79.3). The average utilisation is computed per unit and\nthen across every unit that had a ceiling, so one chatty unit never\ndominates; peak utilisation equals the final figure by construction (the\npinned ceiling never moves and the known total never falls) and is not\npublished twice. Shares are whole percentages of `unit_count`, rounded\ndown; every average is null where no unit contributes \u2014 never zero. An\n`indeterminate` unit contributes its own floor, so the average\nutilisation is itself a floor and the average headroom a ceiling\nwherever `indeterminate_count` is not zero \u2014 the same reading rule each\nrow's status states for its own figures, and the count beside the\naverage is what says so. `customer_spend_pool` is the status pair for\nthe customer the filter names, null tenant-wide or where no pool\napplies.",
+        "properties": {
+          "average_final_utilisation_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Final Utilisation Percentage"
+          },
+          "average_unused_headroom_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Unused Headroom Micros"
+          },
+          "ceiling_reached_count": {
+            "title": "Ceiling Reached Count",
+            "type": "integer"
+          },
+          "ceiling_reached_share_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Reached Share Percentage"
+          },
+          "customer_spend_pool": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerSpendPoolStatusOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluated_count": {
+            "title": "Evaluated Count",
+            "type": "integer"
+          },
+          "indeterminate_count": {
+            "title": "Indeterminate Count",
+            "type": "integer"
+          },
+          "indeterminate_share_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indeterminate Share Percentage"
+          },
+          "not_applicable_count": {
+            "title": "Not Applicable Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CeilingUtilisationRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "unit_count": {
+            "title": "Unit Count",
+            "type": "integer"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          },
+          "within_ceiling_count": {
+            "title": "Within Ceiling Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since",
+          "until",
+          "rows",
+          "unit_count",
+          "evaluated_count",
+          "not_applicable_count",
+          "ceiling_reached_count",
+          "indeterminate_count",
+          "within_ceiling_count"
+        ],
+        "title": "UtilisationAndHeadroomResponse",
+        "type": "object"
+      },
       "WaivedLossOut": {
         "description": "What waiving has cost, as money, for the economic horizon.",
         "properties": {
@@ -9118,6 +9846,119 @@
           "waived_event_count"
         ],
         "title": "WaivedLossRow",
+        "type": "object"
+      },
+      "WalletPolicyEpisodeRow": {
+        "description": "A wallet policy's episode. A hard-floor episode stopped the customer:\nthe floor, the balance at crossing (as the suspension announced it, null\nwhere none was), the open and close, and the events itemised into it. A\nsoft-floor row (`soft_floor` true) is a marker with no events, no stop\nword and no control: the wind-down line stops nothing. `floor_micros` is\nthe hard floor as its control row carries it now; the soft floor's is\nthe figure the crossing announced.",
+        "properties": {
+          "balance_at_crossing_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance At Crossing Micros"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "control_family": {
+            "enum": [
+              "ceiling",
+              "customer_spend_pool",
+              "wallet_policy",
+              "admission_control"
+            ],
+            "title": "Control Family",
+            "type": "string",
+            "x-ubb-concept": "control_family"
+          },
+          "control_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control Id"
+          },
+          "customer_id": {
+            "format": "uuid",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "episode_seq": {
+            "title": "Episode Seq",
+            "type": "integer"
+          },
+          "floor_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor Micros"
+          },
+          "itemised": {
+            "$ref": "#/components/schemas/ItemisedEventsOut"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "reason_code",
+                "x-ubb-known-values": [
+                  "task_cogs_ceiling",
+                  "customer_spend_pool",
+                  "parent_killed",
+                  "silence_window",
+                  "hard_floor",
+                  "absolute_deadline",
+                  "parent_expired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "soft_floor": {
+            "title": "Soft Floor",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "control_family",
+          "soft_floor",
+          "customer_id",
+          "episode_seq",
+          "opened_at",
+          "itemised"
+        ],
+        "title": "WalletPolicyEpisodeRow",
         "type": "object"
       },
       "WalletTransactionOut": {
@@ -12910,7 +13751,7 @@
     },
     "/api/v1/metering/analytics/tasks": {
       "get": {
-        "description": "Cost per KIND of job: run count, mean, p95, and limit hits.\n\nA p95 approaching the type's ceiling is the signal that the limit is about\nto start biting real customers.",
+        "description": "Cost per KIND of work: run count, mean and p95.\n\nA p95 approaching the kind's ceiling is the signal that the ceiling is\nabout to start biting real customers; how much work reached it is\n`GET /spend-controls/utilisation-and-headroom`'s figure.",
         "operationId": "api_v1_metering_endpoints_task_analytics",
         "parameters": [
           {
@@ -16352,6 +17193,213 @@
           }
         ],
         "summary": "Reset Sandbox"
+      }
+    },
+    "/api/v1/spend-controls/stops-and-breaches": {
+      "get": {
+        "description": "What was spent past a stop, and why: every spend control that fired\nand had an enforcement consequence, in the window, as typed rows \u2014 a\nCeiling row per unit stopped on its own ceiling, a Customer spend pool\nrow per pool episode (explained by the Charge that crossed it), a Wallet\npolicy row per floor episode (a soft-floor row is a marker with no\nevents). Tenant-wide; `customer_id` narrows to one customer's work and\nits billing owner's customer-wide episodes, `task_type` to one kind of\nwork (customer-wide episodes have no kind and drop out), `since`/`until`\n(ISO datetimes; naive = UTC) to the instant each episode opened, and\n`control_family` to one family \u2014 a family this workspace lacks answers\nno rows, never an error. Expiries and admission control appear in\nneither report. A window left open covers the 366 days ending now; the\nresponse echoes the window applied.",
+        "operationId": "api_v1_spend_control_endpoints_stops_and_breaches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "control_family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ceiling",
+                    "customer_spend_pool",
+                    "wallet_policy",
+                    "admission_control"
+                  ],
+                  "type": "string",
+                  "x-ubb-concept": "control_family"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Control Family"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopsAndBreachesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Stops And Breaches"
+      }
+    },
+    "/api/v1/spend-controls/utilisation-and-headroom": {
+      "get": {
+        "description": "How much of each ceiling was used, and how often it could not be\nevaluated: one row per unit of work that completed in the window (at\neither altitude) with its ceiling status, utilisation and headroom as\nthey stood at completion, and the aggregate \u2014 the average utilisation\ncomputed per unit and then across every unit, the share and count that\nreached their ceiling, the share and count that were indeterminate, the\naverage unused headroom. Averages are null where no unit contributes,\nnever zero. `customer_spend_pool` is that customer's pool status pair\nwhen `customer_id` names one and a pool applies, otherwise null. The\nfilters and the window are `stops-and-breaches`'s, on the instant each\nunit completed.",
+        "operationId": "api_v1_spend_control_endpoints_utilisation_and_headroom",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisationAndHeadroomResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Utilisation And Headroom"
       }
     },
     "/api/v1/subscriptions/customers/{customer_id}/invoices": {

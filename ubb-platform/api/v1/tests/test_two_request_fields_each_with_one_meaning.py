@@ -495,6 +495,12 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         Where a price comes from instead is
         `test_a_customer_price_comes_only_from_configuration.py`, which asserts
         the rule resolving one and the request refusing to carry one.
+
+        NINE SINCE #465: Stops and breaches itemises the events that landed
+        past a stop, and each itemised row, the block that totals them and
+        the per-family totals row publish the price a posting has — the
+        response side of the line again, on the one report whose subject is
+        what was spent past a stop.
         """
         self.assertNotIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertNotIn(
@@ -505,7 +511,8 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         self.assertEqual(carrying, {
             "GroupingFieldMarginRow", "RecordUsageResponse",
             "UnresolvedQueueRow", "UsageEventDetailOut", "UsageEventOut",
-            "UsageMetricOut"})
+            "UsageMetricOut", "ItemisedEventRow", "ItemisedEventsOut",
+            "SpendControlFamilyTotalsRow"})
 
 
 def _bounds(node):

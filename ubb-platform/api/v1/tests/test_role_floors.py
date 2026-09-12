@@ -224,7 +224,13 @@ _WRITE_ROUTES = {
 # Write carve entry (the one advisory write on the surface), and that entry
 # leaves the table with the method: one floored route out, one in. Not carved
 # and not exempt, so the exempt count below is untouched. 152 - 1 + 1 = 152.
-_EXPECTED_FLOORED = 152
+#
+# ⚠ AND THEN TWO REPORTS ARRIVED (slice 6, #465): `GET /spend-controls/
+# stops-and-breaches` and `GET /spend-controls/utilisation-and-headroom`, two
+# reads at the Read floor, the carve's default for a GET — each answers a
+# report and changes nothing. Not carved and not exempt (they are tenant
+# routes, ungated by product but floored like every other read). 152 + 2 = 154.
+_EXPECTED_FLOORED = 154
 _EXPECTED_EXEMPT = 10
 
 
