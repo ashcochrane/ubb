@@ -5,10 +5,18 @@ from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 
 
+#: The three standings, by name (#462): a suspended or closed customer is
+#: refused new work by the kernel's admission check for every tenant, and
+#: the check compares against these rather than a fourth spelling. The
+#: status has no registry seat, so this model is the one home for them —
+#: `ACCOUNT_TYPE_*` below is the precedent.
+CUSTOMER_STATUS_ACTIVE = "active"
+CUSTOMER_STATUS_SUSPENDED = "suspended"
+CUSTOMER_STATUS_CLOSED = "closed"
 CUSTOMER_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("suspended", "Suspended"),
-    ("closed", "Closed"),
+    (CUSTOMER_STATUS_ACTIVE, "Active"),
+    (CUSTOMER_STATUS_SUSPENDED, "Suspended"),
+    (CUSTOMER_STATUS_CLOSED, "Closed"),
 ]
 
 #: The two account types other code branches on, by name (#459): a SEAT under

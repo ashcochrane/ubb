@@ -326,7 +326,14 @@ exclusions:
     # reservation row a start of work sold at one agreed price writes against
     # the owner's wallet. It spells no retired word; the sites and terms held
     # at 22 in 66.
-    files: 257
+    # 257 → 259 in #462: TWO migrations, one per app a column moved between.
+    # The tenant app's adds admission control's one setting to the tenant row
+    # under the name #154 §3.4 coined; the gating app's carries each risk
+    # row's value onto it and drops its own column, which it names by the
+    # spelling this app's history holds it by — not a retired term, merely
+    # the old name, as `0011` and `0012` before it. Neither spells a retired
+    # word; the sites and terms held at 22 in 66.
+    files: 259
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -160,6 +160,16 @@ export async function updateTenantConfig(
     }
     next.soft_min_balance_micros = soft;
   }
+  // Admission control's bound (#462): the one rule `PATCH /tenant/config`
+  // holds for it — a figure must be above zero, or null clears the bound.
+  // An omitted key leaves it alone, as JSON serialisation would drop it.
+  if ("max_task_starts_per_minute" in patch) {
+    const bound = patch.max_task_starts_per_minute ?? null;
+    if (bound !== null && bound <= 0) {
+      throw invalidConfig("max_task_starts_per_minute must be > 0, or null for no bound");
+    }
+    next.max_task_starts_per_minute = bound;
+  }
   writeMockTenantConfig(next);
   // The two default ceilings for work with no declared kind are the tasks
   // feature's to EDIT (#453), but the route is one route and honours them on

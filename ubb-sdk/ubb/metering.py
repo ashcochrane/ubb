@@ -557,8 +557,11 @@ class MeteringClient:
         and the original's stand.
 
         A refusal is a refusal, never a 200: ``409 task_start_refused`` says
-        why this customer may not begin new work, and a ``422`` answers a
-        request that is wrong in itself. The answer is a ``StartedTask`` —
+        why this customer may not begin new work, ``429 rate_limit_exceeded``
+        answers a new top-level start once this customer has begun as much
+        new work as the tenant configuration admits in one minute (the client retries
+        it honouring ``Retry-After`` before raising it), and a ``422``
+        answers a request that is wrong in itself. The answer is a ``StartedTask`` —
         use it as a context manager around the run and declare the ending
         inside it; see the class for the five exits.
         """

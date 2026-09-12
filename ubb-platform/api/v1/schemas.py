@@ -97,7 +97,7 @@ class PreCheckResponse(Schema):
     # reason vocabulary: insufficient_funds | account_closed |
     # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
     # NEW top-level starts refuse; subtask starts under an active parent
-    # pass) | rate_limit_exceeded | customer-spend-pool reasons.
+    # pass) | customer-spend-pool reasons.
     #
     # TWO WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and neither was
     # deleted: `parent_task_not_active` and `subtask_depth_exceeded` are
@@ -106,7 +106,11 @@ class PreCheckResponse(Schema):
     # unreachable here without the retired flag, so the list is shorter and
     # the vocabulary is not. A third word left with them and WAS deleted, in
     # #455: the verdict of the per-owner cap on work already running, whose
-    # control #150 §12.5 removes outright.
+    # control #150 §12.5 removes outright. A fourth, `rate_limit_exceeded`,
+    # left in #462 the way the first two did: the per-minute bound on new
+    # work is the kernel's admission check now, asked by the start for every
+    # tenant, and this advisory answer never runs it and never moves its
+    # window — asking here consumes nothing.
     #
     # A resolved COGS ceiling used to refuse here unless the tenant promised
     # full cost coverage; #321 deleted that verdict outright rather than
@@ -3062,6 +3066,12 @@ class TenantConfigOut(Schema):
     #: requests one, and its `ceiling_status` says `not_applicable`.
     default_task_cogs_ceiling_micros: Optional[int] = None
     default_subtask_cogs_ceiling_micros: Optional[int] = None
+    #: HOW MANY NEW TOP-LEVEL PIECES OF WORK ONE CUSTOMER MAY START IN A
+    #: MINUTE (#462). A start over it answers `429 rate_limit_exceeded` with
+    #: `Retry-After`. It bounds how fast work enters and nothing else — never
+    #: supplier cost. A retry, contained work under a running unit, a usage
+    #: report and a close never count against it. Null = no bound.
+    max_task_starts_per_minute: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): the wind-down
     # line (-value; negative places it above zero); null = no soft floor.
     soft_min_balance_micros: Optional[int] = None
@@ -3093,6 +3103,9 @@ class TenantConfigIn(Schema):
     #: = unchanged; null = no default at that altitude; a figure must be > 0.
     default_task_cogs_ceiling_micros: Optional[int] = None
     default_subtask_cogs_ceiling_micros: Optional[int] = None
+    #: How many new top-level pieces of work one customer may start in a
+    #: minute (#462). Omit = unchanged; null = no bound; a figure must be > 0.
+    max_task_starts_per_minute: Optional[int] = None
     # Soft floor tenant default (#40, BillingTenantConfig): may be negative
     # (a wind-down line above zero); must keep the soft line at or above the
     # hard floor's. Omit = unchanged; null = no soft floor.

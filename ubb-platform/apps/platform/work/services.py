@@ -7,6 +7,8 @@ from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from core.crossing import ceiling_reached
 from core.vocabulary import (
+    AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE,
+    AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
     COSTING_STATUS_KNOWN,
     OUTCOME_REASON_PARENT_CLOSED,
     OUTCOME_REASON_VALUES,
@@ -419,13 +421,14 @@ def ceiling_control_id(task):
             return str(declared)
     return str(task.tenant_id)
 
-#: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the words the start
-#: gate's verdict vocabulary already publishes (`openapi/error-codes.json`).
+#: WHY A START WAS REFUSED BY THE SHAPE OF THE WORK, in the registry's
+#: `affordability_reason` words — bound from `core.vocabulary` since #462
+#: (slice 6 §1: the refusal vocabulary is sourced from the vocabulary on
+#: both sides), as the kernel's other two refusals are in `work/admission.py`.
 #: Named rather than spelled at each raise so a caller — and a test — asserts
-#: the SYMBOL: the words themselves belong to a vocabulary slice 6 rebuilds,
-#: and a literal in twelve places is twelve edits when it does.
-PARENT_NOT_ACTIVE = "parent_task_not_active"
-SUBTASK_DEPTH_EXCEEDED = "subtask_depth_exceeded"
+#: the SYMBOL.
+PARENT_NOT_ACTIVE = AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE
+SUBTASK_DEPTH_EXCEEDED = AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED
 
 #: THE FACTS A UNIT OF WORK SNAPSHOTS AT ITS START AND CANNOT THEN CHANGE, as
 #: this module names them. `StartDeclaration.conflicting_field_on` answers with

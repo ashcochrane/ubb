@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { MarginThreshold, TenantConfig } from "../api/types";
 import {
+  admissionControlSchema,
   auditActionLabel,
+  buildAdmissionPatch,
   buildSpendPatch,
+  configToAdmissionValues,
   inputToMicros,
   marginAlertSchema,
   spendControlSchema,
@@ -26,7 +29,39 @@ const baseConfig: TenantConfig = {
   soft_min_balance_micros: -10_000_000,
   default_task_cogs_ceiling_micros: 5_000_000,
   default_subtask_cogs_ceiling_micros: null,
+  max_task_starts_per_minute: 60,
 };
+
+describe("the admission-control form (#462)", () => {
+  it("prefills the bound as a plain count, and empty for no bound", () => {
+    expect(configToAdmissionValues(baseConfig)).toEqual({ newWorkPerMinute: "60" });
+    expect(
+      configToAdmissionValues({ ...baseConfig, max_task_starts_per_minute: null }),
+    ).toEqual({ newWorkPerMinute: "" });
+  });
+
+  it("sends nothing when the bound is unchanged", () => {
+    expect(buildAdmissionPatch(baseConfig, { newWorkPerMinute: "60" })).toEqual({});
+  });
+
+  it("sends the new bound, and an explicit null when cleared", () => {
+    expect(buildAdmissionPatch(baseConfig, { newWorkPerMinute: "12" })).toEqual({
+      max_task_starts_per_minute: 12,
+    });
+    expect(buildAdmissionPatch(baseConfig, { newWorkPerMinute: "" })).toEqual({
+      max_task_starts_per_minute: null,
+    });
+  });
+
+  it("accepts empty and whole numbers of one or more; refuses zero, fractions and negatives", () => {
+    for (const ok of ["", "1", "60"]) {
+      expect(admissionControlSchema.safeParse({ newWorkPerMinute: ok }).success).toBe(true);
+    }
+    for (const bad of ["0", "-1", "1.5", "many"]) {
+      expect(admissionControlSchema.safeParse({ newWorkPerMinute: bad }).success).toBe(false);
+    }
+  });
+});
 
 describe("inputToMicros", () => {
   it("converts currency units to integer micros", () => {

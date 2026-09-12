@@ -131,8 +131,10 @@ class UBBClient:
         """Ask whether this customer's spending state would let work proceed.
 
         If billing is enabled, delegates to the billing check, which reads
-        customer status, rate limits, and wallet balance against the arrears
-        threshold. If billing is not enabled, returns trivially allowed.
+        customer status and wallet balance against the arrears threshold —
+        never the per-minute bound on new work, which only a start meets and
+        asking here never consumes. If billing is not enabled, returns
+        trivially allowed.
 
         ADVISORY ONLY — it registers nothing (#410).
 

@@ -15,16 +15,20 @@ describe("WorkspaceSettingsPage", () => {
     expect(screen.getByText("USD — US Dollar")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
 
-    // Spend control card with explanatory copy — Off is honest about what
-    // stays (legacy suspension) and what goes (the signal suite).
+    // Spend control card with explanatory copy — the position the wire
+    // spells `off` is "no customer-wide enforcement" (#462, slice 6 §10),
+    // honest about what stays (suspension, every declared ceiling) and what
+    // goes (the customer-wide signal suite).
     expect(screen.getByText("Spend control")).toBeInTheDocument();
     expect(
-      screen.getByText(/no stop or wind-down webhooks, no past-limit tracking/),
+      screen.getByText(/No customer-wide enforcement: none of those signals fire/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/still suspended and refused new work/),
     ).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Enforcement" })).toBeChecked();
+    // Admission control's one setting lives on this card (#462).
+    expect(screen.getByLabelText(/New work per minute/)).toHaveValue(60);
 
     // Allowed-overdraft copy reflects the inversion (not a reserve floor)
     expect(

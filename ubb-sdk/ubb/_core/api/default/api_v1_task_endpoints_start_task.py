@@ -70,6 +70,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_422
 
+    if response.status_code == 429:
+        response_429 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_429
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -110,7 +117,12 @@ def sync_detailed(
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
     new work — a wallet below its floor, a stop in force, or a parent that is
-    not a running top-level unit. `422 validation_error`
+    not a running top-level unit. `429 rate_limit_exceeded` answers a new
+    top-level start once this customer has begun as much new work as your
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
+    the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
+    the window is keyed on (per seat). A retry, contained work under a running
+    unit and a close never count against it. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -179,7 +191,12 @@ def sync(
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
     new work — a wallet below its floor, a stop in force, or a parent that is
-    not a running top-level unit. `422 validation_error`
+    not a running top-level unit. `429 rate_limit_exceeded` answers a new
+    top-level start once this customer has begun as much new work as your
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
+    the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
+    the window is keyed on (per seat). A retry, contained work under a running
+    unit and a close never count against it. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -243,7 +260,12 @@ async def asyncio_detailed(
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
     new work — a wallet below its floor, a stop in force, or a parent that is
-    not a running top-level unit. `422 validation_error`
+    not a running top-level unit. `429 rate_limit_exceeded` answers a new
+    top-level start once this customer has begun as much new work as your
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
+    the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
+    the window is keyed on (per seat). A retry, contained work under a running
+    unit and a close never count against it. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -312,7 +334,12 @@ async def asyncio(
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
     new work — a wallet below its floor, a stop in force, or a parent that is
-    not a running top-level unit. `422 validation_error`
+    not a running top-level unit. `429 rate_limit_exceeded` answers a new
+    top-level start once this customer has begun as much new work as your
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
+    the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
+    the window is keyed on (per seat). A retry, contained work under a running
+    unit and a close never count against it. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.

@@ -352,7 +352,12 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # prepaid reservation row a start of work sold at one agreed price
         # writes against the owner's wallet. It spells no retired word; the
         # sites and terms held at 22 in 66.
-        "historical-migrations": (UNTIL_SLICE_8, 257, 19),
+        # 257 -> 259 in #462: TWO migrations, one per app a column moved
+        # between -- the tenant app's adding admission control's one setting
+        # to the tenant row, the gating app's carrying each risk row's value
+        # onto it and dropping its own column. Neither spells a retired word;
+        # the sites and terms held at 22 in 66.
+        "historical-migrations": (UNTIL_SLICE_8, 259, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

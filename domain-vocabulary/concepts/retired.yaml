@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,801 of 2,225 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,807 of 2,233 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2061,6 +2061,24 @@ measurement_key:
     # balance read (zero breaking findings in either direction) and the
     # generated SDK model followed. The prose that held is "a unit of work",
     # "contained work", "work sold at one agreed price" and "the unit".
+    #
+    # 2026-09-12, #462 (admission control moves to the kernel and runs for
+    # every tenant): 1,801 of 2,225 -> 1,807 of 2,233 tracked files (`units`
+    # 44 files / 122 occurrences after one re-take: the first take rose to
+    # 45/123 on "units of work" in a schema field's comment about the
+    # new-work rate -- the fifteenth window the plural arrived through
+    # ordinary prose about work -- and "pieces of work" held). Eight tracked
+    # files arrived: six swept -- the kernel's admission module
+    # (`work/admission.py`) and its service-level test module, the
+    # composition layer's module proving the bound and the standing for
+    # both postures through the routes, the gating app's replay of the
+    # carry, and the console's admission-control form and the settings
+    # card's component test -- and two excluded, one migration per app the
+    # column moved between. The contract gained an additive nullable field
+    # on the tenant configuration pair and a 429 on the start (zero breaking
+    # findings in either direction); the generated SDK models followed. The
+    # prose that held is "new work", "a piece of work", "contained work" and
+    # "the unit it is declared on".
 
     - term: units
       retired_as: >-

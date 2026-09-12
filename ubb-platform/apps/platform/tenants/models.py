@@ -169,6 +169,28 @@ class Tenant(BaseModel):
         null=True, blank=True, default=None)
     default_subtask_cogs_ceiling_micros = models.BigIntegerField(
         null=True, blank=True, default=None)
+    # ADMISSION CONTROL'S ONE SETTING (#462, slice 6 §1, §6; #154 §3.4): how
+    # many NEW top-level pieces of work a seat may start in one minute. A
+    # bound on how fast work enters is a property of the work's admission —
+    # a kernel concept a tenant that does not bill through UBB is owed like
+    # every other — so it lives here beside the tenant's other kernel rungs,
+    # read by `work/admission.py` for every start. It sat on billing's risk
+    # row until #462 (`gating/migrations/0015` carried each tenant's value
+    # here), where the composition layer reached it only for a tenant with a
+    # wallet, so a tenant without one had no bound at all.
+    #
+    # It bounds the RATE of new work and says nothing about supplier cost:
+    # never spend protection, never a mitigation for the blind window. A
+    # replay, contained work under admitted work, a usage report, a close and
+    # configuration are never subject to it (#150 §1.3).
+    #
+    # NULL = this tenant declares no bound, which is what the risk row's
+    # absence used to mean. Zero is refused at the tenant configuration
+    # route, as the two ceiling rungs above refuse it: a bound of zero is not
+    # a rate but a refusal of every start, and a suspension is the tool for
+    # that.
+    max_task_starts_per_minute = models.PositiveIntegerField(
+        null=True, blank=True, default=None)
     # How far back a caller-supplied effective_at may reach (days). 0 = no
     # backfill at all (any past-dated effective_at is rejected); max 60 so a
     # backfill window never spans more than 3 calendar months (the reconcile

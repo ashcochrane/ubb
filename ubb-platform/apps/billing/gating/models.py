@@ -9,25 +9,33 @@ from core.vocabulary import (CONTROL_FAMILY_ADMISSION_CONTROL,
 
 
 class RiskConfig(BaseModel):
+    """The tenant's posture for the customer spend pool's read when its
+    store is away — one column, and that is all this row is now (slice 6
+    §1; #150 §15).
+
+    Four columns left it, in three tickets, and none of them was billing's
+    to hold: the two tenant-default COGS ceilings went to the tenant row in
+    #453 (a ceiling is a kernel concept a tenant without billing still gets,
+    #141 §6.2; carried by `gating/migrations/0011`); the per-owner cap on
+    work already running was DELETED in #455 (#150 §12.5 — a count of
+    outstanding operations converts to no amount of money, and its existence
+    invited the belief that UBB closes a blind window it cannot see into);
+    and the per-minute bound on new work went to the tenant row as
+    `max_task_starts_per_minute` in #462 (admission control is a property of
+    the work's admission, run by the kernel for every tenant; carried by
+    `gating/migrations/0015`). What stays is the one posture #150 §15 keeps
+    and #141 §7 keeps in billing. §1 permits folding it onto the pool's
+    tenant-default row later, provided a customer row that does not fail
+    closed still inherits the tenant's answer; that fold is not taken here.
+    """
     tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="risk_config")
-    max_requests_per_minute = models.IntegerField(default=60)
     gate_fail_closed = models.BooleanField(default=False)
-    # A per-owner cap on work already running sat here until #455 and is
-    # DELETED, not moved (#150 §12.5): it bounded a count of outstanding
-    # operations, converted to no amount of money, and invited the belief
-    # that UBB closes a blind window it cannot see into. Admission control
-    # bounds the RATE of new work (the column above) and nothing else.
-    # The two tenant-default COGS ceilings that used to sit here (#37, #38)
-    # left for the kernel in #453 — `Tenant.default_task_cogs_ceiling_micros`
-    # and its contained-work twin — because a ceiling is a kernel concept a
-    # tenant without billing still gets (#141 §6.2, slice 6 §1). Their values
-    # were carried onto the tenant row by `gating/migrations/0011`.
 
     class Meta:
         db_table = "ubb_risk_config"
 
     def __str__(self):
-        return f"RiskConfig({self.tenant.name}: {self.max_requests_per_minute}rpm)"
+        return f"RiskConfig({self.tenant.name}: fail_closed={self.gate_fail_closed})"
 
 
 def default_alert_levels():

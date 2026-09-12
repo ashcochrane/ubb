@@ -1,6 +1,8 @@
+from django.core.cache import cache
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.platform.work import admission
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -12,7 +14,7 @@ class RiskServiceTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
-        RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10)
+        RiskConfig.objects.create(tenant=self.tenant)
 
     def test_active_customer_passes(self):
         result = RiskService.check(self.customer)
@@ -33,6 +35,8 @@ class RiskServiceTest(TestCase):
         self.assertEqual(result["reason"], "account_closed")
 
     def test_no_risk_config_passes(self):
+        """The risk row holds the pool read's fail-closed posture and nothing
+        else (#462); a tenant without one is answered like any other."""
         RiskConfig.objects.all().delete()
         result = RiskService.check(self.customer)
         self.assertTrue(result["allowed"])
@@ -98,20 +102,30 @@ class RiskServiceTest(TestCase):
         self.assertEqual(set(result), {"allowed", "reason", "balance_micros",
                                        "available_micros"})
 
+    def test_asking_the_verdict_twice_moves_no_admission_window(self):
+        """The advisory question consumes nothing (#462, slice 6 §6, TD
+        claim 8): the per-minute bound on new work left this verdict for
+        the kernel, so asking it — however often — neither counts a start
+        nor refuses one. Pinned against the kernel's own window: a bound of
+        one, two questions, and the seat's window still empty, so the one
+        start the bound admits is still there to be admitted. Ticket 12
+        asserts this again on the renamed call."""
+        self.tenant.max_task_starts_per_minute = 1
+        self.tenant.save(update_fields=["max_task_starts_per_minute"])
+        starts_key, _ = admission.window_keys(self.customer.id)
+        self.assertTrue(RiskService.check(self.customer)["allowed"])
+        self.assertTrue(RiskService.check(self.customer)["allowed"])
+        self.assertIsNone(cache.get(starts_key))
+        self.assertEqual(
+            admission.admit(self.tenant, self.customer, contained=False).remaining, 0)
 
-class RiskServiceRedisFailureTest(TestCase):
-    def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test")
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
-        RiskConfig.objects.create(tenant=self.tenant, max_requests_per_minute=10)
 
-    def test_allows_when_redis_unavailable(self):
-        """Pre-check should degrade gracefully when Redis is down."""
-        from unittest.mock import patch
-        with patch("apps.billing.gating.services.risk_service.cache") as mock_cache:
-            mock_cache.get.side_effect = ConnectionError("Redis unavailable")
-            result = RiskService.check(self.customer)
-        self.assertTrue(result["allowed"])
+# ⚠ `RiskServiceRedisFailureTest` STOOD HERE AND ITS SUBJECT MOVED WHOLE
+# (#462). Its one case — that the throttle fails open when its store is away
+# — was about the per-minute bound, which is the kernel's admission check
+# now; `apps/platform/work/tests/test_admission_control.py` holds the case
+# at the store the bound actually reads. Nothing in this verdict touches
+# the Django cache any more.
 
 
 # ⚠ `RiskServiceTaskTest` STOOD HERE AND ITS SUBJECT MOVED WHOLE (#410).

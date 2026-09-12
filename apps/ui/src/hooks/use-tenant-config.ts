@@ -32,6 +32,10 @@ let mockTenantConfig: TenantConfig = {
   soft_min_balance_micros: null,
   default_task_cogs_ceiling_micros: null,
   default_subtask_cogs_ceiling_micros: null,
+  // A CONFIGURED workspace, not a fresh tenant: the server's default is null
+  // (no bound declared), and this mock declares one so the settings card
+  // has a figure to show and a test a figure to change.
+  max_task_starts_per_minute: 60,
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */

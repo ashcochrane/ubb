@@ -4,5 +4,5 @@ from apps.billing.gating.models import RiskConfig
 
 @admin.register(RiskConfig)
 class RiskConfigAdmin(admin.ModelAdmin):
-    list_display = ("tenant", "max_requests_per_minute")
+    list_display = ("tenant", "gate_fail_closed")
     list_filter = ("tenant",)
