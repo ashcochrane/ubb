@@ -46,6 +46,7 @@ def _pool_row():
             "opened_at": "2026-09-11T10:00:00Z", "closed_at": None,
             "crossing_charge_id": "0f1a3e64-3b6f-4c46-9d0d-8b5d2c1a3333",
             "crossing_posting_id": "0f1a3e64-3b6f-4c46-9d0d-8b5d2c1a4444",
+            "crossing_marked": False,
             "spent_after_micros": 0, "unpriced_after_count": 0, "work_stopped_count": 1,
             "itemised": ITEMISED}
 
@@ -82,6 +83,7 @@ class SpendControlsClientTest(unittest.TestCase):
                           CustomerSpendPoolEpisodeRow])
         self.assertEqual(result.rows[1].crossed_provider_cost_micros, 11_000_000)
         self.assertEqual(result.rows[2].work_stopped_count, 1)
+        self.assertFalse(result.rows[2].crossing_marked)
         self.assertEqual(result.totals[0].control_family, vocabulary.CONTROL_FAMILY_CEILING)
         call_args = mock_get.call_args
         self.assertEqual(call_args.args[0], STOPS)
