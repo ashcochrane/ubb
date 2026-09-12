@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.cache import cache
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
@@ -119,7 +121,8 @@ class RiskServiceTest(TestCase):
             soft_min_balance_micros=2_000_000)
 
         top_level = RiskService.check(self.customer)
-        contained = RiskService.check(self.customer, parent_task_id="not read here")
+        # Any named parent: the verdict reads only whether one was named.
+        contained = RiskService.check(self.customer, parent_task_id=uuid.uuid4())
         self.assertEqual((top_level["min_balance_micros"],
                           top_level["soft_min_balance_micros"]),
                          (5_000_000, 2_000_000))

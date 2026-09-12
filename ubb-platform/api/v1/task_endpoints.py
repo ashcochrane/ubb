@@ -70,7 +70,6 @@ from api.v1.schemas import (
     PaginatedTasks, StartTaskRequest, StartTaskResponse, TaskDetailOut,
     start_task_out, task_out,
 )
-from apps.billing.gating.models import AFFORDABILITY_REASONS
 from apps.billing.gating.services.risk_service import RiskService
 from apps.metering.pricing.services.charge_service import (
     charge_for_delivered_work, the_work_was_charged,
@@ -90,7 +89,14 @@ from apps.platform.work.services import (
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
-from core.vocabulary import PRICING_MODE_FIXED, TENANT_PRODUCT_BILLING
+from core.vocabulary import (
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+    PRICING_MODE_FIXED, TENANT_PRODUCT_BILLING)
 
 task_router = Router(auth=ApiKeyAuth())
 
@@ -381,10 +387,23 @@ def _refused_by(verdict):
                     verdict["available_micros"])
 
 
-#: The prose for each refusal word, read off billing's vocabulary table — the
-#: registry's nine, held there by reference (#463). An unlisted word — the set
-#: is open — is spelled as itself.
-_REFUSAL_IN_WORDS = dict(AFFORDABILITY_REASONS)
+#: The prose for each refusal word `_refused` below renders — the six the
+#: money verdict and the standing walk answer with (#463). The kernel's other
+#: three words are worded by the kernel itself: the rate's 429 carries the
+#: window's retry sentence, and a refusal by the shape of the work carries
+#: `StartRefused`'s own. An unlisted word — the set is open — is spelled as
+#: itself. Prose for a `detail`, never a catalogue: the console's words for
+#: these live in `en.json` (ADR-0008 §4).
+_REFUSAL_IN_WORDS = {
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS: "insufficient funds",
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED: "the soft floor is reached",
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED:
+        "the customer spend pool is exceeded",
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE:
+        "the customer spend pool's state is unavailable",
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED: "a customer-wide stop is in force",
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED: "the account is closed",
+}
 
 
 def _refused(reason, balance_micros=None, available_micros=None):

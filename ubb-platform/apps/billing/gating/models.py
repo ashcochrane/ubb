@@ -81,13 +81,14 @@ CONTROL_FAMILIES = [
 ]
 
 #: WHY A START IS REFUSED, OR WOULD BE — the registry's `affordability_reason`,
-#: all nine known values held by reference at the site the registry declares
-#: (#463 paid `g3-backend-affordability_reason`; slice 6 §1, §13), on
-#: `CONTROL_FAMILIES`' footing. The wording beside each identity is the
-#: composition layer's, for the prose half of a start's refusal
-#: (`api/v1/task_endpoints._refused` puts it in the problem's `detail`); the
-#: identity itself travels as data, in `reason`, and is what a caller
-#: branches on. Held WHOLE rather than as the subset billing's money verdict
+#: all nine known values held WHOLE by reference at the site the registry
+#: declares (#463 paid `g3-backend-affordability_reason`; slice 6 §1, §13),
+#: on `work/reasons.KNOWN_TRIGGER_SOURCES`' footing: identities and nothing
+#: else. The words a person reads for them live in the console's catalogue
+#: (ADR-0008 §4), and the one prose a refusal carries on the wire — the
+#: 409's `detail` — is the composition layer's own, beside its renderer
+#: (`api/v1/task_endpoints._refused`), so this table is no second home for
+#: wording. Held whole rather than as the subset billing's money verdict
 #: answers itself: the kernel's admission check refuses the standing and the
 #: rate, its work service refuses the shape of the work (a parent that is not
 #: running; a depth work cannot nest to), and the money verdict refuses the
@@ -95,20 +96,18 @@ CONTROL_FAMILIES = [
 #: imports the same constants (§1), and a consumer holds the vocabulary rather
 #: than the part it happens to produce. The set is OPEN: a refusal can arise
 #: from a control UBB gains later, so nothing may refuse a value it does not
-#: list; the wording falls back to the token.
-AFFORDABILITY_REASONS = [
-    (AFFORDABILITY_REASON_INSUFFICIENT_FUNDS, "insufficient funds"),
-    (AFFORDABILITY_REASON_ACCOUNT_CLOSED, "the account is closed"),
-    (AFFORDABILITY_REASON_CUSTOMER_STOPPED, "a customer-wide stop is in force"),
-    (AFFORDABILITY_REASON_SOFT_FLOOR_REACHED, "the soft floor is reached"),
-    (AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED, "the rate limit is exceeded"),
-    (AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
-     "the customer spend pool is exceeded"),
-    (AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
-     "the customer spend pool's state is unavailable"),
-    (AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE, "the parent task is not active"),
-    (AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED, "the subtask depth is exceeded"),
-]
+#: list.
+AFFORDABILITY_REASONS = (
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+    AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+    AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE,
+    AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
+)
 
 STOP_SIGNAL_STATES = [("stopped", "Stopped"), ("cleared", "Cleared")]
 

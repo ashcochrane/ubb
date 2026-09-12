@@ -727,7 +727,10 @@ class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
 # refusals — retired with the 429 and are deliberately never reused; they are
 # read off the registry that retired them (`reason_code`'s `retired_aliases`,
 # after the three stop-word aliases it lists first) rather than spelled here,
-# so this module names no retired word of its own (#463).
+# so this module names no retired word of its own (#463). The `_exceeded`
+# filter is what tells the two groups apart; a later retired alias ending the
+# same way would join this list, which is the right direction for a pin whose
+# subject is "answers on no surface".
 _RUN_ERA_TOKENS = (
     "run_id", "run.limit_exceeded", "RunLimitExceeded", "hard_stop_exceeded",
     "run_not_active", "start_run", "close_run", "external_run_id",

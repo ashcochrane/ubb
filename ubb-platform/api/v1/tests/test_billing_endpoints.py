@@ -642,7 +642,8 @@ class WithdrawOutboxEventTest(TestCase):
 
 
 # THE CLASS THAT STOOD HERE TESTED A SIDE EFFECT THIS ROUTE NO LONGER HAS
-# (#410). Four cases, all about the unit of work a flag on `/pre-check`
+# (#410). Four cases, all about the unit of work a flag on the retired
+# advisory POST (the affordability question since #463, as a GET)
 # used to create: that it was born active with the wallet balance
 # snapshotted onto it, that a requested ceiling was snapshotted too, that a
 # denied answer created nothing, and that the flagless call created

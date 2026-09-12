@@ -52,8 +52,7 @@ from django.utils import timezone
 from apps.platform.tenants.flags import enforcing
 from apps.platform.work import reasons
 from core import controls
-from core.vocabulary import (
-    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED, CONTROL_FAMILY_WALLET_POLICY)
+from core.vocabulary import CONTROL_FAMILY_WALLET_POLICY
 
 logger = logging.getLogger("ubb.billing")
 
@@ -82,11 +81,12 @@ CLEAR_RECONCILED = "reconciled"
 # not a credit, lifted it back over the floor (the wedge lifted with no
 # balance change; see apps/billing/gating/repair.py).
 CLEAR_BALANCE_REPAIRED = "balance_repaired"
-# The soft line's start-gate refusal word — the registry's own, held by
-# constant (#463) — which the wind-down line's ledger row also records as its
+# The soft line's start-gate refusal word is the registry's
+# `AFFORDABILITY_REASON_SOFT_FLOOR_REACHED`, which the money verdict imports
+# directly since #463 (the alias that stood here had no production reader
+# left); the wind-down line's ledger row records that same word as its
 # `reason` (the crossed event itself carries no reason; the row's line is
 # `LINE_SOFT_FLOOR`).
-SOFT_FLOOR_REACHED = AFFORDABILITY_REASON_SOFT_FLOOR_REACHED
 # Administrative silent close on an enforcement_mode transition (the live
 # counter's cleanup → close_all_silently) — never rides a StopCleared event
 # (a config flip is not a re-cross).

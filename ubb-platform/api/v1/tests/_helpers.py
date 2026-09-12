@@ -24,7 +24,8 @@ from apps.platform.work.models import TaskType
 from core.vocabulary import (
     PRICING_MODE_FIXED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
-#: `domain-vocabulary/concepts/` at the git root — the registry.
+#: `domain-vocabulary/concepts/` at the git root — the registry. Four parents
+#: up: tests -> v1 -> api -> ubb-platform -> the root.
 REGISTRY_CONCEPTS = Path(__file__).resolve().parents[4] / "domain-vocabulary" / "concepts"
 
 

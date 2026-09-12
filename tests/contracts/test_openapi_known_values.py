@@ -1093,10 +1093,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     "ceiling_basis": Published(4, ENUM),
     # WHY AN AFFORDABILITY QUESTION WAS ANSWERED NO (#463, slice 6 §13) — ONE
     # node, `AffordabilityResponse.reason`, the answer to the affordability
-    # question at its decided GET path. The second OPEN concept this map
-    # advertises, so it renders `x-ubb-known-values` beside an untouched
-    # `type: string`; nullable, so the marker sits on the string member of the
-    # union (an allowed answer carries no reason). The same nine words travel
+    # question at its decided GET path. The fifth `KNOWN_VALUES` row and the
+    # third open concept a slice PAID through this map (after
+    # `trigger_source` and `reason_code`; `unit` and `source_shape_id` were
+    # advertised open from the first commit and owed no G4 entry), so it
+    # renders `x-ubb-known-values` beside an untouched `type: string`;
+    # nullable, so the marker sits on the string member of the union (an
+    # allowed answer carries no reason). The same nine words travel
     # in the start's 409 refusal as an extension member of a problem, which
     # is not a schema node and cannot carry a marker — `api/v1/tests/
     # test_a_start_is_refused_from_one_vocabulary.py` holds that surface to
@@ -2315,10 +2318,11 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # on the stop events in the same commit, the family on all six and the
     # basis on the four that can be a ceiling's.
     # 9 -> 8 in #463: `affordability_reason`, the sixth — the third OPEN
-    # concept advertised, paid at billing's gating model (all nine by
-    # reference; the kernel's producers import the same constants) and
-    # marked on the one response that answers the affordability question,
-    # in the same commit that gave that question its GET.
+    # concept a slice paid (after `trigger_source` in #412 and `reason_code`
+    # in #457), paid at billing's gating model (all nine by reference; the
+    # kernel's producers import the same constants) and marked on the one
+    # response that answers the affordability question, in the same commit
+    # that gave that question its GET.
     assert len(_entries(programme)) >= 8, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

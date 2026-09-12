@@ -23,7 +23,9 @@ from api.v1.tests._helpers import (
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import (
     CustomerSpendPoolService)
-from apps.billing.gating.services.stop_signal_service import StopSignalService
+from apps.billing.gating.services.live_counter import LiveCounter
+from apps.billing.gating.services.stop_signal_service import (
+    StopSignalService, control_id_of)
 from apps.billing.wallets.models import CustomerBillingProfile
 from apps.platform.customers.models import (
     CUSTOMER_STATUS_CLOSED, CUSTOMER_STATUS_SUSPENDED, Customer)
@@ -34,6 +36,7 @@ from apps.platform.work.models import Task
 from core.vocabulary import (
     AFFORDABILITY_REASON_ACCOUNT_CLOSED,
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
     SPEND_POOL_ENFORCE_MODE_BLOCKING)
@@ -246,6 +249,45 @@ class TheAffordabilityQuestionTest(TestCase):
             self.assertIsNone(answer["available_micros"])
             self.assertIsNone(answer["min_balance_micros"])
             self.assertIsNone(answer["soft_min_balance_micros"])
+
+    def test_a_suspension_held_by_both_lines_is_worded_by_the_wallet(self):
+        """The other half of the hand-forward's rule: with the pool's line
+        AND the floor's line open, the pool is not the only one holding, so
+        the money-shaped word wins below both — exactly what a start is told
+        (#459)."""
+        pool = CustomerSpendPool.objects.create(
+            tenant=self.tenant, customer=self.customer, cap_micros=1_000_000,
+            enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)
+        StopSignalService.drive_stop(
+            self.customer.id, self.tenant, line=reasons.CUSTOMER_SPEND_POOL,
+            control_id=pool.id)
+        StopSignalService.drive_stop(
+            self.customer.id, self.tenant, line=reasons.HARD_FLOOR,
+            control_id=control_id_of(reasons.HARD_FLOOR, self.customer.id,
+                                     self.tenant))
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.status, CUSTOMER_STATUS_SUSPENDED)
+
+        answer = self._answer()
+
+        self.assertFalse(answer["allowed"])
+        self.assertEqual(answer["reason"], AFFORDABILITY_REASON_INSUFFICIENT_FUNDS)
+
+    def test_the_stop_in_force(self):
+        """The customer-wide stop FLAG, before the durable suspension lands
+        (the live lane's fast signal): a customer still in standing whose
+        flag is set is refused as stopped, with no wallet read — the one
+        verdict the standing walk does not make."""
+        LiveCounter.ensure_stop_flag(self.customer.id, reasons.HARD_FLOOR)
+        self.customer.refresh_from_db()
+        self.assertNotEqual(self.customer.status, CUSTOMER_STATUS_SUSPENDED)
+
+        answer = self._answer()
+
+        self.assertFalse(answer["allowed"])
+        self.assertEqual(answer["reason"], AFFORDABILITY_REASON_CUSTOMER_STOPPED)
+        self.assertIsNone(answer["balance_micros"])
+        self.assertIsNone(answer["min_balance_micros"])
 
     def test_a_closed_customer(self):
         self.customer.status = CUSTOMER_STATUS_CLOSED
