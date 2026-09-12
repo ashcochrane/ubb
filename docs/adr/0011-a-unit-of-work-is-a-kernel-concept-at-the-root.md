@@ -145,5 +145,7 @@ in Context so a reader need not open it to know which row moved.
   kind of work is Admin. `ubb-platform/api/v1/tests/test_role_floors.py` holds the carve for both.
 - **What #141 named and slice 5 did not build is still owed, and is named here so its absence is
   not read as a decision**: the advisory affordability endpoint and the replacement name for the
-  retired creation path (slice 6, #188). One more thing sits on the same call and is nobody's yet —
-  the prepaid reservation #139 wanted the start to take, which no slice has been assigned.
+  retired creation path (slice 6, #188). One more thing sat on the same call and was nobody's
+  when this was written — the prepaid reservation #139 wanted the start to take; slice 6 §5 ruled
+  it in and #461 built it, in the same transaction as the start and released on every terminal
+  path.

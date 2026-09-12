@@ -2,6 +2,7 @@ from django.db import models
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
+from core.transitions import RECORD_RULE
 
 
 WALLET_TXN_TYPES = [
@@ -286,6 +287,20 @@ class WalletReservation(BaseModel):
     ``task`` is a real foreign key onto the kernel's row (a product may import
     the kernel, ADR-001 rule 1) with no reverse accessor, so the kernel gains
     no attribute named by a product; the backstop sweep joins through it.
+
+    THE RECORD'S WHOLE LIFECYCLE IS ONE RULE, declared as ``RECORD_RULE`` on
+    every column rather than as a class per column
+    (`docs/conventions/django-patterns.md`): a row is inserted once, at the
+    start, and its one later transition is the release — ``released_at`` and
+    ``released_by`` set together, once, by whichever of the two releasers
+    reaches it first, and nothing else on the row ever changes. The check
+    below holds the release's shape (a release names its releaser; an open
+    row names none); the once-ness is held by both releasers writing through
+    one filtered UPDATE (`reservations._release`, a no-op on a released row)
+    and is proved by the repeated-close and second-sweep cases in
+    `api/v1/tests/test_every_terminal_path_releases_the_reservation.py`.
+    No trigger defends it at the database, which is the same footing
+    `Wallet` and `WalletTransaction` stand on beside it.
     """
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE,
@@ -301,6 +316,13 @@ class WalletReservation(BaseModel):
     released_at = models.DateTimeField(null=True, blank=True)
     released_by = models.CharField(
         max_length=20, choices=RELEASED_BY_CHOICES, blank=True, default="")
+
+    transition_classes = {
+        "id": RECORD_RULE, "created_at": RECORD_RULE, "updated_at": RECORD_RULE,
+        "tenant": RECORD_RULE, "owner": RECORD_RULE, "task": RECORD_RULE,
+        "amount_micros": RECORD_RULE, "released_at": RECORD_RULE,
+        "released_by": RECORD_RULE,
+    }
 
     class Meta:
         db_table = "ubb_wallet_reservation"

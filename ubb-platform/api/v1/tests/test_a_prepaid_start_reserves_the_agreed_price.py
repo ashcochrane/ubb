@@ -21,11 +21,14 @@ start's refusals — and what is proved elsewhere:
   releasing and the drawdown landing so the balance moves by the agreed price
   exactly once; the balance read's two new figures — HERE;
 * three concurrent starts against a balance that affords two —
-  `apps/billing/tests/test_concurrent_prepaid_starts_reserve_only_what_the_balance_affords.py`,
-  in the shape of the money-race modules beside it;
+  `api/v1/tests/test_concurrent_prepaid_starts_reserve_only_what_the_balance_affords.py`,
+  in the shape of billing's money-race modules;
 * every terminal path releasing through the kernel's listener registry, and
   the backstop sweep —
-  `apps/billing/wallets/tests/test_every_terminal_path_releases_the_reservation.py`.
+  `api/v1/tests/test_every_terminal_path_releases_the_reservation.py`.
+
+The fixture the three share — a tenant selling one kind of work whole and one
+per event, with a price line and a wallet — is `_helpers.a_tenant_selling_whole_work`.
 
 ⚠ THE WALLET LANE IS EVERY MODE BUT POSTPAID, which is the fork the money
 verdict and the live counter already make; "prepaid" in the ruling means that
@@ -38,27 +41,21 @@ import uuid
 import pytest
 from django.test import Client
 
+from api.v1.tests._helpers import (
+    SOLD_PER_EVENT, THE_AGREED_PRICE, a_tenant_selling_whole_work)
 from apps.billing.wallets.models import (
     RELEASED_BY_TERMINAL_TRANSITION, CustomerBillingProfile, Wallet,
     WalletReservation, WalletTransaction)
 from apps.billing.wallets.reservations import open_reservations_micros
-from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.platform.customers.models import Customer
 from apps.platform.events.dispatch import dispatch_to_handlers
 from apps.platform.events.models import OutboxEvent
-from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.work.models import Task, TaskType
+from apps.platform.work.models import Task
 from core.vocabulary import (
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
-    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED, PRICING_MODE_FIXED,
-    TASK_OUTCOME_DELIVERED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED, TASK_OUTCOME_DELIVERED)
 
-#: The kind of work sold at one agreed price, and the one sold per event.
-SOLD_WHOLE = "transcode"
-SOLD_PER_EVENT = "chat"
-
-THE_AGREED_PRICE = 8_000_000
-#: A balance that affords exactly two of the price above with something left
+#: A balance that affords exactly two of the agreed price with something left
 #: over — so a third start is the one that would leave the available amount
 #: past a floor at zero, while the balance itself never goes near it.
 AFFORDS_TWO = 20_000_000
@@ -73,36 +70,21 @@ class ReservationTestBase:
     ENFORCEMENT_MODE = None
 
     def setup_method(self):
-        options = {"billing_mode": self.BILLING_MODE} if self.BILLING_MODE else {}
-        if self.ENFORCEMENT_MODE:
-            options["enforcement_mode"] = self.ENFORCEMENT_MODE
-        self.tenant = Tenant.objects.create(
-            name="T", products=self.PRODUCTS, **options)
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1")
+        self.fixture = a_tenant_selling_whole_work(
+            products=self.PRODUCTS, billing_mode=self.BILLING_MODE,
+            enforcement_mode=self.ENFORCEMENT_MODE,
+            balance_micros=AFFORDS_TWO if self.PRODUCTS != ["metering"] else None)
+        self.tenant = self.fixture.tenant
+        self.customer = self.fixture.customer
+        self.wallet = self.fixture.wallet
         self.client = Client()
-        for kind in (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK):
-            TaskType.objects.create(tenant=self.tenant, key=SOLD_WHOLE,
-                                    kind=kind, pricing_mode=PRICING_MODE_FIXED,
-                                    uncapped=True)
-            TaskType.objects.create(tenant=self.tenant, key=SOLD_PER_EVENT,
-                                    kind=kind, uncapped=True)
-        a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
-        if self.PRODUCTS != ["metering"]:
-            self.wallet = Wallet.objects.create(
-                customer=self.customer, balance_micros=AFFORDS_TWO)
 
     def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+        return self.fixture.auth()
 
     def _start(self, **body):
-        body.setdefault("customer_id", str(self.customer.id))
-        body.setdefault("task_type", SOLD_WHOLE)
-        body.setdefault("idempotency_key", f"attempt-{uuid.uuid4()}")
         return self.client.post(
-            "/api/v1/tasks", data=json.dumps(body),
+            "/api/v1/tasks", data=json.dumps(self.fixture.start_body(**body)),
             content_type="application/json", **self._auth())
 
     def _started(self, **body):

@@ -55,14 +55,15 @@ def open_reservations_micros(owner_id):
     return int(total or 0)
 
 
-def reserve(*, task, owner, tenant, amount_micros):
-    """Write the reservation for ``task``: ``amount_micros`` against
-    ``owner``'s wallet. The caller holds the owner's billing lock and has
-    already found the amount affordable; this only writes what it was told."""
+def reserve(*, task, owner_id, tenant, amount_micros):
+    """Write the reservation for ``task``: ``amount_micros`` against the
+    wallet of the billing owner ``owner_id``. The caller holds that owner's
+    billing lock and has already found the amount affordable; this only
+    writes what it was told."""
     row = WalletReservation.objects.create(
-        tenant=tenant, owner=owner, task=task, amount_micros=amount_micros)
+        tenant=tenant, owner_id=owner_id, task=task, amount_micros=amount_micros)
     logger.info("wallet.reservation_taken", extra={"data": {
-        "task_id": str(task.id), "owner_id": str(owner.id),
+        "task_id": str(task.id), "owner_id": str(owner_id),
         "amount_micros": amount_micros}})
     return row
 
@@ -96,16 +97,19 @@ def release_reservations_left_open_on_terminal_work():
     """The backstop sweep: release every open reservation whose unit of work
     is already terminal, and say so per unit. Returns how many it released;
     a second run over the same rows releases nothing."""
-    left_open = list(WalletReservation.objects.filter(
+    candidates = list(WalletReservation.objects.filter(
         released_at__isnull=True, task__status__in=TERMINAL_TASK_STATUSES,
-    ).values("id", "task_id", "owner_id", "tenant_id", "amount_micros",
-             "task__status"))
-    if not left_open:
+    ).values_list("id", flat=True))
+    if not candidates:
         return 0
-    released = _release(
-        WalletReservation.objects.filter(id__in=[row["id"] for row in left_open]),
-        released_by=RELEASED_BY_BACKSTOP_SWEEP)
-    for row in left_open:
+    released = _release(WalletReservation.objects.filter(id__in=candidates),
+                        released_by=RELEASED_BY_BACKSTOP_SWEEP)
+    # Logged off what the UPDATE stamped, not off the candidate list: a row
+    # the listener released between the read and the UPDATE is the
+    # listener's, and the warning says only what this sweep did.
+    for row in WalletReservation.objects.filter(
+            id__in=candidates, released_by=RELEASED_BY_BACKSTOP_SWEEP,
+    ).values("task_id", "owner_id", "tenant_id", "amount_micros", "task__status"):
         logger.warning("wallet.reservation_released_by_backstop", extra={"data": {
             "task_id": str(row["task_id"]), "owner_id": str(row["owner_id"]),
             "tenant_id": str(row["tenant_id"]),

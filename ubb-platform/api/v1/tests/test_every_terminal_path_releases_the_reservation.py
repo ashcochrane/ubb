@@ -3,9 +3,9 @@ terminal-transition listener, and the backstop sweep releases what a failed
 listener left behind (#461, slice 6 §5 — ticket 10 of 20).
 
 ⚠ NO CASE HERE CALLS THE RELEASE. Each drives a real terminal path — the
-tenant's close in its three outcomes, the recording lane's kill, the patrol's
-kill, both windows of the announcing sweeper, the crash sweeper, and the three
-cascades onto contained work — and asserts that the reservation the unit's
+tenant's close in its three outcomes, the recording lane's kill, the pool's
+kill, the patrol's kill, both windows of the announcing sweeper, the crash
+sweeper, and the three cascades onto contained work — and asserts that the reservation the unit's
 start took is released afterwards, by the listener (`released_by` says so).
 A case that released by hand would prove the release function works and
 nothing about whether the close reaches it; the whole claim is the paths.
@@ -42,38 +42,38 @@ from django.core.cache import cache
 from django.test import Client, TestCase
 from django.utils import timezone
 
+from api.v1.tests._helpers import (
+    SOLD_PER_EVENT, THE_AGREED_PRICE, a_tenant_selling_whole_work)
+from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.tasks import reconcile_live_ledgers
 from apps.billing.wallets.models import (
-    RELEASED_BY_BACKSTOP_SWEEP, RELEASED_BY_TERMINAL_TRANSITION, Wallet,
+    RELEASED_BY_BACKSTOP_SWEEP, RELEASED_BY_TERMINAL_TRANSITION,
     WalletReservation)
 from apps.billing.wallets.reservations import open_reservations_micros
 from apps.billing.wallets.tasks import (
     release_reservations_left_open_on_terminal_work)
 from apps.metering.pricing.tests._helpers import (
-    a_price_for_whole_work, a_rule_that_prices_what_it_measures, what_it_bills)
-from apps.platform.customers.models import Customer
+    a_rule_that_prices_what_it_measures, what_it_bills)
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
-from apps.platform.work.models import Task, TaskType
+from apps.platform.work.models import Task
 from apps.platform.work.services import (
     STOP_CAUSE_KEY, TaskService, ceiling_control_id)
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from core.vocabulary import (
     OUTCOME_REASON_CUSTOMER_CANCELLED, OUTCOME_REASON_TIMEOUT,
-    PRICING_MODE_FIXED, TASK_OUTCOME_CANCELLED, TASK_OUTCOME_DELIVERED,
-    TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED,
-    TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED, TASK_STATUS_FAILED,
-    TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK,
-    TRIGGER_SOURCE_STALE_REAPER)
+    SPEND_POOL_ENFORCE_MODE_BLOCKING, TASK_OUTCOME_CANCELLED,
+    TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE,
+    TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED,
+    TASK_STATUS_FAILED, TASK_STATUS_KILLED, TRIGGER_SOURCE_STALE_REAPER)
 
-SOLD_WHOLE = "transcode"
-SOLD_PER_EVENT = "chat"
-THE_AGREED_PRICE = 8_000_000
 #: A ceiling one usage report trips, so the recording lane's kill and the
 #: patrol's sweep each have something to fire on.
 A_LOW_CEILING = 1_000
+#: Where the outbox doorbell rings; patched so executed on-commit callbacks
+#: never reach Celery (the pool module's own arrangement).
+DOORBELL = "apps.platform.events.tasks.process_single_event"
 
 
 class ReleaseTestBase(TestCase):
@@ -83,22 +83,10 @@ class ReleaseTestBase(TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()
-        self.tenant = Tenant.objects.create(
-            name="T", products=["metering", "billing"],
-            billing_mode="prepaid", enforcement_mode="enforcing")
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="c1")
-        self.wallet = Wallet.objects.create(
-            customer=self.customer, balance_micros=100_000_000)
-        for kind in (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK):
-            TaskType.objects.create(tenant=self.tenant, key=SOLD_WHOLE,
-                                    kind=kind, pricing_mode=PRICING_MODE_FIXED,
-                                    uncapped=True)
-            TaskType.objects.create(tenant=self.tenant, key=SOLD_PER_EVENT,
-                                    kind=kind, uncapped=True)
-        a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+        self.fixture = a_tenant_selling_whole_work(
+            enforcement_mode="enforcing", balance_micros=100_000_000)
+        self.tenant = self.fixture.tenant
+        self.customer = self.fixture.customer
         declares_a_caller_supplied_cost(self.tenant, DECLARED)
         a_rule_that_prices_what_it_measures(self.tenant)
 
@@ -106,14 +94,11 @@ class ReleaseTestBase(TestCase):
         cache.clear()
 
     def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
+        return self.fixture.auth()
 
     def _started(self, **body):
-        body.setdefault("customer_id", str(self.customer.id))
-        body.setdefault("task_type", SOLD_WHOLE)
-        body.setdefault("idempotency_key", f"attempt-{uuid.uuid4()}")
         response = self.client.post(
-            "/api/v1/tasks", data=json.dumps(body),
+            "/api/v1/tasks", data=json.dumps(self.fixture.start_body(**body)),
             content_type="application/json", **self._auth())
         self.assertEqual(response.status_code, 200, response.content)
         return Task.objects.get(id=response.json()["task_id"])
@@ -141,16 +126,18 @@ class ReleaseTestBase(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return response.json()
 
-    def _record(self, **extra):
-        """A usage report through the recording route; the ceiling's kill is
-        registered on the recording transaction's commit, which a `TestCase`
-        never performs, so the callbacks are run here."""
+    def _record(self, *, bills=None, **extra):
+        """A usage report through the recording route; the ceiling's and the
+        pool's kills are registered on the recording transaction's commit,
+        which a `TestCase` never performs, so the callbacks are run here with
+        the doorbell silenced."""
         data = {"customer_id": str(self.customer.id),
                 "idempotency_key": f"idem-{uuid.uuid4()}",
-                "event_type": DECLARED}
-        data.update(what_it_bills(extra))
+                "event_type": DECLARED, "provider_cost_micros": 1_000}
+        if bills is not None:
+            data.update(what_it_bills({"bills": bills}))
         data.update(extra)
-        with self.captureOnCommitCallbacks(execute=True):
+        with patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(
                 "/api/v1/metering/usage", data=json.dumps(data),
                 content_type="application/json", **self._auth())
@@ -210,13 +197,32 @@ class TheTenantsCloseReleasesTest(ReleaseTestBase):
 
 
 class UbbsOwnStopsReleaseTest(ReleaseTestBase):
-    """The two kills and the three expiries, each through the lane that
+    """The three kills and the three expiries, each through the lane that
     applies it."""
 
     def test_the_recording_lanes_kill(self):
         unit = self._reserved_unit(task_cogs_ceiling_micros=A_LOW_CEILING)
         ack = self._record(task_id=str(unit.id), provider_cost_micros=5_000_000)
         self.assertTrue(ack["stop"])
+        self.assert_released_by_the_transition(unit, TASK_STATUS_KILLED)
+        self.assert_nothing_is_reserved()
+
+    def test_the_pools_kill(self):
+        # The third caller of the kernel's kill seam: a blocking pool crossed
+        # by one usage report, whose winning transition kills the customer's
+        # active work on commit (`CustomerSpendPoolService.stop_active_work`)
+        # — the lane #460 held by the structural pin alone.
+        unit = self._reserved_unit()
+        CustomerSpendPool.objects.create(
+            tenant=self.tenant, customer=self.customer, cap_micros=5_000_000,
+            enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)
+        # The crossing report sits under no unit: a metered posting under
+        # work sold at one agreed price bills nothing (#418), so it could not
+        # move the pool. The pool's kill reaches every active unit of the
+        # customer, the reserved one included.
+        ack = self._record(bills=5_000_000)
+        self.assertTrue(ack["stop"])
+        self.assertEqual(ack["stop_reason"], reasons.CUSTOMER_SPEND_POOL)
         self.assert_released_by_the_transition(unit, TASK_STATUS_KILLED)
         self.assert_nothing_is_reserved()
 

@@ -20,43 +20,28 @@ harness's.
 """
 import json
 import threading
-import uuid
 
 from django.db import connection
 from django.test import Client, TransactionTestCase
 
+from api.v1.tests._helpers import THE_AGREED_PRICE, a_tenant_selling_whole_work
 from apps.billing.wallets.models import Wallet, WalletReservation
-from apps.metering.pricing.tests._helpers import a_price_for_whole_work
-from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.work.models import Task, TaskType
-from core.vocabulary import (
-    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS, PRICING_MODE_FIXED,
-    TASK_TYPE_KIND_TASK)
+from apps.platform.work.models import Task
+from core.vocabulary import AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
 
-SOLD_WHOLE = "transcode"
-THE_AGREED_PRICE = 8_000_000
 WORKERS = 3
 
 
 class ConcurrentPrepaidStartsTest(TransactionTestCase):
 
     def _a_customer_whose_balance_affords(self, how_many):
-        self.tenant = Tenant.objects.create(
-            name="RACE_RESERVE", products=["metering", "billing"],
-            billing_mode="prepaid")
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
-        self.customer = Customer.objects.create(
-            tenant=self.tenant, external_id="race_c1")
-        TaskType.objects.create(tenant=self.tenant, key=SOLD_WHOLE,
-                                kind=TASK_TYPE_KIND_TASK,
-                                pricing_mode=PRICING_MODE_FIXED, uncapped=True)
-        a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
         # The floor is zero, so "affords N" is N prices exactly: the N+1th
         # start would leave the available amount below the line.
-        Wallet.objects.create(customer=self.customer,
-                              balance_micros=how_many * THE_AGREED_PRICE)
+        self.fixture = a_tenant_selling_whole_work(
+            name="RACE_RESERVE", external_id="race_c1",
+            balance_micros=how_many * THE_AGREED_PRICE)
+        self.tenant = self.fixture.tenant
+        self.customer = self.fixture.customer
 
     def _race(self):
         barrier = threading.Barrier(WORKERS)
@@ -64,14 +49,11 @@ class ConcurrentPrepaidStartsTest(TransactionTestCase):
 
         def worker():
             try:
-                body = {"customer_id": str(self.customer.id),
-                        "task_type": SOLD_WHOLE,
-                        "idempotency_key": f"attempt-{uuid.uuid4()}"}
+                body = self.fixture.start_body()
                 barrier.wait()
                 response = Client().post(
                     "/api/v1/tasks", data=json.dumps(body),
-                    content_type="application/json",
-                    HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+                    content_type="application/json", **self.fixture.auth())
                 answers.append((response.status_code, response.json()))
             except Exception as exc:  # noqa: BLE001
                 errors.append(repr(exc))

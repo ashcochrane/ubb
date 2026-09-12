@@ -203,11 +203,9 @@ class RiskService:
         # Status: gate if the seat OR its billing-owner (business) is suspended/closed
         for who in ([customer] if owner.id == customer.id else [customer, owner]):
             if who.status == "suspended":
-                return {"allowed": False, "reason": _suspension_refusal(who),
-                        "balance_micros": None, "available_micros": None}
+                return _verdict(_suspension_refusal(who), None, None)
             if who.status == "closed":
-                return {"allowed": False, "reason": "account_closed",
-                        "balance_micros": None, "available_micros": None}
+                return _verdict("account_closed", None, None)
         # Tier-2 P6: honor the synchronous customer-wide stop flag at the
         # start-gate (enforcing only — the flag cannot exist for an off
         # tenant) so a flag-stopped owner's NEW tasks are blocked even before
@@ -216,8 +214,7 @@ class RiskService:
         if enforcing(customer.tenant):
             from apps.billing.gating.services.live_counter import LiveCounter
             if LiveCounter.read(owner.id, customer.tenant)["stop"]:
-                return {"allowed": False, "reason": "customer_stopped",
-                        "balance_micros": None, "available_micros": None}
+                return _verdict("customer_stopped", None, None)
         config = RiskService._config(customer.tenant)
         # Fixed-window rate limiting (per-seat; degrades gracefully if Redis is down)
         if config and config.max_requests_per_minute and config.max_requests_per_minute > 0:
@@ -225,8 +222,7 @@ class RiskService:
                 cache_key = f"ratelimit:{customer.id}:rpm"
                 current_count = cache.get(cache_key, 0)
                 if current_count >= config.max_requests_per_minute:
-                    return {"allowed": False, "reason": "rate_limit_exceeded",
-                            "balance_micros": None, "available_micros": None}
+                    return _verdict("rate_limit_exceeded", None, None)
                 try:
                     cache.incr(cache_key)
                 except ValueError:
@@ -256,28 +252,14 @@ class RiskService:
             reserved = open_reservations_micros(owner.id)
         available = balance - reserved
 
-        from apps.billing.queries import get_customer_min_balance
-        threshold = get_customer_min_balance(owner.id, owner.tenant_id)
-        if on_the_wallet_lane and past_floor(available, threshold):
-            return {"allowed": False, "reason": "insufficient_funds",
-                    "balance_micros": balance, "available_micros": available}
-
-        # Soft floor (#40, spec §F): past the resolved wind-down line, NEW
-        # TOP-LEVEL task starts are refused — running tasks may complete, so
-        # a subtask start under a parent passes (a contained child of running
-        # work is running work completing; the parent's own liveness is
-        # validated separately, by `TaskService.parent_for`, under that
-        # parent's own lock). enforcing-only, like every state change; the
-        # hard-floor refusal above wins below both lines. Wallet-based, so
-        # postpaid has no soft floor.
-        if (parent_task_id is None and enforcing(customer.tenant)
-                and on_the_wallet_lane):
-            from apps.billing.queries import get_customer_soft_min_balance
-            from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
-            soft = get_customer_soft_min_balance(owner.id, owner.tenant_id)
-            if past_floor(available, soft):
-                return {"allowed": False, "reason": SOFT_FLOOR_REACHED,
-                        "balance_micros": balance, "available_micros": available}
+        # The hard floor, then the soft floor at its own altitude — the one
+        # walk `reserve_agreed_price` makes again with the price included.
+        # Wallet-based, so postpaid has neither.
+        if on_the_wallet_lane:
+            refusal = _floor_refusal(available, owner.id, customer.tenant,
+                                     parent_task_id)
+            if refusal is not None:
+                return _verdict(refusal, balance, available)
 
         # Customer spend pool, the SEAT level (slice 6 §4): the seat's own
         # counter against the seat's pool. The owner level refuses through
@@ -285,16 +267,14 @@ class RiskService:
         from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
         pool = CustomerSpendPoolService.check(customer)
         if not pool["allowed"]:
-            return {"allowed": False, "reason": pool["reason"],
-                    "balance_micros": balance, "available_micros": available}
+            return _verdict(pool["reason"], balance, available)
 
         # THE PARENT THE SOFT FLOOR ABOVE READS IS CHECKED ELSEWHERE NOW.
         # Whether that named parent is a live, top-level unit is a
         # structural question about the work rather than a money-shaped
         # one, so `TaskService.parent_for` asks it, under the parent's own
         # lock, in the same transaction as the write it guards.
-        return {"allowed": True, "reason": None, "balance_micros": balance,
-                "available_micros": available}
+        return _verdict(None, balance, available)
 
     @staticmethod
     def reserve_agreed_price(customer, task, *, parent_task_id=None):
@@ -328,37 +308,71 @@ class RiskService:
         contained work). A tenant that does not bill through UBB never
         reaches here: the composition layer conditions the whole money-shaped
         half on the product, as it does for ``check``.
-        """
-        from apps.billing.accounts import resolve_billing_owner
-        from apps.billing.locking import lock_for_billing
-        from apps.billing.queries import (
-            get_customer_min_balance, get_customer_soft_min_balance)
-        from apps.billing.wallets import reservations
-        from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
-        from apps.platform.tenants.flags import enforcing
 
-        nothing_to_reserve = {"allowed": True, "reason": None,
-                              "balance_micros": None, "available_micros": None}
+        The owner is the one the unit's start already stamped
+        (``task.billing_owner_id``, resolved by the same rule ``check`` uses)
+        rather than a second resolution of it. The billing lock creates the
+        owner's wallet lazily where none exists — a billing tenant's customer
+        who has never been credited — which is the row every credit and
+        drawdown path would create on its first use anyway: a reservation
+        against a wallet is what makes the wallet exist. ``parent_task_id``
+        reaches the soft floor's altitude check exactly as ``check``'s does;
+        today only a top-level start carries a price, so only a top-level
+        start is refused here on the wind-down line.
+        """
+        from apps.billing.locking import lock_for_billing
+        from apps.billing.wallets import reservations
+
         tenant = customer.tenant
         price = task.agreed_price_micros
         if tenant.billing_mode == "postpaid" or price is None:
-            return nothing_to_reserve
+            return _verdict(None, None, None)
 
-        owner = resolve_billing_owner(customer)
-        wallet, _owner_row = lock_for_billing(owner.id)
+        owner_id = task.billing_owner_id
+        wallet, _owner_row = lock_for_billing(owner_id)
         balance = wallet.balance_micros
-        available = balance - reservations.open_reservations_micros(owner.id)
-        would_leave = available - price
-        verdict = {"balance_micros": balance, "available_micros": available}
+        available = balance - reservations.open_reservations_micros(owner_id)
+        refusal = _floor_refusal(available - price, owner_id, tenant,
+                                 parent_task_id)
+        if refusal is not None:
+            return _verdict(refusal, balance, available)
 
-        if past_floor(would_leave, get_customer_min_balance(owner.id, tenant.id)):
-            return {"allowed": False,
-                    "reason": AFFORDABILITY_REASON_INSUFFICIENT_FUNDS, **verdict}
-        if parent_task_id is None and enforcing(tenant):
-            soft = get_customer_soft_min_balance(owner.id, tenant.id)
-            if past_floor(would_leave, soft):
-                return {"allowed": False, "reason": SOFT_FLOOR_REACHED, **verdict}
-
-        reservations.reserve(task=task, owner=owner, tenant=tenant,
+        reservations.reserve(task=task, owner_id=owner_id, tenant=tenant,
                              amount_micros=price)
-        return {"allowed": True, "reason": None, **verdict}
+        return _verdict(None, balance, available)
+
+
+def _verdict(reason, balance_micros, available_micros):
+    """The money-shaped answer's one shape: allowed iff there is no reason;
+    the balance and the balance less open reservations beside it, both
+    ``None`` where the answer was made before a wallet was read."""
+    return {"allowed": reason is None, "reason": reason,
+            "balance_micros": balance_micros,
+            "available_micros": available_micros}
+
+
+def _floor_refusal(available_micros, owner_id, tenant, parent_task_id):
+    """The refusal word Wallet policy's floors give ``available_micros``, or
+    ``None`` where both admit it — the walk ``check`` and
+    ``reserve_agreed_price`` share, so the two cannot disagree about a line.
+
+    The hard floor first, always. Then the soft floor (#40, spec §F): past
+    the resolved wind-down line NEW TOP-LEVEL starts are refused while a
+    contained start under a running parent passes (a contained child of
+    running work is running work completing; the parent's own liveness is
+    validated separately, by `TaskService.parent_for`, under that parent's
+    own lock) — enforcing-only, like every state change, and the hard
+    floor's refusal wins below both lines.
+    """
+    from apps.billing.queries import (
+        get_customer_min_balance, get_customer_soft_min_balance)
+    from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
+    from apps.platform.tenants.flags import enforcing
+
+    if past_floor(available_micros, get_customer_min_balance(owner_id, tenant.id)):
+        return AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
+    if parent_task_id is None and enforcing(tenant):
+        soft = get_customer_soft_min_balance(owner_id, tenant.id)
+        if past_floor(available_micros, soft):
+            return SOFT_FLOOR_REACHED
+    return None
