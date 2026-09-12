@@ -36,6 +36,7 @@ class TenantConfigOut:
             default_task_cogs_ceiling_micros (int | None | Unset):
             enforcement_mode (str | Unset):  Default: 'off'.
             live_counter_maintenance_enabled (bool | Unset):  Default: True.
+            max_task_starts_per_minute (int | None | Unset):
             min_balance_micros (int | Unset):  Default: 0.
             soft_min_balance_micros (int | None | Unset):
      """
@@ -51,6 +52,7 @@ class TenantConfigOut:
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
     enforcement_mode: str | Unset = 'off'
     live_counter_maintenance_enabled: bool | Unset = True
+    max_task_starts_per_minute: int | None | Unset = UNSET
     min_balance_micros: int | Unset = 0
     soft_min_balance_micros: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -95,6 +97,12 @@ class TenantConfigOut:
 
         live_counter_maintenance_enabled = self.live_counter_maintenance_enabled
 
+        max_task_starts_per_minute: int | None | Unset
+        if isinstance(self.max_task_starts_per_minute, Unset):
+            max_task_starts_per_minute = UNSET
+        else:
+            max_task_starts_per_minute = self.max_task_starts_per_minute
+
         min_balance_micros = self.min_balance_micros
 
         soft_min_balance_micros: int | None | Unset
@@ -123,6 +131,8 @@ class TenantConfigOut:
             field_dict["enforcement_mode"] = enforcement_mode
         if live_counter_maintenance_enabled is not UNSET:
             field_dict["live_counter_maintenance_enabled"] = live_counter_maintenance_enabled
+        if max_task_starts_per_minute is not UNSET:
+            field_dict["max_task_starts_per_minute"] = max_task_starts_per_minute
         if min_balance_micros is not UNSET:
             field_dict["min_balance_micros"] = min_balance_micros
         if soft_min_balance_micros is not UNSET:
@@ -181,6 +191,16 @@ class TenantConfigOut:
 
         live_counter_maintenance_enabled = d.pop("live_counter_maintenance_enabled", UNSET)
 
+        def _parse_max_task_starts_per_minute(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        max_task_starts_per_minute = _parse_max_task_starts_per_minute(d.pop("max_task_starts_per_minute", UNSET))
+
+
         min_balance_micros = d.pop("min_balance_micros", UNSET)
 
         def _parse_soft_min_balance_micros(data: object) -> int | None | Unset:
@@ -205,6 +225,7 @@ class TenantConfigOut:
             default_task_cogs_ceiling_micros=default_task_cogs_ceiling_micros,
             enforcement_mode=enforcement_mode,
             live_counter_maintenance_enabled=live_counter_maintenance_enabled,
+            max_task_starts_per_minute=max_task_starts_per_minute,
             min_balance_micros=min_balance_micros,
             soft_min_balance_micros=soft_min_balance_micros,
         )

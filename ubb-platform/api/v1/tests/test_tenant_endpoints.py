@@ -428,6 +428,52 @@ class TenantConfigEndpointTest(TestCase):
         bc.refresh_from_db()
         self.assertEqual(bc.min_balance_micros, 7_000_000)
 
+    # --- admission control's bound (#462): on the wire for the first time ---
+
+    def _patch(self, body):
+        return self.http_client.patch(
+            "/api/v1/tenant/config", data=json.dumps(body),
+            content_type="application/json", **self._auth())
+
+    def test_get_config_reads_the_admission_bound_null_by_default(self):
+        body = self.http_client.get("/api/v1/tenant/config", **self._auth()).json()
+        self.assertIn("max_task_starts_per_minute", body)
+        self.assertIsNone(body["max_task_starts_per_minute"])
+
+    def test_patch_sets_the_admission_bound_on_the_tenant_row(self):
+        response = self._patch({"max_task_starts_per_minute": 30})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["max_task_starts_per_minute"], 30)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.max_task_starts_per_minute, 30)
+
+    def test_patch_null_clears_the_admission_bound(self):
+        self.tenant.max_task_starts_per_minute = 30
+        self.tenant.save(update_fields=["max_task_starts_per_minute"])
+        response = self._patch({"max_task_starts_per_minute": None})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.json()["max_task_starts_per_minute"])
+        self.tenant.refresh_from_db()
+        self.assertIsNone(self.tenant.max_task_starts_per_minute)
+
+    def test_patch_admission_bound_zero_or_negative_returns_422(self):
+        """A bound of zero is not a rate but a refusal of every start;
+        null is the one spelling of no bound."""
+        for bad in (0, -1):
+            response = self._patch({"max_task_starts_per_minute": bad})
+            self.assertEqual(response.status_code, 422, bad)
+            self.assertEqual(response.json()["code"], "invalid_config")
+            self.assertIn("max_task_starts_per_minute", response.json()["detail"])
+            self.assertIn("no bound", response.json()["detail"])
+
+    def test_patch_omitting_the_admission_bound_leaves_it_unchanged(self):
+        self.tenant.max_task_starts_per_minute = 30
+        self.tenant.save(update_fields=["max_task_starts_per_minute"])
+        response = self._patch({"billing_mode": "meter_only"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.max_task_starts_per_minute, 30)
+
 
 class TenantConfigCurrencyTest(TestCase):
     """CUR-1: writable default_currency — 2-decimal allowlist, 409 once money exists."""

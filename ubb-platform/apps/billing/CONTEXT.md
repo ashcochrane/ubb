@@ -134,8 +134,11 @@ docstring — the guard's whole value is that its exception set is small, named,
 ## Spend control
 
 **Start-gate (spend gate)**:
-The durable pre-start check — suspension, stop flag, rate limit, affordability, the
+The durable pre-start check — suspension, stop flag, affordability, the
 soft floor (top-level starts only), budget — run before a Task is created.
+The per-minute bound on new work is NOT in this list since #462: admission control is the
+kernel's (`apps/platform/work/admission.py`), asked by the composition layer for every tenant
+BEFORE this money-shaped verdict, and this verdict never runs it and never moves its window.
 It is COMPOSED at `api/v1/task_endpoints.py`, not called as one method: registering a unit of work
 is its own route at the root and the money-shaped checks run INSIDE it, conditioned on the tenant
 having a wallet rather than on a product flag at the door. A metering-only tenant is not refused

@@ -79,6 +79,8 @@ from apps.metering.pricing.services.pricing_service import (
 )
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.services import DimensionError
+from apps.platform.work import admission
+from apps.platform.work.admission import AdmissionRefused
 from apps.platform.work.models import Task
 from apps.platform.work.services import (
     CloseDeclaration, ContainmentRegimeRefused, DeclarationRefused,
@@ -114,7 +116,8 @@ _TENANT_HAS_A_WALLET = TENANT_PRODUCT_BILLING
 
 
 @task_router.post("/tasks", response={200: StartTaskResponse, 404: ProblemOut,
-                                      409: ProblemOut, 422: ProblemOut})
+                                      409: ProblemOut, 422: ProblemOut,
+                                      429: ProblemOut})
 @role_floor(WRITE)
 def start_task(request, payload: StartTaskRequest):
     """Register a unit of work, and hand back the same one on a retry.
@@ -134,7 +137,12 @@ def start_task(request, payload: StartTaskRequest):
 
     `409 task_start_refused` names, in `reason`, why the customer may not begin
     new work — a wallet below its floor, a stop in force, or a parent that is
-    not a running top-level unit. `422 validation_error`
+    not a running top-level unit. `429 rate_limit_exceeded` answers a new
+    top-level start once this customer has begun as much new work as your
+    workspace admits in one minute: `Retry-After` says how long to wait, and
+    the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
+    the window is keyed on (per seat). A retry, contained work under a running
+    unit and a close never count against it. `422 validation_error`
     answers a request that is wrong in itself: an undeclared or retired kind of
     work, a missing required grouping field, an undeclared grouping key, or a
     ceiling above the one the kind of work carries.
@@ -197,17 +205,48 @@ def start_task(request, payload: StartTaskRequest):
                     extensions={"field": field, "task_id": str(claimed.id)})
             return 200, start_task_out(claimed, replayed=True)
 
+        has_a_wallet = _TENANT_HAS_A_WALLET in tenant.products
+
+        # ADMISSION CONTROL, FOR EVERY TENANT, AFTER THE CLAIM AND BEFORE THE
+        # MONEY (#462, slice 6 §1, §6). A bound on how fast new work enters
+        # and the customer's standing are properties of the work's admission,
+        # not of anybody's wallet, so the kernel answers them here for every
+        # start — a tenant that does not bill through UBB included, which the
+        # money-shaped half below never reached. After the claim, so a replay
+        # consumes none of the allowance; before the money, so a customer
+        # both stopped and over the rate is told about the rate first (the
+        # one reordering §6 states and accepts). Contained work is told so
+        # by the parent it names, and the rate counts top-level starts only.
+        #
+        # WHOSE WORD A SUSPENDED CUSTOMER IS REFUSED IN. The kernel refuses
+        # in the registry's word for a stop in force; it does not know, and
+        # may not ask billing, WHICH line opened the suspension. A tenant
+        # with a wallet has lines to name — the pool's, or the floor's — and
+        # the money verdict below names the one holding the customer (#459),
+        # so for that tenant the verdict supplies the word; the refusal is
+        # still the kernel's and still made here, before the money.
+        try:
+            admission.admit(tenant, customer,
+                            contained=payload.parent_task_id is not None)
+        except AdmissionRefused as refused:
+            raise _not_admitted(
+                refused,
+                line_named_by=(
+                    RiskService.check(customer,
+                                      parent_task_id=payload.parent_task_id)
+                    if has_a_wallet and refused.window is None else None))
+
         # THE MONEY-SHAPED HALF, AND ONLY FOR A TENANT IT CAN MEAN ANYTHING
         # FOR. A metering-only tenant is not refused these checks — there is no
         # wallet to test, so they do not apply, and its balance snapshot is the
         # zero it has always been for a customer with no wallet.
-        has_a_wallet = _TENANT_HAS_A_WALLET in tenant.products
         balance = 0
         if has_a_wallet:
             verdict = RiskService.check(
                 customer, parent_task_id=payload.parent_task_id)
             if not verdict["allowed"]:
-                raise _refused(verdict)
+                raise _refused(verdict["reason"], verdict["balance_micros"],
+                               verdict["available_micros"])
             balance = verdict["balance_micros"] or 0
 
         # THE ORDER OF THE TWO REFUSALS IS THE ORDER THEY HAVE ALWAYS RUN IN:
@@ -332,29 +371,65 @@ def start_task(request, payload: StartTaskRequest):
             verdict = RiskService.reserve_agreed_price(
                 customer, task, parent_task_id=payload.parent_task_id)
             if not verdict["allowed"]:
-                raise _refused(verdict)
+                raise _refused(verdict["reason"], verdict["balance_micros"],
+                               verdict["available_micros"])
     return 200, start_task_out(task, replayed=False)
 
 
-def _refused(verdict):
-    """A money-shaped verdict, as the refusal a start answers with.
+def _refused(reason, balance_micros=None, available_micros=None):
+    """A refusal of the customer's standing or money, as the refusal a start
+    answers with.
 
     ONE CODE CARRYING THE REASON, rather than a code per verdict. Every word in
     that vocabulary says the same thing about the request — it is well formed,
     and what refuses it is the current state of the customer, the tenant's own
     controls or the work being named — which is what a 409 means in
-    `docs/conventions/api-contract.md`'s terms. The words themselves belong to
-    a vocabulary slice 6 rebuilds, so they travel as data rather than as codes
-    a caller would have to unlearn.
+    `docs/conventions/api-contract.md`'s terms. The words are the registry's
+    `affordability_reason` values and travel as data rather than as codes a
+    caller would have to unlearn. The two money figures are None where the
+    refusal was made before a wallet was read — a standing refusal, from the
+    kernel or from the money verdict alike.
     """
     return Problem(
         "task_start_refused",
-        f"this customer cannot start new work: {verdict['reason']}",
-        extensions={"reason": verdict["reason"],
-                    "balance_micros": verdict["balance_micros"],
+        f"this customer cannot start new work: {reason}",
+        extensions={"reason": reason,
+                    "balance_micros": balance_micros,
                     # The balance less open reservations (#461): the figure
                     # a floor refusal was actually made against.
-                    "available_micros": verdict["available_micros"]})
+                    "available_micros": available_micros})
+
+
+def _not_admitted(refused, *, line_named_by=None):
+    """The kernel's admission refusal, rendered (#462).
+
+    A standing refusal takes the 409 every other refusal of the customer's
+    state takes, in the kernel's word — or, where ``line_named_by`` is the
+    money verdict's answer for a tenant that has stop lines, in that
+    verdict's word for the line holding the customer (#459): a suspension
+    the pool alone holds is refused in the pool's word, every other in the
+    wallet's. The kernel's word stands where the verdict, against
+    expectation, refuses nothing. The rate's refusal is the one 429 on this
+    surface, and it carries the retry information #154 §3.4 keeps verbatim
+    — `Retry-After` as the header the dialect promises on every 429, and
+    `limit`, `remaining`, `window_reset_at` and the pinned `scope` as
+    extension members — so a caller can back off by the number rather than
+    by guess.
+    """
+    window = refused.window
+    if window is None:
+        if line_named_by is not None and not line_named_by["allowed"]:
+            return _refused(line_named_by["reason"],
+                            line_named_by["balance_micros"],
+                            line_named_by["available_micros"])
+        return _refused(refused.reason)
+    return Problem(
+        "rate_limit_exceeded", str(refused),
+        extensions={"limit": window.limit,
+                    "remaining": window.remaining,
+                    "window_reset_at": window.ends_at.isoformat(),
+                    "scope": admission.SCOPE},
+        headers={"Retry-After": str(window.retry_after_seconds)})
 
 
 @task_router.get("/tasks", response=PaginatedTasks)

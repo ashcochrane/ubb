@@ -1,14 +1,11 @@
 from typing import NamedTuple
 
-from django.core.cache import cache
-
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
-from apps.billing.gating.models import RiskConfig
 from apps.platform.work import reasons
 
 
@@ -171,13 +168,6 @@ class RiskService:
         return StartPolicy(key, slot_values, ceiling, regime)
 
     @staticmethod
-    def _config(tenant):
-        try:
-            return tenant.risk_config
-        except RiskConfig.DoesNotExist:
-            return None
-
-    @staticmethod
     def check(customer, parent_task_id=None):
         """The advisory answer: may work proceed for this customer?
 
@@ -192,6 +182,19 @@ class RiskService:
         running, which used to be the one control only a start could breach,
         is deleted (#150 §12.5) — it bounded a count of outstanding operations
         and converted to no amount of money.
+
+        ⚠ IT CONTAINS NO THROTTLE, AND ASKING IT CONSUMES NOTHING (#462,
+        slice 6 §6). The per-minute bound on new work ran here until #462,
+        incrementing its window on every call — so the advisory question
+        spent the allowance it was asking about, and a tenant without a
+        wallet, for whom the composition layer never asks this, had no bound
+        at all. Admission control is the kernel's now (`work/admission.py`),
+        asked by the composition layer for every start before this verdict,
+        and this answers the money-shaped verdict only: standing, the stop
+        in force, the hard floor, the soft floor at the altitude
+        ``parent_task_id`` names, and the pool. The standing check is kept
+        here as well, for the advisory read — it is the one place a
+        suspended customer's refusal can name which line opened it.
 
         ``parent_task_id`` is still read, and only for the soft floor: past the
         wind-down line NEW top-level work is refused while a contained start
@@ -215,20 +218,6 @@ class RiskService:
             from apps.billing.gating.services.live_counter import LiveCounter
             if LiveCounter.read(owner.id, customer.tenant)["stop"]:
                 return _verdict("customer_stopped", None, None)
-        config = RiskService._config(customer.tenant)
-        # Fixed-window rate limiting (per-seat; degrades gracefully if Redis is down)
-        if config and config.max_requests_per_minute and config.max_requests_per_minute > 0:
-            try:
-                cache_key = f"ratelimit:{customer.id}:rpm"
-                current_count = cache.get(cache_key, 0)
-                if current_count >= config.max_requests_per_minute:
-                    return _verdict("rate_limit_exceeded", None, None)
-                try:
-                    cache.incr(cache_key)
-                except ValueError:
-                    cache.set(cache_key, 1, timeout=60)
-            except Exception:
-                pass  # Degrade: skip rate limiting if cache is unavailable
 
         # Affordability check: read wallet from billing owner (business for pooled seat, else self)
         from apps.billing.wallets.models import Wallet

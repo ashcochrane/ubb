@@ -131,6 +131,43 @@ export function buildSpendPatch(
 }
 
 // ---------------------------------------------------------------------------
+// Admission-control form (#462): the workspace's bound on how many new
+// top-level pieces of work one customer may start in a minute. A plain count,
+// never money. Empty means no bound (an explicit null on the wire); the
+// server refuses zero, and so does the form — a bound of nothing is not a
+// rate, it is a refusal of every start.
+
+export const admissionControlSchema = z.object({
+  newWorkPerMinute: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || (Number.isInteger(Number(v)) && Number(v) >= 1),
+      { message: "Enter a whole number of 1 or more, or leave empty for no bound." },
+    ),
+});
+
+export type AdmissionControlValues = z.infer<typeof admissionControlSchema>;
+
+export function configToAdmissionValues(config: TenantConfig): AdmissionControlValues {
+  const bound = config.max_task_starts_per_minute;
+  return { newWorkPerMinute: bound == null ? "" : String(bound) };
+}
+
+/**
+ * Build the PATCH body for the admission-control form: the one field, only
+ * when it changed; cleared to empty becomes an EXPLICIT null (no bound).
+ */
+export function buildAdmissionPatch(
+  config: TenantConfig,
+  values: AdmissionControlValues,
+): TenantConfigPatch {
+  const bound = values.newWorkPerMinute === "" ? null : Number(values.newWorkPerMinute);
+  if (bound === (config.max_task_starts_per_minute ?? null)) return {};
+  return { max_task_starts_per_minute: bound };
+}
+
+// ---------------------------------------------------------------------------
 // Margin-alert form (GET/PUT /margin/threshold). Percent fields are plain
 // numbers 0–100 scale (NOT micros); periods is a whole number ≥ 1. Only the
 // server's own constraints are mirrored — nothing extra.

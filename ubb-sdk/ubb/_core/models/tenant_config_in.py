@@ -32,6 +32,7 @@ class TenantConfigIn:
             default_task_cogs_ceiling_micros (int | None | Unset):
             enforcement_mode (None | str | Unset):
             live_counter_maintenance_enabled (bool | None | Unset):
+            max_task_starts_per_minute (int | None | Unset):
             min_balance_micros (int | None | Unset):
             products (list[TenantConfigInProductsType0Item] | None | Unset):
             soft_min_balance_micros (int | None | Unset):
@@ -44,6 +45,7 @@ class TenantConfigIn:
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
     enforcement_mode: None | str | Unset = UNSET
     live_counter_maintenance_enabled: bool | None | Unset = UNSET
+    max_task_starts_per_minute: int | None | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
     products: list[TenantConfigInProductsType0Item] | None | Unset = UNSET
     soft_min_balance_micros: int | None | Unset = UNSET
@@ -96,6 +98,12 @@ class TenantConfigIn:
         else:
             live_counter_maintenance_enabled = self.live_counter_maintenance_enabled
 
+        max_task_starts_per_minute: int | None | Unset
+        if isinstance(self.max_task_starts_per_minute, Unset):
+            max_task_starts_per_minute = UNSET
+        else:
+            max_task_starts_per_minute = self.max_task_starts_per_minute
+
         min_balance_micros: int | None | Unset
         if isinstance(self.min_balance_micros, Unset):
             min_balance_micros = UNSET
@@ -140,6 +148,8 @@ class TenantConfigIn:
             field_dict["enforcement_mode"] = enforcement_mode
         if live_counter_maintenance_enabled is not UNSET:
             field_dict["live_counter_maintenance_enabled"] = live_counter_maintenance_enabled
+        if max_task_starts_per_minute is not UNSET:
+            field_dict["max_task_starts_per_minute"] = max_task_starts_per_minute
         if min_balance_micros is not UNSET:
             field_dict["min_balance_micros"] = min_balance_micros
         if products is not UNSET:
@@ -224,6 +234,16 @@ class TenantConfigIn:
         live_counter_maintenance_enabled = _parse_live_counter_maintenance_enabled(d.pop("live_counter_maintenance_enabled", UNSET))
 
 
+        def _parse_max_task_starts_per_minute(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        max_task_starts_per_minute = _parse_max_task_starts_per_minute(d.pop("max_task_starts_per_minute", UNSET))
+
+
         def _parse_min_balance_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -277,6 +297,7 @@ class TenantConfigIn:
             default_task_cogs_ceiling_micros=default_task_cogs_ceiling_micros,
             enforcement_mode=enforcement_mode,
             live_counter_maintenance_enabled=live_counter_maintenance_enabled,
+            max_task_starts_per_minute=max_task_starts_per_minute,
             min_balance_micros=min_balance_micros,
             products=products,
             soft_min_balance_micros=soft_min_balance_micros,

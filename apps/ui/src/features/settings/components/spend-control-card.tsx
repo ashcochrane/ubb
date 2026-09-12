@@ -14,7 +14,19 @@ import { toastOnError, toastSuccess } from "@/lib/mutations";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
+import { AdmissionControlForm } from "./admission-control-form";
 import { SpendLimitsForm } from "./spend-limits-form";
+
+/**
+ * The words for the switch's two positions (slice 6 §10, #462). The
+ * position the wire spells `off` is "no customer-wide enforcement" — never
+ * "off", because the switch governs the customer-wide family only: every
+ * ceiling and window declared on a kind of work still stops the unit it is
+ * declared on, and the hourly sweep still repairs it, whatever the switch
+ * says. Copy that said "off" invited the reading that nothing happens.
+ */
+export const ENFORCING_LABEL = "Enforcing";
+export const NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL = "No customer-wide enforcement";
 
 export function SpendControlCard({
   config,
@@ -45,12 +57,15 @@ export function SpendControlCard({
           <div>
             <p className="text-sm font-medium">Enforcement</p>
             <p className="max-w-sm text-[13px] text-muted-foreground">
-              Enforcing: real-time spend control — limit crossings fire stop
-              and wind-down webhooks and are tracked, and work past a limit is
-              refused or stopped. Off: that whole suite is disabled — no stop
-              or wind-down webhooks, no past-limit tracking — but customers
-              past the hard stop point are still suspended and refused new
-              work.
+              {ENFORCING_LABEL}: customer-wide spend control — the wallet
+              floors' stop and wind-down signals, the customer spend pool's
+              stop and the customer-wide stop flag fire and are tracked, and
+              work past one of those lines is refused or stopped.{" "}
+              {NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL}: none of those signals
+              fire and nothing is tracked, but customers past the hard stop
+              point are still suspended and refused new work, and every
+              ceiling and window declared on a kind of work still stops the
+              unit it is declared on.
             </p>
           </div>
           <Switch
@@ -69,10 +84,11 @@ export function SpendControlCard({
             <p className="max-w-sm text-[13px] text-muted-foreground">
               Keep each customer's running spend up to date as you report
               usage, so the reply to a usage call already tells you whether
-              they've been stopped. When off, UBB skips that work and catches
-              crossings on its durable path instead — the same stops, a little
-              later, and the lag grows the faster a customer is spending. This
-              only changes reaction speed — never what customers are billed.
+              they've been stopped. When this is not kept up, UBB skips that
+              work and catches crossings on its durable path instead — the
+              same stops, a little later, and the lag grows the faster a
+              customer is spending. This only changes reaction speed — never
+              what customers are billed.
             </p>
           </div>
           <Switch
@@ -100,6 +116,10 @@ export function SpendControlCard({
 
         <Separator />
 
+        <AdmissionControlForm config={config} isAdmin={isAdmin} />
+
+        <Separator />
+
         <SpendLimitsForm config={config} isAdmin={isAdmin} />
       </CardContent>
 
@@ -111,14 +131,14 @@ export function SpendControlCard({
         title={
           pendingMode === "enforcing"
             ? "Turn enforcement on?"
-            : "Turn enforcement off?"
+            : "Switch to no customer-wide enforcement?"
         }
         description={
           pendingMode === "enforcing"
-            ? "UBB will start refusing new work for customers past their limits. Customers at a balance floor or over a task limit will be interrupted until they're back within bounds."
-            : "UBB stops the real-time spend-control suite: no stop or wind-down-floor webhooks, no past-limit report entries, and running work is never stopped mid-flight. Customers past the hard stop point are instead suspended outright and refused new work — with no advance stop signal — until they top up or you unsuspend them. Budget caps and alerts keep working."
+            ? "UBB will start refusing new work for customers past a wallet floor or over their customer spend pool, and will stop their running work until they're back within bounds."
+            : "UBB stops the customer-wide signal suite: no stop or wind-down webhooks, no customer-wide stop flag, and running work is never stopped mid-flight on a customer-wide line. Customers past the hard stop point are instead suspended outright and refused new work — with no advance stop signal — until they top up or you unsuspend them. Ceilings and windows declared on kinds of work, customer spend pool alerts and the new-work rate keep working."
         }
-        confirmLabel={pendingMode === "enforcing" ? "Turn on" : "Turn off"}
+        confirmLabel={pendingMode === "enforcing" ? "Turn on" : "Stop enforcing"}
         pending={enforcement.isPending}
         onConfirm={() => {
           if (!pendingMode) return;
@@ -130,7 +150,7 @@ export function SpendControlCard({
                 toastSuccess(
                   pendingMode === "enforcing"
                     ? "Enforcement is on"
-                    : "Enforcement is off",
+                    : NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL,
                 );
               },
               onError: (error) => {

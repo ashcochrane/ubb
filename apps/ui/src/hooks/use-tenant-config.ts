@@ -32,6 +32,7 @@ let mockTenantConfig: TenantConfig = {
   soft_min_balance_micros: null,
   default_task_cogs_ceiling_micros: null,
   default_subtask_cogs_ceiling_micros: null,
+  max_task_starts_per_minute: 60,
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */

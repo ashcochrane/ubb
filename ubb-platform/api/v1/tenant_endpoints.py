@@ -23,12 +23,18 @@ from apps.platform.membership.models import Invitation, Member
 from apps.platform.membership.roles import ADMIN, READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
-#: The two default COGS ceilings for work with no declared kind, one per
-#: altitude (#453) — the tenant configuration's two rungs, read and written
-#: on the tenant row. Named once so the validation and the write cannot cover
-#: different sets.
-_DEFAULT_CEILING_RUNGS = ("default_task_cogs_ceiling_micros",
-                          "default_subtask_cogs_ceiling_micros")
+#: THE TENANT'S NULLABLE KERNEL RUNGS THIS ROUTE WRITES, each with what its
+#: null means: the two default COGS ceilings for work with no declared kind,
+#: one per altitude (#453), and admission control's bound on new top-level
+#: starts per minute (#462). All three live on the tenant row, all three
+#: refuse zero (a ceiling of nothing and a rate of nothing are both a refusal
+#: of every start wearing a number), and an explicit null clears each. Named
+#: once so the validation and the write cannot cover different sets.
+_NULLABLE_KERNEL_RUNGS = {
+    "default_task_cogs_ceiling_micros": "no default",
+    "default_subtask_cogs_ceiling_micros": "no default",
+    "max_task_starts_per_minute": "no bound",
+}
 
 tenant_router = Router(auth=ApiKeyAuth())
 
@@ -469,6 +475,9 @@ def _config_out(t):
         "default_task_cogs_ceiling_micros": t.default_task_cogs_ceiling_micros,
         "default_subtask_cogs_ceiling_micros":
             t.default_subtask_cogs_ceiling_micros,
+        # Admission control's bound (#462): a kernel rung on the tenant row,
+        # read by the start for every tenant — on the wire for the first time.
+        "max_task_starts_per_minute": t.max_task_starts_per_minute,
         "min_balance_micros": bc.min_balance_micros,
         "soft_min_balance_micros": bc.soft_min_balance_micros,
     }
@@ -607,17 +616,18 @@ def update_tenant_config(request, payload: TenantConfigIn):
                           "at or above the hard floor's — the value cannot "
                           "exceed the effective tenant-default "
                           f"min_balance_micros ({effective_hard})")
-    # The two default ceilings for work with no declared kind (#453): kernel
-    # settings on the tenant row, beside the two deadline rungs. Validated
-    # here, before any write, and set on the row the save below commits.
-    # Explicit null clears the default; an omitted key leaves it alone.
-    for rung in _DEFAULT_CEILING_RUNGS:
+    # The tenant's nullable kernel rungs (#453, #462): the two default
+    # ceilings for work with no declared kind and admission control's bound,
+    # on the tenant row beside the two deadline rungs. Validated here, before
+    # any write, and set on the row the save below commits. Explicit null
+    # clears the rung; an omitted key leaves it alone.
+    for rung, what_null_means in _NULLABLE_KERNEL_RUNGS.items():
         if rung not in fields_set:
             continue
         declared = getattr(payload, rung)
         if declared is not None and declared <= 0:
             raise Problem("invalid_config",
-                          f"{rung} must be > 0, or null for no default")
+                          f"{rung} must be > 0, or null for {what_null_means}")
         setattr(t, rung, declared)
     enforcement_changed = False
     if payload.enforcement_mode is not None:
