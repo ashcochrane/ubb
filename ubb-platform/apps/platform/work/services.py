@@ -996,10 +996,11 @@ class TaskService:
             task.reason_detail = declaration.reason_detail
             update_fields += ["outcome_reason", "reason_detail"]
         task.save(update_fields=update_fields)
+        # Read off the row the UPDATE above just wrote, not off the
+        # arguments again: a close's declared reason is now the column, and
+        # a row nothing ever closed carries "" there.
         hooks.notify_terminal_transition(task, hooks.TerminalTransition(
-            task.status,
-            outcome_reason=(declaration.outcome_reason
-                            if declaration is not None else ""),
+            task.status, outcome_reason=task.outcome_reason,
             stop_reason=reason))
         if task.parent_id is None:
             TaskService._cascade(task, cascade)

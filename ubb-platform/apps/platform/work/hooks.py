@@ -1,7 +1,8 @@
 """Terminal-transition listeners: the kernel tells whichever products asked
 that a unit of work has reached a terminal state, and none of them can veto
-it (slice 6 §5, #460 — channel 4 of ADR-001, on the seat-roster registry's
-shape in `apps/platform/customers/hooks.py`).
+it (slice 6 §5, #460 — the platform-hooks channel of ADR-001 rule 3, the
+fourth in `CLAUDE.md`'s list, on the seat-roster registry's shape in
+`apps/platform/customers/hooks.py`).
 
 WHY A REGISTRY, AND NOT AN IMPORT OR AN OUTBOX EVENT. Every terminal
 transition — a close, a kill, an expiry, and the three cascades — is a kernel
@@ -19,6 +20,15 @@ A LISTENER IS A NOTIFICATION AND NEVER A VETO (#141 §6.4). The row is
 already written when a listener is called, and nothing a listener does can
 un-write it: the transition is the kernel's fact, and a product's reaction
 to it is the product's own concern.
+
+⚠ WHAT THE ROW CARRIES AT THAT MOMENT is the state, the cause and the
+control — not yet the announcement. The listeners run inside the flip,
+and the announcing lanes stamp the outbox id and the mechanism
+(`STOP_MECHANISM_KEY`) on the row AFTER the flip returns; a cascaded piece
+carries its mechanism already, because the cascade writes it in the same
+UPDATE as the state. So a listener reads the transition off the
+`TerminalTransition` it is handed and the row's own columns, and never
+the mechanism or the announcement, which are not there yet.
 
 ⚠ WHAT HAPPENS WHEN A LISTENER RAISES — A DELIBERATE DEPARTURE FROM THE
 ROSTER REGISTRY. The roster registry lets an exception propagate, and that

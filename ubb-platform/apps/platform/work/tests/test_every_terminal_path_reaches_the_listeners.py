@@ -1,5 +1,6 @@
 """Every terminal path tells the listeners, exactly once, and none of them
-can veto it (#460, slice 6 §5 — channel 4 of ADR-001).
+can veto it (#460, slice 6 §5 — the platform-hooks channel of ADR-001 rule
+3, the fourth in `CLAUDE.md`'s list).
 
 The registry in `work/hooks.py` is a prefactor: nothing registers on it yet.
 What this module proves is the surface the reservation's release will stand
@@ -18,6 +19,17 @@ is proved where billing's other patrol pins are
 (`apps.billing.gating.tests.test_patrol_pins.TestPin6TaskSweep`), because a
 kernel test importing a product is the boundary ADR-001 draws, read in the
 other direction.
+
+⚠ THE TICKET SAYS "KILLED (TENANT-INITIATED AND BY THE PATROL)", AND THERE
+IS NO TENANT-INITIATED KILL: since #408 nothing a tenant declares writes
+`killed` (I2). The kill a tenant's own action causes is the recording
+lane's — the tenant's usage report trips the ceiling, and the ingest lane
+calls `kill_and_announce` under `TRIGGER_SOURCE_USAGE_INGEST` — so that is
+the case here, driven through the kernel's kill entry point exactly as the
+ingest lane drives it. The third caller of that entry point, the pool's
+stop of a customer's active work, has no case of its own in this module
+or billing's: it reaches the listeners through the same seam, and the
+structural pin at the bottom is what holds that.
 
 ⚠ THE CRASH SWEEPER IS HERE THOUGH THE TICKET'S LIST DID NOT NAME IT. It is
 a terminal path — the unannounced expiry of work that never reported — and
@@ -360,10 +372,40 @@ class EveryWriterOfATerminalStateTellsTheListenersTest(
         TerminalListenersTestBase):
     """The structural half of the whole-set claim above. The behavioural
     cases prove the paths that exist today; this one holds the rule that
-    made them exhaustive — a terminal state is written in `TaskService` by
-    the flip and the cascade and nowhere else, and every function that
-    writes one calls the registry — so a third writer arriving without the
-    call goes red here rather than on the day a reservation is left open."""
+    made them exhaustive — a status is written in the service module by the
+    flip and the cascade and nowhere else, and every function that writes
+    one calls the registry — so a third writer arriving without the call
+    goes red here rather than on the day a reservation is left open.
+
+    A WRITER IS ANY OF THE WAYS PYTHON OR THE ORM SPELLS ONE: an assignment
+    to a `.status` attribute (plain, annotated or augmented), a `setattr`
+    naming it, and a queryset `update(...)` or `bulk_update(...)` carrying it
+    as a keyword — the door a writer would take to slip past an attribute
+    check. It reads the module's source, so a writer outside the service
+    module is not its subject; the behavioural cases are."""
+
+    @staticmethod
+    def _writes_a_status(node):
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = (node.targets if isinstance(node, ast.Assign)
+                       else [node.target])
+            return any(isinstance(t, ast.Attribute) and t.attr == "status"
+                       for t in targets)
+        if isinstance(node, ast.Call):
+            if (isinstance(node.func, ast.Name) and node.func.id == "setattr"
+                    and len(node.args) >= 2
+                    and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "status"):
+                return True
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"update", "bulk_update"}):
+                # `update(status=...)` names it as a keyword; `bulk_update`
+                # names it inside its list of fields.
+                return (any(kw.arg == "status" for kw in node.keywords)
+                        or any(isinstance(n, ast.Constant)
+                               and n.value == "status"
+                               for arg in node.args for n in ast.walk(arg)))
+        return False
 
     def test_every_function_that_writes_a_status_notifies(self):
         tree = ast.parse(inspect.getsource(services))
@@ -372,9 +414,7 @@ class EveryWriterOfATerminalStateTellsTheListenersTest(
             if not isinstance(node, ast.FunctionDef):
                 continue
             for inner in ast.walk(node):
-                if (isinstance(inner, ast.Assign) and any(
-                        isinstance(t, ast.Attribute) and t.attr == "status"
-                        for t in inner.targets)):
+                if self._writes_a_status(inner):
                     writers.add(node.name)
                 if (isinstance(inner, ast.Call)
                         and isinstance(inner.func, ast.Attribute)
@@ -382,3 +422,18 @@ class EveryWriterOfATerminalStateTellsTheListenersTest(
                     notifying.add(node.name)
         self.assertEqual(writers, {"_flip", "_cascade"})
         self.assertEqual(writers - notifying, set())
+
+    def test_the_writer_check_sees_each_way_a_status_is_written(self):
+        # The vacuity guard on the check above: each spelling it claims to
+        # catch, parsed and recognised, and a read of `.status` not.
+        for spelling in ("row.status = x", "row.status: str = x",
+                         "row.status += x", "setattr(row, 'status', x)",
+                         "qs.update(status=x)",
+                         "Task.objects.bulk_update(rows, ['status'])"):
+            with self.subTest(spelling=spelling):
+                statement = ast.parse(spelling).body[0]
+                node = (statement.value if isinstance(statement, ast.Expr)
+                        else statement)
+                self.assertTrue(self._writes_a_status(node))
+        read = ast.parse("if row.status == x: pass").body[0].test
+        self.assertFalse(self._writes_a_status(read))

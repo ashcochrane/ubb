@@ -55,7 +55,7 @@ from apps.platform.events import announcements
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled)
-from apps.platform.work import reasons
+from apps.platform.work import hooks, reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 from apps.platform.work.models import Task
 from apps.platform.work.services import STOP_CAUSE_KEY, STOP_MECHANISM_KEY
@@ -389,8 +389,6 @@ class TestPin6TaskSweep:
         because the sweep is billing's: a kernel test importing a product is
         the boundary ADR-001 draws, read in the other direction. Driven
         through the hourly beat, which is how the patrol actually runs."""
-        from apps.platform.work import hooks
-
         heard = []
         saved = list(hooks._listeners)
         hooks._listeners[:] = []
