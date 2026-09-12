@@ -60,9 +60,18 @@ def get_balance(request, customer_id: UUIDIdentifier):
                         "is_pooled_seat": owner.id != customer.id}
     from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet
+    from apps.billing.wallets.reservations import open_reservations_micros
+    # What is reserved against the owner's wallet by work sold at one agreed
+    # price that has started and not yet ended (#461, slice 6 §5), and what
+    # that leaves available — the figure a start is judged on. Read for the
+    # no-wallet branch too: a reservation implies a wallet, so it is zero
+    # there, and answering it is cheaper than explaining an absence.
+    reserved = open_reservations_micros(owner.id)
     try:
         wallet = Wallet.objects.get(customer=owner)
         return {"balance_micros": wallet.balance_micros, "currency": wallet.currency,
+                "reserved_micros": reserved,
+                "available_micros": wallet.balance_micros - reserved,
                 # #41 pin 10: since when the balance has been negative
                 # (null when ≥ 0). Visibility only — nothing acts on it.
                 "negative_since": (wallet.negative_since.isoformat()
@@ -73,6 +82,7 @@ def get_balance(request, customer_id: UUIDIdentifier):
         # CUR-1: no-wallet fallback reports the tenant currency, not a literal USD.
         return {"balance_micros": 0,
                 "currency": (request.auth.tenant.default_currency or "usd").lower(),
+                "reserved_micros": reserved, "available_micros": 0 - reserved,
                 "promo_micros": 0, "expiring_micros": 0, "next_expiry_at": None,
                 "negative_since": None,
                 **owner_disclosure}

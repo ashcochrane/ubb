@@ -322,7 +322,11 @@ exclusions:
     # spells the ledger's two retired local family words, as a migration
     # must); and the work app's `RunPython` that stamps the control's family
     # and id on every stopped unit and queued terminal payload.
-    files: 256
+    # 256 → 257 in #461: ONE migration, the wallets app's, creating the prepaid
+    # reservation row a start of work sold at one agreed price writes against
+    # the owner's wallet. It spells no retired word; the sites and terms held
+    # at 22 in 66.
+    files: 257
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

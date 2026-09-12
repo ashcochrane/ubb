@@ -378,6 +378,10 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
 export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   [CUS_ACME]: {
     balance_micros: 258_400_000,
+    // Work sold at one agreed price reserves its price at start (#461):
+    // one 8M unit in flight, so 250.4M is available against the floors.
+    reserved_micros: 8_000_000,
+    available_micros: 250_400_000,
     currency: "usd",
     billing_owner_id: CUS_ACME,
     billing_owner_external_id: "acme-corp",
@@ -389,6 +393,8 @@ export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   },
   [CUS_LUNA]: {
     balance_micros: -12_500_000,
+    reserved_micros: 0,
+    available_micros: -12_500_000,
     currency: "usd",
     billing_owner_id: CUS_LUNA,
     billing_owner_external_id: "luna-labs",
@@ -400,6 +406,8 @@ export const MOCK_BALANCES: Record<string, BalanceResponse> = {
   },
   [CUS_NOVA]: {
     balance_micros: 0,
+    reserved_micros: 0,
+    available_micros: 0,
     currency: "usd",
     billing_owner_id: CUS_NOVA,
     billing_owner_external_id: "nova-ai",

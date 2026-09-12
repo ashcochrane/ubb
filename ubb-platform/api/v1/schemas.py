@@ -681,8 +681,21 @@ class RecordUsageResponse(Schema):
 
 
 class BalanceResponse(Schema):
+    """The owner's wallet: the balance, what is reserved against it, and
+    what that leaves available.
+
+    `reserved_micros` is the sum of the agreed prices of work sold at one
+    agreed price that this customer's billing owner has started and not yet
+    ended — a prepaid start reserves its pinned price and every terminal
+    transition releases it. `available_micros` is `balance_micros` less
+    `reserved_micros`, and is the figure a start is judged against the
+    customer's floors on; the balance itself moves only when a charge draws
+    it down. A pooled seat reads its owner's figures.
+    """
     balance_micros: int
     currency: str
+    reserved_micros: int
+    available_micros: int
     # F4.3 (additive): grant visibility. None when the wallet has no grants
     # context (kept optional for response back-compat).
     promo_micros: Optional[int] = None

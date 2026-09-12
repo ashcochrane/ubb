@@ -376,7 +376,10 @@ pricing_status:
         held, a column that may hold rows, an invariant that holds, a customer
         who holds prepaid credit. It named a mechanism until #239:
         `LiveCounter.hold`, the atomic Redis reservation the deleted recording
-        lane took at accept time. No reservation is taken anywhere now.
+        lane took at accept time. The reservation a prepaid start takes since
+        #461 (`WalletReservation`, Wallet policy's own durable row for a pinned
+        agreed price) is a different mechanism under a different word: it is
+        never a `pricing_status`, because the price it reserves is known.
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py

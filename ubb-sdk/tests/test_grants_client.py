@@ -91,6 +91,7 @@ class GrantsClientTest(unittest.TestCase):
     def test_get_balance_includes_grant_fields(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 10_000_000, "currency": "USD",
+            "reserved_micros": 0, "available_micros": 10_000_000,
             "promo_micros": 6_000_000, "expiring_micros": 10_000_000,
             "next_expiry_at": "2026-07-12T00:00:00+00:00",
             "billing_owner_id": "11111111-1111-1111-1111-111111111111",
@@ -106,6 +107,7 @@ class GrantsClientTest(unittest.TestCase):
     def test_get_balance_back_compat_without_grant_fields(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 10_000_000, "currency": "USD",
+            "reserved_micros": 0, "available_micros": 10_000_000,
             "billing_owner_id": "11111111-1111-1111-1111-111111111111",
             "billing_owner_external_id": "cust_1", "is_pooled_seat": False,
         })

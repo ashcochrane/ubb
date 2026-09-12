@@ -175,6 +175,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.wallets.tasks.expire_credit_grants",
         "schedule": crontab(minute=10),  # hourly at :10
     },
+    "release-reservations-left-open-on-terminal-work": {
+        "task": "apps.billing.wallets.tasks.release_reservations_left_open_on_terminal_work",
+        "schedule": crontab(minute=20),  # hourly at :20 — the reservation's backstop (#461)
+    },
     "cleanup-webhook-events": {
         "task": "apps.billing.stripe.tasks.cleanup_webhook_events",
         "schedule": crontab(minute=0, hour=3),  # Daily at 3 AM UTC

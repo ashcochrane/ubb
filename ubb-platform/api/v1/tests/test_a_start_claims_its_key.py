@@ -347,16 +347,15 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
     def test_a_repeat_adds_nothing_to_the_wallet_the_first_call_did_not(self):
         """THE MONEY-CRITICAL HALF, AND IT IS INVISIBLE IN THE RESPONSE.
 
-        ⚠ SAY WHAT THIS DOES AND DOES NOT YET PROVE. Under the rules in force
-        on this commit a start takes NO prepaid reservation, because the
-        agreed price a reservation would be taken against does not exist yet —
-        it arrives with the whole-unit pricing regime. So both halves of the
-        assertion below are zero, and the claim it makes today is the weaker
-        one: *a repeat adds nothing to the wallet that the first call did
-        not*. It is written now, at the address the strong claim will live at,
-        because the day a start reserves is the day a silent second
-        reservation becomes a double charge — and a test added on that day is
-        a test nobody wrote on the day it was needed.
+        ⚠ SAY WHAT THIS DOES AND DOES NOT PROVE. This module's kind of work
+        is sold per event, so a start of it takes no prepaid reservation and
+        both halves of the assertion below are zero: the claim made here is
+        the weaker one, *a repeat adds nothing to the wallet that the first
+        call did not*. The strong claim — a replayed start of work sold at
+        one agreed price reserves nothing new, because a silent second
+        reservation is a double encumbrance and, on delivery, the shape of a
+        double charge — lives where the reservation does since #461:
+        `test_a_prepaid_start_reserves_the_agreed_price.py`'s replay case.
 
         What IS load-bearing today is the ORDER the gate runs in: the claim is
         read before anything money-shaped, so a repeat never reaches the

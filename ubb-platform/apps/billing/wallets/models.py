@@ -2,6 +2,7 @@ from django.db import models
 
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
+from core.transitions import RECORD_RULE
 
 
 WALLET_TXN_TYPES = [
@@ -241,3 +242,107 @@ class GrantAllocation(BaseModel):
 
     def __str__(self):
         return f"GrantAllocation({self.allocation_type}: {self.amount_micros})"
+
+
+#: WHAT RELEASED A RESERVATION — the kernel's terminal-transition listener
+#: (the ordinary path: every terminal transition reaches it, #460), or the
+#: backstop sweep over terminal work still holding one (a release here means
+#: the listener's savepoint rolled back, and the sweep logs it as such).
+RELEASED_BY_TERMINAL_TRANSITION = "terminal_transition"
+RELEASED_BY_BACKSTOP_SWEEP = "backstop_sweep"
+RELEASED_BY_CHOICES = [
+    (RELEASED_BY_TERMINAL_TRANSITION, "The unit's terminal transition"),
+    (RELEASED_BY_BACKSTOP_SWEEP, "The backstop sweep"),
+]
+
+
+class WalletReservation(BaseModel):
+    """The agreed price a prepaid start reserved against the owner's wallet
+    (#461, slice 6 §5, #139 §4.1 — Wallet policy).
+
+    ONE ROW PER UNIT OF WORK, written in the same transaction as the start of
+    a kind of work sold at one agreed price, for the price the start pinned,
+    on the wallet the unit's Charge will draw down — the billing owner's.
+    Affordability at a start is ``balance − open reservations`` tested against
+    the tenant's own floors, and this table is the "open reservations" term:
+    a row is OPEN while ``released_at`` is null and counts for nothing once
+    released. A reservation moves neither the balance nor the ledger — it
+    encumbers the affordability read and nothing else — so a reader of the
+    wallet sees the balance, what is reserved against it, and the difference.
+
+    Released on every terminal transition of the unit — a close in any of its
+    three outcomes, a kill, an expiry, and each cascade onto contained work —
+    through the kernel's terminal-transition listener registry
+    (`apps/platform/work/hooks.py`; the listener is
+    `wallets/reservations.release_on_terminal_transition`), and by the backstop
+    sweep for a row the listener left behind. Which of the two released it is
+    recorded, because a release by the sweep is evidence the ordinary path
+    failed once.
+
+    Prepaid only, by decision: a postpaid tenant has no wallet to encumber and
+    a tenant that does not bill through UBB has no wallet at all; neither
+    writes a row here. Event-priced work reserves nothing — it has no pinned
+    price to reserve.
+
+    ``task`` is a real foreign key onto the kernel's row (a product may import
+    the kernel, ADR-001 rule 1) with no reverse accessor, so the kernel gains
+    no attribute named by a product; the backstop sweep joins through it.
+
+    THE RECORD'S WHOLE LIFECYCLE IS ONE RULE, declared as ``RECORD_RULE`` on
+    every column rather than as a class per column
+    (`docs/conventions/django-patterns.md`): a row is inserted once, at the
+    start, and its one later transition is the release — ``released_at`` and
+    ``released_by`` set together, once, by whichever of the two releasers
+    reaches it first, and nothing else on the row ever changes. The check
+    below holds the release's shape (a release names its releaser; an open
+    row names none); the once-ness is held by both releasers writing through
+    one filtered UPDATE (`reservations._release`, a no-op on a released row)
+    and is proved by the repeated-close and second-sweep cases in
+    `api/v1/tests/test_every_terminal_path_releases_the_reservation.py`.
+    No trigger defends it at the database, which is the same footing
+    `Wallet` and `WalletTransaction` stand on beside it.
+    """
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE,
+        related_name="wallet_reservations")
+    #: The BILLING OWNER whose wallet is encumbered — the business for a pooled
+    #: seat, otherwise the customer the work was started for.
+    owner = models.ForeignKey(
+        "customers.Customer", on_delete=models.CASCADE,
+        related_name="wallet_reservations")
+    task = models.OneToOneField(
+        "work.Task", on_delete=models.CASCADE, related_name="+")
+    amount_micros = models.BigIntegerField()
+    released_at = models.DateTimeField(null=True, blank=True)
+    released_by = models.CharField(
+        max_length=20, choices=RELEASED_BY_CHOICES, blank=True, default="")
+
+    transition_classes = {
+        "id": RECORD_RULE, "created_at": RECORD_RULE, "updated_at": RECORD_RULE,
+        "tenant": RECORD_RULE, "owner": RECORD_RULE, "task": RECORD_RULE,
+        "amount_micros": RECORD_RULE, "released_at": RECORD_RULE,
+        "released_by": RECORD_RULE,
+    }
+
+    class Meta:
+        db_table = "ubb_wallet_reservation"
+        indexes = [
+            # The open-reservations read is one indexed sum per owner.
+            models.Index(fields=["owner"], condition=models.Q(released_at__isnull=True),
+                         name="idx_wallet_reservation_open"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount_micros__gte=0),
+                name="ck_wallet_reservation_not_negative"),
+            # A release records who released it, and nothing else does.
+            models.CheckConstraint(
+                condition=(models.Q(released_at__isnull=True, released_by="")
+                           | models.Q(released_at__isnull=False)
+                           & ~models.Q(released_by="")),
+                name="ck_wallet_reservation_release_names_its_releaser"),
+        ]
+
+    def __str__(self):
+        state = "open" if self.released_at is None else f"released:{self.released_by}"
+        return f"WalletReservation({self.task_id}: {self.amount_micros} {state})"

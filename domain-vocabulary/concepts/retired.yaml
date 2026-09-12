@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,796 of 2,219 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,801 of 2,225 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2044,6 +2044,23 @@ measurement_key:
     # migration, no generated module, no wire change: the contract is
     # byte-identical. The prose that held is "a unit of work", "contained
     # work", "a piece of work" and "the work"; the word arrived nowhere.
+    #
+    # 2026-09-12, #461 (a prepaid start reserves the agreed price, and every
+    # terminal path releases it): 1,796 of 2,219 -> 1,801 of 2,225 tracked
+    # files (`units` 44 files / 122 occurrences after one re-take: the
+    # first take rose to 45/123 on "two units" in a test comment about
+    # work -- the fourteenth window the plural arrived through ordinary
+    # prose -- and "two pieces of work" held). Six tracked files arrived:
+    # five swept -- the reservation's lifecycle module
+    # (`wallets/reservations.py`), three modules in the composition layer's
+    # tests proving the start's reservation and its refusals, the
+    # three-worker race, and the release on every terminal path, and the
+    # shared fixture those three stand on (`api/v1/tests/_helpers.py`, the
+    # review pass's extraction) -- and one excluded, the wallets migration
+    # creating the row. The contract gained two additive fields on the
+    # balance read (zero breaking findings in either direction) and the
+    # generated SDK model followed. The prose that held is "a unit of work",
+    # "contained work", "work sold at one agreed price" and "the unit".
 
     - term: units
       retired_as: >-
