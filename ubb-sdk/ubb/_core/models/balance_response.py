@@ -23,24 +23,38 @@ T = TypeVar("T", bound="BalanceResponse")
 
 @_attrs_define
 class BalanceResponse:
-    """ 
+    """ The owner's wallet: the balance, what is reserved against it, and
+    what that leaves available.
+
+    `reserved_micros` is the sum of the agreed prices of work sold at one
+    agreed price that this customer's billing owner has started and not yet
+    ended — a prepaid start reserves its pinned price and every terminal
+    transition releases it. `available_micros` is `balance_micros` less
+    `reserved_micros`, and is the figure a start is judged against the
+    customer's floors on; the balance itself moves only when a charge draws
+    it down. A pooled seat reads its owner's figures.
+
         Attributes:
+            available_micros (int):
             balance_micros (int):
             billing_owner_external_id (str):
             billing_owner_id (UUID):
             currency (str):
             is_pooled_seat (bool):
+            reserved_micros (int):
             expiring_micros (int | None | Unset):
             negative_since (None | str | Unset):
             next_expiry_at (None | str | Unset):
             promo_micros (int | None | Unset):
      """
 
+    available_micros: int
     balance_micros: int
     billing_owner_external_id: str
     billing_owner_id: UUID
     currency: str
     is_pooled_seat: bool
+    reserved_micros: int
     expiring_micros: int | None | Unset = UNSET
     negative_since: None | str | Unset = UNSET
     next_expiry_at: None | str | Unset = UNSET
@@ -52,6 +66,8 @@ class BalanceResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        available_micros = self.available_micros
+
         balance_micros = self.balance_micros
 
         billing_owner_external_id = self.billing_owner_external_id
@@ -61,6 +77,8 @@ class BalanceResponse:
         currency = self.currency
 
         is_pooled_seat = self.is_pooled_seat
+
+        reserved_micros = self.reserved_micros
 
         expiring_micros: int | None | Unset
         if isinstance(self.expiring_micros, Unset):
@@ -90,11 +108,13 @@ class BalanceResponse:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "available_micros": available_micros,
             "balance_micros": balance_micros,
             "billing_owner_external_id": billing_owner_external_id,
             "billing_owner_id": billing_owner_id,
             "currency": currency,
             "is_pooled_seat": is_pooled_seat,
+            "reserved_micros": reserved_micros,
         })
         if expiring_micros is not UNSET:
             field_dict["expiring_micros"] = expiring_micros
@@ -112,6 +132,8 @@ class BalanceResponse:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        available_micros = d.pop("available_micros")
+
         balance_micros = d.pop("balance_micros")
 
         billing_owner_external_id = d.pop("billing_owner_external_id")
@@ -124,6 +146,8 @@ class BalanceResponse:
         currency = d.pop("currency")
 
         is_pooled_seat = d.pop("is_pooled_seat")
+
+        reserved_micros = d.pop("reserved_micros")
 
         def _parse_expiring_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -166,11 +190,13 @@ class BalanceResponse:
 
 
         balance_response = cls(
+            available_micros=available_micros,
             balance_micros=balance_micros,
             billing_owner_external_id=billing_owner_external_id,
             billing_owner_id=billing_owner_id,
             currency=currency,
             is_pooled_seat=is_pooled_seat,
+            reserved_micros=reserved_micros,
             expiring_micros=expiring_micros,
             negative_since=negative_since,
             next_expiry_at=next_expiry_at,

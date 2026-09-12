@@ -131,6 +131,7 @@ def _repair_owner(owner_id, tenant):
                                             OUTCOME_REPAIRED_MICROS)
     from apps.billing.locking import lock_for_billing
     from apps.billing.queries import get_customer_balance
+    from apps.billing.wallets.reservations import open_reservations_micros
     from apps.billing.gating.services.live_counter import LiveCounter
 
     now = timezone.now()
@@ -138,6 +139,10 @@ def _repair_owner(owner_id, tenant):
     with transaction.atomic():
         lock_for_billing(owner_id)
         durable = int(get_customer_balance(owner_id))
+        # The owner's open reservations, from the same snapshot: recorded on
+        # the audit row as context beside the durable balance and never a
+        # term of the deficit (see the column, `gating/models.py`).
+        reserved = open_reservations_micros(owner_id)
         position = LiveCounter.read(owner_id, tenant, counter=True)
         if position["counter_blind"]:
             # Redis blind: nothing can be measured or applied. An open
@@ -169,8 +174,7 @@ def _repair_owner(owner_id, tenant):
                     tenant=tenant, owner_id=owner_id,
                     status=STATUS_CANDIDATE, first_deficit_micros=deficit,
                     durable_balance_micros=durable,
-                    # Retired term, surviving column: see the model.
-                    pending_hold_micros=0)
+                    pending_hold_micros=reserved)
                 logger.info("live_balance.repair_candidate", extra={"data": {
                     "owner_id": str(owner_id), "deficit_micros": deficit,
                     "durable_micros": durable}})
@@ -180,7 +184,8 @@ def _repair_owner(owner_id, tenant):
             # The deficit drained between passes (a credit, or an in-flight
             # debit's transaction landing) — or the counter vanished. Lapse
             # with the second bottom line.
-            _lapse(candidate, now, second_deficit=deficit, durable=durable)
+            _lapse(candidate, now, second_deficit=deficit, durable=durable,
+                   reserved=reserved)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -190,7 +195,8 @@ def _repair_owner(owner_id, tenant):
             # The key vanished between the read and the apply (or Redis went
             # blind): nothing was moved; the deficit is moot without a
             # counter. Lapse rather than claim a repair that never applied.
-            _lapse(candidate, now, second_deficit=deficit, durable=durable)
+            _lapse(candidate, now, second_deficit=deficit, durable=durable,
+                   reserved=reserved)
             counts[OUTCOME_REPAIR_LAPSED] = counts.get(OUTCOME_REPAIR_LAPSED, 0) + 1
             return counts
 
@@ -201,11 +207,13 @@ def _repair_owner(owner_id, tenant):
         candidate.live_before_micros = live
         candidate.live_after_micros = live_after
         candidate.durable_balance_micros = durable
+        candidate.pending_hold_micros = reserved
         candidate.resolved_at = now
         candidate.save(update_fields=[
             "status", "second_deficit_micros", "applied_micros",
             "live_before_micros", "live_after_micros",
-            "durable_balance_micros", "resolved_at", "updated_at"])
+            "durable_balance_micros", "pending_hold_micros", "resolved_at",
+            "updated_at"])
         logger.warning("live_balance.repaired", extra={"data": {
             "owner_id": str(owner_id), "applied_micros": amount,
             "first_deficit_micros": candidate.first_deficit_micros,
@@ -218,18 +226,21 @@ def _repair_owner(owner_id, tenant):
     return counts
 
 
-def _lapse(candidate, now, second_deficit=None, durable=None):
+def _lapse(candidate, now, second_deficit=None, durable=None, reserved=None):
     """Close a candidate without repairing. With a second measurement
     (vanished deficit / nothing to apply) the row gains the resolving bottom
-    line and snapshot; a stale lapse passes none — ``second_deficit_micros``
-    stays null, marking a confirmation window that never happened."""
+    line and snapshot — the durable balance and the open reservations beside
+    it; a stale lapse passes none — ``second_deficit_micros`` stays null,
+    marking a confirmation window that never happened."""
     candidate.status = STATUS_LAPSED
     candidate.resolved_at = now
     fields = ["status", "resolved_at", "updated_at"]
     if second_deficit is not None or durable is not None:
         candidate.second_deficit_micros = second_deficit
         candidate.durable_balance_micros = durable
-        fields += ["second_deficit_micros", "durable_balance_micros"]
+        candidate.pending_hold_micros = reserved
+        fields += ["second_deficit_micros", "durable_balance_micros",
+                   "pending_hold_micros"]
     candidate.save(update_fields=fields)
 
 

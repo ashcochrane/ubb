@@ -35,7 +35,9 @@ Pin 8  — a transient deficit that resolves between passes lapses (no repair);
 Pin 10 — downward neighbors untouched: a drift-HIGH counter is the MIN-merge's
          lane, never the repair's; an absent counter is never repaired; and the
          measurement is the durable balance alone — the reservation term the
-         repair was born with is gone with its cause.
+         repair was born with is gone with its cause, and the prepaid
+         reservation #461 built is recorded beside the measurement as context
+         (`pending_hold_micros`) and never subtracted from it.
 Pin 11 — the repair-rate spike alert (count / amount per tenant per 24h)
          fires CRITICAL past its threshold.
 Plus   — outcomes ride the hourly patrol beat onto the ops surface; postpaid
@@ -362,7 +364,10 @@ class TestPin10DownwardNeighborsUntouched:
         holds nothing, so the reservation term goes with it and expected IS the
         durable balance. Read off the module's imports because that is where
         the term lived: the measurement reached across a product boundary into
-        metering's read contract for it, and now reaches nowhere.
+        metering's read contract for it, and now reaches nowhere. The prepaid
+        reservation #461 built is billing's own and moves neither the durable
+        balance nor the live counter, so it is no term either — the case
+        below holds that by measurement.
         """
         source = Path(repair.__file__).read_text(encoding="utf-8")
         reached_into = sorted({
@@ -372,6 +377,38 @@ class TestPin10DownwardNeighborsUntouched:
         assert reached_into == [], (
             "the repair's measurement is the durable balance alone; it should "
             f"read nothing from metering, but reads {reached_into}")
+
+    def test_an_open_reservation_is_recorded_beside_the_measurement_and_never_subtracted(self):
+        """What the repair measures under an open reservation (#461, slice 6
+        §5): the deficit is durable − live exactly as with none, and the
+        audit row's hold column records what was reserved against the
+        balance at the measurement — context, never a term. A repair that
+        subtracted the reservation would read a 6M strand under an 8M
+        reservation as no deficit at all and leave the wedge in place."""
+        from apps.billing.wallets.models import WalletReservation
+        from apps.platform.work.services import TaskService
+
+        t, raw_key = _tenant_with_key()
+        c = _customer(t, balance_micros=10_000_000)
+        unit = TaskService.create_task(t, c, balance_snapshot_micros=0,
+                                       billing_owner_id=c.id)
+        WalletReservation.objects.create(tenant=t, owner=c, task=unit,
+                                         amount_micros=8_000_000)
+        _strand_via_the_recording_path(raw_key, c, 6_000_000)
+        assert _live(c.id) == 4_000_000
+
+        assert repair.repair_live_balances(t) == NO_OUTCOMES
+        row = LiveBalanceRepair.objects.get(owner=c)
+        assert row.first_deficit_micros == 6_000_000
+        assert row.durable_balance_micros == 10_000_000
+        assert row.pending_hold_micros == 8_000_000
+
+        assert repair.repair_live_balances(t) == {
+            "repaired": 1, "repaired_micros": 6_000_000, "repair_lapsed": 0}
+        row.refresh_from_db()
+        assert row.applied_micros == 6_000_000
+        assert row.pending_hold_micros == 8_000_000
+        assert _live(c.id) == 10_000_000
 
     def test_drift_high_counter_is_the_min_merges_lane_never_a_candidate(self):
         t = _tenant()

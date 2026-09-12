@@ -125,6 +125,7 @@ class TestBillingDelegation:
     def test_get_balance_delegates(self):
         expected = BalanceResponse(
             balance_micros=5_000_000, currency="USD",
+            reserved_micros=0, available_micros=5_000_000,
             billing_owner_id="11111111-1111-1111-1111-111111111111",
             billing_owner_external_id="cust1", is_pooled_seat=False,
         )

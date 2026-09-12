@@ -9,6 +9,22 @@ from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
 logger = logging.getLogger(__name__)
 
 
+@shared_task(queue="ubb_billing")
+def release_reservations_left_open_on_terminal_work():
+    """The backstop for the prepaid reservation (#461, slice 6 §5, #139
+    §4.1): release every reservation still open on a unit of work that has
+    already reached a terminal state. The ordinary release is the kernel's
+    terminal-transition listener, in the transition's own transaction; a row
+    this finds is one that listener could not release (the registry logged
+    it), so each release is logged as a warning naming the unit. Idempotent —
+    a second pass over the same rows releases nothing — and hourly, so money
+    a failed listener left encumbered is free again within the hour."""
+    from apps.billing.wallets.reservations import (
+        release_reservations_left_open_on_terminal_work as release_left_open)
+
+    return release_left_open()
+
+
 @shared_task(queue="ubb_invoicing")
 def reconcile_wallet_balances():
     """Reconcile wallet balances against WalletTransaction ledger.

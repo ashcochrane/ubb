@@ -29,15 +29,14 @@ vocabulary under a spread ceiling another slice owns, so this module says what
 it means through `declared_grouping_values`, whose own docstring records the
 technique.
 
-⚠ **THE PREPAID RESERVATION IS NOT BUILT AND THIS MODULE DOES NOT PRETEND
-OTHERWISE.** §16's first obligation — take a durable reservation for the pinned
-price, atomically with the write — did not land in #410 because there was no
-price to take it against, and it is not this ticket's either: nothing in
-`apps/billing/wallets` holds one, and building it means a release on all six
-terminal paths. What the refusal case below asserts is therefore everything
-money-shaped that DOES exist: no unit of work registered, no wallet movement,
-and no grouping value burned. When a reservation exists, this is the case that
-owes it an assertion.
+**THE PREPAID RESERVATION IS BUILT SINCE #461** (slice 6 §5): §16's first
+obligation — take a durable reservation for the pinned price, atomically with
+the write — did not land in #410 because there was no price to take it
+against, nor here, because it needed a release on every terminal path. It
+lives in `apps/billing/wallets` now, with its own module beside this one
+(`test_a_prepaid_start_reserves_the_agreed_price.py`); what the refusal case
+below owed it on the day it existed, it now asserts: a refused start reserves
+nothing.
 """
 import json
 import uuid
@@ -49,7 +48,7 @@ from django.test import Client
 from django.utils import timezone
 
 from api.v1.tests.test_metering_endpoints import declared_grouping_values
-from apps.billing.wallets.models import Wallet
+from apps.billing.wallets.models import Wallet, WalletReservation
 from apps.metering.pricing.models import Rate, TaskPrice
 from apps.metering.pricing.services.pricing_service import (
     AGREED_PRICE_ON_CONTAINED_WORK, AGREED_PRICE_UNRESOLVED,
@@ -279,14 +278,14 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
     def test_the_refusal_lands_before_the_work_runs_and_spends_nothing(self):
         """AC 4's second half, asserted only where an assertion discriminates.
 
-        ⚠ **A WALLET ASSERTION WOULD BE VACUOUS HERE AND IS DELIBERATELY
-        ABSENT.** A start never debits a wallet — the prepaid reservation that
-        would is §16's first obligation and is not built (see this module's
-        header) — so *the balance did not move* holds identically on the
+        ⚠ **A BALANCE ASSERTION WOULD BE VACUOUS HERE AND IS DELIBERATELY
+        ABSENT.** A start never debits a wallet — it RESERVES against one
+        (#461) — so *the balance did not move* holds identically on the
         SUCCESS path and would be satisfied by a refusal that never fired. The
         first draft asserted it; it is the shape #410 paid for, where a case
-        was green against the exact mutation it existed for. What owes an
-        assertion here is the reservation, on the day it exists.
+        was green against the exact mutation it existed for. What discriminates
+        on the money side is the reservation: a start that succeeds writes one
+        and this refusal writes none, asserted below since the day it existed.
 
         The grouping value is the one that bites: admitting a start's declared
         values is a WRITE against a key's cardinality cap and it runs ABOVE this
@@ -304,6 +303,7 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
 
         assert refused.status_code == 422
         assert Task.objects.count() == 0
+        assert not WalletReservation.objects.exists()
         assert not GroupingFieldValue.objects.filter(value="eu").exists()
 
     def test_a_start_that_succeeds_does_record_that_grouping_value(self):
@@ -319,6 +319,8 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
 
         assert allowed.status_code == 200
         assert GroupingFieldValue.objects.filter(value="eu").exists()
+        assert WalletReservation.objects.filter(
+            task_id=allowed.json()["task_id"]).exists()
 
     def test_a_price_that_resolves_is_not_refused(self):
         """THE CONTROL: a refusal that fired whatever the book held would

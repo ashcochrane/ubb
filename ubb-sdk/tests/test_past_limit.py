@@ -117,6 +117,7 @@ class NegativeSinceTest(unittest.TestCase):
     def test_balance_carries_negative_since(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": -1_000_000, "currency": "usd",
+            "reserved_micros": 0, "available_micros": -1_000_000,
             "negative_since": "2026-07-17T09:00:00+00:00",
             "billing_owner_id": "11111111-1111-1111-1111-111111111111",
             "billing_owner_external_id": "c1", "is_pooled_seat": False})
@@ -127,6 +128,7 @@ class NegativeSinceTest(unittest.TestCase):
     def test_negative_since_defaults_none(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 5, "currency": "usd",
+            "reserved_micros": 0, "available_micros": 5,
             "billing_owner_id": "11111111-1111-1111-1111-111111111111",
             "billing_owner_external_id": "c1", "is_pooled_seat": False})
         self.assertIsNone(self.client.get_balance("c1").negative_since)

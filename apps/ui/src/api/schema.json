@@ -325,7 +325,12 @@
         "type": "object"
       },
       "BalanceResponse": {
+        "description": "The owner's wallet: the balance, what is reserved against it, and\nwhat that leaves available.\n\n`reserved_micros` is the sum of the agreed prices of work sold at one\nagreed price that this customer's billing owner has started and not yet\nended \u2014 a prepaid start reserves its pinned price and every terminal\ntransition releases it. `available_micros` is `balance_micros` less\n`reserved_micros`, and is the figure a start is judged against the\ncustomer's floors on; the balance itself moves only when a charge draws\nit down. A pooled seat reads its owner's figures.",
         "properties": {
+          "available_micros": {
+            "title": "Available Micros",
+            "type": "integer"
+          },
           "balance_micros": {
             "title": "Balance Micros",
             "type": "integer"
@@ -390,11 +395,17 @@
               }
             ],
             "title": "Promo Micros"
+          },
+          "reserved_micros": {
+            "title": "Reserved Micros",
+            "type": "integer"
           }
         },
         "required": [
           "balance_micros",
           "currency",
+          "reserved_micros",
+          "available_micros",
           "billing_owner_id",
           "billing_owner_external_id",
           "is_pooled_seat"

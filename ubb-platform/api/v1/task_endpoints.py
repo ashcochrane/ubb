@@ -316,6 +316,23 @@ def start_task(request, payload: StartTaskRequest):
                 "task_pricing_mode_conflicts_with_parent", str(refused),
                 extensions={"parent_pricing_mode": refused.containing_regime,
                             "pricing_mode": refused.declared_regime})
+
+        # THE RESERVATION, IN THE SAME TRANSACTION AS THE START (#461, slice 6
+        # §5, #139 §4.1). A prepaid start of a kind of work sold at one agreed
+        # price reserves that price against the owner's wallet, so the next
+        # start is judged on what is left rather than on the balance three
+        # starts can all read at once. It is the last money-shaped question
+        # and it is asked LAST, after the unit's row exists and carries the
+        # pinned price the row is keyed on and reserved for — a refusal here
+        # is raised like every other and rolls the whole start back, the
+        # unit's row included. Conditioned on the same product flag as
+        # `check` above, and for the same reason; which postures reserve
+        # nothing is the service's own decision.
+        if has_a_wallet and agreed_price is not None:
+            verdict = RiskService.reserve_agreed_price(
+                customer, task, parent_task_id=payload.parent_task_id)
+            if not verdict["allowed"]:
+                raise _refused(verdict)
     return 200, start_task_out(task, replayed=False)
 
 
@@ -334,7 +351,10 @@ def _refused(verdict):
         "task_start_refused",
         f"this customer cannot start new work: {verdict['reason']}",
         extensions={"reason": verdict["reason"],
-                    "balance_micros": verdict["balance_micros"]})
+                    "balance_micros": verdict["balance_micros"],
+                    # The balance less open reservations (#461): the figure
+                    # a floor refusal was actually made against.
+                    "available_micros": verdict["available_micros"]})
 
 
 @task_router.get("/tasks", response=PaginatedTasks)

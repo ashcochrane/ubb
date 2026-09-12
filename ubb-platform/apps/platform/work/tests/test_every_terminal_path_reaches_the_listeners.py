@@ -2,9 +2,10 @@
 can veto it (#460, slice 6 §5 — the platform-hooks channel of ADR-001 rule
 3, the fourth in `CLAUDE.md`'s list).
 
-The registry in `work/hooks.py` is a prefactor: nothing registers on it yet.
-What this module proves is the surface the reservation's release will stand
-on — that a listener hears EVERY way a unit of work reaches a terminal state,
+The registry in `work/hooks.py` was built as a prefactor with nothing on it;
+billing's reservation release registers on it since #461 (the wiring case at
+the foot of this module). What this module proves is the surface that release
+stands on — that a listener hears EVERY way a unit of work reaches a terminal state,
 hears each exactly once, hears nothing for a transition that is not terminal,
 and cannot take the transition down by raising.
 
@@ -331,10 +332,10 @@ class AListenerThatRaisesVetoesNothingTest(TerminalListenersTestBase):
 class TheRegistryHasTheRosterShapeTest(TerminalListenersTestBase):
     """The mechanics the seat-roster registry's own test pins, on this one:
     idempotent registration, registration order, a no-op with nobody
-    registered — and, because this ticket is a prefactor, that nothing has
-    registered yet. The last case is built to go red on the day billing's
-    reservation release registers, and that ticket inverts it into the
-    roster test's wiring assertion at this address."""
+    registered — and the wiring, as the roster test pins its own: #460 built
+    this registry with nothing on it and a case built to go red on the day
+    billing's reservation release registered; #461 registered it, and that
+    case is now the wiring assertion at the same address."""
 
     def test_registration_is_idempotent(self):
         hooks._listeners[:] = []
@@ -363,9 +364,16 @@ class TheRegistryHasTheRosterShapeTest(TerminalListenersTestBase):
             task.id, CloseDeclaration.declared(TASK_OUTCOME_DELIVERED))
         self.assertTrue(transitioned)
 
-    def test_nothing_is_registered_at_app_ready(self):
-        # `self._saved` is the registry exactly as app loading left it.
-        self.assertEqual(self._saved, [])
+    def test_billings_reservation_release_is_registered_at_app_ready(self):
+        # `WalletsConfig.ready()` ran during test-process app loading and
+        # must have attached the reservation's release to this seam
+        # (`self._saved` is the registry exactly as app loading left it) —
+        # the product's test import the roster test makes too, and the one
+        # place a kernel test names a product: the wiring is the claim.
+        from apps.billing.wallets.reservations import (
+            release_on_terminal_transition)
+
+        self.assertEqual(self._saved, [release_on_terminal_transition])
 
 
 class EveryWriterOfATerminalStateTellsTheListenersTest(

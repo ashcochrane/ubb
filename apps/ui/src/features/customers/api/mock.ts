@@ -146,6 +146,8 @@ function balanceOf(customerId: string): BalanceResponse {
     ? { ...ownerBalance, ...owner }
     : {
         balance_micros: 0,
+        reserved_micros: 0,
+        available_micros: 0,
         currency: "usd",
         ...owner,
         promo_micros: 0,

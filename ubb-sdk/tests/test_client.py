@@ -99,6 +99,7 @@ class UBBClientTest(unittest.TestCase):
     def test_get_balance(self):
         expected = BalanceResponse(
             balance_micros=10000000, currency="USD",
+            reserved_micros=0, available_micros=10000000,
             billing_owner_id="11111111-1111-1111-1111-111111111111",
             billing_owner_external_id="c1", is_pooled_seat=False,
         )

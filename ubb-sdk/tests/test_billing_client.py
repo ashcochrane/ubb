@@ -88,6 +88,7 @@ class BillingClientTest(unittest.TestCase):
     def test_get_balance(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 10_000_000, "currency": "USD",
+            "reserved_micros": 0, "available_micros": 10_000_000,
             "billing_owner_id": "11111111-1111-1111-1111-111111111111",
             "billing_owner_external_id": "cust_1", "is_pooled_seat": False,
         })
@@ -106,6 +107,7 @@ class BillingClientTest(unittest.TestCase):
         the response discloses whose wallet it is showing."""
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "balance_micros": 5_000_000, "currency": "USD",
+            "reserved_micros": 0, "available_micros": 5_000_000,
             "billing_owner_id": "22222222-2222-2222-2222-222222222222",
             "billing_owner_external_id": "biz_1", "is_pooled_seat": True,
         })

@@ -348,7 +348,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # terminal payload. The sites and terms held at 22 in 70: the four
         # G2/G4 entries this ticket paid left the ledger as a ratchet
         # removal, not as a sweep change.
-        "historical-migrations": (UNTIL_SLICE_8, 256, 19),
+        # 256 -> 257 in #461: ONE migration, the wallets app's, creating the
+        # prepaid reservation row a start of work sold at one agreed price
+        # writes against the owner's wallet. It spells no retired word; the
+        # sites and terms held at 22 in 66.
+        "historical-migrations": (UNTIL_SLICE_8, 257, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

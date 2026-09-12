@@ -87,12 +87,16 @@ class RiskServiceTest(TestCase):
     def test_the_answer_names_no_unit_of_work(self):
         """It used to answer with a null identifier for the unit it had not
         created; it answers with no such key at all now (#410). A whole set
-        rather than one absent key: an answer that quietly grew a fourth
-        member would be a registration riding back on an advisory call, which
-        is the shape this route was split to remove.
+        rather than one absent key: an answer that quietly grew a member
+        naming a unit would be a registration riding back on an advisory
+        call, which is the shape this route was split to remove. The fourth
+        member it DID grow (#461) is a money figure — the balance less open
+        reservations, which is what the floors are compared against — and
+        the set is pinned again here so the next arrival is read by a person.
         """
         result = RiskService.check(self.customer)
-        self.assertEqual(set(result), {"allowed", "reason", "balance_micros"})
+        self.assertEqual(set(result), {"allowed", "reason", "balance_micros",
+                                       "available_micros"})
 
 
 class RiskServiceRedisFailureTest(TestCase):

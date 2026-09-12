@@ -164,7 +164,14 @@ VALUE_SETS = {
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,
-    "ubb-platform/apps/billing/wallets/models.py": 5,
+    # 5 -> 6 in #461: what released a prepaid reservation -- the unit's own
+    # terminal transition (the ordinary path) or the backstop sweep (evidence
+    # the ordinary path failed once). Two values on an audit column that
+    # never reaches the wire: the balance read publishes the SUM of what is
+    # open, never a row, so there is no consumer for a registry concept to
+    # bind and the set stays the module's own, beside the repair statuses and
+    # the patrol outcomes it is shaped like.
+    "ubb-platform/apps/billing/wallets/models.py": 6,
 }
 
 

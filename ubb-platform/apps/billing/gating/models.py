@@ -218,12 +218,19 @@ class LiveBalanceRepair(BaseModel):
     live_before_micros = models.BigIntegerField(null=True, blank=True)
     live_after_micros = models.BigIntegerField(null=True, blank=True)
     durable_balance_micros = models.BigIntegerField()
-    # The reservation term of the measurement this repair was born with
-    # (Ruling A2, #233: the reservation was one cause of the drift, not the
-    # cause). The surviving cause reserves nothing, so the repair stopped
-    # measuring it and writes 0; historical rows keep what they recorded.
-    # Non-null with no default, so the column outlives the term until the
-    # reservation's own migration takes it.
+    # THE OWNER'S OPEN RESERVATIONS AT THE MOMENT OF THIS ROW'S LATEST
+    # RECORDED MEASUREMENT (#461, slice 6 §5) — the prepaid reservations
+    # taken at the start of work sold at one agreed price and not yet
+    # released (`wallets.WalletReservation`), read under the same billing
+    # lock as the durable balance beside it. It is CONTEXT for the audit row
+    # and never a term of the arithmetic: a reservation encumbers the
+    # affordability read at a start and moves neither the durable balance
+    # nor the live counter, so the deficit is durable − live whatever is
+    # reserved, and a reader of a repair sees what was encumbering the
+    # balance the deficit was measured against. The column was born as a
+    # term of the measurement (Ruling A2, #233 — the deleted arrival-time
+    # lane's reservation was one cause of the drift, not the cause) and
+    # rows written between that lane's deletion and #461 record 0.
     pending_hold_micros = models.BigIntegerField()
     resolved_at = models.DateTimeField(null=True, blank=True)
 
