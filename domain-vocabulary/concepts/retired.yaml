@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,794 of 2,217 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,796 of 2,219 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2033,6 +2033,17 @@ measurement_key:
     # thirteenth window the plural arrived through ordinary prose about
     # work -- and the prose that held is "how many pieces of work", "active
     # work", "a unit of work" and "the work".
+    #
+    # 2026-09-12, #460 (the kernel announces every terminal transition to
+    # listeners that cannot veto): 1,794 of 2,217 -> 1,796 of 2,219 tracked
+    # files (`units` 44 files / 122 occurrences unchanged on the first
+    # take). Two tracked files arrived, both swept and both in the kernel's
+    # work package: the terminal-transition listener registry
+    # (`work/hooks.py`, a prefactor -- nothing registers on it yet) and the
+    # module proving every terminal path reaches it exactly once. No
+    # migration, no generated module, no wire change: the contract is
+    # byte-identical. The prose that held is "a unit of work", "contained
+    # work", "a piece of work" and "the work"; the word arrived nowhere.
 
     - term: units
       retired_as: >-

@@ -36,6 +36,7 @@ from apps.platform.work.models import (
 from apps.platform.work.services import (
     STATUS_FOR_OUTCOME, CloseDeclaration, TaskService)
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
+from apps.platform.work.tests._helpers import backdate
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
@@ -66,12 +67,7 @@ class LifecycleTestBase(TestCase):
         return task
 
     def _backdate(self, task, *, created, last_event=None):
-        Task.objects.filter(id=task.id).update(
-            created_at=timezone.now() - created,
-            last_event_at=None if last_event is None
-            else timezone.now() - last_event)
-        task.refresh_from_db()
-        return task
+        return backdate(task, created=created, last_event=last_event)
 
 
 class TheStatusSetIsTheRegistrysTest(LifecycleTestBase):
