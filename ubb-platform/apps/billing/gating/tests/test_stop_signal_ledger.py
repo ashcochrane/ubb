@@ -1,7 +1,7 @@
 """#39 — the StopSignalState transition guard (spec §D/§E).
 
 Unit pins for the single emission choke point: winning transitions emit
-exactly one stop.fired / stop.cleared per episode, episode ids increment and
+exactly one customer.stopped / customer.stop_cleared per episode, episode ids increment and
 pair up, and the suspension fold rides the winning stop transition with the
 mode gates intact (prepaid = Tier-1 baseline in every enforcement-on mode,
 postpaid = enforcing only).
@@ -24,6 +24,7 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
@@ -54,7 +55,7 @@ class TestStopTransition:
         row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
         assert row.state == "stopped" and row.episode_seq == 1
         assert row.reason == stop_line(t)
-        fired = _events("stop.fired", owner_id=c.id)
+        fired = _events(StopFired.EVENT_TYPE, owner_id=c.id)
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
 
@@ -63,7 +64,7 @@ class TestStopTransition:
         c = Customer.objects.create(tenant=t, external_id="c1")
         drive_a_stop(c.id, t)
         assert drive_a_stop(c.id, t) is None
-        assert _events("stop.fired", owner_id=c.id).count() == 1
+        assert _events(StopFired.EVENT_TYPE, owner_id=c.id).count() == 1
         assert _events("customer.suspended", "customer_id", c.id).count() == 1
 
     def test_clear_wins_once_and_carries_the_closed_episode(self):
@@ -73,7 +74,7 @@ class TestStopTransition:
         closed = StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason=CLEAR_BALANCE_RECOVERED,
                                                balance_micros=2_000_000)
         assert closed == 1
-        cleared = _events("stop.cleared", owner_id=c.id)
+        cleared = _events(StopCleared.EVENT_TYPE, owner_id=c.id)
         assert cleared.count() == 1
         payload = cleared.get().payload
         assert payload["episode_seq"] == 1
@@ -85,14 +86,14 @@ class TestStopTransition:
             owner=c, reason=stop_line(t)).clear_reason == CLEAR_BALANCE_RECOVERED
         # A clear that didn't win the transition emits nothing (spec §E).
         assert StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason=CLEAR_RECONCILED) is None
-        assert _events("stop.cleared", owner_id=c.id).count() == 1
+        assert _events(StopCleared.EVENT_TYPE, owner_id=c.id).count() == 1
 
     def test_clear_without_any_stop_history_is_a_silent_no_op(self):
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         assert StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason=CLEAR_RECONCILED) is None
         assert not StopSignalState.objects.filter(owner=c).exists()
-        assert _events("stop.cleared", owner_id=c.id).count() == 0
+        assert _events(StopCleared.EVENT_TYPE, owner_id=c.id).count() == 0
 
     def test_stop_clear_stop_increments_the_episode(self):
         t = _tenant()
@@ -100,7 +101,7 @@ class TestStopTransition:
         assert drive_a_stop(c.id, t) == 1
         assert StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason=CLEAR_BALANCE_RECOVERED) == 1
         assert drive_a_stop(c.id, t) == 2
-        seqs = [e.payload["episode_seq"] for e in _events("stop.fired", owner_id=c.id).order_by("created_at")]
+        seqs = [e.payload["episode_seq"] for e in _events(StopFired.EVENT_TYPE, owner_id=c.id).order_by("created_at")]
         assert seqs == [1, 2]
 
     def test_families_have_independent_state_and_episodes(self):
@@ -148,14 +149,14 @@ class TestSuspensionFold:
         assert drive_a_stop(c.id, t) == 1
         c.refresh_from_db()
         assert c.suspension_reason == "fraud"
-        assert _events("stop.fired", owner_id=c.id).count() == 1
+        assert _events(StopFired.EVENT_TYPE, owner_id=c.id).count() == 1
         assert _events("customer.suspended", "customer_id", c.id).count() == 0
 
 
 @pytest.mark.django_db
 class TestEmissionAtomicity:
     """#43 §A at the service seam: every family rides the same savepoint
-    contract pinned for stop.fired in test_live_counter.py's pin 2 — a failed
+    contract pinned for customer.stopped in test_live_counter.py's pin 2 — a failed
     event INSERT takes the transition down with it (never "transitioned but
     unqueued") and leaves the ambient transaction usable for the money path.
     """
@@ -181,7 +182,7 @@ class TestEmissionAtomicity:
     def test_failed_soft_crossed_insert_rolls_the_soft_transition_back(self, monkeypatch):
         from django.db import transaction
 
-        self._fail_insert_of(monkeypatch, "soft_floor.crossed")
+        self._fail_insert_of(monkeypatch, SoftFloorCrossed.EVENT_TYPE)
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         with transaction.atomic():
@@ -191,7 +192,7 @@ class TestEmissionAtomicity:
             # caller's next statement will not hit "transaction is aborted".
             assert Customer.objects.filter(id=c.id).exists()
         assert not StopSignalState.objects.filter(owner=c).exists()
-        assert _events("soft_floor.crossed", owner_id=c.id).count() == 0
+        assert _events(SoftFloorCrossed.EVENT_TYPE, owner_id=c.id).count() == 0
 
 
 @pytest.mark.django_db
@@ -207,7 +208,7 @@ class TestAnnouncementStamps:
         c = Customer.objects.create(tenant=t, external_id="c1")
         drive_a_stop(c.id, t)
         row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
-        fired = _events("stop.fired", owner_id=c.id).get()
+        fired = _events(StopFired.EVENT_TYPE, owner_id=c.id).get()
         assert row.announce_outbox_id == fired.id
         assert fired.payload["re_announcement"] is False
 
@@ -225,10 +226,10 @@ class TestAnnouncementStamps:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         drive_a_stop(c.id, t)
-        fired_id = _events("stop.fired", owner_id=c.id).get().id
+        fired_id = _events(StopFired.EVENT_TYPE, owner_id=c.id).get().id
         StopSignalService.drive_clear(c.id, t, line=stop_line(t), clear_reason=CLEAR_BALANCE_RECOVERED)
         row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
-        cleared = _events("stop.cleared", owner_id=c.id).get()
+        cleared = _events(StopCleared.EVENT_TYPE, owner_id=c.id).get()
         assert row.announce_outbox_id == cleared.id
         assert row.announce_outbox_id != fired_id
         assert cleared.payload["re_announcement"] is False
@@ -241,13 +242,13 @@ class TestAnnouncementStamps:
             owner=c, reason=stop_line(t)).announce_outbox_id
         StopSignalService.drive_soft_crossed(c.id, t, balance_micros=-1)
         soft = StopSignalState.objects.get(owner=c, reason=LINE_SOFT_FLOOR)
-        crossed = _events("soft_floor.crossed", owner_id=c.id).get()
+        crossed = _events(SoftFloorCrossed.EVENT_TYPE, owner_id=c.id).get()
         assert soft.announce_outbox_id == crossed.id
         assert crossed.payload["re_announcement"] is False
         StopSignalService.drive_soft_cleared(c.id, t, reason=CLEAR_RECONCILED)
         soft.refresh_from_db()
         assert soft.announce_outbox_id == _events(
-            "soft_floor.cleared", owner_id=c.id).get().id
+            SoftFloorCleared.EVENT_TYPE, owner_id=c.id).get().id
         # The hard family's stamp never moved.
         assert StopSignalState.objects.get(
             owner=c, reason=stop_line(t)).announce_outbox_id == hard_stamp
@@ -283,7 +284,7 @@ class TestTwoStopLinesAtOnce:
         assert (floor, pooled) == (1, 1)  # two sequences, each at its first
 
         fired = {e.payload["reason_code"]: e.payload
-                 for e in _events("stop.fired", owner_id=c.id)}
+                 for e in _events(StopFired.EVENT_TYPE, owner_id=c.id)}
         assert set(fired) == {reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL}
         assert fired[reasons.HARD_FLOOR]["control_family"] == CONTROL_FAMILY_WALLET_POLICY
         assert fired[reasons.HARD_FLOOR]["control_id"] == str(
@@ -318,7 +319,7 @@ class TestTwoStopLinesAtOnce:
         assert verdict["stop_reason"] == reasons.CUSTOMER_SPEND_POOL  # re-pointed
         c.refresh_from_db()
         assert c.status == "suspended"
-        cleared = _events("stop.cleared", owner_id=c.id)
+        cleared = _events(StopCleared.EVENT_TYPE, owner_id=c.id)
         assert cleared.count() == 1
         assert cleared.get().payload["reason_code"] == reasons.HARD_FLOOR
 
@@ -329,7 +330,7 @@ class TestTwoStopLinesAtOnce:
         assert LiveCounter.read(c.id, t)["stop"] is False
         c.refresh_from_db()
         assert c.status == "active"
-        assert _events("stop.cleared", owner_id=c.id).count() == 2
+        assert _events(StopCleared.EVENT_TYPE, owner_id=c.id).count() == 2
 
     def test_one_row_per_line_at_the_database(self):
         """The key is (owner, control_family, reason), as a constraint."""

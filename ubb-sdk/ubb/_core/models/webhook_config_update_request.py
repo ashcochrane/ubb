@@ -8,8 +8,10 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.webhook_config_update_request_event_types_type_0_item_type_0 import WebhookConfigUpdateRequestEventTypesType0ItemType0
 from ..types import UNSET, Unset
 from typing import cast
+from typing import Literal, cast
 
 
 
@@ -24,12 +26,12 @@ T = TypeVar("T", bound="WebhookConfigUpdateRequest")
 class WebhookConfigUpdateRequest:
     """ 
         Attributes:
-            event_types (list[str] | None | Unset):
+            event_types (list[Literal['*'] | WebhookConfigUpdateRequestEventTypesType0ItemType0] | None | Unset):
             is_active (bool | None | Unset):
             url (None | str | Unset):
      """
 
-    event_types: list[str] | None | Unset = UNSET
+    event_types: list[Literal['*'] | WebhookConfigUpdateRequestEventTypesType0ItemType0] | None | Unset = UNSET
     is_active: bool | None | Unset = UNSET
     url: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -39,11 +41,18 @@ class WebhookConfigUpdateRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        event_types: list[str] | None | Unset
+        event_types: list[Literal['*'] | str] | None | Unset
         if isinstance(self.event_types, Unset):
             event_types = UNSET
         elif isinstance(self.event_types, list):
-            event_types = self.event_types
+            event_types = []
+            for event_types_type_0_item_data in self.event_types:
+                event_types_type_0_item: Literal['*'] | str
+                if isinstance(event_types_type_0_item_data, WebhookConfigUpdateRequestEventTypesType0ItemType0):
+                    event_types_type_0_item = event_types_type_0_item_data.value
+                else:
+                    event_types_type_0_item = event_types_type_0_item_data
+                event_types.append(event_types_type_0_item)
 
 
         else:
@@ -80,7 +89,7 @@ class WebhookConfigUpdateRequest:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        def _parse_event_types(data: object) -> list[str] | None | Unset:
+        def _parse_event_types(data: object) -> list[Literal['*'] | WebhookConfigUpdateRequestEventTypesType0ItemType0] | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -88,12 +97,33 @@ class WebhookConfigUpdateRequest:
             try:
                 if not isinstance(data, list):
                     raise TypeError()
-                event_types_type_0 = cast(list[str], data)
+                event_types_type_0 = []
+                _event_types_type_0 = data
+                for event_types_type_0_item_data in (_event_types_type_0):
+                    def _parse_event_types_type_0_item(data: object) -> Literal['*'] | WebhookConfigUpdateRequestEventTypesType0ItemType0:
+                        try:
+                            if not isinstance(data, str):
+                                raise TypeError()
+                            event_types_type_0_item_type_0 = WebhookConfigUpdateRequestEventTypesType0ItemType0(data)
+
+
+
+                            return event_types_type_0_item_type_0
+                        except (TypeError, ValueError, AttributeError, KeyError):
+                            pass
+                        event_types_type_0_item_type_1 = cast(Literal['*'] , data)
+                        if event_types_type_0_item_type_1 != '*':
+                            raise ValueError(f"event_types_type_0_item_type_1 must match const '*', got '{event_types_type_0_item_type_1}'")
+                        return event_types_type_0_item_type_1
+
+                    event_types_type_0_item = _parse_event_types_type_0_item(event_types_type_0_item_data)
+
+                    event_types_type_0.append(event_types_type_0_item)
 
                 return event_types_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(list[str] | None | Unset, data)
+            return cast(list[Literal['*'] | WebhookConfigUpdateRequestEventTypesType0ItemType0] | None | Unset, data)
 
         event_types = _parse_event_types(d.pop("event_types", UNSET))
 

@@ -8,10 +8,11 @@ class UsageConfig(AppConfig):
 
     def ready(self):
         from apps.platform.events.registry import handler_registry
+        from apps.platform.events.schemas import RefundRequested
         from apps.metering.handlers import handle_refund_requested
 
         handler_registry.register(
-            "refund.requested",
+            RefundRequested.EVENT_TYPE,
             "metering.create_refund_record",
             handle_refund_requested,
             requires_product="metering",

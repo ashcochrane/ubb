@@ -57,7 +57,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    BudgetThresholdReached, CustomerSuspended, StopCleared, StopFired,
+    CustomerSpendPoolThresholdReached, CustomerSuspended, StopCleared, StopFired,
     TaskKilled, UsageRecorded)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
@@ -258,7 +258,7 @@ class ABlockingPoolStopsWorkMidFlight:
         self.assertFalse(StopSignalState.objects.filter(owner=self.customer).exists())
         # 120% of the pool crossed every configured level.
         self.assertEqual(
-            sorted(e.payload["level"] for e in self._events(BudgetThresholdReached)),
+            sorted(e.payload["level"] for e in self._events(CustomerSpendPoolThresholdReached)),
             [50, 80, 100, 110])
         self.assertEqual(self._start().status_code, 200)
 
@@ -420,7 +420,7 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         self._drain()
 
         alerted = {(e.payload["customer_id"], e.payload["level"])
-                   for e in self._events(BudgetThresholdReached)}
+                   for e in self._events(CustomerSpendPoolThresholdReached)}
         self.assertEqual(alerted, {(str(self.seat1.id), 50), (str(self.biz.id), 50)})
 
 

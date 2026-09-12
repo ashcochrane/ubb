@@ -32,7 +32,11 @@ are built on — use them rather than reaching across a boundary directly.
   required once a data migration has stamped every stored row and queued payload (#458's
   `control_family`); and while the pre-live lane is open (ADR-0007 §5) a rename may be made in
   place with its break recorded in the gate's block and its queued payloads migrated (#458's
-  `reason` → `reason_code` on the customer stop pair).
+  `reason` → `reason_code` on the customer stop pair; #464's five event NAMES moved under their
+  families, with every stored subscription and queued row carried by `events/0009`). Every
+  class takes its `EVENT_TYPE` from `core.vocabulary` by reference — the catalogue gate reads
+  the name through the registry's constant, and a literal or a name from anywhere else is
+  refused (#464).
 
 ## Synchronous reactions: the platform hooks registry
 

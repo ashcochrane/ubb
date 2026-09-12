@@ -8,8 +8,10 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.webhook_config_create_request_event_types_item_type_0 import WebhookConfigCreateRequestEventTypesItemType0
 from ..types import UNSET, Unset
 from typing import cast
+from typing import Literal, cast
 
 
 
@@ -24,13 +26,13 @@ T = TypeVar("T", bound="WebhookConfigCreateRequest")
 class WebhookConfigCreateRequest:
     """ 
         Attributes:
-            event_types (list[str]):
+            event_types (list[Literal['*'] | WebhookConfigCreateRequestEventTypesItemType0]):
             secret (str):
             url (str):
             is_active (bool | Unset):  Default: True.
      """
 
-    event_types: list[str]
+    event_types: list[Literal['*'] | WebhookConfigCreateRequestEventTypesItemType0]
     secret: str
     url: str
     is_active: bool | Unset = True
@@ -41,7 +43,14 @@ class WebhookConfigCreateRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        event_types = self.event_types
+        event_types = []
+        for event_types_item_data in self.event_types:
+            event_types_item: Literal['*'] | str
+            if isinstance(event_types_item_data, WebhookConfigCreateRequestEventTypesItemType0):
+                event_types_item = event_types_item_data.value
+            else:
+                event_types_item = event_types_item_data
+            event_types.append(event_types_item)
 
 
 
@@ -69,7 +78,28 @@ class WebhookConfigCreateRequest:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        event_types = cast(list[str], d.pop("event_types"))
+        event_types = []
+        _event_types = d.pop("event_types")
+        for event_types_item_data in (_event_types):
+            def _parse_event_types_item(data: object) -> Literal['*'] | WebhookConfigCreateRequestEventTypesItemType0:
+                try:
+                    if not isinstance(data, str):
+                        raise TypeError()
+                    event_types_item_type_0 = WebhookConfigCreateRequestEventTypesItemType0(data)
+
+
+
+                    return event_types_item_type_0
+                except (TypeError, ValueError, AttributeError, KeyError):
+                    pass
+                event_types_item_type_1 = cast(Literal['*'] , data)
+                if event_types_item_type_1 != '*':
+                    raise ValueError(f"event_types_item_type_1 must match const '*', got '{event_types_item_type_1}'")
+                return event_types_item_type_1
+
+            event_types_item = _parse_event_types_item(event_types_item_data)
+
+            event_types.append(event_types_item)
 
 
         secret = d.pop("secret")

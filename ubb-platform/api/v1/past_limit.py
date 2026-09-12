@@ -5,14 +5,14 @@ Composition-layer module (api may import every product; ADR-001): episodes
 are reconstructed from THREE sources and married to the itemized events by
 the stop-context markers —
 
-- **Customer-wide floor episodes** from the ``stop.fired`` / ``stop.cleared``
+- **Customer-wide floor episodes** from the ``customer.stopped`` / ``customer.stop_cleared``
   outbox pair (each carries the signal ledger's ``episode_seq``), backstopped
   by the current ``StopSignalState`` row (an open episode survives outbox
   retention) and by the markers themselves (a marked event's ``tripped_at``
   re-dates an episode whose outbox rows were purged).
 - **Task/subtask trip episodes** from killed Task rows whose stored cause
   (``STOP_CAUSE_KEY``) names the ceiling. A kill is terminal — no resume.
-- **Soft-floor marker rows** from the ``soft_floor.crossed`` / ``.cleared``
+- **Soft-floor marker rows** from the ``wallet_policy.soft_floor_crossed`` / ``.cleared``
   pair — crossed/cleared timestamps only, NO itemized events: nothing is
   "past limit" under a soft floor (§F).
 
@@ -34,6 +34,7 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.billing.queries import get_stop_signal_state
 from apps.metering.usage.models import Posting
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import STOP_CAUSE_KEY
@@ -277,8 +278,8 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
     # its episode id, else by the first line whose ledger row this owner has
     # — an owner that predates the lines only ever had one — so it is never
     # itemised under both.
-    line_eps = {line: _signal_episodes(tenant, owner, "stop.fired",
-                                       "stop.cleared", line)
+    line_eps = {line: _signal_episodes(tenant, owner, StopFired.EVENT_TYPE,
+                                       StopCleared.EVENT_TYPE, line)
                 for line in STOP_LINES}
     with_a_row = [line for line in STOP_LINES
                   if get_stop_signal_state(owner.id, tenant.id, line=line)]
@@ -312,8 +313,8 @@ def build_past_limit_report(tenant, customer, since=None, until=None):
             episodes.append(row)
 
     # Soft-floor marker rows — crossed/cleared only, never itemized (§F).
-    for seq, ep in _signal_episodes(tenant, owner, "soft_floor.crossed",
-                                    "soft_floor.cleared",
+    for seq, ep in _signal_episodes(tenant, owner, SoftFloorCrossed.EVENT_TYPE,
+                                    SoftFloorCleared.EVENT_TYPE,
                                     LINE_SOFT_FLOOR).items():
         if not _in_window(ep["tripped_at"], since, until):
             continue

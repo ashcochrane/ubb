@@ -9168,7 +9168,55 @@
         "properties": {
           "event_types": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "enum": [
+                    "usage.recorded",
+                    "usage.refunded",
+                    "refund.requested",
+                    "task.killed",
+                    "task.expired",
+                    "subtask.killed",
+                    "subtask.expired",
+                    "customer_spend_pool.threshold_reached",
+                    "wallet_policy.soft_floor_crossed",
+                    "wallet_policy.soft_floor_cleared",
+                    "customer.stopped",
+                    "customer.stop_cleared",
+                    "customer.suspended",
+                    "customer.deleted",
+                    "customer.unprofitable",
+                    "provider.cost_spike",
+                    "wallet.balance_low",
+                    "wallet.balance_critical",
+                    "wallet.balance_overage",
+                    "top_up.requested",
+                    "auto_top_up.requires_action",
+                    "withdrawal.requested",
+                    "credit_grant.expiring",
+                    "credit_grant.expired",
+                    "usage_invoice.pushed",
+                    "usage_invoice.push_failed_permanent",
+                    "referral.created",
+                    "referral.expired",
+                    "referral.reward_earned",
+                    "referral.payout_due",
+                    "invitation.created",
+                    "invitation.revoked",
+                    "member.activated",
+                    "sandbox.reset_completed",
+                    "tenant.api_key_created",
+                    "tenant.api_key_rotated",
+                    "tenant.api_key_revoked"
+                  ],
+                  "type": "string",
+                  "x-ubb-concept": "webhook_event_type"
+                },
+                {
+                  "const": "*",
+                  "type": "string"
+                }
+              ]
             },
             "minItems": 1,
             "title": "Event Types",
@@ -9239,7 +9287,55 @@
           },
           "event_types": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "enum": [
+                    "usage.recorded",
+                    "usage.refunded",
+                    "refund.requested",
+                    "task.killed",
+                    "task.expired",
+                    "subtask.killed",
+                    "subtask.expired",
+                    "customer_spend_pool.threshold_reached",
+                    "wallet_policy.soft_floor_crossed",
+                    "wallet_policy.soft_floor_cleared",
+                    "customer.stopped",
+                    "customer.stop_cleared",
+                    "customer.suspended",
+                    "customer.deleted",
+                    "customer.unprofitable",
+                    "provider.cost_spike",
+                    "wallet.balance_low",
+                    "wallet.balance_critical",
+                    "wallet.balance_overage",
+                    "top_up.requested",
+                    "auto_top_up.requires_action",
+                    "withdrawal.requested",
+                    "credit_grant.expiring",
+                    "credit_grant.expired",
+                    "usage_invoice.pushed",
+                    "usage_invoice.push_failed_permanent",
+                    "referral.created",
+                    "referral.expired",
+                    "referral.reward_earned",
+                    "referral.payout_due",
+                    "invitation.created",
+                    "invitation.revoked",
+                    "member.activated",
+                    "sandbox.reset_completed",
+                    "tenant.api_key_created",
+                    "tenant.api_key_rotated",
+                    "tenant.api_key_revoked"
+                  ],
+                  "type": "string",
+                  "x-ubb-concept": "webhook_event_type"
+                },
+                {
+                  "const": "*",
+                  "type": "string"
+                }
+              ]
             },
             "title": "Event Types",
             "type": "array"
@@ -9284,7 +9380,55 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "usage.recorded",
+                        "usage.refunded",
+                        "refund.requested",
+                        "task.killed",
+                        "task.expired",
+                        "subtask.killed",
+                        "subtask.expired",
+                        "customer_spend_pool.threshold_reached",
+                        "wallet_policy.soft_floor_crossed",
+                        "wallet_policy.soft_floor_cleared",
+                        "customer.stopped",
+                        "customer.stop_cleared",
+                        "customer.suspended",
+                        "customer.deleted",
+                        "customer.unprofitable",
+                        "provider.cost_spike",
+                        "wallet.balance_low",
+                        "wallet.balance_critical",
+                        "wallet.balance_overage",
+                        "top_up.requested",
+                        "auto_top_up.requires_action",
+                        "withdrawal.requested",
+                        "credit_grant.expiring",
+                        "credit_grant.expired",
+                        "usage_invoice.pushed",
+                        "usage_invoice.push_failed_permanent",
+                        "referral.created",
+                        "referral.expired",
+                        "referral.reward_earned",
+                        "referral.payout_due",
+                        "invitation.created",
+                        "invitation.revoked",
+                        "member.activated",
+                        "sandbox.reset_completed",
+                        "tenant.api_key_created",
+                        "tenant.api_key_rotated",
+                        "tenant.api_key_revoked"
+                      ],
+                      "type": "string",
+                      "x-ubb-concept": "webhook_event_type"
+                    },
+                    {
+                      "const": "*",
+                      "type": "string"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -9368,8 +9512,48 @@
             "type": "string"
           },
           "event_type": {
+            "enum": [
+              "usage.recorded",
+              "usage.refunded",
+              "refund.requested",
+              "task.killed",
+              "task.expired",
+              "subtask.killed",
+              "subtask.expired",
+              "customer_spend_pool.threshold_reached",
+              "wallet_policy.soft_floor_crossed",
+              "wallet_policy.soft_floor_cleared",
+              "customer.stopped",
+              "customer.stop_cleared",
+              "customer.suspended",
+              "customer.deleted",
+              "customer.unprofitable",
+              "provider.cost_spike",
+              "wallet.balance_low",
+              "wallet.balance_critical",
+              "wallet.balance_overage",
+              "top_up.requested",
+              "auto_top_up.requires_action",
+              "withdrawal.requested",
+              "credit_grant.expiring",
+              "credit_grant.expired",
+              "usage_invoice.pushed",
+              "usage_invoice.push_failed_permanent",
+              "referral.created",
+              "referral.expired",
+              "referral.reward_earned",
+              "referral.payout_due",
+              "invitation.created",
+              "invitation.revoked",
+              "member.activated",
+              "sandbox.reset_completed",
+              "tenant.api_key_created",
+              "tenant.api_key_rotated",
+              "tenant.api_key_revoked"
+            ],
             "title": "Event Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "webhook_event_type"
           },
           "id": {
             "title": "Id",
@@ -18396,134 +18580,6 @@
         "summary": "auto_top_up.requires_action delivery"
       }
     },
-    "budget.threshold_reached": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_budget_threshold_reached",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "cap_micros": {
-                        "default": 0,
-                        "title": "Cap Micros",
-                        "type": "integer"
-                      },
-                      "customer_id": {
-                        "title": "Customer Id",
-                        "type": "string"
-                      },
-                      "enforce_mode": {
-                        "default": "alert_only",
-                        "enum": [
-                          "alert_only",
-                          "blocking"
-                        ],
-                        "title": "Enforce Mode",
-                        "type": "string",
-                        "x-ubb-concept": "spend_pool_enforce_mode"
-                      },
-                      "level": {
-                        "default": 0,
-                        "title": "Level",
-                        "type": "integer"
-                      },
-                      "period": {
-                        "title": "Period",
-                        "type": "string"
-                      },
-                      "spend_micros": {
-                        "default": 0,
-                        "title": "Spend Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "customer_id",
-                      "period"
-                    ],
-                    "title": "BudgetThresholdReached",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "budget.threshold_reached",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "budget.threshold_reached delivery"
-      }
-    },
     "credit_grant.expired": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -18858,6 +18914,303 @@
         "summary": "customer.deleted delivery"
       }
     },
+    "customer.stop_cleared": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_stop_cleared",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``StopFired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the\n                 ``StopFired`` that opened it).\nreason_code / control_family / control_id\n               = WHICH stop line cleared, its family and the row that\n                 declares the control \u2014 the same three the opening half\n                 carried (#458). What CAUSED the clear (a balance that\n                 recovered, the hourly reconcile, an upward repair) is\n                 the ledger row's own bookkeeping (`clear_reason`) and\n                 no longer rides this event: a subscriber is told which\n                 stop lifted, which is the question the pair answers.\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
+                    "properties": {
+                      "balance_micros": {
+                        "default": 0,
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "title": "Control Id",
+                        "type": "string"
+                      },
+                      "episode_seq": {
+                        "default": 0,
+                        "title": "Episode Seq",
+                        "type": "integer"
+                      },
+                      "owner_id": {
+                        "title": "Owner Id",
+                        "type": "string"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "reason_code": {
+                        "title": "Reason Code",
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
+                      },
+                      "scope": {
+                        "default": "customer",
+                        "title": "Scope",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "owner_id",
+                      "reason_code",
+                      "control_family",
+                      "control_id"
+                    ],
+                    "title": "StopCleared",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer.stop_cleared",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer.stop_cleared delivery"
+      }
+    },
+    "customer.stopped": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_stopped",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nreason_code = WHICH customer-wide stop opened the episode \u2014 the wallet's\n              hard floor or the customer spend pool (#458, slice 6 \u00a79):\n              the ledger line's own word, one of the stop reasons the\n              registry names. Both controls open this same state, and\n              a subscriber is told which by reading, never by parsing.\ncontrol_family / control_id\n            = the family that word belongs to, and the row that declares\n              the control \u2014 the billing profile or tenant configuration\n              that carried the floor, the pool row \u2014 so every stop can\n              be routed to the control that caused it (\u00a715).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq\n              \u2014 per owner per line since #458, so a customer stopped by\n              its pool and by its floor at once holds two independent\n              episodes); the paired ``StopCleared`` carries the same id\n              and the same word, and the stop-context tagging / past-limit\n              report (#41) key on it.\n\nNAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 \u00a75): the\npublished name is the customer's, not the mechanism's, and it is held by\nreference to the generated vocabulary as every name in this module is.",
+                    "properties": {
+                      "control_family": {
+                        "enum": [
+                          "ceiling",
+                          "customer_spend_pool",
+                          "wallet_policy",
+                          "admission_control"
+                        ],
+                        "title": "Control Family",
+                        "type": "string",
+                        "x-ubb-concept": "control_family"
+                      },
+                      "control_id": {
+                        "title": "Control Id",
+                        "type": "string"
+                      },
+                      "episode_seq": {
+                        "default": 0,
+                        "title": "Episode Seq",
+                        "type": "integer"
+                      },
+                      "owner_id": {
+                        "title": "Owner Id",
+                        "type": "string"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "reason_code": {
+                        "title": "Reason Code",
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired"
+                        ]
+                      },
+                      "scope": {
+                        "default": "customer",
+                        "title": "Scope",
+                        "type": "string"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "owner_id",
+                      "reason_code",
+                      "control_family",
+                      "control_id"
+                    ],
+                    "title": "StopFired",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer.stopped",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer.stopped delivery"
+      }
+    },
     "customer.suspended": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -19082,6 +19435,134 @@
           }
         },
         "summary": "customer.unprofitable delivery"
+      }
+    },
+    "customer_spend_pool.threshold_reached": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_spend_pool_threshold_reached",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "properties": {
+                      "cap_micros": {
+                        "default": 0,
+                        "title": "Cap Micros",
+                        "type": "integer"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "enforce_mode": {
+                        "default": "alert_only",
+                        "enum": [
+                          "alert_only",
+                          "blocking"
+                        ],
+                        "title": "Enforce Mode",
+                        "type": "string",
+                        "x-ubb-concept": "spend_pool_enforce_mode"
+                      },
+                      "level": {
+                        "default": 0,
+                        "title": "Level",
+                        "type": "integer"
+                      },
+                      "period": {
+                        "title": "Period",
+                        "type": "string"
+                      },
+                      "spend_micros": {
+                        "default": 0,
+                        "title": "Spend Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "period"
+                    ],
+                    "title": "CustomerSpendPoolThresholdReached",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer_spend_pool.threshold_reached",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer_spend_pool.threshold_reached delivery"
       }
     },
     "invitation.created": {
@@ -20205,553 +20686,6 @@
           }
         },
         "summary": "sandbox.reset_completed delivery"
-      }
-    },
-    "soft_floor.cleared": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_soft_floor_cleared",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "description": "The soft floor's clearing half (#40, spec \u00a7F).\n\nFires when the owner's balance re-crosses the resolved soft line \u2014 from\nthe credit hook (``balance_recovered``) or the hourly reconcile\n(``reconciled``) \u2014 through the same transition guard, so the pair fires\nexactly once per episode. soft_min_balance_micros is None when the soft\nfloor was UNCONFIGURED while an episode was open (removing the line\nclears the state: there is no line left to be past).",
-                    "properties": {
-                      "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "episode_seq": {
-                        "default": 0,
-                        "title": "Episode Seq",
-                        "type": "integer"
-                      },
-                      "owner_id": {
-                        "title": "Owner Id",
-                        "type": "string"
-                      },
-                      "re_announcement": {
-                        "default": false,
-                        "title": "Re Announcement",
-                        "type": "boolean"
-                      },
-                      "reason": {
-                        "title": "Reason",
-                        "type": "string"
-                      },
-                      "soft_min_balance_micros": {
-                        "anyOf": [
-                          {
-                            "type": "integer"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ],
-                        "default": null,
-                        "title": "Soft Min Balance Micros"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "owner_id",
-                      "reason"
-                    ],
-                    "title": "SoftFloorCleared",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "soft_floor.cleared",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "soft_floor.cleared delivery"
-      }
-    },
-    "soft_floor.crossed": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_soft_floor_crossed",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "description": "The soft floor's crossing half (#40, spec \u00a7F) \u2014 the wind-down line.\n\nEmitted through the ``soft_floor`` family of the ``StopSignalState``\ntransition guard when the DURABLE drawdown lane sees the owner's wallet\ncross the resolved soft line \u2014 there is no fast Redis lane for the soft\nfamily (signal latency is outbox latency, accepted by #28). Never a stop:\nacks don't change, events are never tagged, nothing is suspended \u2014 the\ntenant's cue to refuse new top-level task starts while running work\ncompletes (the start-gate enforces the same line server-side with reason\n``soft_floor_reached``).\n\nowner_id = the billing owner (the end customer whose wallet crossed),\nmatching stop.fired. soft_min_balance_micros = the RESOLVED soft value\n(the line is -value). episode_seq = the soft_floor family's own episode\nsequence, independent of the hard floor's.",
-                    "properties": {
-                      "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "episode_seq": {
-                        "default": 0,
-                        "title": "Episode Seq",
-                        "type": "integer"
-                      },
-                      "owner_id": {
-                        "title": "Owner Id",
-                        "type": "string"
-                      },
-                      "re_announcement": {
-                        "default": false,
-                        "title": "Re Announcement",
-                        "type": "boolean"
-                      },
-                      "soft_min_balance_micros": {
-                        "default": 0,
-                        "title": "Soft Min Balance Micros",
-                        "type": "integer"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "owner_id"
-                    ],
-                    "title": "SoftFloorCrossed",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "soft_floor.crossed",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "soft_floor.crossed delivery"
-      }
-    },
-    "stop.cleared": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_stop_cleared",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``stop.fired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the stop.fired\n                 that opened it).\nreason_code / control_family / control_id\n               = WHICH stop line cleared, its family and the row that\n                 declares the control \u2014 the same three the opening half\n                 carried (#458). What CAUSED the clear (a balance that\n                 recovered, the hourly reconcile, an upward repair) is\n                 the ledger row's own bookkeeping (`clear_reason`) and\n                 no longer rides this event: a subscriber is told which\n                 stop lifted, which is the question the pair answers.\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
-                    "properties": {
-                      "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
-                      },
-                      "control_family": {
-                        "enum": [
-                          "ceiling",
-                          "customer_spend_pool",
-                          "wallet_policy",
-                          "admission_control"
-                        ],
-                        "title": "Control Family",
-                        "type": "string",
-                        "x-ubb-concept": "control_family"
-                      },
-                      "control_id": {
-                        "title": "Control Id",
-                        "type": "string"
-                      },
-                      "episode_seq": {
-                        "default": 0,
-                        "title": "Episode Seq",
-                        "type": "integer"
-                      },
-                      "owner_id": {
-                        "title": "Owner Id",
-                        "type": "string"
-                      },
-                      "re_announcement": {
-                        "default": false,
-                        "title": "Re Announcement",
-                        "type": "boolean"
-                      },
-                      "reason_code": {
-                        "title": "Reason Code",
-                        "type": "string",
-                        "x-ubb-concept": "reason_code",
-                        "x-ubb-known-values": [
-                          "task_cogs_ceiling",
-                          "customer_spend_pool",
-                          "parent_killed",
-                          "silence_window",
-                          "hard_floor",
-                          "absolute_deadline",
-                          "parent_expired"
-                        ]
-                      },
-                      "scope": {
-                        "default": "customer",
-                        "title": "Scope",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "owner_id",
-                      "reason_code",
-                      "control_family",
-                      "control_id"
-                    ],
-                    "title": "StopCleared",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "stop.cleared",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "stop.cleared delivery"
-      }
-    },
-    "stop.fired": {
-      "post": {
-        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
-        "operationId": "webhook_stop_fired",
-        "parameters": [
-          {
-            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
-            "in": "header",
-            "name": "X-UBB-Signature-V2",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
-            "in": "header",
-            "name": "X-UBB-Signature",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event type, duplicated from the body for routing.",
-            "in": "header",
-            "name": "X-UBB-Event-Type",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "data": {
-                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the billing owner the stop is keyed on (resolve_billing_owner).\nreason_code = WHICH customer-wide stop opened the episode \u2014 the wallet's\n              hard floor or the customer spend pool (#458, slice 6 \u00a79):\n              the ledger line's own word, one of the stop reasons the\n              registry names. Both controls open this same state, and\n              a subscriber is told which by reading, never by parsing.\ncontrol_family / control_id\n            = the family that word belongs to, and the row that declares\n              the control \u2014 the billing profile or tenant configuration\n              that carried the floor, the pool row \u2014 so every stop can\n              be routed to the control that caused it (\u00a715).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq\n              \u2014 per owner per line since #458, so a customer stopped by\n              its pool and by its floor at once holds two independent\n              episodes); the paired ``stop.cleared`` carries the same id\n              and the same word, and the stop-context tagging / past-limit\n              report (#41) key on it.",
-                    "properties": {
-                      "control_family": {
-                        "enum": [
-                          "ceiling",
-                          "customer_spend_pool",
-                          "wallet_policy",
-                          "admission_control"
-                        ],
-                        "title": "Control Family",
-                        "type": "string",
-                        "x-ubb-concept": "control_family"
-                      },
-                      "control_id": {
-                        "title": "Control Id",
-                        "type": "string"
-                      },
-                      "episode_seq": {
-                        "default": 0,
-                        "title": "Episode Seq",
-                        "type": "integer"
-                      },
-                      "owner_id": {
-                        "title": "Owner Id",
-                        "type": "string"
-                      },
-                      "re_announcement": {
-                        "default": false,
-                        "title": "Re Announcement",
-                        "type": "boolean"
-                      },
-                      "reason_code": {
-                        "title": "Reason Code",
-                        "type": "string",
-                        "x-ubb-concept": "reason_code",
-                        "x-ubb-known-values": [
-                          "task_cogs_ceiling",
-                          "customer_spend_pool",
-                          "parent_killed",
-                          "silence_window",
-                          "hard_floor",
-                          "absolute_deadline",
-                          "parent_expired"
-                        ]
-                      },
-                      "scope": {
-                        "default": "customer",
-                        "title": "Scope",
-                        "type": "string"
-                      },
-                      "tenant_id": {
-                        "title": "Tenant Id",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "tenant_id",
-                      "owner_id",
-                      "reason_code",
-                      "control_family",
-                      "control_id"
-                    ],
-                    "title": "StopFired",
-                    "type": "object"
-                  },
-                  "event_id": {
-                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
-                    "type": "string"
-                  },
-                  "event_type": {
-                    "const": "stop.fired",
-                    "type": "string"
-                  },
-                  "livemode": {
-                    "description": "False when the emitting tenant is a sandbox.",
-                    "type": "boolean"
-                  },
-                  "tenant_id": {
-                    "type": "string"
-                  },
-                  "timestamp": {
-                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "data",
-                  "event_id",
-                  "event_type",
-                  "livemode",
-                  "tenant_id",
-                  "timestamp"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "2XX": {
-            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
-          }
-        },
-        "summary": "stop.fired delivery"
       }
     },
     "subtask.expired": {
@@ -22907,6 +22841,256 @@
           }
         },
         "summary": "wallet.balance_overage delivery"
+      }
+    },
+    "wallet_policy.soft_floor_cleared": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_wallet_policy_soft_floor_cleared",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "The soft floor's clearing half (#40, spec \u00a7F).\n\nFires when the owner's balance re-crosses the resolved soft line \u2014 from\nthe credit hook (``balance_recovered``) or the hourly reconcile\n(``reconciled``) \u2014 through the same transition guard, so the pair fires\nexactly once per episode. soft_min_balance_micros is None when the soft\nfloor was UNCONFIGURED while an episode was open (removing the line\nclears the state: there is no line left to be past).",
+                    "properties": {
+                      "balance_micros": {
+                        "default": 0,
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "episode_seq": {
+                        "default": 0,
+                        "title": "Episode Seq",
+                        "type": "integer"
+                      },
+                      "owner_id": {
+                        "title": "Owner Id",
+                        "type": "string"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "title": "Reason",
+                        "type": "string"
+                      },
+                      "soft_min_balance_micros": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "title": "Soft Min Balance Micros"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "owner_id",
+                      "reason"
+                    ],
+                    "title": "SoftFloorCleared",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "wallet_policy.soft_floor_cleared",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "wallet_policy.soft_floor_cleared delivery"
+      }
+    },
+    "wallet_policy.soft_floor_crossed": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_wallet_policy_soft_floor_crossed",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "The soft floor's crossing half (#40, spec \u00a7F) \u2014 the wind-down line.\n\nEmitted through the ``soft_floor`` family of the ``StopSignalState``\ntransition guard when the DURABLE drawdown lane sees the owner's wallet\ncross the resolved soft line \u2014 there is no fast Redis lane for the soft\nfamily (signal latency is outbox latency, accepted by #28). Never a stop:\nacks don't change, events are never tagged, nothing is suspended \u2014 the\ntenant's cue to refuse new top-level task starts while running work\ncompletes (the start-gate enforces the same line server-side with reason\n``soft_floor_reached``).\n\nowner_id = the billing owner (the end customer whose wallet crossed),\nmatching ``StopFired``. soft_min_balance_micros = the RESOLVED soft value\n(the line is -value). episode_seq = the soft_floor family's own episode\nsequence, independent of the hard floor's.\n\nNAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 \u00a75): the\nsoft floor is a Wallet policy setting, so the wallet policy owns the\nevent's namespace, as it does the clearing half's.",
+                    "properties": {
+                      "balance_micros": {
+                        "default": 0,
+                        "title": "Balance Micros",
+                        "type": "integer"
+                      },
+                      "episode_seq": {
+                        "default": 0,
+                        "title": "Episode Seq",
+                        "type": "integer"
+                      },
+                      "owner_id": {
+                        "title": "Owner Id",
+                        "type": "string"
+                      },
+                      "re_announcement": {
+                        "default": false,
+                        "title": "Re Announcement",
+                        "type": "boolean"
+                      },
+                      "soft_min_balance_micros": {
+                        "default": 0,
+                        "title": "Soft Min Balance Micros",
+                        "type": "integer"
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "owner_id"
+                    ],
+                    "title": "SoftFloorCrossed",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "wallet_policy.soft_floor_crossed",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "wallet_policy.soft_floor_crossed delivery"
       }
     },
     "withdrawal.requested": {

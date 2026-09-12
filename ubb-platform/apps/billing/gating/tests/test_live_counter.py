@@ -28,6 +28,7 @@ from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import StopFired
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
 from apps.platform.work import reasons
@@ -262,7 +263,7 @@ class TestStopFlag:
     @patch("apps.platform.events.tasks.process_single_event")
     def test_pin2_failed_event_insert_rolls_the_transition_back(self, _m, monkeypatch):
         """Delivery pin 2 (#43, spec §A): the signal transition and its
-        outbox write are ONE savepoint. A failed stop.fired INSERT rolls the
+        outbox write are ONE savepoint. A failed customer.stopped INSERT rolls the
         StopSignalState transition (and the folded suspension) back with it —
         "signalled internally but never queued" is impossible by construction
         — while the ambient money path commits untouched: the usage event
@@ -282,7 +283,7 @@ class TestStopFlag:
         orig_create = OutboxEvent.objects.create
 
         def _create(**kwargs):
-            if kwargs.get("event_type") == "stop.fired":
+            if kwargs.get("event_type") == StopFired.EVENT_TYPE:
                 with connection.cursor() as cur:
                     cur.execute("SELECT 1/0")  # DataError; aborts the ambient tx
             return orig_create(**kwargs)
@@ -305,10 +306,10 @@ class TestStopFlag:
         assert OutboxEvent.objects.filter(
             event_type="usage.recorded", payload__event_id=str(res["event_id"])).exists()
         # The savepoint took the transition down WITH the failed insert: no
-        # ledger row, no stop.fired, no folded suspension — cleanly
+        # ledger row, no customer.stopped, no folded suspension — cleanly
         # un-signalled, never "transitioned but unqueued".
         assert not StopSignalState.objects.filter(owner=c).exists()
-        assert not OutboxEvent.objects.filter(event_type="stop.fired").exists()
+        assert not OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).exists()
         c.refresh_from_db()
         assert c.status == "active"
 
@@ -375,7 +376,7 @@ class TestStopPropagation:
     lane would have left the pub/sub publish, the one PUBLIC key-shaped name
     this module exposes, pinned by nothing but its own format test.
 
-    The pub/sub leg is the reason this class exists: the ``stop.fired``
+    The pub/sub leg is the reason this class exists: the ``customer.stopped``
     emission guard is pinned durably elsewhere (test_stop_resume_pins.py,
     test_patrol_pins.py), the publish is not.
     """
@@ -433,8 +434,8 @@ class TestStopPropagation:
             assert msg["data"].decode() == stop_line(t)
             assert pubsub.get_message(timeout=0.2) is None  # exactly one
 
-            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
-            event = OutboxEvent.objects.get(event_type="stop.fired")
+            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+            event = OutboxEvent.objects.get(event_type=StopFired.EVENT_TYPE)
             assert event.payload["owner_id"] == str(c.id)
             assert event.payload["reason_code"] == stop_line(t)
             assert event.payload["scope"] == "customer"
@@ -447,7 +448,7 @@ class TestStopPropagation:
         c = self._funded_owner(t)
         LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
-        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
 
         pubsub = self._subscribe(c.id)
         try:
@@ -456,7 +457,7 @@ class TestStopPropagation:
             out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
             assert out["stop"] is True
             assert pubsub.get_message(timeout=0.3) is None
-            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
         finally:
             pubsub.close()
 
@@ -466,7 +467,7 @@ class TestStopPropagation:
         A bare flag delete (a Redis flush / blind window, not a real recovery)
         re-arms the FAST LANE's pub/sub + flag, but the re-driven ledger
         transition loses (the episode is still open) — no duplicate
-        stop.fired. Closing the episode through the guard (as every real
+        customer.stopped. Closing the episode through the guard (as every real
         clearing path does) re-arms emission: the next crossing opens episode
         2 and fires again.
         """
@@ -477,7 +478,7 @@ class TestStopPropagation:
         c = self._funded_owner(t)
         LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
-        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
 
         Door.delete_stop(c.id)
 
@@ -488,7 +489,7 @@ class TestStopPropagation:
             msg = pubsub.get_message(timeout=1)
             assert msg is not None and msg["data"].decode() == stop_line(t)
             # Episode still open on the ledger -> the re-set lost the transition.
-            assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
         finally:
             pubsub.close()
 
@@ -497,7 +498,7 @@ class TestStopPropagation:
         Door.delete_stop(c.id)
         # ...so the next crossing opens episode 2 and emits exactly once more.
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
-        fired = OutboxEvent.objects.filter(event_type="stop.fired").order_by("created_at")
+        fired = OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).order_by("created_at")
         assert fired.count() == 2
         assert [e.payload["episode_seq"] for e in fired] == [1, 2]
 
@@ -514,7 +515,7 @@ class TestStopPropagation:
         assert out["stop"] is True
         # The outbox event (a separate best-effort side effect) still fires even
         # though pub/sub publish blew up.
-        assert OutboxEvent.objects.filter(event_type="stop.fired").count() == 1
+        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
 
 
 @pytest.mark.django_db

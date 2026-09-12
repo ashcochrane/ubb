@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,809 of 2,235 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,817 of 2,244 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2097,6 +2097,25 @@ measurement_key:
     # one schema (one reviewed ERR-level break, live in both directions).
     # Two ledger entries that named the retired endpoint's word and three
     # that named the 429-era refusal codes reached zero and were deleted.
+    #
+    # 2026-09-12, #464 (five webhook names move under their families, and
+    # the whole catalogue is held by reference): 1,809 of 2,235 -> 1,817 of
+    # 2,244 tracked files (`units` 44 files / 122 occurrences, unmoved: the
+    # new prose says "an event", "a subscription", "a delivery" and "the
+    # work list"). Net nine tracked files, eight of them swept: one
+    # migration (excluded — it spells the five retired names it renames
+    # from, so `historical-migrations` goes 259 -> 260 and the exclusion 426
+    # -> 427), the platform test module driving that migration through both
+    # tables and the events app's shared test helper it reads the old
+    # spellings through (the review pass's extraction), the SDK test module
+    # for the webhook catalogue, the console's feature binding of the event
+    # words, and FOUR generated SDK enum modules — one per contract node the
+    # closed catalogue was advertised on (the three subscription lists'
+    # items and the delivery response's event type). No module left. Twenty-seven ledger entries reached zero
+    # and were deleted: the five G8 debts, their fifteen G7 twins on the
+    # backend, the console and the contract, the last `openapi::budget`
+    # file, the catalogue's three G2 entries and its G4 twin, and the two G6
+    # humanisers.
 
     - term: units
       retired_as: >-

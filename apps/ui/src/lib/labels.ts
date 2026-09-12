@@ -42,6 +42,7 @@ import {
   TENANT_PRODUCT_VALUES,
   TRIGGER_SOURCE_KNOWN_VALUES,
   USAGE_EVENT_KIND_VALUES,
+  WEBHOOK_EVENT_TYPE_VALUES,
   type TenantProduct,
 } from "@/lib/vocabulary";
 
@@ -475,52 +476,13 @@ export const subscriptionStatusLabel = legacyLabelMap({
 export const planIntervalLabel = legacyLabelMap({ month: "Monthly", year: "Yearly" });
 
 // ---------------------------------------------------------------------------
-// Webhooks — the event-type catalog (37 types; "*" = all events)
+// Webhooks — the event-type catalogue, held BY REFERENCE (#464). The registry
+// names this file as the console's consumer of `webhook_event_type`, so the
+// list is the generated one under its existing export name (the
+// `TASK_STATUSES` shape); the WORDS are bound where they render, in
+// `features/webhooks/lib/event-type-label.ts` from the locale catalogue. The
+// humaniser that split a name on the dot and title-cased both halves is
+// deleted with its ledger entry: a subscriber's picker and the delivery
+// table now show the words UBB authored for each of the 37, never a guess.
 
-export const WEBHOOK_EVENT_TYPES = [
-  "auto_top_up.requires_action",
-  "budget.threshold_reached",
-  "credit_grant.expired",
-  "credit_grant.expiring",
-  "customer.deleted",
-  "customer.suspended",
-  "customer.unprofitable",
-  "invitation.created",
-  "invitation.revoked",
-  "member.activated",
-  "provider.cost_spike",
-  "referral.created",
-  "referral.expired",
-  "referral.payout_due",
-  "referral.reward_earned",
-  "refund.requested",
-  "sandbox.reset_completed",
-  "soft_floor.cleared",
-  "soft_floor.crossed",
-  "stop.cleared",
-  "stop.fired",
-  "subtask.expired",
-  "subtask.killed",
-  "task.expired",
-  "task.killed",
-  "tenant.api_key_created",
-  "tenant.api_key_revoked",
-  "tenant.api_key_rotated",
-  "top_up.requested",
-  "usage.recorded",
-  "usage.refunded",
-  "usage_invoice.push_failed_permanent",
-  "usage_invoice.pushed",
-  "wallet.balance_critical",
-  "wallet.balance_low",
-  "wallet.balance_overage",
-  "withdrawal.requested",
-] as const;
-
-/** "wallet.balance_low" → "Wallet — Balance low". */
-export function webhookEventTypeLabel(eventType: string): string {
-  if (eventType === "*") return "All events";
-  const [group, rest] = eventType.split(".", 2);
-  if (!rest) return humanize(eventType);
-  return `${humanize(group ?? "")} — ${humanize(rest)}`;
-}
+export const WEBHOOK_EVENT_TYPES = WEBHOOK_EVENT_TYPE_VALUES;

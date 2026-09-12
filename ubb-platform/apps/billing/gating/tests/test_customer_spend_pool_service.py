@@ -5,6 +5,7 @@ from apps.platform.customers.models import Customer
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import LiveCounter
+from apps.platform.events.schemas import CustomerSpendPoolThresholdReached
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE)
@@ -94,10 +95,10 @@ class TestCustomerSpendPoolService:
         c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
         self._usage(c, 850, 1)                 # durable event backs the spend
         CustomerSpendPoolService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
-        assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
+        assert OutboxEvent.objects.filter(event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE).count() == 2
         self._usage(c, 10, 2)
         CustomerSpendPoolService.record_usage_spend(c, 10)   # 860 — no new level
-        assert OutboxEvent.objects.filter(event_type="budget.threshold_reached").count() == 2
+        assert OutboxEvent.objects.filter(event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE).count() == 2
 
     def test_threshold_alert_dedup_on_repeated_emit(self):
         from apps.platform.events.models import OutboxEvent
@@ -106,4 +107,4 @@ class TestCustomerSpendPoolService:
         CustomerSpendPoolService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # crosses 50%
         CustomerSpendPoolService.emit_threshold_alerts(c, cfg, 0, 600, "2026-06")  # replay (e.g. reconciliation) — no dup
         assert OutboxEvent.objects.filter(
-            event_type="budget.threshold_reached", payload__level=50).count() == 1
+            event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE, payload__level=50).count() == 1

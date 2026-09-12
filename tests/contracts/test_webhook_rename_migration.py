@@ -1,10 +1,14 @@
-"""The rename migration's map agrees with the registry and the ledger (#222).
+"""The two 1:1 rename migrations' maps agree with the registry and the ledger
+(#222, #464).
 
-`0007_rename_thirteen_webhook_event_types.RENAMES` is a second encoding of names
-the registry already declares — necessarily so, because a Django migration must
-not import application code: it has to keep working when the code has moved on.
-The repository's rule for a second encoding is #203's, stated in gates/README.md:
-the two copies exist, and a contract test holds them to each other.
+`0007_rename_thirteen_webhook_event_types.RENAMES` and
+`0009_five_control_events_move_under_their_families.RENAMES` are each a second
+encoding of names the registry already declares — necessarily so, because a
+Django migration must not import application code: it has to keep working when
+the code has moved on. The repository's rule for a second encoding is #203's,
+stated in gates/README.md: the two copies exist, and a contract test holds them
+to each other. Both maps are held here to the same four rules, because they
+make the same promise: one name to one name, with an exact reverse.
 
 **What the platform-side tests cannot catch.** They check that no `RENAMES` key
 is still published and that every value is, which a *typo* satisfies for the
@@ -16,16 +20,19 @@ is not.
 
 **Why here.** The registry is YAML and the platform suite has no PyYAML
 (gates/README.md, deliberately); this suite has PyYAML and no Django. The
-migration is read with `ast` and never imported — #204's rule — so nothing here
-needs Django settings, a database, or the app registry.
+migrations are read with `ast` and never imported — #204's rule — so nothing
+here needs Django settings, a database, or the app registry.
 
 **The one-to-two map is NOT here**, and that was a decision rather than an
 oversight. `test_webhook_split_migration.py` beside this module holds the
 terminal-event split, whose map takes one retired name to TWO successors — a
 shape `test_the_map_is_one_to_one` below refuses BY DESIGN, because a 1:1 map
-is what lets THIS migration ship an exact reverse. Two maps with two shapes and
-two reverse guarantees are two modules; the readers they share are in
-`_helpers`.
+is what lets these two migrations ship an exact reverse. Two shapes and two
+reverse guarantees are two modules; the readers they share are in `_helpers`.
+
+**Together, the three migrations carry every retired name exactly once** — the
+last test, which only became true in #464, when the fifth rename left nothing
+retired that no migration carried.
 """
 
 import pytest
@@ -34,14 +41,17 @@ from _helpers import (
     LEDGER_PATH, module_literal, names_a_gate_still_owes,
     the_webhook_catalogue)
 
-MIGRATION_PATH = ("ubb-platform/apps/platform/events/migrations/"
-                  "0007_rename_thirteen_webhook_event_types.py")
+MIGRATIONS_DIR = "ubb-platform/apps/platform/events/migrations/"
+THE_THIRTEEN = MIGRATIONS_DIR + "0007_rename_thirteen_webhook_event_types.py"
+THE_FIVE = MIGRATIONS_DIR + "0009_five_control_events_move_under_their_families.py"
+THE_SPLIT = MIGRATIONS_DIR + "0008_the_two_terminal_task_events_become_four.py"
 GATE = "G8"
 
 
-@pytest.fixture(scope="module")
-def renames():
-    return module_literal(MIGRATION_PATH, "RENAMES")
+@pytest.fixture(scope="module", params=(THE_THIRTEEN, THE_FIVE),
+                ids=("0007", "0009"))
+def renames(request):
+    return module_literal(request.param, "RENAMES")
 
 
 @pytest.fixture(scope="module")
@@ -82,6 +92,10 @@ def test_the_migration_renames_nothing_the_ledger_still_owes(
     that moved a name the ledger still records would leave the entry excusing a
     violation that no longer exists — a suppression the ratchet cannot see,
     because removing an entry is always allowed and adding one back is not.
+
+    Vacuous in effect since #464 — the ledger owes no G8 debt — and kept: the
+    day one is seeded again, this is the test that says which migration may
+    not touch it.
     """
     both = sorted(set(renames) & still_owed)
     assert not both, (
@@ -93,3 +107,23 @@ def test_the_map_is_one_to_one(renames):
     migration ships a real reverse rather than a noop."""
     targets = list(renames.values())
     assert len(targets) == len(set(targets))
+
+
+def test_the_three_migrations_carry_every_retired_name_exactly_once(events):
+    """The registry retired twenty names; `0007`, `0008` and `0009` between
+    them carry all twenty, and no name is carried twice.
+
+    Only true since #464. A retired name no migration carries is a stored
+    row that will match nothing forever; a name two migrations carry is a
+    row rewritten twice, onto whichever ran last.
+    """
+    carried = [
+        *module_literal(THE_THIRTEEN, "RENAMES"),
+        *module_literal(THE_SPLIT, "SPLIT"),
+        *module_literal(THE_FIVE, "RENAMES"),
+    ]
+    assert len(carried) == len(set(carried)), "a name is carried twice"
+    assert set(carried) == set(events.retired_aliases), (
+        f"uncarried: {sorted(set(events.retired_aliases) - set(carried))}; "
+        f"carried but not retired: "
+        f"{sorted(set(carried) - set(events.retired_aliases))}")

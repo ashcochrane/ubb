@@ -379,7 +379,7 @@ class LiveCounter:
         endpoint); and, whenever the flag does not already name THIS line,
         the ``StopSignalService.drive_stop`` transition for the line — the
         #39 signal ledger, which on its WINNING transition emits
-        ``stop.fired`` (atomically with the ledger row) and performs the
+        ``customer.stopped`` (atomically with the ledger row) and performs the
         folded durable suspension. A crossing the durable lane already
         signaled loses the ledger transition here and emits nothing, so the
         two lanes together fire exactly one stop per episode.
@@ -545,7 +545,7 @@ class LiveCounter:
     def resume(owner_id, tenant, *, line, clear_reason, balance_micros=0) -> bool:
         """Lift a stop on ``line``: the clearing trio as ONE op (D2 of the
         #111 grilling) — drive the signal-ledger clearing transition for that
-        line (the winner emits ``stop.cleared`` with the episode it closes),
+        line (the winner emits ``customer.stop_cleared`` with the episode it closes),
         delete the fast-lane flag, and durably un-suspend behind the D15
         gate. The module owns HOW lifting works (this order, the durable
         gate); callers own WHEN and WHICH LINE — the credit hook on a balance
@@ -697,7 +697,7 @@ class LiveCounter:
         """#40 §F — drive the soft_floor clearing transition when the given
         balance sits at/above the resolved soft line, or the soft floor was
         UNCONFIGURED mid-episode (no line left to be past). Only the winning
-        transition emits soft_floor.cleared. A below-line balance is a no-op
+        transition emits wallet_policy.soft_floor_cleared. A below-line balance is a no-op
         both ways: the CREDIT path (this helper's only caller) deliberately
         has no SET power for the soft family — crossings are detected by the
         durable drawdown lane, backstopped by the hourly patrol's soft-SET

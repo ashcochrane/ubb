@@ -35,6 +35,43 @@ from core.vocabulary import (
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
     TASK_STATUS_EXPIRED,
     TASK_STATUS_KILLED,
+    WEBHOOK_EVENT_TYPE_AUTO_TOP_UP_REQUIRES_ACTION,
+    WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRED,
+    WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRING,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_DELETED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_SPEND_POOL_THRESHOLD_REACHED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_STOP_CLEARED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_SUSPENDED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_UNPROFITABLE,
+    WEBHOOK_EVENT_TYPE_INVITATION_CREATED,
+    WEBHOOK_EVENT_TYPE_INVITATION_REVOKED,
+    WEBHOOK_EVENT_TYPE_MEMBER_ACTIVATED,
+    WEBHOOK_EVENT_TYPE_PROVIDER_COST_SPIKE,
+    WEBHOOK_EVENT_TYPE_REFERRAL_CREATED,
+    WEBHOOK_EVENT_TYPE_REFERRAL_EXPIRED,
+    WEBHOOK_EVENT_TYPE_REFERRAL_PAYOUT_DUE,
+    WEBHOOK_EVENT_TYPE_REFERRAL_REWARD_EARNED,
+    WEBHOOK_EVENT_TYPE_REFUND_REQUESTED,
+    WEBHOOK_EVENT_TYPE_SANDBOX_RESET_COMPLETED,
+    WEBHOOK_EVENT_TYPE_SUBTASK_EXPIRED,
+    WEBHOOK_EVENT_TYPE_SUBTASK_KILLED,
+    WEBHOOK_EVENT_TYPE_TASK_EXPIRED,
+    WEBHOOK_EVENT_TYPE_TASK_KILLED,
+    WEBHOOK_EVENT_TYPE_TENANT_API_KEY_CREATED,
+    WEBHOOK_EVENT_TYPE_TENANT_API_KEY_REVOKED,
+    WEBHOOK_EVENT_TYPE_TENANT_API_KEY_ROTATED,
+    WEBHOOK_EVENT_TYPE_TOP_UP_REQUESTED,
+    WEBHOOK_EVENT_TYPE_USAGE_INVOICE_PUSHED,
+    WEBHOOK_EVENT_TYPE_USAGE_INVOICE_PUSH_FAILED_PERMANENT,
+    WEBHOOK_EVENT_TYPE_USAGE_RECORDED,
+    WEBHOOK_EVENT_TYPE_USAGE_REFUNDED,
+    WEBHOOK_EVENT_TYPE_WALLET_BALANCE_CRITICAL,
+    WEBHOOK_EVENT_TYPE_WALLET_BALANCE_LOW,
+    WEBHOOK_EVENT_TYPE_WALLET_BALANCE_OVERAGE,
+    WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CLEARED,
+    WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CROSSED,
+    WEBHOOK_EVENT_TYPE_WITHDRAWAL_REQUESTED,
 )
 
 #: A payload field naming the closed set that says whether a supplier cost is
@@ -177,7 +214,7 @@ def payload_schema_classes():
 
 @dataclass(frozen=True)
 class UsageRecorded(EventSchema):
-    EVENT_TYPE = "usage.recorded"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_USAGE_RECORDED
 
     tenant_id: str
     customer_id: str
@@ -258,7 +295,7 @@ class UsageRecorded(EventSchema):
 
 @dataclass(frozen=True)
 class UsageRefunded(EventSchema):
-    EVENT_TYPE = "usage.refunded"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_USAGE_REFUNDED
 
     tenant_id: str
     customer_id: str
@@ -269,7 +306,7 @@ class UsageRefunded(EventSchema):
 
 @dataclass(frozen=True)
 class ReferralRewardEarned(EventSchema):
-    EVENT_TYPE = "referral.reward_earned"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_REFERRAL_REWARD_EARNED
 
     tenant_id: str
     referral_id: str
@@ -280,7 +317,7 @@ class ReferralRewardEarned(EventSchema):
 
 @dataclass(frozen=True)
 class ReferralCreated(EventSchema):
-    EVENT_TYPE = "referral.created"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_REFERRAL_CREATED
 
     tenant_id: str
     referral_id: str
@@ -290,7 +327,7 @@ class ReferralCreated(EventSchema):
 
 @dataclass(frozen=True)
 class ReferralExpired(EventSchema):
-    EVENT_TYPE = "referral.expired"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_REFERRAL_EXPIRED
 
     tenant_id: str
     referral_id: str
@@ -300,7 +337,7 @@ class ReferralExpired(EventSchema):
 
 @dataclass(frozen=True)
 class RefundRequested(EventSchema):
-    EVENT_TYPE = "refund.requested"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_REFUND_REQUESTED
 
     tenant_id: str
     customer_id: str
@@ -312,14 +349,14 @@ class RefundRequested(EventSchema):
 
 @dataclass(frozen=True)
 class CustomerDeleted(EventSchema):
-    EVENT_TYPE = "customer.deleted"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_DELETED
     tenant_id: str
     customer_id: str
 
 
 @dataclass(frozen=True)
 class WithdrawalRequested(EventSchema):
-    EVENT_TYPE = "withdrawal.requested"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WITHDRAWAL_REQUESTED
     tenant_id: str
     customer_id: str
     amount_micros: int
@@ -329,7 +366,7 @@ class WithdrawalRequested(EventSchema):
 
 @dataclass(frozen=True)
 class ReferralPayoutDue(EventSchema):
-    EVENT_TYPE = "referral.payout_due"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_REFERRAL_PAYOUT_DUE
     tenant_id: str
     referral_id: str
     referrer_customer_id: str
@@ -340,7 +377,7 @@ class ReferralPayoutDue(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceLow(EventSchema):
-    EVENT_TYPE = "wallet.balance_low"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_LOW
     tenant_id: str
     customer_id: str
     balance_micros: int
@@ -350,7 +387,7 @@ class BalanceLow(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceCritical(EventSchema):
-    EVENT_TYPE = "wallet.balance_critical"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_CRITICAL
     tenant_id: str
     customer_id: str
     balance_micros: int
@@ -359,7 +396,7 @@ class BalanceCritical(EventSchema):
 
 @dataclass(frozen=True)
 class TopUpRequested(EventSchema):
-    EVENT_TYPE = "top_up.requested"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TOP_UP_REQUESTED
     tenant_id: str
     customer_id: str
     amount_micros: int
@@ -370,7 +407,7 @@ class TopUpRequested(EventSchema):
 
 @dataclass(frozen=True)
 class CustomerSuspended(EventSchema):
-    EVENT_TYPE = "customer.suspended"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_SUSPENDED
     tenant_id: str
     customer_id: str
     reason: str
@@ -379,7 +416,7 @@ class CustomerSuspended(EventSchema):
 
 @dataclass(frozen=True)
 class CustomerUnprofitable(EventSchema):
-    EVENT_TYPE = "customer.unprofitable"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_UNPROFITABLE
     tenant_id: str
     customer_id: str
     period_start: str
@@ -390,7 +427,7 @@ class CustomerUnprofitable(EventSchema):
 
 @dataclass(frozen=True)
 class ProviderCostSpike(EventSchema):
-    EVENT_TYPE = "provider.cost_spike"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_PROVIDER_COST_SPIKE
     tenant_id: str
     customer_id: str
     period_start: str
@@ -410,8 +447,8 @@ class ProviderCostSpike(EventSchema):
 
 
 @dataclass(frozen=True)
-class BudgetThresholdReached(EventSchema):
-    EVENT_TYPE = "budget.threshold_reached"
+class CustomerSpendPoolThresholdReached(EventSchema):
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_SPEND_POOL_THRESHOLD_REACHED
     tenant_id: str
     customer_id: str
     period: str
@@ -423,7 +460,7 @@ class BudgetThresholdReached(EventSchema):
 
 @dataclass(frozen=True)
 class UsageInvoicePushed(EventSchema):
-    EVENT_TYPE = "usage_invoice.pushed"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_USAGE_INVOICE_PUSHED
     tenant_id: str
     customer_id: str
     period_start: str
@@ -435,7 +472,7 @@ class UsageInvoicePushed(EventSchema):
 
 @dataclass(frozen=True)
 class UsageInvoicePushFailedPermanent(EventSchema):
-    EVENT_TYPE = "usage_invoice.push_failed_permanent"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_USAGE_INVOICE_PUSH_FAILED_PERMANENT
     tenant_id: str
     customer_id: str
     period_start: str
@@ -446,7 +483,7 @@ class UsageInvoicePushFailedPermanent(EventSchema):
 
 @dataclass(frozen=True)
 class AutoTopUpRequiresAction(EventSchema):
-    EVENT_TYPE = "auto_top_up.requires_action"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_AUTO_TOP_UP_REQUIRES_ACTION
     tenant_id: str
     customer_id: str
     attempt_id: str
@@ -456,7 +493,7 @@ class AutoTopUpRequiresAction(EventSchema):
 
 @dataclass(frozen=True)
 class BalanceOverage(EventSchema):
-    EVENT_TYPE = "wallet.balance_overage"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_OVERAGE
     tenant_id: str
     customer_id: str
     balance_micros: int = 0
@@ -466,7 +503,7 @@ class BalanceOverage(EventSchema):
 
 @dataclass(frozen=True)
 class CreditGrantExpiring(EventSchema):
-    EVENT_TYPE = "credit_grant.expiring"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRING
     tenant_id: str
     customer_id: str
     grant_id: str
@@ -477,14 +514,14 @@ class CreditGrantExpiring(EventSchema):
 
 @dataclass(frozen=True)
 class SandboxResetCompleted(EventSchema):
-    EVENT_TYPE = "sandbox.reset_completed"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_SANDBOX_RESET_COMPLETED
     tenant_id: str
     keep_config: bool = True
 
 
 @dataclass(frozen=True)
 class TenantApiKeyCreated(EventSchema):
-    EVENT_TYPE = "tenant.api_key_created"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TENANT_API_KEY_CREATED
     tenant_id: str
     api_key_id: str
     key_prefix: str = ""
@@ -493,7 +530,7 @@ class TenantApiKeyCreated(EventSchema):
 
 @dataclass(frozen=True)
 class TenantApiKeyRotated(EventSchema):
-    EVENT_TYPE = "tenant.api_key_rotated"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TENANT_API_KEY_ROTATED
     tenant_id: str
     old_api_key_id: str
     new_api_key_id: str
@@ -503,7 +540,7 @@ class TenantApiKeyRotated(EventSchema):
 
 @dataclass(frozen=True)
 class TenantApiKeyRevoked(EventSchema):
-    EVENT_TYPE = "tenant.api_key_revoked"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TENANT_API_KEY_REVOKED
     tenant_id: str
     api_key_id: str
     key_prefix: str = ""
@@ -512,7 +549,7 @@ class TenantApiKeyRevoked(EventSchema):
 
 @dataclass(frozen=True)
 class CreditGrantExpired(EventSchema):
-    EVENT_TYPE = "credit_grant.expired"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRED
     tenant_id: str
     customer_id: str
     grant_id: str
@@ -633,7 +670,7 @@ class TaskKilled(_TerminalStop, EventSchema):
     can never double-emit. A stop is a signal point and not a wall: events
     arriving after it still land, bill, and count into both totals.
     """
-    EVENT_TYPE = "task.killed"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TASK_KILLED
     task_id: str = ""
 
 
@@ -648,7 +685,7 @@ class TaskExpired(_TerminalStop, EventSchema):
     engineer about spend wants the one above and not this one, and a
     subscriber cleaning up after crashed workers wants this one and not that.
     """
-    EVENT_TYPE = "task.expired"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_TASK_EXPIRED
     task_id: str = ""
 
 
@@ -666,7 +703,7 @@ class SubtaskKilled(_TerminalStop, EventSchema):
     parent whose totals its spend rolls up into. The totals and the limit are
     the child's own.
     """
-    EVENT_TYPE = "subtask.killed"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_SUBTASK_KILLED
     subtask_id: str = ""
     parent_task_id: str = ""
 
@@ -679,7 +716,7 @@ class SubtaskExpired(_TerminalStop, EventSchema):
     splits exactly as the whole unit does — and the ids and the altitude rule
     are `SubtaskKilled`'s.
     """
-    EVENT_TYPE = "subtask.expired"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_SUBTASK_EXPIRED
     subtask_id: str = ""
     parent_task_id: str = ""
 
@@ -752,11 +789,15 @@ class StopFired(EventSchema):
     episode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq
                   — per owner per line since #458, so a customer stopped by
                   its pool and by its floor at once holds two independent
-                  episodes); the paired ``stop.cleared`` carries the same id
+                  episodes); the paired ``StopCleared`` carries the same id
                   and the same word, and the stop-context tagging / past-limit
                   report (#41) key on it.
+
+    NAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 §5): the
+    published name is the customer's, not the mechanism's, and it is held by
+    reference to the generated vocabulary as every name in this module is.
     """
-    EVENT_TYPE = "stop.fired"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED
     tenant_id: str
     owner_id: str
     reason_code: ReasonCode
@@ -779,11 +820,11 @@ class StopCleared(EventSchema):
     no ack latch (decision 4) — from any clearing path: the ``credit()`` hook
     (fast lane, with a durable-balance fallback when Redis is blind) or the
     hourly reconcile. All paths route through the same ``StopSignalState``
-    transition guard as ``stop.fired``; a clear that didn't win the transition
+    transition guard as ``StopFired``; a clear that didn't win the transition
     emits nothing, so resume fires exactly once per episode.
 
-    episode_seq    = the episode this clear closes (pairs with the stop.fired
-                     that opened it).
+    episode_seq    = the episode this clear closes (pairs with the
+                     ``StopFired`` that opened it).
     reason_code / control_family / control_id
                    = WHICH stop line cleared, its family and the row that
                      declares the control — the same three the opening half
@@ -796,7 +837,7 @@ class StopCleared(EventSchema):
                      (live counter on the fast path, durable balance on the
                      fallback/reconcile paths; postpaid passes 0).
     """
-    EVENT_TYPE = "stop.cleared"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOP_CLEARED
     tenant_id: str
     owner_id: str
     reason_code: ReasonCode
@@ -824,11 +865,15 @@ class SoftFloorCrossed(EventSchema):
     ``soft_floor_reached``).
 
     owner_id = the billing owner (the end customer whose wallet crossed),
-    matching stop.fired. soft_min_balance_micros = the RESOLVED soft value
+    matching ``StopFired``. soft_min_balance_micros = the RESOLVED soft value
     (the line is -value). episode_seq = the soft_floor family's own episode
     sequence, independent of the hard floor's.
+
+    NAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 §5): the
+    soft floor is a Wallet policy setting, so the wallet policy owns the
+    event's namespace, as it does the clearing half's.
     """
-    EVENT_TYPE = "soft_floor.crossed"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CROSSED
     tenant_id: str
     owner_id: str
     balance_micros: int = 0
@@ -850,7 +895,7 @@ class SoftFloorCleared(EventSchema):
     floor was UNCONFIGURED while an episode was open (removing the line
     clears the state: there is no line left to be past).
     """
-    EVENT_TYPE = "soft_floor.cleared"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CLEARED
     tenant_id: str
     owner_id: str
     reason: str
@@ -869,7 +914,7 @@ class SoftFloorCleared(EventSchema):
 class InvitationCreated(EventSchema):
     """An Admin invited a teammate. A pending Member is created alongside; the
     invitee activates it on their first Clerk-verified login (member.activated)."""
-    EVENT_TYPE = "invitation.created"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_INVITATION_CREATED
     tenant_id: str
     invitation_id: str
     member_id: str
@@ -881,7 +926,7 @@ class InvitationCreated(EventSchema):
 class InvitationRevoked(EventSchema):
     """An Admin cancelled a still-pending invitation; its pending Member is
     dropped and can no longer activate."""
-    EVENT_TYPE = "invitation.revoked"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_INVITATION_REVOKED
     tenant_id: str
     invitation_id: str
     email: str = ""
@@ -891,7 +936,7 @@ class InvitationRevoked(EventSchema):
 class MemberActivated(EventSchema):
     """A pending Member joined — matched by email on first Clerk login and
     bound from then on to the Clerk user id."""
-    EVENT_TYPE = "member.activated"
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_MEMBER_ACTIVATED
     tenant_id: str
     member_id: str
     email: str = ""

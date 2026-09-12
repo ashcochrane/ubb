@@ -20,11 +20,12 @@ from apps.platform.events.announcements import (
     announcement_status,
 )
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import StopFired
 
 
 def _row(status):
     return OutboxEvent.objects.create(
-        event_type="stop.fired", payload={}, tenant_id=uuid.uuid4(),
+        event_type=StopFired.EVENT_TYPE, payload={}, tenant_id=uuid.uuid4(),
         status=status)
 
 

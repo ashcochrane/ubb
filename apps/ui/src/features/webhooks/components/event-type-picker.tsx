@@ -3,6 +3,7 @@ import * as React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import type { WebhookEventType } from "@/lib/vocabulary";
 
 import { groupedEventTypes } from "../lib/event-groups";
 
@@ -22,15 +23,15 @@ export function EventTypePicker({
 }: {
   allEvents: boolean;
   onAllEventsChange: (allEvents: boolean) => void;
-  selected: string[];
-  onSelectedChange: (next: string[]) => void;
+  selected: WebhookEventType[];
+  onSelectedChange: (next: WebhookEventType[]) => void;
   error?: string;
 }) {
   const allEventsId = React.useId();
   const idPrefix = React.useId();
-  const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+  const selectedSet = React.useMemo(() => new Set<string>(selected), [selected]);
 
-  const toggle = (eventType: string, checked: boolean) => {
+  const toggle = (eventType: WebhookEventType, checked: boolean) => {
     onSelectedChange(
       checked
         ? [...selected, eventType]

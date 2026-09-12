@@ -689,6 +689,64 @@ class TestWebhookConfigAPI:
         assert "usage.recieved" in body["detail"]
         assert TenantWebhookConfig.objects.count() == 0
 
+    def test_create_rejects_a_name_the_catalogue_retired(self):
+        """A subscription naming an unpublished event is refused at
+        configuration with a validation problem (#464): the five control
+        events moved under their families, and a subscriber asking for the
+        mechanism's old name gets the refusal rather than a subscription that
+        would match nothing forever. The retired name is read off the
+        migration that carried it, never spelled."""
+        from apps.platform.events.schemas import StopFired
+        from apps.platform.events.tests._helpers import as_it_was_spelled
+
+        retired = as_it_was_spelled(StopFired.EVENT_TYPE)
+        assert retired != StopFired.EVENT_TYPE
+        resp = self.client.post(
+            "/api/v1/webhooks/configs",
+            data=json.dumps(
+                {
+                    "url": "https://example.com/hook",
+                    "secret": "a" * 32,
+                    "event_types": [StopFired.EVENT_TYPE, retired],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        assert resp.status_code == 422
+        assert resp["Content-Type"] == "application/problem+json"
+        body = resp.json()
+        assert body["code"] == "validation_error"
+        assert retired in body["detail"]
+        assert StopFired.EVENT_TYPE not in body["detail"]
+        assert TenantWebhookConfig.objects.count() == 0
+
+    def test_the_contracts_selector_union_spells_the_catalogues_wildcard(self):
+        """The subscription schemas' `items` are a two-member union — a
+        catalogue name, or the ONE selector that is not a name — and the
+        selector member is the catalogue's own `WILDCARD`, rendered as a
+        `const` beside the marked name member (#464). Held here so the
+        `Literal` in the route module and the constant the validator admits
+        cannot drift apart."""
+        from typing import Literal, get_args
+
+        from apps.platform.events.api.webhook_endpoints import (
+            EventSelector, WebhookConfigCreateRequest,
+            WebhookConfigResponse, WebhookConfigUpdateRequest)
+        from apps.platform.events.catalog import WILDCARD
+
+        literals = [member for member in get_args(EventSelector)
+                    if getattr(member, "__origin__", None) is Literal]
+        assert [get_args(member) for member in literals] == [(WILDCARD,)]
+
+        for schema in (WebhookConfigCreateRequest, WebhookConfigResponse):
+            items = schema.model_json_schema()["properties"]["event_types"]["items"]
+            assert {"const": WILDCARD, "type": "string"} in items["anyOf"]
+            assert {"type": "string", "x-ubb-concept": "webhook_event_type"} in items["anyOf"]
+        nullable = WebhookConfigUpdateRequest.model_json_schema()[
+            "properties"]["event_types"]["anyOf"]
+        assert {"const": WILDCARD, "type": "string"} in nullable[0]["items"]["anyOf"]
+
     def test_create_rejects_non_https_url(self):
         """A non-https URL is semantic validation -> 422 validation_error."""
         resp = self.client.post(

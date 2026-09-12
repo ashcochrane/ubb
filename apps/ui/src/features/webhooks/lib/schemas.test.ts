@@ -66,11 +66,11 @@ describe("createEndpointSchema", () => {
   });
 
   it("maps the all-events toggle to the '*' selector", () => {
-    expect(toEventTypesPayload({ allEvents: true, eventTypes: ["stop.fired"] })).toEqual([
+    expect(toEventTypesPayload({ allEvents: true, eventTypes: ["customer.stopped"] })).toEqual([
       "*",
     ]);
-    expect(toEventTypesPayload({ allEvents: false, eventTypes: ["stop.fired"] })).toEqual(
-      ["stop.fired"],
+    expect(toEventTypesPayload({ allEvents: false, eventTypes: ["customer.stopped"] })).toEqual(
+      ["customer.stopped"],
     );
   });
 });
@@ -111,7 +111,9 @@ describe("groupedEventTypes", () => {
     expect(values).not.toContain("*");
     const wallet = groups.find((group) => group.key === "wallet");
     expect(wallet?.label).toBe("Wallet");
-    expect(wallet?.options.map((o) => o.label)).toContain("Balance low");
+    // The catalogue's wording for the event, whole (#464) — never a suffix
+    // humanised off the name.
+    expect(wallet?.options.map((o) => o.label)).toContain("Wallet balance low");
   });
 
   // #222: the namespace belongs to the thing whose state changed, so the
@@ -128,7 +130,10 @@ describe("groupedEventTypes", () => {
     const optionsOf = (key: string) =>
       groups.find((group) => group.key === key)?.options.map((o) => o.value) ?? [];
 
-    expect(optionsOf("wallet")).toEqual([
+    // Membership, not order: since #464 the picker walks the REGISTRY's
+    // declaration order rather than an alphabetical console list, and the
+    // registry orders a group by what it says about it, not by spelling.
+    expect([...optionsOf("wallet")].sort()).toEqual([
       "wallet.balance_critical",
       "wallet.balance_low",
       "wallet.balance_overage",
@@ -136,10 +141,40 @@ describe("groupedEventTypes", () => {
     expect(optionsOf("customer")).toContain("customer.suspended");
     expect(optionsOf("top_up")).toEqual(["top_up.requested"]);
     expect(optionsOf("withdrawal")).toEqual(["withdrawal.requested"]);
-    expect(optionsOf("credit_grant")).toEqual([
+    expect([...optionsOf("credit_grant")].sort()).toEqual([
       "credit_grant.expired",
       "credit_grant.expiring",
     ]);
+  });
+
+  it("puts the five moved control events under the customer and the two families", () => {
+    // #464: the mechanism namespaces are gone, and each event sits under the
+    // owner whose state it announces (ADR-0006 §5).
+    const groups = groupedEventTypes();
+    const optionsOf = (key: string) =>
+      groups.find((group) => group.key === key)?.options.map((o) => o.value) ?? [];
+    const keys = groups.map((group) => group.key);
+
+    expect(optionsOf("customer")).toEqual(
+      expect.arrayContaining(["customer.stopped", "customer.stop_cleared"]),
+    );
+    expect([...optionsOf("wallet_policy")].sort()).toEqual([
+      "wallet_policy.soft_floor_cleared",
+      "wallet_policy.soft_floor_crossed",
+    ]);
+    expect(optionsOf("customer_spend_pool")).toEqual([
+      "customer_spend_pool.threshold_reached",
+    ]);
+    for (const mechanism of ["stop", "soft_floor", "budget"]) {
+      expect(keys).not.toContain(mechanism);
+    }
+    // The two families head their groups under the catalogue's family words.
+    expect(groups.find((group) => group.key === "wallet_policy")?.label).toBe(
+      "Wallet policy",
+    );
+    expect(groups.find((group) => group.key === "customer_spend_pool")?.label).toBe(
+      "Customer spend pool",
+    );
   });
 
   it("splits the old margin group across the subjects the alerts are about", () => {
@@ -152,9 +187,11 @@ describe("groupedEventTypes", () => {
   });
 
   it("gives every regrouped event wording rather than a placeholder", () => {
-    // #155 §9.2 — a value must never reach a tenant as a blank. `humanize`
-    // answers "—" for the empty string, so the placeholder is what a name with
-    // no wording actually looks like here, and both are refused.
+    // #155 §9.2 — a value must never reach a tenant as a blank. The strict
+    // lookup answers "—" for an absent value and a bracketed development
+    // error for a declared one with no wording, so a blank or the placeholder
+    // is what a name with no wording would look like here, and both are
+    // refused (the headings are console-owned copy, total over the owners).
     for (const group of groupedEventTypes()) {
       expect(group.label).not.toBe("");
       expect(group.label).not.toBe("—");

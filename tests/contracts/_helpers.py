@@ -68,9 +68,20 @@ def events_whose_payload_declares(field):
     read the diff instead of a stale literal quietly still passing.
 
     Read with :mod:`ast` and never imported — this suite has no Django, which
-    is the same rule the rename migration's own contract test states.
+    is the same rule the rename migration's own contract test states. Since
+    #464 every payload class takes its name BY REFERENCE from the generated
+    vocabulary, so the class → name map is the catalogue gate's own reader,
+    which resolves an imported constant through the registry's rendering of
+    its values (`tools.webhook_catalogue`); a second walk here that read only
+    literals would silently answer the empty set.
     """
     import ast
+
+    from tools.webhook_catalogue import assess
+
+    catalogue, _ = assess(REPO_ROOT)
+    assert catalogue is not None, "the catalogue could not be read at all"
+    names = {event.declaring_class: event.name for event in catalogue.events}
 
     source = (REPO_ROOT / PAYLOAD_SCHEMAS).read_text(encoding="utf-8")
     classes = {node.name: node for node in ast.parse(source).body
@@ -97,14 +108,8 @@ def events_whose_payload_declares(field):
                    for base in node.bases)
 
     found = set()
-    for name, node in classes.items():
-        event_type = None
-        for statement in node.body:
-            if (isinstance(statement, ast.Assign)
-                    and any(isinstance(t, ast.Name) and t.id == "EVENT_TYPE"
-                            for t in statement.targets)
-                    and isinstance(statement.value, ast.Constant)):
-                event_type = statement.value.value
+    for name in classes:
+        event_type = names.get(name)
         if event_type and declares(name):
             found.add(event_type)
     return found

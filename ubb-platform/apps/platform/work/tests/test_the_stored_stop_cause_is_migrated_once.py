@@ -26,6 +26,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     CustomerSuspended, RefundRequested, StopCleared, StopFired, SubtaskExpired,
     SubtaskKilled, TaskExpired, TaskKilled)
+from apps.platform.events.tests._helpers import as_it_was_spelled
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
@@ -35,6 +36,13 @@ from core.vocabulary import (
 
 MIGRATION = importlib.import_module(
     "apps.platform.work.migrations.0026_a_stop_says_which_bound_was_reached")
+#: `events/0009` later renamed the customer stop pair this one reads by name
+#: (#464, slice 6 §16). `0026` is frozen history: `PAYLOAD_CAUSE_EVENTS`
+#: names the pair's opening half as it was spelled when it ran, and the cases
+#: below hold that set — and plant their rows — under the spelling `0009`'s
+#: reverse gives for today's constants (`as_it_was_spelled`, the events
+#: app's shared reader), rather than under constants that now name the
+#: successors.
 
 
 def retired_spellings_of(current):
@@ -277,9 +285,9 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self.assertEqual(self._payload(row)["reason"], reasons.SILENCE_WINDOW)
 
     def test_the_customer_stop_pair_splits_by_the_tenants_mode(self):
-        pre = self._row(self.prepaid, StopFired.EVENT_TYPE,
+        pre = self._row(self.prepaid, as_it_was_spelled(StopFired.EVENT_TYPE),
                         reason=MIGRATION.CUSTOMER_WIDE, owner_id="o1")
-        post = self._row(self.postpaid, StopFired.EVENT_TYPE,
+        post = self._row(self.postpaid, as_it_was_spelled(StopFired.EVENT_TYPE),
                          reason=MIGRATION.CUSTOMER_WIDE, owner_id="o2")
 
         self._forward()
@@ -303,11 +311,17 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
 
     def test_the_events_it_reads_are_exactly_the_ones_that_carry_a_cause(self):
         """Held to the producers: the four terminal stop events, the customer
-        stop's opening half and the suspension event, and nothing else."""
+        stop's opening half and the suspension event, and nothing else — the
+        stop's half as it was spelled when `0026` ran, since `events/0009`
+        renamed it afterwards and a frozen migration keeps its spelling."""
         self.assertEqual(set(MIGRATION.PAYLOAD_CAUSE_EVENTS), {
             TaskKilled.EVENT_TYPE, TaskExpired.EVENT_TYPE,
             SubtaskKilled.EVENT_TYPE, SubtaskExpired.EVENT_TYPE,
-            StopFired.EVENT_TYPE, CustomerSuspended.EVENT_TYPE})
+            as_it_was_spelled(StopFired.EVENT_TYPE),
+            CustomerSuspended.EVENT_TYPE})
+        # And the derivation is live: the stop's half WAS renamed.
+        self.assertNotEqual(as_it_was_spelled(StopFired.EVENT_TYPE),
+                            StopFired.EVENT_TYPE)
 
     def test_a_free_text_reason_on_another_event_is_left_as_written(self):
         """`reason` is free text on a refund, and a refund whose reason
@@ -325,7 +339,8 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self._row(self.prepaid, "usage.recorded", event_id="e1")
         self._row(self.prepaid, TaskKilled.EVENT_TYPE,
                   reason_code=reasons.TASK_COGS_CEILING)
-        self._row(self.prepaid, StopCleared.EVENT_TYPE, reason="reconciled")
+        self._row(self.prepaid, as_it_was_spelled(StopCleared.EVENT_TYPE),
+                  reason="reconciled")
         table = OutboxEvent._meta.db_table
 
         with CaptureQueriesContext(connection) as queries:

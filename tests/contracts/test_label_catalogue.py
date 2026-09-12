@@ -129,9 +129,12 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
     "apps/ui/src/features/settings/lib/settings.ts",
     "apps/ui/src/features/webhooks/api/mock.ts",
-    "apps/ui/src/features/webhooks/components/deliveries-table.tsx",
-    "apps/ui/src/features/webhooks/components/webhook-config-table.tsx",
-    "apps/ui/src/features/webhooks/lib/event-groups.ts",
+    # `deliveries-table.tsx`, `webhook-config-table.tsx` and `event-groups.ts`
+    # LEFT IN #464: their one word — an event's name — came from
+    # `webhookEventTypeLabel`, deleted with its ledger entry; the two tables
+    # now bind `features/webhooks/lib/event-type-label.ts` and the picker's
+    # groups derive from `@/lib/vocabulary` directly. Conversions, not
+    # deletions: the files still exist, they just no longer reach the adapter.
     "apps/ui/src/features/webhooks/lib/schemas.test.ts",
     "apps/ui/src/hooks/use-current-role.ts",
 )
@@ -451,14 +454,21 @@ def test_the_map_constructor_name_appears_nowhere_else():
 #: that the ledger IS the allowlist, and a constant restating live entries would
 #: be the drifting copy ADR-0006 §4 warns about. These entries are not live.
 #: They record a fact that is now permanent, which is exactly the class of thing
-#: a literal may hold: two debts were paid, and neither side may quietly undo it.
-#: A slice that pays one of the nine still outstanding adds its line here. The
-#: closure below is what makes that an obligation rather than a courtesy.
+#: a literal may hold: three debts were paid, and neither side may quietly undo
+#: it. A slice that pays one of the eight still outstanding adds its line here.
+#: The closure below is what makes that an obligation rather than a courtesy.
 PAID_HUMANISING_DEBTS = {
     "g6-humanises-test-event-response":
         "apps/ui/src/features/developers/components/test-event-response.tsx::humanize",
     "g6-humanises-metadata-tree":
         "apps/ui/src/features/settings/components/metadata-tree.tsx::humanize",
+    # #464: the subscription picker's groups derive from the registry's
+    # namespaces and their words from the catalogue (the families' own words)
+    # and console-owned headings total over the owner union; the humaniser
+    # that title-cased both halves of every event name is gone with the
+    # legacy adapter's `webhookEventTypeLabel`.
+    "g6-humanises-event-groups":
+        "apps/ui/src/features/webhooks/lib/event-groups.ts::humanize",
 }
 
 #: How many files imported the humaniser when #210 installed this gate. Not a

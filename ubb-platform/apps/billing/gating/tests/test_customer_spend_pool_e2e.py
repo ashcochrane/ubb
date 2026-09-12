@@ -10,7 +10,7 @@ from django.core.cache import cache
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import UsageRecorded
+from apps.platform.events.schemas import CustomerSpendPoolThresholdReached, UsageRecorded
 from apps.billing.wallets.models import Wallet
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
@@ -51,7 +51,7 @@ class TestCustomerSpendPoolEndToEnd:
         self._draw(tenant, customer, 600_000, 1)
         assert CustomerSpendPoolService.current_spend(tenant.id, customer.id) == 600_000
         assert OutboxEvent.objects.filter(
-            event_type="budget.threshold_reached", payload__level=50).count() == 1
+            event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE, payload__level=50).count() == 1
         assert RiskService.check(customer)["allowed"] is True  # alert_only never blocks
 
         # --- flip to blocking (config-only), drive over the cap → gate blocks ---

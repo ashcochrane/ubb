@@ -8,8 +8,10 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.webhook_config_response_event_types_item_type_0 import WebhookConfigResponseEventTypesItemType0
 from ..types import UNSET, Unset
 from typing import cast
+from typing import Literal, cast
 
 
 
@@ -25,7 +27,7 @@ class WebhookConfigResponse:
     """ 
         Attributes:
             created_at (str):
-            event_types (list[str]):
+            event_types (list[Literal['*'] | WebhookConfigResponseEventTypesItemType0]):
             id (str):
             is_active (bool):
             url (str):
@@ -33,7 +35,7 @@ class WebhookConfigResponse:
      """
 
     created_at: str
-    event_types: list[str]
+    event_types: list[Literal['*'] | WebhookConfigResponseEventTypesItemType0]
     id: str
     is_active: bool
     url: str
@@ -47,7 +49,14 @@ class WebhookConfigResponse:
     def to_dict(self) -> dict[str, Any]:
         created_at = self.created_at
 
-        event_types = self.event_types
+        event_types = []
+        for event_types_item_data in self.event_types:
+            event_types_item: Literal['*'] | str
+            if isinstance(event_types_item_data, WebhookConfigResponseEventTypesItemType0):
+                event_types_item = event_types_item_data.value
+            else:
+                event_types_item = event_types_item_data
+            event_types.append(event_types_item)
 
 
 
@@ -85,7 +94,28 @@ class WebhookConfigResponse:
         d = dict(src_dict)
         created_at = d.pop("created_at")
 
-        event_types = cast(list[str], d.pop("event_types"))
+        event_types = []
+        _event_types = d.pop("event_types")
+        for event_types_item_data in (_event_types):
+            def _parse_event_types_item(data: object) -> Literal['*'] | WebhookConfigResponseEventTypesItemType0:
+                try:
+                    if not isinstance(data, str):
+                        raise TypeError()
+                    event_types_item_type_0 = WebhookConfigResponseEventTypesItemType0(data)
+
+
+
+                    return event_types_item_type_0
+                except (TypeError, ValueError, AttributeError, KeyError):
+                    pass
+                event_types_item_type_1 = cast(Literal['*'] , data)
+                if event_types_item_type_1 != '*':
+                    raise ValueError(f"event_types_item_type_1 must match const '*', got '{event_types_item_type_1}'")
+                return event_types_item_type_1
+
+            event_types_item = _parse_event_types_item(event_types_item_data)
+
+            event_types.append(event_types_item)
 
 
         id = d.pop("id")

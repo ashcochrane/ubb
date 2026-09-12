@@ -95,7 +95,10 @@ def assess(repo_root):
     if vocabulary is None:
         return None, errors
 
-    events, problems = read_catalogue(repo_root, vocabulary.catalogue_path)
+    events, problems = read_catalogue(
+        repo_root, vocabulary.catalogue_path,
+        module=vocabulary.generated_module,
+        constants=dict(vocabulary.generated_constants))
     errors.extend(problems)
     # A catalogue that yielded NO events holds no debts either, so every seeded
     # entry would look paid. Reporting twenty "this debt is no longer owed"

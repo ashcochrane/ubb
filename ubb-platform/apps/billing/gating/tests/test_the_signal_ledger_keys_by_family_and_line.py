@@ -36,6 +36,20 @@ from core.vocabulary import (
 
 MIGRATION = importlib.import_module(
     "apps.billing.gating.migrations.0014_the_signal_ledger_keys_by_family_and_line")
+#: The migration that later renamed the pair this one filters by (#464, slice
+#: 6 §16). `0014` is frozen history: `PAIR` names the pair as it was spelled
+#: when it ran, and the cases below hold that pair — and plant their rows —
+#: under the spelling `events/0009`'s reverse gives for today's constants,
+#: rather than under constants that now name the successors.
+THE_CATALOGUE_RENAME = importlib.import_module(
+    "apps.platform.events.migrations."
+    "0009_five_control_events_move_under_their_families")
+
+
+def as_it_was_spelled(current):
+    """The name a pre-`0009` row carried for one of today's event constants —
+    the constant itself where `0009` renamed nothing to it."""
+    return THE_CATALOGUE_RENAME.REVERSE.get(current, current)
 
 
 class TheMapIsTheRegistrysWordsTest(TestCase):
@@ -66,8 +80,15 @@ class TheMapIsTheRegistrysWordsTest(TestCase):
             self.assertEqual(MIGRATION.stop_line(mode), reasons.HARD_FLOOR, mode)
 
     def test_the_pair_it_reads_is_the_customer_stop_pair(self):
+        """As the pair was spelled when `0014` ran — `events/0009` renamed
+        both halves afterwards, and a frozen migration keeps its spelling."""
         self.assertEqual(set(MIGRATION.PAIR),
-                         {StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE})
+                         {as_it_was_spelled(StopFired.EVENT_TYPE),
+                          as_it_was_spelled(StopCleared.EVENT_TYPE)})
+        # And the derivation is live: both halves WERE renamed, so a pair
+        # spelled with today's constants would be the wrong pair.
+        self.assertNotEqual(set(MIGRATION.PAIR),
+                            {StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE})
 
     def test_the_operations_carry_the_rows_and_state_their_reason(self):
         from django.db.migrations import RenameField, RunPython
@@ -185,9 +206,9 @@ class ThePairsPayloadsTakeTheNewShapeTest(MigrationTestBase):
         return row.payload
 
     def test_the_bare_reason_becomes_the_lines_word_with_its_family(self):
-        fired = self._row(self.postpaid, StopFired.EVENT_TYPE,
+        fired = self._row(self.postpaid, as_it_was_spelled(StopFired.EVENT_TYPE),
                           reason=reasons.CUSTOMER_SPEND_POOL, episode_seq=1)
-        cleared = self._row(self.prepaid, StopCleared.EVENT_TYPE,
+        cleared = self._row(self.prepaid, as_it_was_spelled(StopCleared.EVENT_TYPE),
                             reason=service.CLEAR_BALANCE_RECOVERED, episode_seq=1)
 
         self._forward()
@@ -212,7 +233,7 @@ class ThePairsPayloadsTakeTheNewShapeTest(MigrationTestBase):
         self.assertNotIn("reason_code", self._payload(refund))
 
     def test_the_reverse_puts_the_bare_key_back_and_drops_the_control(self):
-        fired = self._row(self.prepaid, StopFired.EVENT_TYPE,
+        fired = self._row(self.prepaid, as_it_was_spelled(StopFired.EVENT_TYPE),
                           reason=reasons.HARD_FLOOR, episode_seq=2)
 
         self._forward()

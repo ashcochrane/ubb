@@ -26,6 +26,7 @@ from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.events.schemas import StopCleared
 from apps.platform.work import reasons
 
 
@@ -93,7 +94,7 @@ class TestEnforcementSeam:
         assert c.status == "suspended"  # the fold landed synchronously
 
         # 5. Top-up recovers -> the credit hook (on_commit) clears the flag,
-        #    un-suspends, and (#39) emits stop.cleared through the guard. The
+        #    un-suspends, and (#39) emits customer.stop_cleared through the guard. The
         #    guard's write_event runs post-commit here, so its own dispatch
         #    on_commit fires immediately — patch the Celery task away.
         from unittest.mock import patch as _patch
@@ -105,7 +106,7 @@ class TestEnforcementSeam:
                     "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200
         from apps.platform.events.models import OutboxEvent
-        cleared = OutboxEvent.objects.filter(event_type="stop.cleared")
+        cleared = OutboxEvent.objects.filter(event_type=StopCleared.EVENT_TYPE)
         assert cleared.count() == 1  # the resume signal, once, episode 1
         assert cleared.get().payload["episode_seq"] == 1
 
