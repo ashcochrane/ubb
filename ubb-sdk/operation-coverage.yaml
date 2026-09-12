@@ -49,6 +49,12 @@ operations:
     method: GET
     path: /api/v1/audit/records
     disposition: generated_only
+  - operation_id: api_v1_billing_endpoints_affordability
+    method: GET
+    path: /api/v1/billing/customers/{customer_id}/affordability
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/billing.py::BillingClient.affordability
   - operation_id: api_v1_billing_endpoints_configure_auto_top_up
     method: PUT
     path: /api/v1/billing/customers/{customer_id}/auto-top-up
@@ -133,12 +139,6 @@ operations:
     method: GET
     path: /api/v1/billing/tenant/usage-invoices
     disposition: generated_only
-  - operation_id: api_v1_billing_endpoints_pre_check
-    method: POST
-    path: /api/v1/billing/pre-check
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/billing.py::BillingClient.pre_check
   - operation_id: api_v1_billing_endpoints_put_customer_billing_profile
     method: PUT
     path: /api/v1/billing/customers/{customer_id}/billing-profile

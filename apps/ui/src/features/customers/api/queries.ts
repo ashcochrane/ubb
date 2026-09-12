@@ -282,10 +282,15 @@ export function useDebitWallet() {
   return useBillingMutation((body: DebitRequest) => customersApi.debitWallet(body));
 }
 
-/** Read-only verdict — nothing to invalidate; denial arrives as HTTP 200. */
-export function usePreCheck(customerId: string) {
+/**
+ * The affordability question — a read, asked on demand. A mutation hook
+ * rather than a query because the dialog asks it when a person presses the
+ * button and shows that answer, never a cached one; nothing to invalidate,
+ * and a denial arrives as HTTP 200.
+ */
+export function useAffordability(customerId: string) {
   return useMutation({
-    mutationFn: () => customersApi.preCheck(customerId),
+    mutationFn: () => customersApi.affordability(customerId),
   });
 }
 

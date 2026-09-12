@@ -72,53 +72,48 @@ def whole_minor_units(value, message=None):
     return value
 
 
-class PreCheckRequest(Schema):
-    """ADVISORY ONLY — THIS CALL REGISTERS NOTHING (#410).
+#: Why an affordability question was answered no — the registry's
+#: `affordability_reason`, an OPEN set: a refusal can arise from a control UBB
+#: gains later, so the marker is known-values metadata beside an untouched
+#: `type: string` and never an enum (#463, slice 6 §13). The nine known values
+#: are produced on both sides of the product boundary from one module
+#: (`core.vocabulary`): the kernel's admission check and its work service
+#: refuse the standing, the rate and the shape of the work; billing's money
+#: verdict refuses the floors and the pool.
+AffordabilityReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "affordability_reason"})]
 
-    It used to, behind a flag, and every field that served the flag has gone
-    with it: registering a unit of work is now its own call, `POST
-    /api/v1/tasks`, at the root and behind no product gate. A money-shaped
-    admission check and the registration of a unit of work were one call
-    answering two questions, and a metering-only tenant could not reach the
-    second because the first sat behind billing.
+
+class AffordabilityResponse(Schema):
+    """Whether this customer's spending state would let new work proceed.
+
+    ADVISORY, NEVER AUTHORITATIVE. A start (`POST /api/v1/tasks`) re-runs
+    every check this answers, under its own locks, so `allowed: true` here
+    reserves nothing and a start after it may still be refused. Asking
+    registers nothing and consumes none of the customer's admission
+    allowance.
+
+    A denial is `allowed: false` with a `reason` from the
+    `affordability_reason` vocabulary — an open set, so render a value you
+    have not seen rather than fail on it. `balance_micros` is the billing
+    owner's wallet balance and `available_micros` is that balance less the
+    agreed prices reserved by work already started and not yet ended — the
+    figure every floor is tested against. `min_balance_micros` and
+    `soft_min_balance_micros` are the hard and soft floors as resolved for
+    this customer, in the orientation the billing profile publishes them
+    (the allowed overdraft: the line sits at minus the value); the soft
+    floor is null where no wind-down line applies to the work asked about —
+    contained work under a running parent, a tenant not enforcing, or none
+    configured. The two balance figures are null where the answer was made
+    before a wallet was read (a standing refusal); the two floors are null
+    there too, and for a postpaid tenant, which has no wallet floors.
     """
-
-    customer_id: UUID
-    # READ FOR THE SOFT FLOOR AND NOTHING ELSE. Past the wind-down line NEW
-    # top-level work is refused while contained work under a running parent
-    # passes, so the answer differs by altitude even though this call creates
-    # nothing. The parent's own liveness is not checked here — a start checks
-    # that, under the parent's lock, in the transaction that writes the row.
-    parent_task_id: Optional[UUID] = None
-
-
-class PreCheckResponse(Schema):
     allowed: bool
-    # reason vocabulary: insufficient_funds | account_closed |
-    # customer_stopped | soft_floor_reached (#40 — past the wind-down line,
-    # NEW top-level starts refuse; subtask starts under an active parent
-    # pass) | customer-spend-pool reasons.
-    #
-    # TWO WORDS LEFT THIS LIST WITH THE CREATION PATH (#410) and neither was
-    # deleted: `parent_task_not_active` and `subtask_depth_exceeded` are
-    # refusals only a call that REGISTERS work can give, and they are given by
-    # `POST /api/v1/tasks`, which names them in its own refusal. They were
-    # unreachable here without the retired flag, so the list is shorter and
-    # the vocabulary is not. A third word left with them and WAS deleted, in
-    # #455: the verdict of the per-owner cap on work already running, whose
-    # control #150 §12.5 removes outright. A fourth, `rate_limit_exceeded`,
-    # left in #462 the way the first two did: the per-minute bound on new
-    # work is the kernel's admission check now, asked by the start for every
-    # tenant, and this advisory answer never runs it and never moves its
-    # window — asking here consumes nothing.
-    #
-    # A resolved COGS ceiling used to refuse here unless the tenant promised
-    # full cost coverage; #321 deleted that verdict outright rather than
-    # renaming it, because #320 made the promise unkeepable — an uncosted
-    # event is now recorded with its cost unresolved, so the ceiling races a
-    # floor rather than a total (#328 makes the floor say so).
-    reason: Optional[str] = None
+    reason: Optional[AffordabilityReason] = None
     balance_micros: Optional[int] = None
+    available_micros: Optional[int] = None
+    min_balance_micros: Optional[int] = None
+    soft_min_balance_micros: Optional[int] = None
 
 
 #: What the caller's own cost figure MEANS, published on the wire rather than

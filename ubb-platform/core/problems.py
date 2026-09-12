@@ -4,8 +4,8 @@
 the machine contract for every error the API emits. The ``problems`` section
 maps each snake_case code to the one status it is served with; the
 ``verdicts`` section holds the words per-event ingest verdicts, stop fields,
-and pre-check refusals draw from (verdicts are data, never problem+json, but
-they speak the same vocabulary). Adding a code is compatible; renaming or
+and affordability refusals draw from (verdicts are data, never problem+json,
+but they speak the same vocabulary). Adding a code is compatible; renaming or
 removing one is breaking. ``title``/``detail`` are prose, never contractual;
 the ``type`` URI derives one-to-one from the code and exists only to link
 docs.

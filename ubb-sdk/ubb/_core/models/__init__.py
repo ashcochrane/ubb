@@ -1,5 +1,6 @@
 """ Contains all the data models used in inputs/outputs """
 
+from .affordability_response import AffordabilityResponse
 from .analytics_earnings_out import AnalyticsEarningsOut
 from .analytics_summary_out import AnalyticsSummaryOut
 from .api_key_create_in import ApiKeyCreateIn
@@ -150,8 +151,6 @@ from .plan_out import PlanOut
 from .plan_update_in import PlanUpdateIn
 from .postpaid_config_in import PostpaidConfigIn
 from .postpaid_config_out import PostpaidConfigOut
-from .pre_check_request import PreCheckRequest
-from .pre_check_response import PreCheckResponse
 from .pricing_book_in import PricingBookIn
 from .pricing_book_out import PricingBookOut
 from .problem_out import ProblemOut
@@ -314,6 +313,7 @@ from .withdraw_request import WithdrawRequest
 from .withdraw_response import WithdrawResponse
 
 __all__ = (
+    "AffordabilityResponse",
     "AnalyticsEarningsOut",
     "AnalyticsSummaryOut",
     "ApiKeyCreateIn",
@@ -464,8 +464,6 @@ __all__ = (
     "PlanUpdateIn",
     "PostpaidConfigIn",
     "PostpaidConfigOut",
-    "PreCheckRequest",
-    "PreCheckResponse",
     "PricingBookIn",
     "PricingBookOut",
     "ProblemOut",

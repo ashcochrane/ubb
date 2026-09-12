@@ -10,6 +10,7 @@ from ubb.retry import request_with_retry
 from ubb.types import PaginatedResponse
 from ubb.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 # Generated DTOs (the wrap, #84).
+from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
 from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
@@ -131,24 +132,32 @@ class BillingClient:
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_BALANCE(customer_id))
         return from_wire(BalanceResponse, r.json())
 
-    def pre_check(self, customer_id: str,
-                  parent_task_id: str | None = None) -> dict:
-        """Ask whether this customer's spending state would let work proceed,
-        via POST /api/v1/billing/pre-check.
+    def affordability(self, customer_id: str,
+                      parent_task_id: str | None = None) -> AffordabilityResponse:
+        """Ask whether this customer's spending state would let new work
+        proceed, via GET /api/v1/billing/customers/{customer_id}/affordability.
 
-        ADVISORY ONLY — it registers nothing (#410). Every keyword that
-        described a unit of work went with the flag that created one; the call
-        that registers work is its own route now and #422 wraps it.
+        ADVISORY ONLY — it registers nothing, consumes none of the customer's
+        admission allowance, and is never the last word: a start
+        (``MeteringClient.start_task``) re-runs every check under its own
+        locks. A denial is an ordinary answer, ``allowed=False`` with a
+        ``reason`` from the registry's ``affordability_reason`` vocabulary —
+        branch on ``ubb.vocabulary``'s ``AFFORDABILITY_REASON_*`` constants,
+        and render one you have not seen rather than fail on it: the set is
+        open. Beside the verdict: the owner's balance, what is available once
+        open reservations are taken out, and the two resolved floors.
 
-        ``parent_task_id`` is still read, and only for the soft floor: past the
-        wind-down line new top-level work is refused while contained work under
-        a running parent passes.
+        ``parent_task_id`` names the running parent the work would be
+        contained in, and is read for the soft floor only: past the wind-down
+        line new top-level work is refused while contained work under a
+        running parent passes.
         """
-        body: dict = {"customer_id": customer_id}
+        params: dict = {}
         if parent_task_id is not None:
-            body["parent_task_id"] = parent_task_id
-        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PRE_CHECK, json=body)
-        return r.json()
+            params["parent_task_id"] = parent_task_id
+        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_AFFORDABILITY(customer_id),
+                          params=params)
+        return from_wire(AffordabilityResponse, r.json())
 
     def create_top_up(self, customer_id: str, amount_micros: int,
                       success_url: str, cancel_url: str,

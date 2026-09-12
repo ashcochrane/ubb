@@ -30,6 +30,7 @@
 // deliberate generic form, never a title-cased guess at English.
 
 import {
+  AFFORDABILITY_REASON_KNOWN_VALUES,
   CEILING_STATUS_VALUES,
   COSTING_METHOD_VALUES,
   COSTING_STATUS_VALUES,
@@ -189,18 +190,6 @@ export const billingPeriodStatusLabel = legacyLabelMap({
 export const budgetEnforceModeLabel = legacyLabelMap({
   alert_only: "Alert only",
   blocking: "Blocking",
-});
-
-export const preCheckReasonLabel = legacyLabelMap({
-  insufficient_funds: "Insufficient funds",
-  account_closed: "Account closed",
-  customer_stopped: "Customer is stopped",
-  rate_limit_exceeded: "Rate limit exceeded",
-  soft_floor_reached: "Soft floor reached",
-  budget_exceeded: "Budget exceeded",
-  budget_unavailable: "Budget state unavailable",
-  parent_task_not_active: "Parent task not active",
-  subtask_depth_exceeded: "Subtask depth exceeded",
 });
 
 // ---------------------------------------------------------------------------
@@ -393,6 +382,19 @@ export const CEILING_STATUSES = CEILING_STATUS_VALUES;
 // the words are in the catalogue under `trigger_source.*` for the surface
 // that first does.
 export const TRIGGER_SOURCES = TRIGGER_SOURCE_KNOWN_VALUES;
+
+// Why an affordability question was answered no — the registry's nine KNOWN
+// values of an OPEN concept, held BY REFERENCE (#463), on `TRIGGER_SOURCES`'
+// terms: `domain-vocabulary/` names this file as the console's consumer of
+// `affordability_reason`, `g3-console-affordability_reason` recorded that it
+// held none, and this line pays it off. The hand-written map that stood here
+// (`g6-map-pre-check-reason-label`) is deleted with it — it spelled two
+// refusal words the registry had retired and humanised the rest. The words
+// are in the catalogue under `affordability_reason.*`; the binding is the
+// customers feature's affordability dialog, which renders a value through
+// `components/shared/open-set-value.tsx` so one the registry has not seen
+// renders as the token it is, marked, never guessed at.
+export const AFFORDABILITY_REASONS = AFFORDABILITY_REASON_KNOWN_VALUES;
 
 export const pastLimitFamilyLabel = legacyLabelMap({
   floor_stop: "Balance floor stop",

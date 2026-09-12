@@ -74,8 +74,9 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
   Import from it rather than retyping a status/kind/mode literal. Never hand-edit it: CI regenerates
   and fails on any diff (`python -m tools.vocabulary --write` at the git root). An `open` concept's
   type admits any string on purpose, so don't write an exhaustive `switch` over one.
-- **Verdict bodies**: HTTP 200 ≠ success for pre-check (`allowed:false`) or usage recording (`stop`
-  on `POST /metering/usage`, per-item `accepted` on its batch sibling) — branch on the body.
+- **Verdict bodies**: HTTP 200 ≠ success for the affordability question (`allowed:false` on
+  `GET /billing/customers/{id}/affordability`) or usage recording (`stop` on `POST /metering/usage`,
+  per-item `accepted` on its batch sibling) — branch on the body.
 - **Identity**: path `customer_id` = UBB UUID; `credit`/`debit` bodies + platform routes use
   `external_id`.
 - Regen after backend changes: `pnpm api:sync` (copies `../../openapi/v1.json` + regenerates types).

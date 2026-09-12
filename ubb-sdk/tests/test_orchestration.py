@@ -2,14 +2,16 @@
 
 Tests verify that UBBClient properly creates product clients based on
 the metering/billing flags, and that the orchestrated record_usage and
-pre_check methods correctly coordinate across product boundaries.
+affordability methods correctly coordinate across product boundaries.
 """
 import unittest
 from unittest.mock import patch, MagicMock
+from ubb import vocabulary
 from ubb.client import UBBClient
+from ubb.exceptions import UBBError
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import PreCheckResult
+from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.record_usage_response import RecordUsageResponse
 
 
@@ -52,30 +54,24 @@ class TestProductClientCreation(unittest.TestCase):
             mock_bill_close.assert_called_once()
 
 
-class TestPreCheckNoBilling(unittest.TestCase):
-    """pre_check without billing returns trivially allowed."""
+class TestAffordabilityNeedsBilling(unittest.TestCase):
+    """The affordability question is billing's (#463): the facade refuses it
+    without the product and delegates it whole with."""
 
-    def test_pre_check_no_billing_trivially_allowed(self):
+    def test_affordability_without_billing_is_refused(self):
         client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
-        result = client.pre_check(customer_id="cust_1")
-        self.assertIsInstance(result, PreCheckResult)
-        self.assertTrue(result.allowed)
-        self.assertTrue(result.can_proceed)
-        self.assertIsNone(result.balance_micros)
+        with self.assertRaisesRegex(UBBError, "billing"):
+            client.affordability(customer_id="cust_1")
         client.close()
 
-    def test_pre_check_with_billing_delegates(self):
-        """With billing enabled, delegates to billing.pre_check."""
+    def test_affordability_with_billing_delegates(self):
         client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
-        client.billing.pre_check = MagicMock(return_value={
-            "allowed": True, "can_proceed": True, "balance_micros": 10_000_000,
-        })
-        result = client.pre_check(customer_id="cust_1")
-        self.assertIsInstance(result, PreCheckResult)
-        self.assertTrue(result.allowed)
-        self.assertEqual(result.balance_micros, 10_000_000)
-        client.billing.pre_check.assert_called_once_with(
-            "cust_1", parent_task_id=None,
+        sentinel = object()
+        client.billing.affordability = MagicMock(return_value=sentinel)
+        result = client.affordability(customer_id="cust_1", parent_task_id="task_1")
+        self.assertIs(result, sentinel)
+        client.billing.affordability.assert_called_once_with(
+            "cust_1", parent_task_id="task_1",
         )
         client.close()
 
@@ -193,8 +189,9 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         client.close()
 
 
-class TestOrchestratedPreCheck(unittest.TestCase):
-    """Test the orchestrated pre_check that delegates to billing."""
+class TestOrchestratedAffordability(unittest.TestCase):
+    """The facade's affordability question, driven to the billing client's
+    transport: the generated model comes back through both layers."""
 
     def setUp(self):
         self.client = UBBClient(api_key="ubb_test_key", metering=True, billing=True)
@@ -203,34 +200,36 @@ class TestOrchestratedPreCheck(unittest.TestCase):
         self.client.close()
 
     @patch.object(BillingClient, "_request")
-    def test_pre_check_delegates_to_billing(self, mock_bill_request):
-        """pre_check delegates to billing.pre_check."""
+    def test_affordability_reaches_billing_and_parses_the_answer(self, mock_bill_request):
         mock_bill_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "allowed": True, "reason": None,
-                "balance_micros": 10_000_000,
+                "balance_micros": 10_000_000, "available_micros": 10_000_000,
+                "min_balance_micros": 0, "soft_min_balance_micros": None,
             }
         )
-        result = self.client.pre_check(customer_id="cust_1")
-        self.assertIsInstance(result, PreCheckResult)
+        result = self.client.affordability(customer_id="cust_1")
+        self.assertIsInstance(result, AffordabilityResponse)
         self.assertTrue(result.allowed)
-        self.assertTrue(result.can_proceed)
         self.assertEqual(result.balance_micros, 10_000_000)
         mock_bill_request.assert_called_once()
 
     @patch.object(BillingClient, "_request")
-    def test_pre_check_billing_denies(self, mock_bill_request):
-        """When billing denies the pre-check, result reflects that."""
+    def test_affordability_denied_by_billing(self, mock_bill_request):
+        """A denial arrives as an answer, in the registry's word."""
         mock_bill_request.return_value = MagicMock(
             status_code=200, json=lambda: {
-                "allowed": False, "reason": "insufficient_funds",
-                "balance_micros": -6_000_000,
+                "allowed": False,
+                "reason": vocabulary.AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+                "balance_micros": -6_000_000, "available_micros": -6_000_000,
+                "min_balance_micros": 0, "soft_min_balance_micros": None,
             }
         )
-        result = self.client.pre_check(customer_id="cust_1")
+        result = self.client.affordability(customer_id="cust_1")
         self.assertFalse(result.allowed)
-        self.assertFalse(result.can_proceed)
-        self.assertEqual(result.balance_micros, -6_000_000)
+        self.assertEqual(result.reason,
+                         vocabulary.AFFORDABILITY_REASON_INSUFFICIENT_FUNDS)
+        self.assertEqual(result.available_micros, -6_000_000)
 
     # ⚠ SIX CASES STOOD HERE AND ALL SIX WERE ABOUT THE RETIRED CREATION PATH
     # (#410). They proved that `start_task=True` threaded a unit of work's
@@ -247,16 +246,7 @@ class TestOrchestratedPreCheck(unittest.TestCase):
     # have been a second answer to a question that ticket settled:
     # `MeteringClient.start_task` answers with a `StartedTask` handle, and
     # `tests/test_work_block.py` holds its cases. What survives of this
-    # client's half is the advisory check, covered by the cases above.
-
-    def test_pre_check_no_billing_trivially_allowed(self):
-        """Without billing, pre_check returns trivially allowed."""
-        client = UBBClient(api_key="ubb_test_key", metering=True, billing=False)
-        result = client.pre_check(customer_id="cust_1")
-        self.assertTrue(result.allowed)
-        self.assertTrue(result.can_proceed)
-        self.assertIsNone(result.balance_micros)
-        client.close()
+    # client's half is the advisory question, covered by the cases above.
 
 
 # RETIRED (the wrap, #84): TestRecordUsageResultBalanceAfter pinned the hand
@@ -264,26 +254,13 @@ class TestOrchestratedPreCheck(unittest.TestCase):
 # committed RecordUsageResponse contract, so the generated model does not carry
 # it — the DTO's shape is now owned by the spec + the CI regeneration gate, not
 # a hand-written test. Nothing in the shell reads balance_after_micros.
-
-
-class TestPreCheckResultFields(unittest.TestCase):
-    """Test that PreCheckResult supports the correct fields."""
-
-    def test_result_with_all_fields(self):
-        result = PreCheckResult(
-            allowed=True,
-            can_proceed=True,
-            balance_micros=10_000_000,
-        )
-        self.assertTrue(result.allowed)
-        self.assertTrue(result.can_proceed)
-        self.assertEqual(result.balance_micros, 10_000_000)
-
-    def test_result_legacy_fields_only(self):
-        result = PreCheckResult(allowed=True, reason=None)
-        self.assertTrue(result.allowed)
-        self.assertIsNone(result.can_proceed)
-        self.assertIsNone(result.balance_micros)
+#
+# RETIRED the same way in #463: the two cases pinning the hand-written
+# affordability result's fields. That result is gone — the answer is the
+# generated `AffordabilityResponse`, whose shape the spec and the regeneration
+# gate own — and with it the "trivially allowed" a client without billing used
+# to answer for itself (the facade refuses the question instead; see
+# `TestAffordabilityNeedsBilling`).
 
 
 if __name__ == "__main__":

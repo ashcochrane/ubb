@@ -14,7 +14,7 @@ import { formatDate, formatMicros } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { useBalance } from "../api/queries";
-import { AdjustDialog, PreCheckDialog } from "./adjust-dialogs";
+import { AdjustDialog, AffordabilityDialog } from "./adjust-dialogs";
 import { BillingConfigSection } from "./billing-config-section";
 import { BudgetSection } from "./budget-section";
 import { GrantsSection } from "./grants-section";
@@ -25,7 +25,7 @@ import { UsageInvoicesSection } from "./usage-invoices-section";
 const ADMIN_HINT = "Requires the Admin role.";
 const WRITE_HINT = "Requires the Write role.";
 
-type DialogKind = "top-up" | "withdraw" | "credit" | "debit" | "pre-check" | null;
+type DialogKind = "top-up" | "withdraw" | "credit" | "debit" | "affordability" | null;
 
 export function BillingTab({
   customerId,
@@ -150,16 +150,14 @@ export function BillingTab({
                     Manual debit
                   </Button>
                 </DisabledHint>
-                <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialog("pre-check")}
-                    disabled={!canWrite}
-                  >
-                    Run access check
-                  </Button>
-                </DisabledHint>
+                {/* A read at the Read floor (#463): every role may ask. */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDialog("affordability")}
+                >
+                  Check affordability
+                </Button>
               </div>
               {postpaid && (
                 <Alert>
@@ -206,10 +204,10 @@ export function BillingTab({
         open={dialog === "debit"}
         onOpenChange={(open) => setDialog(open ? "debit" : null)}
       />
-      <PreCheckDialog
+      <AffordabilityDialog
         customerId={customerId}
-        open={dialog === "pre-check"}
-        onOpenChange={(open) => setDialog(open ? "pre-check" : null)}
+        open={dialog === "affordability"}
+        onOpenChange={(open) => setDialog(open ? "affordability" : null)}
       />
     </div>
   );

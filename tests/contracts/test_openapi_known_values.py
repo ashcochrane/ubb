@@ -599,26 +599,47 @@ def test_applying_twice_is_refused_rather_than_doubled(spec, decisions):
     would be the refusal it had just given up.
 
     So this asserts the refusal against the REAL committed contract rather than
-    a synthetic node: applying to the already-applied document raises, naming a
-    real field's JSON pointer. `test_negative_control_a_hand_written_enum_under
-    _a_marker_is_refused` states the same rule over a fixture; this states it
-    over the bytes that ship, which is where "regeneration strips before it
-    applies" is a claim about the export rather than about a unit.
+    a synthetic node: applying to the already-applied document raises.
+    `test_negative_control_a_hand_written_enum_under_a_marker_is_refused`
+    states the same rule over a fixture; this states it over the bytes that
+    ship, which is where "regeneration strips before it applies" is a claim
+    about the export rather than about a unit.
+
+    ⚠ THE WHOLE-DOCUMENT WALK STOPS AT THE FIRST APPLIED NODE IT MEETS, AND
+    SINCE #463 THAT NODE IS AN OPEN ONE (`AffordabilityResponse.reason` sorts
+    ahead of every closed node under `components/schemas`), so the walk on its
+    own would prove the annotation refusal and say nothing about the `enum`
+    one. Each shipped `enum` node is therefore re-applied ON ITS OWN — the
+    real node lifted out of the committed contract — and must be refused as
+    an enumeration; the count holds it to every closed node the accounting
+    map declares. The same shape the open kind's test below has had since
+    #268, for the same reason read the other way round.
     """
-    with pytest.raises(KnownValuesRefused) as raised:
+    with pytest.raises(KnownValuesRefused):
         apply_known_values(spec, decisions)
 
-    assert raised.value.code == codes.ALREADY_ENUMERATED
-    assert raised.value.location.startswith("/components/schemas/")
+    checked = 0
+    for pointer, node in marked_nodes(spec):
+        if decisions[node[MARKER]].representation != ENUM:
+            continue
+        checked += 1
+        refusal = _refusal(_document(node), decisions)
+        assert refusal.code == codes.ALREADY_ENUMERATED, pointer
+
+    assert checked == sum(published.nodes for published
+                          in CONCEPTS_IN_THE_CONTRACT.values()
+                          if published.kind == ENUM)
 
 
 def test_applying_twice_to_an_open_node_is_refused_as_an_annotation(spec,
                                                                      decisions):
     """The same proof for the OPEN kind, and it needs its own test.
 
-    The check above walks the whole document and stops at the FIRST already-
-    applied node it meets, which is a closed concept's `enum` — so it proves
-    the closed path and says nothing about this one. The two refusals are
+    A walk of the whole document stops at the FIRST already-applied node it
+    meets and proves one kind's refusal only — until #463 that node was a
+    closed concept's `enum`, and this test existed because the walk said
+    nothing about the open path; the check above now re-applies each closed
+    node on its own for the mirror-image reason. The two refusals are
     different code paths guarding different keys (`already-enumerated` on
     `enum`, `already-annotated` on `x-ubb-known-values`), and #268 is the first
     commit where the second has real bytes to guard at all.
@@ -1070,6 +1091,19 @@ CONCEPTS_IN_THE_CONTRACT = {
     # backend twin is the work model's two values on `CEILING_STATUS_CHOICES`'s
     # footing, read by the admin and by the row's own derived property.
     "ceiling_basis": Published(4, ENUM),
+    # WHY AN AFFORDABILITY QUESTION WAS ANSWERED NO (#463, slice 6 §13) — ONE
+    # node, `AffordabilityResponse.reason`, the answer to the affordability
+    # question at its decided GET path. The second OPEN concept this map
+    # advertises, so it renders `x-ubb-known-values` beside an untouched
+    # `type: string`; nullable, so the marker sits on the string member of the
+    # union (an allowed answer carries no reason). The same nine words travel
+    # in the start's 409 refusal as an extension member of a problem, which
+    # is not a schema node and cannot carry a marker — `api/v1/tests/
+    # test_a_start_is_refused_from_one_vocabulary.py` holds that surface to
+    # the registry instead. The backend twin is billing's gating model holding
+    # all nine by reference, with the kernel's admission check and work
+    # service producing five of them from the same constants.
+    "affordability_reason": Published(1, KNOWN_VALUES),
 }
 
 
@@ -1467,6 +1501,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # WHAT THE CEILING BOUNDED (#458): on the four terminal stops only — a
     # customer-wide stop is never a ceiling's, so the pair does not carry it.
     placed("ceiling_basis", events_whose_payload_declares("ceiling_basis"))
+    # WHY THE AFFORDABILITY QUESTION SAID NO (#463): on the one response that
+    # answers it, and nowhere else — the start's refusal carries the same
+    # word as a problem extension, which no schema node describes.
+    placed("affordability_reason", {"AffordabilityResponse"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2276,6 +2314,11 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # keyed by the family; the work model's two bases) and both advertised
     # on the stop events in the same commit, the family on all six and the
     # basis on the four that can be a ceiling's.
-    assert len(_entries(programme)) >= 9, (
+    # 9 -> 8 in #463: `affordability_reason`, the sixth — the third OPEN
+    # concept advertised, paid at billing's gating model (all nine by
+    # reference; the kernel's producers import the same constants) and
+    # marked on the one response that answers the affordability question,
+    # in the same commit that gave that question its GET.
+    assert len(_entries(programme)) >= 8, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

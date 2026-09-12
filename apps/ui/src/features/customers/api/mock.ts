@@ -7,6 +7,7 @@ import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import type { DateRange } from "@/lib/date-range";
 import { resolveRange } from "@/lib/date-range";
+import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
 
 import {
   buildMockTimeseries,
@@ -51,8 +52,8 @@ import type {
   GrantOut,
   MarginListOut,
   MarginTrendOut,
+  AffordabilityResponse,
   PastLimitReport,
-  PreCheckResponse,
   RevenueModeOut,
   RevenueProfileIn,
   RevenueProfileOut,
@@ -478,18 +479,28 @@ export async function debitWallet(body: DebitRequest): Promise<DebitCreditRespon
   return { transaction_id: row.id, new_balance_micros: balance.balance_micros };
 }
 
-export async function preCheck(customerId: string): Promise<PreCheckResponse> {
+// The wallet's own refusal word, typed against the generated vocabulary so a
+// registry rename fails `tsc` here rather than shipping a value the catalogue
+// has no words for.
+const PAST_THE_FLOOR: AffordabilityReasonKnown = "insufficient_funds";
+
+// The money verdict's shape (#463): the balance pair off the balance read,
+// the tenant's default floor of nothing owed, and no wind-down line. Denied
+// past the floor in the wallet's own word.
+export async function affordability(customerId: string): Promise<AffordabilityResponse> {
   await mockDelay();
   requireCustomer(customerId);
   const balance = balanceOf(customerId);
-  if (balance.balance_micros <= 0) {
-    return {
-      allowed: false,
-      reason: "insufficient_funds",
-      balance_micros: balance.balance_micros,
-    };
+  const money = {
+    balance_micros: balance.balance_micros,
+    available_micros: balance.available_micros,
+    min_balance_micros: 0,
+    soft_min_balance_micros: null,
+  };
+  if (balance.available_micros < 0) {
+    return { allowed: false, reason: PAST_THE_FLOOR, ...money };
   }
-  return { allowed: true, reason: null, balance_micros: balance.balance_micros };
+  return { allowed: true, reason: null, ...money };
 }
 
 export async function listTransactions(

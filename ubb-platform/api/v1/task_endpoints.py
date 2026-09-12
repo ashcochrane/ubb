@@ -70,6 +70,7 @@ from api.v1.schemas import (
     PaginatedTasks, StartTaskRequest, StartTaskResponse, TaskDetailOut,
     start_task_out, task_out,
 )
+from apps.billing.gating.models import AFFORDABILITY_REASONS
 from apps.billing.gating.services.risk_service import RiskService
 from apps.metering.pricing.services.charge_service import (
     charge_for_delivered_work, the_work_was_charged,
@@ -380,6 +381,12 @@ def _refused_by(verdict):
                     verdict["available_micros"])
 
 
+#: The prose for each refusal word, read off billing's vocabulary table — the
+#: registry's nine, held there by reference (#463). An unlisted word — the set
+#: is open — is spelled as itself.
+_REFUSAL_IN_WORDS = dict(AFFORDABILITY_REASONS)
+
+
 def _refused(reason, balance_micros=None, available_micros=None):
     """A refusal of the customer's standing or money, as the refusal a start
     answers with.
@@ -390,13 +397,15 @@ def _refused(reason, balance_micros=None, available_micros=None):
     controls or the work being named — which is what a 409 means in
     `docs/conventions/api-contract.md`'s terms. The words are the registry's
     `affordability_reason` values and travel as data rather than as codes a
-    caller would have to unlearn. The two money figures are None where the
-    refusal was made before a wallet was read — a standing refusal, from the
-    kernel or from the money verdict alike.
+    caller would have to unlearn; the `detail` says the same thing in prose.
+    The two money figures are None where the refusal was made before a wallet
+    was read — a standing refusal, from the kernel or from the money verdict
+    alike.
     """
     return Problem(
         "task_start_refused",
-        f"this customer cannot start new work: {reason}",
+        "this customer cannot start new work: "
+        f"{_REFUSAL_IN_WORDS.get(reason, reason)}",
         extensions={"reason": reason,
                     "balance_micros": balance_micros,
                     # The balance less open reservations (#461): the figure

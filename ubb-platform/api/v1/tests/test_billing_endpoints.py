@@ -48,20 +48,16 @@ class BillingProductGatingTest(TestCase):
         self.assertIn("balance_micros", body)
         self.assertIn("currency", body)
 
-    def test_tenant_without_billing_gets_403_on_pre_check(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer_no.id)}),
-            content_type="application/json",
+    def test_tenant_without_billing_gets_403_on_the_affordability_question(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer_no.id}/affordability",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_no}",
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_tenant_with_billing_can_pre_check(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer_yes.id)}),
-            content_type="application/json",
+    def test_tenant_with_billing_can_ask_the_affordability_question(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer_yes.id}/affordability",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key_yes}",
         )
         self.assertEqual(response.status_code, 200)

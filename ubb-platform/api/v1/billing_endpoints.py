@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Optional
 from uuid import UUID
 
 from ninja import Router
@@ -6,7 +7,7 @@ from ninja import Router
 from api.v1.pagination import empty_page, page
 from api.v1.topups import start_top_up
 from api.v1.schemas import (
-    PreCheckRequest, PreCheckResponse,
+    AffordabilityResponse,
     BalanceResponse,
     ConfigureAutoTopUpRequest,
     CreateTopUpRequest,
@@ -279,33 +280,41 @@ def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
             "balance_micros": result.balance_micros}
 
 
-@billing_router.post("/pre-check", response={200: PreCheckResponse})
-@role_floor(WRITE)
-def pre_check(request, payload: PreCheckRequest):
-    """Ask whether this customer's spending state would let work proceed.
+@billing_router.get("/customers/{customer_id}/affordability",
+                    response=AffordabilityResponse)
+@role_floor(READ)
+def affordability(request, customer_id: UUIDIdentifier,
+                  parent_task_id: Optional[UUID] = None):
+    """Ask whether this customer's spending state would let new work proceed.
 
-    ADVISORY ONLY — this call registers nothing. Registering a unit of work is
-    `POST /api/v1/tasks`, at the root and behind no product gate, and it is the
-    only call that creates one.
+    ADVISORY ONLY — this call registers nothing, moves no admission window,
+    and is never the last word: `POST /api/v1/tasks` re-runs every check
+    here when work is actually started. A denial is a `200` carrying
+    `allowed: false` and a `reason`, not an error: the question was answered.
 
-    A denial is a `200` carrying `allowed: false` and a `reason`, not an error:
-    the question was answered.
+    `parent_task_id` names the running parent the work would be contained
+    in, and is read for the soft floor only: past the wind-down line NEW
+    top-level work is refused while contained work under a running parent
+    passes, so the answer differs by altitude. Whether that parent is live
+    is a start's question, not this one's.
+
+    Requires the `billing` product: everything this reports is about a
+    wallet — its balance, its floors, the customer's spend pool.
     """
-    # ⚠ THE CREATION HALF IS GONE, NOT MOVED BEHIND A DEFAULT (#410). This
-    # route used to create a unit of work as a side effect of a flag, which
-    # fused three things: a money-shaped admission check, the registration of a
-    # unit of work, and a billing product wall in front of both. A
-    # metering-only tenant
-    # could not begin work at all, and a billing tenant could not ask the
-    # question without deciding whether to answer it by starting something.
-    # The 422 went with it — the refusals that raised one all belonged to the
-    # creation (an undeclared kind of work, a grouping key nobody declared, a
-    # ceiling above the declared one) and are the start gate's now, so keeping
-    # the status on the published document would advertise an answer this route
-    # can no longer give.
+    # THE AFFORDABILITY QUESTION, AT THE READ FLOOR (#463, slice 6 §13). A
+    # GET because it changes nothing: it authors no unit of work (the
+    # creation half left in #410, for `POST /api/v1/tasks`), it runs no
+    # throttle and increments no window (the per-minute bound left the money
+    # verdict for the kernel in #462), and it holds no lock. Gated on the
+    # product rather than on ADR-0011 §1's wallet-regime condition, which is
+    # a rule about the START: a tenant without billing asking this would be
+    # asking about a wallet it does not have. Behind the gate the answer is
+    # the money verdict's own, unchanged — the standing (worded by the line
+    # holding the customer), the stop in force, the hard floor, the soft
+    # floor at the altitude the parent names, and the pool.
     _product_check(request)
-    customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
-    return 200, RiskService.check(customer, parent_task_id=payload.parent_task_id)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    return RiskService.check(customer, parent_task_id=parent_task_id)
 
 
 @billing_router.post("/customers/{customer_id}/refund", response=RefundResponse)

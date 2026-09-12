@@ -28,6 +28,10 @@ from ubb._operation import Operation
 
 API_V1_AUDIT_ENDPOINTS_LIST_AUDIT_RECORDS = Operation(
     'api_v1_audit_endpoints_list_audit_records', 'get', '/api/v1/audit/records')
+API_V1_BILLING_ENDPOINTS_AFFORDABILITY = Operation(
+    'api_v1_billing_endpoints_affordability',
+    'get',
+    '/api/v1/billing/customers/{customer_id}/affordability')
 API_V1_BILLING_ENDPOINTS_CONFIGURE_AUTO_TOP_UP = Operation(
     'api_v1_billing_endpoints_configure_auto_top_up',
     'put',
@@ -84,8 +88,6 @@ API_V1_BILLING_ENDPOINTS_LIST_TENANT_USAGE_INVOICES = Operation(
     'api_v1_billing_endpoints_list_tenant_usage_invoices',
     'get',
     '/api/v1/billing/tenant/usage-invoices')
-API_V1_BILLING_ENDPOINTS_PRE_CHECK = Operation(
-    'api_v1_billing_endpoints_pre_check', 'post', '/api/v1/billing/pre-check')
 API_V1_BILLING_ENDPOINTS_PUT_CUSTOMER_BILLING_PROFILE = Operation(
     'api_v1_billing_endpoints_put_customer_billing_profile',
     'put',

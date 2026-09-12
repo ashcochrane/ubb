@@ -39,8 +39,8 @@ import {
   type GrantOut,
   type MarginListOut,
   type MarginTrendOut,
+  type AffordabilityResponse,
   type PastLimitReport,
-  type PreCheckResponse,
   type RevenueModeOut,
   type RevenueProfileIn,
   type RevenueProfileOut,
@@ -227,16 +227,15 @@ export async function debitWallet(body: DebitRequest): Promise<DebitCreditRespon
 }
 
 /**
- * A denial is still HTTP 200 — branch on `allowed`/`reason` in the body.
- *
- * The call is advisory and registers nothing. It used to be able to, behind a
- * flag this screen always sent as false, and that flag is gone with the
- * creation path it drove.
+ * The affordability question (#463): a READ that registers nothing and moves
+ * no admission window. A denial is still HTTP 200 — branch on `allowed` and
+ * `reason` in the body; `reason` is a value of an OPEN vocabulary, rendered
+ * through the shared open-set helper.
  */
-export async function preCheck(customerId: string): Promise<PreCheckResponse> {
+export async function affordability(customerId: string): Promise<AffordabilityResponse> {
   return unwrap(
-    await billingApi.POST("/pre-check", {
-      body: { customer_id: customerId },
+    await billingApi.GET("/customers/{customer_id}/affordability", {
+      params: { path: { customer_id: customerId } },
     }),
   );
 }

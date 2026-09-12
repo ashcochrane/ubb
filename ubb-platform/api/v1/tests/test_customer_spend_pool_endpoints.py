@@ -4,16 +4,11 @@ outside the registry's pair, the status read publishes the final shape over
 the durable basis pair, and the audit ledger takes the family's action while
 history keeps its stored spelling."""
 import json
-import re
-from pathlib import Path
 
 from django.test import TestCase, Client
+from api.v1.tests._helpers import retired_aliases
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
-
-# ubb-platform/api/v1/tests/<this file> -> the git root, where the registry lives.
-REPO_ROOT = Path(__file__).resolve().parents[4]
-GOVERNANCE = REPO_ROOT / "domain-vocabulary" / "concepts" / "governance.yaml"
 
 
 def retired_audit_actions():
@@ -21,22 +16,9 @@ def retired_audit_actions():
     rather than spelled here: `record()` refuses every one of them and the
     sweep refuses a living file that names one, so the only honest source is
     the document that retired them (`governance.yaml`, the `retired_aliases`
-    list under `audit_action`). Read by a line walk rather than a YAML parser
-    because the platform's lock file carries none — the list is one item per
-    line, comments interleaved, ending at the next key at the list's own
-    indentation."""
-    text = GOVERNANCE.read_text(encoding="utf-8")
-    block = text[text.index("\naudit_action:"):]
-    start = block.index("  retired_aliases:")
-    found = []
-    for line in block[start:].splitlines()[1:]:
-        if re.match(r"^\s*#", line) or not line.strip():
-            continue
-        item = re.match(r"^    - (\S+)\s*$", line)
-        if item is None:
-            break
-        found.append(item.group(1))
-    return found
+    list under `audit_action`) — the shared line walk in `_helpers`, which
+    the one-rule pins use for the retired refusal codes the same way."""
+    return retired_aliases("governance", "audit_action")
 
 
 class CustomerSpendPoolEndpointsTest(TestCase):

@@ -14,6 +14,7 @@ from ubb._core.models.task_out import TaskOut
 from ubb._core.models.task_detail_out import TaskDetailOut
 from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
 from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from ubb._core.models.customer_margin_out import CustomerMarginOut
@@ -29,14 +30,15 @@ from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
 
-# Shell-owned ergonomic types: the pagination container, the orchestration
-# pre-check result, and the batch aggregate. The small hand results that once
-# covered untyped 200s were retired by #98 — those DTOs now come from the
-# generated core above. `StartedTask` (#422) is imported beside its client
-# rather than from here: it is a handle holding a client, not a plain value
-# — the unit of work a start answers with, and the work block around it.
+# Shell-owned ergonomic types: the pagination container and the batch
+# aggregate. The small hand results that once covered untyped 200s were
+# retired by #98, and the hand-written affordability result by #463 — those
+# DTOs now come from the generated core above. `StartedTask` (#422) is
+# imported beside its client rather than from here: it is a handle holding a
+# client, not a plain value — the unit of work a start answers with, and the
+# work block around it.
 from ubb.types import (
-    PreCheckResult, PaginatedResponse,
+    PaginatedResponse,
     BatchItemResult, BatchResult,
 )
 from ubb.exceptions import (
@@ -66,13 +68,13 @@ __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
     # generated DTOs
     "RecordUsageResponse", "StartTaskResponse", "CloseTaskResponse", "TaskOut",
-    "TaskDetailOut", "CustomerResponse", "BalanceResponse",
+    "TaskDetailOut", "CustomerResponse", "BalanceResponse", "AffordabilityResponse",
     "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types, and the handle a start answers with (#422)
-    "PreCheckResult", "PaginatedResponse", "BatchItemResult", "BatchResult",
+    "PaginatedResponse", "BatchItemResult", "BatchResult",
     "StartedTask",
     # base exception surface, plus the one control signal that sits OUTSIDE
     # Exception (UBBStopRequested — the spend stop, #421); the missing

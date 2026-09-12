@@ -4,17 +4,12 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 
-@dataclass(frozen=True)
-class PreCheckResult:
-    allowed: bool
-    reason: str | None = None
-    can_proceed: bool | None = None
-    balance_micros: int | None = None
-    # THE THREE FIELDS THAT DESCRIBED A UNIT OF WORK ARE GONE (#410). This
-    # answer used to double as the response to a registration, because a flag
-    # on the same call created one; registering work is its own call now —
-    # `MeteringClient.start_task`, which answers with a `StartedTask` (#422).
-    # Keeping them would publish three values that are permanently None.
+# THE HAND-WRITTEN AFFORDABILITY RESULT STOOD HERE AND IS GONE (#463). It
+# wrapped the advisory verdict in a shell-owned dataclass with a second name
+# for `allowed` and three fields describing a unit of work (already deleted in
+# #410); the answer is the generated `AffordabilityResponse` now, parsed
+# through the core like every other typed 200 (the wrap, #84).
+
 
 @dataclass(frozen=True)
 class BatchItemResult:

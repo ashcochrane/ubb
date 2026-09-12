@@ -862,3 +862,35 @@ POST webhook:stop.cleared added the new required request property `data/reason_c
 POST webhook:stop.fired added the new required request property `data/control_family`
 POST webhook:stop.fired added the new required request property `data/control_id`
 POST webhook:stop.fired added the new required request property `data/reason_code`
+# 2026-09-12 — Slice 6 (#463): the advisory call becomes the affordability
+# question, at its decided path and as a read (slice 6 §13, #154 §3.4).
+#
+# `POST /api/v1/billing/pre-check` is removed outright and `GET
+# /api/v1/billing/customers/{customer_id}/affordability` replaces it — a GET
+# because the question changes nothing (it registers no unit of work, runs no
+# throttle, holds no lock), at the READ floor, behind the billing product gate,
+# with `parent_task_id` as an optional query parameter. The retired name
+# described a moment in a sequence rather than the question it answers, and
+# the registry lists it as a retired alias of `affordability_reason`; #141
+# retired the call rather than deprecating it — map #137 constraint 1 spent
+# once, here.
+#
+# THE TWO SCHEMAS LEAVE WITH THE PATH AND EMIT NO LINE OF THEIR OWN: the
+# request schema disappears with the method (a GET has no body) and the
+# response schema is replaced by `AffordabilityResponse`, which carries the
+# same three fields plus the balance less open reservations and the two
+# resolved floors. oasdiff reports a removed path once and says nothing about
+# the components only that path referenced, so the one line below is the whole
+# of this break; the seven WARN-level property lines #410 filed on the same
+# path were reported inert by the removal and are deleted from the warn file
+# (openapi/README.md — a path removal supersedes a property removal on it).
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1 (ADR-0007
+# §5 — the launch tag is not what binds), and the only caller-side consumers
+# in the tree are UBB's own console (the customers feature's dialog) and the
+# SDK (`BillingClient.affordability`, the facade's twin), both changed in this
+# same commit because CI's contract check and the SDK drift gate leave no
+# window in which they could be stale. The path pre-dates the tag, so the
+# authoring direction (`--baseline HEAD`) and the cumulative run report the
+# same one finding and this entry is live in both.
+POST /api/v1/billing/pre-check api path removed without deprecation

@@ -8,9 +8,10 @@ below. A new mutating route with neither turns this red — so the audit ledger
 structurally cannot fall behind the mutating surface (ADR-004 §2).
 
 The exemption list is itself the reviewable artifact: the only mutations that do
-NOT belong in the tenant-facing audit feed are **usage ingestion + the spend
-pre-check** — telemetry, not governance (ADR-004: "usage ingestion excluded").
-Everything else — config, membership + key lifecycle, hand-moved money — records.
+NOT belong in the tenant-facing audit feed are **usage ingestion** (the head,
+the firehose and the tail of it) and the subscription sync — telemetry, not
+governance (ADR-004: "usage ingestion excluded"). Everything else — config,
+membership + key lifecycle, hand-moved money — records.
 """
 from api.v1.api import api
 from apps.platform.audit.actions import is_registered_action
@@ -30,10 +31,6 @@ _EXEMPT = {
     # Task close finalises a metering task — the tail of usage ingestion, and
     # any settlement it triggers is automatic, not a principal moving money.
     ("POST", "/tasks/{task_id}/close"),
-    # The spend enforcement read on the hot path — advisory, and since #410 it
-    # authors nothing at all: it registers no unit of work and no
-    # governance/config/money change.
-    ("POST", "/billing/pre-check"),
     # Subscription sync — a reconciliation trigger that pulls external Stripe
     # truth; it authors no tenant-side governance decision.
     ("POST", "/subscriptions/sync"),
@@ -165,8 +162,15 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # ONE supplier; this one declares a whole vocabulary, so a request can declare
 # three kinds of work and retire a fourth, and an action naming the retirement
 # would be wrong about the other three. 79 + 0 = 79, recording 73.
-_EXPECTED_MUTATING = 79
-_EXPECTED_EXEMPT = 6
+#
+# ⚠ 79 -> 78 WITH #463, AND THE ONE THAT LEFT WAS EXEMPT: 6 -> 5. The
+# affordability question stopped being a POST — it authors nothing, so it is a
+# GET at its decided path (`GET /billing/customers/{customer_id}/affordability`)
+# and outside this walk altogether. Its row on the exemption list went with the
+# method: the exemption said "this mutation is telemetry", and there is no
+# mutation left to say it of. The RECORDING count is unmoved: 78 - 5 = 73.
+_EXPECTED_MUTATING = 78
+_EXPECTED_EXEMPT = 5
 
 
 def mutating_operations():
