@@ -11,8 +11,10 @@ varies per module (the products, the billing mode, the switch, the balance),
 so it is a function of those and nothing else; what a module does with the
 tenant — which routes it drives, what it asserts — stays the module's own.
 """
+import re
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
@@ -21,6 +23,35 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
     PRICING_MODE_FIXED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+
+#: `domain-vocabulary/concepts/` at the git root — the registry. Four parents
+#: up: tests -> v1 -> api -> ubb-platform -> the root.
+REGISTRY_CONCEPTS = Path(__file__).resolve().parents[4] / "domain-vocabulary" / "concepts"
+
+
+def retired_aliases(concept_file, concept):
+    """The spellings the registry has RETIRED for ``concept``, read off the
+    registry itself rather than spelled in a test: the sweep refuses a
+    living file that names one, so the only honest source is the document
+    that retired them (`<concept_file>.yaml`, the `retired_aliases` list
+    under the concept). Read by a line walk rather than a YAML parser because
+    the platform's lock file carries none — the list is one item per line,
+    comments interleaved, ending at the next key at the list's own
+    indentation. Order is the registry's."""
+    text = (REGISTRY_CONCEPTS / f"{concept_file}.yaml").read_text(encoding="utf-8")
+    block = text[text.index(f"\n{concept}:"):]
+    start = block.index("  retired_aliases:")
+    found = []
+    for line in block[start:].splitlines()[1:]:
+        if re.match(r"^\s*#", line) or not line.strip():
+            continue
+        item = re.match(r"^    - (\S+)\s*$", line)
+        if item is None:
+            break
+        found.append(item.group(1))
+    assert found, f"{concept} lists no retired spelling — suspect the walk"
+    return found
+
 
 #: The kind of work sold at one agreed price, and the one sold per event.
 SOLD_WHOLE = "transcode"

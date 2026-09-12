@@ -1,6 +1,15 @@
 from django.db import models
 from core.models import BaseModel
-from core.vocabulary import (CONTROL_FAMILY_ADMISSION_CONTROL,
+from core.vocabulary import (AFFORDABILITY_REASON_ACCOUNT_CLOSED,
+                             AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+                             AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+                             AFFORDABILITY_REASON_CUSTOMER_STOPPED,
+                             AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+                             AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE,
+                             AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED,
+                             AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+                             AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
+                             CONTROL_FAMILY_ADMISSION_CONTROL,
                              CONTROL_FAMILY_CEILING,
                              CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
                              CONTROL_FAMILY_WALLET_POLICY,
@@ -70,6 +79,35 @@ CONTROL_FAMILIES = [
     (CONTROL_FAMILY_WALLET_POLICY, "Wallet policy"),
     (CONTROL_FAMILY_ADMISSION_CONTROL, "Admission control"),
 ]
+
+#: WHY A START IS REFUSED, OR WOULD BE — the registry's `affordability_reason`,
+#: all nine known values held WHOLE by reference at the site the registry
+#: declares (#463 paid `g3-backend-affordability_reason`; slice 6 §1, §13),
+#: on `work/reasons.KNOWN_TRIGGER_SOURCES`' footing: identities and nothing
+#: else. The words a person reads for them live in the console's catalogue
+#: (ADR-0008 §4), and the one prose a refusal carries on the wire — the
+#: 409's `detail` — is the composition layer's own, beside its renderer
+#: (`api/v1/task_endpoints._refused`), so this table is no second home for
+#: wording. Held whole rather than as the subset billing's money verdict
+#: answers itself: the kernel's admission check refuses the standing and the
+#: rate, its work service refuses the shape of the work (a parent that is not
+#: running; a depth work cannot nest to), and the money verdict refuses the
+#: floors and the pool and words a suspension — every producer on both sides
+#: imports the same constants (§1), and a consumer holds the vocabulary rather
+#: than the part it happens to produce. The set is OPEN: a refusal can arise
+#: from a control UBB gains later, so nothing may refuse a value it does not
+#: list.
+AFFORDABILITY_REASONS = (
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+    AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+    AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE,
+    AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
+)
 
 STOP_SIGNAL_STATES = [("stopped", "Stopped"), ("cleared", "Cleared")]
 

@@ -340,9 +340,10 @@ mechanism they backed — a snapshot of a tenant-wide constant, compared against
 balance frozen at task start — was deleted server-side in favor of the existing
 customer-wide stop signal: it read a number that was never the customer's real
 floor, and it couldn't see a mid-task top-up, so it could kill a task for a customer
-who had just paid. Read `PreCheckResponse.stop`/`.stop_reason` (already present) for
-the real, wallet-wide stop verdict — there is no per-task floor to migrate to, because
-there is no per-task floor anymore.
+who had just paid. There is no per-task floor to migrate to, because there is no
+per-task floor anymore: the customer-wide stop is what a usage report's `stop` /
+`stop_reason` announce. (The advisory call that carried this field is itself
+replaced by the affordability question — section 10.)
 
 ### `enforce_mode` values renamed (field name unchanged)
 
@@ -458,6 +459,44 @@ zero, `null` with no pool), `highest_threshold_reached` (the largest of the pool
 `alert_levels` reached, `null` when none is) and `blocking_occurred` (the start gate's
 own compare — `true` only under a `blocking` pool at or over its stop line). Section 8's
 value-rename table above still describes the same field, under the schemas' old names.
+
+---
+
+## 10. The advisory call becomes the affordability question (slice 6, #463 — pre-live)
+
+"Can this customer afford more work?" is a **read**: it registers nothing, moves no
+admission window, and is never the last word (a start re-runs every check under its
+own locks). It now has the shape of one. The retired call's name described a moment
+in a sequence rather than the question it answers, and the repository refuses that
+name on every living surface, so the old row below spells it `{retired}`.
+
+| earlier v3.0 pre-tag | v3.0 |
+|---|---|
+| `POST /api/v1/billing/{retired}` with `{customer_id, parent_task_id}` in the body | `GET /api/v1/billing/customers/{customer_id}/affordability?parent_task_id=…` |
+| the request schema, and the response schema named for the retired call | no request schema; `AffordabilityResponse` |
+| `BillingClient.{retired}(customer_id, parent_task_id=None) -> dict` | `BillingClient.affordability(customer_id, parent_task_id=None) -> AffordabilityResponse` |
+| `UBBClient.{retired}(...) -> ` a hand-written result with `allowed` **and** `can_proceed` | `UBBClient.affordability(...) -> AffordabilityResponse` (a passthrough) |
+
+**What the answer carries.** `allowed`; `reason` — a value of the registry's open
+`affordability_reason` vocabulary, so branch on `ubb.vocabulary.AFFORDABILITY_REASON_*`
+and render a value you have not seen rather than fail on it; `balance_micros`; and
+three figures that are new: `available_micros` (the balance less the agreed prices
+reserved by work already started and not yet ended — the figure every floor is
+tested against), `min_balance_micros` and `soft_min_balance_micros` (the hard and
+soft floors as resolved for this customer, in the billing profile's orientation; the
+soft floor is `null` where no wind-down line applies to the work asked about, and both
+are `null` for a postpaid tenant). `can_proceed` is gone — it was a second name for
+`allowed`.
+
+**The facade no longer answers for a client without billing.** `UBBClient.{retired}`
+returned "trivially allowed" when the billing product was off — a verdict the client
+invented about a wallet the tenant does not have. `UBBClient.affordability` raises
+`UBBError` like every other money-shaped call on the facade; the route refuses such a
+tenant with a 403 for the same reason. A start needs no advisory question to be
+admitted.
+
+**Requires the billing product at the Read floor.** The retired call was floored at
+Write; a read-only key can ask the question now.
 
 ---
 

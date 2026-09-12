@@ -58,16 +58,17 @@ describe("BillingTab", () => {
     expect(screen.getAllByText("$25.00").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("runs an access check and branches on the verdict body (HTTP 200)", async () => {
+  it("asks the affordability question and branches on the verdict body (HTTP 200)", async () => {
     renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Run access check" }, SLOW),
+      await screen.findByRole("button", { name: "Check affordability" }, SLOW),
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Run check" }, SLOW));
+    fireEvent.click(await screen.findByRole("button", { name: "Ask" }, SLOW));
     expect(
-      await screen.findByText(/Allowed — this customer can spend/i, undefined, SLOW),
+      await screen.findByText(/Allowed — this customer can start work/i, undefined, SLOW),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Balance at check/i)).toBeInTheDocument();
+    expect(screen.getByText(/Available after reservations/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hard floor/i)).toBeInTheDocument();
   });
 
   it("shows the per-customer usage-invoice push history", async () => {

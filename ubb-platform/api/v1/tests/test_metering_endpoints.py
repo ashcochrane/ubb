@@ -500,7 +500,7 @@ class MeteringTaskEndpointTest(TestCase):
     def _task(self, tenant=None, customer=None, balance=20_000_000,
               limit=None):
         # One-rule (#37): the tenant-level run-era knobs are gone — limits are
-        # passed explicitly at task creation (as billing pre-check does).
+        # passed explicitly at the start (`POST /api/v1/tasks`).
         return TaskService.create_task(
             tenant or self.tenant, customer or self.customer,
             balance_snapshot_micros=balance,

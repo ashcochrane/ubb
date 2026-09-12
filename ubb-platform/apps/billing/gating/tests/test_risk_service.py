@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.cache import cache
 from django.test import TestCase
 from apps.platform.tenants.models import Tenant
@@ -96,11 +98,54 @@ class RiskServiceTest(TestCase):
         call, which is the shape this route was split to remove. The fourth
         member it DID grow (#461) is a money figure — the balance less open
         reservations, which is what the floors are compared against — and
+        the fifth and sixth (#463) are the two floors themselves, resolved
+        for this owner at the altitude asked about, so a reader of a floor
+        refusal also reads the line it was refused on. Figures, every one;
         the set is pinned again here so the next arrival is read by a person.
         """
         result = RiskService.check(self.customer)
         self.assertEqual(set(result), {"allowed", "reason", "balance_micros",
-                                       "available_micros"})
+                                       "available_micros", "min_balance_micros",
+                                       "soft_min_balance_micros"})
+
+    def test_the_floors_reported_are_the_floors_tested(self):
+        """The two resolved lines travel with the verdict (#463): the hard
+        floor as the profile states it, the soft floor only at the altitude
+        it applies to — none for contained work under a running parent,
+        none under the switch off — and neither for a postpaid owner, whose
+        wallet lane does not exist."""
+        self.tenant.enforcement_mode = "enforcing"
+        self.tenant.save(update_fields=["enforcement_mode"])
+        CustomerBillingProfile.objects.create(
+            customer=self.customer, min_balance_micros=5_000_000,
+            soft_min_balance_micros=2_000_000)
+
+        top_level = RiskService.check(self.customer)
+        # Any named parent: the verdict reads only whether one was named.
+        contained = RiskService.check(self.customer, parent_task_id=uuid.uuid4())
+        self.assertEqual((top_level["min_balance_micros"],
+                          top_level["soft_min_balance_micros"]),
+                         (5_000_000, 2_000_000))
+        self.assertEqual((contained["min_balance_micros"],
+                          contained["soft_min_balance_micros"]),
+                         (5_000_000, None))
+
+        self.tenant.enforcement_mode = "off"
+        self.tenant.save(update_fields=["enforcement_mode"])
+        self.customer.tenant.refresh_from_db()
+        switched_off = RiskService.check(self.customer)
+        self.assertEqual((switched_off["min_balance_micros"],
+                          switched_off["soft_min_balance_micros"]),
+                         (5_000_000, None))
+
+        self.tenant.products = ["metering", "billing"]
+        self.tenant.billing_mode = "postpaid"
+        self.tenant.save(update_fields=["products", "billing_mode"])
+        self.customer.tenant.refresh_from_db()
+        postpaid = RiskService.check(self.customer)
+        self.assertTrue(postpaid["allowed"])
+        self.assertEqual((postpaid["min_balance_micros"],
+                          postpaid["soft_min_balance_micros"]), (None, None))
 
     def test_asking_the_verdict_twice_moves_no_admission_window(self):
         """The advisory question consumes nothing (#462, slice 6 §6, TD

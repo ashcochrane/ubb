@@ -5,7 +5,9 @@ from ubb.billing import BillingClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
 )
+from ubb import vocabulary
 from ubb.types import PaginatedResponse
+from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
@@ -116,58 +118,71 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(result.billing_owner_external_id, "biz_1")
         self.assertEqual(str(result.billing_owner_id), "22222222-2222-2222-2222-222222222222")
 
-    # ---- pre_check ----
+    # ---- affordability ----
 
-    @patch("ubb.billing.httpx.Client.post")
-    def test_pre_check(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+    @patch("ubb.billing.httpx.Client.get")
+    def test_affordability(self, mock_get):
+        """The question is a GET at its decided path (#463): nothing in the
+        request but the customer, and the answer parsed through the
+        generated model."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "allowed": True, "reason": None, "balance_micros": 10_000_000,
+            "available_micros": 8_000_000, "min_balance_micros": 0,
+            "soft_min_balance_micros": None,
         })
-        result = self.client.pre_check(customer_id="cust_1")
-        self.assertTrue(result["allowed"])
-        call_args = mock_post.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/billing/pre-check")
-        body = call_args.kwargs["json"]
-        self.assertEqual(body["customer_id"], "cust_1")
-        self.assertNotIn("estimated_cost", body)
+        result = self.client.affordability(customer_id="cust_1")
+        self.assertIsInstance(result, AffordabilityResponse)
+        self.assertTrue(result.allowed)
+        self.assertIsNone(result.reason)
+        self.assertEqual(result.available_micros, 8_000_000)
+        self.assertIsNone(result.soft_min_balance_micros)
+        call_args = mock_get.call_args
+        self.assertEqual(call_args.args[0],
+                         "/api/v1/billing/customers/cust_1/affordability")
+        self.assertEqual(call_args.kwargs["params"], {})
+        self.assertNotIn("json", call_args.kwargs)
 
-    @patch("ubb.billing.httpx.Client.post")
-    def test_pre_check_denied(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "allowed": False, "reason": "insufficient_funds", "balance_micros": -6_000_000,
+    @patch("ubb.billing.httpx.Client.get")
+    def test_affordability_denied(self, mock_get):
+        """A denial is an ordinary answer, in the registry's word — compared
+        by constant, never by a spelled string."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "allowed": False,
+            "reason": vocabulary.AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+            "balance_micros": -6_000_000, "available_micros": -6_000_000,
+            "min_balance_micros": 5_000_000, "soft_min_balance_micros": 2_000_000,
         })
-        result = self.client.pre_check(customer_id="cust_1")
-        self.assertFalse(result["allowed"])
-        self.assertEqual(result["reason"], "insufficient_funds")
+        result = self.client.affordability(customer_id="cust_1")
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.reason,
+                         vocabulary.AFFORDABILITY_REASON_INSUFFICIENT_FUNDS)
+        self.assertEqual(result.min_balance_micros, 5_000_000)
 
-    @patch("ubb.billing.httpx.Client.post")
-    def test_the_body_carries_no_registration_keys_at_all(self, mock_post):
-        """THE TWO CASES THAT STOOD HERE WERE ABOUT A FLAG THAT IS GONE (#410).
+    @patch("ubb.billing.httpx.Client.get")
+    def test_a_reason_the_registry_has_not_seen_still_parses(self, mock_get):
+        """The set is open (ADR-0003): a refusal from a control UBB gains
+        later travels as a plain string and never breaks a pinned client."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
+            "allowed": False, "reason": "a_control_from_next_year",
+            "balance_micros": 0, "available_micros": 0,
+            "min_balance_micros": 0, "soft_min_balance_micros": None,
+        })
+        result = self.client.affordability(customer_id="cust_1")
+        self.assertEqual(result.reason, "a_control_from_next_year")
 
-        One proved the wire body could carry the task vocabulary, the other
-        that it did not when the flag was off. This call registers nothing
-        now, so the second case is the whole claim and the first has no
-        subject — the wrapper for the route that DOES register work is
-        `MeteringClient.start_task` (#422).
-        """
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+    @patch("ubb.billing.httpx.Client.get")
+    def test_a_named_parent_is_sent_because_the_soft_floor_reads_it(self, mock_get):
+        """The one keyword, and only for the soft floor: past the wind-down
+        line new top-level work is refused while contained work under a
+        running parent passes."""
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "allowed": True, "reason": None, "balance_micros": 10_000_000,
+            "available_micros": 10_000_000, "min_balance_micros": 0,
+            "soft_min_balance_micros": None,
         })
-        self.client.pre_check(customer_id="cust_1")
-        body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body, {"customer_id": "cust_1"})
-
-    @patch("ubb.billing.httpx.Client.post")
-    def test_a_named_parent_is_sent_because_the_soft_floor_reads_it(self, mock_post):
-        """The one keyword that survived, and only for the soft floor: past
-        the wind-down line new top-level work is refused while contained work
-        under a running parent passes."""
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "allowed": True, "reason": None, "balance_micros": 10_000_000,
-        })
-        self.client.pre_check(customer_id="cust_1", parent_task_id="task_1")
-        self.assertEqual(mock_post.call_args.kwargs["json"]["parent_task_id"],
-                         "task_1")
+        self.client.affordability(customer_id="cust_1", parent_task_id="task_1")
+        self.assertEqual(mock_get.call_args.kwargs["params"],
+                         {"parent_task_id": "task_1"})
 
     # ---- create_top_up ----
 

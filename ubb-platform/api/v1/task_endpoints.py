@@ -89,7 +89,14 @@ from apps.platform.work.services import (
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
-from core.vocabulary import PRICING_MODE_FIXED, TENANT_PRODUCT_BILLING
+from core.vocabulary import (
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+    PRICING_MODE_FIXED, TENANT_PRODUCT_BILLING)
 
 task_router = Router(auth=ApiKeyAuth())
 
@@ -380,6 +387,25 @@ def _refused_by(verdict):
                     verdict["available_micros"])
 
 
+#: The prose for each refusal word `_refused` below renders — the six the
+#: money verdict and the standing walk answer with (#463). The kernel's other
+#: three words are worded by the kernel itself: the rate's 429 carries the
+#: window's retry sentence, and a refusal by the shape of the work carries
+#: `StartRefused`'s own. An unlisted word — the set is open — is spelled as
+#: itself. Prose for a `detail`, never a catalogue: the console's words for
+#: these live in `en.json` (ADR-0008 §4).
+_REFUSAL_IN_WORDS = {
+    AFFORDABILITY_REASON_INSUFFICIENT_FUNDS: "insufficient funds",
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED: "the soft floor is reached",
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED:
+        "the customer spend pool is exceeded",
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE:
+        "the customer spend pool's state is unavailable",
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED: "a customer-wide stop is in force",
+    AFFORDABILITY_REASON_ACCOUNT_CLOSED: "the account is closed",
+}
+
+
 def _refused(reason, balance_micros=None, available_micros=None):
     """A refusal of the customer's standing or money, as the refusal a start
     answers with.
@@ -390,13 +416,15 @@ def _refused(reason, balance_micros=None, available_micros=None):
     controls or the work being named — which is what a 409 means in
     `docs/conventions/api-contract.md`'s terms. The words are the registry's
     `affordability_reason` values and travel as data rather than as codes a
-    caller would have to unlearn. The two money figures are None where the
-    refusal was made before a wallet was read — a standing refusal, from the
-    kernel or from the money verdict alike.
+    caller would have to unlearn; the `detail` says the same thing in prose.
+    The two money figures are None where the refusal was made before a wallet
+    was read — a standing refusal, from the kernel or from the money verdict
+    alike.
     """
     return Problem(
         "task_start_refused",
-        f"this customer cannot start new work: {reason}",
+        "this customer cannot start new work: "
+        f"{_REFUSAL_IN_WORDS.get(reason, reason)}",
         extensions={"reason": reason,
                     "balance_micros": balance_micros,
                     # The balance less open reservations (#461): the figure

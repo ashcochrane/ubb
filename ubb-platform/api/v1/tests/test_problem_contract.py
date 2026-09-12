@@ -20,7 +20,8 @@ from ninja.errors import (
 )
 
 from core.problems import PROBLEMS, REGISTRY_PATH, VERDICTS, Problem
-from core.vocabulary import REASON_CODE_KNOWN_VALUES
+from core.vocabulary import (
+    AFFORDABILITY_REASON_KNOWN_VALUES, REASON_CODE_KNOWN_VALUES)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 
@@ -96,6 +97,23 @@ class RegistryDocumentTest(TestCase):
                          set(REASON_CODE_KNOWN_VALUES) | {reasons.TASK_NOT_ACTIVE})
         self.assertEqual(set(VERDICTS["reason_codes"]), reasons.ALL_REASONS)
         self.assertNotIn(reasons.SUSPENDED, VERDICTS["reason_codes"])
+
+    def test_the_affordability_reasons_are_the_registrys_nine(self):
+        """The published refusal list is a MIRROR of the registry's
+        `affordability_reason`, pinned beside the stop list's pin (#463,
+        slice 6 §13) — the other half of the verdicts block.
+
+        It was hand-maintained under the retired endpoint's name and nothing
+        cross-checked it; #459 edited it by hand for the pool's two words.
+        Pinned to `core.vocabulary` (the nine known values, generated from the
+        registry) and to nothing else: no retired spelling, no non-registry
+        verdict — every word a start or the affordability read can answer is
+        a registry value, produced by constant on both sides of the product
+        boundary. Mutate either side and this goes red.
+        """
+        self.assertEqual(set(VERDICTS["affordability_reasons"]),
+                         set(AFFORDABILITY_REASON_KNOWN_VALUES))
+        self.assertNotIn("pre_check_reasons", VERDICTS)
 
     def test_unregistered_code_is_refused_at_raise_time(self):
         with self.assertRaises(ValueError):

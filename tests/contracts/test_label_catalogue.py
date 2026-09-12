@@ -77,7 +77,6 @@ GATES_DIR = REPO_ROOT / "gates"
 ADAPTER_IMPORTERS = (
     "apps/ui/src/components/shared/nav-shell.tsx",
     "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
-    "apps/ui/src/features/customers/components/adjust-dialogs.tsx",
     "apps/ui/src/features/customers/components/budget-section.tsx",
     "apps/ui/src/features/customers/components/business-rollup.tsx",
     "apps/ui/src/features/customers/components/grants-section.tsx",
@@ -376,7 +375,7 @@ def test_every_adapter_export_is_classified(legacy):
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
         HUMANISER, "roleRank",
-        "BILLING_MODES", "CEILING_STATUSES", "COSTING_METHODS",
+        "AFFORDABILITY_REASONS", "BILLING_MODES", "CEILING_STATUSES", "COSTING_METHODS",
         "COSTING_STATUSES", "PRICING_METHODS", "PRICING_MODES",
         "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "ROLES",
         "TASK_STATUSES", "TRIGGER_SOURCES", "USAGE_EVENT_KINDS",

@@ -45,8 +45,6 @@ _WRITE_ROUTES = {
     # is its tail — the same footing as the two routes above (#410).
     ("POST", "/tasks"),
     ("POST", "/tasks/{task_id}/close"),
-    # the spend enforcement read (advisory only since #410 — it starts nothing)
-    ("POST", "/billing/pre-check"),
     # money IN (driver's amendment: paying into your own wallet is day-to-day)
     ("POST", "/billing/customers/{customer_id}/top-up"),
     # customers, accounts & subscription lifecycle
@@ -218,6 +216,14 @@ _WRITE_ROUTES = {
 # takes the Read default. So there was no key to re-write and nothing here
 # could go vacuous — which is worth stating, because #409's entry above makes
 # re-keying look like what a move always costs. 152 + 0 = 152.
+#
+# ⚠ AND THEN ONE BECAME A READ (slice 6, #463): the affordability question is
+# `GET /billing/customers/{customer_id}/affordability` at the Read floor, the
+# carve's default for a GET and right here for the ordinary reason — it decides
+# nothing, registers nothing and moves no window. The POST it replaces was a
+# Write carve entry (the one advisory write on the surface), and that entry
+# leaves the table with the method: one floored route out, one in. Not carved
+# and not exempt, so the exempt count below is untouched. 152 - 1 + 1 = 152.
 _EXPECTED_FLOORED = 152
 _EXPECTED_EXEMPT = 10
 

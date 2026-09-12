@@ -69,11 +69,9 @@ class TestMeteringOnlyTenant(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_gets_403_on_billing_pre_check(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer.id)}),
-            content_type="application/json",
+    def test_gets_403_on_the_affordability_question(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/affordability",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 403)
@@ -124,11 +122,9 @@ class TestMeteringBillingTenant(TestCase):
         self.assertIn("balance_micros", body)
         self.assertIn("currency", body)
 
-    def test_can_pre_check_on_billing_endpoint(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer.id)}),
-            content_type="application/json",
+    def test_can_ask_the_affordability_question(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/affordability",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
@@ -226,11 +222,9 @@ class TestBothProductsTenant(TestCase):
         body = response.json()
         self.assertEqual(body["balance_micros"], 10_000_000)
 
-    def test_can_pre_check_on_billing_endpoint(self):
-        response = self.http_client.post(
-            "/api/v1/billing/pre-check",
-            data=json.dumps({"customer_id": str(self.customer.id)}),
-            content_type="application/json",
+    def test_can_ask_the_affordability_question(self):
+        response = self.http_client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/affordability",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)

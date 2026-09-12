@@ -150,15 +150,7 @@
     }
   },
   "verdicts": {
-    "ingest_rejections": [
-      "billing_period_closed",
-      "effective_at_in_future",
-      "effective_at_naive",
-      "effective_at_too_old",
-      "not_found",
-      "validation_error"
-    ],
-    "pre_check_reasons": [
+    "affordability_reasons": [
       "account_closed",
       "customer_spend_pool_exceeded",
       "customer_spend_pool_unavailable",
@@ -168,6 +160,14 @@
       "rate_limit_exceeded",
       "soft_floor_reached",
       "subtask_depth_exceeded"
+    ],
+    "ingest_rejections": [
+      "billing_period_closed",
+      "effective_at_in_future",
+      "effective_at_naive",
+      "effective_at_too_old",
+      "not_found",
+      "validation_error"
     ],
     "reason_codes": [
       "absolute_deadline",

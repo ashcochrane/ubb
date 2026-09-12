@@ -13,7 +13,7 @@ from ubb.exceptions import (
 )
 from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
-from ubb.types import PreCheckResult, PaginatedResponse
+from ubb.types import PaginatedResponse
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._models import from_wire
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -35,24 +35,26 @@ class UBBClientTest(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
-    # --- pre_check (delegates to metering + billing) ---
+    # --- affordability (delegates to billing) ---
 
-    def test_pre_check_metering_only_no_event_type(self):
-        """Without event_type and no billing, pre_check returns trivially allowed."""
+    def test_affordability_requires_billing(self):
+        """The facade refuses the question for a client without billing, as
+        it refuses every money-shaped call (#463): the route refuses such a
+        tenant too, and the "trivially allowed" the retired handle answered
+        was a verdict the client made up."""
         client = UBBClient(api_key="test", metering=True, billing=False)
-        result = client.pre_check(customer_id="cust_123")
-        self.assertTrue(result.allowed)
-        self.assertTrue(result.can_proceed)
+        with self.assertRaisesRegex(UBBError, "billing"):
+            client.affordability(customer_id="cust_123")
         client.close()
 
-    def test_pre_check_with_billing_delegates(self):
-        """With billing, pre_check delegates to billing.pre_check."""
-        self.client.billing.pre_check = MagicMock(return_value={
-            "allowed": True, "can_proceed": True, "balance_micros": 10_000_000,
-        })
-        result = self.client.pre_check(customer_id="cust_123")
-        self.assertTrue(result.allowed)
-        self.client.billing.pre_check.assert_called_once_with(
+    def test_affordability_with_billing_delegates(self):
+        """With billing, the facade hands back exactly what the billing
+        client answers — the generated model, untouched."""
+        sentinel = object()
+        self.client.billing.affordability = MagicMock(return_value=sentinel)
+        result = self.client.affordability(customer_id="cust_123")
+        self.assertIs(result, sentinel)
+        self.client.billing.affordability.assert_called_once_with(
             "cust_123", parent_task_id=None,
         )
 

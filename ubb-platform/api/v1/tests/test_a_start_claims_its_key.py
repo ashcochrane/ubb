@@ -640,11 +640,12 @@ class TestTodaysCreationPathIsGone(StartTestBase):
         Wallet.objects.create(customer=self.customer,
                               balance_micros=100_000_000)
 
-    def _ask_whether_work_may_proceed(self, **extra):
-        body = {"customer_id": str(self.customer.id), **extra}
-        return self.client.post(
-            "/api/v1/billing/pre-check", data=json.dumps(body),
-            content_type="application/json", **self._auth())
+    def _ask_whether_work_may_proceed(self, **query):
+        # The affordability question, at its decided path and as a GET since
+        # #463 — the call that used to carry the flag.
+        return self.client.get(
+            f"/api/v1/billing/customers/{self.customer.id}/affordability",
+            query, **self._auth())
 
     def test_the_affordability_call_registers_nothing(self):
         response = self._ask_whether_work_may_proceed()
@@ -654,14 +655,18 @@ class TestTodaysCreationPathIsGone(StartTestBase):
 
     def test_the_flag_that_drove_it_is_gone(self):
         """The retired flag is no longer a field, so sending it declares
-        nothing: Django Ninja drops a body key the schema does not name, and
-        the call answers the question it was always for."""
-        response = self._ask_whether_work_may_proceed(start_task=True)
+        nothing: Django Ninja drops a query parameter the route does not
+        name, and the call answers the question it was always for."""
+        response = self._ask_whether_work_may_proceed(start_task="true")
         assert response.status_code == 200
         assert Task.objects.count() == 0
 
     def test_the_answer_no_longer_carries_a_registration(self):
         """Four keys left that response with the creation path, and the two
-        that mattered were the identifiers of the thing it made."""
+        that mattered were the identifiers of the thing it made. What has
+        arrived since is money: the balance less open reservations (#461)
+        and the two resolved floors (#463) — figures, never a unit."""
         body = self._ask_whether_work_may_proceed().json()
-        assert set(body) == {"allowed", "reason", "balance_micros"}
+        assert set(body) == {"allowed", "reason", "balance_micros",
+                             "available_micros", "min_balance_micros",
+                             "soft_min_balance_micros"}

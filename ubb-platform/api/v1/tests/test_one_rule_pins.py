@@ -38,6 +38,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import TestCase, Client
 
+from api.v1.tests._helpers import retired_aliases
 from apps.billing.gating.models import RiskConfig
 from apps.billing.gating.patrol import sweep_over_limit_tasks
 from apps.billing.tenant_billing.models import BillingTenantConfig
@@ -722,16 +723,22 @@ class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
 # --- Pin 17: the clean-cut sweep -------------------------------------------
 
 # Run-era tokens that must not answer on any wire/config/SDK surface. The
-# label-cap reason string and the 429 error code are included: they retired
-# with the 429 and are deliberately never reused.
+# three 429-era refusal codes — the label-cap reason and the two floor/ceiling
+# refusals — retired with the 429 and are deliberately never reused; they are
+# read off the registry that retired them (`reason_code`'s `retired_aliases`,
+# after the three stop-word aliases it lists first) rather than spelled here,
+# so this module names no retired word of its own (#463). The `_exceeded`
+# filter is what tells the two groups apart; a later retired alias ending the
+# same way would join this list, which is the right direction for a pin whose
+# subject is "answers on no surface".
 _RUN_ERA_TOKENS = (
     "run_id", "run.limit_exceeded", "RunLimitExceeded", "hard_stop_exceeded",
     "run_not_active", "start_run", "close_run", "external_run_id",
     "run_metadata", "run_total_cost_micros", "ubb:runcost", "ubb:taskcost",
     "max_cost_per_task_micros", "run_cost_limit_micros",
-    "hard_stop_balance_micros", "cost_limit_exceeded",
-    "balance_floor_exceeded", "task_limit_exceeded", "run_stale_seconds",
-)
+    "hard_stop_balance_micros", "run_stale_seconds",
+) + tuple(alias for alias in retired_aliases("spend-controls", "reason_code")
+          if alias.endswith("_exceeded"))
 
 _PLATFORM_ROOT = Path(__file__).resolve().parents[3]
 

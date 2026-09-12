@@ -13,6 +13,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from ubb import UBBClient, SubscriptionsClient
+from ubb.billing import BillingClient
 from ubb.exceptions import UBBError
 from ubb.metering import MeteringClient
 from ubb.types import PaginatedResponse
@@ -93,14 +94,12 @@ class TestMeteringDelegationRequiresMetering:
         with pytest.raises(UBBError, match="metering"):
             self.client.record_usage("cust1", "i1", provider_cost_micros=1000)
 
-    def test_pre_check_without_metering_delegates_to_billing(self):
-        """pre_check no longer requires metering — delegates to billing if available."""
-        self.client.billing.pre_check = MagicMock(return_value={
-            "allowed": True, "can_proceed": True, "balance_micros": 5_000_000,
-        })
-        result = self.client.pre_check("cust1")
-        assert result.allowed is True
-        self.client.billing.pre_check.assert_called_once_with(
+    def test_affordability_without_metering_delegates_to_billing(self):
+        """The affordability question needs billing, never metering."""
+        sentinel = object()
+        self.client.billing.affordability = MagicMock(return_value=sentinel)
+        assert self.client.affordability("cust1") is sentinel
+        self.client.billing.affordability.assert_called_once_with(
             "cust1", parent_task_id=None,
         )
 
@@ -427,27 +426,49 @@ class TestCloseNoHTTP:
         client.close()  # Should not raise
 
 
-class TestPreCheckWithoutEventType:
-    """pre_check without event_type should work with the new delegation model."""
+class TestBillingPassthroughSignatureParity:
+    """`UBBClient.affordability` must be a non-lossy passthrough to
+    `BillingClient.affordability` (#463) — the guard the metering passthroughs
+    above already have, for the one facade method that delegates to billing
+    by signature. A facade that dropped the parent would silently answer the
+    top-level soft floor for contained work.
+    """
 
-    def test_pre_check_metering_only_no_event_type(self):
-        """With metering only, no event_type: trivially allowed."""
-        client = UBBClient(api_key="test", metering=True, billing=False)
-        result = client.pre_check(customer_id="cust1")
-        assert result.allowed is True
-        assert result.can_proceed is True
+    PASSTHROUGHS = ("affordability",)
+
+    def test_every_billing_passthrough_accepts_every_lower_param(self):
+        for method in self.PASSTHROUGHS:
+            facade = inspect.signature(getattr(UBBClient, method)).parameters
+            lower = inspect.signature(getattr(BillingClient, method)).parameters
+            for name in lower:
+                if name == "self":
+                    continue
+                assert name in facade, (
+                    f"UBBClient.{method} is missing '{name}', which "
+                    f"BillingClient.{method} accepts"
+                )
+                assert facade[name].default == lower[name].default, (
+                    f"UBBClient.{method}'s '{name}' defaults differently")
+
+    def test_the_facade_forwards_the_parent_and_hands_back_the_answer(self):
+        """A signature can match while the body drops an argument, which is a
+        different failure and the one that reaches a caller."""
+        client = UBBClient(api_key="test", metering=True, billing=True)
+        sentinel = object()
+        client.billing.affordability = MagicMock(return_value=sentinel)
+
+        result = client.affordability("cust1", parent_task_id="task_0")
+
+        assert result is sentinel
+        args, kwargs = client.billing.affordability.call_args
+        assert args == ("cust1",)
+        assert kwargs == {"parent_task_id": "task_0"}
         client.close()
 
-    def test_pre_check_with_billing_delegates(self):
-        """With billing enabled, delegates to billing.pre_check."""
-        client = UBBClient(api_key="test", metering=True, billing=True)
-        client.billing.pre_check = MagicMock(return_value={
-            "allowed": True, "can_proceed": True, "balance_micros": 5_000_000,
-        })
-        result = client.pre_check(customer_id="cust1")
-        client.billing.pre_check.assert_called_once_with(
-            "cust1", parent_task_id=None,
-        )
-        assert result.allowed is True
-        assert result.balance_micros == 5_000_000
+    def test_the_facade_refuses_the_question_without_billing(self):
+        """Not "trivially allowed": the route refuses a tenant without the
+        product, and the facade does not invent a verdict on its behalf."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        with pytest.raises(UBBError, match="billing"):
+            client.affordability("cust1")
         client.close()

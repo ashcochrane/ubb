@@ -4,6 +4,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     AFFORDABILITY_REASON_CUSTOMER_STOPPED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
@@ -218,7 +219,7 @@ class RiskService:
         if enforcing(customer.tenant):
             from apps.billing.gating.services.live_counter import LiveCounter
             if LiveCounter.read(owner.id, customer.tenant)["stop"]:
-                return _verdict("customer_stopped", None, None)
+                return _verdict(AFFORDABILITY_REASON_CUSTOMER_STOPPED, None, None)
 
         # Affordability check: read wallet from billing owner (business for pooled seat, else self)
         from apps.billing.wallets.models import Wallet
@@ -237,19 +238,19 @@ class RiskService:
         # zero without a read.
         on_the_wallet_lane = owner.tenant.billing_mode != "postpaid"
         reserved = 0
+        floors = NO_FLOORS
         if on_the_wallet_lane:
             from apps.billing.wallets.reservations import open_reservations_micros
             reserved = open_reservations_micros(owner.id)
+            floors = _floors(owner.id, customer.tenant, parent_task_id)
         available = balance - reserved
 
         # The hard floor, then the soft floor at its own altitude — the one
         # walk `reserve_agreed_price` makes again with the price included.
-        # Wallet-based, so postpaid has neither.
-        if on_the_wallet_lane:
-            refusal = _floor_refusal(available, owner.id, customer.tenant,
-                                     parent_task_id)
-            if refusal is not None:
-                return _verdict(refusal, balance, available)
+        # Wallet-based, so postpaid has neither, and reports neither.
+        refusal = _floor_refusal(available, floors)
+        if refusal is not None:
+            return _verdict(refusal, balance, available, floors)
 
         # Customer spend pool, the SEAT level (slice 6 §4): the seat's own
         # counter against the seat's pool. The owner level refuses through
@@ -257,14 +258,14 @@ class RiskService:
         from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
         pool = CustomerSpendPoolService.check(customer)
         if not pool["allowed"]:
-            return _verdict(pool["reason"], balance, available)
+            return _verdict(pool["reason"], balance, available, floors)
 
         # THE PARENT THE SOFT FLOOR ABOVE READS IS CHECKED ELSEWHERE NOW.
         # Whether that named parent is a live, top-level unit is a
         # structural question about the work rather than a money-shaped
         # one, so `TaskService.parent_for` asks it, under the parent's own
         # lock, in the same transaction as the write it guards.
-        return _verdict(None, balance, available)
+        return _verdict(None, balance, available, floors)
 
     @staticmethod
     def standing_word(reason, who):
@@ -336,47 +337,97 @@ class RiskService:
         wallet, _owner_row = lock_for_billing(owner_id)
         balance = wallet.balance_micros
         available = balance - reservations.open_reservations_micros(owner_id)
-        refusal = _floor_refusal(available - price, owner_id, tenant,
-                                 parent_task_id)
+        floors = _floors(owner_id, tenant, parent_task_id)
+        refusal = _floor_refusal(available - price, floors)
         if refusal is not None:
-            return _verdict(refusal, balance, available)
+            return _verdict(refusal, balance, available, floors)
 
         reservations.reserve(task=task, owner_id=owner_id, tenant=tenant,
                              amount_micros=price)
-        return _verdict(None, balance, available)
+        return _verdict(None, balance, available, floors)
 
 
-def _verdict(reason, balance_micros, available_micros):
+class Floors(NamedTuple):
+    """Wallet policy's two lines, RESOLVED for one owner at one altitude —
+    the figures a money-shaped verdict tested the available amount against,
+    reported beside the verdict so a caller reading `insufficient_funds` or
+    `soft_floor_reached` also reads the line it was refused on (#463, slice
+    6 §13). Both carry the orientation the billing profile and the tenant
+    configuration already publish them in: the value is the allowed
+    overdraft, so the line sits at `-value`.
+    """
+
+    #: The hard floor: customer override -> tenant default -> 0. `None` only
+    #: where no floor applies at all (postpaid, or an answer made before a
+    #: wallet was read).
+    min_balance_micros: int | None
+    #: The soft floor AT THE ALTITUDE THE QUESTION NAMED. `None` where no
+    #: wind-down line applies to this start: contained work under a running
+    #: parent, a tenant not enforcing, or no soft floor configured at either
+    #: level — the same three conditions under which `_floor_refusal` never
+    #: says `soft_floor_reached`, so the figure and the refusal cannot
+    #: disagree about whether the line was tested.
+    soft_min_balance_micros: int | None
+
+
+#: The floors where no wallet lane applies: a postpaid owner, or a verdict
+#: made before any wallet was read.
+NO_FLOORS = Floors(None, None)
+
+
+def _floors(owner_id, tenant, parent_task_id):
+    """Resolve Wallet policy's two lines for ``owner_id`` at the altitude
+    ``parent_task_id`` names — the one read `check` and
+    `reserve_agreed_price` both make, so the figures they report are the
+    figures they compared against.
+
+    The soft floor (#40, spec §F) applies to NEW TOP-LEVEL starts only —
+    a contained child of running work is running work completing — and
+    only under the switch, like every state change; where it does not
+    apply it is resolved as `None` rather than as a figure that was never
+    tested.
+    """
+    from apps.billing.queries import (
+        get_customer_min_balance, get_customer_soft_min_balance)
+    from apps.platform.tenants.flags import enforcing
+
+    hard = get_customer_min_balance(owner_id, tenant.id)
+    soft = None
+    if parent_task_id is None and enforcing(tenant):
+        soft = get_customer_soft_min_balance(owner_id, tenant.id)
+    return Floors(hard, soft)
+
+
+def _verdict(reason, balance_micros, available_micros, floors=NO_FLOORS):
     """The money-shaped answer's one shape: allowed iff there is no reason;
     the balance and the balance less open reservations beside it, both
-    ``None`` where the answer was made before a wallet was read."""
+    ``None`` where the answer was made before a wallet was read; and the
+    two resolved floors the available amount was tested against, `None`
+    on the same terms and wherever no floor applies (`Floors`)."""
     return {"allowed": reason is None, "reason": reason,
             "balance_micros": balance_micros,
-            "available_micros": available_micros}
+            "available_micros": available_micros,
+            "min_balance_micros": floors.min_balance_micros,
+            "soft_min_balance_micros": floors.soft_min_balance_micros}
 
 
-def _floor_refusal(available_micros, owner_id, tenant, parent_task_id):
+def _floor_refusal(available_micros, floors):
     """The refusal word Wallet policy's floors give ``available_micros``, or
     ``None`` where both admit it — the walk ``check`` and
     ``reserve_agreed_price`` share, so the two cannot disagree about a line.
 
-    The hard floor first, always. Then the soft floor (#40, spec §F): past
-    the resolved wind-down line NEW TOP-LEVEL starts are refused while a
-    contained start under a running parent passes (a contained child of
-    running work is running work completing; the parent's own liveness is
-    validated separately, by `TaskService.parent_for`, under that parent's
-    own lock) — enforcing-only, like every state change, and the hard
-    floor's refusal wins below both lines.
+    The hard floor first, always. Then the soft floor, wherever `_floors`
+    resolved one for this altitude: past the wind-down line NEW TOP-LEVEL
+    starts are refused while a contained start under a running parent
+    passes (the parent's own liveness is validated separately, by
+    `TaskService.parent_for`, under that parent's own lock), and the hard
+    floor's refusal wins below both lines. `NO_FLOORS` — a postpaid owner —
+    admits everything: the wallet lane's lines do not exist for it.
     """
-    from apps.billing.queries import (
-        get_customer_min_balance, get_customer_soft_min_balance)
-    from apps.billing.gating.services.stop_signal_service import SOFT_FLOOR_REACHED
-    from apps.platform.tenants.flags import enforcing
-
-    if past_floor(available_micros, get_customer_min_balance(owner_id, tenant.id)):
+    if floors.min_balance_micros is None:
+        return None
+    if past_floor(available_micros, floors.min_balance_micros):
         return AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
-    if parent_task_id is None and enforcing(tenant):
-        soft = get_customer_soft_min_balance(owner_id, tenant.id)
-        if past_floor(available_micros, soft):
-            return SOFT_FLOOR_REACHED
+    if past_floor(available_micros, floors.soft_min_balance_micros):
+        return AFFORDABILITY_REASON_SOFT_FLOOR_REACHED
     return None

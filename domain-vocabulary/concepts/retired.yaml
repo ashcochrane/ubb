@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,807 of 2,233 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,809 of 2,235 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2079,6 +2079,24 @@ measurement_key:
     # findings in either direction); the generated SDK models followed. The
     # prose that held is "new work", "a piece of work", "contained work" and
     # "the unit it is declared on".
+    #
+    # 2026-09-12, #463 (a start is refused from one vocabulary, and the
+    # affordability question is asked at the read floor): 1,807 of 2,233 ->
+    # 1,809 of 2,235 tracked files (`units` 44 files / 122 occurrences,
+    # unmoved: the new prose says "a unit of work", "contained work", "new
+    # work" and "the work asked about"). Net two tracked files, every one of
+    # them swept, and no migration, so `historical-migrations` stays at 259
+    # and the exclusion at 426. Three hand-written files arrived -- the
+    # composition layer's module asking the affordability question through
+    # its GET, its module reading the start's refusals side by side by
+    # constant, and the console's dialog test proving the open-set rule on
+    # the refusal word -- and the generated SDK core moved by minus one: the
+    # new response model and its operation module arrived, and the retired
+    # call's request model, response model and operation module left. The
+    # contract removed one path with its two schemas and added one path with
+    # one schema (one reviewed ERR-level break, live in both directions).
+    # Two ledger entries that named the retired endpoint's word and three
+    # that named the 429-era refusal codes reached zero and were deleted.
 
     - term: units
       retired_as: >-

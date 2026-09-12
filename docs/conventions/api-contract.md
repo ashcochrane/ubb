@@ -124,12 +124,15 @@ route's items, against the single-call body they mirror:
 
 Verdict words come from the same registry (`verdicts` section):
 `ingest_rejections` reference problem codes; `reason_codes`, `stop_scopes`,
-and `pre_check_reasons` are the vocabularies of the spend-control surface
-(`apps/platform/work/reasons.py`, `RiskService`). `reason_codes` is a mirror
-of the reason module — the registry's seven known `reason_code` values plus
-the one UBB-produced verdict that is not a bound (`task_not_active`) — and
-`api/v1/tests/test_problem_contract.py` pins it to `core.vocabulary`, so the
-mirror cannot drift (#457).
+and `affordability_reasons` are the vocabularies of the spend-control surface
+(`apps/platform/work/reasons.py`, `RiskService`, the kernel's admission
+check). `reason_codes` is a mirror of the reason module — the registry's
+seven known `reason_code` values plus the one UBB-produced verdict that is not
+a bound (`task_not_active`) — and `affordability_reasons` is a mirror of the
+registry's `affordability_reason` (the nine known values, produced by constant
+on both sides of the product boundary; the affordability read and the start's
+refusal both answer from it). `api/v1/tests/test_problem_contract.py` pins
+both lists to `core.vocabulary`, so neither mirror can drift (#457, #463).
 
 ## Idempotency is a domain concept
 

@@ -20,11 +20,12 @@ the registry cannot silently drift from what the ledger actually writes — and 
 # surface in, appending here. Every name below is written by exactly one route (a
 # few — customer_spend_pool.set, top_up.requested — by the tenant/customer or
 # tenant/widget twins of one operation). Usage ingestion (record_usage[/batch],
-# task start, task close) and the spend pre-check are telemetry, not governance,
-# and deliberately have NO action here — see the exemption list in
-# api/v1/tests/test_audit_sweep.py. Registering a unit of work is the HEAD of
-# that ingestion and closing one is its tail, which is why they sit together:
-# neither changes the rules nor moves money.
+# task start, task close) is telemetry, not governance, and deliberately has NO
+# action here — see the exemption list in api/v1/tests/test_audit_sweep.py.
+# Registering a unit of work is the HEAD of that ingestion and closing one is
+# its tail, which is why they sit together: neither changes the rules nor moves
+# money. (The affordability question is a GET since #463 and authors nothing,
+# so it needs no exemption either.)
 AUDIT_ACTIONS = (
     # api keys / credentials (membership + key lifecycle)
     "api_key.created",

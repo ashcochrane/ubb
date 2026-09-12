@@ -1,6 +1,87 @@
 {
   "components": {
     "schemas": {
+      "AffordabilityResponse": {
+        "description": "Whether this customer's spending state would let new work proceed.\n\nADVISORY, NEVER AUTHORITATIVE. A start (`POST /api/v1/tasks`) re-runs\nevery check this answers, under its own locks, so `allowed: true` here\nreserves nothing and a start after it may still be refused. Asking\nregisters nothing and consumes none of the customer's admission\nallowance.\n\nA denial is `allowed: false` with a `reason` from the\n`affordability_reason` vocabulary \u2014 an open set, so render a value you\nhave not seen rather than fail on it. `balance_micros` is the billing\nowner's wallet balance and `available_micros` is that balance less the\nagreed prices reserved by work already started and not yet ended \u2014 the\nfigure every floor is tested against. `min_balance_micros` and\n`soft_min_balance_micros` are the hard and soft floors as resolved for\nthis customer, in the orientation the billing profile publishes them\n(the allowed overdraft: the line sits at minus the value); the soft\nfloor is null where no wind-down line applies to the work asked about \u2014\ncontained work under a running parent, a tenant not enforcing, or none\nconfigured. The two balance figures are null where the answer was made\nbefore a wallet was read (a standing refusal); the two floors are null\nthere too, and for a postpaid tenant, which has no wallet floors.",
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "available_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Micros"
+          },
+          "balance_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Micros"
+          },
+          "min_balance_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Balance Micros"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "affordability_reason",
+                "x-ubb-known-values": [
+                  "insufficient_funds",
+                  "account_closed",
+                  "customer_stopped",
+                  "soft_floor_reached",
+                  "rate_limit_exceeded",
+                  "customer_spend_pool_exceeded",
+                  "customer_spend_pool_unavailable",
+                  "parent_task_not_active",
+                  "subtask_depth_exceeded"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "soft_min_balance_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soft Min Balance Micros"
+          }
+        },
+        "required": [
+          "allowed"
+        ],
+        "title": "AffordabilityResponse",
+        "type": "object"
+      },
       "AnalyticsEarningsOut": {
         "properties": {
           "period_end": {
@@ -4497,68 +4578,6 @@
           "usage_line_item_group_by"
         ],
         "title": "PostpaidConfigOut",
-        "type": "object"
-      },
-      "PreCheckRequest": {
-        "description": "ADVISORY ONLY \u2014 THIS CALL REGISTERS NOTHING (#410).\n\nIt used to, behind a flag, and every field that served the flag has gone\nwith it: registering a unit of work is now its own call, `POST\n/api/v1/tasks`, at the root and behind no product gate. A money-shaped\nadmission check and the registration of a unit of work were one call\nanswering two questions, and a metering-only tenant could not reach the\nsecond because the first sat behind billing.",
-        "properties": {
-          "customer_id": {
-            "format": "uuid",
-            "title": "Customer Id",
-            "type": "string"
-          },
-          "parent_task_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Task Id"
-          }
-        },
-        "required": [
-          "customer_id"
-        ],
-        "title": "PreCheckRequest",
-        "type": "object"
-      },
-      "PreCheckResponse": {
-        "properties": {
-          "allowed": {
-            "title": "Allowed",
-            "type": "boolean"
-          },
-          "balance_micros": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Balance Micros"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          }
-        },
-        "required": [
-          "allowed"
-        ],
-        "title": "PreCheckResponse",
         "type": "object"
       },
       "PricingBookIn": {
@@ -9718,6 +9737,58 @@
         "summary": "Put Tenant Customer Spend Pool"
       }
     },
+    "/api/v1/billing/customers/{customer_id}/affordability": {
+      "get": {
+        "description": "Ask whether this customer's spending state would let new work proceed.\n\nADVISORY ONLY \u2014 this call registers nothing, moves no admission window,\nand is never the last word: `POST /api/v1/tasks` re-runs every check\nhere when work is actually started. A denial is a `200` carrying\n`allowed: false` and a `reason`, not an error: the question was answered.\n\n`parent_task_id` names the running parent the work would be contained\nin, and is read for the soft floor only: past the wind-down line NEW\ntop-level work is refused while contained work under a running parent\npasses, so the answer differs by altitude. Whether that parent is live\nis a start's question, not this one's.\n\nRequires the `billing` product: everything this reports is about a\nwallet \u2014 its balance, its floors, the customer's spend pool.",
+        "operationId": "api_v1_billing_endpoints_affordability",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parent_task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AffordabilityResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Affordability"
+      }
+    },
     "/api/v1/billing/customers/{customer_id}/auto-top-up": {
       "put": {
         "operationId": "api_v1_billing_endpoints_configure_auto_top_up",
@@ -10510,41 +10581,6 @@
           }
         ],
         "summary": "Put Postpaid Config"
-      }
-    },
-    "/api/v1/billing/pre-check": {
-      "post": {
-        "description": "Ask whether this customer's spending state would let work proceed.\n\nADVISORY ONLY \u2014 this call registers nothing. Registering a unit of work is\n`POST /api/v1/tasks`, at the root and behind no product gate, and it is the\nonly call that creates one.\n\nA denial is a `200` carrying `allowed: false` and a `reason`, not an error:\nthe question was answered.",
-        "operationId": "api_v1_billing_endpoints_pre_check",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PreCheckRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PreCheckResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Pre Check"
       }
     },
     "/api/v1/billing/tenant/usage-invoices": {

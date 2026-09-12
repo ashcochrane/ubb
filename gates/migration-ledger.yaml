@@ -340,19 +340,6 @@ entries:
   # reason says so. It is #205's residue in a new place — an owner slice that
   # nobody chose — and it is written down rather than smoothed over.
 
-  - id: g7-backend-balance_floor_exceeded
-    gate: G7
-    site: backend::balance_floor_exceeded
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason named for a wallet-policy floor. Slice 6 rebuilds
-      wallet policy and the reason takes the family's vocabulary. 2 → 1 in
-      #457: the reason module's docstring stopped citing the 429-era codes
-      by name (the registry's `retired_aliases` list them); the one-rule
-      pin module still names it as the thing no route may answer.
-
   - id: g7-backend-budget
     gate: G7
     site: backend::budget
@@ -415,18 +402,6 @@ entries:
   # published list to sit in. The `retired_aliases` seat in the registry stays
   # — that is what keeps the word REFUSED in every swept file rather than
   # counted in N.
-
-  - id: g7-backend-cost_limit_exceeded
-    gate: G7
-    site: backend::cost_limit_exceeded
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason spelling the retired field word. Slice 6's
-      ceiling family is what it becomes. 2 → 1 in #457, on the same terms
-      as `balance_floor_exceeded` above: the reason module's docstring
-      stopped citing it, and the one-rule pin module still names it.
 
   - id: g7-backend-customer_wide_stop
     gate: G7
@@ -510,35 +485,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-backend-pre_check
-    gate: G7
-    site: backend::pre_check
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      It named when the question was asked rather than what was asked.
-      Slice 6's admission control gives the answer its own vocabulary.
-      THREE UNTIL #410, AND THE OWNER DOES NOT MOVE — slice 6 still owes the
-      rename, and that is a slice-5 commit paying two files of it as a SIDE
-      EFFECT rather than a slice-5 ticket taking the debt on. It deletes the
-      creation path this call carried behind a flag, and both surviving
-      occurrences were about that flag rather than about the word: the
-      end-to-end enforcement test's local helper was named for the call rather
-      than for what it did (with the flag gone it starts a unit of work through
-      `POST /api/v1/tasks`, so the old name would have been false), and
-      `test_soft_floor_pins.py` held a case whose whole subject was that the
-      FLAGLESS call was refused on the same line as a start — one of two cases
-      that had become the same case, with a comment asserting this endpoint IS
-      the start gate, which it no longer is. A recorded extent that overstates
-      is an excuse with no upper bound, so the number comes down in the commit
-      that made it true. ⚠ WHAT IS LEFT IS ONE FILE AND IT IS THE ENDPOINT'S
-      OWN FUNCTION NAME, which is a PUBLIC name — django-ninja builds the
-      operationId from it and the generated SDK names a module and a constant
-      after that. So the last file cannot be paid by a comment edit: it is the
-      rename itself, which is slice 6's, and this entry is now exactly as wide
-      as the work left in it.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and
@@ -695,18 +641,6 @@ entries:
       above: the code side is paid and two glossaries' entries survive for
       the fold ticket (#469).
 
-  - id: g7-backend-task_limit_exceeded
-    gate: G7
-    site: backend::task_limit_exceeded
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The exceeded form of the same retired reason, replaced with it.
-      2 → 1 in #457: the reason module's docstring stopped listing the
-      429-era codes by name (the registry's `retired_aliases` list them),
-      so the word left a file it had only ever been cited in.
-
   - id: g7-backend-usage_line_item_group_by
     gate: G7
     site: backend::usage_line_item_group_by
@@ -721,7 +655,7 @@ entries:
     gate: G7
     site: console::budget
     expected: control_family
-    found: 23 files
+    found: 22 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
@@ -729,10 +663,13 @@ entries:
       replace one word that named all of them at once, and slice 6
       builds them. 24 → 23 in #456, the contract stage (§20 step 2): the
       billing feature's API module spelled the word only in the two route
-      paths a generated type gave it, and those moved with the routes. The
-      generated snapshot still carries it on the threshold webhook's name
-      (the catalogue ticket's), and the two features' own file names,
-      locals, copy and fixtures are the console ticket's (#468).
+      paths a generated type gave it, and those moved with the routes.
+      23 → 22 in #463: the customers feature's affordability dialog stopped
+      listing the word among the checks it runs, when its copy was rewritten
+      for the four families. The generated snapshot still carries it on the
+      threshold webhook's name (the catalogue ticket's), and the two
+      features' own file names, locals, copy and fixtures are the console
+      ticket's (#468).
 
   - id: g7-console-budget.threshold_reached
     gate: G7
@@ -744,25 +681,6 @@ entries:
       An event owned by the retired family name.
       `customer_spend_pool.threshold_reached` replaces it when slice 6
       builds the Customer Spend Pool. Same owner as G8's entry.
-
-  - id: g7-console-budget_exceeded
-    gate: G7
-    site: console::budget_exceeded
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An affordability verdict named after the retired family. Slice 6's
-      four families give the refusal its own noun.
-
-  - id: g7-console-budget_unavailable
-    gate: G7
-    site: console::budget_unavailable
-    expected: affordability_reason
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The same, for the case where the family's state could not be read.
 
   # ⚠ `card_type` REACHED ZERO ON THE CONSOLE IN #372 and its entry is deleted.
   # Two files: the pricing feature's form schemas, whose note said which field
@@ -1365,16 +1283,6 @@ entries:
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
 
-  - id: g7-sdk-pre_check
-    gate: G7
-    site: sdk::pre_check
-    expected: affordability_reason
-    found: 7 files
-    owner_slice: slice_6
-    reason: >-
-      It named when the question was asked rather than what was asked.
-      Slice 6's admission control gives the answer its own vocabulary.
-
   # ⚠ `pricing_model` REACHED ZERO IN #373 AND THE TERM HAS NO ENTRY LEFT
   # ANYWHERE. #366 deleted the backend, console, openapi and docs entries when
   # it renamed the column, its values and the three schemas publishing it, and
@@ -1849,19 +1757,6 @@ entries:
       slice 6. Converting it to import the registry before then would freeze
       names still due to change.
 
-  - id: g3-backend-affordability_reason
-    gate: G3
-    site: ubb-platform/apps/billing/gating/models.py::affordability_reason
-    expected: affordability_reason
-    found: 0 of 9 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. #150 rewrites the spend
-      controls into four families, and slice 6 is where a refusal reason takes
-      the vocabulary of the control that produced it.
-
-
   # g3-backend-trigger_source WAS HERE AND IS PAID (#412, slice 5). All five
   # mechanisms are held by reference in that module, which is what the census
   # measures, and the terminal stop events now publish the field. It was slice
@@ -1869,19 +1764,6 @@ entries:
   # slice 5 rewrote, so leaving it would have meant landing that rewrite with
   # a debt on it for slice 6 to come back and re-edit the same lines. Its G4
   # twin died in the same commit.
-
-  - id: g3-console-affordability_reason
-    gate: G3
-    site: apps/ui/src/lib/labels.ts::affordability_reason
-    expected: affordability_reason
-    found: 0 of 9 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #150 rewrites the spend controls into four
-      families, and slice 6 is where a refusal reason takes the vocabulary of
-      the control that produced it.
 
   # g3-backend-reason_code WAS HERE AND IS PAID (#457, slice 6). All seven
   # known values are held by reference in `work/reasons.py` after §7's
@@ -1961,19 +1843,6 @@ entries:
   # payment-rail activation. They are recorded against the cutover for want of
   # an owner — #206's `meter_only` and #227's `audit_action` in a third place
   # — and any slice may take them earlier.
-
-  - id: g4-openapi-affordability_reason
-    gate: G4
-    site: openapi/v1.json::affordability_reason
-    expected: affordability_reason
-    found: 0 of 9 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 9 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control, and the affordability read is where
-      these reasons are reported. The metadata appears in that slice.
 
   - id: g4-openapi-analytics_grouping_kind
     gate: G4
@@ -2347,20 +2216,6 @@ entries:
       `pastLimitFamilyLabel` hand-writes the wording for which control fired,
       and falls back to `humanize` for anything it does not recognise. It
       becomes `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in the slice that rebuilds
-      that vocabulary — the same slice the concept's own value-list entry
-      names, because a value list and the words for it cannot honestly move
-      apart.
-
-  - id: g6-map-pre-check-reason-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::preCheckReasonLabel
-    expected: affordability_reason
-    owner_slice: slice_6
-    reason: >-
-      `preCheckReasonLabel` hand-writes the wording for why an affordability
-      question was answered no, and falls back to `humanize` for anything it
-      does not recognise. It becomes
-      `labelMap(AFFORDABILITY_REASON_LABEL_KEYS)` in the slice that rebuilds
       that vocabulary — the same slice the concept's own value-list entry
       names, because a value list and the words for it cannot honestly move
       apart.

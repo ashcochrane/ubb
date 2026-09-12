@@ -1,6 +1,6 @@
 // Manual credit / debit (which take the EXTERNAL id in the body — prefilled
-// and shown read-only here) and the pre-check dialog (denials are HTTP 200
-// with allowed:false — the UI branches on the body, never the status).
+// and shown read-only here) and the affordability dialog (denials are HTTP
+// 200 with allowed:false — the UI branches on the body, never the status).
 //
 // Money moves on these forms, so submit goes through a ConfirmDialog with
 // the same consequence copy as the /billing page's credit/debit forms. The
@@ -29,10 +29,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { formatMicros } from "@/lib/format";
-import { preCheckReasonLabel } from "@/lib/labels";
+import { AFFORDABILITY_REASON_LABEL_KEYS } from "@/lib/vocabulary";
 
-import { useCreditWallet, useDebitWallet, usePreCheck } from "../api/queries";
+import { useAffordability, useCreditWallet, useDebitWallet } from "../api/queries";
 import { toMicros } from "../lib/helpers";
 import { adjustSchema, type AdjustForm } from "../lib/schemas";
 
@@ -221,7 +222,16 @@ export function AdjustDialog({
   );
 }
 
-export function PreCheckDialog({
+/**
+ * The affordability question (#463, slice 6 §13): the money-shaped verdict
+ * an integrator's agents ask before starting work, asked here by a person.
+ * A read — it registers nothing and consumes none of the customer's
+ * admission allowance — so it is offered to every role. The refusal word is
+ * a value of an OPEN vocabulary and renders through the console's one
+ * open-set helper: a known value in the catalogue's words, an unknown one
+ * as the token it is, marked, never guessed at.
+ */
+export function AffordabilityDialog({
   customerId,
   open,
   onOpenChange,
@@ -231,7 +241,7 @@ export function PreCheckDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const currency = useTenantCurrency();
-  const mutation = usePreCheck(customerId);
+  const mutation = useAffordability(customerId);
   const result = mutation.data;
 
   return (
@@ -244,11 +254,12 @@ export function PreCheckDialog({
     >
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Run access check</DialogTitle>
+          <DialogTitle>Check affordability</DialogTitle>
           <DialogDescription>
-            The same pre-start check your agents call before spending: suspension,
-            stop flags, balance floors, budget, and rate limits. It changes
-            nothing — a denial is a normal answer, not an error.
+            The question your agents ask before starting work: is this
+            customer in standing, stopped, past a floor, or over its spend
+            pool? Advisory only — it changes nothing, and a start re-checks
+            everything. A denial is a normal answer, not an error.
           </DialogDescription>
         </DialogHeader>
         {result && (
@@ -263,16 +274,33 @@ export function PreCheckDialog({
             )}
             <div className="text-[13px]">
               <div className="font-medium">
-                {result.allowed ? "Allowed — this customer can spend" : "Denied"}
+                {result.allowed ? "Allowed — this customer can start work" : "Denied"}
               </div>
               {!result.allowed && (
-                <div className="text-text-secondary">
-                  Reason: {preCheckReasonLabel(result.reason)}
+                <div className="text-text-secondary" data-testid="affordability-reason">
+                  Reason:{" "}
+                  <OpenSetValue
+                    labelKeys={AFFORDABILITY_REASON_LABEL_KEYS}
+                    value={result.reason}
+                  />
                 </div>
               )}
               {typeof result.balance_micros === "number" && (
                 <div className="text-text-secondary">
-                  Balance at check: {formatMicros(result.balance_micros, currency)}
+                  Balance: {formatMicros(result.balance_micros, currency)}
+                </div>
+              )}
+              {typeof result.available_micros === "number" && (
+                <div className="text-text-secondary">
+                  Available after reservations:{" "}
+                  {formatMicros(result.available_micros, currency)}
+                </div>
+              )}
+              {typeof result.min_balance_micros === "number" && (
+                <div className="text-text-secondary">
+                  Hard floor: {formatMicros(-result.min_balance_micros, currency)}
+                  {typeof result.soft_min_balance_micros === "number" &&
+                    ` · soft floor: ${formatMicros(-result.soft_min_balance_micros, currency)}`}
                 </div>
               )}
             </div>
@@ -297,7 +325,7 @@ export function PreCheckDialog({
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? "Working…" : result ? "Run again" : "Run check"}
+            {mutation.isPending ? "Asking…" : result ? "Ask again" : "Ask"}
           </Button>
         </DialogFooter>
       </DialogContent>

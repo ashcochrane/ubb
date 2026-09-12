@@ -104,7 +104,7 @@ class TheSettingIsGoneRatherThanDefaultedOffTest(TestCase):
         """
         from core.problems import VERDICTS
 
-        self.assertNotIn("cost_coverage_required", VERDICTS["pre_check_reasons"])
+        self.assertNotIn("cost_coverage_required", VERDICTS["affordability_reasons"])
 
     def test_the_enable_time_refusal_code_leaves_the_registry_too(self):
         """The settings write raised this when the setting could not be armed.

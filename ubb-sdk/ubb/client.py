@@ -8,10 +8,11 @@ from ubb.exceptions import (
     UBBError, UBBValidationError,
 )
 from ubb._models import from_wire
-from ubb.types import PreCheckResult, PaginatedResponse
+from ubb.types import PaginatedResponse
 from ubb.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
 # Generated DTOs (the wrap, #84): the facade returns the same generated models
 # its sub-clients do.
+from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.task_detail_out import TaskDetailOut
@@ -126,33 +127,29 @@ class UBBClient:
 
     # ---- orchestrated methods ----
 
-    def pre_check(self, customer_id: str,
-                  parent_task_id: str | None = None) -> PreCheckResult:
-        """Ask whether this customer's spending state would let work proceed.
+    def affordability(self, customer_id: str,
+                      parent_task_id: str | None = None) -> AffordabilityResponse:
+        """Ask whether this customer's spending state would let new work
+        proceed — a full passthrough to ``BillingClient.affordability``,
+        which carries the rules (kept in signature parity by
+        test_sdk_delegation.TestBillingPassthroughSignatureParity).
 
-        If billing is enabled, delegates to the billing check, which reads
-        customer status and wallet balance against the arrears threshold —
-        never the per-minute bound on new work, which only a start meets and
-        asking here never consumes. If billing is not enabled, returns
-        trivially allowed.
+        ADVISORY ONLY — it registers nothing and consumes none of the
+        customer's admission allowance; a start re-runs every check. The
+        answer is the generated ``AffordabilityResponse``: ``allowed``, a
+        ``reason`` from the open ``affordability_reason`` vocabulary, the
+        balance, the available amount and the two resolved floors.
 
-        ADVISORY ONLY — it registers nothing (#410).
-
-        ``parent_task_id`` is read only for the soft floor: past the wind-down
-        line new top-level work is refused while contained work under a running
-        parent passes.
+        REQUIRES THE BILLING PRODUCT, like every other money-shaped call on
+        this facade. The handle this replaces answered "trivially allowed"
+        for a client without billing — a verdict the client made up on the
+        server's behalf, about a wallet the tenant does not have. The route
+        refuses such a tenant (403), and so does this: an integrator without
+        billing has nothing to ask, and a start needs no advisory question
+        to be admitted.
         """
-        if self.billing:
-            check = self.billing.pre_check(
-                customer_id, parent_task_id=parent_task_id)
-            return PreCheckResult(
-                allowed=check.get("allowed", check.get("can_proceed", True)),
-                can_proceed=check.get("can_proceed", check.get("allowed", True)),
-                reason=check.get("reason"),
-                balance_micros=check.get("balance_micros"),
-            )
-
-        return PreCheckResult(allowed=True, can_proceed=True)
+        return self._require_billing().affordability(
+            customer_id, parent_task_id=parent_task_id)
 
     # THE UNIT-OF-WORK SURFACE, IN SIGNATURE PARITY WITH THE METERING CLIENT
     # (test_sdk_delegation.TestCloseTaskSignatureParity walks all four). A

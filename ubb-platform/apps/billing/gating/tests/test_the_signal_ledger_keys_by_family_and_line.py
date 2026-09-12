@@ -30,6 +30,7 @@ from apps.platform.events.schemas import RefundRequested, StopCleared, StopFired
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from core.vocabulary import (
+    AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
     CONTROL_FAMILY_VALUES, CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID)
 
@@ -49,7 +50,7 @@ class TheMapIsTheRegistrysWordsTest(TestCase):
         self.assertEqual(MIGRATION.LINE_CUSTOMER_SPEND_POOL,
                          service.LINE_CUSTOMER_SPEND_POOL)
         self.assertEqual(MIGRATION.LINE_SOFT_FLOOR, service.LINE_SOFT_FLOOR)
-        self.assertEqual(MIGRATION.OLD_SOFT_FLOOR_REACHED, service.SOFT_FLOOR_REACHED)
+        self.assertEqual(MIGRATION.OLD_SOFT_FLOOR_REACHED, AFFORDABILITY_REASON_SOFT_FLOOR_REACHED)
 
     def test_the_family_of_each_line_is_the_services_answer(self):
         for line in (service.LINE_HARD_FLOOR, service.LINE_CUSTOMER_SPEND_POOL,
@@ -137,7 +138,7 @@ class TheRowsTakeTheirLinesTest(MigrationTestBase):
 
     def test_the_wind_down_row_is_the_wallet_policys_line(self):
         stopped = self._old_row(self.prepaid, self.pre, MIGRATION.OLD_SOFT_FLOOR,
-                                reason=service.SOFT_FLOOR_REACHED)
+                                reason=AFFORDABILITY_REASON_SOFT_FLOOR_REACHED)
         cleared = self._old_row(self.postpaid, self.post, MIGRATION.OLD_SOFT_FLOOR,
                                 state="cleared", reason=service.CLEAR_RECONCILED)
 
@@ -157,14 +158,14 @@ class TheRowsTakeTheirLinesTest(MigrationTestBase):
         cleared = self._old_row(self.postpaid, self.post, MIGRATION.OLD_FLOOR_STOP,
                                 state="cleared", reason=service.CLEAR_RECONCILED)
         soft = self._old_row(self.postpaid, self.post, MIGRATION.OLD_SOFT_FLOOR,
-                             reason=service.SOFT_FLOOR_REACHED)
+                             reason=AFFORDABILITY_REASON_SOFT_FLOOR_REACHED)
 
         self._forward()
         self._backward()
 
         for row, family, reason in ((stopped, MIGRATION.OLD_FLOOR_STOP, reasons.HARD_FLOOR),
                                     (cleared, MIGRATION.OLD_FLOOR_STOP, service.CLEAR_RECONCILED),
-                                    (soft, MIGRATION.OLD_SOFT_FLOOR, service.SOFT_FLOOR_REACHED)):
+                                    (soft, MIGRATION.OLD_SOFT_FLOOR, AFFORDABILITY_REASON_SOFT_FLOOR_REACHED)):
             row = self._fresh(row)
             self.assertEqual((row.control_family, row.reason, row.clear_reason),
                              (family, reason, ""))
