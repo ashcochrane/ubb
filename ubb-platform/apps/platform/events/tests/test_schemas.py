@@ -159,12 +159,16 @@ class TestMarginEventContracts:
         assert e2.EVENT_TYPE == "provider.cost_spike"
 
 
-def test_budget_threshold_event_contract():
+def test_customer_spend_pool_threshold_event_contract():
     from dataclasses import asdict
-    from apps.platform.events.schemas import BudgetThresholdReached
-    e = BudgetThresholdReached(tenant_id="t", customer_id="c", period="2026-06",
-                               level=80, spend_micros=800, cap_micros=1000, enforce_mode="alert_only")
-    assert e.EVENT_TYPE == "budget.threshold_reached"
+    from apps.platform.events.schemas import CustomerSpendPoolThresholdReached
+    from core.vocabulary import (
+        WEBHOOK_EVENT_TYPE_CUSTOMER_SPEND_POOL_THRESHOLD_REACHED)
+    e = CustomerSpendPoolThresholdReached(
+        tenant_id="t", customer_id="c", period="2026-06", level=80,
+        spend_micros=800, cap_micros=1000, enforce_mode="alert_only")
+    # By constant identity: the class publishes the family's name (#464).
+    assert e.EVENT_TYPE == WEBHOOK_EVENT_TYPE_CUSTOMER_SPEND_POOL_THRESHOLD_REACHED
     assert asdict(e)["level"] == 80
 
 

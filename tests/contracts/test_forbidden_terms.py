@@ -357,7 +357,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # to the tenant row, the gating app's carrying each risk row's value
         # onto it and dropping its own column. Neither spells a retired word;
         # the sites and terms held at 22 in 66.
-        "historical-migrations": (UNTIL_SLICE_8, 259, 19),
+        # 259 -> 260 in #464: one migration, carrying the five control events'
+        # stored subscriptions and queued rows onto the names their families
+        # own. It spells the five retired names it renames FROM, which is
+        # exactly why a migration is excluded; the sites and terms fell
+        # 17 in 59 -> 16 in 43 as the five names' fifteen entries and the
+        # catalogue's four died.
+        "historical-migrations": (UNTIL_SLICE_8, 260, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

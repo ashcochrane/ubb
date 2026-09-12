@@ -29,7 +29,8 @@ describe("WebhooksPage", () => {
     expect(screen.getByText("All events")).toBeInTheDocument();
     // 4 subscribed types → first 2 chips + "+2 more".
     expect(screen.getByText("+2 more")).toBeInTheDocument();
-    expect(screen.getByText("Wallet — Balance low")).toBeInTheDocument();
+    // The catalogue's own words for the event, never a humanised name (#464).
+    expect(screen.getByText("Wallet balance low")).toBeInTheDocument();
     // The mid-rotation endpoint shows its rotation-window badge.
     expect(screen.getByText("Rotating secret")).toBeInTheDocument();
   });

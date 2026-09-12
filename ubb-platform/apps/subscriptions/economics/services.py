@@ -195,7 +195,7 @@ class MarginService:
                     / Decimal(prev.provider_cost_micros) * 100)
             if rise >= spike_pct:
                 already = OutboxEvent.objects.filter(
-                    event_type="provider.cost_spike", tenant_id=econ.tenant_id,
+                    event_type=ProviderCostSpike.EVENT_TYPE, tenant_id=econ.tenant_id,
                     payload__customer_id=str(econ.customer_id),
                     payload__period_start=econ.period_start.isoformat()).exists()
                 if not already:

@@ -303,11 +303,15 @@ from .waived_loss_out import WaivedLossOut
 from .waived_loss_row import WaivedLossRow
 from .wallet_transaction_out import WalletTransactionOut
 from .webhook_config_create_request import WebhookConfigCreateRequest
+from .webhook_config_create_request_event_types_item_type_0 import WebhookConfigCreateRequestEventTypesItemType0
 from .webhook_config_list_response import WebhookConfigListResponse
 from .webhook_config_response import WebhookConfigResponse
+from .webhook_config_response_event_types_item_type_0 import WebhookConfigResponseEventTypesItemType0
 from .webhook_config_update_request import WebhookConfigUpdateRequest
+from .webhook_config_update_request_event_types_type_0_item_type_0 import WebhookConfigUpdateRequestEventTypesType0ItemType0
 from .webhook_delivery_list_response import WebhookDeliveryListResponse
 from .webhook_delivery_response import WebhookDeliveryResponse
+from .webhook_delivery_response_event_type import WebhookDeliveryResponseEventType
 from .webhook_secret_rotate_request import WebhookSecretRotateRequest
 from .withdraw_request import WithdrawRequest
 from .withdraw_response import WithdrawResponse
@@ -616,11 +620,15 @@ __all__ = (
     "WaivedLossRow",
     "WalletTransactionOut",
     "WebhookConfigCreateRequest",
+    "WebhookConfigCreateRequestEventTypesItemType0",
     "WebhookConfigListResponse",
     "WebhookConfigResponse",
+    "WebhookConfigResponseEventTypesItemType0",
     "WebhookConfigUpdateRequest",
+    "WebhookConfigUpdateRequestEventTypesType0ItemType0",
     "WebhookDeliveryListResponse",
     "WebhookDeliveryResponse",
+    "WebhookDeliveryResponseEventType",
     "WebhookSecretRotateRequest",
     "WithdrawRequest",
     "WithdrawResponse",

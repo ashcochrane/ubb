@@ -39,13 +39,26 @@ class Event:
         return f"{path}::{self.declaring_class}"
 
 
-def read_catalogue(repo_root, path):
+def read_catalogue(repo_root, path, *, module=None, constants=None):
     """Every event declared in ``path``, and every reason it could not be read.
 
     Returns ``(events, errors)``. A file that is missing, unparseable or empty
     yields no events and one error saying which — never an empty catalogue that
     silently satisfies every rule stated over it.
+
+    An ``EVENT_TYPE`` is read two ways and no other. A non-empty string literal
+    is the name itself. A bare name is resolved only when the file imports it
+    from ``module`` — the generated vocabulary — and ``constants`` (generated
+    name → declared value, the registry's own rendering) knows it; since #464
+    every live payload class takes its name that way. A name imported from
+    the module that the registry renders nothing under is refused by its own
+    code rather than skipped, because a class holding a name by reference can
+    only ever hold a declared value, and a reader that let one through would
+    let the by-reference payment publish anything at all. Everything else — a
+    computed expression, a name from any other module, a name from nowhere —
+    is a name this gate cannot read, and says so.
     """
+    constants = constants or {}
     source_file = repo_root / path
     try:
         # `utf-8-sig` tolerates a byte-order mark, which Python's own tokenizer
@@ -62,6 +75,16 @@ def read_catalogue(repo_root, path):
         return (), [CatalogueError(
             E.CATALOGUE_UNREADABLE, path, f"it could not be read: {problem}")]
 
+    # Local name → generated name, for every `from <module> import X [as Y]`
+    # at any depth. Only the generated module's names are bound: a constant
+    # spelled right but imported from anywhere else stays unreadable.
+    imported = {}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.ImportFrom) and module is not None
+                and node.level == 0 and node.module == module):
+            for alias in node.names:
+                imported[alias.asname or alias.name] = alias.name
+
     events = []
     errors = []
     seen = {}
@@ -77,14 +100,27 @@ def read_catalogue(repo_root, path):
                 continue
             location = f"{path}::{node.name}"
             value = statement.value
-            if not (isinstance(value, ast.Constant)
+            if (isinstance(value, ast.Constant)
                     and isinstance(value.value, str) and value.value):
+                name = value.value
+            elif isinstance(value, ast.Name) and value.id in imported:
+                generated = imported[value.id]
+                if generated not in constants:
+                    errors.append(CatalogueError(
+                        E.EVENT_TYPE_NOT_A_DECLARED_CONSTANT, location,
+                        f"{EVENT_TYPE_ATTRIBUTE} is `{generated}` from "
+                        f"{module}, and the registry renders no declared "
+                        f"webhook_event_type value under that name — a name "
+                        f"held by reference can only be a declared value"))
+                    continue
+                name = constants[generated]
+            else:
                 errors.append(CatalogueError(
                     E.EVENT_TYPE_NOT_LITERAL, location,
-                    f"{EVENT_TYPE_ATTRIBUTE} is not a non-empty string literal, "
-                    f"so this gate cannot read the name it publishes"))
+                    f"{EVENT_TYPE_ATTRIBUTE} is neither a non-empty string "
+                    f"literal nor a name imported from {module}, so this gate "
+                    f"cannot read the name it publishes"))
                 continue
-            name = value.value
             if name in seen:
                 errors.append(CatalogueError(
                     E.DUPLICATE_EVENT_TYPE, location,

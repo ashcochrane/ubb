@@ -241,61 +241,15 @@ entries:
   # G7 entries are one debt read from two sides.
 
   # Slice 6 (Spend control) — the four families. The wallet's own three levels
-  # were here too until #222 renamed them; what is left is the control events
-  # slice 6 rewrites rather than renames.
-  - id: g8-stop-fired-is-a-mechanism-namespace
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::StopFired
-    expected: customer.stopped
-    found: stop.fired
-    owner_slice: slice_6
-    reason: >-
-      `stop` is the mechanism, not a domain owner. A customer-wide stop is a
-      state the CUSTOMER entered; which control fired travels as
-      `control_family` and why as `reason_code`, which is exactly what
-      ADR-0006 §5 moves out of the name. Slice 6 lands the four families.
-
-  - id: g8-stop-cleared-is-a-mechanism-namespace
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::StopCleared
-    expected: customer.stop_cleared
-    found: stop.cleared
-    owner_slice: slice_6
-    reason: >-
-      The other half of the episode pair, under the same mechanism namespace.
-      It moves with the event it closes, or the two stop pairing (#155 §3.1).
-
-  - id: g8-soft-floor-crossed-is-a-mechanism-namespace
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::SoftFloorCrossed
-    expected: wallet_policy.soft_floor_crossed
-    found: soft_floor.crossed
-    owner_slice: slice_6
-    reason: >-
-      The soft floor is a wallet policy setting, and the policy is the declared
-      control family that owns the namespace. One public concept, one public
-      name, on the webhook and in `control_family` alike (ADR-0006 §2).
-
-  - id: g8-soft-floor-cleared-is-a-mechanism-namespace
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::SoftFloorCleared
-    expected: wallet_policy.soft_floor_cleared
-    found: soft_floor.cleared
-    owner_slice: slice_6
-    reason: >-
-      The clear that pairs with the crossing above, and it moves with it.
-
-  - id: g8-budget-threshold-reached-uses-a-retired-family
-    gate: G8
-    site: ubb-platform/apps/platform/events/schemas.py::BudgetThresholdReached
-    expected: customer_spend_pool.threshold_reached
-    found: budget.threshold_reached
-    owner_slice: slice_6
-    reason: >-
-      `budget` named all four spend controls at once and left the vocabulary
-      entirely (#154 §3.4); it survives here as the namespace of the event the
-      pool fires. Slice 6 lands `customer_spend_pool` as the family.
-
+  # were here too until #222 renamed them, and THE LAST FIVE LEFT IN #464: the
+  # customer stop pair moved under the customer (`customer.stopped` /
+  # `customer.stop_cleared`), the soft-floor pair under the wallet policy and
+  # the pool's threshold event under the customer spend pool, carried by
+  # `events/0009` on `0007`'s 1:1 shape. G8 excuses nothing now, and the
+  # catalogue test asserts that outright rather than as a ceiling; their G7
+  # twins on the backend, the console and the contract died in the same
+  # commit, a G8 entry and its G7 entries being one debt read from two sides.
+  # The docs twins are #470's.
   # --- G7: no retired word on any living surface -----------------------------
   #
   # THE SECOND LARGE SEEDING, and by far the biggest: 159 entries over 50 of the
@@ -344,7 +298,7 @@ entries:
     gate: G7
     site: backend::budget
     expected: control_family
-    found: 7 files
+    found: 2 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
@@ -354,22 +308,12 @@ entries:
       backend whole): the pool row, its service, its enforce-mode
       constant, the live counter's key family and Lua, the beat key, the
       audit action, the four routes and every pool test took the family's
-      noun. What survives is exactly what that ticket may not touch: the
-      threshold event's class and its `EVENT_TYPE` literal, with the
-      emitter's dedupe filter and the three tests that assert that event
-      by name (the catalogue ticket's, #464 — its own `budget.threshold_reached`
-      entry counts those files), and the two glossaries (the fold's, #470).
-
-  - id: g7-backend-budget.threshold_reached
-    gate: G7
-    site: backend::budget.threshold_reached
-    expected: webhook_event_type
-    found: 6 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by the retired family name.
-      `customer_spend_pool.threshold_reached` replaces it when slice 6
-      builds the Customer Spend Pool. Same owner as G8's entry.
+      noun. 7 → 2 in #464, the catalogue ticket: the threshold event's
+      class took the family's name with its `EVENT_TYPE` held by
+      reference, and the emitter's dedupe filter and the three tests that
+      asserted the event by name now assert it through the class. What
+      survives is the two glossaries, whose entries still name the old
+      symbols — the fold's (#470).
 
   # ⚠ `backend::card_type` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED. The
   # descent was 31 -> 28 (#367, the column off the RULE) -> 4 (#368, the split
@@ -548,46 +492,6 @@ entries:
       An earlier spelling of the same audit action, retired with the
       same field.
 
-  - id: g7-backend-soft_floor.cleared
-    gate: G7
-    site: backend::soft_floor.cleared
-    expected: webhook_event_type
-    found: 8 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair. Same owner as G8's entry.
-
-  - id: g7-backend-soft_floor.crossed
-    gate: G7
-    site: backend::soft_floor.crossed
-    expected: webhook_event_type
-    found: 9 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the wallet policy
-      that holds the floor. Same owner as G8's entry.
-
-  - id: g7-backend-stop.cleared
-    gate: G7
-    site: backend::stop.cleared
-    expected: webhook_event_type
-    found: 13 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair, replaced by
-      `customer.stop_cleared`. Same owner as G8's entry.
-
-  - id: g7-backend-stop.fired
-    gate: G7
-    site: backend::stop.fired
-    expected: webhook_event_type
-    found: 15 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the customer whose
-      state changed (ADR-0006 §5). `customer.stopped` replaces it when
-      slice 6 rebuilds spend control. Same owner as G8's entry.
-
   # `g7-backend-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), with its G8 entry and its console and openapi twins.
   # It stood at 10 files. The word is now refused in every swept file rather
@@ -655,7 +559,7 @@ entries:
     gate: G7
     site: console::budget
     expected: control_family
-    found: 22 files
+    found: 21 files
     owner_slice: slice_6
     reason: >-
       A retired spend-control family name. #150's four families —
@@ -666,21 +570,11 @@ entries:
       paths a generated type gave it, and those moved with the routes.
       23 → 22 in #463: the customers feature's affordability dialog stopped
       listing the word among the checks it runs, when its copy was rewritten
-      for the four families. The generated snapshot still carries it on the
-      threshold webhook's name (the catalogue ticket's), and the two
-      features' own file names, locals, copy and fixtures are the console
-      ticket's (#468).
-
-  - id: g7-console-budget.threshold_reached
-    gate: G7
-    site: console::budget.threshold_reached
-    expected: webhook_event_type
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by the retired family name.
-      `customer_spend_pool.threshold_reached` replaces it when slice 6
-      builds the Customer Spend Pool. Same owner as G8's entry.
+      for the four families. 22 → 21 in #464: the legacy adapter's
+      hand-held event list, which spelled the threshold webhook's old name,
+      became the generated set held by reference; the generated snapshot
+      renders the successor. The two features' own file names, locals, copy
+      and fixtures are the console ticket's (#468).
 
   # ⚠ `card_type` REACHED ZERO ON THE CONSOLE IN #372 and its entry is deleted.
   # Two files: the pricing feature's form schemas, whose note said which field
@@ -821,46 +715,6 @@ entries:
       It named a mode where the fact is a posture. Slice 7 DELETES
       `Customer.revenue_mode`, the `/revenue-mode` pair and the
       `/customers/{id}/revenue` pair outright.
-
-  - id: g7-console-soft_floor.cleared
-    gate: G7
-    site: console::soft_floor.cleared
-    expected: webhook_event_type
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair. Same owner as G8's entry.
-
-  - id: g7-console-soft_floor.crossed
-    gate: G7
-    site: console::soft_floor.crossed
-    expected: webhook_event_type
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the wallet policy
-      that holds the floor. Same owner as G8's entry.
-
-  - id: g7-console-stop.cleared
-    gate: G7
-    site: console::stop.cleared
-    expected: webhook_event_type
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair, replaced by
-      `customer.stop_cleared`. Same owner as G8's entry.
-
-  - id: g7-console-stop.fired
-    gate: G7
-    site: console::stop.fired
-    expected: webhook_event_type
-    found: 4 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the customer whose
-      state changed (ADR-0006 §5). `customer.stopped` replaces it when
-      slice 6 rebuilds spend control. Same owner as G8's entry.
 
   # `g7-console-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), at 2 files: the hand-held event list in `labels.ts`
@@ -1063,29 +917,6 @@ entries:
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
 
-  - id: g7-openapi-budget
-    gate: G7
-    site: openapi::budget
-    expected: control_family
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A retired spend-control family name. #150's four families —
-      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
-      replace one word that named all of them at once, and slice 6
-      builds them.
-
-  - id: g7-openapi-budget.threshold_reached
-    gate: G7
-    site: openapi::budget.threshold_reached
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by the retired family name.
-      `customer_spend_pool.threshold_reached` replaces it when slice 6
-      builds the Customer Spend Pool. Same owner as G8's entry.
-
 
   - id: g7-openapi-dimensions
     gate: G7
@@ -1112,46 +943,6 @@ entries:
       It named a mode where the fact is a posture. Slice 7 DELETES
       `Customer.revenue_mode`, the `/revenue-mode` pair and the
       `/customers/{id}/revenue` pair outright.
-
-  - id: g7-openapi-soft_floor.cleared
-    gate: G7
-    site: openapi::soft_floor.cleared
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair. Same owner as G8's entry.
-
-  - id: g7-openapi-soft_floor.crossed
-    gate: G7
-    site: openapi::soft_floor.crossed
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the wallet policy
-      that holds the floor. Same owner as G8's entry.
-
-  - id: g7-openapi-stop.cleared
-    gate: G7
-    site: openapi::stop.cleared
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair, replaced by
-      `customer.stop_cleared`. Same owner as G8's entry.
-
-  - id: g7-openapi-stop.fired
-    gate: G7
-    site: openapi::stop.fired
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the customer whose
-      state changed (ADR-0006 §5). `customer.stopped` replaces it when
-      slice 6 rebuilds spend control. Same owner as G8's entry.
 
   # `g7-openapi-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), at 1 file. The published `webhooks` section derives
@@ -1581,20 +1372,6 @@ entries:
   # been the vacuous form of paying this. Its G4 twin died with it, after the
   # regeneration: the two were one debt read from two sides.
 
-  - id: g2-backend-webhook_event_type
-    gate: G2
-    site: ubb-platform/apps/platform/events/schemas.py::webhook_event_type
-    expected: webhook_event_type
-    found: 0 of 37 values
-    owner_slice: slice_6
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. G8 already owes seven
-      of these names to slices 5 and 6, so the catalogue is not finished being
-      renamed until slice 6. Converting it to import the registry before then
-      would freeze names still due to change.
-
   - id: g2-console-analytics_measure
     gate: G2
     site: apps/ui/src/lib/labels.ts::analytics_measure
@@ -1716,20 +1493,6 @@ entries:
   # same one `g2-console-pricing_mode` had), and the console's first sight of
   # it is already the migrated shape.
 
-  - id: g2-console-webhook_event_type
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::webhook_event_type
-    expected: webhook_event_type
-    found: 0 of 37 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. G8 already owes seven of these names to slices 5
-      and 6, so the catalogue is not finished being renamed until slice 6.
-      Converting it to import the registry before then would freeze names
-      still due to change.
-
   - id: g2-sdk-stop_behavior
     gate: G2
     site: ubb-sdk/ubb/metering.py::stop_behavior
@@ -1742,20 +1505,6 @@ entries:
       generated `ubb/vocabulary.py`. #179 §1 makes this the generated
       wrapper's declared behaviour, and the wrapper does not exist until the
       Code Builder slice. The SDK names it before then only as documentation.
-
-  - id: g2-sdk-webhook_event_type
-    gate: G2
-    site: ubb-sdk/ubb/webhooks.py::webhook_event_type
-    expected: webhook_event_type
-    found: 0 of 37 values
-    owner_slice: slice_6
-    reason: >-
-      The SDK names no value here at all — the field is a bare string, so an
-      integrator has no constant to branch on, which is the whole reason #207
-      generated `ubb/vocabulary.py`. G8 already owes seven of these names to
-      slices 5 and 6, so the catalogue is not finished being renamed until
-      slice 6. Converting it to import the registry before then would freeze
-      names still due to change.
 
   # g3-backend-trigger_source WAS HERE AND IS PAID (#412, slice 5). All five
   # mechanisms are held by reference in that module, which is what the census
@@ -2009,23 +1758,6 @@ entries:
   # posting back to a reader who did not create it. The recording ack does not,
   # and that is argued at `api/v1/schemas.py::UsageEventKind`: the recording
   # route cannot produce a `task_charge` row at all.
-
-  - id: g4-openapi-webhook_event_type
-    gate: G4
-    site: openapi/v1.json::webhook_event_type
-    expected: webhook_event_type
-    found: 0 of 37 values
-    owner_slice: slice_6
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 37 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 6 rebuilds spend control, and the five events G8 still owes
-      are the ones #150's four families rewrite — it was seven until the
-      terminal-event split paid the two Task debts, which moved the backend
-      consumer's list without moving this count, because the count is of values
-      HELD BY REFERENCE and `labels.ts` still holds all thirty-seven as its
-      own. The metadata appears in that slice.
 
   # --- G6: the console's hand-written value maps (#210) ---------------------
   #
@@ -2350,17 +2082,6 @@ entries:
   # pieces. It is the same debt in a worse form, because it invents wording
   # for a value it has never been told about.
 
-  - id: g6-renderer-webhook-event-type-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::webhookEventTypeLabel
-    expected: webhook_event_type
-    owner_slice: slice_6
-    reason: >-
-      `webhookEventTypeLabel` it splits an event name on the dot and humanises
-      both halves, so the thirteen events #205 renames render under invented
-      wording rather than none. It becomes a catalogue lookup over
-      `WEBHOOK_EVENT_TYPE_LABEL_KEYS` when slice 6 renames the event catalogue.
-
 
   # --- G6: the humanising call sites -----------------------------------------
   #
@@ -2456,14 +2177,6 @@ entries:
       concept. What it will eventually owe is a stable label key, which is the
       same debt `productDescription` carries and is why that one IS here.
 
-  - id: g6-humanises-event-groups
-    gate: G6
-    site: apps/ui/src/features/webhooks/lib/event-groups.ts::humanize
-    expected: webhook_event_type
-    owner_slice: slice_6
-    reason: >-
-      `event-groups.ts` humanises both halves of every webhook event name to
-      build the subscription picker's group headings and rows.
 seeding_authorisations:
   - gate: G9
     issue: 203

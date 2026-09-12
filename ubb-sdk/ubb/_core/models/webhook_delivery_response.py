@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.webhook_delivery_response_event_type import WebhookDeliveryResponseEventType
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -27,7 +28,7 @@ class WebhookDeliveryResponse:
             created_at (str):
             error_message (str):
             event_id (str):
-            event_type (str):
+            event_type (WebhookDeliveryResponseEventType):
             id (str):
             success (bool):
             status_code (int | None | Unset):
@@ -36,7 +37,7 @@ class WebhookDeliveryResponse:
     created_at: str
     error_message: str
     event_id: str
-    event_type: str
+    event_type: WebhookDeliveryResponseEventType
     id: str
     success: bool
     status_code: int | None | Unset = UNSET
@@ -53,7 +54,7 @@ class WebhookDeliveryResponse:
 
         event_id = self.event_id
 
-        event_type = self.event_type
+        event_type = self.event_type.value
 
         id = self.id
 
@@ -92,7 +93,10 @@ class WebhookDeliveryResponse:
 
         event_id = d.pop("event_id")
 
-        event_type = d.pop("event_type")
+        event_type = WebhookDeliveryResponseEventType(d.pop("event_type"))
+
+
+
 
         id = d.pop("id")
 

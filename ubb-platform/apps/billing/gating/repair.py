@@ -36,7 +36,7 @@ the repair. A vanished deficit lapses the candidate.
 
 Resume on repair: a repair that lifts a wedged stop drives the clearing
 transition through the same ``StopSignalState`` guard as every other
-clearing — ``stop.cleared`` exactly once — and re-aligns the fast flag.
+clearing — ``customer.stop_cleared`` exactly once — and re-aligns the fast flag.
 
 Untouched neighbors: the MIN-merge stays byte-identical. The postpaid spend
 counter is out of scope: its drift lane is the MAX-merge + spend-pool reconcile,
@@ -265,7 +265,7 @@ def _apply_increment(owner_id, amount):
 def _resume_if_wedge_lifted(owner_id, tenant, live_after):
     """Resume on repair (§D): re-check the wallet floor's line against the
     repaired balance; a repair that lifted a wedged stop runs
-    ``LiveCounter.resume`` (D2 — the clearing trio as one op: ``stop.cleared``
+    ``LiveCounter.resume`` (D2 — the clearing trio as one op: ``customer.stop_cleared``
     exactly once through the same guard as every other clearing, fast-flag
     delete, and the D15 durable-gated un-suspend; the module re-reads the
     durable balance inside this pass's billing lock, so the gate decides on

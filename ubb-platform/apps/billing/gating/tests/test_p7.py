@@ -16,6 +16,7 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import StopCleared
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
@@ -51,7 +52,7 @@ class TestCleanup:
     def test_silent_close_is_bulk_non_emitting_and_preserves_episode_seq(self):
         # The D5 trap pin (#111): cleanup's ledger leg is a BULK,
         # NON-EMITTING close — a config flip is not a re-cross, so no
-        # stop.cleared rides out, and episode_seq is preserved so episode
+        # customer.stop_cleared rides out, and episode_seq is preserved so episode
         # ids never restart or collide. A rewrite as a loop of drive_clear
         # calls would emit per row and fail here.
         t = _tenant()
@@ -63,7 +64,7 @@ class TestCleanup:
         row = StopSignalState.objects.get(owner=c)
         assert row.episode_seq == 2  # a real history, not a fresh row
         cleared_before = OutboxEvent.objects.filter(
-            event_type="stop.cleared").count()
+            event_type=StopCleared.EVENT_TYPE).count()
 
         LiveCounter.cleanup(t)
 
@@ -74,7 +75,7 @@ class TestCleanup:
         assert row.episode_seq == 2  # preserved, never reset
         # Non-emitting: the close itself put NOTHING on the wire.
         assert OutboxEvent.objects.filter(
-            event_type="stop.cleared").count() == cleared_before
+            event_type=StopCleared.EVENT_TYPE).count() == cleared_before
         # Ids never restart: the first real crossing after re-enable opens
         # episode 3, not a colliding episode 1.
         assert drive_a_stop(c.id, t) == 3

@@ -2,8 +2,8 @@
 
 Pin 12 — crossing the soft line refuses a NEW TOP-LEVEL task start
 (`soft_floor_reached`) while a subtask start under an active parent passes,
-and usage events keep landing and billing; `soft_floor.crossed` /
-`soft_floor.cleared` fire exactly once per crossing through the transition
+and usage events keep landing and billing; `wallet_policy.soft_floor_crossed` /
+`wallet_policy.soft_floor_cleared` fire exactly once per crossing through the transition
 guard; acks never change on a soft-floor crossing.
 
 Plus the resolution rule: the soft line resolves customer override → tenant
@@ -33,7 +33,7 @@ from apps.billing.queries import get_billing_config, get_customer_soft_min_balan
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import UsageRecorded
+from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopFired, UsageRecorded
 from apps.platform.tenants.models import Tenant
 
 HARD = 5_000_000  # hard floor: the stop line is -5_000_000
@@ -60,15 +60,15 @@ def _drain(t, c, billed):
 
 
 def _crossed():
-    return OutboxEvent.objects.filter(event_type="soft_floor.crossed").order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=SoftFloorCrossed.EVENT_TYPE).order_by("created_at")
 
 
 def _cleared():
-    return OutboxEvent.objects.filter(event_type="soft_floor.cleared").order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=SoftFloorCleared.EVENT_TYPE).order_by("created_at")
 
 
 def _hard_fired():
-    return OutboxEvent.objects.filter(event_type="stop.fired")
+    return OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE)
 
 
 @pytest.mark.django_db

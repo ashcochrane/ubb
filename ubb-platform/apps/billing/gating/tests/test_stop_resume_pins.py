@@ -24,7 +24,7 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import UsageRecorded
+from apps.platform.events.schemas import StopCleared, StopFired, UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import stop_line
@@ -55,11 +55,11 @@ def _drain(t, c, billed):
 
 
 def _fired():
-    return OutboxEvent.objects.filter(event_type="stop.fired").order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).order_by("created_at")
 
 
 def _cleared():
-    return OutboxEvent.objects.filter(event_type="stop.cleared").order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=StopCleared.EVENT_TYPE).order_by("created_at")
 
 
 def _suspended_events():

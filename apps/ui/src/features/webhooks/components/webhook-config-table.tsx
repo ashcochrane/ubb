@@ -9,11 +9,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
-import { webhookEventTypeLabel } from "@/lib/labels";
 import { formatDate, formatShortDate } from "@/lib/format";
 
 import { useUpdateWebhookConfig } from "../api/queries";
 import type { WebhookConfig } from "../api/types";
+import { webhookEventTypeLabel } from "../lib/event-type-label";
 
 /** First two event chips + "+N more"; "*" renders as a single "All events". */
 export function EventTypeChips({ eventTypes }: { eventTypes: string[] }) {

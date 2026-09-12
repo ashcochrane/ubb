@@ -2,8 +2,8 @@
 three lines keyed by family, slice 6 §9, #458).
 
 The single emission choke point for the customer-wide stop/resume pair
-(``stop.fired`` / ``stop.cleared``) and the soft-floor pair
-(``soft_floor.crossed`` / ``soft_floor.cleared`` — its own line, its own
+(``customer.stopped`` / ``customer.stop_cleared``) and the soft-floor pair
+(``wallet_policy.soft_floor_crossed`` / ``wallet_policy.soft_floor_cleared`` — its own line, its own
 episode sequence, never a suspension). Every lane that detects a crossing —
 the real-time counter write (the live counter's ``_set_stop``), the durable
 drawdown handler (``apps.billing.handlers``), the hourly reconcile — drives a
@@ -199,7 +199,7 @@ class StopSignalService:
         1. flips the ledger row to ``stopped``, increments ``episode_seq``
            and records ``control_id`` — the row that declares the control,
            passed by the caller because only the caller holds it (§1);
-        2. emits ``stop.fired`` carrying the episode id, the line's word as
+        2. emits ``customer.stopped`` carrying the episode id, the line's word as
            `reason_code`, the family the word belongs to and the id;
         3. durably suspends the owner (active->suspended winning flip +
            ``CustomerSuspended``) — the suspension fold. Every caller is
@@ -261,7 +261,7 @@ class StopSignalService:
         Returns the episode_seq of the stop it closed when THIS call won
         (state was stopped), else None — a clear that didn't win emits
         nothing (spec §E). The winner flips the row to ``cleared``, records
-        why (``clear_reason``) and emits ``stop.cleared`` carrying the closed
+        why (``clear_reason``) and emits ``customer.stop_cleared`` carrying the closed
         episode, the line's word, family and control id, and the balance at
         clearance. Un-suspension is deliberately NOT here: it rides
         ``LiveCounter.resume``'s durable gate (D15), which also asks whether
@@ -306,7 +306,7 @@ class StopSignalService:
 
         DELIBERATELY a bulk, NON-EMITTING UPDATE — do NOT rewrite this as a
         loop of ``drive_clear`` calls: per #39 a config flip is not a
-        re-cross, so no ``stop.cleared`` may ride out, and ``episode_seq`` is
+        re-cross, so no ``customer.stop_cleared`` may ride out, and ``episode_seq`` is
         preserved so episode ids never restart or collide (test_p7 pins the
         observable behavior). Closes open episodes on ALL THREE lines (a
         stale soft-floor 'crossed' row would equally swallow the first real
@@ -327,7 +327,7 @@ class StopSignalService:
 
         Returns the opened episode_seq when THIS call won (state was
         cleared/absent), else None. The winner atomically flips the ledger
-        row and emits ``soft_floor.crossed``. Deliberately unlike the hard
+        row and emits ``wallet_policy.soft_floor_crossed``. Deliberately unlike the hard
         pair: NO suspension fold, NO Redis flag, NO ack change, NO control
         id — the soft floor is a webhook + start-gate line only, it passes
         nothing to a kill, and its only detector is the durable drawdown

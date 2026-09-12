@@ -32,8 +32,8 @@ export const MOCK_WEBHOOK_CONFIGS: WebhookConfig[] = [
     event_types: [
       "wallet.balance_low",
       "wallet.balance_critical",
-      "stop.fired",
-      "stop.cleared",
+      "customer.stopped",
+      "customer.stop_cleared",
     ],
     is_active: true,
     retiring_secret_expires_at: null,
@@ -55,7 +55,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "1e4f6b82-3a59-4d2c-8f7e-9c2b5d8a3e01",
       event_id: "a2d05c93-7b4e-4f80-a621-38e9f0b7d254",
-      event_type: "stop.fired",
+      event_type: "customer.stopped",
       success: false,
       status_code: 500,
       error_message: "Receiver answered 500 Internal Server Error",
@@ -64,7 +64,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "2f507c93-4b60-4e3d-a08f-0d3c6e9b4f12",
       event_id: "b3e16da4-8c5f-4091-b732-49f0a1c8e365",
-      event_type: "stop.cleared",
+      event_type: "customer.stop_cleared",
       success: false,
       status_code: null,
       error_message:
@@ -92,7 +92,7 @@ export const MOCK_WEBHOOK_DELIVERIES: Record<string, WebhookDelivery[]> = {
     {
       id: "5283afc6-7e93-416a-d3bc-306192ce7245",
       event_id: "e61490d7-bf82-43c4-ea65-7c23d4f1b698",
-      event_type: "stop.fired",
+      event_type: "customer.stopped",
       success: true,
       status_code: 200,
       error_message: "",

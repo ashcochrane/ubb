@@ -93,6 +93,15 @@ bare `reason` to `reason_code` in the same commit
 (`apps/platform/work/tests/test_a_stop_names_the_control_that_fired.py`;
 `api/v1/tests/test_every_stop_names_the_control_that_fired.py`).
 
+*Applied by slice 6 (#464):* the last five names that carried a mechanism or a retired family word
+moved under their owners — the customer stop pair under the customer (`customer.stopped`,
+`customer.stop_cleared`), the soft-floor pair under the wallet policy, the pool's threshold event
+under the customer spend pool — with every stored subscription and queued row carried by
+`events/0009`; and the same commit made every payload class take its `EVENT_TYPE` from the
+generated vocabulary, so the catalogue's names are the registry's by construction and the
+catalogue gate excuses nothing (`tests/contracts/test_webhook_catalogue.py`;
+`apps/platform/events/tests/test_the_five_control_events_move_under_their_families.py`).
+
 ### 6. A configured maximum is named as a maximum
 
 `max_task_starts_per_minute`, not `task_start_rate_per_minute` — the latter reads as telemetry

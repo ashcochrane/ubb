@@ -1,5 +1,5 @@
 from datetime import timedelta
-from typing import Optional
+from typing import Annotated, Literal, Optional, Union
 
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
@@ -28,13 +28,38 @@ _MAX_OVERLAP_HOURS = 168  # one week
 # both the pre-check and the DB-constraint race, in create and PATCH alike.
 _URL_CONFLICT_DETAIL = "a webhook config for this url already exists"
 
+#: THE NAME OF AN EVENT UBB PUBLISHES — the registry's closed
+#: `webhook_event_type` (#464, slice 6 §16). The marker renders the whole
+#: 37-member `enum` wherever this alias sits: `tools/known_values/apply.py`
+#: walks the document and writes the registry's values onto the marked node,
+#: so a subscriber writing a switch over a delivery's event type sees the
+#: whole set instead of `type: string`. Spelled here rather than imported from
+#: `api/v1/schemas.py`, for ADR-001's reason (the payload module spells its
+#: own for the same reason).
+WebhookEventType = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "webhook_event_type"})]
+
+#: The one selector that is not a name: `"*"` subscribes to every event,
+#: current and future, and is stored verbatim (`events/catalog.py::WILDCARD`,
+#: which `_validate_event_types` admits through `is_valid_event_selector`). A
+#: subscription's `event_types` is therefore a list of names OR the wildcard,
+#: and the document says so — the marker sits on the NAME member of this union
+#: inside the list's `items`, never on the list or on the nullable union
+#: above it, so the generated `enum` constrains the names and leaves the
+#: selector alone. An `enum` on a bare `items` would have refused the
+#: server's own `["*"]` response; `docs/conventions/api-contract.md`'s rule
+#: for a nullable field, applied to a two-member union. The `Literal` spells
+#: the selector because a type must, and a test holds it to the catalogue's
+#: constant.
+EventSelector = Union[WebhookEventType, Literal["*"]]
+
 
 class WebhookConfigCreateRequest(Schema):
     url: str = Field(max_length=500)
     secret: str = Field(min_length=32, max_length=255)
     # Required and non-empty — there is no implicit "subscribe to everything".
     # Pass ["*"] to opt in to all events, or specific types. See events/catalog.py.
-    event_types: list[str] = Field(min_length=1)
+    event_types: list[EventSelector] = Field(min_length=1)
     is_active: bool = True
 
 
@@ -43,7 +68,7 @@ class WebhookConfigUpdateRequest(Schema):
     # `secret` is deliberately absent: it is untouchable via PATCH and moves
     # only through the rotation endpoint (#83).
     url: Optional[str] = Field(default=None, max_length=500)
-    event_types: Optional[list[str]] = None
+    event_types: Optional[list[EventSelector]] = None
     is_active: Optional[bool] = None
 
 
@@ -56,7 +81,7 @@ class WebhookSecretRotateRequest(Schema):
 class WebhookConfigResponse(Schema):
     id: str
     url: str
-    event_types: list[str]
+    event_types: list[EventSelector]
     is_active: bool
     created_at: str
     # When the retiring secret stops signing (null when no rotation is in
@@ -73,7 +98,9 @@ class WebhookConfigListResponse(Schema):
 class WebhookDeliveryResponse(Schema):
     id: str
     event_id: str
-    event_type: str
+    # A delivery is always of a named event, never of the wildcard, so the
+    # marker sits on the plain string and renders the enum outright.
+    event_type: WebhookEventType
     status_code: Optional[int] = None
     success: bool
     error_message: str

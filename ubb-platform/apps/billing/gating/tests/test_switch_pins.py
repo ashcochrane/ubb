@@ -54,7 +54,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import UsageRecorded
+from apps.platform.events.schemas import StopFired, UsageRecorded
 from apps.platform.work.models import Task
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
@@ -168,7 +168,7 @@ class TestPin9RecordingWritesNoRedisKeys:
         ev = Posting.objects.get(tenant=t, idempotency_key="k1")
         assert ev.billed_cost_micros == 8_000_000  # lands and bills
         assert Door.balance(c.id) is None
-        assert not _events("stop.fired").exists()
+        assert not _events(StopFired.EVENT_TYPE).exists()
 
 
 @pytest.mark.django_db
@@ -233,13 +233,13 @@ class TestPin9CrossingSignalsAtDurableLaneLatency:
         client, auth = Client(), _auth(t)
         r = _record(client, auth, c, billed=8_000_000)
         assert r.json()["stop"] is False            # nothing at record time
-        assert not _events("stop.fired").exists()
+        assert not _events(StopFired.EVENT_TYPE).exists()
         # Durable-lane latency: the drawdown lane processes the event and
         # detects the floor crossing — signal + flag, never an ack change.
         handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
-        assert _events("stop.fired").count() == 1
+        assert _events(StopFired.EVENT_TYPE).count() == 1
         assert LiveCounter.read(c.id, t)["stop"] is True
         nxt = _record(client, auth, c, billed=1_000).json()
         assert nxt["stop"] is True                  # verdict via the flag
@@ -299,7 +299,7 @@ class TestPin9ToggleChoreography:
         c = _customer(t, balance_micros=-1_000_000)  # past the (default 0) floor
         reconcile_tenant_live_counters(str(t.id))
         assert Door.balance(c.id) is None                     # no seed
-        assert _events("stop.fired").count() == 1             # durable lane
+        assert _events(StopFired.EVENT_TYPE).count() == 1             # durable lane
         assert LiveCounter.read(c.id, t)["stop"] is True
 
 
@@ -336,7 +336,7 @@ class TestPatrolUnaffectedByTheSwitch:
         row = StopSignalState.objects.get(owner=c)
         OutboxEvent.objects.filter(id=row.announce_outbox_id).update(status="failed")
         reconcile_live_ledgers()
-        fired = _events("stop.fired")
+        fired = _events(StopFired.EVENT_TYPE)
         assert fired.count() == 2
         assert fired.last().payload["re_announcement"] is True
 

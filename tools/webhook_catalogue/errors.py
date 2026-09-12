@@ -25,7 +25,14 @@ CATALOGUE_UNREADABLE = "catalogue_unreadable"  # the declared consumer does not 
                                                # a deleted catalogue is a broken
                                                # oracle and reported as one
 CATALOGUE_EMPTY = "catalogue_empty"            # it parsed, and declares no event at all
-EVENT_TYPE_NOT_LITERAL = "event_type_not_literal"  # an EVENT_TYPE this gate cannot read
+EVENT_TYPE_NOT_LITERAL = "event_type_not_literal"  # an EVENT_TYPE this gate cannot read:
+                                               # neither a string literal nor a
+                                               # name imported from the generated
+                                               # vocabulary module
+EVENT_TYPE_NOT_A_DECLARED_CONSTANT = "event_type_not_a_declared_constant"
+                                               # imported from the generated module,
+                                               # but the registry renders no
+                                               # declared value under that name
 DUPLICATE_EVENT_TYPE = "duplicate_event_type"  # two payload classes claiming one name
 
 # --- ADR-0006 §5's shape, over one event name -------------------------------

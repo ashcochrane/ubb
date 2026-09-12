@@ -500,6 +500,50 @@ Write; a read-only key can ask the question now.
 
 ---
 
+## 11. Five webhook names move under their families, and the catalogue is closed (slice 6, #464 — pre-live)
+
+Every event UBB publishes is named `<owner>.<state entered>` (ADR-0006 §5): the owner is
+the resource whose lifecycle moved or the declared control family whose own state
+changed — never the mechanism that fired. Five names predating that rule named the
+mechanism, and the repository refuses those spellings on every living surface, so the
+rows below spell them `{retired}` and say what each was.
+
+| earlier v3.0 pre-tag | v3.0 |
+|---|---|
+| `{retired}` — the customer-wide stop, named for the mechanism that fired | `customer.stopped` |
+| `{retired}` — its clearing half | `customer.stop_cleared` |
+| `{retired}` — the soft floor crossed, named for the line | `wallet_policy.soft_floor_crossed` |
+| `{retired}` — its clearing half | `wallet_policy.soft_floor_cleared` |
+| `{retired}` — the pool's threshold, under the retired family word | `customer_spend_pool.threshold_reached` |
+
+**Your subscriptions moved with them.** A stored subscription holding a retired name comes
+out of the migration holding its successor, in the same position; a queued delivery is
+renamed on its way to you; a delivered body keeps every field it had. Subscribing to a
+retired name is refused at configuration with a `validation_error`, as any unpublished
+name is.
+
+**The catalogue is closed, and the contract says so.** `event_types` on the three
+subscription schemas and `event_type` on a delivery now carry the registry's 37-member
+`enum` (on a subscription, beside the `"*"` selector); the generated core types them
+accordingly. What that buys you:
+
+- `ubb.vocabulary.WEBHOOK_EVENT_TYPE_<OWNER>_<STATE>` — one constant per name, and
+  `ubb.vocabulary.WEBHOOK_EVENT_TYPE_VALUES` for the whole set, reached by module
+  (`from ubb import vocabulary`). Branch on `vocabulary.WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED`,
+  never on a string you typed.
+- `ubb.webhooks.EVENT_SELECTORS` — everything a subscription may name: the 37 plus the
+  wildcard `ubb.webhooks.WILDCARD`.
+- `ubb.webhooks.unpublished_event_types(event_types)` — the entries of a proposed
+  subscription UBB does not publish, empty when the API would accept it. Ask it before the
+  round trip; the API's answer is the same set as a 422.
+
+**Classify by subscribing, not by parsing.** Which control fired and why travel as
+`control_family`, `control_id` and `reason_code` on the body (§9, #458); a name no longer
+carries a mechanism to split on, and `verify_webhook`'s parsed payload carries the name
+under `event_type` exactly as before.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

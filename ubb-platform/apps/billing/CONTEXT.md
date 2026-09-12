@@ -59,8 +59,8 @@ remainders.
 
 **Min balance (wallet floor)**:
 The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
-signal (`stop.fired`) — and whose re-crossing fires the paired resume (`stop.cleared`), the moment
-the balance recovers, from any clearing path. The HARD floor of the two-floor pair (see **Soft
+signal (`customer.stopped`) — and whose re-crossing fires the paired resume
+(`customer.stop_cleared`), the moment the balance recovers, from any clearing path. The HARD floor of the two-floor pair (see **Soft
 floor**). A signal point, not a wall — events past it still land and bill, and the balance keeps
 showing reality.
 _Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
@@ -93,8 +93,8 @@ The second, higher line of the two-floor pair — a tenant-chosen wind-down line
 (customer override → tenant default; null = no soft floor; always resolving at or above the hard
 floor): past it, NEW top-level task starts are refused at the start-gate (`soft_floor_reached`)
 while running tasks — and subtask starts under a still-active parent — complete. Crossing and
-re-crossing fire the `soft_floor.crossed`/`soft_floor.cleared` webhook pair through the signal
-ledger's `soft_floor` family (durable lane only — no Redis threshold; signal latency is outbox
+re-crossing fire the `wallet_policy.soft_floor_crossed`/`wallet_policy.soft_floor_cleared` webhook
+pair through the signal ledger's `soft_floor` family (durable lane only — no Redis threshold; signal latency is outbox
 latency). Never a billing wall and never an ack change: acks never change on a soft-floor
 crossing, events are never tagged, and work slipping past the gate lands and bills.
 (`apps/billing/queries.py:get_customer_soft_min_balance`)
@@ -198,8 +198,8 @@ lane" — both name an ingest lane deleted in slice 1, and this switch never was
 **Customer-wide stop flag**:
 The cooperative, owner-keyed Redis flag set when the live counter crosses the wallet floor or
 budget cap; it blocks new task starts until recovery — usage reports keep landing and billing.
-Paired with resume: the moment the balance re-crosses the floor, the flag lifts and `stop.cleared`
-fires, closing the stop episode. The flag is the fast READ surface (ack verdicts) only — emission
+Paired with resume: the moment the balance re-crosses the floor, the flag lifts and
+`customer.stop_cleared` fires, closing the stop episode. The flag is the fast READ surface (ack verdicts) only — emission
 dedup lives on the signal ledger. Durable truth owns it: the hourly patrol re-aligns an orphaned
 or missing flag to the `floor_stop` family's durable state within one interval.
 
@@ -276,7 +276,7 @@ reasoning is who carries the credit risk, which is what makes the asymmetry legi
 inconsistency):
 
 - **postpaid** — the tenant is extending credit, so the budget IS the live stop line: crossing it
-  fires the stop flag, the `stop.fired` webhook, and suspension
+  fires the stop flag, the `customer.stopped` webhook, and suspension
   (`crossing.budget_stop_threshold`, wired into `LiveCounter._crossed`/`_threshold`).
 - **prepaid / meter_only** — the money is already collected and the tenant carries no credit risk,
   so the budget is start-gate only: it refuses NEW task starts and never interrupts running work
@@ -309,7 +309,7 @@ The patrol's honesty repair of the prepaid live counter (#45): a deficit against
 balance (the durable balance, one locked snapshot) past the $1 de-minimis writes a
 candidate on one hourly pass and, if the immediately-next pass still measures one, applies
 min(first, second) — the amount proven stable across the hour — as a relative increment. A repair
-that lifts a wedged stop drives the clearing transition (`stop.cleared`, reason
+that lifts a wedged stop drives the clearing transition (`customer.stop_cleared`, reason
 `balance_repaired`); candidate/repaired/lapsed live on the `LiveBalanceRepair` audit trail, and a
 repair-rate spike per tenant per 24h alerts CRITICAL — an epidemic is a bug, never silent
 self-healing. The cause it measures (Ruling A2, #233) is a crashed **synchronous** recording
@@ -399,7 +399,7 @@ _Avoid_: importing billing models from another product; go through `queries.py`/
 
 **Key events**:
 Consumes `usage.recorded` (drawdown); emits `balance_low` (→ auto-top-up), `balance_overage`,
-`customer_suspended`, `credit_grant_expired`, `budget.threshold_reached`, `stop.fired`. (The
-platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
+`customer_suspended`, `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
+`customer.stopped`. (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
 either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents
 takes the first without the second.)

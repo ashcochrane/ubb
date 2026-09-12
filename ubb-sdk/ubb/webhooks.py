@@ -17,6 +17,20 @@ UBB signs every webhook delivery twice during the v2 deprecation window:
 
 Always verify against the RAW request body bytes, before any JSON parsing or
 re-serialization — re-encoded JSON almost never matches byte-for-byte.
+
+THE CATALOGUE (#464, slice 6 §16–§17). Every event UBB publishes is named in
+the registry's closed ``webhook_event_type`` set, and this module holds it by
+reference from the generated vocabulary — one constant per name, reached BY
+MODULE as ``vocabulary.WEBHOOK_EVENT_TYPE_<OWNER>_<STATE>`` (the spelling
+``docs/conventions/sdk-wrap.md`` prescribes; a hand-written re-export here
+would be the second copy of every name that convention refuses), and the
+whole set as ``vocabulary.WEBHOOK_EVENT_TYPE_VALUES``. A subscription's
+``event_types`` may also hold the one selector that is not a name, ``"*"``
+(every current and future event), so what a subscription may NAME is
+:data:`EVENT_SELECTORS` below, and :func:`unpublished_event_types` says
+whether a proposed subscription names only published events before the API
+refuses it with a ``validation_error``. An event's name in a delivered body
+(``payload["event_type"]``) is always one of the 37, never the selector.
 """
 from __future__ import annotations
 
@@ -26,8 +40,40 @@ import json
 import time
 
 from ubb.exceptions import UBBWebhookVerificationError
+# The catalogue, reached by module — see the module docstring.
+from ubb import vocabulary
 
 DEFAULT_TOLERANCE = 300  # seconds of clock skew / delivery delay allowed (v2)
+
+#: The selector that subscribes to every event, current and future. Stored
+#: verbatim by the API; never the name of a delivered event.
+WILDCARD = "*"
+
+#: EVERYTHING A SUBSCRIPTION'S ``event_types`` MAY NAME: the registry's closed
+#: catalogue of 37 events plus the wildcard. Not an alias of the generated set
+#: — the wildcard is a selector the registry deliberately does not list — and
+#: the reason a subscription is checked against this rather than against
+#: ``vocabulary.WEBHOOK_EVENT_TYPE_VALUES`` directly.
+EVENT_SELECTORS = frozenset(vocabulary.WEBHOOK_EVENT_TYPE_VALUES | {WILDCARD})
+
+
+def unpublished_event_types(event_types) -> frozenset[str]:
+    """The entries of a proposed subscription that UBB does not publish.
+
+    Empty when the subscription names only published events (the wildcard
+    counts as published: it selects every event UBB publishes), so
+    ``if unpublished_event_types(types):`` is the question *would the API
+    refuse this?* — answered before the round trip, with the offending names
+    in hand, from the same closed set the server's ``enum`` states. Membership
+    only: the server also refuses an EMPTY list (a subscription to nothing),
+    which is not a naming question and is left to it.
+
+    >>> unpublished_event_types([vocabulary.WEBHOOK_EVENT_TYPE_USAGE_RECORDED])
+    frozenset()
+    >>> sorted(unpublished_event_types(["usage.recieved", "*"]))
+    ['usage.recieved']
+    """
+    return frozenset(event_types) - EVENT_SELECTORS
 
 
 def _as_bytes(payload: bytes | str) -> bytes:

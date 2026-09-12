@@ -548,7 +548,7 @@ def _drawdown_tail(tenant):
             # #39 §D — the DURABLE lane of the stop signal: a crossing of the
             # CONFIGURED floor drives the transition guard, independent of
             # Redis health (a crossing during a blind window signals late,
-            # never lost). The winner emits stop.fired and performs the folded
+            # never lost). The winner emits customer.stopped and performs the folded
             # suspension; a crossing the fast lane already signaled loses
             # silently. Signal bookkeeping must never poison the debit:
             # drive_stop is savepoint-isolated, and a failure here is
@@ -576,7 +576,7 @@ def _drawdown_tail(tenant):
             # #40 §F — the soft floor's ONLY crossing detector (no fast lane,
             # no Redis threshold: signal latency is outbox latency). Crossing
             # the resolved soft line drives the soft_floor family of the same
-            # guard — the winner emits soft_floor.crossed. Never an ack
+            # guard — the winner emits wallet_policy.soft_floor_crossed. Never an ack
             # change, never a suspension; a drive lost here is re-announced by
             # the delivery patrol (#44), not by reconcile.
             from apps.billing.queries import get_customer_soft_min_balance

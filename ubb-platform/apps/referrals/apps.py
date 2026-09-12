@@ -8,10 +8,11 @@ class ReferralsConfig(AppConfig):
 
     def ready(self):
         from apps.platform.events.registry import handler_registry
+        from apps.platform.events.schemas import UsageRecorded
         from apps.referrals.handlers import handle_usage_recorded_referrals
 
         handler_registry.register(
-            "usage.recorded",
+            UsageRecorded.EVENT_TYPE,
             "referrals.reward_accumulator",
             handle_usage_recorded_referrals,
             requires_product="referrals",

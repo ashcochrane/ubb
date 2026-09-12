@@ -59,6 +59,9 @@ it is checking against is the wrong rule, not a strict one.
 import re
 from dataclasses import dataclass
 
+from tools.consumers.census import SURFACES
+from tools.vocabulary.generate import BACKEND_CONSTANTS
+
 from . import errors as E
 from .errors import CatalogueError, listed
 
@@ -98,6 +101,16 @@ class Vocabulary:
     transitions: frozenset
     declared_events: frozenset
     retired_events: frozenset
+    #: The module the backend imports the generated vocabulary as, and the
+    #: constant name each declared event renders to there, as `(name, value)`
+    #: pairs — what lets the catalogue reader resolve an `EVENT_TYPE` held BY
+    #: REFERENCE (#464) without importing anything. Rendered by the generator's
+    #: own naming rule, so the reader and the artifact cannot spell a name two
+    #: ways; a name the registry does not render is not a name the reader
+    #: resolves, which is what makes "every catalogue name is a registry
+    #: value" structural for a class holding its name by reference.
+    generated_module: str
+    generated_constants: tuple
     #: The Task states a `task.*` or `subtask.*` event may name.
     task_statuses: frozenset
     terminal_task_statuses: frozenset
@@ -166,6 +179,10 @@ def load_vocabulary(registry):
         transitions=frozenset(transitions),
         declared_events=frozenset(events.values),
         retired_events=frozenset(events.retired_aliases),
+        generated_module=SURFACES[BACKEND].module,
+        generated_constants=tuple(sorted(
+            (BACKEND_CONSTANTS.value_name(events, value), value)
+            for value in events.values)),
         task_statuses=declared,
         terminal_task_statuses=declared - {NON_TERMINAL_TASK_STATUS},
         retired_families=frozenset(families.retired_aliases),

@@ -14,10 +14,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate } from "@/lib/format";
-import { webhookEventTypeLabel } from "@/lib/labels";
 
 import { useWebhookDeliveries } from "../api/queries";
 import type { WebhookDelivery } from "../api/types";
+import { webhookEventTypeLabel } from "../lib/event-type-label";
 
 const TRUNCATE_AT = 64;
 

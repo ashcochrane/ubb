@@ -272,7 +272,7 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     resource_id: "wh-primary",
     correlation_id: "corr-3d92",
     metadata: {
-      changes: { event_types: { added: ["soft_floor.crossed"], removed: [] } },
+      changes: { event_types: { added: ["wallet_policy.soft_floor_crossed"], removed: [] } },
     },
   },
   {

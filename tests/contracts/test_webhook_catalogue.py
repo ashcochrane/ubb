@@ -23,16 +23,23 @@ there is exactly one copy of the excused list here.
 renamed none of them. That ordering is the point rather than an embarrassment: a
 gate installed before the code complies is what makes the vocabulary impossible
 to regress (#155 §3.1). Every one of the twenty was an individually identified
-ledger entry naming the slice that removes it, and section 1 proves each is
-still a real violation — so an entry cannot outlive the debt it records.
+ledger entry naming the slice that removes it, and section 1 proved each was
+still a real violation for as long as it stood — so an entry could not outlive
+the debt it recorded.
 
-**Five remain.** #222 paid the thirteen whose correction depended on nothing —
+**None remain.** #222 paid the thirteen whose correction depended on nothing —
 a product owning the wallet's levels, a measure owning the customer's
 profitability, a subject buried inside a transition token, one concept spelled
 two ways. The terminal-event split then paid the two Task debts, which were the
 ones no rename could express: each became TWO events, `killed` and `expired`
-(#140 §4.3). What is left is the five control events slice 6 rewrites under
-#150's four families, and that is not a rename either.
+(#140 §4.3). #464 paid the last five — the customer stop pair, the soft-floor
+pair and the pool's threshold event moved under the customer and the two
+control families they belong to — and the same commit made every payload class
+take its name from the generated vocabulary, so the catalogue's names are the
+registry's BY CONSTRUCTION now: the reader below resolves a name held by
+reference only through a constant the registry renders, and section 1 asserts
+the two sets are equal outright rather than a ceiling on how far they may
+differ.
 
 **Why no mock.** Every control below builds a real repository on disk and runs
 the real entry point over it. A control that patched the reader would reproduce
@@ -45,8 +52,8 @@ import yaml
 
 from _helpers import REPO_ROOT
 from _webhook_helpers import (
-    CATALOGUE_PATH, DECLARED_EVENTS, catalogue_module, excusing,
-    write_repository,
+    CATALOGUE_PATH, DECLARED_EVENTS, GENERATED_MODULE, catalogue_module,
+    constant_for, excusing, write_repository,
 )
 from tools.webhook_catalogue import GATE, LEDGER_PATH, assess
 from tools.webhook_catalogue import errors as codes
@@ -60,21 +67,14 @@ SHAPE_FAULTS = frozenset({
     codes.TRANSITION_NOT_A_DECLARED_STATE,
 })
 
-#: How many events are still in violation. A CEILING only: the ledger only
-#: shrinks, so the day slice 6 renames `stop.fired` and deletes its entry this
-#: must fall to 6 without anything going red for complying.
-#:
-#: #205 seeded twenty; #222 renamed the thirteen whose correction depended on
-#: nothing, leaving the seven that slices 5 and 6 rewrite rather than rename.
-#: Lowered with them so the ceiling stays tight — a ceiling left at twenty would
-#: go on admitting thirteen debts nobody owes.
-#:
-#: The floor comes from `test_the_ledger_records_exactly_what_the_gate_excuses`
-#: instead, and self-updates: it compares the gate's excuses against the ledger's
-#: own entries, so a gate that silently stopped finding violations reports an
-#: empty set against a non-empty file. A count pinned here would have had to be
-#: edited by every slice that pays one.
-SEEDED = 7
+#: THERE IS NO SEEDED CEILING ANY MORE. #205 seeded twenty debts and a ceiling
+#: beside them; #222 lowered it to seven, the terminal-event split left it
+#: there loose by two, and #464 paid the last five and deleted the constant
+#: rather than writing a zero — a number left at zero invites the +1 that
+#: leaves it loose again. The two assertions that read it
+#: (`test_the_ledger_records_exactly_what_the_gate_excuses` and
+#: `test_the_reader_visited_the_whole_catalogue`) are direct now: no G8 entry
+#: in the ledger, no violation in the catalogue.
 
 
 @pytest.fixture(scope="module")
@@ -176,11 +176,30 @@ def test_the_ledger_records_exactly_what_the_gate_excuses(shipped):
     recorded = {(entry["site"], entry["found"])
                 for entry in document["entries"] if entry["gate"] == GATE}
     assert catalogue.excused == recorded
-    assert len(recorded) <= SEEDED, (
-        f"{len(recorded)} {GATE} debts, and #205 seeded {SEEDED}. The ledger "
-        f"only shrinks; adding one is refused by the ratchet without a seeding "
-        f"authorisation, and this catches the case where one was written "
-        f"anyway.")
+    assert not recorded, (
+        f"{sorted(recorded)} are recorded as {GATE} debts, and #464 paid the "
+        f"last of them. The ledger only shrinks; adding one is refused by the "
+        f"ratchet without a seeding authorisation, and this catches the case "
+        f"where one was written anyway.")
+
+
+def test_every_published_name_is_one_the_registry_declares(shipped):
+    """The assertion the five renames made true, held outright (#464).
+
+    Both directions: the catalogue publishes exactly the registry's set. A name
+    that is published and not declared is a debt this gate would have to
+    excuse, and there are none left to excuse; a name declared and not
+    published is a promise the contract makes about an event nothing emits.
+    Held here beside `tools.consumers`' census — which proves the names are
+    reached BY REFERENCE — because a literal could still spell anything.
+    """
+    catalogue, _ = shipped
+    published = {event.name for event in catalogue.events}
+    assert published == catalogue.vocabulary.declared_events, (
+        f"published and not declared: "
+        f"{sorted(published - catalogue.vocabulary.declared_events)}; "
+        f"declared and not published: "
+        f"{sorted(catalogue.vocabulary.declared_events - published)}")
 
 
 def test_every_expected_name_is_one_the_registry_declares(shipped):
@@ -204,15 +223,18 @@ def test_the_reader_visited_the_whole_catalogue(shipped):
     catalogue, _ = shipped
     assert catalogue is not None, "the catalogue could not be assessed at all"
     assert catalogue.path == CATALOGUE_PATH
+    # A FLOOR, not the count: the exact count is
+    # `test_every_published_name_is_one_the_registry_declares`' equality, and a
+    # tally here would have to move with every event the registry adds.
     assert len(catalogue.events) >= 35, (
-        f"read only {len(catalogue.events)} events, and the catalogue has 35")
+        f"read only {len(catalogue.events)} events, below the floor of 35")
     published = {event.name for event in catalogue.events}
     for expected in ("usage.recorded", "customer.deleted"):
         assert expected in published, f"the reader did not see {expected}"
-    assert len(catalogue.violations) <= SEEDED, (
-        f"{len(catalogue.violations)} violations, and #205 recorded {SEEDED}. "
-        f"This only ever falls — a rise means an event was renamed INTO a shape "
-        f"ADR-0006 §5 refuses.")
+    assert not catalogue.violations, (
+        f"{[v.found for v in catalogue.violations]} violate ADR-0006 §5, and "
+        f"#464 paid the last debt this gate excused. A violation now means an "
+        f"event was renamed INTO a shape the rule refuses.")
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +377,56 @@ def test_negative_control_a_computed_event_type_is_reported(tmp_path):
         "wallet.credited",
     ))
     assert [error.code for error in errors] == [codes.EVENT_TYPE_NOT_LITERAL]
+
+
+def test_a_name_held_by_reference_is_read_through_the_registry(tmp_path):
+    """The live catalogue's shape since #464: `EVENT_TYPE` bound to a constant
+    imported from the generated vocabulary, never a string.
+
+    The reader resolves the name through the registry's OWN rendering of its
+    values — the same rule `tools.vocabulary.generate` renders the constant
+    by — so a class holding a value by reference is judged on the value, and
+    an aliased import (`as`) resolves like a plain one.
+    """
+    imported = constant_for("wallet.balance_low")
+    catalogue = accepted(
+        tmp_path,
+        imports=(f"from {GENERATED_MODULE} import {imported}",
+                 f"from {GENERATED_MODULE} import "
+                 f"{constant_for('task.killed')} as KILLED"),
+        events=(("WalletBalanceLow", imported), ("TaskKilled", "KILLED")))
+    assert {event.name for event in catalogue.events} == {
+        "wallet.balance_low", "task.killed"}
+
+
+def test_negative_control_a_reference_to_nothing_the_registry_declares_is_refused(
+        tmp_path):
+    """A name imported from the generated module that renders no declared
+    value — a retired one, a typo — is refused by its own code, because a
+    name held by reference can ONLY be a declared value and a reader that
+    skipped it would let the by-reference payment publish anything at all."""
+    errors = rejection(
+        tmp_path, retired=("billing.balance_low",),
+        imports=(f"from {GENERATED_MODULE} import "
+                 f"{constant_for('billing.balance_low')}",),
+        events=(("BillingBalanceLow", constant_for("billing.balance_low")),
+                "wallet.credited"))
+    assert [error.code for error in errors] == [
+        codes.EVENT_TYPE_NOT_A_DECLARED_CONSTANT]
+    assert constant_for("billing.balance_low") in errors[0].message
+
+
+def test_negative_control_a_bare_name_from_anywhere_else_is_unreadable(tmp_path):
+    """Only the generated module's names resolve. A constant spelled right but
+    imported from elsewhere — or from nowhere — is a name this gate cannot
+    read, exactly as a computed one is."""
+    imported = constant_for("wallet.balance_low")
+    errors = rejection(
+        tmp_path,
+        imports=(f"from somewhere.other import {imported}",),
+        events=(("WalletBalanceLow", imported), ("Bare", "UNBOUND_NAME")))
+    assert [error.code for error in errors] == [
+        codes.EVENT_TYPE_NOT_LITERAL, codes.EVENT_TYPE_NOT_LITERAL]
 
 
 def test_negative_control_two_classes_claiming_one_name_is_reported(tmp_path):

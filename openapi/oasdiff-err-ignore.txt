@@ -805,15 +805,17 @@ components webhook `task.limit_exceeded` removed
 # highest threshold reached, whether blocking occurred) ships under a name
 # the gate has never seen and is renamed once (ADR-0007 §3).
 #
-# The sixth line is the marker: `enforce_mode` now carries the registry's
-# `spend_pool_enforce_mode` and the applier renders its two-value `enum` on
-# the threshold event's payload (`webhooks` section) as on the three schemas.
-# The event pre-dates the tag, so the enum is visible to the cumulative gate;
-# the values are the two the payload has always carried.
+# A sixth line stood here for the marker — `enforce_mode` carrying the
+# registry's `spend_pool_enforce_mode`, rendered as a two-value `enum` on the
+# threshold event's payload — and LEFT IN #464, when the event itself was
+# renamed under its family (`customer_spend_pool.threshold_reached`): the
+# cumulative gate then reports the old webhook's removal (the 2026-09-12
+# #464 block) and says nothing about what its body used to carry, so the
+# line suppressed nothing.
 #
-# BOTH DIRECTIONS WERE RUN AND THEY AGREE EXACTLY — six breaks, the same six,
+# BOTH DIRECTIONS WERE RUN AND THEY AGREED EXACTLY — six breaks, the same six,
 # from `--baseline HEAD` (6 error, 0 warning) and from the cumulative gate
-# alike; every path pre-dates the tag, so every line here is live. The two
+# alike; every path pre-dates the tag, so every line here was live. The two
 # property-level lines the 2026-07-28 block held on the old PUT paths left in
 # this commit because the gate reported them as suppressing nothing.
 #
@@ -825,7 +827,6 @@ components webhook `task.limit_exceeded` removed
 GET /api/v1/billing/budget api path removed without deprecation
 GET /api/v1/billing/customers/{customer_id}/budget api path removed without deprecation
 GET /api/v1/billing/customers/{customer_id}/budget/status api path removed without deprecation
-POST webhook:budget.threshold_reached request property `data/enforce_mode` was restricted to a list of enum values
 PUT /api/v1/billing/budget api path removed without deprecation
 PUT /api/v1/billing/customers/{customer_id}/budget api path removed without deprecation
 
@@ -839,8 +840,13 @@ PUT /api/v1/billing/customers/{customer_id}/budget api path removed without depr
 # billing profile or tenant configuration that carried the floor, the pool
 # row). All three are REQUIRED on the two events: a stop that cannot say which
 # control fired is not one UBB announces, and the closed set has no honest
-# default. The six lines below are those three properties on each half of the
-# pair; the rename's removal side is in the warn file.
+# default. Six lines stood below this block — those three properties on each
+# half of the pair, with the rename's removal side in the warn file — and
+# LEFT IN #464, when the pair itself was renamed under the customer
+# (`customer.stopped` / `customer.stop_cleared`): the cumulative gate then
+# reports the two old webhooks' removal (the 2026-09-12 #464 block) and says
+# nothing about what their bodies used to carry, so the six suppressed
+# nothing, and an inert entry fails the gate exactly as an unreviewed one.
 #
 # THE FOUR TERMINAL STOP EVENTS GAINED THE SAME FAMILY (required) AND ID, AND
 # `ceiling_basis` BESIDE THEM, AND OWE THIS BLOCK NOTHING: they post-date
@@ -856,12 +862,7 @@ PUT /api/v1/billing/customers/{customer_id}/budget api path removed without depr
 # snapshot (no console reader parses the pair's payload), the SDK's generated
 # core (no webhook payload model exists there), and the data migration that
 # rewrites every queued payload of the pair onto the new keys.
-POST webhook:stop.cleared added the new required request property `data/control_family`
-POST webhook:stop.cleared added the new required request property `data/control_id`
-POST webhook:stop.cleared added the new required request property `data/reason_code`
-POST webhook:stop.fired added the new required request property `data/control_family`
-POST webhook:stop.fired added the new required request property `data/control_id`
-POST webhook:stop.fired added the new required request property `data/reason_code`
+
 # 2026-09-12 — Slice 6 (#463): the advisory call becomes the affordability
 # question, at its decided path and as a read (slice 6 §13, #154 §3.4).
 #
@@ -894,3 +895,56 @@ POST webhook:stop.fired added the new required request property `data/reason_cod
 # authoring direction (`--baseline HEAD`) and the cumulative run report the
 # same one finding and this entry is live in both.
 POST /api/v1/billing/pre-check api path removed without deprecation
+
+# 2026-09-12 — Slice 6 (#464): five webhook names move under their families,
+# and the whole catalogue is advertised as a closed set (slice 6 §16, ADR-0006
+# §5).
+#
+# THE FIVE RENAMES. The customer stop pair (`stop.fired` → `customer.stopped`,
+# `stop.cleared` → `customer.stop_cleared`), the soft-floor pair
+# (`soft_floor.crossed` / `.cleared` → `wallet_policy.soft_floor_crossed` /
+# `_cleared`) and the pool's threshold event (`budget.threshold_reached` →
+# `customer_spend_pool.threshold_reached`) are named for the state entered
+# under the owner whose state it is, never for the mechanism. oasdiff reports
+# a webhook rename as the old key's removal — the five `components webhook …
+# removed` lines — and nothing for the successors, which are additions.
+# Migration `events/0009` carries every stored subscription and queued row
+# onto the new names, 1:1 with a real reverse; the bodies are unchanged.
+#
+# THE ENUM. `webhook_event_type` is closed, and the payload module now holds
+# all 37 names by reference, so the contract advertises the set on the four
+# nodes a subscriber configures or reads it through: the three subscription
+# lists' `items` and the delivery response's `event_type`. On the three lists
+# the marker sits on the NAME member of a two-member union inside `items`,
+# beside the `"*"` selector a subscription may hold instead of names — an
+# enum on the bare `items` would have refused the server's own `["*"]`
+# response. oasdiff reads that union as the item's `type` changing from
+# `string` to `any`, once per operation that returns a configuration (the
+# list, the create, the update and the secret rotation); those are the four
+# path lines. The delivery response's `event_type` became a plain enum, which
+# oasdiff does not count as breaking for a response and does not report.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE EXACTLY — nine breaks, the same
+# nine, from `--baseline HEAD` (9 error, 0 warning) and from the cumulative
+# gate alike; every path and every one of the five webhooks pre-dates the
+# tag, so every line here is live. NINE EARLIER LINES LEFT IN THIS COMMIT —
+# #456's enum marker on the old threshold webhook, #458's six required
+# properties on the old stop pair (err) and its two removed properties (warn)
+# — because a renamed webhook is reported as removed and nothing is reported
+# about what its body used to carry; each departure is written at the block
+# it leaves.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot and the webhooks feature that reads these routes, the SDK's
+# generated core and its webhook module (which gains the catalogue), the SDK
+# migration guide's §11, and the data migration above.
+GET /api/v1/webhooks/configs the `data/items/event_types/items/` response's property `type` changed from `string` to `any` for status `200`
+PATCH /api/v1/webhooks/configs/{config_id} the `event_types/items/` response's property `type` changed from `string` to `any` for status `200`
+POST /api/v1/webhooks/configs the `event_types/items/` response's property `type` changed from `string` to `any` for status `201`
+POST /api/v1/webhooks/configs/{config_id}/rotate-secret the `event_types/items/` response's property `type` changed from `string` to `any` for status `200`
+components webhook `budget.threshold_reached` removed
+components webhook `soft_floor.cleared` removed
+components webhook `soft_floor.crossed` removed
+components webhook `stop.cleared` removed
+components webhook `stop.fired` removed

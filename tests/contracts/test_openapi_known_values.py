@@ -1107,6 +1107,21 @@ CONCEPTS_IN_THE_CONTRACT = {
     # all nine by reference, with the kernel's admission check and work
     # service producing five of them from the same constants.
     "affordability_reason": Published(1, KNOWN_VALUES),
+    # #464 (slice 6 §16) — the whole webhook catalogue, on the four nodes a
+    # subscriber configures or reads it through: the three subscription
+    # lists' `items` (create, update, response) and the delivery response's
+    # event type. Closed, so each renders the registry's 37-member `enum`
+    # where a free string stood — the break the block names. On the three
+    # lists the marker sits on the NAME member of a two-member union inside
+    # `items`, beside the `"*"` selector a subscription may hold instead;
+    # an enum on the bare `items` would have refused the server's own `["*"]`
+    # response. Paid the moment the fifth rename (`events/0009`) left the
+    # catalogue sourceable from the registry: the payload module holds all 37
+    # by reference, so the backend twin serves 37 of 37 and the contract may
+    # advertise them. The `webhooks` section is NOT one of these nodes — its
+    # keys are the names, and its `event_type` properties are `const`s the
+    # exporter writes, not marked strings.
+    "webhook_event_type": Published(4, ENUM),
 }
 
 
@@ -1508,6 +1523,13 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # answers it, and nowhere else — the start's refusal carries the same
     # word as a problem extension, which no schema node describes.
     placed("affordability_reason", {"AffordabilityResponse"})
+    # WHICH EVENTS A SUBSCRIPTION NAMES, AND WHICH ONE A DELIVERY WAS OF
+    # (#464): the three subscription schemas and the delivery response, and
+    # nowhere else — the `webhooks` section's own `event_type` properties
+    # are `const`s, not marked strings, and no other read carries a name.
+    placed("webhook_event_type",
+           {"WebhookConfigCreateRequest", "WebhookConfigUpdateRequest",
+            "WebhookConfigResponse", "WebhookDeliveryResponse"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2323,6 +2345,10 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # kernel's producers import the same constants) and marked on the one
     # response that answers the affordability question, in the same commit
     # that gave that question its GET.
-    assert len(_entries(programme)) >= 8, (
+    # 8 -> 7 in #464: `webhook_event_type`, the seventh — paid at the payload
+    # module (all 37 by reference, the moment the fifth rename made the
+    # catalogue sourceable from the registry) and marked on the four nodes a
+    # subscriber configures or reads it through, in the same commit.
+    assert len(_entries(programme)) >= 7, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

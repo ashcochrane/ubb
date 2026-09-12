@@ -100,14 +100,32 @@ def concepts(declared=DECLARED_EVENTS, retired=(), statuses=DECLARED_STATUSES,
     return document
 
 
-def catalogue_module(*events, extra=""):
+#: The module a backend consumer imports the generated vocabulary as — the
+#: only import the catalogue reader resolves a bare name through (#464). Stated
+#: here so a control can write the import line the live catalogue writes.
+GENERATED_MODULE = "core.vocabulary"
+
+
+def constant_for(event):
+    """The generated constant the backend binds ``event`` to — the reader's
+    own spelling, so a control that holds a name BY REFERENCE spells it the
+    way the live catalogue does rather than guessing at the generator's rule.
+    Rendered off the shipped registry's own concept, through the generator."""
+    from _helpers import the_webhook_catalogue
+    from tools.vocabulary.generate import BACKEND_CONSTANTS
+    return BACKEND_CONSTANTS.value_name(the_webhook_catalogue(), event)
+
+
+def catalogue_module(*events, extra="", imports=()):
     """A payload-schemas module declaring exactly ``events``.
 
     Each event is a name, or a ``(class name, EVENT_TYPE source)`` pair. Passing
     source rather than a string is what lets a control express the cases that
-    are *about* how the name was written — a computed value, a non-string.
+    are *about* how the name was written — a computed value, a non-string, or
+    a name held by reference through the ``imports`` written above the classes
+    (each an ``import`` statement, verbatim).
     """
-    lines = ['"""A synthetic payload-schema registry."""', "", ""]
+    lines = ['"""A synthetic payload-schema registry."""', "", *imports, ""]
     for index, event in enumerate(events):
         if isinstance(event, tuple):
             class_name, expression = event
@@ -124,7 +142,7 @@ def catalogue_module(*events, extra=""):
 
 
 def write_repository(tmp_path, *, events=DECLARED_EVENTS, ledger=None,
-                     **registry_options):
+                     imports=(), **registry_options):
     """Write a whole synthetic repository under ``tmp_path``; return the root.
 
     The registry is written first and the catalogue file second, deliberately in
@@ -139,7 +157,8 @@ def write_repository(tmp_path, *, events=DECLARED_EVENTS, ledger=None,
     target = tmp_path / CATALOGUE_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        events if isinstance(events, str) else catalogue_module(*events),
+        events if isinstance(events, str)
+        else catalogue_module(*events, imports=imports),
         encoding="utf-8")
 
     if ledger is not None:

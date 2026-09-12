@@ -209,18 +209,18 @@ class CustomerSpendPoolService:
             return
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import BudgetThresholdReached
+        from apps.platform.events.schemas import CustomerSpendPoolThresholdReached
         for level in cfg.alert_levels:
             threshold = cfg.cap_micros * level // 100
             if old < threshold <= new:
                 already = OutboxEvent.objects.filter(
-                    event_type="budget.threshold_reached", tenant_id=customer.tenant_id,
+                    event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE, tenant_id=customer.tenant_id,
                     payload__customer_id=str(customer.id), payload__period=label,
                     payload__level=level).exists()
                 if already:
                     continue
                 with transaction.atomic():
-                    write_event(BudgetThresholdReached(
+                    write_event(CustomerSpendPoolThresholdReached(
                         tenant_id=str(customer.tenant_id), customer_id=str(customer.id),
                         period=label, level=level, spend_micros=new, cap_micros=cfg.cap_micros,
                         enforce_mode=cfg.enforce_mode))

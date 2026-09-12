@@ -7,6 +7,11 @@
 
 import { z } from "zod";
 
+import { WEBHOOK_EVENT_TYPE_VALUES, type WebhookEventType } from "@/lib/vocabulary";
+
+/** What a subscription's `event_types` may hold: a published name, or the wildcard. */
+export type EventSelector = WebhookEventType | "*";
+
 export const endpointUrlSchema = z
   .string()
   .trim()
@@ -28,9 +33,12 @@ export const secretSchema = z
   .min(32, "Use at least 32 characters — Generate makes a strong one")
   .max(255, "Keep the secret under 256 characters");
 
+// The names are the registry's closed set, held by reference (#464): the
+// contract's `items` enum admits exactly these, so a form value outside them
+// is refused here rather than by the API's 422.
 const eventSelection = {
   allEvents: z.boolean(),
-  eventTypes: z.array(z.string()),
+  eventTypes: z.array(z.enum(WEBHOOK_EVENT_TYPE_VALUES)),
 };
 
 const requireSelection = {
@@ -72,7 +80,7 @@ export type RotateSecretValues = z.infer<typeof rotateSecretSchema>;
 /** The event_types selector list the API expects. */
 export function toEventTypesPayload(values: {
   allEvents: boolean;
-  eventTypes: string[];
-}): string[] {
+  eventTypes: WebhookEventType[];
+}): EventSelector[] {
   return values.allEvents ? ["*"] : [...values.eventTypes];
 }

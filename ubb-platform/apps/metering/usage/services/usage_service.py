@@ -786,7 +786,7 @@ class UsageService:
         task, live = outcome.task, outcome.live
         # Stop-verdict fields: a task/subtask-scoped verdict wins the scalar
         # slot over the customer-wide verdict (which still surfaces on the
-        # next ack and via stop.fired); among unit verdicts the WIDEST
+        # next ack and via customer.stopped); among unit verdicts the WIDEST
         # tripped scope wins — reasons.stop_fields owns that priority. The
         # itemized multi-limit story is the past-limit ticket's stop_context
         # array.

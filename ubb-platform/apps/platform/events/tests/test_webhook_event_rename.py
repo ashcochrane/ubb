@@ -14,7 +14,7 @@ row and proves it silently matches nothing, so the migration is what makes the
 positive case pass rather than something else in the setup.
 """
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.apps import apps as global_apps
@@ -23,6 +23,9 @@ from django.test.utils import CaptureQueriesContext
 
 from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import StopFired
+from apps.platform.events.tests._helpers import (
+    as_it_was_spelled, stub_webhook_client as _stub_client)
 from apps.platform.events.webhook_models import (
     TenantWebhookConfig, WebhookDeliveryAttempt,
 )
@@ -32,41 +35,20 @@ from apps.platform.tenants.models import Tenant
 MIGRATION = importlib.import_module(
     "apps.platform.events.migrations.0007_rename_thirteen_webhook_event_types")
 
-#: The G8 debts #222 deliberately leaves in the migration ledger. Each is
-#: blocked on work that is not a rename: slice 6 rewrites the five control
-#: emitters under #150's four families, and a migration that renamed them now
-#: would be guessing at a target state that does not exist yet.
+#: THE TRIPWIRE THAT STOOD HERE IS SPENT. #222 kept a tuple of the G8 debts it
+#: deliberately left — seven, then five once the terminal-event split paid the
+#: two Task debts — and a test that went red the day one of them left the
+#: catalogue. It fired for the last time in #464, which moved the five control
+#: events under their families (`0009`) and made every payload class take its
+#: name from the generated vocabulary; the tuple and its test are deleted, and
+#: the assertion the rename made true stands in their place —
+#: `test_the_catalogue_publishes_exactly_the_registrys_set` in
+#: `test_the_five_control_events_move_under_their_families.py`.
 #:
-#: ⚠ THIS TUPLE WAS SEVEN AND IS NOW FIVE, and the two that left are what this
-#: list was built to notice. It said outright that *the day slice 5 pays one of
-#: these, the name leaves the catalogue and this test goes red naming it* — and
-#: the terminal-event split paid both Task debts at once, turning the two
-#: overloaded events into `killed` and `expired` at each altitude (#140 §4.3).
-#: The tripwire fired, was read, and shrank in the same commit that removed the
-#: names from the catalogue. That is a good tripwire doing its job; the five
-#: below keep doing it for slice 6.
-#:
-#: A second encoding of the ledger's remaining entries, and it does not need an
-#: agreement test to keep it honest, for exactly the reason just demonstrated.
-#: The check that DOES need a separate home is the one this list cannot make —
-#: that `RENAMES` names only retired terms — because the registry is YAML and
-#: this suite has no PyYAML. It lives in
-#: tests/contracts/test_webhook_rename_migration.py, beside the sibling that
-#: holds the split's own one-to-two map.
-DEFERRED = (
-    "stop.fired", "stop.cleared", "soft_floor.crossed", "soft_floor.cleared",
-    "budget.threshold_reached",
-)
-
-
-def _stub_client(mock_client_class):
-    """Wire the patched `httpx.Client` to answer 200 to any POST."""
-    client = MagicMock()
-    client.__enter__ = MagicMock(return_value=client)
-    client.__exit__ = MagicMock(return_value=False)
-    client.post.return_value = MagicMock(status_code=200, text="OK")
-    mock_client_class.return_value = client
-    return client
+#: The check this module still cannot make — that `RENAMES` names only retired
+#: terms — lives in tests/contracts/test_webhook_rename_migration.py, which
+#: holds this map and `0009`'s to the registry, because the registry is YAML
+#: and this suite has no PyYAML.
 
 
 # ---------------------------------------------------------------------------
@@ -93,19 +75,6 @@ def test_every_new_name_is_a_published_event():
     published = set(WEBHOOK_EVENT_TYPES)
     missing = sorted(set(MIGRATION.RENAMES.values()) - published)
     assert not missing, f"{missing} are not events UBB publishes"
-
-
-def test_the_deferred_five_are_not_renamed():
-    """#222 renames only what depends on nothing. The five control events are
-    rewritten under #150's four families in slice 6, so a 1:1 rename here would
-    encode a target state nobody has agreed.
-
-    The Task pair was a sixth and seventh entry until the terminal-event split
-    paid them; `0008` carries them, and this list shrank in that commit."""
-    for name in DEFERRED:
-        assert name not in MIGRATION.RENAMES, name
-        assert name in WEBHOOK_EVENT_TYPES, (
-            f"{name} left the catalogue, so its ledger entry is now stale")
 
 
 # ---------------------------------------------------------------------------
@@ -160,14 +129,16 @@ class TestSubscriptionsSurviveTheRename:
             tenant=self.tenant, url="https://example.com/mixed",
             secret="s", event_types=[
                 "usage.recorded", "margin.provider_cost_spike",
-                "stop.fired", "billing.credit_grant_expired"])
+                as_it_was_spelled(StopFired.EVENT_TYPE),
+                "billing.credit_grant_expired"])
 
         MIGRATION.rename_subscriptions(global_apps, None)
 
         config.refresh_from_db()
+        # The customer stop's old name is `0009`'s to move, not this one's.
         assert config.event_types == [
             "usage.recorded", "provider.cost_spike",
-            "stop.fired", "credit_grant.expired"]
+            as_it_was_spelled(StopFired.EVENT_TYPE), "credit_grant.expired"]
 
     def test_the_wildcard_and_the_empty_subscription_are_untouched(self):
         """`["*"]` is all events and `[]` is none (0003's explicit opt-in). Both
@@ -270,15 +241,16 @@ class TestQueuedEventsSurviveTheRename:
         assert WebhookDeliveryAttempt.objects.filter(success=True).count() == 1
 
     def test_a_queued_event_the_rename_does_not_touch_keeps_its_name(self):
-        """`past_limit.py` reads the outbox for `stop.fired` and its siblings —
-        five of the seven debts this ticket leaves alone — so a sweep that
-        widened past the thirteen would break a shipped report."""
+        """`past_limit.py` reads the outbox for the customer stop pair, which
+        this migration leaves alone under its OLD name (`0009` carries it,
+        under its own map), so a sweep that widened past the thirteen would
+        break a shipped report."""
         other = OutboxEvent.objects.create(
-            event_type="stop.fired",
+            event_type=as_it_was_spelled(StopFired.EVENT_TYPE),
             payload={"tenant_id": str(self.tenant.id), "owner_id": "o1"},
             tenant_id=str(self.tenant.id))
 
         MIGRATION.rename_subscriptions(global_apps, None)
 
         other.refresh_from_db()
-        assert other.event_type == "stop.fired"
+        assert other.event_type == as_it_was_spelled(StopFired.EVENT_TYPE)

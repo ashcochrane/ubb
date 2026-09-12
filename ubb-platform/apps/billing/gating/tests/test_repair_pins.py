@@ -28,7 +28,7 @@ without also asserting what the recording path does, which is
 Pin 7  — a strand left by the surviving path: candidate (no counter change) on
          pass one, min(d1,d2) relative-increment repair with a complete audit
          row on pass two, correct under concurrent traffic; a repair that lifts
-         a wedged stop fires stop.cleared exactly once.
+         a wedged stop fires customer.stop_cleared exactly once.
 Pin 8  — a transient deficit that resolves between passes lapses (no repair);
          a sub-de-minimis deficit never candidates; a stale candidate can't
          prove hour-stability and starts the observation over.
@@ -74,6 +74,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
+from apps.platform.events.schemas import StopCleared
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
@@ -261,12 +262,12 @@ class TestPin7TwoPassRepair:
         assert c.status == "suspended"
 
         repair.repair_live_balances(t)  # pass one: candidate only
-        assert not _events("stop.cleared").exists()
+        assert not _events(StopCleared.EVENT_TYPE).exists()
         assert LiveCounter.read(c.id, t)["stop"] is True
 
         repair.repair_live_balances(t)  # pass two: +6M -> 5M, wedge lifted
         assert _live(c.id) == 5_000_000
-        cleared = _events("stop.cleared")
+        cleared = _events(StopCleared.EVENT_TYPE)
         assert cleared.count() == 1
         assert cleared.get().payload["episode_seq"] == 1
         # The pair names the line that lifted (#458); the repair's own word is
@@ -282,7 +283,7 @@ class TestPin7TwoPassRepair:
         # find the episode already closed.
         LiveCounter.reconcile(c.id, t)
         repair.repair_live_balances(t)
-        assert _events("stop.cleared").count() == 1
+        assert _events(StopCleared.EVENT_TYPE).count() == 1
 
     def test_repair_that_leaves_the_counter_past_the_floor_does_not_clear(self):
         # The owner is GENUINELY past the floor (-2M durable); only the 1M
@@ -298,7 +299,7 @@ class TestPin7TwoPassRepair:
         row = LiveBalanceRepair.objects.get(owner=c)
         assert row.status == "repaired"
         assert row.applied_micros == 1_000_000
-        assert not _events("stop.cleared").exists()
+        assert not _events(StopCleared.EVENT_TYPE).exists()
         c.refresh_from_db()
         assert c.status == "suspended"
 
