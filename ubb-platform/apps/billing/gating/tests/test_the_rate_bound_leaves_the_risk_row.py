@@ -30,8 +30,8 @@ MIGRATION = importlib.import_module(
     "apps.billing.gating.migrations."
     "0015_the_rate_bound_leaves_the_risk_row_for_the_tenant")
 
-#: The state `0015` was handed: the gating app one step before it, and the
-#: tenant app at the step that added the column it writes to.
+#: The state `0015` was handed: the gating app one migration before it, and
+#: the tenant app at the migration that added the column it writes to.
 BEFORE = [("gating", "0014_the_signal_ledger_keys_by_family_and_line"),
           ("tenants", "0027_admission_control_comes_to_the_kernel")]
 

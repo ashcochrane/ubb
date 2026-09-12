@@ -139,7 +139,7 @@ def start_task(request, payload: StartTaskRequest):
     new work — a wallet below its floor, a stop in force, or a parent that is
     not a running top-level unit. `429 rate_limit_exceeded` answers a new
     top-level start once this customer has begun as much new work as your
-    workspace admits in one minute: `Retry-After` says how long to wait, and
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
     the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
     the window is keyed on (per seat). A retry, contained work under a running
     unit and a close never count against it. `422 validation_error`
@@ -222,19 +222,18 @@ def start_task(request, payload: StartTaskRequest):
         # in the registry's word for a stop in force; it does not know, and
         # may not ask billing, WHICH line opened the suspension. A tenant
         # with a wallet has lines to name — the pool's, or the floor's — and
-        # the money verdict below names the one holding the customer (#459),
-        # so for that tenant the verdict supplies the word; the refusal is
-        # still the kernel's and still made here, before the money.
+        # the money verdict names the one holding the customer (#459), so for
+        # that tenant the verdict WORDS the refusal; the refusal is still the
+        # kernel's and still made here, before the money.
         try:
             admission.admit(tenant, customer,
                             contained=payload.parent_task_id is not None)
         except AdmissionRefused as refused:
+            names_a_line = has_a_wallet and refused.window is None
             raise _not_admitted(
                 refused,
-                line_named_by=(
-                    RiskService.check(customer,
-                                      parent_task_id=payload.parent_task_id)
-                    if has_a_wallet and refused.window is None else None))
+                word=(RiskService.standing_word(refused.reason, refused.who)
+                      if names_a_line else None))
 
         # THE MONEY-SHAPED HALF, AND ONLY FOR A TENANT IT CAN MEAN ANYTHING
         # FOR. A metering-only tenant is not refused these checks — there is no
@@ -245,8 +244,7 @@ def start_task(request, payload: StartTaskRequest):
             verdict = RiskService.check(
                 customer, parent_task_id=payload.parent_task_id)
             if not verdict["allowed"]:
-                raise _refused(verdict["reason"], verdict["balance_micros"],
-                               verdict["available_micros"])
+                raise _refused_by(verdict)
             balance = verdict["balance_micros"] or 0
 
         # THE ORDER OF THE TWO REFUSALS IS THE ORDER THEY HAVE ALWAYS RUN IN:
@@ -371,9 +369,15 @@ def start_task(request, payload: StartTaskRequest):
             verdict = RiskService.reserve_agreed_price(
                 customer, task, parent_task_id=payload.parent_task_id)
             if not verdict["allowed"]:
-                raise _refused(verdict["reason"], verdict["balance_micros"],
-                               verdict["available_micros"])
+                raise _refused_by(verdict)
     return 200, start_task_out(task, replayed=False)
+
+
+def _refused_by(verdict):
+    """A money-shaped verdict that refused, as the refusal a start answers
+    with — the verdict's own three figures, unpacked once."""
+    return _refused(verdict["reason"], verdict["balance_micros"],
+                    verdict["available_micros"])
 
 
 def _refused(reason, balance_micros=None, available_micros=None):
@@ -400,29 +404,22 @@ def _refused(reason, balance_micros=None, available_micros=None):
                     "available_micros": available_micros})
 
 
-def _not_admitted(refused, *, line_named_by=None):
+def _not_admitted(refused, *, word=None):
     """The kernel's admission refusal, rendered (#462).
 
     A standing refusal takes the 409 every other refusal of the customer's
-    state takes, in the kernel's word — or, where ``line_named_by`` is the
-    money verdict's answer for a tenant that has stop lines, in that
-    verdict's word for the line holding the customer (#459): a suspension
-    the pool alone holds is refused in the pool's word, every other in the
-    wallet's. The kernel's word stands where the verdict, against
-    expectation, refuses nothing. The rate's refusal is the one 429 on this
-    surface, and it carries the retry information #154 §3.4 keeps verbatim
-    — `Retry-After` as the header the dialect promises on every 429, and
-    `limit`, `remaining`, `window_reset_at` and the pinned `scope` as
-    extension members — so a caller can back off by the number rather than
-    by guess.
+    state takes, in the kernel's word — or in ``word``, where the money
+    verdict has worded it for a tenant that has stop lines (#459: a
+    suspension the pool alone holds in the pool's word, every other in the
+    wallet's). The rate's refusal is the one 429 on this surface, and it
+    carries the retry information #154 §3.4 keeps verbatim — `Retry-After`
+    as the header the dialect promises on every 429, and `limit`,
+    `remaining`, `window_reset_at` and the pinned `scope` as extension
+    members — so a caller can back off by the number rather than by guess.
     """
     window = refused.window
     if window is None:
-        if line_named_by is not None and not line_named_by["allowed"]:
-            return _refused(line_named_by["reason"],
-                            line_named_by["balance_micros"],
-                            line_named_by["available_micros"])
-        return _refused(refused.reason)
+        return _refused(word or refused.reason)
     return Problem(
         "rate_limit_exceeded", str(refused),
         extensions={"limit": window.limit,

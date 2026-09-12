@@ -119,7 +119,7 @@ def sync_detailed(
     new work — a wallet below its floor, a stop in force, or a parent that is
     not a running top-level unit. `429 rate_limit_exceeded` answers a new
     top-level start once this customer has begun as much new work as your
-    workspace admits in one minute: `Retry-After` says how long to wait, and
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
     the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
     the window is keyed on (per seat). A retry, contained work under a running
     unit and a close never count against it. `422 validation_error`
@@ -193,7 +193,7 @@ def sync(
     new work — a wallet below its floor, a stop in force, or a parent that is
     not a running top-level unit. `429 rate_limit_exceeded` answers a new
     top-level start once this customer has begun as much new work as your
-    workspace admits in one minute: `Retry-After` says how long to wait, and
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
     the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
     the window is keyed on (per seat). A retry, contained work under a running
     unit and a close never count against it. `422 validation_error`
@@ -262,7 +262,7 @@ async def asyncio_detailed(
     new work — a wallet below its floor, a stop in force, or a parent that is
     not a running top-level unit. `429 rate_limit_exceeded` answers a new
     top-level start once this customer has begun as much new work as your
-    workspace admits in one minute: `Retry-After` says how long to wait, and
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
     the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
     the window is keyed on (per seat). A retry, contained work under a running
     unit and a close never count against it. `422 validation_error`
@@ -336,7 +336,7 @@ async def asyncio(
     new work — a wallet below its floor, a stop in force, or a parent that is
     not a running top-level unit. `429 rate_limit_exceeded` answers a new
     top-level start once this customer has begun as much new work as your
-    workspace admits in one minute: `Retry-After` says how long to wait, and
+    tenant configuration admits in one minute: `Retry-After` says how long to wait, and
     the body carries `limit`, `remaining`, `window_reset_at` and the `scope`
     the window is keyed on (per seat). A retry, contained work under a running
     unit and a close never count against it. `422 validation_error`

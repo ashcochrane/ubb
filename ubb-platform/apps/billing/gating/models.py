@@ -13,7 +13,7 @@ class RiskConfig(BaseModel):
     store is away — one column, and that is all this row is now (slice 6
     §1; #150 §15).
 
-    Four columns left it, one ticket each, and none of them was billing's
+    Four columns left it, in three tickets, and none of them was billing's
     to hold: the two tenant-default COGS ceilings went to the tenant row in
     #453 (a ceiling is a kernel concept a tenant without billing still gets,
     #141 §6.2; carried by `gating/migrations/0011`); the per-owner cap on

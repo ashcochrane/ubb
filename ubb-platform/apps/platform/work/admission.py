@@ -43,10 +43,11 @@ standings' — are the registry's `affordability_reason` values, bound from
 suspension is the durable form of the customer-wide stop, so a suspended
 customer is refused in the registry's word for a stop in force; the kernel
 does not know, and must not ask billing, which line opened it. For a tenant
-with a wallet the composition layer lets the money verdict name the line
-(the pool's word, or the wallet's) on the refusal this module has already
-made — so the refusal is the kernel's for every tenant, and the word names
-the line wherever there is one to name.
+with a wallet the composition layer asks the money verdict to WORD the
+refusal this module has already made (`RiskService.standing_word`: the
+pool's word, or the wallet's) — so the refusal is the kernel's for every
+tenant, the standing is walked once, here, and the word names the line
+wherever there is one to name.
 
 Nothing here reads or writes a row of its own.
 """
@@ -96,12 +97,16 @@ class AdmissionWindow:
 
 class AdmissionRefused(StartRefused):
     """A start the kernel's admission check refused, carrying the reason and
-    — for the rate's refusal only — the window a caller may retry after.
-    `window` is None for a standing refusal."""
+    — for the rate's refusal only — the window a caller may retry after;
+    for a standing refusal only, the row whose standing refused (the seat,
+    or the business funding it), which is what lets a product that holds
+    stop lines word the refusal without walking the standing again.
+    `window` is None for a standing refusal; `who` is None for the rate's."""
 
-    def __init__(self, reason, detail, *, window=None):
+    def __init__(self, reason, detail, *, window=None, who=None):
         super().__init__(reason, detail)
         self.window = window
+        self.who = who
 
 
 def window_keys(customer_id):
@@ -124,13 +129,29 @@ def admit(tenant, customer, *, contained):
     declared, the store away).
     """
     window = None if contained else _count_a_start(tenant, customer)
-    reason, who = _standing_refusal(customer)
+    reason, who = standing_refusal(customer)
     if reason is not None:
         raise AdmissionRefused(
             reason,
             f"{'this customer' if who is customer else 'the business funding this seat'} "
-            f"is {who.status}")
+            f"is {who.status}", who=who)
     return window
+
+
+def standing_refusal(customer):
+    """The registry's word for a customer that may not begin work, and the
+    row that says so — the seat, or the business funding a pooled seat —
+    or (None, None) where both stand. The seat is asked first, then the
+    owner, in the order the money verdict has always asked them; the
+    verdict asks THIS walk now rather than keeping a second one, and words
+    a suspension by the line holding it, which only it can name."""
+    owner = customer.resolve_billing_owner()
+    for who in ((customer,) if owner.id == customer.id else (customer, owner)):
+        if who.status == CUSTOMER_STATUS_SUSPENDED:
+            return AFFORDABILITY_REASON_CUSTOMER_STOPPED, who
+        if who.status == CUSTOMER_STATUS_CLOSED:
+            return AFFORDABILITY_REASON_ACCOUNT_CLOSED, who
+    return None, None
 
 
 def _count_a_start(tenant, customer):
@@ -150,8 +171,8 @@ def _count_a_start(tenant, customer):
             full = _window(bound, counted, _window_ends_at(ends_key, now), now)
             raise AdmissionRefused(
                 AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED,
-                f"this customer has begun as much new work as its workspace "
-                f"admits in one minute ({bound}); the window ends at "
+                f"this customer has begun as much new work as its tenant's "
+                f"configuration admits in one minute ({bound}); the window ends at "
                 f"{full.ends_at.isoformat()}",
                 window=full)
         # The end of the window is recorded before the count so it can never
@@ -195,15 +216,3 @@ def _seconds_until(ends_at, now):
     return max(1, math.ceil((ends_at - now).total_seconds()))
 
 
-def _standing_refusal(customer):
-    """The registry's word for a customer that may not begin work, and the
-    row that says so — the seat, or the business funding a pooled seat —
-    or (None, None) where both stand. The seat is asked first, then the
-    owner, in the order the money verdict has always asked them."""
-    owner = customer.resolve_billing_owner()
-    for who in ((customer,) if owner.id == customer.id else (customer, owner)):
-        if who.status == CUSTOMER_STATUS_SUSPENDED:
-            return AFFORDABILITY_REASON_CUSTOMER_STOPPED, who
-        if who.status == CUSTOMER_STATUS_CLOSED:
-            return AFFORDABILITY_REASON_ACCOUNT_CLOSED, who
-    return None, None

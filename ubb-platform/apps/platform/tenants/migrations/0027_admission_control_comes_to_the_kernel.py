@@ -16,7 +16,7 @@ the risk row's absence used to mean — and `apps.billing.gating`'s `0015`
 then carries every value the risk row held onto this column before dropping
 its own. Splitting the move across two apps is what a cross-app column move
 looks like under ADR-0007 §1 (the shape `0026` and `gating/0011` set for the
-two ceiling rungs one ticket earlier): the column has to exist in the
+two ceiling rungs in #453): the column has to exist in the
 kernel's migration graph before the product's migration can write to it and
 remove its own.
 

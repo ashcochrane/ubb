@@ -16,8 +16,8 @@ import {
   type AdmissionControlValues,
 } from "../lib/settings";
 
-/** The one label the field carries, spelled once for the card and its test. */
-export const NEW_WORK_PER_MINUTE_LABEL = "New work per minute, per customer";
+/** The one label the field carries; the card's test spells it itself. */
+const NEW_WORK_PER_MINUTE_LABEL = "New work per minute, per customer";
 
 /**
  * Admission control's one setting (#462, slice 6 §6, §18): how many new

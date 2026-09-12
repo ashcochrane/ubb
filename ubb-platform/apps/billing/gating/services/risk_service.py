@@ -2,11 +2,12 @@ from typing import NamedTuple
 
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
+    AFFORDABILITY_REASON_CUSTOMER_STOPPED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
-from apps.platform.work import reasons
+from apps.platform.work import admission, reasons
 
 
 def _suspension_refusal(customer):
@@ -203,12 +204,12 @@ class RiskService:
         """
         from apps.billing.accounts import resolve_billing_owner
         owner = resolve_billing_owner(customer)
-        # Status: gate if the seat OR its billing-owner (business) is suspended/closed
-        for who in ([customer] if owner.id == customer.id else [customer, owner]):
-            if who.status == "suspended":
-                return _verdict(_suspension_refusal(who), None, None)
-            if who.status == "closed":
-                return _verdict("account_closed", None, None)
+        # THE STANDING IS THE KERNEL'S WALK, WORDED HERE (#462): the seat,
+        # then the business funding a pooled seat, refused in the word of the
+        # line holding it — which this verdict is the one place to name.
+        standing, who = admission.standing_refusal(customer)
+        if standing is not None:
+            return _verdict(RiskService.standing_word(standing, who), None, None)
         # Tier-2 P6: honor the synchronous customer-wide stop flag at the
         # start-gate (enforcing only — the flag cannot exist for an off
         # tenant) so a flag-stopped owner's NEW tasks are blocked even before
@@ -264,6 +265,20 @@ class RiskService:
         # one, so `TaskService.parent_for` asks it, under the parent's own
         # lock, in the same transaction as the write it guards.
         return _verdict(None, balance, available)
+
+    @staticmethod
+    def standing_word(reason, who):
+        """The money verdict's word for a customer the kernel's admission
+        check found not in standing (#462): a suspension in the word of the
+        line holding it (#459 — the pool's where the pool alone holds, else
+        the wallet's, read off the OPEN ledger lines of ``who``, the seat or
+        the business funding it), and a closure in the registry's own word.
+        Asked by ``check`` above and by the start's composition on the
+        kernel's refusal, so a suspended customer of a tenant with a wallet
+        is told the same thing by both."""
+        if reason == AFFORDABILITY_REASON_CUSTOMER_STOPPED:
+            return _suspension_refusal(who)
+        return reason
 
     @staticmethod
     def reserve_agreed_price(customer, task, *, parent_task_id=None):

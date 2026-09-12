@@ -197,6 +197,9 @@ class TheStandingTest(AdmissionTestBase):
         refused = self.refusal(seat)
         self.assertEqual(refused.reason, AFFORDABILITY_REASON_CUSTOMER_STOPPED)
         self.assertIn("business", str(refused))
+        # The row whose standing refused travels with the refusal, so a
+        # product that holds stop lines can word it without a second walk.
+        self.assertEqual(refused.who, business)
 
     def test_an_allocated_seat_is_judged_on_its_own_standing(self):
         """The business is consulted only where it funds the seat — the same
@@ -232,9 +235,10 @@ class TheStandingTest(AdmissionTestBase):
 
 
 class TheWordsAreTheRegistrysTest(TestCase):
-    """The four refusal values the kernel produces are BOUND from
-    `core.vocabulary`, read off the assignments rather than compared by
-    value — an equal literal would satisfy a value comparison while being
+    """The five refusal values the kernel produces — the two start-shape
+    refusals in `services.py`, the rate's and the two standings' here — are
+    BOUND from `core.vocabulary`, read off the imports rather than compared
+    by value: an equal literal would satisfy a value comparison while being
     exactly the second spelling ADR-0006 §2 forbids."""
 
     def names_imported_from_the_vocabulary(self, module):

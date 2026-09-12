@@ -23,10 +23,12 @@ import { SpendLimitsForm } from "./spend-limits-form";
  * "off", because the switch governs the customer-wide family only: every
  * ceiling and window declared on a kind of work still stops the unit it is
  * declared on, and the hourly sweep still repairs it, whatever the switch
- * says. Copy that said "off" invited the reading that nothing happens.
+ * says. Copy that said "off" invited the reading that nothing happens. The
+ * card's test spells both itself, so the page and its assertion cannot
+ * move together.
  */
-export const ENFORCING_LABEL = "Enforcing";
-export const NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL = "No customer-wide enforcement";
+const ENFORCING_LABEL = "Enforcing";
+const NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL = "No customer-wide enforcement";
 
 export function SpendControlCard({
   config,

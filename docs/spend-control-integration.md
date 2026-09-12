@@ -42,7 +42,7 @@ Back-out is instant (set `off`).
    not a `200`: `409 task_start_refused` carries a `reason` saying why
    (`insufficient_funds`, `soft_floor_reached`, `customer_stopped`, …),
    `429 rate_limit_exceeded` answers a new top-level start once this customer
-   has begun as much new work as your workspace admits in one minute
+   has begun as much new work as your tenant configuration admits in one minute
    (`max_task_starts_per_minute` on your tenant configuration; `Retry-After`
    says how long to wait — a retry, contained work and a close never count
    against it), and `422 validation_error` answers a request that is wrong in

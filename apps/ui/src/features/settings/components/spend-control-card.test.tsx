@@ -4,12 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
 
 import { renderWithQuery } from "../test-utils";
-import { NEW_WORK_PER_MINUTE_LABEL } from "./admission-control-form";
-import {
-  ENFORCING_LABEL,
-  NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL,
-  SpendControlCard,
-} from "./spend-control-card";
+import { SpendControlCard } from "./spend-control-card";
 
 /**
  * The settings card after #462 (slice 6 §6, §10, §18): the switch's copy
@@ -17,11 +12,15 @@ import {
  * control's one setting — the new-work rate — is edited here, for every
  * workspace, whichever way it bills.
  *
- * The copy assertions spell the constants rather than import them for the
- * expected text, so the page and the assertion cannot move together (#425's
- * lesson); the constants are imported only to name the card's own words in
- * the "never off" check, which is about every word the card renders.
+ * Every expected text here is spelled in this file — the field's label, the
+ * two words for the switch's positions, the copy — and nothing is imported
+ * from the components for it, so the page and the assertion cannot move
+ * together (#425's lesson).
  */
+
+const NEW_WORK_PER_MINUTE_LABEL = "New work per minute, per customer";
+const ENFORCING_LABEL = "Enforcing";
+const NO_CUSTOMER_WIDE_ENFORCEMENT_LABEL = "No customer-wide enforcement";
 describe("SpendControlCard", () => {
   const original = readMockTenantConfig();
 
