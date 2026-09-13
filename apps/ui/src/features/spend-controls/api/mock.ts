@@ -3,14 +3,16 @@
 // is echoed and not applied, for the reason `./mock-data` gives.
 
 import { mockDelay } from "@/lib/api-provider";
+import type { DatetimeWindow } from "@/lib/date-range";
 
 import { MOCK_EPISODES, MOCK_MARGIN_CUSTOMERS, totalsOf } from "./mock-data";
 import type { MarginCustomers, StopsAndBreaches, StopsAndBreachesFilters } from "./types";
 
+/** The route's own bound (`core.time_windows.REPORT_WINDOW_MAX_DAYS`), mirrored so the mock echoes what the server would. */
 const REPORT_WINDOW_MAX_DAYS = 366;
 
 /** The window the route applies when the caller leaves it open: the 366 days ending now. */
-function boundedWindow(filters: StopsAndBreachesFilters): { since: string; until: string } {
+function boundedWindow(filters: StopsAndBreachesFilters): DatetimeWindow {
   const until = filters.until ?? new Date().toISOString();
   const since =
     filters.since ??

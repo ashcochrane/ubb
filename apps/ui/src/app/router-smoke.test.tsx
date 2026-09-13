@@ -71,4 +71,23 @@ describe("router smoke", () => {
       );
     });
   }
+
+  // The host-side half of "one rendering, two hosts" (#466): the customer
+  // ROUTE is what fixes the customer filter on the injected Stops and
+  // breaches, and only this suite mounts the real route. luna-labs' story has
+  // wallet-floor episodes and nothing else; acme-corp's has the ceiling and
+  // pool rows. Drop `customer_id` from the route's filters and acme's rows
+  // land on luna's Usage tab, and this goes red.
+  it("fixes the customer filter on the Usage tab's Stops and breaches through the route", async () => {
+    await renderRoute(`/customers/${CUS_LUNA}?tab=usage`);
+    await waitFor(
+      () => {
+        expect(screen.getAllByRole("article").length).toBeGreaterThan(0);
+      },
+      { timeout: 8000 },
+    );
+    const shapes = screen.getAllByRole("article").map((article) => article.dataset.shape);
+    expect(shapes.every((shape) => shape === "wallet_policy")).toBe(true);
+    expect(document.querySelector('[data-shape="ceiling"]')).toBeNull();
+  });
 });

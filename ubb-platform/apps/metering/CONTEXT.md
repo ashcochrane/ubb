@@ -107,13 +107,14 @@ the customer's real floor. Do not reintroduce a unit-scoped floor check in
 customer-scope tag is the one correct signal for a wallet-wide fact; see **Task floor snapshot
 (removed)** in `apps/platform/CONTEXT.md` for the full reasoning.
 
-**Stops and breaches (the per-customer report it replaced)**:
-The answer to "exactly what was spent past a stop and why" is Stops and breaches
-(`GET /api/v1/spend-controls/stops-and-breaches`, the composition layer's join of this product's
-`stop_context_postings` and `charge_that_reached` with the kernel's and billing's episode reads,
-#465) — episodes per family, each with its itemised tagged events and totals per family in both
-denominations; `customer_id` narrows it to one customer. The per-customer report that first
-answered it (`GET /customers/{id}/past-limit-report`, an untyped response) retired in #466.
+**Stop-context itemisation**:
+This product's part of Stops and breaches (`GET /api/v1/spend-controls/stops-and-breaches`, the
+composition layer's join, #465): the read contracts `stop_context_postings` (the tagged postings,
+unwindowed, for a customer and for everything pinning it as billing owner) and
+`charge_that_reached` (the Charge a pool's crossing reached, replayed off the drawdown), which the
+join buckets into episodes per family with totals per family in both denominations. The
+per-customer report that first answered the question (`GET /customers/{id}/past-limit-report`, an
+untyped response, built in this layer's seam) retired in #466.
 _Avoid_: itemising events under a soft-floor row — nothing is stopped under a soft floor;
 allow-listing a specific customer-scope `limit` string when bucketing events — deny-list the two
 values that are taggable but never an episode (`suspended`, `task_not_active`) instead, so a

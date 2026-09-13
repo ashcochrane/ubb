@@ -339,7 +339,7 @@ export async function createCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Metering — usage analytics + past-limit report
+// Metering — usage analytics
 
 export async function getUsageAnalytics(
   customerId: string,

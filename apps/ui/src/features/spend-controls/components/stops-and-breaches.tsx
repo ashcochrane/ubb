@@ -30,7 +30,7 @@ import { describeTotal } from "@/lib/total-reading";
 
 import { useStopsAndBreaches } from "../api/queries";
 import type { FamilyTotalsRow, StopsAndBreachesFilters } from "../api/types";
-import { readItemisedCost, readItemisedPrice } from "../lib/episodes";
+import { episodeKey, readItemisedCost, readItemisedPrice } from "../lib/episodes";
 import { controlFamilyLabel, NO_EPISODES_FOR } from "../lib/families";
 import { EpisodeCard } from "./episode-card";
 
@@ -122,8 +122,8 @@ export function StopsAndBreaches({ filters }: { filters: StopsAndBreachesFilters
           ) : (
             <>
               <div className="space-y-2">
-                {report.data.rows.map((row, index) => (
-                  <EpisodeCard key={`${row.control_family}-${index}`} row={row} currency={currency} />
+                {report.data.rows.map((row) => (
+                  <EpisodeCard key={episodeKey(row)} row={row} currency={currency} />
                 ))}
               </div>
               {report.data.totals.length > 0 && (

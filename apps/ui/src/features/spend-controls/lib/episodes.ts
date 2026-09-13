@@ -115,6 +115,9 @@ export const POOL_ROW_GONE = "The pool row is gone, so its amount is unknown.";
 export const BALANCE_UNANNOUNCED =
   "No suspension announced a balance beside this stop, so the balance at crossing is unknown.";
 
+export const FLOOR_GONE =
+  "The control row no longer carries this floor, so the floor it crossed is unknown.";
+
 export const SOFT_FLOOR_MARKER =
   "The soft floor winds new starts down and stops nothing, so this is a marker: there are no events to itemise.";
 
@@ -129,6 +132,20 @@ export function describeCrossing(row: CustomerSpendPoolEpisodeRow): string {
 /** Whether a unit is contained work, off the one fact that says so. */
 export function containedWork(row: CeilingEpisodeRow): boolean {
   return row.parent_task_id != null;
+}
+
+/**
+ * The identity a row renders under. A ceiling row is its unit's; a
+ * customer-wide row is its customer's line and episode — the pair the
+ * ledger numbers independently per line, so the line word is part of it.
+ */
+export function episodeKey(row: EpisodeRow): string {
+  const episode = episodeShape(row);
+  if (episode.shape === "ceiling") return episode.row.task_id;
+  const line = episode.shape === "wallet_policy" && episode.row.soft_floor
+    ? "soft_floor"
+    : (episode.row.reason_code ?? episode.row.control_family);
+  return `${episode.row.customer_id}:${line}:${episode.row.episode_seq}`;
 }
 
 /** "3 events" / "1 event". */

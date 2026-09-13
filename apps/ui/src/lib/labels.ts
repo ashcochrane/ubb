@@ -1,7 +1,7 @@
 // THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
 // This module used to be the console's whole labelling layer, and ADR-0008 §4
-// retired the idea it rests on. It hand-writes twenty-four value maps and falls
+// retired the idea it rests on. It hand-writes twenty-three value maps and falls
 // back to `humanize`, which title-cases a raw token into something that reads
 // like English — manufacturing user-facing terminology out of an implementation
 // token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that

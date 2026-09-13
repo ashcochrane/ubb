@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatMicros, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
-import { describeTotal, type TotalReading } from "@/lib/total-reading";
+import { describeTotal, UNKNOWN_TOTAL, type TotalReading } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type {
@@ -38,6 +38,7 @@ import {
   describeCrossing,
   episodeShape,
   eventCount,
+  FLOOR_GONE,
   POOL_ROW_GONE,
   readCrossedCost,
   readFinalCost,
@@ -63,7 +64,7 @@ function Reading({ reading, currency }: { reading: TotalReading; currency: strin
 function Unknown({ because }: { because: string }) {
   return (
     <span data-reading="unknown" className="text-text-muted" title={because}>
-      Unknown
+      {UNKNOWN_TOTAL}
     </span>
   );
 }
@@ -111,10 +112,8 @@ function ceilingItems(row: CeilingEpisodeRow, currency: string): DetailItem[] {
       ),
     },
     { label: "Customer", value: <CustomerLink customerId={row.customer_id} /> },
-    {
-      label: "Ceiling",
-      value: `${formatMicros(row.task_cogs_ceiling_micros, currency)} of ${ceilingBasisLabel(row.ceiling_basis).toLowerCase()}`,
-    },
+    { label: "Ceiling", value: formatMicros(row.task_cogs_ceiling_micros, currency) },
+    { label: "Bounds", value: ceilingBasisLabel(row.ceiling_basis) },
     {
       label: "Applied by",
       value: <OpenSetValue labelKeys={TRIGGER_SOURCE_LABEL_KEYS} value={row.trigger_source} />,
@@ -195,7 +194,7 @@ function walletItems(row: WalletPolicyEpisodeRow, currency: string): DetailItem[
       label: row.soft_floor ? "Soft floor" : "Hard floor",
       value:
         row.floor_micros == null ? (
-          <Unknown because="The control row no longer carries this floor." />
+          <Unknown because={FLOOR_GONE} />
         ) : (
           formatMicros(row.floor_micros, currency)
         ),

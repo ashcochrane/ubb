@@ -78,7 +78,8 @@ describe("StopsAndBreaches — the three shapes", () => {
       a.querySelector(`a[href="/tasks/runs/${UNIT_KILLED}"]`) !== null,
     );
     expect(row).toHaveAttribute("data-family", "ceiling");
-    expect(valueBeside(row, "Ceiling")).toHaveTextContent("$3.00 of cost");
+    expect(valueBeside(row, "Ceiling")).toHaveTextContent("$3.00");
+    expect(valueBeside(row, "Bounds")).toHaveTextContent("Cost");
 
     // Both pairs are floors beside the one event whose cost UBB never learned.
     const fired = valueBeside(row, "Known cost when it fired").querySelector("[data-reading]");

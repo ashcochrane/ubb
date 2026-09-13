@@ -132,6 +132,12 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/referrals/lib/program-form.ts",
     "apps/ui/src/features/settings/api/mock.ts",
     "apps/ui/src/features/settings/components/audit-log-page.tsx",
+    "apps/ui/src/features/settings/components/billing-mode-card.tsx",
+    "apps/ui/src/features/settings/components/invitations-section.tsx",
+    "apps/ui/src/features/settings/components/members-section.tsx",
+    "apps/ui/src/features/settings/components/products-card.tsx",
+    "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
+    "apps/ui/src/features/settings/lib/settings.ts",
     # ⚠ ADDED IN #466 AS THE EXPLICIT, REVIEWED ACT THIS RATCHET'S MESSAGE
     # ALLOWS FOR. The Spend controls tab shows the workspace's enforcement
     # posture, and spec §18 rules that its label "is slice 8's ledger entry
@@ -141,12 +147,6 @@ ADAPTER_IMPORTERS = (
     # to render instead. One importer joins for one word somebody already
     # owes; the entry, the map and this line all leave with slice 8.
     "apps/ui/src/features/spend-controls/components/spend-controls-page.tsx",
-    "apps/ui/src/features/settings/components/billing-mode-card.tsx",
-    "apps/ui/src/features/settings/components/invitations-section.tsx",
-    "apps/ui/src/features/settings/components/members-section.tsx",
-    "apps/ui/src/features/settings/components/products-card.tsx",
-    "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
-    "apps/ui/src/features/settings/lib/settings.ts",
     "apps/ui/src/features/webhooks/api/mock.ts",
     # `deliveries-table.tsx`, `webhook-config-table.tsx` and `event-groups.ts`
     # LEFT IN #464: their one word — an event's name — came from
