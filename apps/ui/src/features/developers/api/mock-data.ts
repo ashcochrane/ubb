@@ -87,7 +87,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
 /**
  * The mock wallet the test console draws down: starts at $12.50. A test
  * event whose billed cost pushes the balance below zero returns the stop
- * verdict (customer_floor / customer) — the teaching scenario.
+ * verdict (hard_floor / customer) — the teaching scenario.
  */
 export const MOCK_STARTING_BALANCE_MICROS = 12_500_000;
 

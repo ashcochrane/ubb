@@ -183,7 +183,8 @@ describe("EventDetailPage", () => {
     renderPage({ eventId: EVENT_TIPPING_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Stop context")).toBeInTheDocument();
-    expect(screen.getByText("Customer balance floor")).toBeInTheDocument();
+    // The registry's word for the hard floor, in the catalogue's wording (#466).
+    expect(screen.getByText("Hard floor reached")).toBeInTheDocument();
     expect(screen.getByText("Tipping event")).toBeInTheDocument();
   });
 

@@ -10,23 +10,20 @@
 //
 // NO NUMBER NOBODY KNOWS RENDERS AS A ZERO AMOUNT (#424; #155 §9.2). A run's
 // totals arrive as a figure beside a COUNT of what the figure could not
-// include — `incompleteTotal` and `incompletePriceTotal` in
-// `@/lib/economic-scenarios` — and the count is what says whether the figure
-// is a figure, a floor, or nothing at all. That is the reading
-// `@/lib/supplier-cost` gives every other total in the console; what is
-// different here is the THIRD outcome. Elsewhere a total whose resolved part
-// sums to nothing renders as an absence; on this surface it renders as
-// UNKNOWN, in a word, because the runs list puts it in a column beside real
-// zeros — a run that ran nothing — and beside amounts that do not apply, and a
-// column of dashes could not tell a reader which of the three they were
-// looking at. All three are distinct here, and none of them is `$0.00`.
+// include, and `@/lib/total-reading` is what says whether the figure is a
+// figure, a floor, or nothing at all — the reading was written here and moved
+// to `lib/` in #466, the day Stops and breaches became the second surface to
+// read a total that way. What stays here is what only a run can decide:
+// whether a customer price applies to it at all, and what its agreed price is
+// worth.
 
 import { z } from "zod";
 
 import { pricingStatusLabel } from "@/lib/customer-price";
 import { formatMicros } from "@/lib/format";
 import { labelMap } from "@/lib/localisation";
-import { AT_LEAST, partialTotalNote } from "@/lib/supplier-cost";
+import { partialTotalNote } from "@/lib/supplier-cost";
+import { describeTotal, eventsHave, readTotal, type TotalReading } from "@/lib/total-reading";
 import {
   OUTCOME_REASON_LABEL_KEYS,
   TASK_STATUS_VALUES,
@@ -67,20 +64,6 @@ export function kindKeysForRuns(kinds: readonly KindOfWork[]): string[] {
 // ---------------------------------------------------------------------------
 // What a run's totals may be said to be
 
-/**
- * The wording for a total none of whose parts UBB has learned.
- *
- * Console copy, and NOT the catalogue's `pricing_status.unknown` or
- * `costing_status.unresolved`, though the catalogue words both. Those are the
- * states of ONE posting; a total is not in a state. It is an amount beside a
- * COUNT of what it left out, with no registry value of its own for the
- * catalogue to word — `incompleteTotal` in `@/lib/economic-scenarios` makes
- * the same point, and `at least` beside it is copy of the same kind. The one
- * run-level reading this surface DOES take from the catalogue is the one that
- * is a registry value with a registry reason: a price that does not apply.
- */
-export const UNKNOWN_TOTAL = "Unknown";
-
 /** The five totals a run — or a roll-up over runs — carries, spelled as the wire spells them. */
 export interface RunTotals {
   readonly event_count: number;
@@ -88,52 +71,6 @@ export interface RunTotals {
   readonly unresolved_event_count: number;
   readonly total_billed_cost_micros: number;
   readonly unpriced_event_count: number;
-}
-
-/**
- * A total and what it is worth as a statement — the shape both sides share.
- *
- * A union rather than a string, so a renderer branches on WHICH reading it
- * holds and cannot coalesce one into a number: `figure` is the amount, `floor`
- * is an amount the run cost — or will be charged — AT LEAST, and `unknown` is
- * no amount at all. `eventsLeftOut` is the count the total could not include,
- * whichever side's count that is.
- */
-export type TotalReading =
-  | { readonly kind: "figure"; readonly micros: number }
-  | { readonly kind: "floor"; readonly micros: number; readonly eventsLeftOut: number }
-  | { readonly kind: "unknown"; readonly eventsLeftOut: number };
-
-/**
- * The decision both totals make, once.
- *
- *   nothing left out          → the figure
- *   left out, amount above 0  → a floor
- *   left out, amount at 0     → unknown: UBB knows no amount here
- *
- * A total whose parts all resolved to nothing, with nothing left out, is a
- * FIGURE of zero — a real zero, and it renders as one.
- */
-function readTotal(micros: number, eventsLeftOut: number): TotalReading {
-  if (eventsLeftOut <= 0) return { kind: "figure", micros };
-  if (micros === 0) return { kind: "unknown", eventsLeftOut };
-  return { kind: "floor", micros, eventsLeftOut };
-}
-
-export function describeTotal(reading: TotalReading, currency: string): string {
-  switch (reading.kind) {
-    case "figure":
-      return formatMicros(reading.micros, currency);
-    case "floor":
-      return `${AT_LEAST} ${formatMicros(reading.micros, currency)}`;
-    case "unknown":
-      return UNKNOWN_TOTAL;
-  }
-}
-
-/** "2 events have" / "1 event has" — the subject of every sentence about what a total left out. */
-export function eventsHave(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "event has" : "events have"}`;
 }
 
 // The supplier cost
@@ -234,7 +171,8 @@ export function readCustomerPrice(
 
 export function describeCustomerPrice(reading: CustomerPriceReading, currency: string): string {
   // The registry's own word for the state every posting under the run is in
-  // — this one is a value the catalogue words (see `UNKNOWN_TOTAL`).
+  // — this one is a value the catalogue words (contrast `UNKNOWN_TOTAL` in
+  // `@/lib/total-reading`, which is console copy for a total in no state).
   if (reading.kind === "not_applicable") return pricingStatusLabel("not_applicable");
   return describeTotal(reading, currency);
 }

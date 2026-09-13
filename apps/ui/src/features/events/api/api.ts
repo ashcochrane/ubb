@@ -9,10 +9,8 @@ import type {
   CloseTaskResult,
   CustomerMargin,
   MarginCustomers,
-  PastLimitReport,
   RefundBody,
   RefundResult,
-  ReportWindow,
   TaskOutcome,
   TimeseriesParams,
   UsageAnalytics,
@@ -89,21 +87,6 @@ export async function getCustomerMargin(
   return unwrap(
     await marginApi.GET("/customers/{customer_id}", {
       params: { path: { customer_id: customerId } },
-    }),
-  );
-}
-
-/** Per-customer past-limit episodes + totals per limit. */
-export async function getPastLimitReport(
-  customerId: string,
-  window: ReportWindow,
-): Promise<PastLimitReport> {
-  return unwrap(
-    await rootApi.GET("/customers/{customer_id}/past-limit-report", {
-      params: {
-        path: { customer_id: customerId },
-        query: { since: window.since, until: window.until },
-      },
     }),
   );
 }

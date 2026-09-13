@@ -95,3 +95,28 @@ export function resolveRange(range: DateRange): Required<DateRange> {
     end_date: range.end_date ?? mtd.end_date!,
   };
 }
+
+/** A half-open `since`/`until` datetime window, as the spend-control reports take one. */
+export interface DatetimeWindow {
+  since: string;
+  until: string;
+}
+
+/**
+ * Map the inclusive calendar-date window onto a report's half-open datetime
+ * window: `since` = start of the start day, `until` = start of the day AFTER
+ * the end date (the reports select `>= since, < until`).
+ *
+ * Here rather than in a feature because two surfaces hand the same window to
+ * Stops and breaches — its own tab and the customer's Usage tab — and the
+ * console's imports only flow down (#466; the events feature carried the first
+ * copy for the report this one replaced).
+ */
+export function datetimeWindow(range: Required<DateRange>): DatetimeWindow {
+  const next = new Date(`${range.end_date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return {
+    since: `${range.start_date}T00:00:00Z`,
+    until: `${next.toISOString().slice(0, 10)}T00:00:00Z`,
+  };
+}

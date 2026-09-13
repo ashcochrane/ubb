@@ -7,12 +7,7 @@
 // nova-ai       — individual pinned to metered_only; usage tracked at cost.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
-import {
-  completeTotal,
-  incompleteTotal,
-  knownCost,
-  unknownCost,
-} from "@/lib/economic-scenarios";
+import { completeTotal, incompleteTotal } from "@/lib/economic-scenarios";
 
 import type {
   BalanceResponse,
@@ -24,7 +19,6 @@ import type {
   CustomerMarginOut,
   GrantOut,
   MarginTrendPointOut,
-  PastLimitReport,
   RevenueModeOut,
   RevenueProfileOut,
   StripeSubscriptionOut,
@@ -776,133 +770,6 @@ export function buildMockTimeseries(customerId: string): UsageTimeseriesResponse
     };
   });
   return { granularity: "day", group_by: "", series };
-}
-
-export const MOCK_PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
-  [CUS_LUNA]: {
-    customer_id: CUS_LUNA,
-    billing_owner_id: CUS_LUNA,
-    since: null,
-    until: null,
-    episodes: [
-      {
-        family: "soft_floor",
-        limit: null,
-        stop_scope: "customer",
-        episode_seq: null,
-        task_id: null,
-        subtask_id: null,
-        provider_cost_limit_micros: null,
-        tripped_at: "2026-07-01T22:40:00Z",
-        resumed_at: "2026-07-01T23:55:00Z",
-        events: [],
-        event_count: 0,
-        total_billed_cost_micros: 0,
-        // A marker episode marks no event at all, so there is nothing it could
-        // have left out — a genuine zero rather than a floor at zero.
-        total_provider_cost_micros: 0,
-        unresolved_event_count: 0,
-        unpriced_event_count: 0,
-      },
-      {
-        family: "floor_stop",
-        limit: "customer_floor",
-        stop_scope: "customer",
-        episode_seq: 3,
-        task_id: null,
-        subtask_id: null,
-        provider_cost_limit_micros: null,
-        tripped_at: "2026-07-02T09:14:00Z",
-        resumed_at: "2026-07-04T08:02:00Z",
-        events: [
-          {
-            event_id: "9c32c7a4-0000-4000-8000-000000000301",
-            effective_at: "2026-07-02T09:14:00Z",
-            billed_cost_micros: 1_450_000,
-            ...knownCost(1_160_000),
-            arrived_after: false,
-          },
-          {
-            event_id: "9c32c7a4-0000-4000-8000-000000000302",
-            effective_at: "2026-07-02T09:15:12Z",
-            billed_cost_micros: 890_000,
-            ...knownCost(712_000),
-            arrived_after: true,
-          },
-          {
-            event_id: "9c32c7a4-0000-4000-8000-000000000303",
-            effective_at: "2026-07-02T09:16:44Z",
-            billed_cost_micros: 640_000,
-            // THE ONE ITEMIZED EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED
-            // (#330). It landed past a spend stop and it is still billed, so
-            // its row must not read as a free overrun: the amount is absent and
-            // the episode's total above it says "at least".
-            ...unknownCost("cost_rate_missing"),
-            arrived_after: true,
-          },
-        ],
-        event_count: 3,
-        total_billed_cost_micros: 2_980_000,
-        // Two of the three costs are known; the third is not, so this is a
-        // floor and the count beside it says by how many events.
-        total_provider_cost_micros: 1_872_000,
-        unresolved_event_count: 1,
-        unpriced_event_count: 0,
-      },
-      {
-        family: "task",
-        limit: "task_limit",
-        stop_scope: "task",
-        episode_seq: null,
-        task_id: "4d43d8b5-0000-4000-8000-000000000401",
-        subtask_id: null,
-        provider_cost_limit_micros: 5_000_000,
-        tripped_at: "2026-07-11T17:20:00Z",
-        resumed_at: null,
-        events: [
-          {
-            event_id: "9c32c7a4-0000-4000-8000-000000000304",
-            effective_at: "2026-07-11T17:20:00Z",
-            billed_cost_micros: 1_120_000,
-            ...knownCost(896_000),
-            arrived_after: false,
-          },
-        ],
-        event_count: 1,
-        total_billed_cost_micros: 1_120_000,
-        total_provider_cost_micros: 896_000,
-        unresolved_event_count: 0,
-        unpriced_event_count: 0,
-      },
-    ],
-    totals_per_limit: {
-      customer_floor: {
-        billed_cost_micros: 2_980_000,
-        provider_cost_micros: 1_872_000,
-        unresolved_event_count: 1,
-        unpriced_event_count: 0,
-        event_count: 3,
-      },
-      task_limit: {
-        billed_cost_micros: 1_120_000,
-        provider_cost_micros: 896_000,
-        unresolved_event_count: 0,
-        unpriced_event_count: 0,
-        event_count: 1,
-      },
-    },
-  },
-};
-
-export function emptyPastLimitReport(customerId: string): PastLimitReport {
-  return {
-    customer_id: customerId,
-    billing_owner_id: customerId,
-    since: null,
-    until: null,
-    episodes: [],
-    totals_per_limit: {},
-  };
 }
 
 // ---------------------------------------------------------------------------

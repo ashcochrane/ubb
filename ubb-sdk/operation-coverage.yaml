@@ -38,9 +38,9 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 164
+  operations: 163
   unwrapped: 81
-  wrapped: 83
+  wrapped: 82
   generated_only: 81
   not_yet_wrapped: 0
 
@@ -197,12 +197,6 @@ operations:
     method: GET
     path: /api/v1/health
     disposition: generated_only
-  - operation_id: api_v1_endpoints_past_limit_report
-    method: GET
-    path: /api/v1/customers/{customer_id}/past-limit-report
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_past_limit_report
   - operation_id: api_v1_endpoints_ready
     method: GET
     path: /api/v1/ready

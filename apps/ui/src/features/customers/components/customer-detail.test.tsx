@@ -30,6 +30,23 @@ describe("CustomerDetailPage — overview", () => {
     expect(screen.getByText("$267.50")).toBeInTheDocument();
   });
 
+  // The Usage tab hosts whatever the route injects for Stops and breaches
+  // (#466): one rendering, two hosts, and this page renders the injection
+  // rather than a second copy of the report. The filter itself is the
+  // spend-controls feature's (`stops-and-breaches.test.tsx` proves it is
+  // applied); what this page owes is the seam.
+  it("renders the injected Stops and breaches on the Usage tab", async () => {
+    renderWithProviders(
+      <CustomerDetailPage
+        customerId={CUS_ACME}
+        search={{ tab: "usage" }}
+        onSearchChange={vi.fn()}
+        stopsAndBreaches={<div data-testid="injected">Stops and breaches, injected</div>}
+      />,
+    );
+    expect(await screen.findByTestId("injected", undefined, SLOW)).toBeInTheDocument();
+  });
+
   it("shows the not-found state for an unknown customer", async () => {
     renderWithProviders(
       <CustomerDetailPage

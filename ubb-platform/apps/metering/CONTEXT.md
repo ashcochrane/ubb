@@ -107,16 +107,18 @@ the customer's real floor. Do not reintroduce a unit-scoped floor check in
 customer-scope tag is the one correct signal for a wallet-wide fact; see **Task floor snapshot
 (removed)** in `apps/platform/CONTEXT.md` for the full reasoning.
 
-**Past-limit report**:
-The per-customer answer to "exactly what was spent past the limit and why" in one call
-(`GET /api/v1/customers/{id}/past-limit-report`): episodes — customer-wide stops from the signal
-ledger's history, task/subtask limit kills, soft-floor crossed/cleared marker rows — each with the
-tripping limit, trip/resume times, itemized tagged events, and totals per limit in both
-denominations. (`api/v1/past_limit.py`)
-_Avoid_: itemizing events under a soft-floor row — nothing is "past limit" under a soft floor;
-allow-listing a specific customer-scope `limit` string when bucketing events — deny-list the one
-value that is taggable but never an episode (`suspended`) instead, so a renamed-but-still-episodic
-value (or a historical string predating a rename) is never silently dropped.
+**Stops and breaches (the per-customer report it replaced)**:
+The answer to "exactly what was spent past a stop and why" is Stops and breaches
+(`GET /api/v1/spend-controls/stops-and-breaches`, the composition layer's join of this product's
+`stop_context_postings` and `charge_that_reached` with the kernel's and billing's episode reads,
+#465) — episodes per family, each with its itemised tagged events and totals per family in both
+denominations; `customer_id` narrows it to one customer. The per-customer report that first
+answered it (`GET /customers/{id}/past-limit-report`, an untyped response) retired in #466.
+_Avoid_: itemising events under a soft-floor row — nothing is stopped under a soft floor;
+allow-listing a specific customer-scope `limit` string when bucketing events — deny-list the two
+values that are taggable but never an episode (`suspended`, `task_not_active`) instead, so a
+renamed-but-still-episodic value (or a historical string predating a rename) is never silently
+dropped.
 
 **Backfill**:
 Recording usage with a past `effective_at` inside the tenant's backfill window. Reaching into an

@@ -920,32 +920,6 @@ class UsageEventDetailOut(Schema):
     stop_context: Optional[list] = None
 
 
-class PastLimitReportResponse(Schema):
-    # #41 (spec §I): "exactly what was spent past the limit and why" in one
-    # call. episodes[] entries (kept as dict, the list[dict] precedent):
-    # {family: floor_stop|task|soft_floor, limit, stop_scope, episode_seq,
-    #  task_id, subtask_id, provider_cost_limit_micros, tripped_at,
-    #  resumed_at, events: [{event_id, effective_at, billed_cost_micros,
-    #  provider_cost_micros, costing_status, arrived_after}], event_count,
-    #  total_billed_cost_micros, total_provider_cost_micros,
-    #  unresolved_event_count}.
-    # Soft-floor entries are crossed/cleared MARKER rows: events always [].
-    # totals_per_limit: {limit: {billed_cost_micros, provider_cost_micros,
-    #  unresolved_event_count, event_count}} — both denominations, per tripping
-    # limit, covering exactly the itemized events of the episodes shown.
-    # #328: an itemized event carries `costing_status` because its supplier
-    # cost is null both where UBB has not resolved one and where the Event Type
-    # declares none; each total carries `unresolved_event_count`, the number of
-    # the first kind it therefore could not include, which makes that total a
-    # floor.
-    customer_id: str
-    billing_owner_id: str
-    since: Optional[str] = None
-    until: Optional[str] = None
-    episodes: list[dict]
-    totals_per_limit: dict
-
-
 class ConfigureAutoTopUpRequest(Schema):
     is_enabled: bool
     trigger_threshold_micros: int = Field(ge=0)

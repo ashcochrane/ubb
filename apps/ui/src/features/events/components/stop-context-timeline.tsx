@@ -1,10 +1,21 @@
-// The event's stop context: one entry per limit the event landed past.
-// `arrived_after: false` marks the tipping event that crossed the limit;
+// The event's stop context: one entry per stop the event landed past.
+// `arrived_after: false` marks the tipping event that crossed the line;
 // `true` marks a late arrival past an existing stop.
+//
+// THE STOP WORD RENDERS THROUGH THE CONSOLE'S ONE OPEN-SET RULE (#466; slice
+// 6 §18). `stop_context` is immutable with its posting and was deliberately
+// not migrated when the stop vocabulary was (#457, `work/migrations/0026`),
+// so an entry written before the registry's words carries the spelling of
+// its day. Such a word renders as the token it is, marked unrecognised — the
+// rule's exact intent: a value UBB has no words for today, shown as the
+// server sent it, never dressed up as English UBB did not say. There is no
+// read-side map from a retired spelling, by the ticket's ruling.
 
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
-import { stopReasonLabel, stopScopeLabel } from "@/lib/labels";
+import { stopScopeLabel } from "@/lib/labels";
+import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { shortId } from "../lib/search";
 import type { StopContextEntry } from "../api/types";
@@ -24,7 +35,7 @@ export function StopContextTimeline({
           />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-medium text-text-primary">
-              {stopReasonLabel(entry.limit)}
+              <OpenSetValue labelKeys={REASON_CODE_LABEL_KEYS} value={entry.limit} />
             </span>
             <Badge variant={entry.arrived_after ? "outline" : "default"}>
               {entry.arrived_after ? "Arrived after stop" : "Tipping event"}
@@ -37,7 +48,7 @@ export function StopContextTimeline({
             </div>
             <div>
               {entry.tripped_at
-                ? `Limit tripped ${formatDate(entry.tripped_at)}`
+                ? `Tripped ${formatDate(entry.tripped_at)}`
                 : "No recorded trip time"}
             </div>
             {entry.task_id && (

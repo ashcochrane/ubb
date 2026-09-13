@@ -14,7 +14,7 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasProduct } from "@/hooks/use-tenant-config";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatEventMicros } from "@/lib/format";
 import {
   customerPriceAmount,
   customerPriceExplanation,
@@ -43,7 +43,7 @@ import {
   NO_QUANTITIES_RECORDED,
   measurementsStatusLabel,
 } from "../lib/measurements";
-import { formatEventMicros, formatSignedEventMicros } from "../lib/money";
+import { formatSignedEventMicros } from "../lib/money";
 import {
   explainsACharge,
   pricingReceiptSubjectTypeLabel,

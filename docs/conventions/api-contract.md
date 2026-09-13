@@ -101,7 +101,7 @@ and unwrapped lists are banned from the public surface; short config lists
 wear the envelope too.
 
 **Computed reports are not lists** (analytics, margin, trend series,
-past-limit report, usage summary, the two spend-control reports): cursor-exempt
+usage summary, the two spend-control reports): cursor-exempt
 but **parameter-bounded** — explicit date windows are refused past 366 days
 (hourly timeseries: 92) with `validation_error`. A report that lets the caller
 leave the window open bounds it itself — the spend-control reports take the

@@ -56,3 +56,31 @@ describe("the Tasks tab", () => {
     expect(meteringOnly).toContain("Events");
   });
 });
+
+/**
+ * The Spend controls tab is UNGATED and sits in the PLATFORM group (#466,
+ * spec §18 Q6).
+ *
+ * The four spend controls sit on a kernel concept and the reports read across
+ * all of them, so a family a tenant lacks answers no rows rather than a hidden
+ * tab. Held the same two ways as Tasks: structurally, and through the shell's
+ * own filter over every product set a tenant can have.
+ */
+describe("the Spend controls tab", () => {
+  it("declares no product flag and heads the PLATFORM group", () => {
+    const platform = navSections.find((section) => section.label === "PLATFORM");
+    expect(platform).toBeDefined();
+    const items = platform?.items ?? [];
+    expect(items[0]?.title).toBe("Spend controls");
+    expect(items[0]?.url).toBe("/spend-controls");
+    expect(items[0]?.product).toBeUndefined();
+  });
+
+  it("is visible for every single-product tenant, an empty product list, and a config still loading", () => {
+    for (const product of TENANT_PRODUCT_VALUES) {
+      expect(titles([product])).toContain("Spend controls");
+    }
+    expect(titles([])).toContain("Spend controls");
+    expect(titles(undefined)).toContain("Spend controls");
+  });
+});

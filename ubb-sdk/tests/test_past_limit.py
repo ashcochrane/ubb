@@ -1,6 +1,8 @@
 """#41 past-limit accounting SDK surfaces: stop_context on acks and usage
-items, the past-limit report helper, the past-limit query filters, and
-negative_since on the balance."""
+items, the past-limit query filters, and negative_since on the balance. The
+per-customer report helper retired in #466 (`MIGRATION.md` §13); what it
+answered is `client.spend_controls.stops_and_breaches(customer_id=...)`,
+held in `test_spend_controls.py`."""
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -79,30 +81,6 @@ class UsageFiltersTest(unittest.TestCase):
         self.assertEqual(params["past_limit"], True)
         self.assertEqual(params["stop_scope"], "customer")
         self.assertEqual(params["episode_seq"], 1)
-
-
-class PastLimitReportTest(unittest.TestCase):
-    def setUp(self):
-        self.client = MeteringClient(api_key="ubb_live_x", base_url="http://localhost:8001",
-                                     max_retries=0)
-
-    def tearDown(self):
-        self.client.close()
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_report_hits_the_endpoint_and_returns_the_body(self, mock_get):
-        body = {"customer_id": "c1", "billing_owner_id": "c1",
-                "since": None, "until": None,
-                "episodes": [{"family": "task", "limit": REASON_CODE_TASK_COGS_CEILING,
-                              "events": [], "event_count": 0}],
-                "totals_per_limit": {}}
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: body)
-        report = self.client.get_past_limit_report("c1", since="2026-07-01T00:00:00Z")
-        self.assertEqual(mock_get.call_args.args[0],
-                         "/api/v1/customers/c1/past-limit-report")
-        self.assertEqual(mock_get.call_args.kwargs["params"],
-                         {"since": "2026-07-01T00:00:00Z"})
-        self.assertEqual(report, body)
 
 
 class NegativeSinceTest(unittest.TestCase):

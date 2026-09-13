@@ -58,5 +58,5 @@ export const subscriptionsApi =
 export const connectApi = createApiClient<NamespacePaths<"/api/v1/connect">>("/api/v1/connect");
 
 // Root client for the handful of endpoints that live directly under /api/v1:
-// /audit/records, /customers/{id}/past-limit-report, /sandbox/reset, /health, /ready.
+// /audit/records, /spend-controls/*, /sandbox/reset, /health, /ready.
 export const rootApi = createApiClient<NamespacePaths<"/api/v1">>("/api/v1");

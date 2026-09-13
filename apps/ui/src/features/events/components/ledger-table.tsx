@@ -1,6 +1,8 @@
 // The event ledger table. Rows open the full receipt; events that landed
 // past a stop carry a restrained "Stopped" indicator whose tooltip names the
-// limits involved.
+// stops involved — each stop word through the console's one open-set rule
+// (#466): a registry value in the catalogue's words, anything else as the
+// token the row carries, marked unrecognised.
 
 import {
   Table,
@@ -16,13 +18,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { SupplierCostAmount } from "@/components/shared/supplier-cost";
-import { formatDate } from "@/lib/format";
-import { stopReasonLabel } from "@/lib/labels";
+import { formatDate, formatEventMicros } from "@/lib/format";
+import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { asStopContextEntries, type UsageEventRow } from "../api/types";
 import { usageEventKindLabel } from "../lib/kind";
-import { formatEventMicros } from "../lib/money";
 
 function money(
   micros: number | null | undefined,
@@ -37,7 +39,9 @@ function money(
 function StoppedIndicator({ row }: { row: UsageEventRow }) {
   const entries = asStopContextEntries(row.stop_context);
   if (entries.length === 0) return null;
-  const reasons = [...new Set(entries.map((entry) => stopReasonLabel(entry.limit)))];
+  // Deduplicated on the wire word, never on its rendering: two words the
+  // catalogue has no entry for would otherwise collapse into one line.
+  const reasons = [...new Set(entries.map((entry) => entry.limit))];
   const isTipping = entries.some((entry) => !entry.arrived_after);
   return (
     <Tooltip>
@@ -51,7 +55,9 @@ function StoppedIndicator({ row }: { row: UsageEventRow }) {
       <TooltipContent>
         <div className="space-y-0.5">
           {reasons.map((reason) => (
-            <div key={reason}>{reason}</div>
+            <div key={reason}>
+              <OpenSetValue labelKeys={REASON_CODE_LABEL_KEYS} value={reason} />
+            </div>
           ))}
           <div className="text-[11px] opacity-80">
             {isTipping

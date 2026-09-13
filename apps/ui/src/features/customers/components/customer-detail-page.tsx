@@ -51,12 +51,15 @@ export function CustomerDetailPage({
   search,
   onSearchChange,
   pricingTab,
+  stopsAndBreaches,
 }: {
   customerId: string;
   search: CustomerDetailSearch;
   onSearchChange: (next: CustomerDetailSearch) => void;
   /** The pricing feature's own surface for this customer, injected by the route. */
   pricingTab?: React.ReactNode;
+  /** The spend-controls feature's Stops and breaches, filtered to this customer, injected by the route (#466). */
+  stopsAndBreaches?: React.ReactNode;
 }) {
   const range = resolveRange(search);
   const margin = useCustomerMargin(customerId, range);
@@ -148,7 +151,7 @@ export function CustomerDetailPage({
           <OverviewTab customerId={customerId} margin={detail} range={range} />
         </TabsContent>
         <TabsContent value="usage" className="pt-3">
-          <UsageTab customerId={customerId} range={range} />
+          <UsageTab customerId={customerId} range={range} stopsAndBreaches={stopsAndBreaches} />
         </TabsContent>
         <TabsContent value="pricing" className="pt-3">
           <ProductGate product="billing">

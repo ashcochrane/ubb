@@ -22,6 +22,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
 import {
   notApplicableReasonLabel,
   pricingStatusLabel,
@@ -34,6 +35,7 @@ import {
   waivedPrice,
   type CustomerPriceScenario,
 } from "@/lib/economic-scenarios";
+import { REASON_CODE_KNOWN_VALUES } from "@/lib/vocabulary";
 
 import type { RecordUsageResponse } from "../api/types";
 import { TestEventResponseCard, type TestEventEntry } from "./test-event-response";
@@ -121,5 +123,49 @@ describe("TestEventResponseCard — the customer price", () => {
     render(<TestEventResponseCard entry={entryWith(waivedPrice())} currency="usd" />);
 
     expect(screen.queryByText("Why")).not.toBeInTheDocument();
+  });
+});
+
+/** A stop word no registry entry names — a control UBB has not met, or not yet. */
+const UNRECOGNISED_STOP = "a_stop_from_next_year";
+
+function stoppedEntry(reason: string): TestEventEntry {
+  const entry = entryWith(knownPrice(187_500));
+  return {
+    ...entry,
+    response: { ...entry.response, stop: true, stop_reason: reason, stop_scope: "task" },
+  };
+}
+
+function reasonStat(): HTMLElement {
+  const stat = screen.getByText("Reason").closest("div");
+  if (!stat) throw new Error("no Reason stat");
+  return stat;
+}
+
+// The stop verdict's word renders through the console's one open-set helper
+// (#466; slice 6 §18; Testing Decisions claim 15). The sandbox recorder only
+// ever answers a registry word, so the unfamiliar branch is assembled here.
+describe("TestEventResponseCard — the stop verdict's word", () => {
+  it("renders a value the registry knows in the catalogue's words, unmarked", () => {
+    expect(REASON_CODE_KNOWN_VALUES.length).toBeGreaterThan(0);
+    const known = REASON_CODE_KNOWN_VALUES[0];
+    render(<TestEventResponseCard entry={stoppedEntry(known)} currency="usd" />);
+
+    const rendered = reasonStat().querySelector("[data-label]");
+    expect(rendered).toHaveAttribute("data-label", "labelled");
+    expect(rendered?.textContent?.trim()).not.toBe("");
+    expect(rendered?.textContent).not.toBe(known);
+    expect(reasonStat()).not.toHaveTextContent(UNRECOGNISED_MARK);
+  });
+
+  it("renders a value the registry has never seen as the token, marked, never humanised", () => {
+    render(<TestEventResponseCard entry={stoppedEntry(UNRECOGNISED_STOP)} currency="usd" />);
+
+    const rendered = reasonStat().querySelector("[data-label]");
+    expect(rendered).toHaveAttribute("data-label", "unfamiliar");
+    expect(reasonStat()).toHaveTextContent(UNRECOGNISED_STOP);
+    expect(reasonStat()).toHaveTextContent(UNRECOGNISED_MARK);
+    expect(reasonStat()).not.toHaveTextContent("A stop from next year");
   });
 });

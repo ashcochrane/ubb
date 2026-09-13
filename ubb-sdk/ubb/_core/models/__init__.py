@@ -150,9 +150,6 @@ from .paginated_unresolved_queue import PaginatedUnresolvedQueue
 from .paginated_usage_invoices import PaginatedUsageInvoices
 from .paginated_usage_response import PaginatedUsageResponse
 from .paginated_wallet_transactions import PaginatedWalletTransactions
-from .past_limit_report_response import PastLimitReportResponse
-from .past_limit_report_response_episodes_item import PastLimitReportResponseEpisodesItem
-from .past_limit_report_response_totals_per_limit import PastLimitReportResponseTotalsPerLimit
 from .payout_export_out import PayoutExportOut
 from .payout_row import PayoutRow
 from .period_window import PeriodWindow
@@ -485,9 +482,6 @@ __all__ = (
     "PaginatedUsageInvoices",
     "PaginatedUsageResponse",
     "PaginatedWalletTransactions",
-    "PastLimitReportResponse",
-    "PastLimitReportResponseEpisodesItem",
-    "PastLimitReportResponseTotalsPerLimit",
     "PayoutExportOut",
     "PayoutRow",
     "PeriodWindow",

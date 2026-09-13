@@ -1,7 +1,7 @@
 // THE LEGACY LABEL ADAPTER — every export below is a migration debt (#210).
 //
 // This module used to be the console's whole labelling layer, and ADR-0008 §4
-// retired the idea it rests on. It hand-writes twenty-six value maps and falls
+// retired the idea it rests on. It hand-writes twenty-four value maps and falls
 // back to `humanize`, which title-cases a raw token into something that reads
 // like English — manufacturing user-facing terminology out of an implementation
 // token. #154 §9.1 called that a safe soft-landing; ADR-0008 §4.3 REVERSES that
@@ -32,12 +32,14 @@
 import {
   AFFORDABILITY_REASON_KNOWN_VALUES,
   CEILING_STATUS_VALUES,
+  CONTROL_FAMILY_VALUES,
   COSTING_METHOD_VALUES,
   COSTING_STATUS_VALUES,
   PRICING_METHOD_VALUES,
   PRICING_MODE_VALUES,
   PRICING_STATUS_VALUES,
   RATE_STRUCTURE_VALUES,
+  REASON_CODE_KNOWN_VALUES,
   TASK_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
   TRIGGER_SOURCE_KNOWN_VALUES,
@@ -288,30 +290,26 @@ export const stopScopeLabel = legacyLabelMap({
   customer: "Customer",
 });
 
-export const stopReasonLabel = legacyLabelMap({
-  task_limit: "Task limit reached",
-  subtask_limit: "Subtask limit reached",
-  customer_floor: "Customer balance floor",
-  task_not_active: "Task not active",
-  customer_wide_stop: "Customer-wide stop",
-  // The word the silence-window stop travels under changed when the backend
-  // started taking it from the registry (#412). Its wording is the registry's
-  // own, so this entry and `reason_code.silence_window` in the catalogue say
-  // the same thing.
-  silence_window: "Silence window elapsed",
-  // ⚠ AND THE SPELLING IT REPLACED STAYS, on `customer_floor`'s precedent two
-  // lines up: a display map renders what it is handed, and this legacy
-  // adapter is replaced whole by the console ticket that renders the stop
-  // reasons through the registry's map (slice 6, #466). The BACKEND no
-  // longer holds either spelling: the stored rows were migrated onto the
-  // registry's words in one pass (#457, `work/migrations/0026`) and the
-  // published `reason_codes` list names only those, so nothing this map
-  // renders from a live response carries the keys below any more.
-  stale: "Stale task",
-  stale_max_age: "Task exceeded max age",
-  parent_killed: "Parent task killed",
-  suspended: "Customer suspended",
-});
+// ⚠ `stopReasonLabel` IS DELETED (#466), WHICH IS WHAT ITS LEDGER ENTRY ASKED
+// FOR: *"it becomes `labelMap(REASON_CODE_LABEL_KEYS)` in the slice that
+// rebuilds that vocabulary."* The concept is OPEN, so the binding is not a
+// `labelMap` but the console's one open-set rule —
+// `components/shared/open-set-value.tsx` over `REASON_CODE_LABEL_KEYS` — at
+// each of the surfaces that render a stop word: the stop-context timeline and
+// the ledger's stopped indicator (events), the recorded response's stop
+// verdict (developers), and Stops and breaches (spend-controls). The
+// catalogue has carried all seven words under `reason_code.*` since #457's
+// two coinages. The old map also carried five spellings the registry retired
+// and two words that are not stop reasons at all; a value outside the seven
+// now renders as the token it is, marked unrecognised, never a guess.
+//
+// Why work was stopped — the registry's seven KNOWN values of an OPEN
+// concept, held BY REFERENCE (#466), on `TRIGGER_SOURCES`' terms: the
+// generated list is `_KNOWN_VALUES` and a value outside it is legal on the
+// wire (ADR-0003). `domain-vocabulary/` names this file as the console's
+// consumer of `reason_code`; `g3-console-reason_code` recorded that it held
+// none, and this line pays it off.
+export const REASON_CODES = REASON_CODE_KNOWN_VALUES;
 
 export const ingestRejectionLabel = legacyLabelMap({
   billing_period_closed: "Billing period closed",
@@ -397,11 +395,23 @@ export const TRIGGER_SOURCES = TRIGGER_SOURCE_KNOWN_VALUES;
 // renders as the token it is, marked, never guessed at.
 export const AFFORDABILITY_REASONS = AFFORDABILITY_REASON_KNOWN_VALUES;
 
-export const pastLimitFamilyLabel = legacyLabelMap({
-  floor_stop: "Balance floor stop",
-  soft_floor: "Soft floor",
-  task: "Task limit",
-});
+// ⚠ `pastLimitFamilyLabel` IS DELETED (#466), WHICH IS WHAT ITS LEDGER ENTRY
+// ASKED FOR: *"it becomes `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in the slice
+// that rebuilds that vocabulary — the same slice the concept's own value-list
+// entry names, because a value list and the words for it cannot honestly move
+// apart."* Both halves are paid in this commit — the binding is
+// `features/spend-controls/lib/families.ts`, off the locale catalogue, which
+// has carried all four families under `control_family.*` since the concept
+// was coined; the value list is held by reference on the line below. The old
+// map held THREE words for a family of four, under the report's own spellings
+// (`floor_stop`, `soft_floor`, `task`), and none of them was a registry value.
+//
+// Which of the four spend controls a signal came from — the registry's four,
+// held BY REFERENCE (#466), on the same terms and for the same reason as
+// `PRODUCTS` above: `domain-vocabulary/` names this file as the console's
+// consumer of `control_family`, so re-homing the list is a registry edit
+// rather than a console one. Nothing here, and no map.
+export const CONTROL_FAMILIES = CONTROL_FAMILY_VALUES;
 
 export const revenueModeLabel = legacyLabelMap({
   billed: "Billed revenue",

@@ -11,7 +11,6 @@ import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
 
 import {
   buildMockTimeseries,
-  emptyPastLimitReport,
   MOCK_BALANCES,
   MOCK_BILLING_PROFILES,
   MOCK_BUDGET_STATUS,
@@ -21,7 +20,6 @@ import {
   MOCK_GRANTS,
   MOCK_MARGIN_DETAILS,
   MOCK_MARGIN_ROWS,
-  MOCK_PAST_LIMIT_REPORTS,
   MOCK_REVENUE_MODES,
   MOCK_REVENUE_PROFILES,
   MOCK_SUB_INVOICES,
@@ -53,7 +51,6 @@ import type {
   MarginListOut,
   MarginTrendOut,
   AffordabilityResponse,
-  PastLimitReport,
   RevenueModeOut,
   RevenueProfileIn,
   RevenueProfileOut,
@@ -375,12 +372,6 @@ export async function getUsageTimeseries(
   await mockDelay();
   requireCustomer(customerId);
   return buildMockTimeseries(customerId);
-}
-
-export async function getPastLimitReport(customerId: string): Promise<PastLimitReport> {
-  await mockDelay();
-  requireCustomer(customerId);
-  return MOCK_PAST_LIMIT_REPORTS[customerId] ?? emptyPastLimitReport(customerId);
 }
 
 // ---------------------------------------------------------------------------

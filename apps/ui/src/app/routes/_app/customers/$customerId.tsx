@@ -3,7 +3,8 @@ import { z } from "zod";
 
 import { CustomerDetailPage } from "@/features/customers/components/customer-detail-page";
 import { CustomerPricingTab } from "@/features/pricing/components/customer-pricing-tab";
-import { dateRangeSearchSchema } from "@/lib/date-range";
+import { StopsAndBreaches } from "@/features/spend-controls/components/stops-and-breaches";
+import { datetimeWindow, dateRangeSearchSchema, resolveRange } from "@/lib/date-range";
 
 // Unknown ?tab= values coerce to undefined → the Overview tab, never a blank panel.
 const detailSearchSchema = dateRangeSearchSchema.extend({
@@ -33,6 +34,14 @@ function RouteComponent() {
       // either from importing the other's components, and the route is the
       // layer that may see both.
       pricingTab={<CustomerPricingTab customerId={customerId} />}
+      // The same seam, one feature over (#466): Stops and breaches is the
+      // spend-controls feature's component, rendered here with the customer
+      // filter fixed and the page's own window — one rendering, two hosts.
+      stopsAndBreaches={
+        <StopsAndBreaches
+          filters={{ customer_id: customerId, ...datetimeWindow(resolveRange(search)) }}
+        />
+      }
     />
   );
 }

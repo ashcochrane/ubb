@@ -1,4 +1,5 @@
 import { notApplicableReasonLabel } from "@/lib/customer-price";
+import { describeTotal } from "@/lib/total-reading";
 
 import {
   ceilingStatusLabel,
@@ -8,7 +9,6 @@ import {
 } from "../lib/ceiling";
 import {
   describeCustomerPrice,
-  describeTotal,
   explainCustomerPrice,
   explainSupplierCost,
   type CustomerPriceReading,

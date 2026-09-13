@@ -6,10 +6,12 @@
 // is one cell's rule, not the paging. The rows are assembled here, as the
 // list route serves them — `UsageEventOut` carries the kind and no receipt.
 
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
 import { knownCost, knownPrice } from "@/lib/economic-scenarios";
+import { REASON_CODE_KNOWN_VALUES } from "@/lib/vocabulary";
 
 import type { UsageEventRow } from "../api/types";
 import { usageEventKindLabel } from "../lib/kind";
@@ -68,5 +70,68 @@ describe("LedgerTable", () => {
     expect(within(metered).getByText("$0.0120")).toBeInTheDocument();
     expect(within(charge).getByText("$5.00")).toBeInTheDocument();
     expect(within(charge).getByText("$0.00")).toBeInTheDocument();
+  });
+});
+
+/** A spelling no registry entry names — a tag written before the words were. */
+const A_SPELLING_OF_ITS_DAY = "a_stop_word_from_before_the_registry";
+
+function stoppedRow(...words: string[]): UsageEventRow {
+  return {
+    ...METERED_ROW,
+    id: "5b8e2d40-1a7c-4f93-b6d5-0e3a9c7f1b28",
+    stop_context: words.map((word) => ({
+      limit: word,
+      stop_scope: "customer",
+      tripped_at: "2026-08-30T11:00:00Z",
+      episode_seq: 3,
+      task_id: null,
+      subtask_id: null,
+      arrived_after: true,
+    })),
+  };
+}
+
+// The stopped indicator's tooltip names each stop through the console's one
+// open-set helper (#466; slice 6 §18; Testing Decisions claim 15). The rows
+// are assembled here because the events mock's seeds carry the registry's
+// words, and a fixture the mock authors cannot show the unfamiliar branch —
+// which is live on this surface: `stop_context` was not migrated with the
+// stop vocabulary (#457), so an older posting carries the spelling of its day.
+describe("the ledger's stopped indicator", () => {
+  function open(): HTMLElement {
+    const trigger = screen.getByLabelText("Stopped event details");
+    fireEvent.pointerEnter(trigger);
+    fireEvent.mouseEnter(trigger);
+    fireEvent.focus(trigger);
+    return trigger;
+  }
+
+  it("names a stop the registry knows in the catalogue's words, unmarked", async () => {
+    expect(REASON_CODE_KNOWN_VALUES.length).toBeGreaterThan(0);
+    const known = REASON_CODE_KNOWN_VALUES[0];
+    render(<LedgerTable rows={[stoppedRow(known)]} currency="usd" onOpen={vi.fn()} />);
+    open();
+
+    const rendered = await screen.findByText(
+      (_, element) => element?.getAttribute("data-label") === "labelled",
+    );
+    expect(rendered.textContent?.trim()).not.toBe("");
+    expect(rendered.textContent).not.toBe(known);
+    expect(screen.queryByText(UNRECOGNISED_MARK)).not.toBeInTheDocument();
+  });
+
+  it("names a spelling the registry has never seen as the token, marked, never humanised", async () => {
+    render(
+      <LedgerTable rows={[stoppedRow(A_SPELLING_OF_ITS_DAY)]} currency="usd" onOpen={vi.fn()} />,
+    );
+    open();
+
+    const rendered = await screen.findByText(
+      (_, element) => element?.getAttribute("data-label") === "unfamiliar",
+    );
+    expect(rendered).toHaveTextContent(A_SPELLING_OF_ITS_DAY);
+    expect(rendered).toHaveTextContent(UNRECOGNISED_MARK);
+    expect(document.body).not.toHaveTextContent("A stop word from before the registry");
   });
 });

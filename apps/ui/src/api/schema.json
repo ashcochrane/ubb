@@ -4753,61 +4753,6 @@
         "title": "PaginatedWalletTransactions",
         "type": "object"
       },
-      "PastLimitReportResponse": {
-        "properties": {
-          "billing_owner_id": {
-            "title": "Billing Owner Id",
-            "type": "string"
-          },
-          "customer_id": {
-            "title": "Customer Id",
-            "type": "string"
-          },
-          "episodes": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Episodes",
-            "type": "array"
-          },
-          "since": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since"
-          },
-          "totals_per_limit": {
-            "additionalProperties": true,
-            "title": "Totals Per Limit",
-            "type": "object"
-          },
-          "until": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Until"
-          }
-        },
-        "required": [
-          "customer_id",
-          "billing_owner_id",
-          "episodes",
-          "totals_per_limit"
-        ],
-        "title": "PastLimitReportResponse",
-        "type": "object"
-      },
       "PayoutExportOut": {
         "properties": {
           "data": {
@@ -11745,75 +11690,6 @@
           }
         ],
         "summary": "Connect Status"
-      }
-    },
-    "/api/v1/customers/{customer_id}/past-limit-report": {
-      "get": {
-        "description": "The past-limit report (#41, spec \u00a7I): per-customer episodes \u2014 each\nwith the tripping limit, tripped-at, resume time (if any), itemized\nevents, and totals per limit in both denominations. Soft-floor episodes\nappear as crossed/cleared marker rows with no itemized events. since/\nuntil (ISO datetimes; naive = UTC) window episodes by tripped_at and\nitemized events by effective_at.",
-        "operationId": "api_v1_endpoints_past_limit_report",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "title": "Customer Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "since",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Since"
-            }
-          },
-          {
-            "in": "query",
-            "name": "until",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Until"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PastLimitReportResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Past Limit Report"
       }
     },
     "/api/v1/customers/{external_id}/plan": {

@@ -14,9 +14,10 @@ has them fire — so there is no product whose absence makes the question
 meaningless, and a family a tenant lacks simply returns no rows. The
 capability question is asked of the DATA, never at the door: billing's two
 families answer empty for a tenant with no ledger rather than 403. The
-per-customer report at `/customers/{id}/past-limit-report` (an untyped
-response, metering-gated) is what these replace; it stays until ticket 15
-(#466) retires it with its two console renderings.
+per-customer report these replaced (an untyped response, metering-gated,
+under `/customers/{id}/`) retired in #466 with its two console renderings;
+the console's Stops and breaches renders these rows, on its own tab and on
+the customer's Usage tab.
 
 THE COMPOSITION LAYER IS THE ONE JOINER. Four read contracts and two more
 answer here and nowhere else: the kernel's `ceiling_episodes`,
@@ -24,9 +25,9 @@ answer here and nowhere else: the kernel's `ceiling_episodes`,
 billing's `signal_episodes` and `customer_spend_pool_utilisation`
 (`billing/queries.py`), metering's `stop_context_postings` and
 `charge_that_reached` (`metering/queries.py`) — plain data every one, joined
-below by the stop-context markers exactly as the retired report joined them
-(ADR-001: the composition layer may import every product; no product imports
-another for this).
+below by the stop-context markers exactly as the retired report joined
+them (ADR-001: the composition layer may import every product; no product
+imports another for this).
 
 BOTH RESPONSES ARE TYPED ROWS. The retired report's `list[dict]` is why a
 console reader once coalesced an absent cost to zero money on the one report

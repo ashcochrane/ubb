@@ -13,6 +13,7 @@ import {
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { CUS_LUNA } from "@/features/customers/api/mock-data";
 import { RUN_ACTIVE_ID } from "@/features/tasks/api/mock-data";
 
 import { routeTree } from "./routeTree.gen";
@@ -25,6 +26,10 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/tasks/runs", expectText: /every run of a kind of work/i },
   { path: `/tasks/runs/${RUN_ACTIVE_ID}`, expectText: /what it cost and earned/i },
   { path: "/customers", expectText: /customers/i },
+  // The customer's Usage tab hosts Stops and breaches, injected by the route
+  // from the spend-controls feature (#466) — the wiring only this suite sees.
+  { path: `/customers/${CUS_LUNA}?tab=usage`, expectText: /stops and breaches/i },
+  { path: "/spend-controls", expectText: /stops and breaches/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },
   { path: "/plans", expectText: /plans/i },

@@ -125,10 +125,6 @@ API_V1_CONNECT_ENDPOINTS_CONNECT_START = Operation(
 API_V1_CONNECT_ENDPOINTS_CONNECT_STATUS = Operation(
     'api_v1_connect_endpoints_connect_status', 'get', '/api/v1/connect/status')
 API_V1_ENDPOINTS_HEALTH = Operation('api_v1_endpoints_health', 'get', '/api/v1/health')
-API_V1_ENDPOINTS_PAST_LIMIT_REPORT = Operation(
-    'api_v1_endpoints_past_limit_report',
-    'get',
-    '/api/v1/customers/{customer_id}/past-limit-report')
 API_V1_ENDPOINTS_READY = Operation('api_v1_endpoints_ready', 'get', '/api/v1/ready')
 API_V1_EVENT_TYPE_ENDPOINTS_DECLARE_EVENT_CATEGORY = Operation(
     'api_v1_event_type_endpoints_declare_event_category',

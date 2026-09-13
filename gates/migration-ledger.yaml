@@ -593,15 +593,10 @@ entries:
   # gave those entities. The receipt's SHAPE is still the pre-#349 one and stays
   # #372's; a word is not a record.
 
-  - id: g7-console-customer_wide_stop
-    gate: G7
-    site: console::customer_wide_stop
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason naming a mechanism rather than the customer whose
-      spend was stopped. Slice 6 rebuilds the four families it spans.
+  # `g7-console-customer_wide_stop` WAS HERE AND IS PAID (#466, slice 6): its
+  # one site was the legacy adapter's `stopReasonLabel`, deleted with its
+  # own entry below; the seven stop words are held by reference from the
+  # generated vocabulary and rendered through the open-set helper.
 
   - id: g7-console-dimensions
     gate: G7
@@ -722,15 +717,9 @@ entries:
   # successors, which the registry and the locale catalogue already had wording
   # for — the console's own value list is what was behind.
 
-  - id: g7-console-subtask_limit
-    gate: G7
-    site: console::subtask_limit
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason spelling the retired field word. Slice 6's
-      ceiling family replaces it.
+  # `g7-console-subtask_limit` WAS HERE AND IS PAID (#466, slice 6): its one
+  # site was the legacy adapter's `stopReasonLabel`, deleted with its own
+  # entry below.
 
   - id: g7-console-tag_key
     gate: G7
@@ -747,15 +736,11 @@ entries:
   # split), at the same 2 files as its contained-work twin above and in the
   # same edit.
 
-  - id: g7-console-task_limit
-    gate: G7
-    site: console::task_limit
-    expected: reason_code
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      The same, at Task granularity. Slice 6's ceiling family replaces
-      it.
+  # `g7-console-task_limit` WAS HERE AND IS PAID (#466, slice 6), at 3 files:
+  # the legacy adapter's `stopReasonLabel` (deleted with its entry) and the
+  # two mock fixtures of the per-customer report it worded (deleted with the
+  # report). The one stop-context seed that spelled it took the registry's
+  # word.
 
   - id: g7-console-usage_line_item_group_by
     gate: G7
@@ -1385,17 +1370,10 @@ entries:
       slice 7 rebuilds the analytics surface around (#145, #141's
       unknown-revenue rule).
 
-  - id: g2-console-control_family
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::control_family
-    expected: control_family
-    found: 0 of 4 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. #150's four families replace one word that named
-      all of them at once. Slice 6 is where they become real.
+  # g2-console-control_family WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
+  # holds `CONTROL_FAMILIES = CONTROL_FAMILY_VALUES` by reference; the words
+  # are bound in `features/spend-controls/lib/families.ts` off the
+  # catalogue, and the family map's entry left with this one.
 
   - id: g2-console-customer_billing_mode
     gate: G2
@@ -1523,21 +1501,13 @@ entries:
   # map. Its G4 twin and its SDK twin died in the same commit: three entries,
   # one debt read from three sides.
 
-  - id: g3-console-reason_code
-    gate: G3
-    site: apps/ui/src/lib/labels.ts::reason_code
-    expected: reason_code
-    found: 0 of 7 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. The stop reasons are rewritten under #150's four
-      families. Slice 6 owns them, and one value is already held by reference
-      here (#200). Relabelled 0 of 5 → 0 of 7 in #457, when the registry
-      gained its two coinages — a relabel, neither a payment nor a new debt;
-      the console ticket that renders the stop reasons through the registry's
-      map (#466) pays it.
+  # g3-console-reason_code WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
+  # holds `REASON_CODES = REASON_CODE_KNOWN_VALUES` by reference; every
+  # surface that renders a stop word — the stop-context timeline, the
+  # ledger's stopped indicator, the recorded response's verdict, Stops and
+  # breaches — renders it through `components/shared/open-set-value.tsx`
+  # over `REASON_CODE_LABEL_KEYS`, and the stop-reason map's entry left with
+  # this one.
 
   # g3-sdk-reason_code WAS HERE AND IS PAID (#457, slice 6). `ubb/metering.py`
   # re-exports the seven from the generated vocabulary as `STOP_REASON_CODES`
@@ -1939,18 +1909,12 @@ entries:
       slice's subject contains it. Owned by the cutover, where the ledger
       reaches zero; pulling it earlier is the ratchet's one free move.
 
-  - id: g6-map-past-limit-family-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::pastLimitFamilyLabel
-    expected: control_family
-    owner_slice: slice_6
-    reason: >-
-      `pastLimitFamilyLabel` hand-writes the wording for which control fired,
-      and falls back to `humanize` for anything it does not recognise. It
-      becomes `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in the slice that rebuilds
-      that vocabulary — the same slice the concept's own value-list entry
-      names, because a value list and the words for it cannot honestly move
-      apart.
+  # `pastLimitFamilyLabel` IS DELETED IN #466 and this entry with it. It
+  # became `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in
+  # `features/spend-controls/lib/families.ts` — bound where Stops and
+  # breaches renders the family — and the catalogue already carried all four
+  # words, so nothing was written in English to pay this off. The old map
+  # worded three report-local spellings of a family of four.
 
   # ⚠ `pricingModelLabel` IS DELETED IN #371 and this entry with it. It became
   # `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in `features/pricing/lib/rates.ts` —
@@ -2015,17 +1979,11 @@ entries:
       contains it. Owned by the cutover, where the ledger reaches zero; pulling
       it earlier is the ratchet's one free move.
 
-  - id: g6-map-stop-reason-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::stopReasonLabel
-    expected: reason_code
-    owner_slice: slice_6
-    reason: >-
-      `stopReasonLabel` hand-writes the wording for why a stop fired, and falls
-      back to `humanize` for anything it does not recognise. It becomes
-      `labelMap(REASON_CODE_LABEL_KEYS)` in the slice that rebuilds that
-      vocabulary — the same slice the concept's own value-list entry names,
-      because a value list and the words for it cannot honestly move apart.
+  # `stopReasonLabel` IS DELETED IN #466 and this entry with it. The concept
+  # is open, so its successor is not a `labelMap` but the open-set helper
+  # over `REASON_CODE_LABEL_KEYS` at each surface that renders a stop word;
+  # the catalogue already carried all seven, so nothing was written in
+  # English to pay this off.
 
   - id: g6-map-stop-scope-label
     gate: G6

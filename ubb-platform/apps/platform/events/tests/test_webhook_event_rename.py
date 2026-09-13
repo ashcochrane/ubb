@@ -241,10 +241,10 @@ class TestQueuedEventsSurviveTheRename:
         assert WebhookDeliveryAttempt.objects.filter(success=True).count() == 1
 
     def test_a_queued_event_the_rename_does_not_touch_keeps_its_name(self):
-        """`past_limit.py` reads the outbox for the customer stop pair, which
-        this migration leaves alone under its OLD name (`0009` carries it,
-        under its own map), so a sweep that widened past the thirteen would
-        break a shipped report."""
+        """Billing's `signal_episodes` read contract reads the outbox for the
+        customer stop pair, which this migration leaves alone under its OLD
+        name (`0009` carries it, under its own map), so a sweep that widened
+        past the thirteen would break a shipped report."""
         other = OutboxEvent.objects.create(
             event_type=as_it_was_spelled(StopFired.EVENT_TYPE),
             payload={"tenant_id": str(self.tenant.id), "owner_id": "o1"},

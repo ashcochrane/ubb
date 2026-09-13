@@ -43,40 +43,39 @@
 //                                   UsageAnalyticsResponse
 //   billing/revenue-section         RevenueAnalyticsResponse
 //   events/task-section             CloseTaskResponse
-//   customers/past-limit-section, events/past-limit-panel
-//                                   PastLimitReportResponse — episodes, their
-//                                   itemized events and the per-limit totals
+//   spend-controls/stops-and-breaches (its own tab and the customer's
+//   Usage tab)                      StopsAndBreachesResponse — episodes, their
+//                                   itemised events and the per-family totals
 //   billing/revenue-chart, dashboard/revenue-cost-chart,
 //   customers/margin-trend-chart, customers/usage-timeseries-chart,
 //   events/usage-timeseries-chart   the per-point rows of the responses above
 //
 // ⚠ DERIVING THAT LIST FROM THE CONTRACT'S TYPED SCHEMAS MISSES THE UNTYPED
-// ONES, AND THAT IS HOW THE PAST-LIMIT REPORT WAS FIRST WRITTEN DOWN HERE AS
-// HAVING NO COMPLETENESS AT ALL. `PastLimitReportResponse` is
-// `additionalProperties: true`, so its episodes, itemized rows and per-limit
-// totals carry `unresolved_event_count` and a nullable supplier cost with no
-// schema saying so — #328 put them there and only `api/v1/past_limit.py` shows
-// it. A surface whose data is untyped is exactly the surface a schema-derived
+// ONES, AND THAT IS HOW THE REPORT STOPS AND BREACHES REPLACED WAS FIRST
+// WRITTEN DOWN HERE AS HAVING NO COMPLETENESS AT ALL. That report's response
+// was `additionalProperties: true`, so its episodes, itemised rows and
+// per-stop totals carried `unresolved_event_count` and a nullable supplier
+// cost with no schema saying so (#328, #330); it retired in #466 and its
+// successor publishes the same facts as typed rows. The rule survives it: a
+// surface whose data is untyped is exactly the surface a schema-derived
 // enumeration cannot see, so every untyped response a console reader touches
 // has to be read at the server rather than in the spec.
 //
 // ONE console cost surface is deliberately absent, and it is absent by
 // construction rather than by omission: `dashboard/grouping-field-breakdown`
 // renders BILLED cost, which is NOT NULL at the column and therefore whole.
-// #152's Tasks page, spend-controls nav item and breach episode report are not
-// built and not adopted here; the past-limit surfaces above are the ones that
-// already exist, not that report.
+// #152's Tasks page (#423) and Spend controls tab (#466) have since been
+// built; the list above is what renders a supplier cost today.
 //
 // Per-EVENT surfaces are a different rendering and live below the totals: one
 // event has no count, it has the mark itself. Those are the event receipt, the
-// event ledger's cost column, the developer console's recorded response and the
-// past-limit report's itemized rows.
+// event ledger's cost column, the developer console's recorded response and
+// Stops and breaches' itemised rows.
 
 import { formatMicros, formatPercent } from "@/lib/format";
 import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
 import {
   COSTING_STATUS_LABEL_KEYS,
-  COSTING_STATUS_VALUES,
   UNRESOLVED_REASON_LABEL_KEYS,
   type CostingStatus,
 } from "@/lib/vocabulary";
@@ -196,25 +195,6 @@ export function partialTotalNote(unresolvedEventCount: number): string | null {
 
 /** The catalogue's name for a supplier cost's costing status. */
 export const costingStatusLabel = labelMap(COSTING_STATUS_LABEL_KEYS);
-
-/**
- * The costing status an UNTYPED response row carries, or `null` if it carries
- * none.
- *
- * The past-limit report is `additionalProperties: true` in the contract, so its
- * itemized rows arrive as `unknown` and something has to decide what a status
- * that is not one of the declared three means. `null` — "the row did not say" —
- * rather than a default, because every available default is a claim: guessing
- * `unresolved` says UBB tried and failed, and guessing `not_applicable` says
- * nothing was owed. A caller renders the absence instead.
- *
- * Membership is tested against the GENERATED value list rather than a literal
- * trio: a second copy of a registry value set in the console is the drift the
- * consumer gates exist to abolish.
- */
-export function asCostingStatus(value: unknown): CostingStatus | null {
-  return COSTING_STATUS_VALUES.find((declared) => declared === value) ?? null;
-}
 
 /** The catalogue's name for WHICH input was missing, when one was. */
 export const unresolvedReasonLabel = labelMap(UNRESOLVED_REASON_LABEL_KEYS);

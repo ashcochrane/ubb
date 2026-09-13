@@ -169,9 +169,9 @@ while True:
   the standard creation keyset so the cursor is real — **sort by expiry
   client-side** if you relied on that ordering.
 - **Computed reports** (usage/revenue analytics, timeseries, margin `_window`
-  reports, past-limit, referrals earnings) are **not** paginated, but now refuse
-  explicit date windows wider than **366 days** (hourly timeseries: **92**) with
-  a `validation_error` (422).
+  reports, the spend-control reports, referrals earnings) are **not**
+  paginated, but now refuse explicit date windows wider than **366 days**
+  (hourly timeseries: **92**) with a `validation_error` (422).
 
 ---
 
@@ -571,6 +571,29 @@ it is Utilisation and headroom's `ceiling_reached_count` now. The generated
 `ubb._core.models.task_analytics_row.TaskAnalyticsRow` no longer carries the attribute; a reader of
 it moves to the report. The route post-dates the launch tag, so the removal is recorded here and
 in the commit rather than in the break block.
+
+---
+
+## 13. The per-customer past-limit report retires (slice 6, #466 — pre-live)
+
+**`GET /api/v1/customers/{customer_id}/past-limit-report` is gone, with `PastLimitReportResponse`.**
+It answered one customer's stop episodes as an untyped `list[dict]`, under the field word the
+registry retired (`control_family`'s `limit`) and the family words that preceded the four
+families. Everything it answered is one filter away on the typed successor:
+
+- `client.get_past_limit_report(customer_id, since=..., until=...)` and
+  `MeteringClient.get_past_limit_report` are **deleted**. Call
+  `client.spend_controls.stops_and_breaches(customer_id=customer_id, since=..., until=...)` — the
+  same window, the same customer (its own work and its billing owner's customer-wide episodes),
+  as typed rows told apart by `control_family`.
+- `episodes[].family` (`floor_stop` / `soft_floor` / `task`) is `rows[].control_family`
+  (`wallet_policy` with `soft_floor` false / true, `ceiling`); `episodes[].limit` is
+  `rows[].reason_code`; `totals_per_limit` keyed by stop word is `totals[]` per family.
+- `ubb._core.models.past_limit_report_response` and its two item models are gone from the
+  generated core; the operation constant `API_V1_ENDPOINTS_PAST_LIMIT_REPORT` with them.
+
+The route pre-dates the launch tag, so the removal is recorded in the break block
+(`openapi/oasdiff-err-ignore.txt`) as a reviewed break.
 
 ---
 

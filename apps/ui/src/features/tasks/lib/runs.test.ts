@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ceilingAssessment, completeTotal } from "@/lib/economic-scenarios";
+import { describeTotal, UNKNOWN_TOTAL } from "@/lib/total-reading";
 
 import { MOCK_KINDS } from "../api/mock-data";
 import type { RunRow } from "../api/types";
@@ -9,7 +10,6 @@ import {
   containedTotals,
   describeAgreedPrice,
   describeCustomerPrice,
-  describeTotal,
   explainCustomerPrice,
   explainSupplierCost,
   foldContainedWork,
@@ -19,7 +19,6 @@ import {
   readSupplierCost,
   runsSearchSchema,
   soldAtOnePrice,
-  UNKNOWN_TOTAL,
 } from "./runs";
 
 const BILLS = { meteringOnly: false, soldAtOnePrice: false } as const;

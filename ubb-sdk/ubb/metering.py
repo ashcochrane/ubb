@@ -681,19 +681,6 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_USAGE(customer_id), params=params)
         return page_from_wire(UsageEventOut, r.json())
 
-    def get_past_limit_report(self, customer_id: str, *, since=None, until=None) -> dict:
-        """The past-limit report (#41) via
-        GET /api/v1/customers/{customer_id}/past-limit-report — "exactly what
-        was spent past the limit and why" in one call: episodes (the tripping
-        limit, tripped_at, resume time, itemized events) plus
-        ``totals_per_limit`` in both denominations. Soft-floor episodes are
-        crossed/cleared marker rows with no itemized events. ``since`` /
-        ``until`` (ISO datetimes) window episodes and itemized events."""
-        params = {k: v for k, v in {"since": since, "until": until}.items() if v}
-        r = self._request(*ops.API_V1_ENDPOINTS_PAST_LIMIT_REPORT(customer_id),
-                          params=params)
-        return r.json()
-
     def get_customer_margin(self, customer_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
         r = self._request(

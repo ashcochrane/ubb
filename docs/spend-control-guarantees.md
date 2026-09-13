@@ -87,10 +87,13 @@ hasn't happened yet is consistent with the rule; refusing to record work that ha
   soft-floor entry.)*
 
 **Past-limit accounting.** Every event that lands after a trip carries stop context — which
-limit, tripped when, arrived after — and a dedicated report returns the itemized "exactly
-what was spent past the limit and why" per customer, grouped by stop episode, totalled in
-both denominations. *(Pins 2, 9, 10: `api/v1/tests/test_past_limit_pins.py` — stop-context
-schema, the end-to-end episode report, `negative_since` set and cleared.)*
+stop, tripped when, arrived after — and Stops and breaches (`GET /api/v1/spend-controls/
+stops-and-breaches`, #465) returns the itemized "exactly what was spent past a stop and why",
+tenant-wide or per customer, grouped by stop episode under its family, totalled in both
+denominations. The per-customer report that first answered it retired in #466. *(Pins 2, 9, 10:
+`api/v1/tests/test_past_limit_pins.py` — stop-context schema, the two episode cases the
+successor's own module does not drive, `negative_since` set and cleared;
+`api/v1/tests/test_spend_control_reports.py` — the end-to-end reconstruction.)*
 
 **The worst case, accepted knowingly.** If every signal fails on a broken client, we keep
 accepting, billing, and showing the truth — an unboundedly negative balance, visible with a
@@ -363,7 +366,7 @@ This table is the acceptance gate made auditable: run any row yourself.
 | 6 | Resume fires at the exact re-cross — once per episode, via credit, reconcile, and durable paths | `test_stop_resume_pins.py::TestPin6ResumeOncePerEpisode` |
 | 7 | Every recorded event answers 200; no 429/409 for a usage report | `test_one_rule_pins.py::Pin7TwoHundredAlwaysTest` |
 | 8 | `advisory` migrated to `off`; two-position mode; `off` is Tier-1 byte-for-byte | `apps/billing/gating/tests/test_mode_pins.py` (all six tests) |
-| 9 | The past-limit report reconstructs an episode end-to-end | `test_past_limit_pins.py::Pin9PastLimitReportTest` |
+| 9 | Stops and breaches reconstructs an episode end-to-end | `test_spend_control_reports.py::ACeilingEpisodeTest`, `::AWalletPolicyEpisodeTest`; `test_past_limit_pins.py::Pin9StopsAndBreachesTest` (a pre-registry tag, a bare suspension) |
 | 10 | `negative_since` set on ≥0→<0, cleared on recovery; aged-negatives count on the ops surface | `test_past_limit_pins.py::Pin10NegativeSinceTest` |
 | 11 | Zero-crossing `balance_overage` early warning unaffected | `test_stop_resume_pins.py::TestPin11EarlyWarningUnaffected` |
 | 12 | Soft floor refuses new top-level starts only; subtask pass-through; crossed/cleared exactly once; acks never change | `apps/billing/gating/tests/test_soft_floor_pins.py::TestPin12StartGate`, `::TestPin12PairExactlyOnce` |
