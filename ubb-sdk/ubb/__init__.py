@@ -3,6 +3,7 @@ from ubb.metering import MeteringClient, StartedTask
 from ubb.billing import BillingClient
 from ubb.subscriptions import SubscriptionsClient
 from ubb.referrals import ReferralsClient
+from ubb.spend_controls import SpendControlsClient
 
 # Public DTOs are GENERATED from the committed contract (the wrap, #84) — the
 # types the client returns, re-exported here as the SDK's public surface. Never
@@ -17,6 +18,8 @@ from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
 from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
+from ubb._core.models.stops_and_breaches_response import StopsAndBreachesResponse
+from ubb._core.models.utilisation_and_headroom_response import UtilisationAndHeadroomResponse
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.grant_out import GrantOut
@@ -66,10 +69,12 @@ from ubb._spec_revision import SPEC_VERSION as __spec_version__
 
 __all__ = [
     "UBBClient", "MeteringClient", "BillingClient", "SubscriptionsClient", "ReferralsClient",
+    "SpendControlsClient",
     # generated DTOs
     "RecordUsageResponse", "StartTaskResponse", "CloseTaskResponse", "TaskOut",
     "TaskDetailOut", "CustomerResponse", "BalanceResponse", "AffordabilityResponse",
-    "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "CustomerMarginOut", "GroupingFieldMarginRow",
+    "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "StopsAndBreachesResponse",
+    "UtilisationAndHeadroomResponse", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse", "RevenueProfileOut",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",

@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from typing import Annotated, List, Literal, Optional
+from typing import Annotated, List, Literal, Optional, Union
 
 from ninja import Schema, Field
 from pydantic import ConfigDict, field_validator, model_validator
@@ -1669,7 +1669,11 @@ class TaskAnalyticsRow(Schema):
     unpriced_event_count: int
     avg_provider_cost_micros: int
     p95_provider_cost_micros: int
-    limit_hit_count: int
+    #: NO REACHED COUNT (#465, slice 6 §14): the count of work whose known
+    #: total reached the ceiling is Utilisation and headroom's figure and left
+    #: this row in both directions. The route post-dates the launch tag, so
+    #: the break block owes the removal nothing; the commit and the SDK
+    #: migration guide name it.
 
 
 class TaskAnalyticsOut(Schema):
@@ -3557,3 +3561,224 @@ def event_type_out(event_type):
 
 class PaginatedEventTypes(Paginated[EventTypeOut]):
     pass
+
+
+# ---------------------------------------------------------------------------
+# The two spend-control reports (#465, slice 6 §14): Stops and breaches and
+# Utilisation and headroom, at `/api/v1/spend-controls/`.
+# ---------------------------------------------------------------------------
+
+#: WHICH OF THE FOUR SPEND CONTROLS A ROW CAME FROM — the registry's closed
+#: `control_family`, spelled here again because a product may not import this
+#: layer (`events/schemas.py::ControlFamily` is the payloads'; the
+#: `CostingStatus` precedent). Closed, so the export writes a real `enum`. It
+#: discriminates the three episode rows below, sits on the totals row, and
+#: marks the report filter of the same name — the one query parameter in the
+#: contract carrying a concept marker.
+ControlFamily = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "control_family"})]
+
+#: WHAT THE CEILING THAT FIRED BOUNDS — `cost` or `time` — on the Ceiling row,
+#: the same closed pair the four terminal payloads carry; a stop that was not
+#: a ceiling's has none, and a Ceiling row is by construction a ceiling's, so
+#: it is never null here.
+CeilingBasis = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
+
+#: THE MECHANISM THAT APPLIED THE STOP — the registry's open `trigger_source`,
+#: as the applying lane recorded it on the row (#412, #458). Open, so the
+#: marker is known-values metadata beside a plain string; null where a row
+#: stamped before the mechanism was recorded says nothing.
+TriggerSource = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
+
+
+class ItemisedEventRow(Schema):
+    """One event itemised under an episode: the tipping event
+    (`arrived_after` false) and every event that landed after the stop. Both
+    amount/status pairs travel together (#328, #351): an absent amount is
+    read through its status — unresolved is missing, waived or not
+    applicable is a genuine zero — and never coalesced."""
+    event_id: UUID
+    customer_id: UUID
+    effective_at: datetime
+    billed_cost_micros: Optional[int] = None
+    pricing_status: PricingStatus
+    provider_cost_micros: Optional[int] = None
+    costing_status: CostingStatus
+    #: The Charge this posting projects, where it is a delivered fixed-price
+    #: unit's one posting (ADR-0013); null on a metered event.
+    charge_id: Optional[UUID] = None
+    arrived_after: bool
+
+
+class ItemisedEventsOut(Schema):
+    """The events an episode itemises and their totals in both denominations
+    — each total adding what is resolved and counting what is not, so a row
+    can never read complete while its own events read partial."""
+    events: list[ItemisedEventRow]
+    event_count: int
+    billed_cost_micros: int
+    unpriced_event_count: int
+    provider_cost_micros: int
+    unresolved_event_count: int
+
+
+class CeilingEpisodeRow(Schema):
+    """A unit UBB stopped on its own cost ceiling: the unit and its kind, the
+    control that fired (family, id, basis) and the mechanism that applied
+    it, the ceiling the unit pinned at start, the known supplier cost when
+    the ceiling fired and where the unit ended — each as a pair with the
+    count it could not include — and the itemised events that landed after
+    the stop. A kill never resumes, so there is no close. An indeterminate
+    unit is never here (its ceiling never fired), nor is an expiry, nor
+    contained work stopped by its parent's cascade."""
+    control_family: ControlFamily
+    control_id: Optional[str] = None
+    reason_code: ReasonCode
+    ceiling_basis: CeilingBasis
+    trigger_source: Optional[TriggerSource] = None
+    task_id: UUID
+    parent_task_id: Optional[UUID] = None
+    customer_id: UUID
+    task_type: str
+    stop_scope: str
+    task_cogs_ceiling_micros: int
+    opened_at: datetime
+    #: The pair the ceiling fired on, as the kill announced it; null where the
+    #: announcement no longer survives — unknown, never zero.
+    crossed_provider_cost_micros: Optional[int] = None
+    crossed_unresolved_event_count: Optional[int] = None
+    #: The pair the unit ended on, off the row: late events keep counting.
+    final_provider_cost_micros: int
+    final_unresolved_event_count: int
+    itemised: ItemisedEventsOut
+
+
+class CustomerSpendPoolEpisodeRow(Schema):
+    """A customer spend pool's stop: the customer the pool is declared on,
+    the period, the pool amount, THE CHARGE THAT CROSSED IT AND THAT CHARGE'S
+    POSTING — never an arbitrary event — the period spend after it as a pair,
+    and the outcome: how much active work the stop swept. Starts were
+    refused from `opened_at` until `closed_at` (null while the episode is
+    still open). `cap_micros` is the pool row as it stands now, null where
+    the row is gone. `crossing_marked` says how the charge was found: true
+    where the recording route marked the tipping event as it landed, false
+    where the drawdown was replayed up to the opening instant against the
+    pool's stop line as it stands now — a pool moved since can shift which
+    posting the replay names, so a replayed answer is read with that in
+    mind; `crossing_*` are null where nothing UBB holds can name the charge
+    — never a guess."""
+    control_family: ControlFamily
+    control_id: Optional[str] = None
+    reason_code: ReasonCode
+    customer_id: UUID
+    episode_seq: int
+    period: str
+    cap_micros: Optional[int] = None
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    crossing_charge_id: Optional[UUID] = None
+    crossing_posting_id: Optional[UUID] = None
+    crossing_marked: bool
+    #: The customer's charges that landed after the crossing, as a pair.
+    spent_after_micros: int
+    unpriced_after_count: int
+    work_stopped_count: int
+    itemised: ItemisedEventsOut
+
+
+class WalletPolicyEpisodeRow(Schema):
+    """A wallet policy's episode. A hard-floor episode stopped the customer:
+    the floor, the balance at crossing (as the suspension announced it, null
+    where none was), the open and close, and the events itemised into it. A
+    soft-floor row (`soft_floor` true) is a marker with no events, no stop
+    word and no control: the wind-down line stops nothing. `floor_micros` is
+    the hard floor as its control row carries it now; the soft floor's is
+    the figure the crossing announced."""
+    control_family: ControlFamily
+    control_id: Optional[str] = None
+    reason_code: Optional[ReasonCode] = None
+    soft_floor: bool
+    customer_id: UUID
+    episode_seq: int
+    floor_micros: Optional[int] = None
+    balance_at_crossing_micros: Optional[int] = None
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    itemised: ItemisedEventsOut
+
+
+class SpendControlFamilyTotalsRow(Schema):
+    """One family's totals over exactly the itemised events of the episodes
+    shown, each event counted once per family, both denominations."""
+    control_family: ControlFamily
+    event_count: int
+    billed_cost_micros: int
+    unpriced_event_count: int
+    provider_cost_micros: int
+    unresolved_event_count: int
+
+
+class StopsAndBreachesResponse(Schema):
+    """What was spent past a stop, and why (#153 §10): every control that
+    fired and had an enforcement consequence, in the window, as typed rows
+    discriminated by `control_family`. Expiries and admission control belong
+    to neither report. `since`/`until` echo the window applied — a window
+    the caller left open is bounded to 366 days ending now."""
+    since: datetime
+    until: datetime
+    rows: list[Union[CeilingEpisodeRow, CustomerSpendPoolEpisodeRow,
+                     WalletPolicyEpisodeRow]]
+    totals: list[SpendControlFamilyTotalsRow]
+
+
+class CeilingUtilisationRow(Schema):
+    """One completed unit's ceiling as it stands at completion: the status
+    (the reading rule is written once, on `RecordUsageResponse.ceiling_status`
+    — under `indeterminate` the percentage is a floor and the headroom a
+    ceiling), the final utilisation over the known total, the headroom, and
+    the pair the figures are computed over. Under `not_applicable` both
+    figures are null, never zero."""
+    task_id: UUID
+    parent_task_id: Optional[UUID] = None
+    customer_id: UUID
+    task_type: str
+    completed_at: datetime
+    task_cogs_ceiling_micros: Optional[int] = None
+    final_provider_cost_micros: int
+    final_unresolved_event_count: int
+    ceiling_status: CeilingStatus
+    ceiling_used_percentage: Optional[int] = None
+    ceiling_remaining_micros: Optional[int] = None
+
+
+class UtilisationAndHeadroomResponse(Schema):
+    """How much of each ceiling was used, and how often it could not be
+    evaluated (#150 §9.3). The average utilisation is computed per unit and
+    then across every unit that had a ceiling, so one chatty unit never
+    dominates; peak utilisation equals the final figure by construction (the
+    pinned ceiling never moves and the known total never falls) and is not
+    published twice. Shares are whole percentages of `unit_count`, rounded
+    down; every average is null where no unit contributes — never zero. An
+    `indeterminate` unit contributes its own floor, so the average
+    utilisation is itself a floor and the average headroom a ceiling
+    wherever `indeterminate_count` is not zero — the same reading rule each
+    row's status states for its own figures, and the count beside the
+    average is what says so. `customer_spend_pool` is the status pair for
+    the customer the filter names, null tenant-wide or where no pool
+    applies."""
+    since: datetime
+    until: datetime
+    rows: list[CeilingUtilisationRow]
+    unit_count: int
+    evaluated_count: int
+    not_applicable_count: int
+    ceiling_reached_count: int
+    ceiling_reached_share_percentage: Optional[int] = None
+    indeterminate_count: int
+    indeterminate_share_percentage: Optional[int] = None
+    within_ceiling_count: int
+    average_final_utilisation_percentage: Optional[int] = None
+    average_unused_headroom_micros: Optional[int] = None
+    customer_spend_pool: Optional[CustomerSpendPoolStatusOut] = None

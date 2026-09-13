@@ -23,7 +23,6 @@ class TaskAnalyticsRow:
     """ 
         Attributes:
             avg_provider_cost_micros (int):
-            limit_hit_count (int):
             p95_provider_cost_micros (int):
             run_count (int):
             task_type (str):
@@ -34,7 +33,6 @@ class TaskAnalyticsRow:
      """
 
     avg_provider_cost_micros: int
-    limit_hit_count: int
     p95_provider_cost_micros: int
     run_count: int
     task_type: str
@@ -50,8 +48,6 @@ class TaskAnalyticsRow:
 
     def to_dict(self) -> dict[str, Any]:
         avg_provider_cost_micros = self.avg_provider_cost_micros
-
-        limit_hit_count = self.limit_hit_count
 
         p95_provider_cost_micros = self.p95_provider_cost_micros
 
@@ -72,7 +68,6 @@ class TaskAnalyticsRow:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "avg_provider_cost_micros": avg_provider_cost_micros,
-            "limit_hit_count": limit_hit_count,
             "p95_provider_cost_micros": p95_provider_cost_micros,
             "run_count": run_count,
             "task_type": task_type,
@@ -91,8 +86,6 @@ class TaskAnalyticsRow:
         d = dict(src_dict)
         avg_provider_cost_micros = d.pop("avg_provider_cost_micros")
 
-        limit_hit_count = d.pop("limit_hit_count")
-
         p95_provider_cost_micros = d.pop("p95_provider_cost_micros")
 
         run_count = d.pop("run_count")
@@ -109,7 +102,6 @@ class TaskAnalyticsRow:
 
         task_analytics_row = cls(
             avg_provider_cost_micros=avg_provider_cost_micros,
-            limit_hit_count=limit_hit_count,
             p95_provider_cost_micros=p95_provider_cost_micros,
             run_count=run_count,
             task_type=task_type,

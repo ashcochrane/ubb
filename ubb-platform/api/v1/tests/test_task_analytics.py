@@ -2,8 +2,9 @@
 
 Aggregates ubb_task, never ubb_posting: per-unit costs are already
 materialized by the accumulate primitive, with a subtask's spend rolled into
-its parent. GET /metering/analytics/tasks reports run count, mean, p95, and
-limit-hit count per KIND of job.
+its parent. GET /metering/analytics/tasks reports run count, mean and p95 per KIND of
+work. The count of work that reached its ceiling LEFT this row in #465
+(Testing Decisions claim 14): it is Utilisation and headroom's figure now.
 """
 import pytest
 from django.test import Client
@@ -52,11 +53,19 @@ class TestTaskAnalytics:
         rows = {x["task_type"]: x for x in r.json()["rows"]}
         assert rows["invoice_batch"]["p95_provider_cost_micros"] >= 3_000
 
-    def test_limit_hits_are_counted(self):
+    def test_the_reached_count_is_no_longer_on_this_row(self):
+        """Testing Decisions claim 14 (#465): the reached count moved to
+        Utilisation and headroom and left this report — in both directions,
+        so the row carries no such key at all rather than a null."""
         self._seed()
         r = self._get("/api/v1/metering/analytics/tasks?group_by=task_type")
         rows = {x["task_type"]: x for x in r.json()["rows"]}
-        assert rows["invoice_batch"]["limit_hit_count"] == 1
+        assert "limit_hit_count" not in rows["invoice_batch"]
+        assert set(rows["invoice_batch"]) == {
+            "task_type", "run_count", "total_provider_cost_micros",
+            "unresolved_event_count", "total_billed_cost_micros",
+            "unpriced_event_count", "avg_provider_cost_micros",
+            "p95_provider_cost_micros"}
 
     def test_subtasks_are_excluded_from_run_counts(self):
         """A listing counts each whole unit of work, never what it contains.

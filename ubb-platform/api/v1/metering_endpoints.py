@@ -529,10 +529,11 @@ def get_usage_event(request, event_id: UUID):
 @role_floor(READ)
 def task_analytics(request, group_by: str = "task_type", start_date: date = None,
                    end_date: date = None):
-    """Cost per KIND of job: run count, mean, p95, and limit hits.
+    """Cost per KIND of work: run count, mean and p95.
 
-    A p95 approaching the type's ceiling is the signal that the limit is about
-    to start biting real customers."""
+    A p95 approaching the kind's ceiling is the signal that the ceiling is
+    about to start biting real customers; how much work reached it is
+    `GET /spend-controls/utilisation-and-headroom`'s figure."""
     _product_check(request)
     from apps.platform.work.queries import task_rollup_by_type
 

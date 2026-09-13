@@ -87,6 +87,14 @@ class UBBClient:
             ReferralsClient(api_key, base_url, timeout, max_retries=max_retries) if referrals else None
         )
 
+        # THE SPEND-CONTROL REPORTS' HANDLE (#465): always present, because
+        # the two reads are gated on no product — a workspace that holds
+        # neither product still has a unit of work's stops to ask about.
+        from ubb.spend_controls import SpendControlsClient
+
+        self.spend_controls: SpendControlsClient = SpendControlsClient(
+            api_key, base_url, timeout, max_retries=max_retries)
+
     def __enter__(self) -> UBBClient:
         return self
 
@@ -701,3 +709,4 @@ class UBBClient:
             self.subscriptions.close()
         if self.referrals is not None:
             self.referrals.close()
+        self.spend_controls.close()

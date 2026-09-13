@@ -38,9 +38,9 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 162
+  operations: 164
   unwrapped: 81
-  wrapped: 81
+  wrapped: 83
   generated_only: 81
   not_yet_wrapped: 0
 
@@ -501,6 +501,18 @@ operations:
     method: POST
     path: /api/v1/sandbox/reset
     disposition: generated_only
+  - operation_id: api_v1_spend_control_endpoints_stops_and_breaches
+    method: GET
+    path: /api/v1/spend-controls/stops-and-breaches
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/spend_controls.py::SpendControlsClient.stops_and_breaches
+  - operation_id: api_v1_spend_control_endpoints_utilisation_and_headroom
+    method: GET
+    path: /api/v1/spend-controls/utilisation-and-headroom
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/spend_controls.py::SpendControlsClient.utilisation_and_headroom
   - operation_id: api_v1_task_endpoints_close_task
     method: POST
     path: /api/v1/tasks/{task_id}/close

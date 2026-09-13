@@ -350,6 +350,14 @@ API_V1_PLATFORM_ENDPOINTS_GET_BUSINESS = Operation(
     '/api/v1/platform/accounts/business/{external_id}')
 API_V1_SANDBOX_ENDPOINTS_RESET_SANDBOX = Operation(
     'api_v1_sandbox_endpoints_reset_sandbox', 'post', '/api/v1/sandbox/reset')
+API_V1_SPEND_CONTROL_ENDPOINTS_STOPS_AND_BREACHES = Operation(
+    'api_v1_spend_control_endpoints_stops_and_breaches',
+    'get',
+    '/api/v1/spend-controls/stops-and-breaches')
+API_V1_SPEND_CONTROL_ENDPOINTS_UTILISATION_AND_HEADROOM = Operation(
+    'api_v1_spend_control_endpoints_utilisation_and_headroom',
+    'get',
+    '/api/v1/spend-controls/utilisation-and-headroom')
 API_V1_TASK_ENDPOINTS_CLOSE_TASK = Operation(
     'api_v1_task_endpoints_close_task', 'post', '/api/v1/tasks/{task_id}/close')
 API_V1_TASK_ENDPOINTS_GET_TASK = Operation(

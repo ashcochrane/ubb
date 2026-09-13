@@ -1,6 +1,6 @@
 """The one versioned NinjaAPI (#77, ADR-002 Stage 1).
 
-Seventeen routers — thirteen composition-layer, four product-owned — mounted on a
+Eighteen routers — fourteen composition-layer, four product-owned — mounted on a
 single API served at ``/api/v1/``. Products expose ``Router`` objects; this
 module (the composition layer) mounts them, so ADR-001's import matrix is
 respected, not amended. Per-router ``auth=`` preserves the pre-restructure
@@ -25,6 +25,7 @@ from api.v1.metering_endpoints import metering_router
 from api.v1.plan_endpoints import plan_router
 from api.v1.platform_endpoints import platform_router
 from api.v1.sandbox_endpoints import sandbox_router
+from api.v1.spend_control_endpoints import spend_control_router
 from api.v1.task_endpoints import task_router
 from api.v1.task_type_endpoints import task_type_router
 from api.v1.tenant_endpoints import tenant_router
@@ -98,6 +99,11 @@ api.add_router("webhooks/", webhook_router)
 api.add_router("platform/", platform_router)
 api.add_router("connect/", connect_router)
 api.add_router("audit/", audit_router)
+# The two spend-control reports (#465, slice 6 §14) at a prefix of their own,
+# UNGATED on the lifecycle's footing (ADR-0011 §1): a unit of work's stops
+# mean something for every tenant, and a family a tenant lacks returns no
+# rows. api/v1/spend_control_endpoints.py carries the argument.
+api.add_router("spend-controls/", spend_control_router)
 # Mounted at the root prefix, before root_router: their concrete paths
 # (/plans, /customers/{external_id}/plan; /event-types, /providers,
 # /event-categories) must bind before root_router's catch-alls, since

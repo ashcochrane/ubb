@@ -409,7 +409,7 @@ twin) reaching only work with no declared kind, and a start able to request lowe
 snapshotted onto the unit at creation. Only the provider total
 races it; reaching it — the known total **at or above** the line, compared in one place
 (`core/crossing.py::ceiling_reached`, #452) by the recording lane, the patrol's sweep and the
-analytics reached-count alike — is a signal point (kill + `task.killed`), never a billing wall.
+Utilisation and headroom report alike (#465) — is a signal point (kill + `task.killed`), never a billing wall.
 (`apps/platform/work/models.py:Task.task_cogs_ceiling_micros`)
 _Avoid_: "hard stop" — that vocabulary retired with the 429; and "exceeded" — a ceiling is
 reached, not exceeded, because the line itself stops.

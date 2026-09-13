@@ -544,6 +544,36 @@ under `event_type` exactly as before.
 
 ---
 
+## 12. The two spend-control reports, and the reached count leaves the task analytics row (slice 6, #465 — pre-live)
+
+**Two reads at a prefix of their own, gated on no product.** `GET /api/v1/spend-controls/stops-and-breaches`
+answers what was spent past a stop and why — one typed row per control that fired and had an
+enforcement consequence, discriminated by `control_family` (a Ceiling row per unit stopped on its
+own ceiling, a Customer spend pool row per pool episode naming the Charge that crossed it and that
+Charge's posting, a Wallet policy row per floor episode; a soft-floor row is a marker with no
+events) — and `GET /api/v1/spend-controls/utilisation-and-headroom` answers how much of each ceiling
+was used and how often it could not be evaluated, per completed unit and in aggregate. Both take
+`customer_id`, `task_type`, `since`/`until` and (the first) `control_family` as filters; a window
+left open is bounded to the 366 days ending now and echoed back.
+
+- `client.spend_controls.stops_and_breaches(...)` and `client.spend_controls.utilisation_and_headroom(...)`
+  — a handle on the facade, present whatever products the client holds, because the routes are.
+  Every argument is an optional filter; pass `ubb.vocabulary.CONTROL_FAMILY_*` for the family.
+- `ubb.StopsAndBreachesResponse` and `ubb.UtilisationAndHeadroomResponse` are the generated models;
+  a row of the first is one of `CeilingEpisodeRow`, `CustomerSpendPoolEpisodeRow` or
+  `WalletPolicyEpisodeRow` under `ubb._core.models`, told apart by `control_family`.
+- Every average on the aggregate is `None` where no unit contributes — read it as unknown, never
+  as zero; `crossed_*` on a Ceiling row is `None` where the kill's announcement no longer survives.
+
+**`limit_hit_count` left `TaskAnalyticsRow`** (`GET /api/v1/metering/analytics/tasks`). The count
+of work whose known total reached the ceiling is a fact about the ceiling as a spend control, and
+it is Utilisation and headroom's `ceiling_reached_count` now. The generated
+`ubb._core.models.task_analytics_row.TaskAnalyticsRow` no longer carries the attribute; a reader of
+it moves to the report. The route post-dates the launch tag, so the removal is recorded here and
+in the commit rather than in the break block.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

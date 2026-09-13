@@ -22,6 +22,9 @@ Consumers:
 - api/v1/me_endpoints.py → get_customer_usage_summary()
 - api/v1/metering_endpoints.py → get_unresolved_queue(),
   get_projected_adjustment(), get_waived_loss() (the three recovery reads, #364)
+- api/v1/spend_control_endpoints.py → stop_context_postings() (the itemised
+  events of Stops and breaches, #465), charge_that_reached() (the Charge a
+  pool episode cites where the crossing was detected off the recording route)
 """
 import uuid
 from datetime import date, datetime
@@ -36,7 +39,7 @@ from core.cost_totals import (
     UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total,
     cost_total_annotations,
 )
-from core.time_windows import utc_day_start, utc_next_day_start
+from core.time_windows import month_bounds, utc_day_start, utc_next_day_start
 from core.vocabulary import PRICING_STATUS_WAIVED
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 
@@ -1129,3 +1132,148 @@ def get_waived_loss(tenant_id, *, selected_from=None, selected_to=None,
         "basis": WAIVED_LOSS_BASIS,
         "rows": _per_currency_supplier_cost(waived, "waived_event_count"),
     }
+
+
+def stop_context_postings(tenant_id, *, customer_id=None, billing_owner_id=None,
+                          since=None, until=None) -> list[dict]:
+    """Every posting the stop-context tagging marked, as plain rows — the
+    itemised events of Stops and breaches (#465, slice 6 §14).
+
+    One query over the partial index's population (`stop_context` not null),
+    ordered as the report itemises. Each row carries both amount/status pairs
+    so a total built on it can add what is resolved and count what is not
+    (#328, #351), the seat and the billing owner (a customer-wide episode is
+    the owner's, and the posting is the seat's), and the stored context
+    array exactly as written — the composition layer reads scope and ids off
+    it, never a current spelling (the metering glossary's rule for a column
+    that is immutable with its row).
+
+    `charge_id` names the Charge a projected posting came from — the one
+    posting under a fixed-price unit of work, keyed by the Charge's own
+    idempotency key (ADR-0013, `charge_projection.py`) — so a pool episode
+    can cite the Charge that crossed it and that Charge's posting rather than
+    an arbitrary event (#153 §10.2). Null on a metered posting, which is a
+    charge in its own right and names nothing further.
+
+    ``customer_id`` narrows to one seat's postings and ``billing_owner_id``
+    to every seat's that pins that owner — either alone, or both together as
+    a union, so a customer filter reaches the events tagged into its
+    owner's customer-wide episodes from every seat (review of #465). The
+    window, where given, selects on ``effective_at``; the report passes
+    none, because an episode's events are the episode's whatever window
+    selected the episode.
+    """
+    from django.db.models import Q
+    from apps.metering.pricing.models import Charge
+    from apps.metering.usage.models import Posting
+    from core.vocabulary import USAGE_EVENT_KIND_TASK_CHARGE
+
+    qs = Posting.objects.filter(tenant_id=tenant_id, stop_context__isnull=False)
+    scope = Q()
+    if customer_id is not None:
+        scope |= Q(customer_id=customer_id)
+    if billing_owner_id is not None:
+        scope |= Q(billing_owner_id=billing_owner_id)
+    if scope:
+        qs = qs.filter(scope)
+    if since is not None:
+        qs = qs.filter(effective_at__gte=since)
+    if until is not None:
+        qs = qs.filter(effective_at__lt=until)
+    postings = list(qs.order_by("effective_at", "created_at").values(
+        "id", "customer_id", "billing_owner_id", "effective_at",
+        "billed_cost_micros", "pricing_status", "provider_cost_micros",
+        "costing_status", "kind", "idempotency_key", "stop_context"))
+    projected_keys = [p["idempotency_key"] for p in postings
+                      if p["kind"] == USAGE_EVENT_KIND_TASK_CHARGE]
+    charges = {}
+    if projected_keys:
+        charges = {key: str(pk) for pk, key in Charge.objects
+                   .filter(tenant_id=tenant_id, idempotency_key__in=projected_keys)
+                   .values_list("id", "idempotency_key")}
+    return [{**_stopped_work_posting_row(
+                 p, charges.get(p["idempotency_key"])
+                 if p["kind"] == USAGE_EVENT_KIND_TASK_CHARGE else None),
+             "stop_context": list(p["stop_context"] or [])}
+            for p in postings]
+
+
+def _stopped_work_posting_row(p, charge_id):
+    """The plain row both spend-control reads answer a posting as — one
+    shape, so a repair applied to one cannot be missing from the other."""
+    return {
+        "event_id": str(p["id"]),
+        "customer_id": str(p["customer_id"]),
+        "billing_owner_id": str(p["billing_owner_id"]) if p["billing_owner_id"] else None,
+        "effective_at": p["effective_at"],
+        "billed_cost_micros": p["billed_cost_micros"],
+        "pricing_status": p["pricing_status"],
+        "provider_cost_micros": p["provider_cost_micros"],
+        "costing_status": p["costing_status"],
+        "charge_id": str(charge_id) if charge_id else None,
+    }
+
+
+def charge_that_reached(tenant_id, customer_id, *, stop_threshold_micros,
+                        at) -> dict | None:
+    """The posting whose resolved customer price took this customer's known
+    period charges at or over ``stop_threshold_micros`` — the Charge that
+    reached a pool's boundary (#150 §7.2, #465 slice 6 §14), for an episode
+    the recording route did not mark.
+
+    A crossing the live lane detects marks its tipping posting in the
+    stop-context (`arrived_after` false), and the composition layer reads
+    that first. A crossing detected on the durable drawdown or by the hourly
+    reconcile marks nothing — a delivered fixed-price unit's Charge reaches
+    the pool through its projection and the drawdown, never the recording
+    route — so this read replays what the drawdown counted: the customer's
+    postings with a resolved price in the month ``at`` falls in, at either
+    declared level (the customer's own postings and those pinning it as
+    billing owner — one row for a seat, the whole business for an owner),
+    in the order they were recorded, up to ``at``, and answers the first at
+    which the running total reaches the line. ``None`` where the line is
+    never reached by then — a pool row raised since, or a crossing the
+    lanes signalled off a counter the durable basis does not reproduce.
+
+    THE SCOPE IS EACH LEVEL'S OWN BASIS. A seat's pool is measured over the
+    seat's postings (`get_customer_cost_totals`); a business's over every
+    posting pinning it as billing owner (`get_billing_owner_billed_total`),
+    its own included because its own postings pin itself. The union of the
+    two filters is the seat's basis for a seat (no posting pins a seat as
+    another's owner) and the owner's basis for a business, so one read
+    serves both levels without being told which it is asked about.
+
+    THE LINE IS THE ROW'S AS IT STANDS, AND THE CALLER SAYS SO. The crossing
+    recorded no figure; a pool lowered since names an earlier posting than
+    the one that crossed, and one raised since names none. The report
+    publishes whether the crossing was marked or replayed, so a reader can
+    weigh a replayed answer for exactly that.
+
+    The same shape as one of `stop_context_postings`' rows, less the context.
+    """
+    from django.db.models import Q
+    from apps.metering.pricing.models import Charge
+    from apps.metering.usage.models import Posting
+    from core.vocabulary import USAGE_EVENT_KIND_TASK_CHARGE
+
+    start, end = month_bounds(at)
+    running = 0
+    for p in (Posting.objects
+              .filter(tenant_id=tenant_id, created_at__lte=at,
+                      effective_at__gte=utc_day_start(start),
+                      effective_at__lt=utc_day_start(end),
+                      billed_cost_micros__isnull=False)
+              .filter(Q(customer_id=customer_id) | Q(billing_owner_id=customer_id))
+              .order_by("created_at")
+              .values("id", "customer_id", "billing_owner_id", "effective_at",
+                      "billed_cost_micros", "pricing_status", "provider_cost_micros",
+                      "costing_status", "kind", "idempotency_key")):
+        running += p["billed_cost_micros"]
+        if running >= stop_threshold_micros:
+            charge_id = None
+            if p["kind"] == USAGE_EVENT_KIND_TASK_CHARGE:
+                charge_id = (Charge.objects
+                             .filter(tenant_id=tenant_id, idempotency_key=p["idempotency_key"])
+                             .values_list("id", flat=True).first())
+            return _stopped_work_posting_row(p, charge_id)
+    return None

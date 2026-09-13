@@ -736,7 +736,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # unresolved, so a list that published the amount without the status would
     # be a page of blanks with nothing saying which of them are missing and
     # which do not exist.
-    "costing_status": Published(5, ENUM),  # + the unresolved queue's row
+    #
+    # #465 (slice 6 §14) — a SIXTH node: the event a spend-control episode
+    # itemises publishes a supplier cost, so it publishes the status that
+    # says whether the cost is missing or does not exist — the same rule, on
+    # the one report whose events are, by construction, the ones that landed
+    # after a stop.
+    "costing_status": Published(6, ENUM),  # + the queue's row + the itemised event
     # #323 (slice 3) — the other half of the sentence above, and the first
     # nullable marker on a RESPONSE. Nullable markers are not new:
     # `EventTypeUpdateIn` has carried two since #262, and they are the
@@ -778,7 +784,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # #364 — a FIFTH node, the price half of the queue row's argument: a
     # posting whose price UBB could not resolve is the other half of that list,
     # and `unknown` is what says so.
-    "pricing_status": Published(5, ENUM),  # + the unresolved queue's row
+    #
+    # #465 — a SIXTH node, the price half of the same itemised event.
+    "pricing_status": Published(6, ENUM),  # + the queue's row + the itemised event
     # #351 — the second nullable marker on a response, following exactly the
     # placement `unresolved_reason` above established: in the STRING MEMBER of
     # the union, never on the union node, because `enum` and `anyOf` at one node
@@ -993,7 +1001,14 @@ CONCEPTS_IN_THE_CONTRACT = {
     # what open means — and here UBB drives three of the five: the ingest lane,
     # the enforcement patrol, and the sweeper. The other two arrive with the
     # mechanisms that produce them.
-    "trigger_source": Published(4, KNOWN_VALUES),
+    #
+    # #465 (slice 6 §14) — a FIFTH node, the first on a READ: the Ceiling row of
+    # Stops and breaches publishes the mechanism the applying lane recorded on
+    # the stopped unit, so a reader of the report learns what a subscriber to
+    # the four events already knew. Nullable there (a row stamped before the
+    # mechanism was recorded says nothing), so the marker sits on the string
+    # member.
+    "trigger_source": Published(5, KNOWN_VALUES),
     # WHICH KIND OF POSTING A ROW IS (#417) — two nodes, the usage list row and
     # the detail, which are the two responses that serve a STORED posting back
     # to a reader who did not create it. That is the rule rather than the count:
@@ -1047,7 +1062,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # `trigger_source`: the census answers `advertised` from the backend
     # alone, and a served concept with no marked node is what the test above
     # refuses.
-    "ceiling_status": Published(3, ENUM),
+    #
+    # #465 (slice 6 §14) — a FOURTH node: Utilisation and headroom's per-unit
+    # row publishes the status as it stood at completion, the reading rule
+    # for its two figures beside it.
+    "ceiling_status": Published(4, ENUM),
     # HOW A CUSTOMER SPEND POOL IS ENFORCED (#456, slice 6 §13): the three pool
     # schemas — the declaration in and out, and the status read — plus the
     # threshold event's payload in the `webhooks` section, because a value
@@ -1071,7 +1090,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # collapse, a split and two coinages; the G4 twin and the SDK twin died in
     # the same commit (§19 coupling 1). Five nodes until #458 renamed the
     # customer stop pair's bare `reason` to the concept's own name: SEVEN.
-    "reason_code": Published(7, KNOWN_VALUES),
+    # TEN since #465 (slice 6 §14): the three episode rows of Stops and
+    # breaches each carry the word the control stopped work under — a
+    # ceiling's, the pool's, the hard floor's — and the wallet row's is
+    # nullable because a soft-floor marker stopped nothing.
+    "reason_code": Published(10, KNOWN_VALUES),
     # WHICH CONTROL A STOP CAME FROM (#458, slice 6 §1, §15) — SIX nodes: the
     # four terminal stop events and the customer stop pair, all in the
     # `webhooks` section, because a control's family is a fact about a stop
@@ -1082,7 +1105,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     # word on a unit's stop from the one map in `core.controls` (a consumer
     # holds the vocabulary; a producer stamps it — §1); the G4 twin died in
     # the same commit (§19 coupling 1).
-    "control_family": Published(6, ENUM),
+    #
+    # ELEVEN since #465 (slice 6 §14): the three episode rows and the totals
+    # row of Stops and breaches carry the family that discriminates them, and
+    # the report's `control_family` FILTER carries the marker too — the first
+    # query parameter in the contract to, because a filter over a closed set
+    # is that set's consumer as much as a response is. The marker sits on the
+    # string member of the parameter's nullable union, exactly as on a
+    # nullable response field, so the `enum` constrains the word and leaves
+    # the absence alone.
+    "control_family": Published(11, ENUM),
     # WHAT THE CEILING THAT FIRED BOUNDS (#458, slice 6 §15) — FOUR nodes, the
     # four terminal stop events, because only a UNIT's stop can be a ceiling's;
     # the customer pair does not carry it. Closed, and NULLABLE: the marker
@@ -1090,7 +1122,10 @@ CONCEPTS_IN_THE_CONTRACT = {
     # words and leaves the null — a stop that was not a ceiling's — alone. The
     # backend twin is the work model's two values on `CEILING_STATUS_CHOICES`'s
     # footing, read by the admin and by the row's own derived property.
-    "ceiling_basis": Published(4, ENUM),
+    #
+    # FIVE since #465 (slice 6 §14): the Ceiling row of Stops and breaches —
+    # a ceiling's stop by construction, so never null there.
+    "ceiling_basis": Published(5, ENUM),
     # WHY AN AFFORDABILITY QUESTION WAS ANSWERED NO (#463, slice 6 §13) — ONE
     # node, `AffordabilityResponse.reason`, the answer to the affordability
     # question at its decided GET path. The fifth `KNOWN_VALUES` row and the
@@ -1226,14 +1261,21 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     where = {}
     for pointer, node in marked_nodes(spec):
         parts = pointer.split("/")
-        # A marker sits on a component schema (`/components/schemas/<Name>/…`)
-        # or, since #328, inside the `webhooks` section
-        # (`/webhooks/<event type>/post/…`) — the applier walks the whole
-        # document and does not care which. Each is named the way a reader of
-        # the contract would name it, so the assertions below stay readable
-        # rather than carrying a pointer fragment.
-        where.setdefault(node[MARKER], set()).add(
-            parts[2] if parts[1] == "webhooks" else parts[3])
+        # A marker sits on a component schema (`/components/schemas/<Name>/…`),
+        # since #328 inside the `webhooks` section (`/webhooks/<event
+        # type>/post/…`), or, since #465, on a QUERY PARAMETER of a path
+        # (`/paths/<path>/get/parameters/<n>/schema/…`) — the applier walks
+        # the whole document and does not care which. Each is named the way
+        # a reader of the contract would name it — the schema, the event, the
+        # path — so the assertions below stay readable rather than carrying a
+        # pointer fragment.
+        if parts[1] == "webhooks":
+            carrier = parts[2]
+        elif parts[1] == "paths":
+            carrier = parts[2].replace("~1", "/")
+        else:
+            carrier = parts[3]
+        where.setdefault(node[MARKER], set()).add(carrier)
 
     stated = set()
 
@@ -1290,9 +1332,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # status is not decoration but the reason the row is in the list at all. A
     # queue of unresolved amounts that did not say which of them were
     # unresolved would be the one place the ambiguity really bites.
+    # ⚠ SIX SINCE #465: the event a spend-control episode itemises.
     placed("costing_status", {"RecordUsageResponse", "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
-                              "usage.recorded"})
+                              "ItemisedEventRow", "usage.recorded"})
     # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
     # The cause is unreadable without the status and the status is unactionable
     # without the cause, so over RESPONSES the two sets are equal by design — a
@@ -1332,7 +1375,7 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # posting is in that list.
     placed("pricing_status", {"RecordUsageResponse", "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
-                              "usage.recorded"})
+                              "ItemisedEventRow", "usage.recorded"})
     placed("not_applicable_reason", {"RecordUsageResponse", "UsageEventOut",
                                      "UsageEventDetailOut"})
     # HOW a price was derived, beside the status saying WHETHER it is settled
@@ -1465,7 +1508,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # sweep; and reading them off the payload classes that DECLARE the field
     # makes this line hold the published document to the producer rather than
     # to a literal that would agree with both until one moved.
-    placed("trigger_source", events_whose_payload_declares("trigger_source"))
+    # AND, SINCE #465, ON ONE READ: the Ceiling row of Stops and breaches.
+    placed("trigger_source",
+           events_whose_payload_declares("trigger_source") | {"CeilingEpisodeRow"})
 
     # OUT ONLY, AND ON THE TWO RESPONSES THAT SERVE A STORED POSTING BACK
     # (#417). The rule is *where a reader meets a row it did not create* — the
@@ -1496,7 +1541,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # ceiling and `not_applicable` on every start that does not — a fact the
     # ceiling field beside it already states. The unit read is one call away
     # for the reader who wants it later, when it can be something else.
-    placed("ceiling_status", {"RecordUsageResponse", "TaskOut", "TaskDetailOut"})
+    # AND, SINCE #465, ON UTILISATION AND HEADROOM'S PER-UNIT ROW.
+    placed("ceiling_status", {"RecordUsageResponse", "TaskOut", "TaskDetailOut",
+                              "CeilingUtilisationRow"})
     # HOW A POOL IS ENFORCED (#456): on the declaration both ways, on the
     # status read, and on the one event whose payload carries it — derived off
     # the payload classes, the `trigger_source` line's reason, because that
@@ -1510,15 +1557,26 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # derived off the payload classes, the `trigger_source` line's reason.
     # NOT on the unit read (`TaskOut` / `TaskDetailOut` carry no stop cause —
     # #454 named that gap as nobody's).
+    # AND, SINCE #465, ON THE THREE EPISODE ROWS OF STOPS AND BREACHES — the
+    # first read surface to publish a stop.
     placed("reason_code",
-           {"RecordUsageResponse"} | events_whose_payload_declares("reason_code"))
-    # WHICH CONTROL FIRED (#458): on every stop event and nowhere else — the
-    # same six the cause rides, derived the same way. A control's family is
-    # a fact about a stop, and no read surface publishes a stop.
-    placed("control_family", events_whose_payload_declares("control_family"))
-    # WHAT THE CEILING BOUNDED (#458): on the four terminal stops only — a
-    # customer-wide stop is never a ceiling's, so the pair does not carry it.
-    placed("ceiling_basis", events_whose_payload_declares("ceiling_basis"))
+           {"RecordUsageResponse", "CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
+            "WalletPolicyEpisodeRow"} | events_whose_payload_declares("reason_code"))
+    # WHICH CONTROL FIRED (#458): on every stop event — the same six the
+    # cause rides, derived the same way — and, since #465, on the read
+    # surface that publishes stops: the three episode rows and the totals
+    # row of Stops and breaches, and that report's family FILTER, named by
+    # its path because a query parameter's carrier is the operation.
+    placed("control_family",
+           events_whose_payload_declares("control_family")
+           | {"CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
+              "WalletPolicyEpisodeRow", "SpendControlFamilyTotalsRow",
+              "/api/v1/spend-controls/stops-and-breaches"})
+    # WHAT THE CEILING BOUNDED (#458): on the four terminal stops — a
+    # customer-wide stop is never a ceiling's, so the pair does not carry it
+    # — and, since #465, on the Ceiling row of Stops and breaches.
+    placed("ceiling_basis",
+           events_whose_payload_declares("ceiling_basis") | {"CeilingEpisodeRow"})
     # WHY THE AFFORDABILITY QUESTION SAID NO (#463): on the one response that
     # answers it, and nowhere else — the start's refusal carries the same
     # word as a problem extension, which no schema node describes.
