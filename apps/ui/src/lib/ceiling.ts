@@ -32,7 +32,7 @@
 
 import { formatMicros } from "@/lib/format";
 import { labelMap } from "@/lib/localisation";
-import { AT_LEAST, AT_MOST } from "@/lib/supplier-cost";
+import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
 import { eventsHave } from "@/lib/total-reading";
 import { CEILING_STATUS_LABEL_KEYS, type CeilingStatus } from "@/lib/vocabulary";
 
@@ -98,8 +98,7 @@ export function readCeiling(row: CeilingAssessed): CeilingReading {
  */
 export function describeUtilisation(reading: CeilingReading): string | null {
   if (reading.kind === "not_applicable" || reading.usedPercentage === null) return null;
-  const share = `${reading.usedPercentage}%`;
-  return reading.kind === "indeterminate" ? `${AT_LEAST} ${share}` : share;
+  return shareAtLeast(reading.usedPercentage, reading.kind === "indeterminate");
 }
 
 /**
@@ -112,8 +111,7 @@ export function describeUtilisation(reading: CeilingReading): string | null {
  */
 export function describeHeadroom(reading: CeilingReading, currency: string): string | null {
   if (reading.kind === "not_applicable" || reading.remainingMicros === null) return null;
-  const amount = formatMicros(reading.remainingMicros, currency);
-  return reading.kind === "indeterminate" ? `${AT_MOST} ${amount}` : amount;
+  return amountAtMost(reading.remainingMicros, currency, reading.kind === "indeterminate");
 }
 
 /**
@@ -145,14 +143,16 @@ export function describeCeilingFigures(reading: CeilingReading, currency: string
  * rendering nothing. The `not_applicable` sentence names both causes because
  * the wire does not say which applies (#453, slice 6 Out of Scope); the
  * `indeterminate` sentence avoids "under" on purpose (see the module header).
+ * Each says "unit of work", the kernel's noun, because two surfaces render
+ * them: a run on its own page, and a completed unit on a report's row.
  */
 export const CEILING_STATUS_EXPLANATIONS = {
   not_applicable:
-    "No ceiling applies to this run: its kind is declared uncapped, or nothing declares one. Nothing was evaluated, so nothing was concluded.",
+    "No ceiling applies to this unit of work: its kind is declared uncapped, or nothing declares one. Nothing was evaluated, so nothing was concluded.",
   within_ceiling:
-    "Every supplier cost this run has reported is known, and their total is below the ceiling.",
+    "Every supplier cost this unit of work has reported is known, and their total is below the ceiling.",
   indeterminate:
-    "UBB cannot prove this run is inside its ceiling. The figures are over what is known: the share used can only rise and the headroom only fall as the rest settles.",
+    "UBB cannot prove this unit of work is inside its ceiling. The figures are over what is known: the share used can only rise and the headroom only fall as the rest settles.",
   ceiling_reached:
     "The known supplier cost has reached the ceiling. Costs still unresolved can only add to it, so no later resolution softens this.",
 } as const satisfies Record<CeilingStatus, string>;

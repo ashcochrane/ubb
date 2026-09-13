@@ -100,6 +100,20 @@ describe("SpendControlsPage — the two reports (#467)", () => {
     expect(customers.every((href) => href === `/customers/${CUSTOMER_ACME}`)).toBe(true);
   });
 
+  // The absence the report's own test asserts, asserted again on the PAGE —
+  // the posture card, the nav and the filters are on it too, and #467's
+  // criterion is that nothing on the page reads as a warning state.
+  it("puts no threshold, no amber and no warning affordance on the page around the report", async () => {
+    renderTab({ report: "utilisation", customer_id: CUSTOMER_ACME });
+    await screen.findByRole("region", { name: POOL_PAIR_TITLE });
+    await screen.findByRole("table");
+
+    for (const role of ["meter", "progressbar", "alert", "status", "alertdialog"]) {
+      expect(screen.queryAllByRole(role)).toEqual([]);
+    }
+    expect(document.body.textContent).not.toMatch(/warning|amber|threshold/i);
+  });
+
   it("switches to the second report through the URL", async () => {
     const onSearchChange = renderTab();
     await screen.findByRole("region", { name: STOPS_AND_BREACHES_TITLE });

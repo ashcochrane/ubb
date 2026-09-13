@@ -25,9 +25,9 @@
 // bounds.
 
 import { readCeiling, type CeilingReading } from "@/lib/ceiling";
-import { formatMicros } from "@/lib/format";
-import { AT_LEAST, AT_MOST } from "@/lib/supplier-cost";
+import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
 import { readTotal, type TotalReading } from "@/lib/total-reading";
+import type { SpendPoolEnforceMode } from "@/lib/vocabulary";
 
 import type {
   CeilingUtilisationRow,
@@ -68,7 +68,7 @@ export function containedUnit(row: CeilingUtilisationRow): boolean {
 // The aggregate
 
 /** Whether any unit the aggregate is over was indeterminate — the fact that makes its averages bounds. */
-function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
+export function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
   return report.indeterminate_count > 0;
 }
 
@@ -82,8 +82,7 @@ function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
  */
 export function describeAverageUtilisation(report: UtilisationAndHeadroom): string | null {
   if (report.average_final_utilisation_percentage == null) return null;
-  const share = `${report.average_final_utilisation_percentage}%`;
-  return anyIndeterminate(report) ? `${AT_LEAST} ${share}` : share;
+  return shareAtLeast(report.average_final_utilisation_percentage, anyIndeterminate(report));
 }
 
 /** The average unused headroom, or nothing where no unit had a ceiling; a most on the same terms. */
@@ -92,8 +91,7 @@ export function describeAverageHeadroom(
   currency: string,
 ): string | null {
   if (report.average_unused_headroom_micros == null) return null;
-  const amount = formatMicros(report.average_unused_headroom_micros, currency);
-  return anyIndeterminate(report) ? `${AT_MOST} ${amount}` : amount;
+  return amountAtMost(report.average_unused_headroom_micros, currency, anyIndeterminate(report));
 }
 
 /**
@@ -117,11 +115,15 @@ export function readPoolCharges(pool: CustomerSpendPoolStatus): TotalReading {
   return readTotal(pool.known_period_charges_micros, pool.unresolved_posting_count);
 }
 
+/** Whether the pool's pair is a floor: the known charges left a posting unpriced. */
+function poolPairIsFloor(pool: CustomerSpendPoolStatus): boolean {
+  return pool.unresolved_posting_count > 0;
+}
+
 /** The share of the pool the known charges have used — a floor wherever the pair is. */
 export function describePoolUtilisation(pool: CustomerSpendPoolStatus): string | null {
   if (pool.used_percentage === null) return null;
-  const share = `${pool.used_percentage}%`;
-  return pool.unresolved_posting_count > 0 ? `${AT_LEAST} ${share}` : share;
+  return shareAtLeast(pool.used_percentage, poolPairIsFloor(pool));
 }
 
 /**
@@ -132,10 +134,25 @@ export function describePoolUtilisation(pool: CustomerSpendPoolStatus): string |
  */
 export function describePoolHeadroom(pool: CustomerSpendPoolStatus, currency: string): string | null {
   if (pool.remaining_micros === null) return null;
-  const amount = formatMicros(pool.remaining_micros, currency);
-  const bounded = pool.unresolved_posting_count > 0 && pool.remaining_micros > 0;
-  return bounded ? `${AT_MOST} ${amount}` : amount;
+  const most = poolPairIsFloor(pool) && pool.remaining_micros > 0;
+  return amountAtMost(pool.remaining_micros, currency, most);
 }
+
+/**
+ * What the pool's posture means for a start — console-owned copy beside
+ * the pair, total over the generated type so a mode the registry adds and
+ * this has no sentence for fails `tsc`. Said in words rather than as the
+ * mode's own label because the reader's question is not "which mode" but
+ * "why was nothing refused": an alert-only pool past its line refuses
+ * nothing, and a blocking pool short of its line has not yet. (The mode's
+ * catalogue word is bound on the customer's Billing tab, #468.)
+ */
+export const POOL_POSTURE = {
+  alert_only:
+    "This pool alerts and never stops: however far the charges go past it, no start is refused by it.",
+  blocking:
+    "This pool stops: at or over its stop line, new starts are refused and active work is stopped.",
+} as const satisfies Record<SpendPoolEnforceMode, string>;
 
 // ---------------------------------------------------------------------------
 // The console's sentences beside the figures — copy, not catalogue content

@@ -17,6 +17,8 @@ import { CONTROL_FAMILY_VALUES } from "@/lib/vocabulary";
  */
 export const SPEND_CONTROL_REPORTS = ["stops", "utilisation"] as const;
 export type SpendControlReport = (typeof SPEND_CONTROL_REPORTS)[number];
+/** The report a bare `/spend-controls` shows, and the one the URL never spells. */
+export const DEFAULT_REPORT: SpendControlReport = "stops";
 
 export const spendControlsSearchSchema = dateRangeSearchSchema.extend({
   customer_id: z.string().min(1).optional().catch(undefined),

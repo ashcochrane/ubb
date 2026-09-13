@@ -34,6 +34,7 @@ import {
   INDETERMINATE_HAS_NO_OTHER_HOME,
   NO_COMPLETED_WORK,
   POOL_AND_WALLET_DIFFER,
+  POOL_POSTURE,
   STARTS_REFUSED,
 } from "../lib/utilisation";
 import { renderWithProviders } from "../test-utils";
@@ -59,15 +60,42 @@ const UNIT_INDETERMINATE = "33333333-3333-4333-8333-333333333333";
 const UNIT_REACHED = "44444444-4444-4444-8444-444444444444";
 const UNIT_COST_UNKNOWN = "55555555-5555-4555-8555-555555555555";
 
-function completed(id: string, at: string, assessment: Parameters<typeof utilisationRow>[0]["assessment"]) {
-  return utilisationRow({ id, customer: CUSTOMER_ACME, kind: "video-render", completedAt: at, assessment });
+type Assessment = Parameters<typeof utilisationRow>[0]["assessment"];
+
+function completed(id: string, at: string, assessment: Assessment) {
+  return utilisationRow({
+    id,
+    customer: CUSTOMER_ACME,
+    kind: "video-render",
+    completedAt: at,
+    assessment,
+  });
 }
 
+const NOT_APPLICABLE = ceilingAssessment("not_applicable", { cost: completeTotal(180_000) });
+const WITHIN = ceilingAssessment("within_ceiling", {
+  ceiling_micros: CEILING,
+  cost: completeTotal(2_100_000),
+});
+const INDETERMINATE = ceilingAssessment("indeterminate", {
+  ceiling_micros: CEILING,
+  cost: incompleteTotal(1_240_000, 1),
+});
+const REACHED = ceilingAssessment("ceiling_reached", {
+  ceiling_micros: CEILING,
+  cost: incompleteTotal(3_420_000, 1),
+});
+/** Known cost none of whose parts UBB learned, under a ceiling: indeterminate, and the total is unknown. */
+const COST_UNKNOWN = ceilingAssessment("indeterminate", {
+  ceiling_micros: CEILING,
+  cost: incompleteTotal(0, 2),
+});
+
 const FOUR_STATUSES: readonly CeilingUtilisationRow[] = [
-  completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", ceilingAssessment("not_applicable", { cost: completeTotal(180_000) })),
-  completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", ceilingAssessment("within_ceiling", { ceiling_micros: CEILING, cost: completeTotal(2_100_000) })),
-  completed(UNIT_INDETERMINATE, "2026-07-04T10:00:00Z", ceilingAssessment("indeterminate", { ceiling_micros: CEILING, cost: incompleteTotal(1_240_000, 1) })),
-  completed(UNIT_REACHED, "2026-07-05T10:00:00Z", ceilingAssessment("ceiling_reached", { ceiling_micros: CEILING, cost: incompleteTotal(3_420_000, 1) })),
+  completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", NOT_APPLICABLE),
+  completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", WITHIN),
+  completed(UNIT_INDETERMINATE, "2026-07-04T10:00:00Z", INDETERMINATE),
+  completed(UNIT_REACHED, "2026-07-05T10:00:00Z", REACHED),
 ];
 
 function serve(report: Report) {
@@ -169,11 +197,7 @@ describe("UtilisationAndHeadroom — the four statuses, one fixture and one asse
   // never renders as a currency figure — not as `$0.00`, not as `at least
   // $0.00`.
   it("renders an unknown known total as unknown, never as money", async () => {
-    const row = completed(
-      UNIT_COST_UNKNOWN,
-      "2026-07-06T10:00:00Z",
-      ceilingAssessment("indeterminate", { ceiling_micros: CEILING, cost: incompleteTotal(0, 2) }),
-    );
+    const row = completed(UNIT_COST_UNKNOWN, "2026-07-06T10:00:00Z", COST_UNKNOWN);
     serve(utilisationReport([row], WINDOW, null));
     await rendered();
 
@@ -190,9 +214,9 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
   // share beside it is the route's — two of three, rounded down.
   it("renders the indeterminate count and share the response carries", async () => {
     const rows = [
-      completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", ceilingAssessment("within_ceiling", { ceiling_micros: CEILING, cost: completeTotal(2_100_000) })),
-      completed(UNIT_INDETERMINATE, "2026-07-04T10:00:00Z", ceilingAssessment("indeterminate", { ceiling_micros: CEILING, cost: incompleteTotal(1_240_000, 1) })),
-      completed(UNIT_COST_UNKNOWN, "2026-07-06T10:00:00Z", ceilingAssessment("indeterminate", { ceiling_micros: CEILING, cost: incompleteTotal(0, 2) })),
+      completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", WITHIN),
+      completed(UNIT_INDETERMINATE, "2026-07-04T10:00:00Z", INDETERMINATE),
+      completed(UNIT_COST_UNKNOWN, "2026-07-06T10:00:00Z", COST_UNKNOWN),
     ];
     const report = utilisationReport(rows, WINDOW, null);
     expect(report.indeterminate_count).toBe(2);
@@ -216,9 +240,13 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
 
   it("averages per unit and then across every unit, as figures where nothing was indeterminate", async () => {
     const rows = [
-      completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", ceilingAssessment("within_ceiling", { ceiling_micros: CEILING, cost: completeTotal(2_100_000) })),
-      completed(UNIT_REACHED, "2026-07-05T10:00:00Z", ceilingAssessment("ceiling_reached", { ceiling_micros: 800_000, cost: completeTotal(1_600_000) })),
-      completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", ceilingAssessment("not_applicable", { cost: completeTotal(180_000) })),
+      completed(UNIT_WITHIN, "2026-07-03T10:00:00Z", WITHIN),
+      completed(
+        UNIT_REACHED,
+        "2026-07-05T10:00:00Z",
+        ceilingAssessment("ceiling_reached", { ceiling_micros: 800_000, cost: completeTotal(1_600_000) }),
+      ),
+      completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", NOT_APPLICABLE),
     ];
     serve(utilisationReport(rows, WINDOW, null));
     await rendered();
@@ -234,9 +262,7 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
   });
 
   it("renders no average where no unit had a ceiling — an absence, never zero", async () => {
-    const rows = [
-      completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", ceilingAssessment("not_applicable", { cost: completeTotal(180_000) })),
-    ];
+    const rows = [completed(UNIT_NOT_APPLICABLE, "2026-07-02T10:00:00Z", NOT_APPLICABLE)];
     serve(utilisationReport(rows, WINDOW, null));
     await rendered();
 
@@ -263,6 +289,8 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
     expect(pool.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 103%");
     expect(pool.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$0.00");
     expect(pool.querySelector('[data-pool-figure="headroom"]')).not.toHaveTextContent(/at most/);
+    // The posture in words, and the refusal it led to.
+    expect(within(pool).getByText(POOL_POSTURE.blocking)).toHaveAttribute("data-pool-posture", "blocking");
     expect(within(pool).getByText(STARTS_REFUSED)).toBeInTheDocument();
     expect(within(pool).getByText(POOL_AND_WALLET_DIFFER)).toBeInTheDocument();
   });
@@ -284,6 +312,28 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
     expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("46%");
     expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$268.60");
     expect(region.textContent).not.toMatch(/at least|at most/);
+    expect(within(region).getByText(POOL_POSTURE.alert_only)).toBeInTheDocument();
+    expect(within(region).queryByText(STARTS_REFUSED)).not.toBeInTheDocument();
+  });
+
+  // An alert-only pool past its line refuses nothing, and the page must say
+  // WHY nothing was refused rather than leave a reader to infer a defect.
+  it("says an alerting pool past its line refuses nothing", async () => {
+    const pool = poolStatus({
+      period: "2026-07",
+      cap_micros: 500_000_000,
+      enforce_mode: "alert_only",
+      hard_stop_pct: 100,
+      alert_levels: [50, 80, 100],
+      known: incompletePriceTotal(517_500_000, 0),
+    });
+    expect(pool.blocking_occurred).toBe(false);
+    serve(utilisationReport(FOUR_STATUSES, WINDOW, pool));
+    await rendered({ customer_id: CUSTOMER_ACME });
+
+    const region = screen.getByRole("region", { name: POOL_PAIR_TITLE });
+    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("103%");
+    expect(within(region).getByText(POOL_POSTURE.alert_only)).toHaveAttribute("data-pool-posture", "alert_only");
     expect(within(region).queryByText(STARTS_REFUSED)).not.toBeInTheDocument();
   });
 

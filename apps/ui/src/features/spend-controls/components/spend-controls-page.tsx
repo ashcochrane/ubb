@@ -29,7 +29,12 @@ import { useTenantConfig } from "@/hooks/use-tenant-config";
 import { datetimeWindow, resolveRange } from "@/lib/date-range";
 import { enforcementModeLabel } from "@/lib/labels";
 
-import { SPEND_CONTROL_REPORTS, type SpendControlReport, type SpendControlsSearch } from "../lib/search";
+import {
+  DEFAULT_REPORT,
+  SPEND_CONTROL_REPORTS,
+  type SpendControlReport,
+  type SpendControlsSearch,
+} from "../lib/search";
 import { CustomerFilter, FamilyFilter } from "./filters";
 import { StopsAndBreaches, STOPS_AND_BREACHES_TITLE } from "./stops-and-breaches";
 import { UTILISATION_AND_HEADROOM_TITLE, UtilisationAndHeadroom } from "./utilisation-and-headroom";
@@ -43,7 +48,7 @@ export interface SpendControlsPageProps {
   onSearchChange: (next: SpendControlsSearch) => void;
 }
 
-/** The two reports, in the order the tab lists them; the first is the default. */
+/** The words each report is listed under — each section's own title, so the nav and the region agree. */
 const REPORT_TITLES: Record<SpendControlReport, string> = {
   stops: STOPS_AND_BREACHES_TITLE,
   utilisation: UTILISATION_AND_HEADROOM_TITLE,
@@ -54,7 +59,7 @@ export function SpendControlsPage({ search, onSearchChange }: SpendControlsPageP
   const update = (patch: Partial<SpendControlsSearch>) =>
     onSearchChange({ ...search, ...patch });
   const window = datetimeWindow(resolveRange(search));
-  const report: SpendControlReport = search.report ?? "stops";
+  const report: SpendControlReport = search.report ?? DEFAULT_REPORT;
 
   return (
     <div className="space-y-4">
@@ -93,7 +98,7 @@ export function SpendControlsPage({ search, onSearchChange }: SpendControlsPageP
           const next = SPEND_CONTROL_REPORTS.find((candidate) => candidate === value);
           // The default report is left out of the URL, as the customer page
           // leaves out its Overview tab.
-          update({ report: next !== undefined && next !== "stops" ? next : undefined });
+          update({ report: next !== undefined && next !== DEFAULT_REPORT ? next : undefined });
         }}
       >
         <TabsList aria-label="Report">

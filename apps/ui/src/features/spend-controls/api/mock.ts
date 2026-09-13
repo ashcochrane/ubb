@@ -26,7 +26,7 @@ import type {
 const REPORT_WINDOW_MAX_DAYS = 366;
 
 /** The window the route applies when the caller leaves it open: the 366 days ending now. */
-function boundedWindow(filters: Pick<StopsAndBreachesFilters, "since" | "until">): DatetimeWindow {
+function boundedWindow(filters: Partial<DatetimeWindow>): DatetimeWindow {
   const until = filters.until ?? new Date().toISOString();
   const since =
     filters.since ??

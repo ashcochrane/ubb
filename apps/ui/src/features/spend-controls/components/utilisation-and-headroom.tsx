@@ -10,15 +10,19 @@
 // figures and words only — and the pool's status pair is rendered the same
 // way, without the alert level the pair also carries, because an alert
 // level drawn beside a ceiling's utilisation would read as the state v1 has
-// none of.
+// none of. The pool's posture is said in a sentence, so a reader can tell
+// an alert-only pool past its line from a blocking pool short of it.
 //
-// EVERY FIGURE IS A READING, never a coalesced number: a per-unit figure
-// through `@/lib/ceiling`, the aggregate and the pool pair through
-// `../lib/utilisation`, so a null renders as an absence and an indeterminate
-// contribution renders as "at least" / "at most".
+// EVERY FIGURE THAT CAN BE A BOUND OR AN ABSENCE IS A READING, never a
+// coalesced number: a per-unit figure through `@/lib/ceiling`, the
+// aggregate and the pool pair through `../lib/utilisation`, so a null
+// renders as an absence and an indeterminate contribution renders as "at
+// least" / "at most". The two amounts that are always whole where they are
+// sent at all — a pinned ceiling, a pool's amount — are null-guarded and
+// formatted directly.
 
-import { Gauge } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { Gauge } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { DetailList } from "@/components/shared/detail-list";
@@ -53,6 +57,7 @@ import type {
   UtilisationAndHeadroomFilters,
 } from "../api/types";
 import {
+  anyIndeterminate,
   AVERAGED_PER_UNIT,
   containedUnit,
   describeAverageHeadroom,
@@ -64,6 +69,7 @@ import {
   NO_COMPLETED_WORK,
   NOT_APPLICABLE_MEANS,
   POOL_AND_WALLET_DIFFER,
+  POOL_POSTURE,
   REACHED_MEANS,
   readKnownCost,
   readPoolCharges,
@@ -89,7 +95,7 @@ function Aggregate({
 }) {
   const utilisation = describeAverageUtilisation(report);
   const headroom = describeAverageHeadroom(report, currency);
-  const bounded = report.indeterminate_count > 0;
+  const bounded = anyIndeterminate(report);
   return (
     <div className="space-y-2" data-aggregate-over={report.unit_count}>
       <p className="text-[11px] text-text-muted">
@@ -190,8 +196,11 @@ function PoolPair({ pool, currency }: { pool: CustomerSpendPoolStatus; currency:
           },
         ]}
       />
+      <p className="mt-2 text-[12px] text-text-secondary" data-pool-posture={pool.enforce_mode}>
+        {POOL_POSTURE[pool.enforce_mode]}
+      </p>
       {pool.blocking_occurred && (
-        <p className="mt-2 text-[12px] text-text-primary" data-pool-blocking>
+        <p className="mt-1 text-[12px] text-text-primary" data-pool-blocking>
           {STARTS_REFUSED}
         </p>
       )}
@@ -249,11 +258,14 @@ function UnitRow({ row, currency }: { row: CeilingUtilisationRow; currency: stri
         <Reading reading={readKnownCost(row)} currency={currency} />
       </TableCell>
       <TableCell className="text-right text-[13px] tabular-nums" data-cell="utilisation">
-        <span data-reading={reading.kind}>{utilisation ?? <Absent />}</span>
+        {utilisation ?? <Absent />}
       </TableCell>
       <TableCell className="text-right text-[13px] tabular-nums" data-cell="headroom">
-        <span data-reading={reading.kind}>{headroom ?? <Absent />}</span>
+        {headroom ?? <Absent />}
       </TableCell>
+      {/* `data-reading` is the ceiling reading's kind here, as it is on the
+          run page; the known-cost cell's is a total reading's. A test scopes
+          to the cell before reading either. */}
       <TableCell className="text-[12px]" data-cell="status">
         <span data-reading={row.ceiling_status} title={explainCeiling(reading)}>
           {ceilingStatusLabel(row.ceiling_status)}
@@ -263,7 +275,7 @@ function UnitRow({ row, currency }: { row: CeilingUtilisationRow; currency: stri
   );
 }
 
-function UnitsTable({
+function CompletedWorkTable({
   rows,
   currency,
 }: {
@@ -326,7 +338,7 @@ export function UtilisationAndHeadroom({ filters }: { filters: UtilisationAndHea
             <EmptyState icon={Gauge} title="Nothing to measure" description={NO_COMPLETED_WORK} />
           ) : (
             <>
-              <UnitsTable rows={report.data.rows} currency={currency} />
+              <CompletedWorkTable rows={report.data.rows} currency={currency} />
               <p className="text-[11px] text-text-muted">{NOT_APPLICABLE_MEANS}</p>
             </>
           )}
