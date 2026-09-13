@@ -7,14 +7,17 @@ import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import type { DateRange } from "@/lib/date-range";
 import { resolveRange } from "@/lib/date-range";
+import { completePriceTotal, spendPoolAssessment } from "@/lib/economic-scenarios";
 import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
 
 import {
   buildMockTimeseries,
   MOCK_BALANCES,
   MOCK_BILLING_PROFILES,
-  MOCK_BUDGET_STATUS,
-  MOCK_BUDGETS,
+  MOCK_CUSTOMER_SPEND_POOLS,
+  MOCK_POOL_CHARGES,
+  MOCK_POOL_PERIOD,
+  MOCK_SEAT_DEFAULT_POOL,
   MOCK_BUSINESS_MARGIN,
   MOCK_DIRECTORY,
   MOCK_GRANTS,
@@ -32,9 +35,9 @@ import {
 } from "./mock-data";
 import type {
   BalanceResponse,
-  BudgetConfigIn,
-  BudgetConfigOut,
-  BudgetStatusOut,
+  CustomerSpendPoolIn,
+  CustomerSpendPoolOut,
+  CustomerSpendPoolStatusOut,
   BusinessMarginOut,
   ConfigureAutoTopUpRequest,
   CreateCustomerRequest,
@@ -77,7 +80,7 @@ const balances: Record<string, BalanceResponse> = structuredClone(MOCK_BALANCES)
 const transactions: Record<string, WalletTransactionOut[]> =
   structuredClone(MOCK_TRANSACTIONS);
 const grants: Record<string, GrantOut[]> = structuredClone(MOCK_GRANTS);
-const budgets: Record<string, BudgetConfigOut> = structuredClone(MOCK_BUDGETS);
+const pools: Record<string, CustomerSpendPoolOut> = structuredClone(MOCK_CUSTOMER_SPEND_POOLS);
 const billingProfiles: Record<string, CustomerBillingProfileOut> =
   structuredClone(MOCK_BILLING_PROFILES);
 const revenueProfiles: Record<string, RevenueProfileOut> =
@@ -570,59 +573,72 @@ export async function voidGrant(customerId: string, grantId: string): Promise<Gr
 }
 
 // ---------------------------------------------------------------------------
-// Billing — budget, profile, auto top-up
+// Billing — customer spend pool, wallet policy, auto top-up
 
-export async function getCustomerBudget(customerId: string): Promise<BudgetConfigOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  return (
-    budgets[customerId] ?? {
-      cap_micros: 0,
-      enforce_mode: "alert_only",
-      hard_stop_pct: 100,
-      alert_levels: [],
-      fail_closed: false,
-    }
-  );
+/** The config route's answer where no row is declared: an amount of nothing (`_no_pool_declared`). */
+function noPoolDeclared(): CustomerSpendPoolOut {
+  return {
+    cap_micros: 0,
+    enforce_mode: "alert_only",
+    hard_stop_pct: 100,
+    alert_levels: [],
+    fail_closed: false,
+  };
 }
 
-export async function putCustomerBudget(
-  customerId: string,
-  body: BudgetConfigIn,
-): Promise<BudgetConfigOut> {
+export async function getCustomerSpendPool(customerId: string): Promise<CustomerSpendPoolOut> {
   await mockDelay();
   requireCustomer(customerId);
-  const saved: BudgetConfigOut = {
+  return pools[customerId] ?? noPoolDeclared();
+}
+
+export async function putCustomerSpendPool(
+  customerId: string,
+  body: CustomerSpendPoolIn,
+): Promise<CustomerSpendPoolOut> {
+  await mockDelay();
+  requireCustomer(customerId);
+  const saved: CustomerSpendPoolOut = {
     cap_micros: body.cap_micros,
     enforce_mode: body.enforce_mode,
     hard_stop_pct: body.hard_stop_pct,
     alert_levels: body.alert_levels ?? [],
     fail_closed: body.fail_closed,
   };
-  budgets[customerId] = saved;
+  pools[customerId] = saved;
   return saved;
 }
 
-export async function getBudgetStatus(customerId: string): Promise<BudgetStatusOut> {
+/**
+ * The status route's resolution (`CustomerSpendPoolService.resolve_config_for`,
+ * slice 6 §4): the customer's own row first — an amount of nothing on it is
+ * still that row, and shadows the default — else the workspace default where
+ * it reaches them, which is a seat or an individual and never a business.
+ */
+function poolThatApplies(customer: MockCustomer): CustomerSpendPoolOut | null {
+  const own = pools[customer.id];
+  if (own) return own;
+  return customer.account_type === "business" ? null : MOCK_SEAT_DEFAULT_POOL;
+}
+
+export async function getCustomerSpendPoolStatus(
+  customerId: string,
+): Promise<CustomerSpendPoolStatusOut> {
   await mockDelay();
-  requireCustomer(customerId);
-  const config = budgets[customerId];
-  const cap = config?.cap_micros ?? 0;
-  // Nothing charged yet: with a pool declared the assessment is a settled
-  // zero used and the whole amount remaining; with none it is null (#456).
-  return (
-    MOCK_BUDGET_STATUS[customerId] ?? {
-      period: "2026-07",
-      cap_micros: cap,
-      enforce_mode: config?.enforce_mode ?? "alert_only",
-      known_period_charges_micros: 0,
-      unresolved_posting_count: 0,
-      used_percentage: cap > 0 ? 0 : null,
-      remaining_micros: cap > 0 ? cap : null,
-      highest_threshold_reached: null,
-      blocking_occurred: false,
-    }
-  );
+  const customer = requireCustomer(customerId);
+  const applies = poolThatApplies(customer);
+  // Composed the way the kernel composes it, over the customer's durable
+  // pair; a customer the story charged nothing to has a whole figure of
+  // nothing, which is a real zero and renders as one. No pool is an amount
+  // of nothing with every assessed figure null (#456 §13).
+  return spendPoolAssessment({
+    period: MOCK_POOL_PERIOD,
+    cap_micros: applies?.cap_micros ?? 0,
+    enforce_mode: applies?.enforce_mode ?? "alert_only",
+    hard_stop_pct: applies?.hard_stop_pct ?? 100,
+    alert_levels: applies?.alert_levels ?? [],
+    known: MOCK_POOL_CHARGES[customerId] ?? completePriceTotal(0),
+  });
 }
 
 export async function getBillingProfile(

@@ -39,6 +39,11 @@ describe("WorkspaceSettingsPage", () => {
     expect(
       screen.getByText(/How far into the allowed overdraft/),
     ).toBeInTheDocument();
+    // The floors sit under the family's words (#468; slice 6 §5).
+    expect(screen.getByText("Wallet policy")).toBeInTheDocument();
+    expect(
+      screen.getByText(/balance less what is reserved for work already started/),
+    ).toBeInTheDocument();
 
     // Margin-alert configuration card is present on the workspace tab
     expect(await screen.findByText("Margin alerts")).toBeInTheDocument();
@@ -75,6 +80,8 @@ describe("WorkspaceSettingsPage", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText(/Allowed overdraft/)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/Wind-down floor/)).not.toBeInTheDocument();
+      // The heading stays, so the notice is read as Wallet policy's.
+      expect(screen.getByText("Wallet policy")).toBeInTheDocument();
       // The default ceilings for work with no declared kind LEFT this page
       // (#453): a ceiling is a kernel setting, edited on the Tasks page beside
       // the declared kinds of work. Under postpaid nothing is left to edit.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { WEBHOOK_EVENT_TYPES } from "@/lib/labels";
+import { WEBHOOK_EVENT_TYPE_VALUES } from "@/lib/vocabulary";
 
 import { groupedEventTypes } from "./event-groups";
 import {
@@ -165,9 +166,12 @@ describe("groupedEventTypes", () => {
     expect(optionsOf("customer_spend_pool")).toEqual([
       "customer_spend_pool.threshold_reached",
     ]);
-    for (const mechanism of ["stop", "soft_floor", "budget"]) {
-      expect(keys).not.toContain(mechanism);
-    }
+    // The group keys are exactly the namespaces the generated catalogue
+    // declares, in its order — so a retired mechanism namespace cannot head a
+    // group, and nor can any spelling the registry has not declared.
+    expect(keys).toEqual([
+      ...new Set(WEBHOOK_EVENT_TYPE_VALUES.map((eventType) => eventType.slice(0, eventType.indexOf(".")))),
+    ]);
     // The two families head their groups under the catalogue's family words.
     expect(groups.find((group) => group.key === "wallet_policy")?.label).toBe(
       "Wallet policy",

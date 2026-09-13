@@ -45,6 +45,14 @@
 // the list does not name, which is the whole reason slice 2 owed a fixture at
 // all.
 //
+// THE POOL'S STATUS PAIR arrived with #467's report as a composer inside the
+// spend-controls feature's own mock, and moved here in #468 the day the
+// customer's Billing tab became the second feature to render it — a fixture
+// two features compose cannot live inside one of them. `spendPoolAssessment`
+// takes what a pool is declared to be beside the durable pair it is measured
+// over and derives the assessment the kernel derives, so no fixture on either
+// surface can state a share or a refusal its own charges would not conclude.
+//
 // `pricing_not_applicable` IS TWO STATES RATHER THAN ONE, and it is the only
 // entry on that list that is. The registry reads a `not_applicable_reason`
 // under it and declares two mutually exclusive causes, so the scenario takes
@@ -84,6 +92,7 @@ import type {
   PricingMode,
   PricingReceiptSubjectType,
   PricingStatus,
+  SpendPoolEnforceMode,
   UnresolvedReason,
 } from "@/lib/vocabulary";
 
@@ -486,6 +495,98 @@ export function incompletePriceTotal(
   unpricedEventCount: number,
 ): PriceTotalScenario {
   return { micros, unpriced_event_count: unpricedEventCount };
+}
+
+// ---------------------------------------------------------------------------
+// The Customer Spend Pool's status pair — where one customer's known period
+// charges stand against the pool that applies to them (#456 §13; composed
+// here in #468, slice 6 §4, §18).
+
+/**
+ * What a pool is declared to be, and the durable basis it is measured over.
+ *
+ * The five declaration fields are the pool row's own; `known` is the
+ * price-side total the drawdown has resolved for the period, beside the
+ * count of postings it could not price — a floor wherever that count is
+ * not zero, which is the whole reason the pair travels as a pair.
+ */
+export interface SpendPoolTerms {
+  readonly period: string;
+  readonly cap_micros: number;
+  readonly enforce_mode: SpendPoolEnforceMode;
+  readonly hard_stop_pct: number;
+  readonly alert_levels: readonly number[];
+  readonly known: PriceTotalScenario;
+}
+
+/**
+ * The pair with the assessment the kernel derives over it — the shape the
+ * status route publishes, every field required.
+ *
+ * ⚠ THE FOUR ASSESSED FIGURES ARE NULL OR FALSE WHERE NO POOL APPLIES, AND
+ * A FLOOR WHERE THE PAIR IS. A pool with no amount is no pool, so there is
+ * no share of anything to report; and where the known figure left a posting
+ * unpriced, the share can only rise and the headroom only fall as it
+ * resolves. A reader that renders the null as `0%` or the floor as a settled
+ * number has the defect this module exists to make unwritable.
+ */
+export interface SpendPoolAssessmentScenario {
+  readonly period: string;
+  readonly cap_micros: number;
+  readonly enforce_mode: SpendPoolEnforceMode;
+  readonly known_period_charges_micros: number;
+  readonly unresolved_posting_count: number;
+  readonly used_percentage: number | null;
+  readonly remaining_micros: number | null;
+  readonly highest_threshold_reached: number | null;
+  readonly blocking_occurred: boolean;
+}
+
+/**
+ * Compose one pool's status pair, the way the kernel composes it
+ * (`core.crossing.spend_pool_assessment`) over a known total that may be a
+ * floor: a whole percent of the pool the known figure has used, rounded
+ * down; headroom never below zero; the highest alert level the known figure
+ * is at or over; and whether the start gate's own compare holds — only under
+ * a blocking pool, at or over its stop line (`spend_pool_stop_line`: the
+ * pool times its stop percentage, rounded down). A pool with no amount is no
+ * pool — three nulls and false — as the kernel answers it.
+ *
+ * DERIVED, NEVER STATED. Unlike the ceiling assessment there is no status
+ * word for a fixture to name and be refused on: the assessment IS the
+ * arithmetic, so a fixture hands over the terms and takes what they fix. A
+ * fixture cannot say a pool is untouched while its own charges say it
+ * crossed, because it never gets to say either.
+ */
+export function spendPoolAssessment(terms: SpendPoolTerms): SpendPoolAssessmentScenario {
+  const known = terms.known.micros;
+  const basis = {
+    period: terms.period,
+    cap_micros: terms.cap_micros,
+    enforce_mode: terms.enforce_mode,
+    known_period_charges_micros: known,
+    unresolved_posting_count: terms.known.unpriced_event_count,
+  };
+  if (terms.cap_micros <= 0) {
+    return {
+      ...basis,
+      used_percentage: null,
+      remaining_micros: null,
+      highest_threshold_reached: null,
+      blocking_occurred: false,
+    };
+  }
+  const reached = terms.alert_levels.filter(
+    (level) => known >= Math.floor((terms.cap_micros * level) / 100),
+  );
+  const stopLine = Math.floor((terms.cap_micros * terms.hard_stop_pct) / 100);
+  return {
+    ...basis,
+    used_percentage: Math.floor((known * 100) / terms.cap_micros),
+    remaining_micros: Math.max(terms.cap_micros - known, 0),
+    highest_threshold_reached: reached.length === 0 ? null : Math.max(...reached),
+    blocking_occurred: terms.enforce_mode === "blocking" && known >= stopLine,
+  };
 }
 
 // ---------------------------------------------------------------------------

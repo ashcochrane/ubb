@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,860 of 2,287 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,865 of 2,292 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2176,6 +2176,26 @@ measurement_key:
     # `historical-migrations` stays at 260 and the exclusion at 427; the
     # contract is byte-identical, so nothing generated moved. No ledger entry
     # moved and the sweep's site count holds at 40.
+    #
+    # 2026-09-14, #468 (the customer's Billing tab shows the pool under its
+    # name, the floors as Wallet policy, and open reservations beside the
+    # balance): 1,860 of 2,287 -> 1,865 of 2,292 tracked files (`units` 44
+    # files / 122 occurrences, unmoved on the first take: the prose that held
+    # is "a unit of work", "one seat", "every seat", "an amount of nothing"
+    # and "the known figure"; the word's survivors in the touched files are
+    # the currency-input helpers' own "currency units", which is the MINOR
+    # UNITS sense and was there before). Five tracked files arrived, every
+    # one swept and every one in the console -- the pool's binding module
+    # and its test, the customer pool section's test, and the seat-default
+    # pool's form module and its test, split out of the billing forms file
+    # before anything in it was renamed -- and none left: the two pool
+    # components and the shared reading cell moved under `git mv`, which
+    # moves neither denominator. No backend file, no migration, so
+    # `historical-migrations` stays at 260 and the exclusion at 427; the
+    # contract is byte-identical, so nothing generated moved. Four ledger
+    # entries left -- the enforce-mode value list and its map, and the family
+    # word's console and repo seats -- and the sweep's site count fell
+    # 40 -> 38.
 
     - term: units
       retired_as: >-

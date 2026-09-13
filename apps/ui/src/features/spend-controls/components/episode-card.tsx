@@ -49,7 +49,7 @@ import {
 } from "../lib/episodes";
 import { controlFamilyLabel } from "../lib/families";
 import { ItemisedEventsTable } from "./itemised-events";
-import { Reading, Unknown } from "./reading";
+import { Reading, Unknown } from "@/components/shared/reading";
 
 function CustomerLink({ customerId }: { customerId: string }) {
   return (

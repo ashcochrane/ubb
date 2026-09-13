@@ -1,4 +1,7 @@
-// Billing profile (spend floors + top-up grant expiry) and auto top-up.
+// Wallet policy (the two balance floors + top-up grant expiry) and auto
+// top-up. The floors are policy, not limits (#150 §2.2; slice 6 §5): a start
+// is judged on the balance less open reservations against them, and they
+// took the family's words in #468 with their behaviour unchanged.
 //
 // Floor wire semantics (spec-billing-margin §2.7/2.8 + tenant config):
 // min_balance_micros is the ALLOWED OVERDRAFT MAGNITUDE (≥ 0 — the stop line
@@ -46,6 +49,11 @@ import {
 } from "../lib/schemas";
 
 const ADMIN_HINT = "Requires the Admin role.";
+
+/** The family's noun, and what its floors are tested against. */
+export const WALLET_POLICY_TITLE = "Wallet policy";
+export const WALLET_POLICY_DESCRIPTION =
+  "The floors a start is judged against: this customer's balance, less what is reserved for work already started, must stay above them.";
 
 export function BillingConfigSection({ customerId }: { customerId: string }) {
   return (
@@ -109,7 +117,8 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Billing profile</CardTitle>
+        <CardTitle>{WALLET_POLICY_TITLE}</CardTitle>
+        <p className="text-[12px] text-text-secondary">{WALLET_POLICY_DESCRIPTION}</p>
       </CardHeader>
       <CardContent>
         {postpaid ? (
@@ -118,8 +127,8 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
             <AlertDescription>
               Overdraft and wind-down floors aren't used under postpaid
               billing — usage drawdown skips the wallet entirely, so there's
-              no balance floor to configure here. The monthly budget below is
-              the live spend control instead.
+              no balance floor to configure here. The customer spend pool
+              above is the control that applies instead.
             </AlertDescription>
           </Alert>
         ) : query.isLoading ? (

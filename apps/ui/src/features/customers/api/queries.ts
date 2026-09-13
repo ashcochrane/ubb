@@ -18,7 +18,7 @@ import type { DateRange } from "@/lib/date-range";
 
 import { customersApi } from "./provider";
 import type {
-  BudgetConfigIn,
+  CustomerSpendPoolIn,
   ConfigureAutoTopUpRequest,
   CreateCustomerRequest,
   CreateGrantRequest,
@@ -140,17 +140,17 @@ export function useGrantsList(
   );
 }
 
-export function useCustomerBudget(customerId: string) {
+export function useCustomerSpendPool(customerId: string) {
   return useQuery({
-    queryKey: ["billing", "budget", customerId],
-    queryFn: () => customersApi.getCustomerBudget(customerId),
+    queryKey: ["billing", "customer-spend-pool", customerId],
+    queryFn: () => customersApi.getCustomerSpendPool(customerId),
   });
 }
 
-export function useBudgetStatus(customerId: string) {
+export function useCustomerSpendPoolStatus(customerId: string) {
   return useQuery({
-    queryKey: ["billing", "budget-status", customerId],
-    queryFn: () => customersApi.getBudgetStatus(customerId),
+    queryKey: ["billing", "customer-spend-pool-status", customerId],
+    queryFn: () => customersApi.getCustomerSpendPoolStatus(customerId),
   });
 }
 
@@ -301,9 +301,9 @@ export function useVoidGrant(customerId: string) {
   );
 }
 
-export function useSaveBudget(customerId: string) {
-  return useBillingMutation((body: BudgetConfigIn) =>
-    customersApi.putCustomerBudget(customerId, body),
+export function useSaveCustomerSpendPool(customerId: string) {
+  return useBillingMutation((body: CustomerSpendPoolIn) =>
+    customersApi.putCustomerSpendPool(customerId, body),
   );
 }
 

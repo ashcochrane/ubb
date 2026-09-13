@@ -6,13 +6,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCursorList } from "@/api/pagination";
 
 import { billingFeatureApi } from "./provider";
-import type { BudgetConfigIn, CreditRequest, DebitRequest, PostpaidConfigIn } from "./types";
+import type { CustomerSpendPoolIn, CreditRequest, DebitRequest, PostpaidConfigIn } from "./types";
 
 export const billingKeys = {
   all: ["billing"] as const,
   revenue: (range: { start_date: string; end_date: string }) =>
     ["billing", "revenue-analytics", range] as const,
-  tenantBudget: ["billing", "budget", "tenant"] as const,
+  seatDefaultPool: ["billing", "customer-spend-pool", "tenant"] as const,
   tenantUsageInvoices: (period: string | null) =>
     ["billing", "tenant-usage-invoices", { period }] as const,
   postpaidConfig: ["billing", "postpaid-config"] as const,
@@ -27,10 +27,10 @@ export function useRevenueAnalytics(range: { start_date: string; end_date: strin
   });
 }
 
-export function useTenantBudget() {
+export function useTenantCustomerSpendPool() {
   return useQuery({
-    queryKey: billingKeys.tenantBudget,
-    queryFn: () => billingFeatureApi.getTenantBudget(),
+    queryKey: billingKeys.seatDefaultPool,
+    queryFn: () => billingFeatureApi.getTenantCustomerSpendPool(),
   });
 }
 
@@ -48,10 +48,10 @@ export function usePostpaidConfig(enabled: boolean) {
   });
 }
 
-export function useSaveTenantBudget() {
+export function useSaveTenantCustomerSpendPool() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: BudgetConfigIn) => billingFeatureApi.putTenantBudget(body),
+    mutationFn: (body: CustomerSpendPoolIn) => billingFeatureApi.putTenantCustomerSpendPool(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: billingKeys.all });
     },

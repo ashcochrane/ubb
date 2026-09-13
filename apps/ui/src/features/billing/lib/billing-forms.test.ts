@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { PostpaidConfig } from "../api/types";
 import { toRevenueDailyRow } from "../api/types";
 import {
-  budgetFormToPayload,
-  budgetToFormValues,
   buildPostpaidPayload,
   currencyToMicros,
   microsToCurrencyInput,
@@ -22,36 +20,12 @@ describe("currency conversion", () => {
   });
 
   it("prefills at full precision so an untouched save round-trips identical micros", () => {
-    // The budget PUT is a full upsert: a lossy prefill would silently
+    // The pool PUT is a full upsert: a lossy prefill would silently
     // rewrite sub-cent micros on save (2_500_500 → "2.50" → 2_500_000).
     expect(microsToCurrencyInput(2_500_500)).toBe("2.5005");
     for (const micros of [2_500_500, 182_500_000, 999_999_999_999, 1, 10_000]) {
       expect(currencyToMicros(microsToCurrencyInput(micros))).toBe(micros);
     }
-  });
-});
-
-describe("budget form (full upsert)", () => {
-  it("round-trips the GET payload and always submits every field", () => {
-    const values = budgetToFormValues({
-      cap_micros: 2_500_000_000,
-      enforce_mode: "alert_only",
-      hard_stop_pct: 120,
-      alert_levels: [80, 50, 100],
-      fail_closed: false,
-    });
-    expect(values.cap).toBe("2500");
-    expect(values.alert_levels).toEqual([50, 80, 100]); // sorted for display
-
-    const payload = budgetFormToPayload(values);
-    // A full upsert: every field present, even ones the user never touched.
-    expect(payload).toEqual({
-      cap_micros: 2_500_000_000,
-      enforce_mode: "alert_only",
-      hard_stop_pct: 120,
-      alert_levels: [50, 80, 100],
-      fail_closed: false,
-    });
   });
 });
 

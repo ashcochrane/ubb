@@ -9,7 +9,7 @@
 // empty state instead of tiles — see #225, and mock-data.test.ts, which fails
 // if this file ever goes back to pinned dates.
 
-import type { BudgetConfig, PostpaidConfig, RevenueDailyRow, TenantUsageInvoice } from "./types";
+import type { CustomerSpendPool, PostpaidConfig, RevenueDailyRow, TenantUsageInvoice } from "./types";
 
 const DAY_MS = 86_400_000;
 
@@ -100,8 +100,14 @@ export function rowsInRange<T extends { day: string }>(
   );
 }
 
-export const INITIAL_BUDGET: BudgetConfig = {
-  cap_micros: 2_500_000_000, // $2,500 monthly cap
+/**
+ * The workspace default for seats: the pool every seat or individual with
+ * none of their own is measured against, and no business (slice 6 §4). The
+ * customers feature's mock restates it (`MOCK_SEAT_DEFAULT_POOL`) so the
+ * customer's Billing tab tells the same story; a change here owes one there.
+ */
+export const SEAT_DEFAULT_POOL: CustomerSpendPool = {
+  cap_micros: 2_500_000_000, // $2,500 a month
   enforce_mode: "alert_only",
   hard_stop_pct: 120,
   alert_levels: [50, 80, 100],

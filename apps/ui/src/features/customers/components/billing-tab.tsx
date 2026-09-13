@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useBalance } from "../api/queries";
 import { AdjustDialog, AffordabilityDialog } from "./adjust-dialogs";
 import { BillingConfigSection } from "./billing-config-section";
-import { BudgetSection } from "./budget-section";
+import { CustomerSpendPoolSection } from "./customer-spend-pool-section";
 import { GrantsSection } from "./grants-section";
 import { TopUpDialog, WithdrawDialog } from "./money-dialogs";
 import { TransactionsSection } from "./transactions-section";
@@ -67,16 +67,41 @@ export function BillingTab({
                   down the business's balance.
                 </p>
               )}
+              {/* Three labelled amounts (#461, #468; slice 6 §5): the balance,
+                  what is reserved against it by work sold at one agreed price
+                  that has started and not yet ended, and what that leaves
+                  available — the figure a start is judged against the floors
+                  on. "Available" is never the balance, and the balance moves
+                  only when a charge draws it down. */}
               <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
                 <div>
-                  <div className="text-label text-text-muted">Total spendable</div>
+                  <div className="text-label text-text-muted">Balance</div>
                   <div
                     className={cn(
                       "text-[26px] font-bold tracking-[-0.6px]",
                       balance.data.balance_micros < 0 && "text-danger-dark",
                     )}
+                    data-balance="balance"
                   >
                     {formatMicros(balance.data.balance_micros, balance.data.currency)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-label text-text-muted">Open reservations</div>
+                  <div className="text-[15px] font-semibold" data-balance="reserved">
+                    {formatMicros(balance.data.reserved_micros, balance.data.currency)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-label text-text-muted">Available</div>
+                  <div
+                    className={cn(
+                      "text-[15px] font-semibold",
+                      balance.data.available_micros < 0 && "text-danger-dark",
+                    )}
+                    data-balance="available"
+                  >
+                    {formatMicros(balance.data.available_micros, balance.data.currency)}
                   </div>
                 </div>
                 <div>
@@ -178,7 +203,7 @@ export function BillingTab({
       <TransactionsSection customerId={customerId} />
       <GrantsSection customerId={customerId} />
       <UsageInvoicesSection customerId={customerId} />
-      <BudgetSection customerId={customerId} />
+      <CustomerSpendPoolSection customerId={customerId} />
       <BillingConfigSection customerId={customerId} />
 
       <TopUpDialog

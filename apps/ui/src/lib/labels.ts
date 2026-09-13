@@ -40,6 +40,7 @@ import {
   PRICING_STATUS_VALUES,
   RATE_STRUCTURE_VALUES,
   REASON_CODE_KNOWN_VALUES,
+  SPEND_POOL_ENFORCE_MODE_VALUES,
   TASK_STATUS_VALUES,
   TENANT_PRODUCT_VALUES,
   TRIGGER_SOURCE_KNOWN_VALUES,
@@ -190,10 +191,15 @@ export const billingPeriodStatusLabel = legacyLabelMap({
   invoiced: "Invoiced",
 });
 
-export const budgetEnforceModeLabel = legacyLabelMap({
-  alert_only: "Alert only",
-  blocking: "Blocking",
-});
+// How a Customer Spend Pool is enforced — the registry's closed pair, held BY
+// REFERENCE (#468), on the same terms as the lists above. `domain-vocabulary/`
+// names this file as the console's consumer of `spend_pool_enforce_mode`; the
+// WORDS are bound where they render, in `@/lib/spend-pool`
+// (`labelMap(SPEND_POOL_ENFORCE_MODE_LABEL_KEYS)`), and the hand-written map
+// that stood here is deleted with its ledger entry. Nothing renders through
+// this file for the concept, and no map: the set is closed, so there is not
+// even an unknown branch for a humaniser to have stood behind.
+export const SPEND_POOL_ENFORCE_MODES = SPEND_POOL_ENFORCE_MODE_VALUES;
 
 // ---------------------------------------------------------------------------
 // Metering / events

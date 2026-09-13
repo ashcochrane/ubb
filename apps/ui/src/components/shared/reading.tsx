@@ -1,5 +1,7 @@
-// A total's reading as one rendered value, shared by the two reports this
-// feature hosts (#466, lifted out of the episode card in #467).
+// A total's reading as one rendered value (#466; lifted out of the episode
+// card in #467, and out of the spend-controls feature in #468, the day the
+// customer's Billing tab became the second feature to render one — the
+// console's imports only flow down, so a cell two features share sits here).
 //
 // `data-reading` is the reading's kind, so a test asserts WHICH reading a
 // cell holds — a figure, a floor, or unknown — rather than matching prose

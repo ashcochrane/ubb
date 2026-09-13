@@ -17,28 +17,33 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ceilingAssessment, completeTotal, incompletePriceTotal, incompleteTotal } from "@/lib/economic-scenarios";
+import {
+  ceilingAssessment,
+  completeTotal,
+  incompletePriceTotal,
+  incompleteTotal,
+  spendPoolAssessment,
+} from "@/lib/economic-scenarios";
 import { ABSENT_LABEL } from "@/lib/localisation";
+import {
+  POOL_AND_WALLET_DIFFER,
+  POOL_PAIR_TITLE,
+  POOL_POSTURE,
+  STARTS_REFUSED,
+} from "@/lib/spend-pool";
 import { UNKNOWN_TOTAL } from "@/lib/total-reading";
 
 import {
   CUSTOMER_ACME,
   CUSTOMER_LUNA,
   POOL_STATUS_ACME,
-  poolStatus,
   utilisationReport,
   utilisationRow,
 } from "../api/mock-data";
 import type { CeilingUtilisationRow, UtilisationAndHeadroom as Report } from "../api/types";
-import {
-  INDETERMINATE_HAS_NO_OTHER_HOME,
-  NO_COMPLETED_WORK,
-  POOL_AND_WALLET_DIFFER,
-  POOL_POSTURE,
-  STARTS_REFUSED,
-} from "../lib/utilisation";
+import { INDETERMINATE_HAS_NO_OTHER_HOME, NO_COMPLETED_WORK } from "../lib/utilisation";
 import { renderWithProviders } from "../test-utils";
-import { POOL_PAIR_TITLE, UtilisationAndHeadroom } from "./utilisation-and-headroom";
+import { UtilisationAndHeadroom } from "./utilisation-and-headroom";
 
 const provider = vi.hoisted(() => ({ getUtilisationAndHeadroom: vi.fn() }));
 
@@ -296,7 +301,7 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
   });
 
   it("renders the pair as figures where every posting is priced, and no refusal under an alerting pool", async () => {
-    const pool = poolStatus({
+    const pool = spendPoolAssessment({
       period: "2026-07",
       cap_micros: 500_000_000,
       enforce_mode: "alert_only",
@@ -319,7 +324,7 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
   // An alert-only pool past its line refuses nothing, and the page must say
   // WHY nothing was refused rather than leave a reader to infer a defect.
   it("says an alerting pool past its line refuses nothing", async () => {
-    const pool = poolStatus({
+    const pool = spendPoolAssessment({
       period: "2026-07",
       cap_micros: 500_000_000,
       enforce_mode: "alert_only",
@@ -338,7 +343,7 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
   });
 
   it("renders the headroom as a most where the pair is a floor and the line is not yet reached", async () => {
-    const pool = poolStatus({
+    const pool = spendPoolAssessment({
       period: "2026-07",
       cap_micros: 500_000_000,
       enforce_mode: "blocking",

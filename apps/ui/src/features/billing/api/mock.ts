@@ -5,7 +5,7 @@ import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 
 import {
-  INITIAL_BUDGET,
+  SEAT_DEFAULT_POOL,
   INITIAL_POSTPAID_CONFIG,
   INITIAL_WALLETS,
   TENANT_USAGE_INVOICES,
@@ -13,8 +13,8 @@ import {
   rowsInRange,
 } from "./mock-data";
 import type {
-  BudgetConfig,
-  BudgetConfigIn,
+  CustomerSpendPool,
+  CustomerSpendPoolIn,
   CreditRequest,
   DebitCreditResponse,
   DebitRequest,
@@ -24,7 +24,10 @@ import type {
   TenantUsageInvoicePage,
 } from "./types";
 
-let budget: BudgetConfig = { ...INITIAL_BUDGET, alert_levels: [...INITIAL_BUDGET.alert_levels] };
+let seatDefaultPool: CustomerSpendPool = {
+  ...SEAT_DEFAULT_POOL,
+  alert_levels: [...SEAT_DEFAULT_POOL.alert_levels],
+};
 let postpaidConfig: PostpaidConfig = { ...INITIAL_POSTPAID_CONFIG };
 const wallets: Record<string, number> = { ...INITIAL_WALLETS };
 // Replay-safety: idempotency_key → the original answer.
@@ -69,22 +72,22 @@ export async function getRevenueAnalytics(range: {
   };
 }
 
-export async function getTenantBudget(): Promise<BudgetConfig> {
+export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {
   await mockDelay();
-  return { ...budget, alert_levels: [...budget.alert_levels] };
+  return { ...seatDefaultPool, alert_levels: [...seatDefaultPool.alert_levels] };
 }
 
-export async function putTenantBudget(body: BudgetConfigIn): Promise<BudgetConfig> {
+export async function putTenantCustomerSpendPool(body: CustomerSpendPoolIn): Promise<CustomerSpendPool> {
   await mockDelay();
   // Full upsert with schema defaults — mirrors the server precisely.
-  budget = {
+  seatDefaultPool = {
     cap_micros: body.cap_micros,
     enforce_mode: body.enforce_mode ?? "alert_only",
     hard_stop_pct: body.hard_stop_pct ?? 100,
     alert_levels: body.alert_levels ? [...body.alert_levels] : [],
     fail_closed: body.fail_closed ?? false,
   };
-  return { ...budget, alert_levels: [...budget.alert_levels] };
+  return { ...seatDefaultPool, alert_levels: [...seatDefaultPool.alert_levels] };
 }
 
 export async function listTenantUsageInvoices(options: {

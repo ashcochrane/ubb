@@ -77,7 +77,11 @@ GATES_DIR = REPO_ROOT / "gates"
 ADAPTER_IMPORTERS = (
     "apps/ui/src/components/shared/nav-shell.tsx",
     "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
-    "apps/ui/src/features/customers/components/budget-section.tsx",
+    # The customer's pool section LEFT IN #468 as a conversion and a rename:
+    # its one word — how the pool is enforced — came from
+    # `budgetEnforceModeLabel`, deleted with its ledger entry; the section is
+    # now `customer-spend-pool-section.tsx` and binds `@/lib/spend-pool`, the
+    # same binding the Utilisation and headroom report renders.
     "apps/ui/src/features/customers/components/business-rollup.tsx",
     "apps/ui/src/features/customers/components/grants-section.tsx",
     "apps/ui/src/features/customers/components/overview-tab.tsx",
@@ -401,7 +405,8 @@ def test_every_adapter_export_is_classified(legacy):
         "CONTROL_FAMILIES", "COSTING_METHODS",
         "COSTING_STATUSES", "PRICING_METHODS", "PRICING_MODES",
         "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "REASON_CODES",
-        "ROLES", "TASK_STATUSES", "TRIGGER_SOURCES", "USAGE_EVENT_KINDS",
+        "ROLES", "SPEND_POOL_ENFORCE_MODES", "TASK_STATUSES", "TRIGGER_SOURCES",
+        "USAGE_EVENT_KINDS",
         "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "

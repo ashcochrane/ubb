@@ -67,12 +67,51 @@ describe("BillingTab", () => {
     // Wait for the balance card itself (the amount also appears in the
     // transactions table, so anchor on the card's own labels).
     expect(
-      await screen.findByText("Total spendable", undefined, SLOW),
+      await screen.findByText("Open reservations", undefined, SLOW),
     ).toBeInTheDocument();
     expect(screen.getByText("Promo credit")).toBeInTheDocument();
     expect(screen.getAllByText("$258.40").length).toBeGreaterThanOrEqual(1);
     // Promo and expiring credit are both $25.00 in the fixture.
     expect(screen.getAllByText("$25.00").length).toBeGreaterThanOrEqual(1);
+  });
+
+  // Three labelled amounts (#461, #468; slice 6 §5): the balance, what is
+  // reserved against it by work sold at one agreed price still in flight,
+  // and what that leaves available — each its own figure, so "available" is
+  // never read as the balance and a large balance is never read as the
+  // amount a start is judged on. The fixture: $258.40 with $8.00 reserved.
+  it("renders the balance, the open reservations and the available amount as three figures", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    await screen.findByText("Open reservations", undefined, SLOW);
+    expect(document.querySelector('[data-balance="balance"]')).toHaveTextContent("$258.40");
+    expect(document.querySelector('[data-balance="reserved"]')).toHaveTextContent("$8.00");
+    expect(document.querySelector('[data-balance="available"]')).toHaveTextContent("$250.40");
+    expect(screen.getByText("Available")).toBeInTheDocument();
+  });
+
+  // The pool is behind the billing product gate (slice 6 §4's ruling: a
+  // tenant that does not bill through UBB may not declare one). The page
+  // renders the gate's explanation and none of the pool's words.
+  it("shows no pool surface to a tenant without the billing product", async () => {
+    const original = readMockTenantConfig();
+    writeMockTenantConfig({ ...original, products: ["metering"] });
+    try {
+      renderWithProviders(
+        <CustomerDetailPage
+          customerId={CUS_ACME}
+          search={{ tab: "billing" }}
+          onSearchChange={vi.fn()}
+        />,
+      );
+      expect(
+        await screen.findByText("Billing isn't enabled", undefined, SLOW),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Customer spend pool")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Save pool" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Wallet policy")).not.toBeInTheDocument();
+    } finally {
+      writeMockTenantConfig(original);
+    }
   });
 
   it("asks the affordability question and branches on the verdict body (HTTP 200)", async () => {
@@ -124,7 +163,7 @@ describe("BillingTab", () => {
 
   it("does not show the billing-owner disclosure for an ordinary customer", async () => {
     renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
-    await screen.findByText("Total spendable", undefined, SLOW);
+    await screen.findByText("Open reservations", undefined, SLOW);
     expect(
       screen.queryByText(/this seat has no wallet of its own/i),
     ).not.toBeInTheDocument();
@@ -135,7 +174,7 @@ describe("BillingTab", () => {
       <BillingTab customerId={CUS_SEAT_ENG} externalId="acme-corp:eng" />,
     );
     expect(
-      await screen.findByText("Billing profile", undefined, SLOW),
+      await screen.findByText("Wallet policy", undefined, SLOW),
     ).toBeInTheDocument();
     // The read-only floors are the OWNER's real values (acme's fixture: $25
     // overdraft, $20 wind-down, 90-day top-up expiry) — never a fabricated
@@ -175,7 +214,7 @@ describe("BillingTab", () => {
     it("hides top-up, withdraw, auto-top-up, and credit grants under postpaid — with an explanation", async () => {
       await withBillingMode("postpaid", async () => {
         renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
-        await screen.findByText("Total spendable", undefined, SLOW);
+        await screen.findByText("Open reservations", undefined, SLOW);
 
         expect(screen.queryByRole("button", { name: "Top up" })).not.toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
@@ -207,9 +246,14 @@ describe("BillingTab", () => {
           screen.queryByRole("button", { name: "Save profile" }),
         ).not.toBeInTheDocument();
 
-        // Kept under postpaid: the monthly budget stays a live control.
-        expect(screen.getByText("Monthly budget")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Save budget" })).toBeInTheDocument();
+        // Kept under postpaid: the pool enforces in every billing mode (#459),
+        // so its declaration stays a live control and the floors' notice
+        // points at it.
+        expect(screen.getByText("Customer spend pool")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Save pool" })).toBeInTheDocument();
+        expect(
+          screen.getByText(/the customer spend pool above is the control that applies/i),
+        ).toBeInTheDocument();
       });
     });
 
