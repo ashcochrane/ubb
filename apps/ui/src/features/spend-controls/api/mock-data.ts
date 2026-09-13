@@ -28,6 +28,7 @@
 // none of it whatever month the console is opened in. The window is echoed
 // back as asked; the customer and family filters are honoured.
 
+import type { DatetimeWindow } from "@/lib/date-range";
 import {
   ceilingAssessment,
   completeTotal,
@@ -37,19 +38,24 @@ import {
   knownPrice,
   unknownCost,
   unknownPrice,
+  type CeilingAssessmentScenario,
   type CustomerPriceScenario,
+  type PriceTotalScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
-import type { ReasonCodeKnown } from "@/lib/vocabulary";
+import type { ReasonCodeKnown, SpendPoolEnforceMode } from "@/lib/vocabulary";
 
 import type {
   CeilingEpisodeRow,
+  CeilingUtilisationRow,
   CustomerSpendPoolEpisodeRow,
+  CustomerSpendPoolStatus,
   EpisodeRow,
   FamilyTotalsRow,
   ItemisedEventRow,
   ItemisedEvents,
   MarginCustomers,
+  UtilisationAndHeadroom,
   WalletPolicyEpisodeRow,
 } from "./types";
 
@@ -387,6 +393,226 @@ export const MOCK_EPISODES: readonly EpisodeRow[] = [
   POOL_ACME,
   CEILING_VIDEO_RENDER,
 ];
+
+// ---------------------------------------------------------------------------
+// Utilisation and headroom (#467; slice 6 §14) — every unit of the story
+// whose work is over, with its ceiling as it stood at completion. The two
+// killed renders above appear here too, as the reached rows they are; the
+// rest are the ordinary work around them, one row per status the registry
+// declares, so the report's four renderings are all reachable from the mock.
+
+/** acme-corp's video render that ran within its ceiling on 9 July. */
+export const UNIT_WITHIN = "5e2a7c91-3b6d-4f08-9a1c-7d4e2b8f0c35";
+/** The shot rendered inside it — contained work with its own, smaller ceiling. */
+export const UNIT_CONTAINED = "b3d8f1a6-9c27-4e50-8f14-6a2c5d9e3b71";
+/** A frame rendered inside it — the tasks feature's uncapped kind, so nothing was evaluated. */
+export const UNIT_UNCAPPED = "7c1e4b9d-2a63-4f85-b0d7-1e8f3c6a9d24";
+/** acme-corp's video render that completed with one supplier cost still unresolved. */
+export const UNIT_INDETERMINATE = "d4a7c2e8-6f19-4b3d-9e05-8c1a7f4b2e60";
+
+interface UnitSeed {
+  readonly id: string;
+  readonly customer: string;
+  readonly kind: string;
+  readonly completedAt: string;
+  readonly parent?: string;
+  readonly assessment: CeilingAssessmentScenario;
+}
+
+/**
+ * One completed unit as the report lists it. The status, its two figures
+ * and the pair they were concluded over are all taken from the composed
+ * assessment by name — the scenario spells the known total
+ * `total_provider_cost_micros`, the row spells it `final_…` — so a row cannot
+ * state a status its own figures would not conclude.
+ */
+export function utilisationRow(seed: UnitSeed): CeilingUtilisationRow {
+  return {
+    task_id: seed.id,
+    parent_task_id: seed.parent ?? null,
+    customer_id: seed.customer,
+    task_type: seed.kind,
+    completed_at: seed.completedAt,
+    task_cogs_ceiling_micros: seed.assessment.task_cogs_ceiling_micros,
+    final_provider_cost_micros: seed.assessment.total_provider_cost_micros,
+    final_unresolved_event_count: seed.assessment.unresolved_event_count,
+    ceiling_status: seed.assessment.ceiling_status,
+    ceiling_used_percentage: seed.assessment.ceiling_used_percentage,
+    ceiling_remaining_micros: seed.assessment.ceiling_remaining_micros,
+  };
+}
+
+/** The story's completed work, in the order the report answers it: by the instant each completed. */
+export const MOCK_UTILISATION_ROWS: readonly CeilingUtilisationRow[] = [
+  utilisationRow({
+    id: UNIT_KILLED_EARLIER,
+    customer: CUSTOMER_ACME,
+    kind: "video-render",
+    completedAt: "2026-07-03T16:40:12Z",
+    assessment: ceilingAssessment("ceiling_reached", {
+      ceiling_micros: VIDEO_RENDER_CEILING,
+      cost: completeTotal(3_000_000),
+    }),
+  }),
+  utilisationRow({
+    id: UNIT_UNCAPPED,
+    customer: CUSTOMER_ACME,
+    kind: "render-frame",
+    parent: UNIT_WITHIN,
+    completedAt: "2026-07-09T11:12:30Z",
+    assessment: ceilingAssessment("not_applicable", { cost: completeTotal(95_000) }),
+  }),
+  utilisationRow({
+    id: UNIT_CONTAINED,
+    customer: CUSTOMER_ACME,
+    kind: "render-shot",
+    parent: UNIT_WITHIN,
+    completedAt: "2026-07-09T11:18:02Z",
+    assessment: ceilingAssessment("within_ceiling", {
+      ceiling_micros: 800_000,
+      cost: completeTotal(310_000),
+    }),
+  }),
+  utilisationRow({
+    id: UNIT_WITHIN,
+    customer: CUSTOMER_ACME,
+    kind: "video-render",
+    completedAt: "2026-07-09T11:20:45Z",
+    assessment: ceilingAssessment("within_ceiling", {
+      ceiling_micros: VIDEO_RENDER_CEILING,
+      cost: completeTotal(2_100_000),
+    }),
+  }),
+  utilisationRow({
+    id: UNIT_INDETERMINATE,
+    customer: CUSTOMER_ACME,
+    kind: "video-render",
+    completedAt: "2026-07-18T13:47:00Z",
+    assessment: ceilingAssessment("indeterminate", {
+      ceiling_micros: VIDEO_RENDER_CEILING,
+      cost: incompleteTotal(1_240_000, 1),
+    }),
+  }),
+  utilisationRow({
+    id: UNIT_KILLED,
+    customer: CUSTOMER_ACME,
+    kind: "video-render",
+    completedAt: "2026-07-21T09:15:33Z",
+    assessment: ceilingAssessment("ceiling_reached", {
+      ceiling_micros: VIDEO_RENDER_CEILING,
+      cost: incompleteTotal(3_420_000, 1),
+    }),
+  }),
+];
+
+/**
+ * A whole-number mean rounded down over the values that are there — never
+ * overstating — or null where nothing contributes: the route's `_floor_mean`,
+ * and a null is never coerced to zero.
+ */
+function floorMean(values: readonly (number | null | undefined)[]): number | null {
+  const present = values.filter((value): value is number => value != null);
+  if (present.length === 0) return null;
+  return Math.floor(present.reduce((sum, value) => sum + value, 0) / present.length);
+}
+
+/** A whole-number share of the work listed, rounded down; null where nothing is listed — a share of nothing is not a share. */
+function sharePercentage(count: number, unitCount: number): number | null {
+  return unitCount === 0 ? null : Math.floor((count * 100) / unitCount);
+}
+
+/**
+ * The report over its rows — the route's own rule
+ * (`build_utilisation_and_headroom`), applied to the rows shown, so the
+ * mock's aggregate can never disagree with its rows. PER UNIT, THEN ACROSS
+ * EVERY UNIT (#150 §9.3): each row's percentage is its own ceiling's, so one
+ * chatty unit weighs exactly one. A row that carries no figure — nothing
+ * evaluated — contributes nothing to either average, and where no row
+ * contributes the average is null, never zero.
+ */
+export function utilisationReport(
+  rows: readonly CeilingUtilisationRow[],
+  window: DatetimeWindow,
+  pool: CustomerSpendPoolStatus | null,
+): UtilisationAndHeadroom {
+  const statuses = rows.map((row) => row.ceiling_status);
+  const count = (status: CeilingUtilisationRow["ceiling_status"]) =>
+    statuses.filter((candidate) => candidate === status).length;
+  const reached = count("ceiling_reached");
+  const indeterminate = count("indeterminate");
+  const notApplicable = count("not_applicable");
+  return {
+    ...window,
+    rows: [...rows],
+    unit_count: rows.length,
+    evaluated_count: rows.length - notApplicable,
+    not_applicable_count: notApplicable,
+    ceiling_reached_count: reached,
+    ceiling_reached_share_percentage: sharePercentage(reached, rows.length),
+    indeterminate_count: indeterminate,
+    indeterminate_share_percentage: sharePercentage(indeterminate, rows.length),
+    within_ceiling_count: count("within_ceiling"),
+    average_final_utilisation_percentage: floorMean(rows.map((row) => row.ceiling_used_percentage)),
+    average_unused_headroom_micros: floorMean(rows.map((row) => row.ceiling_remaining_micros)),
+    customer_spend_pool: pool,
+  };
+}
+
+interface PoolSeed {
+  readonly period: string;
+  readonly cap_micros: number;
+  readonly enforce_mode: SpendPoolEnforceMode;
+  readonly hard_stop_pct: number;
+  readonly alert_levels: readonly number[];
+  /** The durable basis: the resolved period charges, a floor wherever the count beside them is not zero. */
+  readonly known: PriceTotalScenario;
+}
+
+/**
+ * A pool's status pair, composed the way the kernel composes it
+ * (`core.crossing.spend_pool_assessment`) over a known total that may be a
+ * floor: whole percent rounded down, headroom never below zero, the highest
+ * alert level the known figure is at or over, and whether the start gate's
+ * own compare holds — only under a blocking pool, at or over its stop line
+ * (`spend_pool_stop_line`: the pool times its stop percentage, rounded
+ * down). Composed rather than typed beside the pair, for the reason
+ * `itemised` gives: a fixture must not say a pool is untouched while its
+ * own charges say it crossed.
+ */
+export function poolStatus(seed: PoolSeed): CustomerSpendPoolStatus {
+  const known = seed.known.micros;
+  const reached = seed.alert_levels.filter(
+    (level) => known >= Math.floor((seed.cap_micros * level) / 100),
+  );
+  const stopLine = Math.floor((seed.cap_micros * seed.hard_stop_pct) / 100);
+  return {
+    period: seed.period,
+    cap_micros: seed.cap_micros,
+    enforce_mode: seed.enforce_mode,
+    known_period_charges_micros: known,
+    unresolved_posting_count: seed.known.unpriced_event_count,
+    used_percentage: Math.floor((known * 100) / seed.cap_micros),
+    remaining_micros: Math.max(seed.cap_micros - known, 0),
+    highest_threshold_reached: reached.length === 0 ? null : Math.max(...reached),
+    blocking_occurred: seed.enforce_mode === "blocking" && known >= stopLine,
+  };
+}
+
+/**
+ * acme-corp's pool for July as the crossing above left it: the known period
+ * charges past the pool, with the one posting whose price UBB could not
+ * resolve making the pair a floor, and new starts refused. The customers
+ * feature's mock reads the same customer's pool as it stands on its Billing
+ * tab; this is the same pool seen from the report of what it stopped.
+ */
+export const POOL_STATUS_ACME: CustomerSpendPoolStatus = poolStatus({
+  period: "2026-07",
+  cap_micros: 500_000_000,
+  enforce_mode: "blocking",
+  hard_stop_pct: 100,
+  alert_levels: [50, 80, 100],
+  known: incompletePriceTotal(517_500_000, 1),
+});
 
 /**
  * The customer filter's choices — the two customers of the story with a

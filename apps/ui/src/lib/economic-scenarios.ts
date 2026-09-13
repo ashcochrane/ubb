@@ -38,7 +38,10 @@
 // the commit that adds it. It arrives as ONE composer over all four statuses
 // rather than one for the indeterminate case, because the indeterminate case
 // is only meaningful against the three it must render differently from — the
-// measurement trio's argument, one concept over. The trio itself is a seventh
+// measurement trio's argument, one concept over. Its second consumer arrived
+// in #467: the Utilisation and headroom report composes its per-unit rows
+// from the same composer, so the four statuses reach that report through the
+// same amounts that fix them on the run page. The trio itself is a seventh
 // the list does not name, which is the whole reason slice 2 owed a fixture at
 // all.
 //

@@ -7,7 +7,13 @@
 import { marginApi, rootApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 
-import type { MarginCustomers, StopsAndBreaches, StopsAndBreachesFilters } from "./types";
+import type {
+  MarginCustomers,
+  StopsAndBreaches,
+  StopsAndBreachesFilters,
+  UtilisationAndHeadroom,
+  UtilisationAndHeadroomFilters,
+} from "./types";
 
 /** What was spent past a stop, and why — typed rows per control that fired, in the window. */
 export async function getStopsAndBreaches(
@@ -15,6 +21,17 @@ export async function getStopsAndBreaches(
 ): Promise<StopsAndBreaches> {
   return unwrap(
     await rootApi.GET("/spend-controls/stops-and-breaches", {
+      params: { query: { ...filters } },
+    }),
+  );
+}
+
+/** How much of each ceiling was used, and how often it could not be evaluated — per completed unit, then in aggregate. */
+export async function getUtilisationAndHeadroom(
+  filters: UtilisationAndHeadroomFilters,
+): Promise<UtilisationAndHeadroom> {
+  return unwrap(
+    await rootApi.GET("/spend-controls/utilisation-and-headroom", {
       params: { query: { ...filters } },
     }),
   );

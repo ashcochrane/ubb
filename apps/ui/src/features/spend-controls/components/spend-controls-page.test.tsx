@@ -1,20 +1,22 @@
-// The Spend controls tab (#466; slice 6 §18 Q6): reports across every family,
-// configures nothing, shows the workspace's enforcement posture through the
-// map spec §18 keeps for slice 8, and hands its URL-backed filters to Stops
-// and breaches — proved by the sentence the family filter's empty answer
-// renders, and by the rows the customer filter leaves.
+// The Spend controls tab (#466, #467; slice 6 §18 Q6): reports across every
+// family, configures nothing, shows the workspace's enforcement posture
+// through the map spec §18 keeps for slice 8, hosts its two reports under
+// one URL-backed choice, and hands its URL-backed filters to each — proved
+// by the sentence the family filter's empty answer renders, and by the rows
+// the customer filter leaves.
 
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
 
-import { CUSTOMER_LUNA } from "../api/mock-data";
+import { CUSTOMER_ACME, CUSTOMER_LUNA } from "../api/mock-data";
 import { NO_EPISODES_FOR } from "../lib/families";
 import type { SpendControlsSearch } from "../lib/search";
 import { renderWithProviders } from "../test-utils";
 import { CONFIGURES_NOTHING, SpendControlsPage } from "./spend-controls-page";
 import { STOPS_AND_BREACHES_TITLE } from "./stops-and-breaches";
+import { POOL_PAIR_TITLE, UTILISATION_AND_HEADROOM_TITLE } from "./utilisation-and-headroom";
 
 function renderTab(search: SpendControlsSearch = {}) {
   const onSearchChange = vi.fn();
@@ -64,5 +66,55 @@ describe("SpendControlsPage", () => {
     const rows = screen.getAllByRole("article");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((article) => article.dataset.shape === "wallet_policy")).toBe(true);
+  });
+});
+
+describe("SpendControlsPage — the two reports (#467)", () => {
+  it("offers both reports and hosts Stops and breaches by default", async () => {
+    renderTab();
+
+    const tabs = (await screen.findAllByRole("tab")).map((tab) => tab.textContent);
+    expect(tabs).toEqual([STOPS_AND_BREACHES_TITLE, UTILISATION_AND_HEADROOM_TITLE]);
+    expect(await screen.findByRole("region", { name: STOPS_AND_BREACHES_TITLE })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: UTILISATION_AND_HEADROOM_TITLE })).not.toBeInTheDocument();
+  });
+
+  // The utilisation report is the Ceiling's alone, so the family filter has
+  // nothing to narrow there and is not offered; the customer filter and the
+  // window reach both reports.
+  it("hosts Utilisation and headroom when the URL names it, with the customer filter and no family filter", async () => {
+    renderTab({ report: "utilisation", customer_id: CUSTOMER_ACME });
+
+    expect(await screen.findByRole("region", { name: UTILISATION_AND_HEADROOM_TITLE })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: STOPS_AND_BREACHES_TITLE })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Customer")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Family")).not.toBeInTheDocument();
+    // The customer filter reached the read: the named customer's pool pair
+    // is on the page, and only that customer's work.
+    expect(await screen.findByRole("region", { name: POOL_PAIR_TITLE })).toBeInTheDocument();
+    await screen.findByRole("table");
+    const customers = [...document.querySelectorAll<HTMLElement>("tr[data-unit]")].map(
+      (row) => row.querySelector('[data-cell="customer"] a')?.getAttribute("href"),
+    );
+    expect(customers.length).toBeGreaterThan(0);
+    expect(customers.every((href) => href === `/customers/${CUSTOMER_ACME}`)).toBe(true);
+  });
+
+  it("switches to the second report through the URL", async () => {
+    const onSearchChange = renderTab();
+    await screen.findByRole("region", { name: STOPS_AND_BREACHES_TITLE });
+
+    fireEvent.click(screen.getByRole("tab", { name: UTILISATION_AND_HEADROOM_TITLE }));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ report: "utilisation" }),
+    );
+  });
+
+  it("switches back to the first report by leaving it out of the URL", async () => {
+    const onSearchChange = renderTab({ report: "utilisation" });
+    await screen.findByRole("region", { name: UTILISATION_AND_HEADROOM_TITLE });
+
+    fireEvent.click(screen.getByRole("tab", { name: STOPS_AND_BREACHES_TITLE }));
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ report: undefined }));
   });
 });

@@ -365,8 +365,9 @@ export const USAGE_EVENT_KINDS = USAGE_EVENT_KIND_VALUES;
 // status reached the wire in #452 and the console's first sight of it is the
 // migrated shape, as `USAGE_EVENT_KINDS` above. The WORDS have been in the
 // catalogue under `ceiling_status.*` since the concept was coined, and the
-// binding is `features/tasks/lib/ceiling.ts` — the run page is the surface
-// that renders them.
+// binding is `@/lib/ceiling` — written for the run page, moved down a layer
+// in #467 when Utilisation and headroom became the second surface that
+// renders them.
 export const CEILING_STATUSES = CEILING_STATUS_VALUES;
 
 // The mechanism that applied a stop — the registry's five KNOWN values of an

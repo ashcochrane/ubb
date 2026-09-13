@@ -1,5 +1,5 @@
-// A run's ceiling assessment, as this feature reads and words it (#454;
-// slice 6 §3, §18).
+// A unit of work's ceiling assessment, as the console reads and words it
+// (#454, moved here in #467; slice 6 §3, §14, §18).
 //
 // THE STATUS IS READ, NEVER DERIVED. The kernel concludes one of the
 // registry's four values on the row (`core/crossing.py`, the decision rule
@@ -10,15 +10,16 @@
 // composer's refusal of a fixture the rule contradicts
 // (`@/lib/economic-scenarios`), which composes rows and renders nothing.
 //
-// THE WORDS ARE BOUND HERE because the run page is the only surface that
-// renders them. `@/lib/task-status` sits a layer down for the reason it
-// states — two features render a lifecycle state — and the day the
-// Utilisation and headroom report (slice 6 §14, its own feature) renders a
-// ceiling status too, this binding moves to `@/lib/` the way
-// `@/lib/pricing-mode` did in #425. Identity is the registry's
-// (`@/lib/vocabulary`), expression the catalogue's (`@/locales`, through
-// `@/lib/localisation`), and the sentences beside them are the console's own
-// (ADR-0008 §4.5).
+// IT SITS IN `lib/` BECAUSE TWO FEATURES RENDER THE WORDS: the run page
+// (`features/tasks`, where this binding was written) and Utilisation and
+// headroom (`features/spend-controls`, slice 6 §14), whose rows carry the
+// same assessment as each unit stood at completion. The console's imports
+// only flow down, so the binding moved here the day the second feature
+// rendered it — the rule `@/lib/pricing-mode` states for the pricing method
+// (#425) and `@/lib/total-reading` followed in #466. Identity is the
+// registry's (`@/lib/vocabulary`), expression the catalogue's (`@/locales`,
+// through `@/lib/localisation`), and the sentences beside them are the
+// console's own (ADR-0008 §4.5).
 //
 // WHAT EACH STATUS IS NOT, because the renderings a naive reader would
 // collapse are the ones this slice exists to keep apart (Testing Decisions
@@ -43,7 +44,9 @@ export const ceilingStatusLabel = labelMap(CEILING_STATUS_LABEL_KEYS);
  * the shape both unit reads publish (`TaskOut`, `TaskDetailOut`). The pinned
  * ceiling and the two figures are optional-nullable on the generated type
  * because the schema does not list them as required; the status and the
- * unresolved count it does, so they are always sent.
+ * unresolved count it does, so they are always sent. The utilisation report's
+ * row spells the count `final_unresolved_event_count` and is read through an
+ * adapter in its own feature.
  */
 export interface CeilingAssessed {
   readonly task_cogs_ceiling_micros?: number | null;
@@ -87,27 +90,51 @@ export function readCeiling(row: CeilingAssessed): CeilingReading {
 }
 
 /**
+ * The share of the ceiling used, or nothing where nothing was evaluated or
+ * the wire sent no share (a share of a zero ceiling is not a share).
+ *
+ * Under `indeterminate` it is a floor — "at least" — because it is over the
+ * known total and unresolved costs can only raise it. Never "under".
+ */
+export function describeUtilisation(reading: CeilingReading): string | null {
+  if (reading.kind === "not_applicable" || reading.usedPercentage === null) return null;
+  const share = `${reading.usedPercentage}%`;
+  return reading.kind === "indeterminate" ? `${AT_LEAST} ${share}` : share;
+}
+
+/**
+ * The headroom left under the ceiling, or nothing where nothing was
+ * evaluated or the wire sent none.
+ *
+ * Under `indeterminate` it is a most — "at most" — for the mirror of the
+ * reason above: unresolved costs can only lower it. A zero past the line is
+ * a SETTLED zero (the kernel clamps it), and it renders as one.
+ */
+export function describeHeadroom(reading: CeilingReading, currency: string): string | null {
+  if (reading.kind === "not_applicable" || reading.remainingMicros === null) return null;
+  const amount = formatMicros(reading.remainingMicros, currency);
+  return reading.kind === "indeterminate" ? `${AT_MOST} ${amount}` : amount;
+}
+
+/**
  * The figures beside the status — the ceiling, the share of it used, the
  * headroom left — or nothing where nothing was evaluated.
  *
- * Under `indeterminate` the share is "at least" and the headroom "at most",
- * because both are over the known total and unresolved costs can only move
- * them one way. Each figure renders only where the wire sent one: a null is
- * left out, never written as zero.
+ * One line for a surface that has room for one (the run page); the report
+ * puts each figure in its own column through the two readers above. Each
+ * figure renders only where the wire sent one: a null is left out, never
+ * written as zero.
  */
 export function describeCeilingFigures(reading: CeilingReading, currency: string): string | null {
   if (reading.kind === "not_applicable") return null;
-  const floor = reading.kind === "indeterminate";
   const parts: string[] = [];
   if (reading.ceilingMicros !== null) {
     parts.push(`${formatMicros(reading.ceilingMicros, currency)} ceiling`);
   }
-  if (reading.usedPercentage !== null) {
-    parts.push(`${floor ? `${AT_LEAST} ` : ""}${reading.usedPercentage}% used`);
-  }
-  if (reading.remainingMicros !== null) {
-    parts.push(`${floor ? `${AT_MOST} ` : ""}${formatMicros(reading.remainingMicros, currency)} headroom`);
-  }
+  const used = describeUtilisation(reading);
+  if (used !== null) parts.push(`${used} used`);
+  const headroom = describeHeadroom(reading, currency);
+  if (headroom !== null) parts.push(`${headroom} headroom`);
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
