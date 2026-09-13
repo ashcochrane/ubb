@@ -1,6 +1,6 @@
 // Mock implementation — same exported signatures as ./api.ts, computed from
-// the fixture event set so the strip, chart, ledger, and report stay
-// coherent with each other. Mutations keep session state (module-level) so
+// the fixture event set so the strip, chart and ledger stay coherent with
+// each other. Mutations keep session state (module-level) so
 // replays behave like the real idempotent endpoints.
 
 import { ApiProblem } from "@/api/problem";
@@ -14,7 +14,6 @@ import {
   CUSTOMER_MARGIN_BY_ID,
   MARGIN_CUSTOMERS,
   MARGIN_PERIOD,
-  PAST_LIMIT_REPORTS,
   TASK_KILLED_ID,
   type MockEvent,
 } from "./mock-data";
@@ -25,10 +24,8 @@ import {
   type CloseTaskResult,
   type CustomerMargin,
   type MarginCustomers,
-  type PastLimitReport,
   type RefundBody,
   type RefundResult,
-  type ReportWindow,
   type TaskOutcome,
   type TimeseriesParams,
   type UsageAnalytics,
@@ -373,20 +370,6 @@ export async function getCustomerMargin(
   const margin = CUSTOMER_MARGIN_BY_ID[customerId];
   if (!margin) throw notFound("No customer with that id.");
   return margin;
-}
-
-export async function getPastLimitReport(
-  customerId: string,
-  window: ReportWindow,
-): Promise<PastLimitReport> {
-  await mockDelay();
-  const report = PAST_LIMIT_REPORTS[customerId];
-  if (!report) throw notFound("No customer with that id.");
-  return {
-    ...report,
-    since: window.since ?? null,
-    until: window.until ?? null,
-  };
 }
 
 // --- Mutations (session-coherent state) ------------------------------------

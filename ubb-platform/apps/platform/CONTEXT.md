@@ -433,8 +433,8 @@ beside it — enforcement is binary and this is information (#150 §9, §12).
 
 **Killed (task)**:
 **UBB stopped this unit on a spend signal, and that is all it ever means** — a ceiling crossing, the
-patrol, or a parent's kill cascade. Nothing tenant-declared may land here, which is what keeps the
-past-limit report, the stop context and the announcement bookkeeping honest and makes *how often do
+patrol, or a parent's kill cascade. Nothing tenant-declared may land here, which is what keeps
+Stops and breaches, the stop context and the announcement bookkeeping honest and makes *how often do
 we blow ceilings* answerable without filtering on a reason string first. Late events still land,
 bill, and count into the killed unit's totals (and its parent's, for a subtask); the flip is the
 durable record that the signal fired, not a wall. Killing a parent cascades the flip to its active

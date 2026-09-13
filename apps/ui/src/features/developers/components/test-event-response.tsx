@@ -9,22 +9,24 @@
 // recorded, and a key UBB reworded is one they cannot find again on any other
 // surface.
 
+import type { ReactNode } from "react";
 import { AlertTriangle, OctagonAlert } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
 import {
   notApplicableReasonLabel,
   pricingStatusLabel,
   settledPriceMicros,
 } from "@/lib/customer-price";
-import { formatDate, formatMicros } from "@/lib/format";
-import { stopReasonLabel, stopScopeLabel } from "@/lib/labels";
+import { formatDate, formatEventMicros, formatMicros } from "@/lib/format";
+import { stopScopeLabel } from "@/lib/labels";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
+import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type { RecordUsageResponse } from "../api/types";
-import { formatEventMicros } from "../lib/money";
 
 export interface TestEventEntry {
   /** Local entry id (event_id can repeat on idempotent replays). */
@@ -150,7 +152,15 @@ export function TestEventResponseCard({
             Stop verdict
           </p>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]">
-            <ResponseStat label="Reason" value={stopReasonLabel(response.stop_reason)} />
+            {/* The stop word through the console's one open-set rule (#466):
+                a registry value in the catalogue's words, anything else as
+                the token the verdict carried, marked unrecognised. */}
+            <ResponseStat
+              label="Reason"
+              value={
+                <OpenSetValue labelKeys={REASON_CODE_LABEL_KEYS} value={response.stop_reason} />
+              }
+            />
             <ResponseStat label="Scope" value={stopScopeLabel(response.stop_scope)} />
           </dl>
           <p className="text-[11px] leading-relaxed text-text-secondary">
@@ -168,7 +178,7 @@ export function TestEventResponseCard({
   );
 }
 
-function ResponseStat({ label, value }: { label: string; value: string }) {
+function ResponseStat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="text-[11px] text-text-muted">{label}</dt>

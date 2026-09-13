@@ -62,17 +62,6 @@ describe("EventsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the past-limit report when the past-limit filter is on", async () => {
-    renderPage({ customer_id: CUSTOMER_A_ID, past_limit: true });
-
-    expect(await screen.findByText("Past-limit report")).toBeInTheDocument();
-    // The customer-floor episode from the fixture report.
-    expect(
-      (await screen.findAllByText("Customer balance floor")).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByText("Totals per limit")).toBeInTheDocument();
-  });
-
   it("marks stopped events in the ledger", async () => {
     renderPage({ customer_id: CUSTOMER_A_ID, past_limit: true });
     const stopped = await screen.findAllByText("Stopped");

@@ -336,7 +336,8 @@ class Posting(BaseModel):
     #    "task_id": uuid|null, "subtask_id": uuid|null,
     #    "arrived_after": bool — false on the tipping event only}
     # Built by services/stop_context.py; queried by JSONB containment (the
-    # partial GIN index below carries the past-limit report + filters).
+    # partial GIN index below carries Stops and breaches' itemisation and
+    # the past-limit query filters).
     stop_context = models.JSONField(null=True, blank=True)
 
     #: WHAT MAY HAPPEN TO THE COST COLUMNS, AND WHO KEEPS IT (ADR-0007 §2, #318).
@@ -580,8 +581,9 @@ class Posting(BaseModel):
                          name="idx_usage_work_attribution"),
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
             models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
-            # Past-limit report + query filters (#41): JSONB containment on
-            # the stop-context array. Partial — a marked posting is the rare
+            # Stops and breaches' itemisation (#465) and the past-limit query
+            # filters (#41): JSONB containment on the stop-context array.
+            # Partial — a marked posting is the rare
             # exception, so the index stays tiny and unmarked inserts pay
             # nothing.
             GinIndex(fields=["stop_context"], name="idx_usage_stop_context",

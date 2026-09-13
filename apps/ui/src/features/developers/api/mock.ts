@@ -8,6 +8,7 @@ import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { knownCost, knownPrice, unknownCost } from "@/lib/economic-scenarios";
+import type { ReasonCodeKnown } from "@/lib/vocabulary";
 
 import {
   MOCK_API_KEYS,
@@ -32,6 +33,9 @@ import type {
   SandboxKeyMinted,
   SandboxStatus,
 } from "./types";
+
+/** The stop word the sandbox's stop verdict names: the registry's word for the hard floor, typed against the generated union. */
+const FLOOR_STOP: ReasonCodeKnown = "hard_floor";
 
 let keys: ApiKey[] = MOCK_API_KEYS.map((key) => ({ ...key }));
 let sandbox: SandboxStatus = {
@@ -293,12 +297,12 @@ export async function sendTestEvent(
       provenance: { sandbox_sequence: eventCounter },
     },
     stop: stopped,
-    stop_reason: stopped ? "customer_floor" : null,
+    stop_reason: stopped ? FLOOR_STOP : null,
     stop_scope: stopped ? "customer" : null,
     stop_context: stopped
       ? [
           {
-            limit: "customer_floor",
+            limit: FLOOR_STOP,
             stop_scope: "customer",
             tripped_at: new Date().toISOString(),
             episode_seq: 1,

@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-import { dateRangeSearchSchema, type DateRange } from "@/lib/date-range";
+import { dateRangeSearchSchema } from "@/lib/date-range";
 import { TIMESERIES_GROUP_BY } from "@/lib/labels";
 
 export const STOP_SCOPES = ["task", "subtask", "customer"] as const;
@@ -35,19 +35,3 @@ export function shortId(id: string): string {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id;
 }
 
-/**
- * Map the inclusive calendar-date analytics window onto the past-limit
- * report's datetime window: since = start-of-start-day, until = start of the
- * day AFTER the end date (the report uses `>= since, < until`).
- */
-export function pastLimitWindow(range: Required<DateRange>): {
-  since: string;
-  until: string;
-} {
-  const next = new Date(`${range.end_date}T00:00:00Z`);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return {
-    since: `${range.start_date}T00:00:00Z`,
-    until: `${next.toISOString().slice(0, 10)}T00:00:00Z`,
-  };
-}

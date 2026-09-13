@@ -20,16 +20,26 @@ import { cn } from "@/lib/utils";
 
 import { useUsageAnalytics, useUsageTimeseries } from "../api/queries";
 import { narrowTimeseriesPoints } from "../api/types";
-import { PastLimitSection } from "./past-limit-section";
 
 const UsageTimeseriesChart = React.lazy(() => import("./usage-timeseries-chart"));
 
 export function UsageTab({
   customerId,
   range,
+  stopsAndBreaches,
 }: {
   customerId: string;
   range: DateRange;
+  /**
+   * Stops and breaches, filtered to this customer — the spend-controls
+   * feature's component, injected by the route (#466). One rendering, two
+   * hosts: the Spend controls tab renders it tenant-wide and this tab renders
+   * the same component with the customer fixed. It is injected rather than
+   * imported because a feature may not import another's components; a tab
+   * missing its injection renders nothing in the section's place rather than
+   * a second copy of the report.
+   */
+  stopsAndBreaches?: React.ReactNode;
 }) {
   const currency = useTenantCurrency();
   const analytics = useUsageAnalytics(customerId, range);
@@ -121,7 +131,7 @@ export function UsageTab({
         )}
       </ChartCard>
 
-      <PastLimitSection customerId={customerId} />
+      {stopsAndBreaches}
     </div>
   );
 }

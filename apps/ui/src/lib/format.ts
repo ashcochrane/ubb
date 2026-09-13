@@ -149,6 +149,24 @@ export function formatCostMicros(micros: number, currency = "USD"): string {
 }
 
 /**
+ * Per-EVENT amount: a non-zero value under one currency unit keeps 4-decimal
+ * precision, and anything else takes the standard two.
+ *
+ * Individual events are routinely priced below a cent (rates accept six
+ * decimals), where 2-decimal rounding shows a genuinely non-zero charge as
+ * "$0.00" — so sub-unit amounts route through `formatCostMicros`'s small-value
+ * branch. In `lib/` since #466: the events ledger and receipt, the developer
+ * console's recorded response and Stops and breaches' itemised rows all
+ * render one event's money, and the first two had been keeping a copy each.
+ */
+export function formatEventMicros(micros: number, currency: string): string {
+  if (micros !== 0 && Math.abs(micros) < 1_000_000) {
+    return formatCostMicros(micros, currency);
+  }
+  return formatMicros(micros, currency);
+}
+
+/**
  * Format large numbers with abbreviations.
  * 84219 → "84.2k"   1247000 → "1.25M"
  */

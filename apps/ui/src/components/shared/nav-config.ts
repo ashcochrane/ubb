@@ -7,6 +7,7 @@ import {
   Wallet,
   Layers,
   Gift,
+  ShieldCheck,
   Webhook,
   Terminal,
   Settings,
@@ -57,6 +58,12 @@ export const navSections: NavSection[] = [
   {
     label: "PLATFORM",
     items: [
+      // UNGATED, on purpose (#466, spec §18 Q6): the four spend controls sit
+      // on a kernel concept and the reports read across all of them, so a
+      // family a tenant lacks answers no rows rather than a hidden tab. It
+      // configures nothing — each family is configured where its subject
+      // lives. `nav-config.test.ts` holds both.
+      { title: "Spend controls", url: "/spend-controls", icon: ShieldCheck },
       { title: "Webhooks", url: "/webhooks", icon: Webhook },
       { title: "Developers", url: "/developers", icon: Terminal },
       { title: "Settings", url: "/settings", icon: Settings },

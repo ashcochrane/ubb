@@ -29,12 +29,13 @@ Each shape has its own test below, driven through the real surface, because a
 shared fixture asserting "no exception" would say nothing about which of the
 three it had exercised.
 
-**The past-limit report is the known blind spot**, which is why shape 1 is
-tested there rather than anywhere cheaper. #153 §17.6 predicted this exact
-failure — *"the moment either goes nullable this is a `TypeError` inside a
-report endpoint"* — and a contract-derived surface enumeration has already
-missed the same endpoint once, because its response is untyped and no schema
-names its rows.
+**The report of what was spent past a stop is the known blind spot**, which
+is why shape 1 is tested there rather than anywhere cheaper. #153 §17.6
+predicted this exact failure — *"the moment either goes nullable this is a
+`TypeError` inside a report endpoint"* — and a contract-derived surface
+enumeration once missed the per-customer report that first carried it, because
+its response was untyped. That report retired in #466; its successor, Stops
+and breaches, itemises the same events as typed rows, and shape 1 rides on it.
 
 ⚠ **THE POSTINGS BELOW ARE WRITTEN THROUGH THE ORM** and the recording route is
 never called, for the reason the sibling module gives: the recording request's
@@ -87,34 +88,49 @@ def _posting(tenant, customer, key, *, status=PRICING_STATUS_KNOWN,
 
 @pytest.mark.django_db
 class TestShapeOneAReportThatWouldHaveFiveHundredEd:
-    """The past-limit report, over a posting UBB could not price.
+    """Stops and breaches, over a posting UBB could not price.
 
-    Two sites in one endpoint: the episode row's `sum(...)` generator and the
-    per-limit `+=` accumulation. Both read the raw value, both would have raised
-    `TypeError` on the first unpriced posting past a limit, and neither is
-    reachable from a schema — the response is untyped.
+    Two sites in one endpoint: the episode row's itemised total and the
+    per-family total. Both read the raw value in the report this succeeded,
+    both would have raised `TypeError` on the first unpriced posting past a
+    stop, and the successor builds both through one pair helper
+    (`_pair_total_of`) — held here through the real route.
     """
 
     def setup_method(self):
+        from apps.billing.gating.models import StopSignalState
+        from apps.billing.gating.services.stop_signal_service import STATE_STOPPED
+        from core.vocabulary import CONTROL_FAMILY_WALLET_POLICY
+
         self.tenant = Tenant.objects.create(name="T", products=["metering"])
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         # The customer-wide stop this tenant's lane names (slice 6 §7, §9):
         # the wallet floor's word — every mode but postpaid debits a wallet —
-        # and the report keys the episode on scope and that line's word.
+        # and the report keys the episode on scope and that line's word. The
+        # episode ROW is the signal ledger's, so one is planted there: the
+        # successor lists an episode the ledger holds, never one the
+        # stop-context entries alone imply.
         self.customer_stop = reasons.HARD_FLOOR
+        self.family = CONTROL_FAMILY_WALLET_POLICY
+        opened = timezone.now()
+        StopSignalState.objects.create(
+            tenant=self.tenant, owner=self.customer, control_family=self.family,
+            reason=self.customer_stop, state=STATE_STOPPED, episode_seq=1,
+            transitioned_at=opened)
         self.stop = [{"limit": self.customer_stop,
                       "stop_scope": "customer", "episode_seq": 1,
-                      "tripped_at": timezone.now().isoformat(),
+                      "tripped_at": opened.isoformat(),
                       "arrived_after": True}]
 
     def _report(self):
-        # Unwindowed, like the sibling pin module's helper: an ISO datetime's
-        # `+00:00` offset is a space once it is a query-string value, so the
-        # endpoint refuses it with a 422 that has nothing to do with pricing.
+        # Unwindowed, like the sibling pin module's helper: the route bounds
+        # an open window to the 366 days ending now, which holds the episode
+        # planted above.
         return Client().get(
-            f"/api/v1/customers/{self.customer.id}/past-limit-report",
+            "/api/v1/spend-controls/stops-and-breaches"
+            f"?customer_id={self.customer.id}",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def test_the_report_answers_rather_than_raising(self):
@@ -135,13 +151,14 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
                  status=PRICING_STATUS_UNKNOWN, stop_context=self.stop)
         body = self._report().json()
 
-        episode, = [e for e in body["episodes"]
-                    if e["limit"] == self.customer_stop]
-        assert episode["total_billed_cost_micros"] == KNOWN_PRICE_MICROS
-        assert episode[UNPRICED_EVENT_COUNT_KEY] == 1
-        assert episode["event_count"] == 2
+        episode, = [r for r in body["rows"]
+                    if r.get("reason_code") == self.customer_stop]
+        assert episode["itemised"]["billed_cost_micros"] == KNOWN_PRICE_MICROS
+        assert episode["itemised"][UNPRICED_EVENT_COUNT_KEY] == 1
+        assert episode["itemised"]["event_count"] == 2
 
-        totals = body["totals_per_limit"][self.customer_stop]
+        totals, = [t for t in body["totals"]
+                   if t["control_family"] == self.family]
         assert totals["billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert totals[UNPRICED_EVENT_COUNT_KEY] == 1
 
@@ -160,11 +177,11 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
         _posting(self.tenant, self.customer, "k2", status=status,
                  stop_context=self.stop)
         body = self._report().json()
-        episode, = [e for e in body["episodes"]
-                    if e["limit"] == self.customer_stop]
-        assert episode["total_billed_cost_micros"] == KNOWN_PRICE_MICROS
-        assert episode[UNPRICED_EVENT_COUNT_KEY] == 0
-        assert episode["event_count"] == 2
+        episode, = [r for r in body["rows"]
+                    if r.get("reason_code") == self.customer_stop]
+        assert episode["itemised"]["billed_cost_micros"] == KNOWN_PRICE_MICROS
+        assert episode["itemised"][UNPRICED_EVENT_COUNT_KEY] == 0
+        assert episode["itemised"]["event_count"] == 2
 
 
 @pytest.mark.django_db

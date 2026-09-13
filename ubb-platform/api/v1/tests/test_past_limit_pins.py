@@ -4,10 +4,14 @@ Spec pins (docs/plans/2026-07-15-one-rule-enforcement-spec.md §L):
   Pin 2 (completes) — events on a killed task carry stop-context per the §H
            schema; the tipping event carries arrived_after=false. Single and
            batch parity — the two surviving recording surfaces (#192).
-  Pin 9  — the past-limit report reconstructs an episode end-to-end in ONE
-           call: stop → itemized events → totals in both denominations →
-           resume. Soft-floor episodes appear as marker rows with no
-           itemized events.
+  Pin 9  — an episode is reconstructed end-to-end in ONE call: stop →
+           itemized events → totals in both denominations → resume. The
+           per-customer report that first answered it retired in #466; the
+           successor read is Stops and breaches
+           (`GET /api/v1/spend-controls/stops-and-breaches`), whose own
+           module drives the reconstruction, and the two cases kept here are
+           the ones that module does not: a tag written under an earlier
+           spelling, and a bare suspension.
   Pin 10 — negative_since set on the ≥0 → <0 transition, cleared on
            recovery; the ops surface counts aged negatives.
   Plus: the past_limit / stop_scope / episode_seq filters compose on the
@@ -20,7 +24,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.test import Client, TestCase
 
-from api.v1.past_limit import UNIT_CEILING_ROW_KEY
+from apps.billing.gating.services.stop_signal_service import STATE_STOPPED
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.usage.models import Posting
@@ -115,8 +119,8 @@ class PastLimitPinTestBase(TestCase):
 
     def _report(self, query=""):
         resp = self.http_client.get(
-            f"/api/v1/customers/{self.customer.id}/past-limit-report{query}",
-            **self._auth())
+            "/api/v1/spend-controls/stops-and-breaches"
+            f"?customer_id={self.customer.id}{query}", **self._auth())
         self.assertEqual(resp.status_code, 200)
         return resp.json()
 
@@ -214,106 +218,24 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin9PastLimitReportTest(PastLimitPinTestBase):
-    def test_report_reconstructs_episodes_end_to_end(self, _mock):
-        # -- the task-limit episode: tipping event + one late event. The
-        #    kill executes at the tipping record's commit (#112).
-        task = self._task(limit=10_000_000)
-        with self.captureOnCommitCallbacks(execute=True):
-            self._record(task_id=str(task.id), provider_cost_micros=11_000_000,
-                         bills=6_000_000)
-        self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     bills=3_000_000)
-
-        # -- the customer-floor episode: the fast lane opens it on the
-        #    crossing event (balance 20M - 9M - 17M = -6M < -5M), one more
-        #    event lands during the episode.
-        self._record(provider_cost_micros=1_000_000, bills=17_000_000)
-        self._record(provider_cost_micros=1_000_000, bills=1_000_000)
-
-        # -- the durable lane sees the same drawdowns (soft floor's ONLY
-        #    detector; the hard-floor crossing loses the dedup to the fast
-        #    lane), then the balance recovers through the credit endpoint.
-        self._drain_durable()
-        self._credit(30_000_000)
-
-        report = self._report()
-        self.assertEqual(report["customer_id"], str(self.customer.id))
-        by_family = {}
-        for ep in report["episodes"]:
-            by_family.setdefault(ep["family"], []).append(ep)
-        self.assertEqual(
-            {f: len(v) for f, v in by_family.items()},
-            {"task": 1, "floor_stop": 1, "soft_floor": 1})
-
-        # Task episode: the tripping limit, tripped-at, itemized events,
-        # totals in BOTH denominations; a kill never "resumes".
-        ep = by_family["task"][0]
-        task.refresh_from_db()
-        self.assertEqual(ep["limit"], reasons.TASK_COGS_CEILING)
-        self.assertEqual(ep["stop_scope"], "task")
-        self.assertEqual(ep["task_id"], str(task.id))
-        self.assertIsNone(ep["subtask_id"])
-        # The retired report keeps its own row key (#453 renamed the column,
-        # not this report — ticket 15 retires it); asserted as the symbol.
-        self.assertEqual(ep[UNIT_CEILING_ROW_KEY], 10_000_000)
-        self.assertEqual(ep["tripped_at"], task.completed_at.isoformat())
-        self.assertIsNone(ep["resumed_at"])
-        self.assertEqual([e["arrived_after"] for e in ep["events"]],
-                         [False, True])
-        self.assertEqual(ep["event_count"], 2)
-        self.assertEqual(ep["total_provider_cost_micros"], 13_000_000)
-        self.assertEqual(ep["total_billed_cost_micros"], 9_000_000)
-
-        # Customer-wide-stop episode: stop → itemized events → resume, keyed
-        # on the signal ledger's episode id.
-        ep = by_family["floor_stop"][0]
-        self.assertEqual(ep["limit"], reasons.HARD_FLOOR)
-        self.assertEqual(ep["stop_scope"], "customer")
-        self.assertEqual(ep["episode_seq"], 1)
-        self.assertIsNotNone(ep["tripped_at"])
-        self.assertIsNotNone(ep["resumed_at"])
-        self.assertEqual([e["arrived_after"] for e in ep["events"]],
-                         [False, True])
-        self.assertEqual(ep["total_billed_cost_micros"], 18_000_000)
-        self.assertEqual(ep["total_provider_cost_micros"], 2_000_000)
-
-        # Soft-floor episode: a crossed/cleared MARKER row — no itemized
-        # events, nothing is "past limit" under a soft floor.
-        ep = by_family["soft_floor"][0]
-        self.assertEqual(ep["events"], [])
-        self.assertEqual(ep["event_count"], 0)
-        self.assertIsNone(ep["limit"])
-        self.assertEqual(ep["episode_seq"], 1)
-        self.assertIsNotNone(ep["tripped_at"])
-        self.assertIsNotNone(ep["resumed_at"])
-
-        # Totals per limit, both denominations — "exactly what was spent
-        # past the limit and why", one call. Each total also states what it
-        # could not include (#328, #351); here every event's cost and price are
-        # resolved, so both totals are whole and say so.
-        self.assertEqual(report["totals_per_limit"], {
-            reasons.TASK_COGS_CEILING: {"billed_cost_micros": 9_000_000,
-                           "unpriced_event_count": 0,
-                           "provider_cost_micros": 13_000_000,
-                           "unresolved_event_count": 0,
-                           "event_count": 2},
-            reasons.HARD_FLOOR: {"billed_cost_micros": 18_000_000,
-                                   "unpriced_event_count": 0,
-                                   "provider_cost_micros": 2_000_000,
-                                   "unresolved_event_count": 0,
-                                   "event_count": 2},
-        })
+class Pin9StopsAndBreachesTest(PastLimitPinTestBase):
+    """Pin 9 on its successor read (#466). The end-to-end reconstruction — a
+    ceiling row explained by its unit and the events after the stop, a
+    hard-floor row itemising its events, a soft-floor marker row, the window,
+    the totals over exactly the rows shown — is driven in
+    `test_spend_control_reports.py`. The two cases below are the ones that
+    module does not drive, carried over from the retired report's pins."""
 
     def test_a_historical_customer_scope_tag_still_lands_in_itemization(
             self, _mock):
         """`stop_context` is immutable and written once (billing-surface-
         correctness, task 1 round 1), and it was NOT migrated when the stop
         vocabulary was (#457, slice 6 §8): rows tagged under an earlier
-        spelling carry it forever. The bucketing keys on SCOPE, never on an
-        allow-list of current words, so such a row is itemized under its
-        episode whatever spelling it carries."""
+        spelling carry it forever. The bucketing keys on SCOPE and the
+        episode's own id, never on an allow-list of current words, so such a
+        row is itemized under its episode whatever spelling it carries."""
         from apps.billing.gating.models import StopSignalState
+        from core.vocabulary import CONTROL_FAMILY_WALLET_POLICY
 
         # Trip a real floor crossing so a genuine episode exists on the
         # signal ledger (the episode ROW is sourced from there, not from any
@@ -321,9 +243,9 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
         self._record(provider_cost_micros=1_000_000, bills=26_000_000)
         state = StopSignalState.objects.get(owner=self.customer,
                                             reason=reasons.HARD_FLOOR)
-        self.assertEqual(state.state, "stopped")
+        self.assertEqual(state.state, STATE_STOPPED)
 
-        # A hand-crafted event carrying the RETIRED tag value at the SAME
+        # A hand-crafted event carrying a RETIRED tag value at the SAME
         # episode — exactly what a pre-relabel write left behind, immutably.
         legacy = Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
@@ -337,13 +259,15 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
             }])
 
         report = self._report()
-        by_family = {ep["family"]: ep for ep in report["episodes"]}
-        ep = by_family["floor_stop"]
-        event_ids = {e["event_id"] for e in ep["events"]}
+        floor_rows = [r for r in report["rows"]
+                      if r["control_family"] == CONTROL_FAMILY_WALLET_POLICY
+                      and not r["soft_floor"]]
+        self.assertEqual(len(floor_rows), 1)
+        event_ids = {e["event_id"] for e in floor_rows[0]["itemised"]["events"]}
         self.assertIn(str(legacy.id), event_ids)
-        self.assertIn(reasons.HARD_FLOOR, report["totals_per_limit"])
-        totals = report["totals_per_limit"][reasons.HARD_FLOOR]
-        self.assertGreaterEqual(totals["billed_cost_micros"], 4_000_000)
+        totals = {t["control_family"]: t for t in report["totals"]}
+        self.assertGreaterEqual(
+            totals[CONTROL_FAMILY_WALLET_POLICY]["billed_cost_micros"], 4_000_000)
 
     def test_suspended_tag_stays_excluded_from_itemization(self, _mock):
         """`suspended` is a taggable customer-scope value but never an
@@ -354,35 +278,18 @@ class Pin9PastLimitReportTest(PastLimitPinTestBase):
             idempotency_key="susp-1",
             provider_cost_micros=1_000_000, billed_cost_micros=1_000_000,
             stop_context=[{
-                "limit": "suspended", "stop_scope": "customer",
+                "limit": reasons.SUSPENDED, "stop_scope": "customer",
                 "tripped_at": None, "episode_seq": None,
                 "task_id": None, "subtask_id": None, "arrived_after": True,
             }])
 
         report = self._report()
-        self.assertEqual(report["episodes"], [])
-        self.assertEqual(report["totals_per_limit"], {})
+        self.assertEqual(report["rows"], [])
+        self.assertEqual(report["totals"], [])
         all_event_ids = {
-            e["event_id"] for ep in report["episodes"] for e in ep["events"]}
+            e["event_id"] for row in report["rows"]
+            for e in row["itemised"]["events"]}
         self.assertNotIn(str(suspended_event.id), all_event_ids)
-
-    def test_window_filters_episodes(self, _mock):
-        task = self._task(limit=1_000_000)
-        self._record(task_id=str(task.id), provider_cost_micros=2_000_000,
-                     bills=1_000_000)
-        for query in ("?since=2099-01-01T00:00:00Z",
-                      "?until=2000-01-01T00:00:00Z"):
-            report = self._report(query)
-            self.assertEqual(report["episodes"], [])
-            # Window coherence: totals cover exactly the episodes shown —
-            # an empty window can never report orphaned totals.
-            self.assertEqual(report["totals_per_limit"], {})
-
-    def test_unknown_customer_404s(self, _mock):
-        resp = self.http_client.get(
-            f"/api/v1/customers/{uuid.uuid4()}/past-limit-report",
-            **self._auth())
-        self.assertEqual(resp.status_code, 404)
 
 
 @patch("apps.platform.events.tasks.process_single_event")

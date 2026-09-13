@@ -121,8 +121,8 @@ class StopSignalState(BaseModel):
     routes through a winning transition on this row (see
     services/stop_signal_service.py); only the winner emits the outbox event,
     so a crossing observed by several lanes signals exactly once per episode.
-    ``episode_seq`` is the stop-episode id the stop-context tagging and the
-    past-limit report (#41) key on; it only ever increments (a stop opens
+    ``episode_seq`` is the stop-episode id the stop-context tagging and
+    Stops and breaches (#465) key on; it only ever increments (a stop opens
     episode N, the paired clear closes it), so episode ids never collide
     across one line's history.
 

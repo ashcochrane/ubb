@@ -1,7 +1,8 @@
-// The event ledger: analytics strip + daily chart for the window, a
-// per-customer ledger with past-limit/tag filters, and (when the past-limit
-// filter is on) the past-limit report. All state is URL-backed — the route
-// passes `search` down and receives changes back.
+// The event ledger: analytics strip + daily chart for the window, and a
+// per-customer ledger with past-limit/tag filters. All state is URL-backed —
+// the route passes `search` down and receives changes back. The report of
+// what was spent past a stop no longer renders here (#466): it is Stops and
+// breaches, on the Spend controls tab and on the customer's Usage tab.
 
 import { Users } from "lucide-react";
 
@@ -17,12 +18,11 @@ import { TIMESERIES_GROUP_BY } from "@/lib/labels";
 
 import { useUsageLedger } from "../api/queries";
 import type { UsageListFilters } from "../api/types";
-import { pastLimitWindow, type EventsSearch } from "../lib/search";
+import type { EventsSearch } from "../lib/search";
 import { AnalyticsStrip } from "./analytics-strip";
 import { CustomerScopeCard } from "./customer-scope-card";
 import { EventFilters } from "./event-filters";
 import { LedgerTable } from "./ledger-table";
-import { PastLimitPanel } from "./past-limit-panel";
 import { TimeseriesCard } from "./timeseries-card";
 
 export interface EventsPageProps {
@@ -127,13 +127,6 @@ export function EventsPage({
         />
       ) : (
         <>
-          {search.past_limit === true && (
-            <PastLimitPanel
-              customerId={customerId}
-              window={pastLimitWindow(window)}
-            />
-          )}
-
           <div className="rounded-md border border-border bg-bg-surface">
             <div className="border-b border-border px-3 py-2.5">
               <EventFilters search={search} onChange={update} />

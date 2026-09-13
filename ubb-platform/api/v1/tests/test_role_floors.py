@@ -230,7 +230,13 @@ _WRITE_ROUTES = {
 # reads at the Read floor, the carve's default for a GET — each answers a
 # report and changes nothing. Not carved and not exempt (they are tenant
 # routes, ungated by product but floored like every other read). 152 + 2 = 154.
-_EXPECTED_FLOORED = 154
+#
+# ⚠ AND THEN THE REPORT THEY REPLACED LEFT (slice 6, #466): the per-customer
+# read at `GET /customers/{customer_id}/past-limit-report`, a Read-floored
+# GET, retired with its module and its untyped schema once the console's
+# Stops and breaches had its second host. One floored route out; not carved
+# and not exempt, so the exempt count is untouched. 154 - 1 = 153.
+_EXPECTED_FLOORED = 153
 _EXPECTED_EXEMPT = 10
 
 

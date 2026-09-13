@@ -72,14 +72,16 @@ export function useSavePostpaidConfig() {
  * Manual credit/debit moves real money: over-invalidate every affected
  * namespace (convention: over-invalidate rather than miss). Beyond the
  * billing surfaces themselves, money movement shifts customer economics
- * (['margin']), can clear or trip a floor stop so stop-state surfaces like
- * the past-limit report refresh (['metering']), and appends to the audit
- * ledger (['audit']). Mirrors customers/api/queries.ts useBillingMutation.
+ * (['margin']), can clear or trip a floor stop so the stop-state surfaces
+ * refresh — the usage lists (['metering']) and Stops and breaches
+ * (['spend-controls']) — and appends to the audit ledger (['audit']). Mirrors
+ * customers/api/queries.ts useBillingMutation.
  */
 function invalidateMoneyMovement(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: billingKeys.all });
   void queryClient.invalidateQueries({ queryKey: ["margin"] });
   void queryClient.invalidateQueries({ queryKey: ["metering"] });
+  void queryClient.invalidateQueries({ queryKey: ["spend-controls"] });
   void queryClient.invalidateQueries({ queryKey: ["audit"] });
 }
 

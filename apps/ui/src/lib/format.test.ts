@@ -7,7 +7,13 @@ import {
   formatPrice,
   formatCostMicros,
 } from "./format";
-import { formatDollars, formatSignedDollars, formatFileSize, formatRoundedDollars } from "./format";
+import {
+  formatDollars,
+  formatEventMicros,
+  formatFileSize,
+  formatRoundedDollars,
+  formatSignedDollars,
+} from "./format";
 
 // The date-drift regressions only reproduce west of UTC: a bare "2026-07-01"
 // parses as UTC midnight, which naive local-zone formatting shows as Jun 30
@@ -101,6 +107,29 @@ describe("formatCostMicros", () => {
   it("formats negative values with a leading sign", () => {
     expect(formatCostMicros(-5_000_000)).toBe("-$5");
     expect(formatCostMicros(-500_000)).toBe("-$0.5000");
+  });
+});
+
+describe("formatEventMicros", () => {
+  it("keeps 4-decimal precision for sub-unit amounts", () => {
+    // 4,900 micros = $0.0049 — 2-decimal rounding would show $0.00.
+    expect(formatEventMicros(4_900, "usd")).toBe("$0.0049");
+    // 35,000 micros = $0.035 — 2-decimal rounding would show $0.04 (14% off).
+    expect(formatEventMicros(35_000, "usd")).toBe("$0.0350");
+    expect(formatEventMicros(187_500, "usd")).toBe("$0.1875");
+  });
+
+  it("uses standard 2-decimal formatting at and above one unit", () => {
+    expect(formatEventMicros(1_000_000, "usd")).toBe("$1.00");
+    expect(formatEventMicros(2_350_000, "usd")).toBe("$2.35");
+  });
+
+  it("renders zero as a plain 2-decimal zero", () => {
+    expect(formatEventMicros(0, "usd")).toBe("$0.00");
+  });
+
+  it("respects the tenant currency", () => {
+    expect(formatEventMicros(4_900, "eur")).toBe("€0.0049");
   });
 });
 

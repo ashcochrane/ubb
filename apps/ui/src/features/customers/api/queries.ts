@@ -111,13 +111,6 @@ export function useUsageTimeseries(customerId: string, range: DateRange) {
   });
 }
 
-export function usePastLimitReport(customerId: string) {
-  return useQuery({
-    queryKey: ["metering", "past-limit-report", customerId],
-    queryFn: () => customersApi.getPastLimitReport(customerId),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Billing reads
 
@@ -253,9 +246,11 @@ function useBillingMutation<TArgs, TResult>(
       void queryClient.invalidateQueries({ queryKey: ["billing"] });
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
       // Money movement can open/clear stop episodes — refresh the metering
-      // surfaces (past-limit report, usage lists) too. Over-invalidate
-      // rather than miss, mirroring the events feature's refund.
+      // surfaces (the usage lists) and Stops and breaches, which the Usage
+      // tab hosts, too. Over-invalidate rather than miss, mirroring the
+      // events feature's refund.
       void queryClient.invalidateQueries({ queryKey: ["metering"] });
+      void queryClient.invalidateQueries({ queryKey: ["spend-controls"] });
     },
   });
 }

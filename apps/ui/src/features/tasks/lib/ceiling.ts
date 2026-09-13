@@ -32,9 +32,8 @@
 import { formatMicros } from "@/lib/format";
 import { labelMap } from "@/lib/localisation";
 import { AT_LEAST, AT_MOST } from "@/lib/supplier-cost";
+import { eventsHave } from "@/lib/total-reading";
 import { CEILING_STATUS_LABEL_KEYS, type CeilingStatus } from "@/lib/vocabulary";
-
-import { eventsHave } from "./runs";
 
 /** The catalogue's words for what the assessment concluded; the raw token for an unfamiliar one. */
 export const ceilingStatusLabel = labelMap(CEILING_STATUS_LABEL_KEYS);

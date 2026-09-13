@@ -151,7 +151,8 @@ describe("TestEventConsole", () => {
     // The mock wallet starts at $12.50 — a $20 event tips it past the floor.
     await sendEventPricedAt(20_000_000);
     expect(await screen.findByText("Stop verdict")).toBeInTheDocument();
-    expect(screen.getByText("Customer balance floor")).toBeInTheDocument();
+    // The registry's word for the hard floor, in the catalogue's wording (#466).
+    expect(screen.getByText("Hard floor reached")).toBeInTheDocument();
     // Scope label ("Customer") joins the form's own "Customer" label.
     expect(screen.getAllByText("Customer").length).toBeGreaterThanOrEqual(2);
     // The teaching line: HTTP was still 200 by design.

@@ -28,6 +28,7 @@ import type {
   CostingMethod,
   PricingMethod,
   PricingReceiptSubjectType,
+  ReasonCodeKnown,
 } from "@/lib/vocabulary";
 
 // The receipt's per-quantity component. Its shape lives one module over
@@ -38,9 +39,19 @@ import { receiptComponent, type ReceiptComponent } from "../lib/receipt";
 import type {
   CustomerMargin,
   MarginCustomerRow,
-  PastLimitReport,
   UsageEventDetail,
 } from "./types";
+
+/**
+ * The stop word the killed task's late event carries: the registry's word for
+ * a ceiling stop, typed against the generated union so a registry rename
+ * fails `tsc` here. A tag written today carries this spelling; a tag written
+ * before the registry's words would carry the spelling of its day, which the
+ * console renders as the token it is (`stop-context-timeline.tsx`).
+ */
+const CEILING_STOP: ReasonCodeKnown = "task_cogs_ceiling";
+/** The stop word the floor-stop episode's events carry: the registry's word for the hard floor. */
+const FLOOR_STOP: ReasonCodeKnown = "hard_floor";
 
 export const CUSTOMER_A_ID = "7f3c2a10-9b4e-4c9a-8f21-6d5e8a301b42";
 export const CUSTOMER_B_ID = "2b9d4e77-1c3f-4a52-9e08-b4a6c1f92d15";
@@ -567,7 +578,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       markup_micro_percent: 28_000_000,
       stop_context: [
         {
-          limit: "customer_floor",
+          limit: FLOOR_STOP,
           stop_scope: "customer",
           tripped_at: "2026-07-18T14:02:11Z",
           episode_seq: 3,
@@ -591,7 +602,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       markup_micro_percent: 28_000_000,
       stop_context: [
         {
-          limit: "customer_floor",
+          limit: FLOOR_STOP,
           stop_scope: "customer",
           tripped_at: "2026-07-18T14:02:11Z",
           episode_seq: 3,
@@ -617,7 +628,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       markup_micro_percent: 28_000_000,
       stop_context: [
         {
-          limit: "customer_floor",
+          limit: FLOOR_STOP,
           stop_scope: "customer",
           tripped_at: "2026-07-18T14:02:11Z",
           episode_seq: 3,
@@ -644,7 +655,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       markup_micro_percent: 28_000_000,
       stop_context: [
         {
-          limit: "task_limit",
+          limit: CEILING_STOP,
           stop_scope: "task",
           tripped_at: "2026-07-21T09:15:33Z",
           episode_seq: null,
@@ -1092,121 +1103,4 @@ export const CUSTOMER_MARGIN_BY_ID: Record<string, CustomerMargin> = {
   [CUSTOMER_A_ID]: marginDetail(MARGIN_CUSTOMERS[0]!, CUSTOMER_A_EXTERNAL, 64),
   [CUSTOMER_B_ID]: marginDetail(MARGIN_CUSTOMERS[1]!, CUSTOMER_B_EXTERNAL, 5),
   [CUSTOMER_C_ID]: marginDetail(MARGIN_CUSTOMERS[2]!, CUSTOMER_C_EXTERNAL, 0),
-};
-
-// ---------------------------------------------------------------------------
-// Past-limit report fixtures.
-
-export const PAST_LIMIT_REPORTS: Record<string, PastLimitReport> = {
-  [CUSTOMER_A_ID]: {
-    customer_id: CUSTOMER_A_ID,
-    billing_owner_id: CUSTOMER_A_ID,
-    since: null,
-    until: null,
-    episodes: [
-      {
-        family: "soft_floor",
-        limit: null,
-        stop_scope: "customer",
-        episode_seq: null,
-        task_id: null,
-        subtask_id: null,
-        provider_cost_limit_micros: null,
-        tripped_at: "2026-07-17T22:10:04Z",
-        resumed_at: "2026-07-18T03:00:41Z",
-        events: [],
-        event_count: 0,
-        total_billed_cost_micros: 0,
-        total_provider_cost_micros: 0,
-      },
-      {
-        family: "floor_stop",
-        limit: "customer_floor",
-        stop_scope: "customer",
-        episode_seq: 3,
-        task_id: null,
-        subtask_id: null,
-        provider_cost_limit_micros: null,
-        tripped_at: "2026-07-18T14:02:11Z",
-        resumed_at: "2026-07-18T16:40:22Z",
-        events: [
-          {
-            event_id: EVENT_TIPPING_ID,
-            effective_at: "2026-07-18T14:02:11Z",
-            billed_cost_micros: 96_000,
-            provider_cost_micros: 75_000,
-            arrived_after: false,
-          },
-          {
-            event_id: EVENT_LATE_ID,
-            effective_at: "2026-07-18T14:03:27Z",
-            billed_cost_micros: 54_000,
-            provider_cost_micros: 42_000,
-            arrived_after: true,
-          },
-          {
-            event_id: EVENT_LATE_2_ID,
-            effective_at: "2026-07-18T14:05:44Z",
-            billed_cost_micros: 31_000,
-            provider_cost_micros: 24_000,
-            arrived_after: true,
-          },
-        ],
-        event_count: 3,
-        total_billed_cost_micros: 181_000,
-        total_provider_cost_micros: 141_000,
-      },
-      {
-        family: "task",
-        limit: "task_limit",
-        stop_scope: "task",
-        episode_seq: null,
-        task_id: TASK_KILLED_ID,
-        subtask_id: null,
-        provider_cost_limit_micros: 5_000_000,
-        tripped_at: "2026-07-21T09:15:33Z",
-        resumed_at: null,
-        events: [
-          {
-            event_id: EVENT_TASK_KILL_ID,
-            effective_at: "2026-07-21T09:16:05Z",
-            billed_cost_micros: 64_000,
-            provider_cost_micros: 50_000,
-            arrived_after: true,
-          },
-        ],
-        event_count: 1,
-        total_billed_cost_micros: 64_000,
-        total_provider_cost_micros: 50_000,
-      },
-    ],
-    totals_per_limit: {
-      customer_floor: {
-        billed_cost_micros: 181_000,
-        provider_cost_micros: 141_000,
-        event_count: 3,
-      },
-      task_limit: {
-        billed_cost_micros: 64_000,
-        provider_cost_micros: 50_000,
-        event_count: 1,
-      },
-    },
-  },
-  [CUSTOMER_B_ID]: {
-    customer_id: CUSTOMER_B_ID,
-    billing_owner_id: CUSTOMER_B_ID,
-    since: null,
-    until: null,
-    episodes: [],
-    totals_per_limit: {},
-  },
-  [CUSTOMER_C_ID]: {
-    customer_id: CUSTOMER_C_ID,
-    billing_owner_id: CUSTOMER_C_ID,
-    since: null,
-    until: null,
-    episodes: [],
-    totals_per_limit: {},
-  },
 };

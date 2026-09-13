@@ -12,7 +12,6 @@ import {
   marginApi,
   meteringApi,
   platformApi,
-  rootApi,
   subscriptionsApi,
 } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
@@ -20,7 +19,6 @@ import { unwrap } from "@/api/problem";
 import type { DateRange } from "@/lib/date-range";
 
 import {
-  narrowPastLimitReport,
   type BalanceResponse,
   type BudgetConfigIn,
   type BudgetConfigOut,
@@ -40,7 +38,6 @@ import {
   type MarginListOut,
   type MarginTrendOut,
   type AffordabilityResponse,
-  type PastLimitReport,
   type RevenueModeOut,
   type RevenueProfileIn,
   type RevenueProfileOut,
@@ -148,7 +145,7 @@ export async function createCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Metering — usage analytics + past-limit report
+// Metering — usage analytics
 
 export async function getUsageAnalytics(
   customerId: string,
@@ -170,15 +167,6 @@ export async function getUsageTimeseries(
       params: { query: { ...range, customer_id: customerId, granularity: "day" } },
     }),
   );
-}
-
-export async function getPastLimitReport(customerId: string): Promise<PastLimitReport> {
-  const raw = unwrap(
-    await rootApi.GET("/customers/{customer_id}/past-limit-report", {
-      params: { path: { customer_id: customerId } },
-    }),
-  );
-  return narrowPastLimitReport(raw);
 }
 
 // ---------------------------------------------------------------------------

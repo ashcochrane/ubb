@@ -22,10 +22,12 @@ from api.v1.tests.test_problem_contract import assert_problem
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
-# Every path-channel operation of the issue's 22 (19 of them; the other
-# three are the two query ops below and the referrers body op), with a
-# minimally valid body where the operation takes one — the 404 lane
-# requires the malformed identifier to be the *only* boundary failure.
+# Every path-channel operation of the issue's 22 (18 of them here; the
+# other three are the two query ops below and the referrers body op, and the
+# nineteenth — the per-customer report of what was spent past a stop —
+# retired in #466 with its route), with a minimally valid body where the
+# operation takes one — the 404 lane requires the malformed identifier to be
+# the *only* boundary failure.
 PATH_OPERATIONS = [
     ("PUT", "/api/v1/billing/customers/0/auto-top-up",
      {"is_enabled": False, "trigger_threshold_micros": 0,
@@ -39,7 +41,6 @@ PATH_OPERATIONS = [
     ("GET", "/api/v1/billing/customers/0/transactions", None),
     ("POST", "/api/v1/billing/customers/0/withdraw",
      {"amount_micros": 10_000, "idempotency_key": "k"}),
-    ("GET", "/api/v1/customers/0/past-limit-report", None),
     ("GET", "/api/v1/metering/customers/0/usage", None),
     ("DELETE", "/api/v1/referrals/referrals/0", None),
     ("GET", "/api/v1/referrals/referrals/0/ledger", None),

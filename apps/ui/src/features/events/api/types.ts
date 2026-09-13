@@ -10,15 +10,12 @@ import type {
   MeteringSchemas,
   RootSchemas,
 } from "@/api/types";
-import { asCostingStatus } from "@/lib/supplier-cost";
-import type { CostingStatus } from "@/lib/vocabulary";
 
 export type UsageEventRow = MeteringSchemas["UsageEventOut"];
 export type UsageEventDetail = MeteringSchemas["UsageEventDetailOut"];
 export type UsagePage = MeteringSchemas["PaginatedUsageResponse"];
 export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
 export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
-export type PastLimitReport = MeteringSchemas["PastLimitReportResponse"];
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
 // (#409), so this comes from the root schemas rather than from metering's.
 export type CloseTaskResult = RootSchemas["CloseTaskResponse"];
@@ -67,12 +64,6 @@ export interface TimeseriesParams {
   end_date: string;
   customer_id?: string;
   group_by?: string;
-}
-
-/** ISO datetime window for the past-limit report (naive = UTC). */
-export interface ReportWindow {
-  since?: string;
-  until?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,121 +229,7 @@ export function asTimeseriesPoints(
   return points;
 }
 
-// ---------------------------------------------------------------------------
-// Past-limit report episodes + totals — spec-untyped objects.
-// [backend-verified shape — see discovery spec §6]
-
-export interface PastLimitEpisodeEvent {
-  event_id: string;
-  effective_at: string;
-  billed_cost_micros: number;
-  /**
-   * ⚠ NULLABLE ON THE WIRE, and this report is untyped in the contract, so
-   * nothing but this line says so. `api/v1/past_limit.py` emits the posting's
-   * own column, nullable since #317, and carries `costing_status` beside it
-   * because a `null` there means two different things. Coalescing to zero would
-   * tell a tenant their supplier charged nothing for the very events that
-   * tripped their spend stop (#330).
-   */
-  provider_cost_micros: number | null;
-  /** `null` where the row carried no status — see `asCostingStatus`. */
-  costing_status: CostingStatus | null;
-  arrived_after: boolean;
-}
-
-export interface PastLimitEpisode {
-  /** floor_stop | soft_floor | task (open vocabulary). */
-  family: string;
-  /** Null for soft-floor marker rows. */
-  limit: string | null;
-  stop_scope: string;
-  episode_seq: number | null;
-  task_id: string | null;
-  subtask_id: string | null;
-  provider_cost_limit_micros: number | null;
-  tripped_at: string | null;
-  /** Null while stopped; unit kills are terminal (always null there). */
-  resumed_at: string | null;
-  events: PastLimitEpisodeEvent[];
-  event_count: number;
-  total_billed_cost_micros: number;
-  total_provider_cost_micros: number;
-  /**
-   * How many of this episode's events carry a cost UBB never learned (#328).
-   *
-   * On the wire, and invisible to any scan of the contract's typed schemas —
-   * this whole report is `additionalProperties: true`, which is how the surface
-   * came to be read as one with no completeness at all (#330).
-   */
-  unresolved_event_count: number;
-}
-
-export function asPastLimitEpisodes(
-  episodes: Array<Record<string, unknown>>,
-): PastLimitEpisode[] {
-  const out: PastLimitEpisode[] = [];
-  for (const row of episodes) {
-    const family = str(row.family);
-    if (!family) continue;
-    const events: PastLimitEpisodeEvent[] = [];
-    if (Array.isArray(row.events)) {
-      for (const item of row.events) {
-        const record = rec(item);
-        if (!record) continue;
-        const eventId = str(record.event_id);
-        if (!eventId) continue;
-        events.push({
-          event_id: eventId,
-          effective_at: str(record.effective_at) ?? "",
-          billed_cost_micros: num(record.billed_cost_micros),
-          provider_cost_micros: numOrNull(record.provider_cost_micros),
-          costing_status: asCostingStatus(record.costing_status),
-          arrived_after: record.arrived_after === true,
-        });
-      }
-    }
-    out.push({
-      family,
-      limit: str(row.limit),
-      stop_scope: str(row.stop_scope) ?? "",
-      episode_seq: numOrNull(row.episode_seq),
-      task_id: str(row.task_id),
-      subtask_id: str(row.subtask_id),
-      provider_cost_limit_micros: numOrNull(row.provider_cost_limit_micros),
-      tripped_at: str(row.tripped_at),
-      resumed_at: str(row.resumed_at),
-      events,
-      event_count: num(row.event_count),
-      total_billed_cost_micros: num(row.total_billed_cost_micros),
-      total_provider_cost_micros: num(row.total_provider_cost_micros),
-      unresolved_event_count: num(row.unresolved_event_count),
-    });
-  }
-  return out;
-}
-
-export interface LimitTotalsRow {
-  limit: string;
-  billed_cost_micros: number;
-  provider_cost_micros: number;
-  unresolved_event_count: number;
-  event_count: number;
-}
-
-export function asTotalsPerLimit(
-  totals: Record<string, unknown>,
-): LimitTotalsRow[] {
-  const rows: LimitTotalsRow[] = [];
-  for (const [limit, value] of Object.entries(totals)) {
-    const record = rec(value);
-    if (!record) continue;
-    rows.push({
-      limit,
-      billed_cost_micros: num(record.billed_cost_micros),
-      provider_cost_micros: num(record.provider_cost_micros),
-      unresolved_event_count: num(record.unresolved_event_count),
-      event_count: num(record.event_count),
-    });
-  }
-  return rows;
-}
+// ⚠ THE PAST-LIMIT REPORT'S NARROWING WAS HERE AND IS DELETED (#466). The
+// per-customer report it read is retired with its route and its untyped
+// schema; Stops and breaches (`features/spend-controls`) answers the same
+// question as typed rows, so there is nothing left on this surface to narrow.

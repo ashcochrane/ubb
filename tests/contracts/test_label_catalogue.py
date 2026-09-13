@@ -81,7 +81,10 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/customers/components/business-rollup.tsx",
     "apps/ui/src/features/customers/components/grants-section.tsx",
     "apps/ui/src/features/customers/components/overview-tab.tsx",
-    "apps/ui/src/features/customers/components/past-limit-section.tsx",
+    # `past-limit-section.tsx` LEFT IN #466 by ceasing to exist: the customer's
+    # Usage tab now hosts Stops and breaches (the spend-controls feature's
+    # component, injected by the route), which binds its family words in its
+    # own `lib/` and renders a stop word through the open-set helper.
     "apps/ui/src/features/customers/components/revenue-panels.tsx",
     "apps/ui/src/features/customers/components/subscription-tab.tsx",
     "apps/ui/src/features/customers/components/transactions-section.tsx",
@@ -90,8 +93,15 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/developers/components/test-event-response.tsx",
     "apps/ui/src/features/events/components/event-filters.tsx",
     "apps/ui/src/features/events/components/events-page.tsx",
-    "apps/ui/src/features/events/components/ledger-table.tsx",
-    "apps/ui/src/features/events/components/past-limit-panel.tsx",
+    # `ledger-table.tsx` LEFT IN #466 as a conversion: its one word — why an
+    # event was stopped — came from `stopReasonLabel`, deleted with its ledger
+    # entry; the stopped indicator now renders the word through the open-set
+    # helper over `REASON_CODE_LABEL_KEYS`. `past-limit-panel.tsx` LEFT by
+    # ceasing to exist: the events page no longer hosts a report of its own.
+    # `stop-context-timeline.tsx` and the developers' `test-event-response.tsx`
+    # stay: each took its stop word off the same map and now renders it the
+    # same way, but each still takes the stop SCOPE from `stopScopeLabel`,
+    # which is slice 8's.
     "apps/ui/src/features/events/components/stop-context-timeline.tsx",
     # `task-section.tsx` LEFT IN #424: its one word — a unit of work's
     # lifecycle state — came from `taskStatusLabel`, deleted with its ledger
@@ -128,6 +138,15 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/settings/components/products-card.tsx",
     "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
     "apps/ui/src/features/settings/lib/settings.ts",
+    # ⚠ ADDED IN #466 AS THE EXPLICIT, REVIEWED ACT THIS RATCHET'S MESSAGE
+    # ALLOWS FOR. The Spend controls tab shows the workspace's enforcement
+    # posture, and spec §18 rules that its label "is slice 8's ledger entry
+    # and is rendered through its existing map without renaming it"
+    # (`g6-map-enforcement-mode-label`): the registry declares no concept for
+    # that value set, so there is no label key to bind and no catalogue word
+    # to render instead. One importer joins for one word somebody already
+    # owes; the entry, the map and this line all leave with slice 8.
+    "apps/ui/src/features/spend-controls/components/spend-controls-page.tsx",
     "apps/ui/src/features/webhooks/api/mock.ts",
     # `deliveries-table.tsx`, `webhook-config-table.tsx` and `event-groups.ts`
     # LEFT IN #464: their one word — an event's name — came from
@@ -378,10 +397,11 @@ def test_every_adapter_export_is_classified(legacy):
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
         HUMANISER, "roleRank",
-        "AFFORDABILITY_REASONS", "BILLING_MODES", "CEILING_STATUSES", "COSTING_METHODS",
+        "AFFORDABILITY_REASONS", "BILLING_MODES", "CEILING_STATUSES",
+        "CONTROL_FAMILIES", "COSTING_METHODS",
         "COSTING_STATUSES", "PRICING_METHODS", "PRICING_MODES",
-        "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "ROLES",
-        "TASK_STATUSES", "TRIGGER_SOURCES", "USAGE_EVENT_KINDS",
+        "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "REASON_CODES",
+        "ROLES", "TASK_STATUSES", "TRIGGER_SOURCES", "USAGE_EVENT_KINDS",
         "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "

@@ -2,7 +2,7 @@
 //
 // `@/lib/supplier-cost` decides what may be SAID; this decides what is drawn,
 // and it sits here rather than in a feature because four features draw it: the
-// event ledger, both past-limit reports and every chart tooltip. The rule was
+// event ledger, Stops and breaches and every chart tooltip. The rule was
 // written once and then copied into five charts in its first draft, which is
 // exactly the drift the module exists to prevent one layer down.
 

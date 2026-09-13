@@ -25,7 +25,9 @@ than a coalesce:
   ceiling on a margin.
 
 A fourth, in the composition layer, would have **raised** rather than answered
-wrong: the past-limit report added ``None`` into a Python sum.
+wrong: the per-customer report of what was spent past a stop added ``None``
+into a Python sum. That report retired in #466; Stops and breaches itemises
+the same events and is held to the same pair below.
 
 ⚠ **`not_applicable` IS NOT COUNTED, HERE OR ANYWHERE.** It carries a `NULL`
 amount and is skipped by SQL exactly as an unresolved cost is, so every
@@ -572,14 +574,17 @@ class TestAnUnresolvedPreviousCostIsNotASpike:
 
 
 @pytest.mark.django_db
-class TestThePastLimitReportAddsUpWhatItHas:
+class TestStopsAndBreachesAddsUpWhatItHas:
     """The composition layer's two Python sums, which would have RAISED.
 
     ``sum(e["provider_cost_micros"] for e in events)`` over a `None` is a
     `TypeError`, not a wrong number — a 500 on a report about money already
     spent, and reachable the moment a tenant's cost rates fall behind their
     traffic. The fix is the same pair as everywhere else: what the report can
-    add up, and how many events it could not.
+    add up, and how many events it could not. The per-customer report that
+    first carried the two sums retired in #466; its successor itemises the
+    same events under the ceiling's row (`_itemised`) and totals them per
+    family (`_totals`), and both are held here.
     """
 
     def setup_method(self):
@@ -590,10 +595,13 @@ class TestThePastLimitReportAddsUpWhatItHas:
             self.unit = TaskService.create_task(
                 tenant=self.tenant, customer=self.customer,
                 balance_snapshot_micros=0, task_cogs_ceiling_micros=1)
-        self.unit.status = "killed"
-        self.unit.completed_at = timezone.now()
-        self.unit.metadata = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING}
-        self.unit.save()
+            # Stopped on its own ceiling through the one writer of `killed`,
+            # so the row carries the control the flip stamps (family, id,
+            # mechanism) and the ceiling's read contract selects it.
+            TaskService.kill_task(
+                self.unit.id, reason=reasons.TASK_COGS_CEILING,
+                tenant_id=self.tenant.id, customer_id=self.customer.id)
+        self.unit.refresh_from_db()
         ctx = [{"limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",
                 "task_id": str(self.unit.id),
                 "tripped_at": self.unit.completed_at.isoformat()}]
@@ -603,20 +611,32 @@ class TestThePastLimitReportAddsUpWhatItHas:
                  status=COSTING_STATUS_UNRESOLVED, stop_context=ctx)
 
     def _report(self):
-        from api.v1.past_limit import build_past_limit_report
+        from api.v1.spend_control_endpoints import build_stops_and_breaches
 
-        return build_past_limit_report(self.tenant, self.customer)
+        until = timezone.now() + timedelta(seconds=1)
+        return build_stops_and_breaches(
+            self.tenant, since=until - timedelta(days=1), until=until,
+            customer=self.customer)
 
     def test_the_episode_total_is_the_part_the_report_could_add_up(self):
-        episode = self._report()["episodes"][0]
-        assert episode["event_count"] == 2
-        assert episode["total_provider_cost_micros"] == KNOWN_COST_MICROS
-        assert episode[UNRESOLVED_EVENT_COUNT_KEY] == 1
+        row, = self._report().rows
+        assert row.itemised.event_count == 2
+        assert row.itemised.provider_cost_micros == KNOWN_COST_MICROS
+        assert getattr(row.itemised, UNRESOLVED_EVENT_COUNT_KEY) == 1
 
-    def test_the_per_limit_totals_carry_the_same_count(self):
-        totals = self._report()["totals_per_limit"][reasons.TASK_COGS_CEILING]
-        assert totals["provider_cost_micros"] == KNOWN_COST_MICROS
-        assert totals[UNRESOLVED_EVENT_COUNT_KEY] == 1
+    def test_the_per_family_totals_carry_the_same_count(self):
+        totals, = self._report().totals
+        assert totals.control_family == row_family_of(self.unit)
+        assert totals.provider_cost_micros == KNOWN_COST_MICROS
+        assert getattr(totals, UNRESOLVED_EVENT_COUNT_KEY) == 1
+
+
+def row_family_of(unit):
+    """The family the kill stamped on the unit — read off the row, by the
+    kernel's own key, so the assertion names no family literal."""
+    from apps.platform.work.models import STOP_CONTROL_FAMILY_KEY
+
+    return unit.metadata[STOP_CONTROL_FAMILY_KEY]
 
 
 @pytest.mark.django_db

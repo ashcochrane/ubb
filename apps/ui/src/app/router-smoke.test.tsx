@@ -13,6 +13,7 @@ import {
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { CUS_LUNA } from "@/features/customers/api/mock-data";
 import { RUN_ACTIVE_ID } from "@/features/tasks/api/mock-data";
 
 import { routeTree } from "./routeTree.gen";
@@ -25,6 +26,10 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/tasks/runs", expectText: /every run of a kind of work/i },
   { path: `/tasks/runs/${RUN_ACTIVE_ID}`, expectText: /what it cost and earned/i },
   { path: "/customers", expectText: /customers/i },
+  // The customer's Usage tab hosts Stops and breaches, injected by the route
+  // from the spend-controls feature (#466) — the wiring only this suite sees.
+  { path: `/customers/${CUS_LUNA}?tab=usage`, expectText: /stops and breaches/i },
+  { path: "/spend-controls", expectText: /stops and breaches/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },
   { path: "/plans", expectText: /plans/i },
@@ -66,4 +71,23 @@ describe("router smoke", () => {
       );
     });
   }
+
+  // The host-side half of "one rendering, two hosts" (#466): the customer
+  // ROUTE is what fixes the customer filter on the injected Stops and
+  // breaches, and only this suite mounts the real route. luna-labs' story has
+  // wallet-floor episodes and nothing else; acme-corp's has the ceiling and
+  // pool rows. Drop `customer_id` from the route's filters and acme's rows
+  // land on luna's Usage tab, and this goes red.
+  it("fixes the customer filter on the Usage tab's Stops and breaches through the route", async () => {
+    await renderRoute(`/customers/${CUS_LUNA}?tab=usage`);
+    await waitFor(
+      () => {
+        expect(screen.getAllByRole("article").length).toBeGreaterThan(0);
+      },
+      { timeout: 8000 },
+    );
+    const shapes = screen.getAllByRole("article").map((article) => article.dataset.shape);
+    expect(shapes.every((shape) => shape === "wallet_policy")).toBe(true);
+    expect(document.querySelector('[data-shape="ceiling"]')).toBeNull();
+  });
 });

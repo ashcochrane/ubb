@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppWebhooksIndexRouteImport } from './routes/_app/webhooks/index'
 import { Route as AppTasksIndexRouteImport } from './routes/_app/tasks/index'
+import { Route as AppSpendControlsIndexRouteImport } from './routes/_app/spend-controls/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppReferralsIndexRouteImport } from './routes/_app/referrals/index'
 import { Route as AppPricingIndexRouteImport } from './routes/_app/pricing/index'
@@ -63,6 +64,11 @@ const AppWebhooksIndexRoute = AppWebhooksIndexRouteImport.update({
 const AppTasksIndexRoute = AppTasksIndexRouteImport.update({
   id: '/tasks/',
   path: '/tasks/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSpendControlsIndexRoute = AppSpendControlsIndexRouteImport.update({
+  id: '/spend-controls/',
+  path: '/spend-controls/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/pricing/': typeof AppPricingIndexRoute
   '/referrals/': typeof AppReferralsIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
+  '/spend-controls/': typeof AppSpendControlsIndexRoute
   '/tasks/': typeof AppTasksIndexRoute
   '/webhooks/': typeof AppWebhooksIndexRoute
   '/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
@@ -213,6 +220,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof AppPricingIndexRoute
   '/referrals': typeof AppReferralsIndexRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/spend-controls': typeof AppSpendControlsIndexRoute
   '/tasks': typeof AppTasksIndexRoute
   '/webhooks': typeof AppWebhooksIndexRoute
   '/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
@@ -242,6 +250,7 @@ export interface FileRoutesById {
   '/_app/pricing/': typeof AppPricingIndexRoute
   '/_app/referrals/': typeof AppReferralsIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/spend-controls/': typeof AppSpendControlsIndexRoute
   '/_app/tasks/': typeof AppTasksIndexRoute
   '/_app/webhooks/': typeof AppWebhooksIndexRoute
   '/_app/tasks/kinds/$key': typeof AppTasksKindsKeyRoute
@@ -271,6 +280,7 @@ export interface FileRouteTypes {
     | '/pricing/'
     | '/referrals/'
     | '/settings/'
+    | '/spend-controls/'
     | '/tasks/'
     | '/webhooks/'
     | '/tasks/kinds/$key'
@@ -297,6 +307,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/referrals'
     | '/settings'
+    | '/spend-controls'
     | '/tasks'
     | '/webhooks'
     | '/tasks/kinds/$key'
@@ -325,6 +336,7 @@ export interface FileRouteTypes {
     | '/_app/pricing/'
     | '/_app/referrals/'
     | '/_app/settings/'
+    | '/_app/spend-controls/'
     | '/_app/tasks/'
     | '/_app/webhooks/'
     | '/_app/tasks/kinds/$key'
@@ -379,6 +391,13 @@ declare module '@tanstack/react-router' {
       path: '/tasks'
       fullPath: '/tasks/'
       preLoaderRoute: typeof AppTasksIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/spend-controls/': {
+      id: '/_app/spend-controls/'
+      path: '/spend-controls'
+      fullPath: '/spend-controls/'
+      preLoaderRoute: typeof AppSpendControlsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/': {
@@ -559,6 +578,7 @@ interface AppRouteChildren {
   AppPlansIndexRoute: typeof AppPlansIndexRoute
   AppPricingIndexRoute: typeof AppPricingIndexRoute
   AppReferralsIndexRoute: typeof AppReferralsIndexRoute
+  AppSpendControlsIndexRoute: typeof AppSpendControlsIndexRoute
   AppTasksIndexRoute: typeof AppTasksIndexRoute
   AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
   AppTasksKindsKeyRoute: typeof AppTasksKindsKeyRoute
@@ -581,6 +601,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPlansIndexRoute: AppPlansIndexRoute,
   AppPricingIndexRoute: AppPricingIndexRoute,
   AppReferralsIndexRoute: AppReferralsIndexRoute,
+  AppSpendControlsIndexRoute: AppSpendControlsIndexRoute,
   AppTasksIndexRoute: AppTasksIndexRoute,
   AppWebhooksIndexRoute: AppWebhooksIndexRoute,
   AppTasksKindsKeyRoute: AppTasksKindsKeyRoute,

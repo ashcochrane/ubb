@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,844 of 2,271 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,856 of 2,283 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2140,6 +2140,27 @@ measurement_key:
     # property from a route that post-dates the launch tag (named in the
     # commit and the SDK migration guide, never filed). No ledger entry
     # moved.
+    #
+    # 2026-09-13, #466 (the console gets a Spend controls tab, and Stops and
+    # breaches has one rendering and two hosts): 1,844 of 2,271 -> 1,856 of
+    # 2,283 tracked files (`units` 44 files / 122 occurrences, unmoved on the
+    # first take: the prose that held is "a unit of work", "contained work",
+    # "every unit" and "one unit's own supplier cost"). Net twelve tracked
+    # files, every one of them swept, and no migration, so
+    # `historical-migrations` stays at 260 and the exclusion at 427.
+    # Twenty-three hand-written files arrived -- the spend-controls feature
+    # (its api sextet, three lib modules, five components and a test helper),
+    # its three component test modules, its route, the totals reading and the
+    # date-window test lifted into `lib/`, and the stop-context timeline's
+    # test -- and eleven left: the per-customer report's route module, its
+    # two console renderings with the section's test and the two narrowing
+    # test modules, the developers feature's copy of the per-event money
+    # formatter, and the four generated SDK core modules the retired route
+    # and its untyped schema had minted. The contract removed one path and
+    # one schema, both pre-dating the launch tag and filed in the break
+    # block. Seven ledger entries left -- two G6 maps, the console's family
+    # and stop-reason lists, and the three retired stop words' console seats
+    # -- and the sweep's site count fell 43 -> 40.
 
     - term: units
       retired_as: >-

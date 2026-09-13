@@ -948,3 +948,28 @@ components webhook `soft_floor.cleared` removed
 components webhook `soft_floor.crossed` removed
 components webhook `stop.cleared` removed
 components webhook `stop.fired` removed
+#
+# ---- Slice 6, #466: the per-customer past-limit report retires ----------
+#
+# `GET /customers/{customer_id}/past-limit-report` answered one customer's stop
+# episodes as an untyped `list[dict]` (`PastLimitReportResponse`,
+# `additionalProperties: true` on every row), under the field word the
+# registry retired and family words that preceded the four families. Its
+# successor is Stops and breaches at `GET /spend-controls/stops-and-breaches`
+# (#465): typed rows discriminated by `control_family`, tenant-wide, and one
+# `customer_id` filter away from everything the retired report answered. The
+# route, its module (`api/v1/past_limit.py`) and the schema leave in the same
+# commit as the console's second host for the successor's rendering (spec §14;
+# HANDOFF §4 constraint 8).
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE: one break, the same one, from
+# `--baseline HEAD` (1 error, 0 warning) and from the cumulative gate; the
+# path pre-dates the tag, so the line is live. oasdiff reports the path's
+# removal and nothing for the schema that went with it.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot and the two renderings that read the route (both deleted), the
+# SDK's generated core and the hand-shell helper (deleted; `MIGRATION.md`
+# §13 names the successor call).
+GET /api/v1/customers/{customer_id}/past-limit-report api path removed without deprecation

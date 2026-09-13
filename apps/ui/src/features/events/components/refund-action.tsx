@@ -20,12 +20,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useHasRole } from "@/hooks/use-current-role";
-import { formatMicros } from "@/lib/format";
+import { formatEventMicros, formatMicros } from "@/lib/format";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useRefundUsage } from "../api/queries";
 import type { UsageEventDetail } from "../api/types";
-import { formatEventMicros } from "../lib/money";
 
 const refundSchema = z.object({
   reason: z.string().max(500, "Keep the reason under 500 characters."),

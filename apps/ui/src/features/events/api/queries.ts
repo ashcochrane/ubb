@@ -9,7 +9,6 @@ import { eventsApi } from "./provider";
 import type {
   AnalyticsParams,
   RefundBody,
-  ReportWindow,
   TaskOutcome,
   TimeseriesParams,
   UsageListFilters,
@@ -68,18 +67,6 @@ export function useUsageEvent(eventId: string) {
   return useQuery({
     queryKey: ["metering", "usage-event", eventId] as const,
     queryFn: () => eventsApi.getUsageEvent(eventId),
-  });
-}
-
-/** Past-limit report — metering-scoped even though the path is root-level. */
-export function usePastLimitReport(
-  customerId: string | undefined,
-  window: ReportWindow,
-) {
-  return useQuery({
-    queryKey: ["metering", "past-limit-report", customerId, window] as const,
-    queryFn: () => eventsApi.getPastLimitReport(customerId ?? "", window),
-    enabled: customerId !== undefined,
   });
 }
 

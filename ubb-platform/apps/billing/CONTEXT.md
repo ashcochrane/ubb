@@ -208,7 +208,7 @@ The durable per-owner-per-family state row every stop/resume emission routes thr
 winning transition emits (atomically with the row), so a crossing observed by the fast Redis lane,
 the durable drawdown handler, and reconcile signals exactly once. Its `episode_seq` is the STOP
 EPISODE id — a stop opens episode N, the paired clear closes it — which stop-context tagging and
-the past-limit report key on. Suspension rides the same winning stop transition, so floor-stop and
+Stops and breaches key on. Suspension rides the same winning stop transition, so floor-stop and
 suspension can never disagree or double-fire. Each winning transition also stamps
 `announce_outbox_id` (the row's last announcement) inside the same atomic unit — see Announcement.
 _Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
