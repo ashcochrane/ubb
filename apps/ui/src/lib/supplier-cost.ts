@@ -87,6 +87,26 @@ export const AT_LEAST = "at least";
 export const AT_MOST = "at most";
 
 /**
+ * A whole-number share, said as a floor where the terms it was computed over
+ * can only raise it: "at least 41%" or "41%". The caller states WHEN it is a
+ * floor — that is the per-surface rule — and this is the one spelling of it.
+ */
+export function shareAtLeast(percentage: number, floor: boolean): string {
+  const share = `${percentage}%`;
+  return floor ? `${AT_LEAST} ${share}` : share;
+}
+
+/**
+ * An amount, said as a most where the terms it was computed over can only
+ * lower it: "at most $1.76" or "$1.76". The mirror of `shareAtLeast`, for
+ * the headroom that shrinks as the share grows.
+ */
+export function amountAtMost(micros: number, currency: string, most: boolean): string {
+  const amount = formatMicros(micros, currency);
+  return most ? `${AT_MOST} ${amount}` : amount;
+}
+
+/**
  * Any response row carrying the count of events whose supplier cost UBB never
  * learned.
  *

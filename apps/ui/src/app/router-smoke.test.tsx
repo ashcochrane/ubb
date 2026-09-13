@@ -30,6 +30,7 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   // from the spend-controls feature (#466) — the wiring only this suite sees.
   { path: `/customers/${CUS_LUNA}?tab=usage`, expectText: /stops and breaches/i },
   { path: "/spend-controls", expectText: /stops and breaches/i },
+  { path: "/spend-controls?report=utilisation", expectText: /utilisation and headroom/i },
   { path: "/pricing", expectText: /pricing/i },
   { path: "/billing", expectText: /billing/i },
   { path: "/plans", expectText: /plans/i },

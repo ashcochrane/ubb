@@ -11,13 +11,13 @@ import { Section } from "@/components/shared/section";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { readCeiling } from "@/lib/ceiling";
 import { formatDate, formatEventCount, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { TASK_STATUS_EXPLANATIONS } from "@/lib/task-status";
 
 import { useRun } from "../api/queries";
 import type { RunDetail } from "../api/types";
-import { readCeiling } from "../lib/ceiling";
 import {
   CONTAINED_ROWS_SHOWN_INLINE,
   describeAgreedPrice,

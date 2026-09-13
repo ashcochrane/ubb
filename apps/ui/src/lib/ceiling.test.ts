@@ -1,8 +1,10 @@
-// A run's ceiling assessment as the tasks feature reads and words it (#454).
+// A unit of work's ceiling assessment as the console reads and words it
+// (#454; moved to `lib/` in #467 when a second feature rendered it).
 //
-// The page test (`run-detail-page.test.tsx`) renders each status from the
-// mock; what is asserted here is the half a page cannot reach — the wire
-// shapes the mock never authors, and the words the page composes from.
+// The two surface tests (`run-detail-page.test.tsx`,
+// `utilisation-and-headroom.test.tsx`) render each status from a fixture;
+// what is asserted here is the half a surface cannot reach — the wire shapes
+// no mock authors, and the words both surfaces compose from.
 
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +15,8 @@ import {
   CEILING_STATUS_EXPLANATIONS,
   ceilingStatusLabel,
   describeCeilingFigures,
+  describeHeadroom,
+  describeUtilisation,
   explainCeiling,
   readCeiling,
 } from "./ceiling";
@@ -86,6 +90,32 @@ describe("the figures beside a ceiling status", () => {
       ceilingAssessment("ceiling_reached", { ceiling_micros: 0, cost: completeTotal(0) }),
     );
     expect(describeCeilingFigures(reading, "usd")).toBe("$0.00 ceiling · $0.00 headroom");
+  });
+
+  it("are each readable on their own, for a surface that puts them in columns", () => {
+    const within = readCeiling(
+      ceilingAssessment("within_ceiling", { ceiling_micros: 3_000_000, cost: completeTotal(2_100_000) }),
+    );
+    expect(describeUtilisation(within)).toBe("70%");
+    expect(describeHeadroom(within, "usd")).toBe("$0.90");
+
+    const indeterminate = readCeiling(
+      ceilingAssessment("indeterminate", { ceiling_micros: 3_000_000, cost: incompleteTotal(1_240_000, 1) }),
+    );
+    expect(describeUtilisation(indeterminate)).toBe("at least 41%");
+    expect(describeHeadroom(indeterminate, "usd")).toBe("at most $1.76");
+
+    // Nothing evaluated: neither figure, and never a zero of either.
+    expect(describeUtilisation({ kind: "not_applicable" })).toBeNull();
+    expect(describeHeadroom({ kind: "not_applicable" }, "usd")).toBeNull();
+
+    // A share of a zero ceiling is not a share; the clamped headroom is a
+    // settled zero and renders as one.
+    const zero = readCeiling(
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 0, cost: completeTotal(0) }),
+    );
+    expect(describeUtilisation(zero)).toBeNull();
+    expect(describeHeadroom(zero, "usd")).toBe("$0.00");
   });
 
   it("leave out any figure the wire did not send, never writing zero for it", () => {

@@ -190,6 +190,27 @@ describe("the scenario module is wired to something that renders", () => {
     }
   });
 
+  // The composer's two consumers by name (#467; spec §18): the run page's
+  // mock and the Utilisation and headroom report's fixtures — the mock and
+  // the component test that assembles its own — so the four statuses reach
+  // the report through the same amounts that fix them on the run page. The
+  // orphan check above sees that SOMETHING imports it; this pins WHICH two
+  // surfaces, so a report that quietly started typing its rows by hand
+  // would go red here rather than pass on the run page's consumption alone.
+  it("composes the ceiling assessment for both surfaces that render it", () => {
+    const where = CONSUMERS.filter((consumer) =>
+      consumer.source.includes("ceilingAssessment("),
+    ).map((consumer) => consumer.path);
+
+    expect(where).toEqual(
+      expect.arrayContaining([
+        "/src/features/tasks/api/mock-data.ts",
+        "/src/features/spend-controls/api/mock-data.ts",
+        "/src/features/spend-controls/components/utilisation-and-headroom.test.tsx",
+      ]),
+    );
+  });
+
   // Every price status has a composer, and every composer is reached.
   //
   // The MAP is hand-written — there is no mechanical route from a value to the

@@ -122,7 +122,7 @@ describe("RunDetailPage", () => {
       expect(ceiling).not.toHaveTextContent(/indeterminate/i);
       expect(ceiling).not.toHaveTextContent(/\$\d/);
       expect(ceiling).not.toHaveTextContent(/%/);
-      expect(ceiling).toHaveTextContent(/No ceiling applies to this run/);
+      expect(ceiling).toHaveTextContent(/No ceiling applies to this unit of work/);
     });
 
     // Under `indeterminate` the percentage is a floor and the headroom a

@@ -7,12 +7,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { spendControlsApi } from "./provider";
-import type { StopsAndBreachesFilters } from "./types";
+import type { StopsAndBreachesFilters, UtilisationAndHeadroomFilters } from "./types";
 
 export const spendControlKeys = {
   all: ["spend-controls"] as const,
   stopsAndBreaches: (filters: StopsAndBreachesFilters) =>
     ["spend-controls", "stops-and-breaches", filters] as const,
+  utilisationAndHeadroom: (filters: UtilisationAndHeadroomFilters) =>
+    ["spend-controls", "utilisation-and-headroom", filters] as const,
 };
 
 export function useStopsAndBreaches(filters: StopsAndBreachesFilters) {
@@ -20,6 +22,14 @@ export function useStopsAndBreaches(filters: StopsAndBreachesFilters) {
     queryKey: spendControlKeys.stopsAndBreaches(filters),
     queryFn: () => spendControlsApi.getStopsAndBreaches(filters),
     // Window and filter changes refresh in the background without blanking.
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useUtilisationAndHeadroom(filters: UtilisationAndHeadroomFilters) {
+  return useQuery({
+    queryKey: spendControlKeys.utilisationAndHeadroom(filters),
+    queryFn: () => spendControlsApi.getUtilisationAndHeadroom(filters),
     placeholderData: (previous) => previous,
   });
 }

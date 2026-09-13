@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,856 of 2,283 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,860 of 2,287 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2161,6 +2161,21 @@ measurement_key:
     # block. Seven ledger entries left -- two G6 maps, the console's family
     # and stop-reason lists, and the three retired stop words' console seats
     # -- and the sweep's site count fell 43 -> 40.
+    #
+    # 2026-09-13, #467 (Utilisation and headroom renders on the tab, and the
+    # indeterminate count has its home): 1,856 of 2,283 -> 1,860 of 2,287
+    # tracked files (`units` 44 files / 122 occurrences, unmoved on the first
+    # take: the prose that held is "a unit of work", "per unit", "every unit
+    # that had a ceiling", "one chatty unit weighs exactly one" and "contained
+    # work"). Four tracked files arrived, every one swept and every one in the
+    # console -- the report component, its test module, the feature's
+    # utilisation readers and the shared reading cell lifted out of the
+    # episode card -- and none left: the ceiling binding and its test moved
+    # from the tasks feature's `lib/` to `src/lib/` under `git mv`, which
+    # moves neither denominator. No backend file, no migration, so
+    # `historical-migrations` stays at 260 and the exclusion at 427; the
+    # contract is byte-identical, so nothing generated moved. No ledger entry
+    # moved and the sweep's site count holds at 40.
 
     - term: units
       retired_as: >-

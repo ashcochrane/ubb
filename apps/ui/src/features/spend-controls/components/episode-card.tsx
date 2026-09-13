@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatMicros, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
-import { describeTotal, UNKNOWN_TOTAL, type TotalReading } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type {
@@ -50,24 +49,7 @@ import {
 } from "../lib/episodes";
 import { controlFamilyLabel } from "../lib/families";
 import { ItemisedEventsTable } from "./itemised-events";
-
-/** A reading as one detail-list value, with its kind on the node so a test asserts WHICH reading rendered. */
-function Reading({ reading, currency }: { reading: TotalReading; currency: string }) {
-  return (
-    <span data-reading={reading.kind} className={reading.kind === "unknown" ? "text-text-muted" : undefined}>
-      {describeTotal(reading, currency)}
-    </span>
-  );
-}
-
-/** A reading the wire left null: unknown, said so, never zero. */
-function Unknown({ because }: { because: string }) {
-  return (
-    <span data-reading="unknown" className="text-text-muted" title={because}>
-      {UNKNOWN_TOTAL}
-    </span>
-  );
-}
+import { Reading, Unknown } from "./reading";
 
 function CustomerLink({ customerId }: { customerId: string }) {
   return (

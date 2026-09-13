@@ -1,12 +1,12 @@
-import { notApplicableReasonLabel } from "@/lib/customer-price";
-import { describeTotal } from "@/lib/total-reading";
-
 import {
   ceilingStatusLabel,
   describeCeilingFigures,
   explainCeiling,
   type CeilingReading,
-} from "../lib/ceiling";
+} from "@/lib/ceiling";
+import { notApplicableReasonLabel } from "@/lib/customer-price";
+import { describeTotal } from "@/lib/total-reading";
+
 import {
   describeCustomerPrice,
   explainCustomerPrice,

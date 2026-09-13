@@ -23,6 +23,12 @@ export type ItemisedEvents = RootSchemas["ItemisedEventsOut"];
 export type ItemisedEventRow = RootSchemas["ItemisedEventRow"];
 export type FamilyTotalsRow = RootSchemas["SpendControlFamilyTotalsRow"];
 
+export type UtilisationAndHeadroom = RootSchemas["UtilisationAndHeadroomResponse"];
+/** One completed unit's ceiling as it stood at completion (#467; slice 6 §14). */
+export type CeilingUtilisationRow = RootSchemas["CeilingUtilisationRow"];
+/** The pool's status pair for the customer the filter names — the billing feature's own shape, re-published here. */
+export type CustomerSpendPoolStatus = RootSchemas["CustomerSpendPoolStatusOut"];
+
 /** The margin list, read for the customer filter's choices — the same raw shape the events feature caches. */
 export type MarginCustomers = RootSchemas["MarginListOut"];
 
@@ -38,6 +44,19 @@ export type MarginCustomers = RootSchemas["MarginListOut"];
 export interface StopsAndBreachesFilters {
   customer_id?: string;
   control_family?: ControlFamily;
+  since?: string;
+  until?: string;
+}
+
+/**
+ * The filters `GET /spend-controls/utilisation-and-headroom` takes, as the
+ * console sends them: the same customer and the same half-open window, on
+ * the instant each unit completed. No family — the report is the Ceiling's
+ * alone, with the pool's status pair beside it for a named customer — and
+ * no kind-of-work filter, for the reason above.
+ */
+export interface UtilisationAndHeadroomFilters {
+  customer_id?: string;
   since?: string;
   until?: string;
 }
