@@ -89,6 +89,23 @@ describe("BillingTab", () => {
     expect(screen.getByText("Available")).toBeInTheDocument();
   });
 
+  // No threshold, no amber, no warning affordance ON THE PAGE (#150 §9.4;
+  // #152 §4): the section's own test asserts it alone, and this asserts it
+  // with the balance card, the transactions, the grants, the invoices and
+  // Wallet policy around it, for the customer whose mock pool is blocking and
+  // crossed. By role — no meter and no progress bar anywhere — and by word.
+  // (`alert`/`status` roles are not asserted here: the tab's own notices are
+  // Base UI Alerts and say nothing about the pool.)
+  it("draws no meter, progress bar or warning on the whole Billing tab for a crossed pool", async () => {
+    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    expect(
+      await screen.findByText(/new starts for this customer are being refused/, undefined, SLOW),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/warning|amber|threshold reached/i);
+  });
+
   // The pool is behind the billing product gate (slice 6 §4's ruling: a
   // tenant that does not bill through UBB may not declare one). The page
   // renders the gate's explanation and none of the pool's words.

@@ -37,6 +37,7 @@
 // set is CLOSED, so there is no unknown branch to render.
 
 import type { RootSchemas } from "@/api/types";
+import { CUSTOMER_SPEND_POOL_TITLE } from "@/lib/control-family";
 import { labelMap } from "@/lib/localisation";
 import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
 import { readTotal, type TotalReading } from "@/lib/total-reading";
@@ -49,8 +50,17 @@ import {
 /** The pool's status pair as the wire carries it, every field required. */
 export type CustomerSpendPoolStatus = RootSchemas["CustomerSpendPoolStatusOut"];
 
-/** The title the pair renders under, wherever it renders. */
-export const POOL_PAIR_TITLE = "Customer spend pool";
+/** The title the pair renders under, wherever it renders — the family's catalogue word. */
+export const POOL_PAIR_TITLE = CUSTOMER_SPEND_POOL_TITLE;
+
+/**
+ * Whether a pool applies at all: an amount of nothing declares none
+ * (`cap_micros <= 0` is "no pool" on the row, and the status read answers
+ * it with every assessed figure null). Spelled once, here.
+ */
+export function poolApplies(pool: { readonly cap_micros: number }): boolean {
+  return pool.cap_micros > 0;
+}
 
 // ---------------------------------------------------------------------------
 // The mode's words
@@ -157,10 +167,18 @@ export function poolLevel(
   declared: { readonly cap_micros: number },
   applies: { readonly cap_micros: number },
 ): PoolLevel {
-  if (declared.cap_micros > 0) return "declared_here";
-  if (applies.cap_micros > 0) return "seat_default";
+  if (poolApplies(declared)) return "declared_here";
+  if (poolApplies(applies)) return "seat_default";
   return "none";
 }
+
+/**
+ * The hint under a declaration form's mode select — console-owned copy,
+ * shared by the customer's own pool and the seat default so the two forms
+ * say one thing.
+ */
+export const ENFORCE_MODE_HINT =
+  "Alert only announces each level reached. Blocking also refuses new starts and stops active work at the stop line.";
 
 /** The level in words, total over the three so a level with no sentence fails `tsc`. */
 export const POOL_LEVEL = {

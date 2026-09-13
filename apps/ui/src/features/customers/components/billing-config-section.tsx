@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { WALLET_POLICY_TITLE } from "@/lib/control-family";
 import { formatMicros } from "@/lib/format";
 
 import {
@@ -50,8 +51,7 @@ import {
 
 const ADMIN_HINT = "Requires the Admin role.";
 
-/** The family's noun, and what its floors are tested against. */
-export const WALLET_POLICY_TITLE = "Wallet policy";
+/** What Wallet policy's floors are tested against — console copy beside the family's word. */
 export const WALLET_POLICY_DESCRIPTION =
   "The floors a start is judged against: this customer's balance, less what is reserved for work already started, must stay above them.";
 

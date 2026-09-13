@@ -30,41 +30,34 @@ import { problemMessage } from "@/api/problem";
 import { DetailList } from "@/components/shared/detail-list";
 import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
-import { Reading } from "@/components/shared/reading";
+import { Absent, Reading } from "@/components/shared/reading";
+import { SpendPoolEnforceModeSelect } from "@/components/shared/spend-pool-enforce-mode-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros } from "@/lib/format";
-import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   describePoolHeadroom,
   describePoolUtilisation,
+  ENFORCE_MODE_HINT,
   excludedFromKnown,
   POOL_AND_WALLET_DIFFER,
   POOL_BLIND_TO_FIXED_PRICE,
   POOL_LEVEL,
   POOL_PAIR_TITLE,
   POOL_POSTURE,
+  poolApplies,
   poolLevel,
   readPoolCharges,
-  SPEND_POOL_ENFORCE_MODE_WORDS,
   spendPoolEnforceModeLabel,
   STARTS_REFUSED,
   type CustomerSpendPoolStatus,
 } from "@/lib/spend-pool";
-import { SPEND_POOL_ENFORCE_MODE_VALUES } from "@/lib/vocabulary";
 
 import {
   useCustomerSpendPool,
@@ -78,15 +71,17 @@ import { customerSpendPoolSchema, type CustomerSpendPoolForm } from "../lib/sche
 /** The heading of the standing — what the pair is read under. */
 export const POOL_STANDING_TITLE = "Where this customer's pool stands";
 
-/** A figure the wire left null, rendered as the absence it is. */
-function Absent() {
-  return <span className="text-text-muted">{ABSENT_LABEL}</span>;
-}
-
 /**
  * The level, the pair and the posture, as words. The pair renders whether
  * or not a pool applies — the charges are real either way — and the
  * assessment beside it only where one does.
+ *
+ * WHERE THE KNOWN FIGURE IS NOTHING AND A POSTING IS UNRESOLVED, the
+ * charges read as Unknown and the two figures beside them are the kernel's
+ * bounds over that nothing — "at least 0%" used and "at most" the whole
+ * pool as headroom. Both are true and neither is a settled number; they
+ * render as bounds, the way the report renders the same pair, and never as
+ * `0%` or a figure.
  */
 function PoolStanding({
   declared,
@@ -98,7 +93,7 @@ function PoolStanding({
   currency: string;
 }) {
   const level = poolLevel(declared, status);
-  const applies = status.cap_micros > 0;
+  const applies = poolApplies(status);
   const used = describePoolUtilisation(status);
   const headroom = describePoolHeadroom(status, currency);
   const excluded = excludedFromKnown(status);
@@ -235,7 +230,8 @@ export function CustomerSpendPoolSection({ customerId }: { customerId: string })
             <p className="text-[11px] text-text-muted">
               Saving writes the whole declaration exactly as shown — fields left at
               defaults are saved as defaults, not preserved. An amount of nothing
-              declares no pool.
+              declares no pool, and on a seat it also keeps the workspace default
+              from applying.
             </p>
             <div className="grid grid-cols-2 gap-2.5">
               <FormField
@@ -244,29 +240,13 @@ export function CustomerSpendPoolSection({ customerId }: { customerId: string })
               >
                 {(id) => <Input id={id} inputMode="decimal" {...form.register("cap")} />}
               </FormField>
-              <FormField
-                label="Mode"
-                hint="Alert only announces each level reached; Blocking also refuses new starts and stops active work at the stop line."
-              >
+              <FormField label="Mode" hint={ENFORCE_MODE_HINT}>
                 {() => (
-                  <Select
+                  <SpendPoolEnforceModeSelect
                     value={form.watch("enforce_mode")}
-                    items={SPEND_POOL_ENFORCE_MODE_WORDS}
-                    onValueChange={(value) =>
-                      form.setValue("enforce_mode", value ?? "alert_only")
-                    }
-                  >
-                    <SelectTrigger className="w-full" aria-label="Enforce mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SPEND_POOL_ENFORCE_MODE_VALUES.map((mode) => (
-                        <SelectItem key={mode} value={mode}>
-                          {SPEND_POOL_ENFORCE_MODE_WORDS[mode]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onValueChange={(mode) => form.setValue("enforce_mode", mode)}
+                    ariaLabel="Enforce mode"
+                  />
                 )}
               </FormField>
             </div>

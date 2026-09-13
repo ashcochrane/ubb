@@ -407,9 +407,11 @@ export const AFFORDABILITY_REASONS = AFFORDABILITY_REASON_KNOWN_VALUES;
 // that rebuilds that vocabulary — the same slice the concept's own value-list
 // entry names, because a value list and the words for it cannot honestly move
 // apart."* Both halves are paid in this commit — the binding is
-// `features/spend-controls/lib/families.ts`, off the locale catalogue, which
-// has carried all four families under `control_family.*` since the concept
-// was coined; the value list is held by reference on the line below. The old
+// `@/lib/control-family` (written in `features/spend-controls/lib/families.ts`
+// and moved down a layer in #468, the day a second feature rendered the
+// word), off the locale catalogue, which has carried all four families under
+// `control_family.*` since the concept was coined; the value list is held by
+// reference on the line below. The old
 // map held THREE words for a family of four, under the report's own spellings
 // (`floor_stop`, `soft_floor`, `task`), and none of them was a registry value.
 //

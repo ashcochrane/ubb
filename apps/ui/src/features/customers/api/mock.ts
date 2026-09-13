@@ -7,7 +7,11 @@ import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import type { DateRange } from "@/lib/date-range";
 import { resolveRange } from "@/lib/date-range";
-import { completePriceTotal, spendPoolAssessment } from "@/lib/economic-scenarios";
+import {
+  completePriceTotal,
+  spendPoolAssessment,
+  type PriceTotalScenario,
+} from "@/lib/economic-scenarios";
 import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
 
 import {
@@ -621,23 +625,34 @@ function poolThatApplies(customer: MockCustomer): CustomerSpendPoolOut | null {
   return customer.account_type === "business" ? null : MOCK_SEAT_DEFAULT_POOL;
 }
 
+/**
+ * The customer's durable basis for the period. The five customers of the
+ * story are seeded; a customer this session CREATED has recorded nothing,
+ * and nothing recorded is a whole figure of nothing — a real zero, with no
+ * posting left out — not an unknown. That is the one default this module
+ * writes, and it is the state the mock's own directory puts such a
+ * customer in on every other read (no transactions, no grants).
+ */
+function chargesOf(customerId: string): PriceTotalScenario {
+  return MOCK_POOL_CHARGES[customerId] ?? completePriceTotal(0);
+}
+
 export async function getCustomerSpendPoolStatus(
   customerId: string,
 ): Promise<CustomerSpendPoolStatusOut> {
   await mockDelay();
   const customer = requireCustomer(customerId);
-  const applies = poolThatApplies(customer);
-  // Composed the way the kernel composes it, over the customer's durable
-  // pair; a customer the story charged nothing to has a whole figure of
-  // nothing, which is a real zero and renders as one. No pool is an amount
-  // of nothing with every assessed figure null (#456 §13).
+  // Composed the way the kernel composes it, over the pool that applies —
+  // or over no pool, which is an amount of nothing with every assessed
+  // figure null (#456 §13) — and the customer's durable pair.
+  const applies = poolThatApplies(customer) ?? noPoolDeclared();
   return spendPoolAssessment({
     period: MOCK_POOL_PERIOD,
-    cap_micros: applies?.cap_micros ?? 0,
-    enforce_mode: applies?.enforce_mode ?? "alert_only",
-    hard_stop_pct: applies?.hard_stop_pct ?? 100,
-    alert_levels: applies?.alert_levels ?? [],
-    known: MOCK_POOL_CHARGES[customerId] ?? completePriceTotal(0),
+    cap_micros: applies.cap_micros,
+    enforce_mode: applies.enforce_mode,
+    hard_stop_pct: applies.hard_stop_pct,
+    alert_levels: applies.alert_levels,
+    known: chargesOf(customerId),
   });
 }
 

@@ -47,8 +47,8 @@ import {
   explainCeiling,
 } from "@/lib/ceiling";
 import { formatDate, formatMicros, shortId } from "@/lib/format";
-import { Reading } from "@/components/shared/reading";
-import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
+import { Absent, Reading } from "@/components/shared/reading";
+import { tenantDefinedLabel } from "@/lib/localisation";
 import {
   describePoolHeadroom,
   describePoolUtilisation,
@@ -82,11 +82,6 @@ import {
 } from "../lib/utilisation";
 
 export const UTILISATION_AND_HEADROOM_TITLE = "Utilisation and headroom";
-
-/** A figure the wire left null, rendered as the absence it is. */
-function Absent() {
-  return <span className="text-text-muted">{ABSENT_LABEL}</span>;
-}
 
 function Aggregate({
   report,

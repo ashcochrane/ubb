@@ -1354,8 +1354,9 @@ entries:
 
   # g2-console-control_family WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
   # holds `CONTROL_FAMILIES = CONTROL_FAMILY_VALUES` by reference; the words
-  # are bound in `features/spend-controls/lib/families.ts` off the
-  # catalogue, and the family map's entry left with this one.
+  # were bound in `features/spend-controls/lib/families.ts` off the
+  # catalogue (moved to `@/lib/control-family` in #468, the day a second
+  # feature rendered the word), and the family map's entry left with this one.
 
   - id: g2-console-customer_billing_mode
     gate: G2
@@ -1879,7 +1880,8 @@ entries:
   # `pastLimitFamilyLabel` IS DELETED IN #466 and this entry with it. It
   # became `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in
   # `features/spend-controls/lib/families.ts` — bound where Stops and
-  # breaches renders the family — and the catalogue already carried all four
+  # breaches renders the family, and moved to `@/lib/control-family` in #468
+  # when other features rendered it — and the catalogue already carried all four
   # words, so nothing was written in English to pay this off. The old map
   # worded three report-local spellings of a family of four.
 

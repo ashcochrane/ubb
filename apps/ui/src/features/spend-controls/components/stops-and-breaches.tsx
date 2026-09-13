@@ -25,13 +25,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { controlFamilyLabel } from "@/lib/control-family";
 import { formatDate } from "@/lib/format";
 import { describeTotal } from "@/lib/total-reading";
 
 import { useStopsAndBreaches } from "../api/queries";
 import type { FamilyTotalsRow, StopsAndBreachesFilters } from "../api/types";
 import { episodeKey, readItemisedCost, readItemisedPrice } from "../lib/episodes";
-import { controlFamilyLabel, NO_EPISODES_FOR } from "../lib/families";
+import { NO_EPISODES_FOR } from "../lib/families";
 import { EpisodeCard } from "./episode-card";
 
 export const STOPS_AND_BREACHES_TITLE = "Stops and breaches";

@@ -230,7 +230,12 @@ describe("the status pair", () => {
     const region = await standing();
     expect(within(region).getByText("Unknown")).toHaveAttribute("data-reading", "unknown");
     expect(region.querySelector("[data-pool-excluded]")).toHaveTextContent(/^2 postings whose revenue/);
+    // The two figures beside an unknown are the kernel's bounds over nothing
+    // known: both true, neither settled, and neither a bare `0%` or figure.
+    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 0%");
+    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("at most $500.00");
     expect(within(region).queryByText("$0.00")).not.toBeInTheDocument();
+    expect(within(region).queryByText("0%")).not.toBeInTheDocument();
   });
 
   it("draws no meter, no progress bar and no alert level", async () => {

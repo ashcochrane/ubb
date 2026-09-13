@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isPostpaid } from "@/hooks/use-tenant-config";
+import { WALLET_POLICY_TITLE } from "@/lib/control-family";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useUpdateTenantConfig } from "../api/queries";
@@ -19,8 +20,7 @@ import {
   type SpendControlValues,
 } from "../lib/settings";
 
-/** The family's noun, over the tenant-wide floors (#468; slice 6 §5). */
-export const WALLET_POLICY_TITLE = "Wallet policy";
+/** What the workspace's floors are — console copy beside the family's word (#468; slice 6 §5). */
 const WALLET_POLICY_DESCRIPTION =
   "The workspace's default floors — a start is judged on a customer's balance less what is reserved for work already started, against these unless the customer has floors of their own.";
 

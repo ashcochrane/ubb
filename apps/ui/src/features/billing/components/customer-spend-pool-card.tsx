@@ -21,21 +21,14 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SpendPoolEnforceModeSelect } from "@/components/shared/spend-pool-enforce-mode-select";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { toastSuccess } from "@/lib/mutations";
-import { SEAT_DEFAULT_LEVEL, SPEND_POOL_ENFORCE_MODE_WORDS } from "@/lib/spend-pool";
-import { SPEND_POOL_ENFORCE_MODE_VALUES } from "@/lib/vocabulary";
+import { ENFORCE_MODE_HINT, SEAT_DEFAULT_LEVEL } from "@/lib/spend-pool";
 
 import { useSaveTenantCustomerSpendPool, useTenantCustomerSpendPool } from "../api/queries";
 import type { CustomerSpendPool } from "../api/types";
@@ -119,31 +112,18 @@ function SeatDefaultPoolForm({
           )}
         </FormField>
 
-        <FormField
-          label="Mode"
-          hint="Alert only announces each level reached. Blocking also refuses new starts and stops active work at the stop line."
-        >
+        <FormField label="Mode" hint={ENFORCE_MODE_HINT}>
           {(id) => (
             <Controller
               control={form.control}
               name="enforce_mode"
               render={({ field }) => (
-                <Select
+                <SpendPoolEnforceModeSelect
+                  id={id}
                   value={field.value}
-                  items={SPEND_POOL_ENFORCE_MODE_WORDS}
-                  onValueChange={(v) => field.onChange(v)}
-                >
-                  <SelectTrigger id={id} className="w-full" disabled={!isAdmin}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SPEND_POOL_ENFORCE_MODE_VALUES.map((mode) => (
-                      <SelectItem key={mode} value={mode}>
-                        {SPEND_POOL_ENFORCE_MODE_WORDS[mode]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onValueChange={(mode) => field.onChange(mode)}
+                  disabled={!isAdmin}
+                />
               )}
             />
           )}

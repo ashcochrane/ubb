@@ -12,11 +12,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { controlFamilyLabel } from "@/lib/control-family";
 import { shortId } from "@/lib/format";
 import { CONTROL_FAMILY_VALUES, type ControlFamily } from "@/lib/vocabulary";
 
 import { useSpendControlCustomers } from "../api/queries";
-import { controlFamilyLabel } from "../lib/families";
 
 const EVERY = "every";
 
