@@ -24,7 +24,7 @@ answered with an outcome: applied, replayed, refused, or noop.
 _Avoid_: hand-rolling lock/expiry/idempotency at a call site — the seam owns that skeleton.
 
 **Refusal (refused outcome)**:
-A wallet op the module declined (overdraft floor, insufficient withdrawable, …) — returned as a
+A wallet op the module declined (the hard floor, insufficient withdrawable, …) — returned as a
 result value carrying a refusal code, never raised, because a refusal still commits the lazy-expiry
 side effects it triggered.
 _Avoid_: "error" — infrastructure faults raise; refusals return.
@@ -57,14 +57,55 @@ remainder charged to base money.
 Restoring the credit invariant after a dispute loss or Stripe refund by voiding/consuming lot
 remainders.
 
-**Min balance (wallet floor)**:
-The predetermined line on a wallet's negative balance whose crossing fires the customer-wide stop
-signal (`customer.stopped`) — and whose re-crossing fires the paired resume
-(`customer.stop_cleared`), the moment the balance recovers, from any clearing path. The HARD floor of the two-floor pair (see **Soft
-floor**). A signal point, not a wall — events past it still land and bill, and the balance keeps
-showing reality.
-_Avoid_: "credit limit", and "suspension threshold" — suspension is a reaction to the crossing,
-not the floor's meaning.
+**Wallet policy**:
+The family of controls that are POLICY on a customer's wallet rather than a bound on any one
+unit of work (`control_family: wallet_policy`; #150 §2.2, slice 6 §5): the two floors, and the
+reservation a prepaid start takes. Each lives where it always did — per customer on the billing
+profile, tenant-wide on the billing configuration, resolved in billing's read contract — and gained
+its family's word in slice 6: their episodes are `wallet_policy` lines on the signal ledger, the
+soft floor's pair sits under the `wallet_policy` namespace while the hard floor's stop announces
+as the customer's own pair (`customer.stopped` / `customer.stop_cleared`, ADR-0006 §5), and a
+hard-floor stop's reason is `hard_floor`.
+
+- **The hard floor (min balance)** — the predetermined line on a wallet's negative balance whose
+  crossing fires the customer-wide stop (`customer.stopped`, `reason_code: hard_floor`, the
+  control being the billing profile or the tenant configuration that carried the floor) and whose
+  re-crossing fires the paired resume (`customer.stop_cleared`) the moment the balance recovers,
+  from any clearing path. A signal point, not a wall — events past it still land and bill, and the
+  balance keeps showing reality. (`apps/billing/queries.py:get_customer_min_balance`,
+  `get_customer_floor_control_id`)
+- **The soft floor** — the second, higher line of the pair: a tenant-chosen wind-down line per end
+  customer (customer override → tenant default; null = no soft floor; always resolving at or above
+  the hard floor). Past it, NEW top-level starts are refused (`soft_floor_reached`) while running
+  work — and contained starts under a still-active parent — complete. Crossing and re-crossing
+  fire the `wallet_policy.soft_floor_crossed` / `wallet_policy.soft_floor_cleared` pair through the
+  ledger's `soft_floor` line (durable lane only — no Redis threshold; signal latency is outbox
+  latency). Never a stop and never an ack change: acks never change on a soft-floor crossing,
+  events are never tagged, and work slipping past the gate lands and bills.
+  (`apps/billing/queries.py:get_customer_soft_min_balance`)
+- **The reservation** (#461, the half of the affordability test #139 §4.1 decided and nothing
+  had built) — at a prepaid customer's start of a kind of work sold at one agreed price, a durable
+  `WalletReservation` row keyed on the unit is written for the pinned price, under the owner's
+  billing lock and in the start's own transaction, after the unit's row exists. **Affordability is
+  `balance − open reservations`**, tested against the same two floors and never a new threshold,
+  so a start that would leave the available amount past a floor is refused with
+  `insufficient_funds` (or `soft_floor_reached`, at the altitude the soft floor reads). Event-priced
+  work and a postpaid tenant reserve nothing. Every terminal transition — a close, a kill, an expiry
+  and each of the three cascades — releases it through the kernel's terminal-transition listener
+  registry (`apps/platform/work/hooks.py`; billing registers
+  `release_on_terminal_transition` in `WalletsConfig.ready()`), a notification the kernel makes
+  inside the transition and that can never veto it; an hourly sweep releases whatever a failed
+  listener left behind (why the brief window between the delivered close's release and the
+  Charge's drawdown is tolerated is ADR-0014 §4). The customer's Billing tab shows the reserved
+  and available amounts beside the balance (#468).
+  (`apps/billing/wallets/reservations.py`;
+  `apps/billing/gating/services/risk_service.py:RiskService.reserve_agreed_price`)
+
+_Avoid_: "credit limit" and "suspension threshold" for the hard floor — suspension is a reaction to
+the crossing, not the floor's meaning; treating the soft floor as a stop signal — `stop=true` keeps
+meaning a stop line was reached, never the wind-down line; a new threshold for the reservation —
+it is judged against the floors that already exist; and the retired per-task floor snapshot (see
+below), which was a third floor and is not coming back.
 
 **Floor snapshot (removed)**:
 A per-task snapshot (`Task.floor_snapshot_micros`, fed by
@@ -74,8 +115,8 @@ favor of the existing **customer-wide stop flag**. Two problems, not one: it com
 tenant-wide CONSTANT, never the customer's real `CustomerBillingProfile.min_balance_micros`, and it
 compared against a balance snapshot that never moved — so it was blind to a mid-task top-up and
 could kill a task for a customer who had just paid. The durable drawdown lane already detects the
-real floor crossing and fires `customer_wide_stop`, the correct wallet-wide scope for what is a
-wallet-wide fact; there is no per-task floor line to reintroduce.
+real floor crossing and fires the customer-wide stop (`reason_code: hard_floor`), the correct
+wallet-wide scope for what is a wallet-wide fact; there is no per-task floor line to reintroduce.
 _Avoid_: re-deriving a task-scoped floor check anywhere — one floor, one crossing, one scope (see
 **Customer-wide stop flag**).
 
@@ -87,19 +128,6 @@ true), surfaced on the balance API and, as an aged-negatives count + max age, on
 ingest pipeline it watched). Purely observational: no reminder events, no auto-close — collections
 stay between the tenant, their customer, and Stripe. (`apps/billing/wallets/models.py:Wallet`)
 _Avoid_: wiring any automatic reaction to it.
-
-**Soft floor**:
-The second, higher line of the two-floor pair — a tenant-chosen wind-down line per end customer
-(customer override → tenant default; null = no soft floor; always resolving at or above the hard
-floor): past it, NEW top-level task starts are refused at the start-gate (`soft_floor_reached`)
-while running tasks — and subtask starts under a still-active parent — complete. Crossing and
-re-crossing fire the `wallet_policy.soft_floor_crossed`/`wallet_policy.soft_floor_cleared` webhook
-pair through the signal ledger's `soft_floor` family (durable lane only — no Redis threshold; signal latency is outbox
-latency). Never a billing wall and never an ack change: acks never change on a soft-floor
-crossing, events are never tagged, and work slipping past the gate lands and bills.
-(`apps/billing/queries.py:get_customer_soft_min_balance`)
-_Avoid_: treating it as a stop signal — `stop=true` keeps meaning exactly one thing (hard-floor
-family only).
 
 ## Pooled billing (seats & owners)
 
@@ -124,8 +152,8 @@ failing loudly. The guard makes the whole class of bug a hard failure at the fir
 of a wallet nothing ever reads.
 
 Two things deliberately still key off the SEAT and never call `lock_for_billing` at all, so the
-guard does not (and must not) touch them: **`BudgetConfig`** — budgets cap the seat's own spend, on
-purpose (see **Budget**) — and **audit records**, where the seat stays the named subject of the
+guard does not (and must not) touch them: **`CustomerSpendPool`** — a pool declared on a seat
+bounds the seat's own charges, on purpose (see **Customer spend pool**) — and **audit records**, where the seat stays the named subject of the
 action even when the money moved on the owner's wallet. Anything else that legitimately needs a
 seat id would need a deliberate, named allowlist entry, not a silent pass.
 _Avoid_: adding a new exception to the guard without recording it here and in the guard's own
@@ -133,42 +161,66 @@ docstring — the guard's whole value is that its exception set is small, named,
 
 ## Spend control
 
+Two of the four spend-control families live here — the **Customer spend pool** and
+**Wallet policy**; the Ceiling and Admission control are the kernel's (`apps/platform/CONTEXT.md`),
+and the four families, their homes and the one channel a billing-side control uses to reach a kill
+are ADR-0014.
+
 **Start-gate (spend gate)**:
-The durable pre-start check — suspension, stop flag, affordability, the
-soft floor (top-level starts only), budget — run before a Task is created.
-The per-minute bound on new work is NOT in this list since #462: admission control is the
-kernel's (`apps/platform/work/admission.py`), asked by the composition layer for every tenant
-BEFORE this money-shaped verdict, and this verdict never runs it and never moves its window.
-It is COMPOSED at `api/v1/task_endpoints.py`, not called as one method: registering a unit of work
-is its own route at the root and the money-shaped checks run INSIDE it, conditioned on the tenant
-having a wallet rather than on a product flag at the door. A metering-only tenant is not refused
-them — there is no wallet to test, so they do not apply, and it registers work like anyone else.
-The condition is the tenant's PRODUCT and deliberately not *does a `Wallet` row exist*: a billing
-customer who has never been credited has no row, and reading its absence as "nothing to test" would
-let exactly that customer start unlimited work with nothing behind it.
+What runs before a unit of work is registered, in the order the composition layer runs it
+(`api/v1/task_endpoints.py`; ADR-0011 §1 — registering work is its own route at the root, and the
+money-shaped checks run INSIDE it, conditioned on the tenant having a wallet regime rather than on
+a product flag at the door):
+
+1. **The claim.** A repeated `idempotency_key` answers the unit it already started and consumes
+   nothing below.
+2. **Admission control — the kernel's, for every tenant** (#462, slice 6 §6;
+   `apps/platform/work/admission.py`): the per-seat bound on new top-level starts
+   (`Tenant.max_task_starts_per_minute`, `rate_limit_exceeded` with retry information), then the
+   customer's standing — suspended (`customer_stopped`) or closed (`account_closed`). The rate
+   first, so a customer both stopped and over the rate is told the answer that changes on its own
+   within a minute. A tenant that does not bill through UBB gets both; until #462 neither ran for
+   it, because both sat inside the money verdict below.
+3. **The money-shaped verdict**, for a tenant with a wallet regime only (`RiskService.check`,
+   `apps/billing/gating/services/risk_service.py`): the standing again, worded by the line
+   holding the customer (the advisory read's first answer); the stop flag in force (enforcing
+   tenants); then the hard floor and the soft floor (top-level starts only) on `balance − open
+   reservations`; then the seat-level **Customer spend pool**. Asking it consumes nothing — the
+   advisory `GET /billing/customers/{id}/affordability` read (#463) answers from the same code.
+4. **The shape of the work** — a parent that is not running, a depth work cannot nest to — refused
+   by the kernel under the parent's own lock, in the registry's words (`parent_task_not_active`,
+   `subtask_depth_exceeded`), sourced from `core.vocabulary` on both sides of the boundary.
+5. **The reservation**, last, after the row is written and the price pinned
+   (`RiskService.reserve_agreed_price`; see **Wallet policy**) — the one money question that
+   needs the price, and a refusal here rolls the whole start back.
+
+Every refusal is one vocabulary — the registry's `affordability_reason`, nine known values held
+whole in `apps/billing/gating/models.py:AFFORDABILITY_REASONS` and produced by constant on
+both sides (#463). Refusing a start is legitimate under the one-rule model: it refuses work that
+hasn't happened, never a usage report.
 A per-owner cap on work already running sat beside `check` until #455 and is DELETED, not narrowed
-(#150 §12.5): it bounded a count of outstanding operations, which converts to no amount of money,
-and its existence invited the belief that UBB closes a blind window it cannot see into. Admission
-control bounds the rate of new work and nothing else; `check` is now the whole money-shaped answer.
-Refusing a start is legitimate under the one-rule model: it refuses work that hasn't happened,
-never a usage report.
+(#150 §12.5; the reasoning is ADR-0014 §1). Admission control bounds the rate of new work and
+nothing else; `check` is now the whole money-shaped answer.
 A cost-coverage condition sat in this list until #321 and is gone with nothing in its place: it
 refused a COGS-limited start unless the tenant had promised full cost coverage, and #320 made that
 promise unkeepable by recording an uncostable event with its cost unresolved rather than counting
 it as zero. The ceiling now races a floor, and saying so is a downstream job (#328), not a
 start-gate one.
-(`apps/billing/gating/services/risk_service.py`)
+_Avoid_: the retired name for the advisory call — it described a moment in a sequence rather than
+the question asked, and #141 retired it outright.
 
 **Live counter**:
 THE one module owning every piece of Tier-2 Redis state (#111): the billing-owner-keyed live
 balance/spend counters maintained synchronously at record time (so the API response carries a real
-stop verdict), the cooperative stop flag, the seat-keyed budget counter, and every key format, Lua
-script, and TTL behind them. Interface: `debit · credit · read · reconcile · repair_incr ·
-resume · cleanup · budget_incr/read/reconcile`, plus a deliberate TEST-ONLY door (`Door`) for
-fabricating counter/flag state. Key formats are frozen once in the module's own pin test; a
-perimeter walker (ADR-001 style) keeps the keyspace, the Lua, and the test door private everywhere
-else. The counter writes hang off the live-counter-maintenance switch — unmaintained at record
-time when it is off; the verdict reads never switch off.
+stop verdict), the cooperative stop flag, the seat-keyed pool counter
+(`ubb:spend_pool:{customer_id}:{YYYY-MM}`, #456), and every key format, Lua script, and TTL
+behind them. Interface: `debit · credit · read · reconcile · repair_incr · resume · cleanup ·
+spend_pool_incr/read/reconcile`, plus a deliberate TEST-ONLY door (`Door`) for fabricating
+counter/flag state. Key formats are frozen once in the module's own pin test; a perimeter walker
+(ADR-001 style) keeps the keyspace, the Lua, and the test door private everywhere else. The counter
+writes hang off the live-counter-maintenance switch — unmaintained at record time when it is off;
+the verdict reads never switch off. Since #459 the debit's owner-level pool leg runs in every
+billing mode.
 (`apps/billing/gating/services/live_counter.py`;
 pins: `apps/billing/tests/test_live_counter_perimeter.py`)
 _Avoid_: "live ledger" — "ledger" now means the signal ledger (`StopSignalState`); one word, one
@@ -196,21 +248,33 @@ lane" — both name an ingest lane deleted in slice 1, and this switch never was
 (`apps/platform/tenants/flags.py:live_counter_maintenance_on`)
 
 **Customer-wide stop flag**:
-The cooperative, owner-keyed Redis flag set when the live counter crosses the wallet floor or
-budget cap; it blocks new task starts until recovery — usage reports keep landing and billing.
-Paired with resume: the moment the balance re-crosses the floor, the flag lifts and
-`customer.stop_cleared` fires, closing the stop episode. The flag is the fast READ surface (ack verdicts) only — emission
-dedup lives on the signal ledger. Durable truth owns it: the hourly patrol re-aligns an orphaned
-or missing flag to the `floor_stop` family's durable state within one interval.
+The cooperative, owner-keyed Redis flag set when a live counter reaches a stop line — the wallet's
+hard floor, or the pool's stop line at either level; it blocks new task starts until recovery —
+usage reports keep landing and billing.
+Paired with resume: the moment every open stop line has cleared, the flag lifts and
+`customer.stop_cleared` fires, closing the last episode (a customer held by its pool and by its
+floor at once stays flagged until both clear, #458). The flag is the fast READ surface (ack
+verdicts) only — emission dedup lives on the signal ledger. Durable truth owns it: the hourly
+patrol re-aligns an orphaned or missing flag to the ledger's stop lines' durable state within one
+interval.
 
 **Signal ledger (`StopSignalState`)**:
-The durable per-owner-per-family state row every stop/resume emission routes through; only the
-winning transition emits (atomically with the row), so a crossing observed by the fast Redis lane,
-the durable drawdown handler, and reconcile signals exactly once. Its `episode_seq` is the STOP
+The durable per-owner-per-line state row every stop/resume emission routes through — keyed by
+`(owner, control_family, reason)` since #458, the third column being the line's own name: the wallet policy's `hard_floor` and the customer
+spend pool's `customer_spend_pool` are the two STOP lines (each named by the `reason_code` its
+stop carries; each opens the customer-wide stop state; two open episodes clear independently), and
+the wallet policy's `soft_floor` is the wind-down SIGNAL line, never a stop. Only the winning
+transition emits (atomically with the row), so a crossing observed by the fast Redis lane, the
+durable drawdown handler, and reconcile signals exactly once. Its `episode_seq` is the STOP
 EPISODE id — a stop opens episode N, the paired clear closes it — which stop-context tagging and
-Stops and breaches key on. Suspension rides the same winning stop transition, so floor-stop and
-suspension can never disagree or double-fire. Each winning transition also stamps
+Stops and breaches key on; `control_id` records the row that declares the control whose line it
+is (the pool row; the billing profile or tenant configuration that carried the floor), so the
+episode's announcement and every re-mint of it name the same control; `clear_reason` is why the
+last clearing transition happened. Suspension rides the same winning stop transition, so a stop
+line and suspension can never disagree or double-fire. Each winning transition also stamps
 `announce_outbox_id` (the row's last announcement) inside the same atomic unit — see Announcement.
+Until #458 the two stop lines were one row under a local family word, told apart by the owner's
+tenant billing mode.
 _Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
 the ledger is the truth.
 (`apps/billing/gating/services/stop_signal_service.py`)
@@ -233,10 +297,11 @@ only the ceiling's two legs — the sweep of work at or past its ceiling and the
 stopped unit's dead-lettered announcement — run for a tenant whose enforcement switch is `off`,
 because declaring a ceiling is itself the opt-in; the signal legs and the repair stay enforcing
 tenants only). Per pass: drives
-missed signal transitions in both directions for both families, re-aligns the fast stop flag to
-durable truth, re-mints unannounced signal rows and killed tasks as fresh current-state events
-(`re_announcement: true`, bottom line only), sweeps active tasks at-or-past their
-provider-cost limit into the idempotent kill flow, and runs the upward live-balance repair.
+missed signal transitions in both directions for the ledger's three lines, re-aligns the fast
+stop flag to durable truth, re-mints unannounced signal rows and killed tasks as fresh
+current-state events (`re_announcement: true`, bottom line only), sweeps active work at or past
+its COGS ceiling — and active work under an open pool line (#459) — into the idempotent kill flow,
+and runs the upward live-balance repair.
 Outcomes land as day-bucketed counters, read through `apps.billing.queries.get_patrol_stats`.
 Worst-case emission latency after a crash: one patrol interval plus the delivery retry schedule.
 _Avoid_: a separate patrol schedule — the reconcile pass IS the patrol; touching the shared
@@ -244,63 +309,89 @@ outbox retry/dead-letter policy — the patrol re-mints around a dead-lettered r
 (`apps/billing/gating/patrol.py`)
 
 **Enforcement mode**:
-Two positions — `off` / `enforcing`. When `off`, spend control is byte-for-byte a no-op (no
-counters, no signals, no tagging); `enforcing` runs the full signal suite + state changes.
-_Avoid_: a second enable flag — this is the single switch (mirrors the tenant's `enforcement_mode`);
-a middle "compute but never act" mode — the one honest question is whether the signal suite is on.
+Two positions — `off` / `enforcing` — and since #452 it governs the CUSTOMER-WIDE family only:
+the live counters and their crossing checks, the hard floor's signal, the signal ledger and its
+re-mint, the stop flag and the suspension fold, the start-gate's stop-flag and soft-floor refusals,
+the customer-scope entries of a stop context, and the ANNOUNCEMENT of an expiry. When `off`, all of
+that is byte-for-byte a no-op. The Ceiling is NOT governed — declaring a ceiling is itself the
+opt-in (#150 §11.2): the COGS compare and kill, the ack's stop verdict, the unit-scope stop
+context and the patrol's ceiling legs run for every tenant; both expiry ladders are climbed for
+every tenant too, but the announcing reaper is enforcing-only, so under `off` an expiry lands
+later and silently, through the one-hour safety net.
+(`apps/platform/tenants/flags.py:enforcing`)
+_Avoid_: a second enable flag — this is the single switch (it IS the tenant's `enforcement_mode`);
+a middle "compute but never act" mode — the one honest question is whether the signal suite is on;
+reading `off` as "no spend control" — a declared ceiling still stops work.
 
-**Budget**:
-A per-tenant (optionally per-customer) monthly spend cap with alert levels.
-(`apps/billing/gating/models.py:BudgetConfig`) Two DIFFERENT month-to-date counters read a
-`BudgetConfig`, resolved two different ways, and they are deliberately not merged:
+**Customer spend pool**:
+A bound on one customer's charges over a period — the family's name on every surface since #456
+(`control_family: customer_spend_pool`; `apps/billing/gating/models.py:CustomerSpendPool`,
+routes `/billing/customer-spend-pool` for the tenant default and
+`/billing/customers/{id}/customer-spend-pool` + `/status` for a customer's own, audit action
+`customer_spend_pool.set`, event `customer_spend_pool.threshold_reached`). A row on a customer is
+that customer's pool; a row with no customer is the tenant default, and it applies to **seats
+only** — every customer that is not a business, with its own row (even an inert zero one)
+shadowing it (`CustomerSpendPoolService.resolve_config_for`): a business with no row of its own
+has no pool, so one configured number never becomes two lines at two altitudes. The level needs no
+column: a row on a business is the owner-level pool, a row on a seat the seat-level pool, and for
+a standalone customer the two coincide.
 
-- `ubb:budget:{seat}:{YYYY-MM}` — SEAT-keyed. Drives the start-gate (`BudgetService.check`) and the
-  threshold alerts. Its config is resolved SEAT-first, tenant-default second
-  (`BudgetService.resolve_config_for`) — a seat's own cap always governs the seat's own start-gate,
-  never its business's.
-- `ubb:livespend:{owner}:{YYYY-MM}` — OWNER-keyed. Drives the postpaid LIVE crossing (the
-  customer-wide stop flag). Its config is resolved for the OWNER (`LiveCounter._threshold`) — a
-  pooled business's own `BudgetConfig` row, falling back to the tenant default when the business has
-  none, but NEVER a seat's row: a business customer's own budget row is what governs the aggregate.
+**Two levels, two counters** (#150 §7.3; #459). A unit's charges count toward its SEAT's pool and
+its BILLING OWNER's pool where each exists:
 
-For a standalone customer (owner == seat) these compute the same number twice. For a pooled
-business they diverge on purpose: per-seat start caps plus one owner-aggregate stop line. They were
-not collapsed when owner == seat because conditional key identity is a footgun — a seat adopted into
-a business mid-month would silently change which key its spend lives under, splitting the counter
-with no migration path — and because they are different aggregates with different merge semantics:
-`livespend` MAX-merges toward the owner-aggregated durable billed total; `budget` MAX-merges toward
-the seat's own ledger. They coincide only in the degenerate case.
+- `ubb:spend_pool:{customer_id}:{YYYY-MM}` — SEAT-keyed, fed by the drawdown handler once per
+  posting and MAX-merged toward the seat's own durable charges. Drives the start-gate
+  (`CustomerSpendPoolService.check`), the threshold alerts, and the seat-level stop, detected on
+  the drawdown and settled by the seat-level beat.
+- `ubb:livespend:{owner}:{YYYY-MM}` — OWNER-keyed, fed by the recording lane and MAX-merged toward
+  the owner-aggregated durable charges. Drives the owner-level crossing on the live counter's pool
+  leg, settled by the owner-level pass of the hourly reconcile.
 
-**Mode split** — why a budget crossing is a wall on postpaid but not on prepaid/meter_only (the
-reasoning is who carries the credit risk, which is what makes the asymmetry legible rather than an
-inconsistency):
+They were not collapsed when owner == seat because conditional key identity is a footgun — a seat
+adopted into a business mid-month would silently change which key its spend lives under — and
+because they are different aggregates with different merge semantics.
 
-- **postpaid** — the tenant is extending credit, so the budget IS the live stop line: crossing it
-  fires the stop flag, the `customer.stopped` webhook, and suspension
-  (`crossing.budget_stop_threshold`, wired into `LiveCounter._crossed`/`_threshold`).
-- **prepaid / meter_only** — the money is already collected and the tenant carries no credit risk,
-  so the budget is start-gate only: it refuses NEW task starts and never interrupts running work
-  (the live counter's `_threshold` for these modes uses the wallet floor, never the budget, so a
-  budget cap cannot enter the live crossing at all in these modes). The wallet floor is the real
-  wall here, and it is self-correcting: top up and continue.
-_Avoid_: assuming a budget crossing stops anything on prepaid/meter_only — it never does; only the
-wallet floor does. "Fixing" the seat/owner divergence by pointing both counters at the same key —
-that reintroduces the mid-month-adoption footgun this design deliberately avoided.
+**Enforcement is payment-mode independent** (#150 §7.1; slice 6 §4 — a RULING, built by #459).
+`enforce_mode` is the registry's closed pair (`spend_pool_enforce_mode`: `alert_only` announces
+the levels and never stops; `blocking` announces AND stops), and a blocking pool stops a prepaid
+customer exactly as it stops a postpaid one — payment mode decides who invoices, nothing else. On
+the pool line's winning stop transition every active unit of the stopped customer is killed
+through the kernel's `TaskService.kill_and_announce` (`reason_code: customer_spend_pool`,
+`trigger_source: pool_crossing`, `control_id` = the pool row) — billing imports the kernel, never
+the reverse — and the next start is refused (`customer_spend_pool_exceeded`;
+`customer_spend_pool_unavailable` when the store is away and the read fails closed, the pool
+row's own `fail_closed` first, else `RiskConfig.gate_fail_closed`, the one column that row keeps).
+**Known-over fires on a pair** (#150 §4.2): the pool's durable basis is the resolved period
+charges beside the count of postings whose customer price UBB could not resolve
+(`period_basis`; the status route publishes the same pair) — known at or over the line blocks,
+known below with unknowns present alerts and never blocks, and nothing sums an unknown as zero.
+**Each Charge counts once**: ADR-0013 makes a delivered fixed-price unit's Charge → posting →
+`usage.recorded` chain 1:1, and a replayed close writes no second Charge. The compare is
+`core/crossing.py`'s (`spend_pool_stop_line`, `spend_pool_stop_threshold`,
+`spend_pool_assessment`), shared with the console's mirror. The customer's Billing tab renders the
+pool under its name, the level in words and the mode as the catalogue word (#468).
+(`apps/billing/gating/services/customer_spend_pool_service.py`; the Charge-counted-once and
+every-mode pins are `apps/billing/gating/tests/test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid.py`)
+_Avoid_: the retired family word — a word for money set aside, which this is not; assuming a
+blocking pool only refuses starts on prepaid — since #459 it stops running work in every mode;
+"fixing" the seat/owner divergence by pointing both counters at one key — that reintroduces the
+mid-month-adoption footgun; a compensating Charge decrementing nothing — the day one has a path to
+the rails (#472) the period it compensates must have its pool decremented on both counters and in
+the durable basis, stated at the service until then.
 
 **Crossing**:
-The instant a debit pushes an owner's live counter past its threshold (wallet floor or
-budget cap), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
-The compare itself — both sign orientations (wallet balance FALLS below the line, budget spend
-RISES over it), the transition/level/recovery forms, the budget stop line's `enforce_mode`
-semantics (an `alert_only` budget alerts but can never cross, in every lane; a `blocking`
-budget both alerts and can cross), and the month
-label/bounds the postpaid crossing is scoped by — has ONE owner:
+The instant a debit pushes an owner's live counter past its threshold (the hard floor, or a pool's
+stop line), setting the stop flag. Cooperative: the crossing event itself still lands and bills.
+The compare itself — both sign orientations (wallet balance FALLS below the line, pool spend
+RISES over it), the transition/level/recovery forms, the pool stop line's `enforce_mode`
+semantics (an `alert_only` pool alerts but can never cross, in every lane; a `blocking` pool both
+alerts and can cross), and the month label/bounds the crossing is scoped by — has ONE owner:
 `core/crossing.py` (#110; moved from this product into the kernel's shared package by #452, so
 the kernel's own ceiling compare could import it rather than keep an inline copy that disagreed).
-Every lane (fast, durable, start-gate, reconcile, repair, budget gate, dispute clawback) imports
+Every lane (fast, durable, start-gate, reconcile, repair, pool gate, dispute clawback) imports
 those predicates rather than re-deriving the comparison, and since #452 so does the unit of
-work's COGS ceiling — the recording lane's live compare, the patrol's sweep and the analytics
-reached-count — at or above the line, everywhere.
+work's COGS ceiling — the recording lane's live compare, the patrol's sweep and the Utilisation
+and headroom report — at or above the line, everywhere.
 _Avoid_: writing `balance < -floor` / `spend >= cap * pct // 100` inline anywhere — that is the
 exact re-sprawl #110 retired.
 
@@ -318,7 +409,7 @@ transaction, so a failure before the commit rolls the row back and leaves the de
 Hangs off the live-counter-maintenance switch — the same switch that arms that debit, so the
 repair is inert exactly where its cause cannot occur.
 _Avoid_: an absolute SET on the counter — unsafe under concurrent traffic; touching the postpaid
-spend counter — its drift lane is the MAX-merge + budget reconcile.
+spend counter — its drift lane is the MAX-merge + pool reconcile.
 (`apps/billing/gating/repair.py`)
 
 **Safe direction (over-restrictive)**:
@@ -400,6 +491,7 @@ _Avoid_: importing billing models from another product; go through `queries.py`/
 **Key events**:
 Consumes `usage.recorded` (drawdown); emits `balance_low` (→ auto-top-up), `balance_overage`,
 `customer_suspended`, `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
-`customer.stopped`. (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
+`wallet_policy.soft_floor_crossed` / `wallet_policy.soft_floor_cleared`, `customer.stopped` /
+`customer.stop_cleared` (each carrying `control_family` and `control_id`, #458). (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
 either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents
 takes the first without the second.)

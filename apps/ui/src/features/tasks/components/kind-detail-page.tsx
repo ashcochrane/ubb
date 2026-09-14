@@ -269,7 +269,8 @@ function HowItIsSold({
  * — one figure when every book agrees, a range when a customer's book differs
  * — and a kind nobody has run yet says so rather than guessing. That lags a
  * repricing by exactly one run, and the copy says so too. The mechanism
- * behind the ceiling is slice 6's; only the rendering lands here.
+ * behind the ceiling is the kernel's (#452, #453 — ADR-0014 §2); only the
+ * rendering lives here.
  */
 function CeilingAgainstPrice({
   ceiling,

@@ -379,16 +379,20 @@ _Avoid_: treating the label as an identity, and "releasing" a key at a terminal 
 **Subtask**:
 A parent-linked child unit of work — **the same record with a parent**, not a second model and not
 a separate pricing entity: a task registered under an active top-level task, declaring its kind in
-the same column its parent uses, with its own COGS limit and lifecycle. Its spend rolls up into the
-parent's totals (the parent's cap covers everything underneath it); crossing its own limit kills it
-alone (`subtask.killed`) while the parent keeps running and counting; a parent's stop
+the same column its parent uses, with its own COGS ceiling and lifecycle. Its spend rolls up into
+the parent's totals (the parent's ceiling covers everything underneath it); reaching its own
+ceiling kills it alone (`subtask.killed`, the same `task_cogs_ceiling` word with `stop_scope`
+carrying the altitude) while the parent keeps running and counting; a parent's stop
 cascades downward to its active subtasks — never upward — and **what the cascade writes is not
 always what the parent got**: a kill cascades `killed` and an expiry cascades `expired`, but a CLOSE
 cascades `cancelled`, because the tenant declared the delivery of the parent and declared nothing
 about each contained piece. **Each cascade also records WHY and BY WHAT**: `outcome_reason:
 parent_closed` for a close, `reason_code: parent_killed` for a kill and `reason_code:
-silence_window` for an expiry, each beside `trigger_source: parent_cascade` — the mechanism is the
-same for all three and is written on the row because a cascade announces nothing of its own. **A
+parent_expired` for an expiry (#457 — the expiry cascade recorded the silence window whatever the
+parent ran out of until the registry coined that word), each beside `trigger_source:
+parent_cascade` — the mechanism is the same for all three and is written on the row because a
+cascade announces nothing of its own. The family and the control on contained work are the
+PARENT's, copied by the cascade (#458). **A
 FAILED subtask never fails its parent**: a contained failure is frequently recoverable and only the
 tenant's code knows whether the whole unit still delivered, so the outcome stays an assertion made
 when the answer is known rather than an inference from what happened underneath. The read side is
@@ -401,20 +405,40 @@ cascades writes and that the three reasons are distinct, `ContainmentCutsDownwar
 that a failed piece of contained work leaves its parent running)
 _Avoid_: "child task", "nested task", and the retired label-era "task" sense.
 
-**Task limit (provider-cost limit)**:
-A task's COGS ceiling — denominated in provider cost (what the job burns), never billed markup;
-declared on the kind of work as a figure or as `uncapped` (a declaration must say one, #453), with
-the tenant's two default rungs (`Tenant.default_task_cogs_ceiling_micros` and its contained-work
-twin) reaching only work with no declared kind, and a start able to request lower, never higher;
-snapshotted onto the unit at creation. Only the provider total
-races it; reaching it — the known total **at or above** the line, compared in one place
-(`core/crossing.py::ceiling_reached`, #452) by the recording lane, the patrol's sweep and the
-Utilisation and headroom report alike (#465) — is a signal point (kill + `task.killed`), never a billing wall.
-(`apps/platform/work/models.py:Task.task_cogs_ceiling_micros`)
-_Avoid_: "hard stop" — that vocabulary retired with the 429; and "exceeded" — a ceiling is
-reached, not exceeded, because the line itself stops.
+**Ceiling**:
+The spend-control family that bounds ONE unit of work (`control_family: ceiling`; #150 §2, slice
+6 §1–§3; ADR-0014 §1) — a kernel concept, because a unit of work is one, and a tenant that does not
+bill through UBB still gets it. A Ceiling has a declared basis (`ceiling_basis`: `cost` or `time`),
+and each basis is its own column in its own unit rather than one field switching unit, storage
+and comparison at once (#154 §3.4). Its time forms are the **Silence window** and the **Absolute
+deadline**, which keep slice 5's published names (ADR-0014 §3 records the departure from #154
+§3.4's spellings). Its cost form is the unit's COGS ceiling (`task_cogs_ceiling_micros`) —
+denominated in provider cost (what the work burns), never billed markup; declared on the kind of
+work as a figure or as `uncapped: true`, one and never neither or both, held as a CHECK at the
+database (#453; the migration set `uncapped` on every declaration whose ceiling was null, because
+that is what the tree meant by null); with the tenant's two default rungs
+(`Tenant.default_task_cogs_ceiling_micros` and `default_subtask_cogs_ceiling_micros`, kernel
+columns since #453, having left billing's risk row) reaching only work with no declared kind, and
+a start able to request lower, never higher; snapshotted onto the unit at creation under the same
+name at the other scope. Only the provider total races it; reaching it — the known total **at or
+above** the line, compared in one place (`core/crossing.py::ceiling_reached`, #452) by the
+recording lane, the patrol's sweep and the Utilisation and headroom report alike — is a signal
+point (a kill announcing `task.killed` with `reason_code: task_cogs_ceiling`, `control_family:
+ceiling`, `ceiling_basis: cost` and `control_id` naming the declaration or the tenant, #458),
+never a billing wall. It runs for every tenant whatever its enforcement switch says — declaring a
+ceiling is itself the opt-in (#452, #150 §11.2). Two altitudes and one word: a contained unit's
+own ceiling and its parent's roll-up both record `task_cogs_ceiling`, and `stop_scope` carries the
+altitude (#457).
+(`apps/platform/work/models.py:Task.task_cogs_ceiling_micros`, `TaskType.uncapped`;
+`apps/platform/work/tests/test_a_kind_of_work_declares_its_ceiling_or_declares_itself_uncapped.py`
+holds the one-answer rule at the database)
+_Avoid_: "hard stop" — that vocabulary retired with the 429; "exceeded" — a ceiling is reached, not
+exceeded, because the line itself stops; "limit" as the field word — it named four different
+things, and #154 §3.4 gave each its own (`limit` survives as the admission-control rejection's
+retry field, the pagination parameter, and the stop-context array's entry key — see
+`apps/metering/CONTEXT.md`); a warning threshold or an amber state — enforcement is binary.
 
-**Ceiling assessment (`ceiling_status`)**:
+**Ceiling status (`ceiling_status`, the assessment)**:
 What the ceiling concluded for one unit of work, **derived on the row and never stored** (#452,
 ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running known supplier
 total and the unresolved-event count — through the same predicate the crossing uses. One of the
@@ -431,15 +455,41 @@ says so — the three travel as one value (`apps/platform/work/models.py:Task.ce
 _Avoid_: storing it, or re-deriving it anywhere but the row; a warning threshold or an amber state
 beside it — enforcement is binary and this is information (#150 §9, §12).
 
+**Admission control**:
+The spend-control family that bounds how fast NEW top-level work may enter — the tenant's
+`max_task_starts_per_minute`, per seat, in a fixed window of one minute — and the customer's
+standing beside it (`control_family: admission_control`; #154 §3.4, slice 6 §6; ADR-0014 §1). A
+kernel concept, consulted by the composition layer for EVERY start, a tenant that does not bill
+through UBB included, after the claim (a replay consumes nothing) and BEFORE the money-shaped
+verdict (#462). It says nothing about supplier cost and is never spend protection: contained work
+started inside admitted work consumes nothing, a usage report is always accepted, a close is never
+subject to it, configuration is never subject to it. The rate is asked first, then the standing —
+suspended (refused in the registry's word for a stop in force, `customer_stopped`, worded by
+billing's verdict with the line holding the customer where the tenant has one) or closed
+(`account_closed`) — so a customer both stopped and over the rate is told the answer that changes
+on its own within a minute. The rejection is a `429` (`rate_limit_exceeded`, a registry value and
+not a retired term) carrying retry information; the store is the Django cache, keyed on the seat,
+failing OPEN and loudly when away — the money is still guarded by the durable checks that follow.
+Its one setting moved to the tenant row with it, beside the tenant's other kernel rungs.
+(`apps/platform/work/admission.py`; `Tenant.max_task_starts_per_minute`;
+`api/v1/tests/test_admission_control_runs_for_every_start.py` runs the same cases for a tenant
+with a wallet regime and for one that does not bill through UBB)
+_Avoid_: describing it as spend protection; a general request throttle — reporting usage that
+already happened is never refused (#150 §1.3), which is what narrowing it to starts holds by
+construction; consuming the allowance from the advisory affordability read — asking consumes
+nothing since #462.
+
 **Killed (task)**:
-**UBB stopped this unit on a spend signal, and that is all it ever means** — a ceiling crossing, the
-patrol, or a parent's kill cascade. Nothing tenant-declared may land here, which is what keeps
+**UBB stopped this unit on a spend signal, and that is all it ever means** — a ceiling reached, a
+blocking customer spend pool's stop (through `TaskService.kill_and_announce`, the one channel a
+billing-side control has to a kernel-state kill, #459), the patrol, or a parent's kill cascade. Nothing tenant-declared may land here, which is what keeps
 Stops and breaches, the stop context and the announcement bookkeeping honest and makes *how often do
 we blow ceilings* answerable without filtering on a reason string first. Late events still land,
 bill, and count into the killed unit's totals (and its parent's, for a subtask); the flip is the
 durable record that the signal fired, not a wall. Killing a parent cascades the flip to its active
 subtasks; killing a subtask kills it alone. It announces `task.killed`, or `subtask.killed` for
-contained work — see **Terminal stop event**.
+contained work, carrying the cause, the mechanism, the family and the control — see **Terminal
+stop event**.
 (`apps/platform/work/services.py:TaskService.kill_task`)
 _Avoid_: reading it as "terminated" in general — the reaper's stop is an **Expired (task)**.
 
@@ -462,17 +512,22 @@ The webhook UBB publishes when it tears a unit of work down, **named for the sta
 than for a bound**. There are four — `task.killed`, `task.expired`, and the same pair on contained
 work — and the pairing is the point: an operator subscribed to spend incidents must stop being paged
 because a worker crashed, and *how often did work stop on a ceiling?* must be answerable without
-parsing a cause out of a payload. The **Stop reason** and the mechanism that applied it travel as
-structured payload fields (`reason_code`, `trigger_source`), so a subscriber classifies by
-SUBSCRIBING and then by reading, never by parsing a name (ADR-0006 §5). Which of the four fires is
+parsing a cause out of a payload. The **Stop reason**, the mechanism that applied it, the family of the control that fired and
+that control's identity travel as structured payload fields (`reason_code`, `trigger_source`,
+`control_family`, `control_id` — the last two additive since #458, with `ceiling_basis` beside
+them on a Ceiling's stop), so a subscriber classifies by SUBSCRIBING and then by reading, never by
+parsing a name (ADR-0006 §5). The family is stamped by the kernel from the one reason→family map
+(`core/controls.py`); the id is passed by whoever applied the stop, because it is a row that
+caller already holds. Which of the four fires is
 read off the row AFTER the flip, so the claim *the name is the state entered* is a property of the
 record rather than a habit each emitter keeps; the enforcement patrol's re-mint reads the same row
 and therefore repairs a delivery with whatever is true now. A **Cancelled (task)** and the states a
 tenant declares announce nothing at all — the tenant already knows how the work ended.
 (`apps/platform/events/schemas.py:terminal_stop_event`;
 `apps/platform/work/tests/test_a_terminal_event_names_the_state_entered.py` holds the four names
-on the lanes that apply a stop and the payload's two fields — the closed `control_family` pair
-is slice 6's, for the reason ADR-0006 §5's applied-by note gives;
+on the lanes that apply a stop and the payload's two fields;
+`apps/platform/work/tests/test_a_stop_names_the_control_that_fired.py` holds the closed
+`control_family` pair, stamped on the flip and copied down by the cascade (#458);
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
 one place *the name is the state entered* is falsifiable, the re-mint;
 `apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration)
@@ -566,7 +621,11 @@ minutes — and resolved when a sweeper RUNS rather than pinned at registration,
 rescues work already in flight. `NULL` at a rung means nothing was declared there and the ladder
 falls through; `0` means that rung declares no window at all, which is a real answer for work that
 is legitimately quiet for hours and can never produce an immortal task because the **Absolute
-deadline** still applies. Its stop is `reason_code: silence_window`.
+deadline** still applies. A **Ceiling** on the `time` basis: its stop is `reason_code:
+silence_window`, `control_family: ceiling`. Both ladders are climbed for every tenant, but the
+announcing reaper is enforcing-only by design: under `off` a unit past its window is expired
+silently by the one-hour safety net, once it is also an hour old — later than the window, and
+with no event (`apps/platform/work/tasks.py`).
 (`apps/platform/work/queries.py:expiry_windows`)
 
 **Absolute deadline**:
@@ -575,44 +634,47 @@ rungs — the declared **Task type**, then `Tenant.task_absolute_deadline_second
 backstop of six hours. **It cannot be switched off at any rung**, and a `CHECK` on each of the two
 columns is what makes that a property of the database: dropping it entirely was considered and
 rejected, because it is the guard that stops any tenant getting an immortal task, counted as active
-and holding a prepaid reservation forever. Its stop is `stale_max_age`, which stays this
-backend's own word — the registry declares no known value for it and `reason_code` is open, so it
-travels legally rather than being coined here.
+and holding a prepaid reservation forever. A **Ceiling** on the `time` basis: its stop is
+`reason_code: absolute_deadline`, the registry's word since #457 — until then it travelled under
+this backend's own spelling, and `work/migrations/0026` rewrote every stored row that carried it.
 (`apps/platform/work/queries.py:expiry_windows`)
 
-**Stop reason**:
-The closed vocabulary of why a stop signal fired — `task_limit`, `subtask_limit`,
-`task_not_active`, `customer_wide_stop`, `silence_window`, `stale_max_age`, plus the kill-metadata-only
-`parent_killed` (the KILL cascade's flip, never on an ack or event) and the stop-context-only
-`suspended` (an owner suspended with no open floor episode — taggable, but never an episode reason,
-so it is NOT in this closed vocabulary's `CROSSING_REASONS`). One source of truth for every producer
-and consumer; rides the ack's `stop_reason`, never an HTTP error. **Two of them come from the
-registry by reference** — `parent_killed`, and `silence_window` since the expiry paths that produce
-it were built. The three spend-shaped words above are still this backend's own spellings and are
-renamed by the slice that rebuilds spend control.
-(`apps/platform/work/reasons.py`)
-_Note_: the metadata key is still spelled `kill_reason` and now carries an **Expired (task)**'s
-reason too — `silence_window` / `stale_max_age` on a row that says `expired`. The rename was left
-to the ticket wiring `outcome_reason`'s consumers, and that work landed (#409, #413) without
-renaming it — so the key is an **unowned residual**, recorded here rather than implied paid
-(`STOP_CAUSE_KEY`, `apps/platform/work/services.py`); every consumer of the key gates on
-`status == killed` first, so nothing mis-reads it meanwhile. **All three cascades record a
-reason now**, and they are not the same concept: a close cascade writes `outcome_reason:
-parent_closed` (caller-supplied, so not in this vocabulary at all), while the kill and expiry
-cascades write `parent_killed` and `silence_window` under this key.
-_Note_: the expiry cascade writes `silence_window` on **every** expiry, and in one of the three ways
-a parent reaches one that is an approximation. Reaped for silence, it is exactly true — reporting
-usage on contained work stamps its parent's heartbeat, so a parent reaped for silence really had
-nothing reported underneath it. Reaped on its **Absolute deadline**, the parent's own row says
-`stale_max_age` and its contained work says `silence_window`, so **two rows of one tree disagree in
-one transaction** — and `work/tasks.py:_reason_for` rules against this word for exactly that case in
-the parent's own right, because "reporting the silence instead would say the tenant stopped talking
-about work that had in fact run out of time". Reaped by the UNANNOUNCED sweeper, the parent gets no
-cause at all while its contained work still gets this one. It is kept because carrying the parent's
-cause down contradicts the ruling that names this word unconditionally and leaves the third case
-nothing to carry, and coining *the unit containing this one ended* would be this backend minting a
-value in a concept another slice owns. **Residual for that slice**; the mechanism beside it,
-`trigger_source: parent_cascade`, is unconditional and is what actually says why the row stopped.
+**Stop reason (`reason_code`)**:
+WHY a stop signal fired — which bound was reached. An OPEN registry concept with seven known
+values, each bound to a constant in `apps/platform/work/reasons.py` from `core.vocabulary` (#457):
+`task_cogs_ceiling` (the unit's own COGS ceiling, at either altitude — `stop_scope` carries the
+altitude, the collapse of two altitude-named words into one), `customer_spend_pool` (the owner's
+pool opened the customer-wide episode) and `hard_floor` (the wallet's hard floor did — the split
+of one customer-wide word into the two controls that produce it, told apart on the signal ledger's
+line since #458 and never by the owner's tenant billing mode), `silence_window`,
+`absolute_deadline` (the unit passed its own deadline — coined by the registry in slice 6,
+replacing this backend's own spelling), and the two cascade words `parent_killed` and
+`parent_expired` (kill- and expiry-metadata only: contained work ended by its parent's end, never
+on an ack or an event; the second coined in #457 so that the two rows of one expired tree no
+longer disagree). Beside them, two UBB-produced words that are NOT registry values and travel
+legally under an open concept: `task_not_active`, a VERDICT rather than a stop (a late event on a
+terminal unit — still priced, recorded and billed), and `suspended`, a stop-context TAG only
+(an owner suspended with no open episode — never an episode reason, never on an event). Open
+because a stop can originate outside UBB, and a value UBB has never seen must still travel. One
+source of truth for every producer and consumer; rides the ack's `stop_reason`, never an HTTP
+error; the published mirror (`openapi/error-codes.json`, `verdicts.reason_codes`) is pinned to
+the module by `api/v1/tests/test_problem_contract.py`. Which of the four families a reason
+belongs to is derived in one place, `core/controls.py:FAMILY_BY_REASON` — see **Terminal stop
+event**.
+(`apps/platform/work/reasons.py`; registry concept `reason_code`)
+_Note_: the metadata key that carries it on the row is the concept's own name — `reason_code`,
+`models.STOP_CAUSE_KEY`. It was spelled for a kill until #457, when `work/migrations/0026` moved
+every stored unit row and queued payload onto it, key and values, in one `RunPython` with a
+stated reason (`apps/platform/work/tests/test_the_stored_stop_cause_is_migrated_once.py`); the
+key carries an **Expired (task)**'s reason too, and every reader gates on the state first. All
+three cascades record a reason, and they are not one concept: a close cascade writes
+`outcome_reason: parent_closed` (caller-supplied, so not in this vocabulary at all), while the
+kill and expiry cascades write `parent_killed` and `parent_expired` under this key — each beside
+`trigger_source: parent_cascade`, the mechanism that says HOW the row stopped.
+_Avoid_: `outcome_reason` for this field — that is the caller's word for why work did not deliver
+(see **Outcome reason**); parsing a reason out of an event name — the name is the state entered;
+the retired mechanism-named spellings, and `customer_floor` (see **Task floor snapshot
+(removed)**).
 
 **Trigger source**:
 WHICH MECHANISM applied a stop, beside the **Stop reason** saying why — two fields because they are
@@ -620,7 +682,9 @@ two questions, and neither derives from the other: one reason is reached by seve
 one mechanism reaches several reasons. Open (`usage_ingest`, `enforcement_patrol`, `parent_cascade`,
 `pool_crossing`, `stale_reaper`), so a subscriber must accept one it has not seen. It rides both
 terminal stop events, where the contract advertises the set as documentation metadata rather than
-as an `enum`. Every path that APPLIES a stop names itself; a patrol RE-MINT deliberately names none,
+as an `enum`. Every path that APPLIES a stop names itself (`pool_crossing` reaches `task.killed` since #459,
+when a blocking pool's stop began to kill through the kernel); a patrol RE-MINT deliberately
+names none,
 because it repairs the delivery of a stop another mechanism made and the row does not record which.
 **`parent_cascade` is the one that reaches no event and never will**: a cascade announces nothing,
 because its parent's own stop is the one signal a customer's workers receive, so that mechanism is
@@ -633,13 +697,13 @@ immutable pre-removal `Posting.stop_context` rows may still carry it forever.
 **Task floor snapshot (removed)**:
 A per-task copy of the tenant's wallet-floor default, compared at every `accumulate_cost` call
 against the task's OWN frozen balance snapshot — an independent third floor alongside the
-customer's real floor and the postpaid budget. Deleted (billing-surface-correctness, task 1):
+customer's real floor and the customer spend pool. Deleted (billing-surface-correctness, task 1):
 it read a tenant-wide constant, never the customer's own
 `CustomerBillingProfile.min_balance_micros`, and compared against a balance frozen at task start,
 so a mid-task top-up was invisible to it and it could kill a task for a customer who had just
-paid. The durable drawdown lane already detects the real floor crossing and fires
-`customer_wide_stop`, the correct scope for a wallet-wide fact — do not reintroduce a per-task
-floor check independent of it.
+paid. The durable drawdown lane already detects the real floor crossing and fires the
+customer-wide stop (`reason_code: hard_floor`), the correct scope for a wallet-wide fact — do not
+reintroduce a per-task floor check independent of it.
 _Avoid_: adding a new reader of `Task.balance_snapshot_micros` for a floor comparison — it is kept
 only as forensics on the task record.
 

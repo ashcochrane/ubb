@@ -504,10 +504,11 @@ def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date,
     ⚠ IT RETURNED A BARE `int` WITH AN `or 0` UNTIL #351, AND THAT IS WHY IT IS
     A PAIR NOW. The counter this feeds compares a durable total against a live
     one and takes the larger, so a floor reported as a figure understates spend
-    — it does not overcharge anybody, it lets a limit be crossed later than it
-    should be. That is a spend-control input rather than a report, and the
-    ceilings that race it are slice 6's; what this slice owes them is a number
-    that says when it is incomplete instead of one that quietly is.
+    — it does not overcharge anybody, it lets a line be crossed later than it
+    should be. That is a spend-control input rather than a report: the pool's
+    stop line races it (#459, known-over fires on this pair and an unknown is
+    never summed as zero), and what #351 owed that line was a number that
+    says when it is incomplete instead of one that quietly is.
     """
     from apps.metering.usage.models import Posting
     return carry_cost_total(CUSTOMER_PRICE, Posting.objects.filter(

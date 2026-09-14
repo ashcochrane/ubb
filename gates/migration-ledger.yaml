@@ -220,10 +220,12 @@ entries:
   # say the v1 contract breaks deliberately ONCE and map #137 constraint 1 — no
   # live integrators — is the freedom that makes a clean break available.
   #
-  # The five below each have a real dependency, so none of them is a rename:
-  # slice 6 rewrites the five control emitters under #150's four families, and
-  # renaming one first would encode a target state nobody has agreed, or edit
-  # the same code twice.
+  # The five that stood below each had a real dependency, so none of them was
+  # a rename: slice 6 rewrote the five control emitters under #150's four
+  # families (#464, with #456's rename of the threshold event's class before
+  # it), and renaming one first would have encoded a target state nobody had
+  # agreed, or edited the same code twice. They are paid, and the note below
+  # the slice-5 pair records it.
 
   # THE TWO SLICE-5 ENTRIES WERE HERE AND ARE PAID (the terminal-event split).
   # They named the two Task events for a BOUND rather than for the state
@@ -294,26 +296,15 @@ entries:
   # reason says so. It is #205's residue in a new place — an owner slice that
   # nobody chose — and it is written down rather than smoothed over.
 
-  - id: g7-backend-budget
-    gate: G7
-    site: backend::budget
-    expected: control_family
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      A retired spend-control family name. #150's four families —
-      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
-      replace one word that named all of them at once, and slice 6
-      builds them. 36 → 7 in #456, the first Pool ticket (§20 step 1,
-      backend whole): the pool row, its service, its enforce-mode
-      constant, the live counter's key family and Lua, the beat key, the
-      audit action, the four routes and every pool test took the family's
-      noun. 7 → 2 in #464, the catalogue ticket: the threshold event's
-      class took the family's name with its `EVENT_TYPE` held by
-      reference, and the emitter's dedupe filter and the three tests that
-      asserted the event by name now assert it through the class. What
-      survives is the two glossaries, whose entries still name the old
-      symbols — the fold's (#470).
+  # `g7-backend-budget` WAS HERE AND IS PAID (#469, the fold). It stood at
+  # 2 files — the billing glossary's entry named by the retired family word
+  # (19 occurrences by the sweep's case-sensitive token rule, and two
+  # capitalised ones it never saw) and one sentence in the platform glossary's retired
+  # floor-snapshot entry — and both took the family's own words in the
+  # fold, as §20 step 4 ordered (the glossary last). Its reason forecast
+  # the death for #470; the sweep is the judge and it died here. The
+  # word is now refused in every swept backend file rather than counted;
+  # the docs seat (`g7-docs-budget`) is the guides', #470's.
 
   # ⚠ `backend::card_type` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED. The
   # descent was 31 -> 28 (#367, the column off the RULE) -> 4 (#368, the split
@@ -347,22 +338,12 @@ entries:
   # — that is what keeps the word REFUSED in every swept file rather than
   # counted in N.
 
-  - id: g7-backend-customer_wide_stop
-    gate: G7
-    site: backend::customer_wide_stop
-    expected: reason_code
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason naming a mechanism rather than the customer whose
-      spend was stopped. Slice 6 rebuilds the four families it spans.
-      18 → 3 in #457: the code side is paid — the word split into the pool's
-      and the hard floor's (`reasons.CUSTOMER_SPEND_POOL` / `HARD_FLOOR`,
-      by the owner's tenant billing mode), every producer, reader, test and
-      comment took the constants, and the stored rows were migrated
-      (`work/0026`). What survives is the three glossaries' entries, which
-      the slice's fold ticket rewrites (#469 — "the glossary is where the
-      backend stop-word G7 entries die").
+  # `g7-backend-customer_wide_stop` WAS HERE AND IS PAID (#469, the fold).
+  # It stood at 3 files — the three glossaries' entries, the last backend
+  # sites after #457 paid the code side — and each now says which control
+  # opened the episode (`customer_spend_pool` or `hard_floor`, the
+  # signal ledger's own line since #458). Refused in every swept backend
+  # file now; the docs seat is #470's.
 
   - id: g7-backend-dimensions
     gate: G7
@@ -419,7 +400,7 @@ entries:
     gate: G7
     site: backend::meter_only
     expected: customer_billing_mode
-    found: 15 files
+    found: 14 files
     owner_slice: slice_8
     reason: >-
       It said what UBB does NOT do; `external` says where the billing
@@ -429,6 +410,13 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
+      15 → 14 in #469, slice 6's fold: the billing glossary's pool entry
+      spelled it three times in a "mode split" paragraph that #459 had
+      falsified (a blocking pool now stops work in every mode), and the
+      rewritten entry says "a tenant that does not bill through UBB"
+      where it needs the posture at all — slice 6 may reduce this count
+      and may not raise it (§20). The platform glossary's tenant entry
+      still lists the mode by name and stays counted.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and
@@ -500,19 +488,11 @@ entries:
   # The excluded sets still hold it and always will — the migration that names
   # what it splits, and this bookkeeping.
 
-  - id: g7-backend-subtask_limit
-    gate: G7
-    site: backend::subtask_limit
-    expected: reason_code
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason spelling the retired field word. Slice 6's
-      ceiling family replaces it. 8 → 2 in #457: collapsed with its
-      whole-unit twin onto `reasons.TASK_COGS_CEILING` (altitude travels as
-      `stop_scope` alone), every producer, reader, test and comment took the
-      constant, and the stored rows were migrated (`work/0026`). What
-      survives is two glossaries' entries, the fold ticket's (#469).
+  # `g7-backend-subtask_limit` WAS HERE AND IS PAID (#469, the fold). It
+  # stood at 2 files — the platform and metering glossaries' stop-reason
+  # and stop-context entries — and both now carry the one word at either
+  # altitude (`task_cogs_ceiling`, with `stop_scope` carrying which).
+  # Refused in every swept backend file now; the docs seat is #470's.
 
   - id: g7-backend-tag_key
     gate: G7
@@ -533,17 +513,10 @@ entries:
   # section above for the argument; the two gates are one debt read from two
   # sides and died together.
 
-  - id: g7-backend-task_limit
-    gate: G7
-    site: backend::task_limit
-    expected: reason_code
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      The same, at Task granularity. Slice 6's ceiling family replaces
-      it. 14 → 2 in #457, on the same terms as its contained-work twin
-      above: the code side is paid and two glossaries' entries survive for
-      the fold ticket (#469).
+  # `g7-backend-task_limit` WAS HERE AND IS PAID (#469, the fold), on the
+  # same terms as its contained-work twin above: 2 files, both glossaries,
+  # both rewritten. Refused in every swept backend file now; the docs seat
+  # is #470's.
 
   - id: g7-backend-usage_line_item_group_by
     gate: G7

@@ -46,6 +46,25 @@ seat-roster change pushing a new Stripe quantity), the platform kernel cannot im
 push is deferred to `transaction.on_commit` so it binds to the roster change's own commit. Use this
 only for genuinely synchronous needs; everything tolerant of latency goes on the outbox.
 
+**The terminal-transition listener registry** (`apps/platform/work/hooks.py`, #460) is the second
+registry on this channel, on the roster one's shape: a product registers
+`register_terminal_transition_listener(fn)` in its `AppConfig.ready()` (idempotent — `ready()`
+can run more than once), and the kernel calls every listener synchronously, inside the flip's own
+transaction, for every terminal transition of a unit of work — a close, a kill, an expiry, and
+each of the three cascades — handing it the row and a `TerminalTransition` (the state entered,
+what was recorded about why, and whether containment wrote it). Billing's one listener releases
+the prepaid reservation (`apps/billing/wallets/reservations.py:release_on_terminal_transition`,
+registered in `WalletsConfig.ready()`); a product that needs the outbox's latency tolerance
+instead subscribes to the terminal stop events. **A listener is a notification and never a veto**
+(#141 §6.4): the row is already written when it runs, and the one deliberate departure from the
+roster registry is that an exception is CAUGHT under the listener's own savepoint and logged
+(`work.terminal_listener_failed`) rather than propagated — a listener here does its work inside
+the caller's transaction, so letting it raise would roll a kernel fact back on a product's bug.
+What a failed listener owed is left undone on purpose, and the product that owed it owns the
+backstop (for the reservation, an hourly sweep over terminal work still holding one). A walker in
+`apps/platform/work/tests/test_every_terminal_path_reaches_the_listeners.py` holds that every
+function writing a terminal status notifies, so a new terminal path cannot forget the channel.
+
 ## Locking & concurrency
 
 - Take row locks with `select_for_update` in the canonical global order (Run → Wallet → Customer →

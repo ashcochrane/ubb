@@ -93,6 +93,7 @@ OPTED_IN = (
     "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
     "0012-how-a-kind-of-work-is-sold-is-frozen.md",
     "0013-a-delivered-unit-of-work-is-charged-once-by-a-charge-that-projects-onto-one-posting.md",
+    "0014-spend-control-is-four-families-and-the-ceiling-is-a-kernel-concept.md",
 )
 
 
@@ -360,6 +361,7 @@ DEPARTING = (
     "0008-audit-method-and-launch-gates.md",
     "0009-a-correction-is-a-further-publish.md",
     "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
+    "0014-spend-control-is-four-families-and-the-ceiling-is-a-kernel-concept.md",
 )
 
 
