@@ -35,7 +35,7 @@ committed change always leaves one. Coverage spans:
   seat counts changed.
 
 **Not recorded** (by decision, ADR-004 §3): **usage ingestion** — `POST /metering/usage[/batch]`,
-task start, task close, and the spend pre-check. That is high-volume telemetry, not
+task start, task close, and the affordability question. That is high-volume telemetry, not
 governance; it would swamp the trail and is already visible on the usage ledger and via webhooks.
 Registering a unit of work is the HEAD of that ingestion and closing one is its tail, on the same
 footing: neither changes the rules nor moves money, and what a start authors is the row every

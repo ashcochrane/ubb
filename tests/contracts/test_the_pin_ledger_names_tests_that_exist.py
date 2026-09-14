@@ -33,35 +33,24 @@ here legitimately cite a method of one class beside a class of another module
 (pin 3 names the constraint pin and, separately, the landing pin that lives in
 billing's suite). A per-row binding would report those honest rows as defects.
 
-**THE CITATION SHAPE IS `path::Class::method`, WHICH IS WHY THIS DOES NOT REUSE
-`test_adr_proof_tables.cited`.** An ADR writes its module and its case as two
-separate backticked spans; this table joins them with `::` and continues a run
-of rows with a leading `::method`. So the span is split here and each part
-classified. The AST reader IS reused, because the reader is the part worth
-having one of.
+**WHAT THIS MODULE OWNS IS THE CITATION SHAPE, AND ONLY THAT.** An ADR writes
+its module and its case as two separate backticked spans; this table joins them
+with `::` and continues a run of rows with a leading `::method`. So the span is
+split here and each part classified. Reading a section out of a document,
+reading the names a module defines, and deciding which citations fail to
+resolve are all in `_helpers`, shared with the ADR walker — two copies of one
+read are how the two come to disagree while both suites stay green.
 
 ⚠ **AND THE CASE PATTERN IS WIDER THAN THE ADR WALKER'S.** That one matches
 `...Test` classes and `test_` functions only, so a pytest-style `TestFoo` class
 named alone is silently unchecked — the go-narrow shape its own carry-forward
 warns about. This table is full of them (`TestPin4DurableLane`,
 `TestStopFlag`), so they are matched here and would redden on a rename.
-
-**Read by AST, never imported** — this suite runs without Django and the
-modules cited are platform tests that import models and settings. Reading their
-definitions is a parse, not an import, and it is also the honest question:
-what the document cites is a *name in a file*.
 """
 
 import re
-from pathlib import Path
 
-from _helpers import REPO_ROOT
-
-# The AST reader, shared with the ADR walker by construction rather than
-# copied: "every class and function defined anywhere in one module, methods
-# included" is one question, and two implementations of it could disagree
-# about a nested class while both suites stayed green.
-from test_adr_proof_tables import defined_in
+from _helpers import REPO_ROOT, section_under, unresolved
 
 #: The document this holds, and the heading that opens the section.
 GUARANTEES = "docs/spend-control-guarantees.md"
@@ -94,16 +83,10 @@ FEWEST_CASES = 25
 def pin_section(text):
     """The pin-ledger section, or ``None`` if the heading is gone.
 
-    Ends at the next second-level heading, or at the end of the document — §9
-    is the last section, so the closing note below it is included, and it
-    cites nothing.
+    §9 is the last section of the document, so the closing note below it is
+    included; it cites nothing.
     """
-    start = text.find(PIN_HEADING)
-    if start == -1:
-        return None
-    rest = text[start + len(PIN_HEADING):]
-    end = rest.find("\n## ")
-    return rest if end == -1 else rest[:end]
+    return section_under(text, PIN_HEADING)
 
 
 def cited(section):
@@ -128,28 +111,20 @@ def cited(section):
 
 def findings(section):
     """Everything wrong with the pin ledger, as readable lines."""
-    modules, cases = cited(section)
+    missing_modules, resolved, missing_cases = unresolved(*cited(section))
     problems = []
 
-    present = {}
-    for module in modules:
-        path = REPO_ROOT / module
-        if not path.is_file():
-            problems.append(
-                f"§9 names `{module}`, which is not a file. A pin ledger "
-                f"citing a path that does not resolve is the drift this "
-                f"check exists for.")
-            continue
-        present[module] = defined_in(path)
-
-    everywhere = set().union(*present.values()) if present else set()
-    for case in cases:
-        if case not in everywhere:
-            problems.append(
-                f"§9 names `{case}`, which none of the {len(present)} "
-                f"module(s) it cites defines. Either the case was renamed and "
-                f"the ledger was not, or it lives in a module §9 does not "
-                f"name.")
+    for module in missing_modules:
+        problems.append(
+            f"§9 names `{module}`, which is not a file. A pin ledger citing "
+            f"a path that does not resolve is the drift this check exists "
+            f"for — and a reader told to run the row cannot.")
+    for case in missing_cases:
+        problems.append(
+            f"§9 names `{case}`, which none of the {resolved} "
+            f"module(s) it cites defines. Either the case was renamed and "
+            f"the ledger was not, or it lives in a module §9 does not "
+            f"name.")
     return problems
 
 

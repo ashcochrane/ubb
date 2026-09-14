@@ -228,8 +228,8 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
 ### The stop reasons, in full
 
 `reason_code` is an **open** set — a stop can originate outside UBB, so accept
-a word you have not seen rather than rejecting it. Seven are the registry's,
-and `openapi/error-codes.json`'s `verdicts.reason_codes` is the published list:
+a word you have not seen rather than rejecting it. Seven of them are the
+vocabulary registry's, and those seven are the table below:
 
 | `reason_code` | Family | What reached its line |
 |---|---|---|
@@ -249,6 +249,11 @@ reader does not hunt for them there: **`task_not_active`**, the verdict for a
 report against a unit that had already ended (still priced, recorded and
 billed), and **`suspended`**, a stop-context tag for an owner suspended with no
 open episode. Neither names a bound that was reached.
+
+`openapi/error-codes.json`'s `verdicts.reason_codes` publishes **eight** of
+these nine — the seven above plus `task_not_active`, which an acknowledgement
+can carry. `suspended` is not there because it never rides an acknowledgement
+or an event; it only ever marks a posting's stop context.
 
 ## Cooperative-cancellation recipes (a few lines each)
 

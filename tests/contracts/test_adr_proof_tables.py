@@ -48,6 +48,13 @@ named here are platform tests that import models and settings. Reading their
 definitions is a parse, not an import — and it is also the honest question,
 because what the ADR cites is a *name in a file*.
 
+⚠ **THE READ ITSELF LIVES IN ``_helpers``, NOT HERE.** ``defined_in``,
+``section_under`` and ``unresolved`` are shared with the pin-ledger walker
+(``test_the_pin_ledger_names_tests_that_exist.py``), which holds the same rule
+over a different document. What stays here is what is genuinely this
+document's: which heading opts in, what a citation looks like in an ADR, and
+how a failure is worded for a reader of an ADR.
+
 ⚠ **THE READER IS SHARED WITH THE CONTROLS BY CONSTRUCTION.** Every negative
 control below drives :func:`findings` over a synthetic ADR, so a bug in the
 parser reddens the controls rather than hiding behind a second copy of the
@@ -55,13 +62,12 @@ search. That is the shape #373 paid for: a positive control that re-implemented
 the walk it was checking found nothing wrong with a walk that was wrong.
 """
 
-import ast
 import re
 from pathlib import Path
 
 import pytest
 
-from _helpers import REPO_ROOT
+from _helpers import REPO_ROOT, section_under, unresolved
 
 #: BOTH ADR HOMES, BECAUSE `CLAUDE.md` NAMES TWO. New, sequential ADRs live in
 #: `docs/adr/`; the pre-existing ones — including the product-boundaries ADR
@@ -103,12 +109,7 @@ def proof_section(text):
     Ends at the next second-level heading, so the Consequences below it are not
     scanned — a consequence may name a symbol it is not claiming as proof.
     """
-    start = text.find(PROOF_HEADING)
-    if start == -1:
-        return None
-    rest = text[start + len(PROOF_HEADING):]
-    end = rest.find("\n## ")
-    return rest if end == -1 else rest[:end]
+    return section_under(text, PROOF_HEADING)
 
 
 def cited(section):
@@ -120,18 +121,6 @@ def cited(section):
         elif CASE.match(span):
             cases.append(span)
     return tuple(dict.fromkeys(modules)), tuple(dict.fromkeys(cases))
-
-
-def defined_in(path):
-    """Every class and function name defined anywhere in one module.
-
-    Methods included: a `unittest` case is a method on its class, and the ADR
-    cites it by its own name because that is how it is run and reported.
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return {node.name for node in ast.walk(tree)
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef,
-                                 ast.AsyncFunctionDef))}
 
 
 def findings(adr_name, text):
@@ -153,25 +142,18 @@ def findings(adr_name, text):
             f"without the module holding it is not something a reader can "
             f"follow, and nothing can check it.")
 
-    present = {}
-    for module in modules:
-        path = REPO_ROOT / module
-        if not path.is_file():
-            problems.append(
-                f"{adr_name}: names `{module}`, which is not a file. A proof "
-                f"table citing a path that does not resolve is the drift this "
-                f"check exists for.")
-            continue
-        present[module] = defined_in(path)
-
-    everywhere = set().union(*present.values()) if present else set()
-    for case in cases:
-        if case not in everywhere:
-            problems.append(
-                f"{adr_name}: names `{case}`, which none of the "
-                f"{len(present)} module(s) it cites defines. Either the case "
-                f"was renamed and the ADR was not, or it lives in a module "
-                f"this ADR does not name.")
+    missing_modules, resolved, missing_cases = unresolved(modules, cases)
+    for module in missing_modules:
+        problems.append(
+            f"{adr_name}: names `{module}`, which is not a file. A proof "
+            f"table citing a path that does not resolve is the drift this "
+            f"check exists for.")
+    for case in missing_cases:
+        problems.append(
+            f"{adr_name}: names `{case}`, which none of the "
+            f"{resolved} module(s) it cites defines. Either the case "
+            f"was renamed and the ADR was not, or it lives in a module "
+            f"this ADR does not name.")
     return problems
 
 
