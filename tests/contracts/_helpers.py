@@ -120,6 +120,86 @@ def events_whose_payload_declares(field):
 LEDGER_PATH = "gates/migration-ledger.yaml"
 
 
+# ---------------------------------------------------------------------------
+# Reading a document that cites tests, shared by the two walkers
+# ---------------------------------------------------------------------------
+#
+# `test_adr_proof_tables.py` holds an ADR's `## What proves it` table to naming
+# tests that exist; `test_the_pin_ledger_names_tests_that_exist.py` holds the
+# guarantees document's pin ledger to the same rule. They differ in what a
+# citation LOOKS like — an ADR writes the module and the case as two backticked
+# spans, the pin ledger joins them with `::` — so each owns its own reader for
+# that. What they must NOT own two of is the part below: *what names a module
+# defines* and *which of a document's citations fail to resolve*. Two copies of
+# one read are how the two come to disagree while both suites stay green, which
+# is the reason `module_literal` above is here rather than in either caller.
+
+
+def defined_in(path):
+    """Every class and function name defined anywhere in one module.
+
+    Methods included: a `unittest` case is a method on its class, and a
+    document cites it by its own name because that is how it is run and
+    reported.
+
+    Read by AST, never imported — this suite runs without Django
+    (`test_contract_suite_is_enforced.py` makes that a rule) and the modules
+    these documents cite are platform tests that import models and settings.
+    Reading their definitions is a parse, and it is also the honest question:
+    what a document cites is a *name in a file*.
+    """
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {node.name for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef))}
+
+
+def section_under(text, heading):
+    """The section a heading opens, or ``None`` if the heading is absent.
+
+    Ends at the next second-level heading, or at the end of the document.
+    Returning ``None`` rather than ``""`` is what lets a caller tell "this
+    document did not opt in" from "its table is empty" — two different
+    failures, and the second is the one that goes quietly green.
+    """
+    start = text.find(heading)
+    if start == -1:
+        return None
+    rest = text[start + len(heading):]
+    end = rest.find("\n## ")
+    return rest if end == -1 else rest[:end]
+
+
+def unresolved(modules, cases):
+    """``(missing_modules, resolved_count, missing_cases)`` for one document.
+
+    A module is missing when its path is not a file. A case is missing when
+    none of the modules that DID resolve defines it.
+
+    ⚠ **A CASE IS BOUND TO THE DOCUMENT'S MODULES, NOT TO THE ONE BESIDE IT.**
+    That is deliberate rather than missed: rows in both documents legitimately
+    cite a case from one module alongside a class from another, because one
+    rule is often proved from two places. A per-row binding would report those
+    honest rows as defects, so the looser rule is the right one and is written
+    down. Each caller words its own messages, because a reader of one document
+    should be told about that document.
+    """
+    present = {}
+    missing_modules = []
+    for module in modules:
+        path = REPO_ROOT / module
+        if path.is_file():
+            present[module] = defined_in(path)
+        else:
+            missing_modules.append(module)
+
+    everywhere = set().union(*present.values()) if present else set()
+    missing_cases = [case for case in cases if case not in everywhere]
+    return missing_modules, len(present), missing_cases
+
+
 def module_literal(path, name):
     """The value bound to a module-level ``name`` in ``path``, as a literal.
 

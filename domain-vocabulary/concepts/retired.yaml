@@ -2220,6 +2220,35 @@ measurement_key:
     # metering-only posture word's backend seat, 15 -> 14, because the
     # billing glossary's rewritten pool entry no longer needs the posture by
     # name. The sweep's site count fell 38 -> 34.
+    #
+    # 2026-09-14, #470 (the two living guides are rewritten as one):
+    # 1,869 of 2,296 tracked files -- UNCHANGED, AND THAT IS A NET OF TWO
+    # MOVES RATHER THAN NO MOVE, which is the whole reason this paragraph
+    # exists. One tracked, swept file ARRIVED
+    # (`tests/contracts/test_the_pin_ledger_names_tests_that_exist.py`, the
+    # walker over the guarantees document's pin ledger) and one LEFT
+    # (`docs/2026-02-05-two-product-separation-design.md`, deleted: a stale
+    # duplicate of the frozen plan document of the same name under
+    # `docs/plans/`, older than its twin, referenced by nothing, and swept
+    # only because sitting outside `docs/plans/` kept it out of the
+    # frozen-dated-documents exclusion). A reader comparing this number with
+    # #469's would otherwise read "no file moved", which is false.
+    # NO EXCLUSION RULE WAS WIDENED and the exclusion count stays at 427, so
+    # this is not the third case above: the deleted file's `pre_check`
+    # occurrences left the TREE, they did not leave the swept set.
+    # `units` 44 files / 122 occurrences, unmoved -- but it ROSE to 123 on
+    # the first take and was rewritten: the guarantees document's patrol row
+    # said the sweep "sweeps active units sitting at or above their COGS
+    # Ceiling", which is none of the three surviving senses, just ordinary
+    # English about work. It now reads "sweeps any work still active at or
+    # above its COGS Ceiling". The one occurrence this document already
+    # carried ("killed units keep counting") was left alone: removing it
+    # would be a fall this ticket has no account to give for.
+    # No migration, so `historical-migrations` stays at 260; no code change
+    # on any published surface, so the contract is byte-identical and
+    # nothing generated moved. Nine ledger entries left -- every `docs::`
+    # seat slice 6 owned -- and the sweep's site count fell 34 -> 25, its
+    # term count 16 -> 7.
 
     - term: units
       retired_as: >-

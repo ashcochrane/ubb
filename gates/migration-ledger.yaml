@@ -251,7 +251,7 @@ entries:
   # catalogue test asserts that outright rather than as a ceiling; their G7
   # twins on the backend, the console and the contract died in the same
   # commit, a G8 entry and its G7 entries being one debt read from two sides.
-  # The docs twins are #470's.
+  # The docs twins died in #470, with the two living guides.
   # --- G7: no retired word on any living surface -----------------------------
   #
   # THE SECOND LARGE SEEDING, and by far the biggest: 159 entries over 50 of the
@@ -304,7 +304,8 @@ entries:
   # fold, as §20 step 4 ordered (the glossary last). Its reason forecast
   # the death for #470; the sweep is the judge and it died here. The
   # word is now refused in every swept backend file rather than counted;
-  # the docs seat (`g7-docs-budget`) is the guides', #470's.
+  # the docs seat (`g7-docs-budget`) was the guides' and #470 paid it, so the
+  # word is now refused on every swept surface there is.
 
   # ⚠ `backend::card_type` REACHED ZERO IN #374 AND ITS ENTRY IS DELETED. The
   # descent was 31 -> 28 (#367, the column off the RULE) -> 4 (#368, the split
@@ -343,7 +344,8 @@ entries:
   # sites after #457 paid the code side — and each now says which control
   # opened the episode (`customer_spend_pool` or `hard_floor`, the
   # signal ledger's own line since #458). Refused in every swept backend
-  # file now; the docs seat is #470's.
+  # file now, and the docs seat died in #470, so the word is refused on
+  # every swept surface there is.
 
   - id: g7-backend-dimensions
     gate: G7
@@ -492,7 +494,8 @@ entries:
   # stood at 2 files — the platform and metering glossaries' stop-reason
   # and stop-context entries — and both now carry the one word at either
   # altitude (`task_cogs_ceiling`, with `stop_scope` carrying which).
-  # Refused in every swept backend file now; the docs seat is #470's.
+  # Refused in every swept backend file now, and the docs seat died in
+  # #470, so the word is refused on every swept surface there is.
 
   - id: g7-backend-tag_key
     gate: G7
@@ -515,8 +518,9 @@ entries:
 
   # `g7-backend-task_limit` WAS HERE AND IS PAID (#469, the fold), on the
   # same terms as its contained-work twin above: 2 files, both glossaries,
-  # both rewritten. Refused in every swept backend file now; the docs seat
-  # is #470's.
+  # both rewritten. Refused in every swept backend file now, and the docs
+  # seat died in #470, so the word is refused on every swept surface there
+  # is.
 
   - id: g7-backend-usage_line_item_group_by
     gate: G7
@@ -711,27 +715,36 @@ entries:
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
 
-  - id: g7-docs-budget
-    gate: G7
-    site: docs::budget
-    expected: control_family
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      A retired spend-control family name. #150's four families —
-      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
-      replace one word that named all of them at once, and slice 6
-      builds them.
-
-  - id: g7-docs-customer_wide_stop
-    gate: G7
-    site: docs::customer_wide_stop
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason naming a mechanism rather than the customer whose
-      spend was stopped. Slice 6 rebuilds the four families it spans.
+  # ALL NINE OF SLICE 6's `g7-docs-*` ENTRIES WERE HERE AND ARE PAID (#470, the
+  # two living guides). They came off together because they were one debt told
+  # nine ways: `budget` (3 files), `customer_wide_stop` (1), `pre_check` (3),
+  # `soft_floor.cleared` (1), `soft_floor.crossed` (1), `stop.cleared` (1),
+  # `stop.fired` (2), `subtask_limit` (1), `task_limit` (1). Slice 5 §23's
+  # override of "one file, one reason" is what let one ticket rewrite both
+  # guides at once, and every word above is slice 6's own, so there was no
+  # second slice's debt riding along to be paid early.
+  #
+  # WHERE EACH WENT. The two guides took the end-state vocabulary: the family
+  # word became the four families by name, the customer-wide reason became the
+  # two lines that produce it (`customer_spend_pool` and `hard_floor`), the two
+  # altitude-named ceiling reasons became the one collapsed word with the
+  # altitude in `stop_scope`, the four mechanism-namespaced events became their
+  # families' (`customer.stopped` / `customer.stop_cleared` and the
+  # `wallet_policy.*` pair), and the retired poll became the affordability
+  # question at its own route. The family word's other three living files —
+  # the audit-trail ADR, the audit-trail guarantees and the testing convention
+  # — took `customer_spend_pool.set` and the pool's own noun.
+  #
+  # ⚠ `pre_check` HAD A THIRD FILE THE TICKET DID NOT NAME, AND IT WAS A
+  # DUPLICATE. `docs/2026-02-05-two-product-separation-design.md` was a stale
+  # copy of the frozen plan document of the same name under `docs/plans/` —
+  # older than its twin (no supersession banner, and the earlier placement for
+  # `tenant_billing`), referenced by nothing, and swept only because sitting
+  # outside `docs/plans/` kept it out of the frozen-dated-documents exclusion.
+  # It was DELETED rather than rewritten: editing a February design record to
+  # spell today's vocabulary would have falsified it, and widening an exclusion
+  # to hide it would have paid the debt with bookkeeping. The frozen twin is
+  # the record and it is untouched.
 
   - id: g7-docs-meter_only
     gate: G7
@@ -747,79 +760,6 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
-
-  - id: g7-docs-pre_check
-    gate: G7
-    site: docs::pre_check
-    expected: affordability_reason
-    found: 3 files
-    owner_slice: slice_6
-    reason: >-
-      It named when the question was asked rather than what was asked.
-      Slice 6's admission control gives the answer its own vocabulary.
-      FOUR UNTIL #284, and the fourth was a dated prototype. That ticket
-      widened the frozen-documents exclusion over `docs/prototypes/`, so
-      the file left the swept set rather than being rewritten, and slice 6
-      now pays three living documents instead of four. The word is still
-      in the prototype, correctly, and no slice will remove it from there.
-
-  - id: g7-docs-soft_floor.cleared
-    gate: G7
-    site: docs::soft_floor.cleared
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair. Same owner as G8's entry.
-
-  - id: g7-docs-soft_floor.crossed
-    gate: G7
-    site: docs::soft_floor.crossed
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the wallet policy
-      that holds the floor. Same owner as G8's entry.
-
-  - id: g7-docs-stop.cleared
-    gate: G7
-    site: docs::stop.cleared
-    expected: webhook_event_type
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The clearing half of the same pair, replaced by
-      `customer.stop_cleared`. Same owner as G8's entry.
-      TWO UNTIL #284, and the second was a dated prototype that named
-      both halves of the pair. That ticket widened the frozen-documents
-      exclusion over `docs/prototypes/`, so the file left the swept set
-      rather than being rewritten; the one left is a living spend-control
-      guide, and slice 6 pays it when the event is renamed.
-
-  - id: g7-docs-stop.fired
-    gate: G7
-    site: docs::stop.fired
-    expected: webhook_event_type
-    found: 2 files
-    owner_slice: slice_6
-    reason: >-
-      An event owned by a mechanism rather than by the customer whose
-      state changed (ADR-0006 §5). `customer.stopped` replaces it when
-      slice 6 rebuilds spend control. Same owner as G8's entry.
-      THREE UNTIL #284, and the third was the same dated prototype that
-      cost `stop.cleared` its second file. The two left are living
-      spend-control guides, and slice 6 pays both with the rename.
-
-  - id: g7-docs-subtask_limit
-    gate: G7
-    site: docs::subtask_limit
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      A refusal reason spelling the retired field word. Slice 6's
-      ceiling family replaces it.
 
   - id: g7-docs-tag_key
     gate: G7
@@ -840,16 +780,6 @@ entries:
   # rather than rewriting it. There was never a `docs::` entry for the
   # contained-work half: that name appears only in frozen dated documents, so
   # one would have been false.
-
-  - id: g7-docs-task_limit
-    gate: G7
-    site: docs::task_limit
-    expected: reason_code
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      The same, at Task granularity. Slice 6's ceiling family replaces
-      it.
 
   - id: g7-docs-usage_line_item_group_by
     gate: G7

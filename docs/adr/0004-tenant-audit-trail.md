@@ -15,7 +15,7 @@ The obvious raw material fails on inspection. The outbox is an **ephemeral proce
 record**: processed rows are hard-deleted after 30 days (skipped after 90), a sandbox reset
 deletes a tenant's rows outright, and — decisively — its coverage is wrong for auditing. Events
 fire for money/usage flow and API-key lifecycle, but essentially **all config governance mutates
-silently**: the books of pricing rules, markup, budgets, billing profile, auto-top-up, credit grants,
+silently**: the books of pricing rules, markup, customer spend pools, billing profile, auto-top-up, credit grants,
 webhook configs, tenant config including `enforcement_mode`, customers/plans/seats. Exposing the
 outbox as the feed would miss exactly the who-changed-what-when material an audit trail is for.
 
@@ -36,10 +36,18 @@ feed ships.)
 ### 2. Mechanism: named audit actions into a durable kernel ledger, gated by a CI pin
 
 A new append-only ledger records explicit, **named audit actions**
-(`pricing_book_publish.published`, `budget.updated`, `webhook_config.deleted`, …) written at each
+(`pricing_book_publish.published`, `customer_spend_pool.set`, `webhook_config.deleted`, …)
+written at each
 mutation site — the `write_event`
 calling pattern. The actor is captured **once**, at the auth seam, into a request-scoped
 contextvar and read at record time; mutation sites never pass "who" by hand.
+
+> **One of those names was renamed, and the rows it wrote were not.** The spend-pool action
+> above was spelled for the word that used to name all four spend-control families, and
+> slice 6 replaced it (#456): no current mutation site writes the old spelling, and **the
+> entries already written keep it forever**, because this ledger is append-only and history's
+> vocabulary is never rewritten — which is the rule the paragraph below states. A reader
+> querying by action name for the whole history of that setting must ask for both.
 
 The action names form a **registry that is part of the public contract**: additive-only, a rename
 is a breaking change — the same compatibility algebra as the
@@ -62,7 +70,7 @@ separate concepts.**
 
 ### 3. Scope: every principal-initiated mutation; telemetry and system actions out
 
-In scope: all settings/governance changes (pricing, markup, budgets, billing profile,
+In scope: all settings/governance changes (pricing, markup, customer spend pools, billing profile,
 auto-top-up, webhook configs, tenant config, customers/plans/seats), membership and key lifecycle,
 and **hand-moved money** (manual credits/debits, refunds, grants) — the audit row records *who*,
 coexisting with the wallet ledger, which proves conservation. This supersedes the free-text
@@ -77,8 +85,8 @@ open enum reserves (§4). Reads are never audited.
 
 Every entry: actor, action name, target resource (type + id), timestamp, and the request's
 **correlation id** (linking the entry to any outbox events the same request emitted). On top, each
-mutation site attaches a small **hand-chosen metadata dict** (e.g. `budget.updated` carries the
-new limit). There is **no automatic before/after capture** — secrets (webhook signing secrets, key
+mutation site attaches a small **hand-chosen metadata dict** (e.g. `customer_spend_pool.set`
+carries the new figure). There is **no automatic before/after capture** — secrets (webhook signing secrets, key
 material) structurally cannot reach a permanent table because nothing is captured
 indiscriminately. Per-action diffs can be added later, additively.
 

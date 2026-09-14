@@ -456,10 +456,15 @@ exclusions:
       is admitted on the ordinary test: it pins the replacement chain of an app
       label that moved, which means naming the label that was replaced.
       Every path is an EXACT file rather than a directory, so the rule cannot
-      spread to a neighbour: `tests/contracts/` holds twenty-two Python modules
-      and six are named here. (The basis is spelled out because the previous
-      wording said "eighteen modules and six" while seven were named — a count
-      nobody re-measured. It is `git ls-files tests/contracts | grep '\.py$'`.)
+      spread to a neighbour: `tests/contracts/` holds twenty-seven Python
+      modules and six are named here. (The basis is spelled out because the
+      wording before that said "eighteen modules and six" while seven were
+      named — a count nobody re-measured. It is
+      `git ls-files tests/contracts | grep '\.py$'`, and it was twenty-two when
+      the basis was written and twenty-six before #470 added the pin-ledger
+      walker — so the sentence had already gone stale once by drifting rather
+      than by being wrong when written, which is the failure a stated basis is
+      supposed to make cheap to fix.)
       Permanent, and each file is small enough that a reviewer can check the
       claim by opening it.
 
